@@ -29,6 +29,10 @@ public class AiProvider {
     @Column(nullable = false, length = 20)
     private String type;
 
+    /** openai / anthropic / gemini — the wire protocol, independent of the vendor name. */
+    @Column(nullable = false, length = 20)
+    private String protocol = "openai";
+
     @Column(name = "base_url", nullable = false, length = 500)
     private String baseUrl;
 

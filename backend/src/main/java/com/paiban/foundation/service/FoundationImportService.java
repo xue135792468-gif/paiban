@@ -164,19 +164,30 @@ public class FoundationImportService {
         }
 
         int imported = 0;
-        if (commit && !validRows.isEmpty()) {
-            for (Map<String, String> row : validRows) {
-                insert(spec.entity(), row, resolvedSemester);
-                imported++;
+        if (commit) {
+            if (!errors.isEmpty()) {
+                // All-or-nothing: a single bad/duplicate row must not let the rest slip in.
+                foundation.audit(
+                        actor,
+                        "IMPORT",
+                        spec.entity(),
+                        "文件: " + file.getOriginalFilename() + ", 校验未通过，未导入任何行，错误 "
+                                + errors.size() + " 处",
+                        0,
+                        table.rows().size());
+            } else if (!validRows.isEmpty()) {
+                for (Map<String, String> row : validRows) {
+                    insert(spec.entity(), row, resolvedSemester);
+                    imported++;
+                }
+                foundation.audit(
+                        actor,
+                        "IMPORT",
+                        spec.entity(),
+                        "文件: " + file.getOriginalFilename() + ", 成功 " + imported + " 行",
+                        imported,
+                        0);
             }
-            foundation.audit(
-                    actor,
-                    "IMPORT",
-                    spec.entity(),
-                    "文件: " + file.getOriginalFilename() + ", 成功 " + imported + " 行, 失败 "
-                            + (table.rows().size() - imported) + " 行",
-                    imported,
-                    table.rows().size() - imported);
         }
 
         return new ImportReport(

@@ -22,6 +22,10 @@ public class DeepSeekStrategy extends OpenAiCompatibleStrategy {
         if (provider == null) {
             return false;
         }
+        String protocol = provider.getProtocol();
+        if (protocol != null && !protocol.isBlank() && !"openai".equalsIgnoreCase(protocol)) {
+            return false;
+        }
         String baseUrl = provider.getBaseUrl() == null ? "" : provider.getBaseUrl().toLowerCase(Locale.ROOT);
         return baseUrl.contains("deepseek");
     }

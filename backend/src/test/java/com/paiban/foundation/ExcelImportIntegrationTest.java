@@ -4,6 +4,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 
 import com.paiban.support.ApiIntegrationTest;
@@ -62,6 +63,36 @@ class ExcelImportIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(200)
                 .body("name", hasItem("导入老师甲" + suffix))
                 .body("name", hasItem("导入老师乙" + suffix));
+    }
+
+    @Test
+    void oneDuplicateRowBlocksTheWholeCommit() throws IOException {
+        String token = adminToken();
+        String suffix = TestData.suffix();
+        String existingNo = "DUP-" + suffix;
+        as(token).body(Map.of(
+                        "name", "已存在老师" + suffix,
+                        "employeeNo", existingNo,
+                        "subject", "语文"))
+                .when().post("/api/teachers")
+                .then().statusCode(200);
+
+        String newName = "本该被拦截的新老师" + suffix;
+        byte[] file = ExcelFixtures.workbook(
+                List.of("姓名", "工号", "手机号", "学科"),
+                List.of(
+                        List.of("重复工号老师" + suffix, existingNo, "13800000011", "语文"),
+                        List.of(newName, "NEW-" + suffix, "13800000012", "数学")));
+
+        upload(token, "teachers", "commit", file, null)
+                .then().statusCode(200)
+                .body("importedRows", equalTo(0))
+                .body("errorCount", greaterThanOrEqualTo(1))
+                .body("errors.message", hasItem(containsString("工号已存在")));
+
+        as(token).when().get("/api/teachers")
+                .then().statusCode(200)
+                .body("name", not(hasItem(newName)));
     }
 
     @Test

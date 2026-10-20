@@ -23,6 +23,7 @@
             <el-tag size="small" :type="provider.type === 'preset' ? 'success' : 'info'">
               {{ provider.type === 'preset' ? '预设' : '自定义' }}
             </el-tag>
+            <el-tag size="small" effect="plain">{{ protocolLabel(provider.protocol) }}</el-tag>
             <el-tag v-if="!provider.enabled" size="small" type="danger">已停用</el-tag>
           </div>
           <div class="provider-url">{{ provider.baseUrl }}</div>
@@ -207,7 +208,7 @@
         <el-form-item label="供应商类型" prop="type">
           <el-radio-group v-model="providerForm.type" :disabled="editingProviderId !== null" @change="onTypeChange">
             <el-radio-button value="preset">预设供应商</el-radio-button>
-            <el-radio-button value="custom">自定义（OpenAI 兼容）</el-radio-button>
+            <el-radio-button value="custom">自定义（OpenAI / Anthropic / Gemini）</el-radio-button>
           </el-radio-group>
         </el-form-item>
         <el-form-item v-if="providerForm.type === 'preset' && !editingProviderId" label="预设模板">
@@ -215,11 +216,19 @@
             <el-option v-for="preset in presets" :key="preset.code" :label="preset.name" :value="preset.code" />
           </el-select>
         </el-form-item>
+        <el-form-item v-if="providerForm.type === 'custom'" label="协议" prop="protocol">
+          <el-radio-group v-model="providerForm.protocol">
+            <el-radio-button value="openai">OpenAI 兼容</el-radio-button>
+            <el-radio-button value="anthropic">Anthropic</el-radio-button>
+            <el-radio-button value="gemini">Gemini</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
         <el-form-item label="名称" prop="name">
           <el-input v-model="providerForm.name" placeholder="如：DeepSeek 主账号" />
         </el-form-item>
         <el-form-item label="Base URL" prop="baseUrl">
-          <el-input v-model="providerForm.baseUrl" placeholder="https://api.deepseek.com" />
+          <el-input v-model="providerForm.baseUrl" :placeholder="baseUrlPlaceholder" />
+          <div class="hint">{{ baseUrlHint }}</div>
         </el-form-item>
         <el-form-item label="API Key">
           <el-input
@@ -319,6 +328,7 @@ interface AiProvider {
   id: number
   name: string
   type: string
+  protocol: string
   baseUrl: string
   hasApiKey: boolean
   apiKeyMasked?: string | null
@@ -331,6 +341,7 @@ interface AiProvider {
 interface Preset {
   code: string
   name: string
+  protocol: string
   baseUrl: string
   models: string[]
 }
@@ -399,6 +410,7 @@ const editingProviderId = ref<number | null>(null)
 const providerFormRef = ref<FormInstance>()
 const providerForm = reactive({
   type: 'preset',
+  protocol: 'openai',
   presetCode: '',
   name: '',
   baseUrl: '',
@@ -430,6 +442,35 @@ const providerRules: FormRules = {
 
 const modelRules: FormRules = {
   modelName: [{ required: true, message: '请输入模型名', trigger: 'blur' }],
+}
+
+const baseUrlPlaceholder = computed(() => {
+  if (providerForm.protocol === 'anthropic') {
+    return 'https://api.anthropic.com'
+  }
+  if (providerForm.protocol === 'gemini') {
+    return 'https://generativelanguage.googleapis.com/v1beta'
+  }
+  return 'https://api.openai.com/v1'
+})
+
+const baseUrlHint = computed(() => {
+  if (providerForm.protocol === 'anthropic') {
+    return '填 API 根地址，系统会追加 /v1/messages；填到 /v1 也可以。'
+  }
+  if (providerForm.protocol === 'gemini') {
+    return '填版本前缀，系统会追加 /models/{模型}:generateContent。'
+  }
+  return '填 API 根地址，系统会追加 /chat/completions；OpenAI 官方通常填到 /v1。'
+})
+
+function protocolLabel(protocol?: string) {
+  const labels: Record<string, string> = {
+    openai: 'OpenAI 兼容',
+    anthropic: 'Anthropic',
+    gemini: 'Gemini',
+  }
+  return labels[protocol ?? ''] ?? protocol ?? ''
 }
 
 const modelOptions = computed<ModelOption[]>(() =>
@@ -486,6 +527,7 @@ function modelOption(modelId: number | undefined) {
 function openProviderDialog(provider?: AiProvider) {
   editingProviderId.value = provider?.id ?? null
   providerForm.type = provider?.type === 'custom' ? 'custom' : 'preset'
+  providerForm.protocol = provider?.protocol ?? 'openai'
   providerForm.presetCode = ''
   providerForm.name = provider?.name ?? ''
   providerForm.baseUrl = provider?.baseUrl ?? ''
@@ -498,6 +540,7 @@ function openProviderDialog(provider?: AiProvider) {
 function onTypeChange() {
   providerForm.presetCode = ''
   if (providerForm.type === 'custom') {
+    providerForm.protocol = 'openai'
     providerForm.modelNamesText = ''
   }
 }
@@ -505,6 +548,7 @@ function onTypeChange() {
 function onPresetChange() {
   const preset = presets.value.find((item) => item.code === providerForm.presetCode)
   if (!preset) return
+  providerForm.protocol = preset.protocol
   providerForm.baseUrl = preset.baseUrl
   providerForm.modelNamesText = preset.models.join(', ')
   if (!providerForm.name) {
@@ -535,6 +579,7 @@ async function submitProvider() {
     const payload: Record<string, unknown> = {
       name: providerForm.name,
       type: providerForm.type,
+      protocol: providerForm.protocol,
       baseUrl: providerForm.baseUrl,
       enabled: providerForm.enabled,
     }
@@ -569,6 +614,7 @@ async function toggleProvider(provider: AiProvider) {
     const { data } = await http.put(`/ai-providers/${provider.id}`, {
       name: provider.name,
       type: provider.type,
+      protocol: provider.protocol,
       baseUrl: provider.baseUrl,
       enabled: provider.enabled,
     })

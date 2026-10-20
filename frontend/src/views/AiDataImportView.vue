@@ -119,6 +119,20 @@
         </div>
       </el-card>
 
+      <el-alert
+        v-if="preview.status === 'COMMITTED'"
+        type="success"
+        show-icon
+        :closable="false"
+        class="result-alert"
+      >
+        <template #title>已成功入库 {{ importedCount }} 条教师数据</template>
+        <div class="result-actions">
+          <el-button link type="primary" @click="goTeachers">查看教师</el-button>
+          <el-button link type="primary" @click="reset">继续导入</el-button>
+        </div>
+      </el-alert>
+
       <el-card shadow="never" class="explain-card">
         <template #header><span class="card-title">AI 说明</span></template>
         <p class="explanation">{{ preview.explanation || 'AI 未提供额外说明。' }}</p>
@@ -170,6 +184,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
@@ -209,7 +224,9 @@ interface RowError {
   message: string
 }
 
+const router = useRouter()
 const configured = ref(false)
+const importedCount = ref(0)
 const inputMode = ref<'excel' | 'text' | 'image'>('excel')
 const selectedFile = ref<File | null>(null)
 const imageFile = ref<File | null>(null)
@@ -311,6 +328,7 @@ async function commit() {
     const { data } = await http.post<{ imported: number }>(
       `/ai/import/sessions/${preview.value.sessionId}/commit`,
     )
+    importedCount.value = data.imported
     preview.value = { ...preview.value, status: 'COMMITTED' }
     ElMessage.success(`已入库 ${data.imported} 条教师数据`)
   } catch (error) {
@@ -371,9 +389,14 @@ function reset() {
   preview.value = null
   editing.value = false
   commitErrors.value = []
+  importedCount.value = 0
   selectedFile.value = null
   imageFile.value = null
   text.value = ''
+}
+
+function goTeachers() {
+  router.push('/admin/teachers')
 }
 
 function confidenceTitle(row: Row, field: string) {
@@ -482,6 +505,10 @@ function messageOf(error: unknown) {
 .explain-card .explanation {
   margin: 0 0 12px;
   color: #374151;
+}
+
+.result-actions {
+  margin-top: 6px;
 }
 
 .errors {

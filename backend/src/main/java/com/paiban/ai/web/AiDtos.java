@@ -25,6 +25,7 @@ public final class AiDtos {
             Long id,
             String name,
             String type,
+            String protocol,
             String baseUrl,
             boolean hasApiKey,
             String apiKeyMasked,
@@ -43,13 +44,14 @@ public final class AiDtos {
     public record SaveProviderRequest(
             @NotBlank(message = "供应商名称不能为空") @Size(max = 100) String name,
             @NotBlank(message = "供应商类型不能为空") String type,
+            String protocol,
             @NotBlank(message = "Base URL 不能为空") @Size(max = 500) String baseUrl,
             String apiKey,
             Boolean enabled,
             @Valid List<SaveModelRequest> models) {}
 
     /** A preset vendor template; {@code code} is the frontend identifier. */
-    public record PresetDto(String code, String name, String baseUrl, List<String> models) {}
+    public record PresetDto(String code, String name, String protocol, String baseUrl, List<String> models) {}
 
     public record ConnectionTestDto(boolean success, String message, long latencyMs, List<String> modelNames) {}
 

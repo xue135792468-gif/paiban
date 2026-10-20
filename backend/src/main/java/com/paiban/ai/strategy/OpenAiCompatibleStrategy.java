@@ -46,7 +46,11 @@ public class OpenAiCompatibleStrategy implements AiStrategy {
 
     @Override
     public boolean supports(AiProvider provider) {
-        return true;
+        if (provider == null) {
+            return false;
+        }
+        String protocol = provider.getProtocol();
+        return protocol == null || protocol.isBlank() || "openai".equalsIgnoreCase(protocol);
     }
 
     @Override

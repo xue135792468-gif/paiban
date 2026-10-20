@@ -39,19 +39,25 @@ public class AiConnectionTester {
     }
 
     public ConnectionTestDto test(String baseUrl, String apiKey) {
+        return test(baseUrl, "openai", apiKey);
+    }
+
+    public ConnectionTestDto test(String baseUrl, String protocol, String apiKey) {
         long started = System.nanoTime();
         if (apiKey == null || apiKey.isBlank()) {
             return new ConnectionTestDto(false, "未配置 API Key", elapsed(started), List.of());
         }
         try {
-            HttpRequest.Builder builder = HttpRequest.newBuilder(modelsUri(baseUrl))
+            HttpRequest.Builder builder = HttpRequest.newBuilder(modelsUri(baseUrl, protocol))
                     .timeout(TIMEOUT)
                     .header("Accept", "application/json")
-                    .header("Authorization", "Bearer " + apiKey)
                     .GET();
-            // Gemini accepts the key as a query/header; send the native header too.
-            if (baseUrl != null && baseUrl.contains("generativelanguage.googleapis.com")) {
+            if ("anthropic".equalsIgnoreCase(protocol)) {
+                builder.header("x-api-key", apiKey).header("anthropic-version", "2023-06-01");
+            } else if ("gemini".equalsIgnoreCase(protocol)) {
                 builder.header("x-goog-api-key", apiKey);
+            } else {
+                builder.header("Authorization", "Bearer " + apiKey);
             }
             HttpResponse<String> response =
                     httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
@@ -77,10 +83,13 @@ public class AiConnectionTester {
         }
     }
 
-    private URI modelsUri(String baseUrl) {
+    private URI modelsUri(String baseUrl, String protocol) {
         String normalized = baseUrl == null ? "" : baseUrl.trim();
         while (normalized.endsWith("/")) {
             normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        if ("anthropic".equalsIgnoreCase(protocol)) {
+            return URI.create(normalized.endsWith("/v1") ? normalized + "/models" : normalized + "/v1/models");
         }
         return URI.create(normalized + "/models");
     }
