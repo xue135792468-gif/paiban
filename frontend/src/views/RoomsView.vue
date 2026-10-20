@@ -3,7 +3,13 @@
     <div class="toolbar">
       <div>
         <h2>教室管理</h2>
-        <p class="subtitle">维护教学楼与教室资源，配置普通教室、实验室、多媒体教室等场地与容量。</p>
+        <p class="subtitle">
+          {{
+            isJunior
+              ? '维护教学楼与教室资源，教室类型简化为普通教室与专用教室。'
+              : '维护教学楼与教室资源，配置普通教室、实验室、多媒体教室等场地与容量。'
+          }}
+        </p>
       </div>
       <div class="toolbar-actions">
         <el-button v-if="auth.hasPermission('foundation:manage')" @click="importVisible = true">
@@ -71,7 +77,7 @@
         <el-form-item label="教室类型" prop="type">
           <el-select v-model="form.type" placeholder="请选择教室类型" style="width: 100%">
             <el-option
-              v-for="item in ROOM_TYPE_OPTIONS"
+              v-for="item in roomTypeOptions"
               :key="item.value"
               :label="item.label"
               :value="item.value"
@@ -103,11 +109,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Download, Upload } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
+import { useSettingsStore } from '@/stores/settings'
 import ImportDialog from '@/components/ImportDialog.vue'
 
 interface Room {
@@ -134,6 +141,12 @@ const ROOM_TYPE_OPTIONS = [
   { value: 'OTHER', label: '其他' },
 ]
 
+// ADR-0018: junior schools only distinguish normal and special-purpose rooms.
+const JUNIOR_ROOM_TYPE_OPTIONS = [
+  { value: 'NORMAL', label: '普通教室' },
+  { value: 'LAB', label: '专用教室' },
+]
+
 function getTypeTagType(type: string): '' | 'success' | 'warning' | 'info' {
   switch (type) {
     case 'NORMAL':
@@ -150,6 +163,11 @@ function getTypeTagType(type: string): '' | 'success' | 'warning' | 'info' {
 }
 
 const auth = useAuthStore()
+const settings = useSettingsStore()
+const isJunior = computed(() => settings.schoolType === 'junior')
+const roomTypeOptions = computed(() =>
+  isJunior.value ? JUNIOR_ROOM_TYPE_OPTIONS : ROOM_TYPE_OPTIONS,
+)
 const rooms = ref<Room[]>([])
 const loading = ref(false)
 const saving = ref(false)

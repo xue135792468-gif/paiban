@@ -51,6 +51,14 @@ public final class SubstitutionDtos {
 
     public record TeacherStatsDto(Long teacherId, String teacherName, long substitutedOut, long substitutedIn) {}
 
+    /** One AI recommendation. {@code teacherId} always belongs to the backend candidate pool. */
+    public record RecommendationDto(Long teacherId, String name, String reason, Integer score) {}
+
+    public record RecommendationResponse(Long requestId,
+                                         List<RecommendationDto> recommendations,
+                                         String providerName,
+                                         String modelName) {}
+
     public record MySubstitutionsDto(List<SubstitutionRequestDto> requests,
                                      List<SubstitutionRecordDto> records) {}
 }

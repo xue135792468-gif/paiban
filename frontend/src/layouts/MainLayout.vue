@@ -74,10 +74,12 @@ import {
   Bell,
   Calendar,
   ChatDotRound,
+  Cpu,
   DataLine,
   Document,
   Guide,
   List,
+  MagicStick,
   OfficeBuilding,
   Reading,
   School,
@@ -88,6 +90,7 @@ import {
 } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
+import { useSettingsStore } from '@/stores/settings'
 
 interface MenuItem {
   label: string
@@ -112,6 +115,7 @@ interface NotificationItem {
 }
 
 const auth = useAuthStore()
+const settings = useSettingsStore()
 const route = useRoute()
 const router = useRouter()
 
@@ -136,6 +140,7 @@ const groups: MenuGroup[] = [
         permissions: ['assignment:manage', 'assignment:view:own'],
       },
       { label: '约束配置', path: '/admin/constraints', icon: Document, permission: 'constraint:manage' },
+      { label: 'AI 数据导入', path: '/admin/ai-import', icon: MagicStick, permission: 'foundation:manage' },
       { label: '自动排课', path: '/admin/scheduling', icon: Timer, permission: 'scheduling:run' },
     ],
   },
@@ -152,6 +157,8 @@ const groups: MenuGroup[] = [
     items: [
       { label: '通知中心', path: '/notifications', icon: Bell, permission: 'notification:view' },
       { label: '设置中心', path: '/admin/settings', icon: Setting, permission: 'settings:manage' },
+      { label: 'AI 供应商', path: '/admin/ai-providers', icon: Cpu, permission: 'settings:manage' },
+      { label: 'AI 操作历史', path: '/admin/ai-history', icon: Document, permission: 'settings:manage' },
       { label: '初始化向导', path: '/onboarding', icon: Guide, permission: 'onboarding:manage' },
       { label: '用户管理', path: '/admin/users', icon: User, permission: 'user:manage' },
     ],
@@ -225,6 +232,7 @@ function onCommand(command: string) {
 
 onMounted(() => {
   auth.refresh().catch(() => undefined)
+  settings.load()
   loadNotifications()
   timer = window.setInterval(loadNotifications, 30000)
 })

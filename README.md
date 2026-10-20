@@ -16,6 +16,14 @@
 - 课表导出 Excel / PDF
 - 设置中心、初始化向导、用户账号 Excel 批量创建
 
+## 功能范围（二期）
+
+- 初中 / 高中模式切换：默认初中，隐藏权重滑块、约束模板、多草稿对比、全校视角等高级功能
+- AI 供应商与模型管理：预设 DeepSeek / Gemini / 通义千问 / 智谱，支持自定义 OpenAI 兼容端点；API Key 加密存储
+- AI 数据导入：Excel/CSV、文本粘贴、图片三种输入，AI 解析 → 预览（低置信度标黄）→ 人工微调 → 入库
+- AI 调代推荐：审批界面手动触发，返回 3 名候选教师及理由，不自动创建或批准申请
+- AI 操作历史：导入与调代调用统一审计，支持筛选、详情与 Excel/PDF 导出
+
 ## 本地启动（三条命令）
 
 ```bash
@@ -119,14 +127,14 @@ cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test
 - **年级组长**：一期未建模，通知范围 `with-grade-leader` 实际包含班主任；设置页已注明。
 - **登录限速**：应用层未内置失败锁定，生产部署建议在反向代理/网关层配置限流。
 - **测试**：默认使用 H2（PostgreSQL 兼容模式）；CI 使用 `-Dtestcontainers=true` 在真实 PostgreSQL 上
-  跑 Flyway 校验，并执行 4 个 Playwright 验收场景。约束引擎测试覆盖主要硬约束与部分软约束，
+  跑 Flyway 校验，并执行 6 个 Playwright 验收场景。约束引擎测试覆盖主要硬约束与部分软约束，
   尚未做到 24 条逐一覆盖。
 
 ## 目录结构
 
 ```
-backend/   Spring Boot 单体应用（7 个业务模块：foundation / scheduling / timetable /
-           substitution / identity / integration / notification）
+backend/   Spring Boot 单体应用（业务模块：foundation / scheduling / timetable /
+           substitution / identity / integration / notification / ai）
 frontend/  Vue 3 SPA
 docs/adr/  架构决策记录
 .scratch/  规格与票据（本地 issue tracker）
@@ -141,10 +149,16 @@ docs/adr/  架构决策记录
 | `paiban.substitution.approval-mode` | 调代审批模式：`approval` / `direct` |
 | `paiban.notification.scope` | 通知范围：`minimal` / `with-grade-leader` / `with-admin` |
 | `paiban.integration.dingtalk.enabled` | 钉钉集成开关 |
-| `paiban.ai.features.*` | AI 特性开关（一期占位，默认关闭） |
+| `paiban.ai.encryption-key` | AI 供应商 API Key 的 AES-256 加密密钥（环境变量 `PAIBAN_AI_ENCRYPTION_KEY`） |
+| `paiban.ai.features.*` | AI 特性开关；二期已提供供应商管理、数据导入、调代推荐与操作历史 |
+| `school.type`（设置中心） | `junior` / `senior`，默认 `junior`，仅影响 UI 显示 |
+| `ai.import.confidence-threshold`（设置中心） | AI 导入低置信度阈值，默认 `0.8` |
 
 > 生产环境必须设置 `PAIBAN_JWT_SECRET`（至少 32 字符）。在非 `local`/`test`/`e2e` profile 下，
 > 若仍使用仓库内置的默认密钥，应用会拒绝启动。
+>
+> 生产环境还必须设置 `PAIBAN_AI_ENCRYPTION_KEY`（足够长的随机字符串）。未设置时会回退到仓库内的
+> 开发默认值，等同于公开密钥；`application.yml` 的默认值只用于本地开发。
 
 ## 术语
 

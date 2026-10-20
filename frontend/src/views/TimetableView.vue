@@ -3,14 +3,20 @@
     <div class="toolbar">
       <div>
         <h2>课表</h2>
-        <p class="subtitle">按行政班、教师、教室或全校查看课表。调代生效的课节会标注「代」。</p>
+        <p class="subtitle">
+          {{
+            isJunior
+              ? '按行政班、教师或教室查看课表。调代生效的课节会标注「代」。'
+              : '按行政班、教师、教室或全校查看课表。调代生效的课节会标注「代」。'
+          }}
+        </p>
       </div>
       <div class="actions">
         <el-radio-group v-if="canViewAll || canViewClassScope" v-model="mode" @change="onModeChange">
           <el-radio-button v-if="canViewAll || headClasses.length > 0" value="class">行政班</el-radio-button>
           <el-radio-button value="teacher">教师</el-radio-button>
           <el-radio-button v-if="canViewAll" value="room">教室</el-radio-button>
-          <el-radio-button v-if="canViewAll" value="school">全校</el-radio-button>
+          <el-radio-button v-if="canViewAll && !isJunior" value="school">全校</el-radio-button>
         </el-radio-group>
         <el-tag v-else effect="plain">我的课表</el-tag>
         <el-select
@@ -110,11 +116,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
+import { useSettingsStore } from '@/stores/settings'
 
 interface Entry {
   id: number
@@ -163,6 +170,8 @@ interface PublishInfo {
 }
 
 const auth = useAuthStore()
+const settings = useSettingsStore()
+const isJunior = computed(() => settings.schoolType === 'junior')
 const canExport = computed(() => auth.hasPermission('export:timetable'))
 const canViewAll = computed(() => auth.hasPermission('timetable:view'))
 const canViewClassScope = computed(() => auth.hasPermission('timetable:view:class'))
@@ -289,6 +298,15 @@ function onModeChange() {
   }
   load()
 }
+
+// ADR-0018: junior mode has no school-wide view. The settings store resolves
+// asynchronously, so fall back whenever junior mode becomes active.
+watch(isJunior, (junior) => {
+  if (junior && mode.value === 'school') {
+    mode.value = 'class'
+    onModeChange()
+  }
+})
 
 async function load() {
   loading.value = true

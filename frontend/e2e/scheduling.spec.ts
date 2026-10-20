@@ -90,7 +90,7 @@ test('场景 1：录入数据 → 自动排课 → 发布 → 查看课表', asy
 
   await page.getByRole('button', { name: '发布课表' }).click()
   await page.getByRole('button', { name: '确定' }).click()
-  await expect(page.getByText(/课表已发布/)).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText(/课表已发布/).first()).toBeVisible({ timeout: 30_000 })
 
   await page.goto('/timetable')
   await expect(page.locator('.lesson').first()).toBeVisible()

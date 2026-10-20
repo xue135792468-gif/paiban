@@ -5,9 +5,10 @@
 ## 文档入口
 
 - `README.md` — 启动、测试、部署与实现说明
-- `docs/adr/` — 17 份决策记录，改行为前先找对应 ADR
+- `docs/adr/` — 21 份决策记录，改行为前先找对应 ADR
 - `GLOSSARY.md` — 领域术语：行政班、授课任务、基线、调代
 - `.scratch/phase1-mvp/` — 一期规格、15 张票据与 PR 记录
+- `.scratch/phase2-ai/` — 二期规格、6 张票据、跨票据接口契约
 
 ## 后端模块（backend/src/main/java/com/paiban）
 
@@ -21,6 +22,7 @@
 | `notification/` | 模板、站内通知、钉钉降级 |
 | `integration/` | 钉钉（可选，关闭后系统完整可用） |
 | `onboarding/` | 初始化向导 |
+| `ai/` | 供应商/模型/任务分配、统一网关与策略、`ai_call_log`；`ai/imports/` 是三通道导入管道，`ai/history/` 是操作历史与导出 |
 
 求解器只有一条线程（`common/config/AsyncConfig.java`），同一时刻只跑一个任务；取消与排队逻辑都绑在这个约束上。
 

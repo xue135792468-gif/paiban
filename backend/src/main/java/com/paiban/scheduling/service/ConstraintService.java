@@ -167,8 +167,7 @@ public class ConstraintService {
         for (ConstraintType type : List.of(
                 ConstraintType.TEACHER_CONFLICT,
                 ConstraintType.CLASS_CONFLICT,
-                ConstraintType.ROOM_CONFLICT,
-                ConstraintType.ROOM_CAPACITY_FIT)) {
+                ConstraintType.ROOM_CONFLICT)) {
             ConstraintConfig config = new ConstraintConfig();
             config.setSemesterId(event.semesterId());
             config.setType(type.name());

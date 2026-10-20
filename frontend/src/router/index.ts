@@ -80,6 +80,12 @@ const router = createRouter({
           meta: { title: '约束配置', permission: 'constraint:manage' },
         },
         {
+          path: 'admin/ai-import',
+          name: 'ai-import',
+          component: () => import('@/views/AiDataImportView.vue'),
+          meta: { title: 'AI 数据导入', permission: 'foundation:manage' },
+        },
+        {
           path: 'admin/scheduling',
           name: 'scheduling',
           component: () => import('@/views/SchedulingView.vue'),
@@ -114,6 +120,18 @@ const router = createRouter({
           name: 'settings',
           component: () => import('@/views/SettingsView.vue'),
           meta: { title: '设置中心', permission: 'settings:manage' },
+        },
+        {
+          path: 'admin/ai-providers',
+          name: 'ai-providers',
+          component: () => import('@/views/AiProvidersView.vue'),
+          meta: { title: 'AI 供应商', permission: 'settings:manage' },
+        },
+        {
+          path: 'admin/ai-history',
+          name: 'ai-history',
+          component: () => import('@/views/AiHistoryView.vue'),
+          meta: { title: 'AI 操作历史', permission: 'settings:manage' },
         },
         {
           path: 'onboarding',

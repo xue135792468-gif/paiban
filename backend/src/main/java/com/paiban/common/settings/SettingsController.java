@@ -33,9 +33,11 @@ public class SettingsController {
             SettingsService.DINGTALK_EVENT_TOKEN,
             SettingsService.DINGTALK_SYNC_STRATEGY,
             SettingsService.SCHOOL_NAME,
+            SettingsService.SCHOOL_TYPE,
             SettingsService.PUBLIC_BASE_URL,
             SettingsService.AI_SUBSTITUTE_RECOMMENDATION,
-            SettingsService.AI_NATURAL_LANGUAGE_CONSTRAINTS);
+            SettingsService.AI_NATURAL_LANGUAGE_CONSTRAINTS,
+            SettingsService.AI_IMPORT_CONFIDENCE_THRESHOLD);
 
     private final SettingsService settings;
 
@@ -47,6 +49,17 @@ public class SettingsController {
     @PreAuthorize("hasAuthority('" + Permissions.SETTINGS_MANAGE + "')")
     public Map<String, String> all() {
         return settings.all();
+    }
+
+    /**
+     * Minimal settings every signed-in user needs for UI mode rendering.
+     * Deliberately narrow so integration secrets never reach non-admins.
+     */
+    @GetMapping("/public")
+    public Map<String, String> publicSettings() {
+        return Map.of(
+                "schoolType", settings.schoolType(),
+                "schoolName", settings.schoolName());
     }
 
     @PutMapping
@@ -105,11 +118,25 @@ public class SettingsController {
                 && !List.of("minimal", "with-grade-leader", "with-admin").contains(value)) {
             throw ApiException.badRequest("通知范围只能是 minimal / with-grade-leader / with-admin");
         }
+        if (SettingsService.SCHOOL_TYPE.equals(key)
+                && !List.of("junior", "senior").contains(value)) {
+            throw ApiException.badRequest("学校类型只能是 junior 或 senior");
+        }
         if ((SettingsService.DINGTALK_ENABLED.equals(key)
                 || SettingsService.AI_SUBSTITUTE_RECOMMENDATION.equals(key)
                 || SettingsService.AI_NATURAL_LANGUAGE_CONSTRAINTS.equals(key))
                 && !List.of("true", "false").contains(value)) {
             throw ApiException.badRequest(key + " 只能是 true 或 false");
+        }
+        if (SettingsService.AI_IMPORT_CONFIDENCE_THRESHOLD.equals(key)) {
+            try {
+                double threshold = Double.parseDouble(value);
+                if (threshold < 0 || threshold > 1) {
+                    throw ApiException.badRequest("低置信度阈值必须在 0 到 1 之间");
+                }
+            } catch (NumberFormatException ex) {
+                throw ApiException.badRequest("低置信度阈值必须是数字");
+            }
         }
     }
 }

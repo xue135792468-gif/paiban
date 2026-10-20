@@ -43,6 +43,12 @@ public class DatabaseResetExtension implements BeforeEachCallback {
         } catch (SQLException ex) {
             throw new IllegalStateException("重置测试数据库失败", ex);
         }
+        // Truncation bypasses the services, so in-memory caches fed by them must be dropped too.
+        try {
+            applicationContext.publishEvent(new com.paiban.ai.event.AiConfigChangedEvent("test-database-reset"));
+        } catch (RuntimeException ignored) {
+            // The AI module is optional for tests that do not touch it.
+        }
     }
 
     private List<String> tables(Statement statement) throws SQLException {
