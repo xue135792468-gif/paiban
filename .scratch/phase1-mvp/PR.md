@@ -28,8 +28,8 @@ backend/src/main/java/com/paiban/
 
 - **Before:** code-review 双轴共 18 条发现（Standards 9 / Spec 9）；118 个后端测试、4 个 E2E。
 - **After:**
-  - `cd backend && ./mvnw test` → **119 tests, 0 failures, 1 skipped**（本地无 Docker，跳过 Testcontainers）
-  - CI 以 `-Dtestcontainers=true` 跑全量 → **119 tests, 0 failures, 0 skipped**（真实 PostgreSQL 16 容器）
+  - `cd backend && ./mvnw test` → **120 tests, 0 failures, 1 skipped**（本地无 Docker，跳过 Testcontainers）
+  - CI 以 `-Dtestcontainers=true` 跑全量 → **120 tests, 0 failures, 0 skipped**（真实 PostgreSQL 16 容器）
   - `cd frontend && npm run test:e2e` → **5 passed**，新增拖拽场景：
     - 拖到同班已占用格 → 红色高亮 + “冲突原因”
     - 拖到空位 → “已移动课节”
@@ -47,4 +47,4 @@ backend/src/main/java/com/paiban/
 
 **Blast Radius:** moderate
 
-触及认证、发布门禁、通知范围与课表渲染；已有 119 个后端测试与 5 个 E2E 覆盖主链路。
+触及认证、发布门禁、通知范围与课表渲染；已有 120 个后端测试与 5 个 E2E 覆盖主链路。

@@ -148,6 +148,28 @@ class SchedulingIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void cancellingAJobFreesTheSolverForTheNextSubmission() {
+        String token = adminToken();
+        Fixture slow = prepare(token, TestData.suffix(), 1, 2, 1);
+        long slowJob = as(token).queryParam("semesterId", slow.semesterId())
+                .body(Map.of("maxSeconds", 60))
+                .when().post("/api/scheduling-jobs")
+                .then().statusCode(200).extract().jsonPath().getLong("id");
+        as(token).when().delete("/api/scheduling-jobs/" + slowJob)
+                .then().statusCode(200)
+                .body("status", equalTo("CANCELLED"));
+        awaitJob(token, slowJob, 30);
+
+        Fixture next = prepare(token, TestData.suffix(), 2, 3, 2);
+        long nextJob = as(token).queryParam("semesterId", next.semesterId())
+                .body(Map.of("maxSeconds", 5))
+                .when().post("/api/scheduling-jobs")
+                .then().statusCode(200).extract().jsonPath().getLong("id");
+        Map<String, Object> job = awaitJob(token, nextJob, 30);
+        assertThat(job.get("status")).isEqualTo("COMPLETED");
+    }
+
+    @Test
     void schedulingRequiresAssignments() {
         String token = adminToken();
         long semesterId = TestData.semester(token);

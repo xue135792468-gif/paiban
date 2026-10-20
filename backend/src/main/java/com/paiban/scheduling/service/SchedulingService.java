@@ -153,9 +153,9 @@ public class SchedulingService {
         if (job == null || SchedulingJob.CANCELLED.equals(job.getStatus())) {
             return;
         }
-        job.setStatus(SchedulingJob.RUNNING);
-        job.setStartedAt(Instant.now());
-        jobs.save(job);
+        if (jobs.markRunning(jobId, Instant.now()) == 0) {
+            return;
+        }
         long startedAt = System.currentTimeMillis();
         try {
             ConstraintSettings settings =
@@ -173,6 +173,13 @@ public class SchedulingService {
             Solver<TimetableSolution> solver =
                     SolverFactory.<TimetableSolution>create(solverConfig).buildSolver();
             runningSolvers.put(jobId, solver);
+            if (isCancelled(jobId)) {
+                // The cancel arrived while the solver was being built, before it was
+                // registered; without this check the single solver thread would stay
+                // busy for the whole time limit and block the next submission.
+                markFinished(jobId, SchedulingJob.CANCELLED, null, null, System.currentTimeMillis() - startedAt);
+                return;
+            }
             AtomicLong lastWrite = new AtomicLong(0);
             solver.addEventListener(event -> {
                 long now = System.currentTimeMillis();
@@ -214,6 +221,12 @@ public class SchedulingService {
                 jobs.save(job);
             }
         });
+    }
+
+    private boolean isCancelled(Long jobId) {
+        return jobs.findById(jobId)
+                .map(job -> SchedulingJob.CANCELLED.equals(job.getStatus()))
+                .orElse(true);
     }
 
     private void markFinished(Long jobId, String status, Long draftId, String error, long elapsed) {
