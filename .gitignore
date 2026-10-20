@@ -1,0 +1,37 @@
+# build
+target/
+dist/
+node_modules/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# tools (local toolchain, not part of the repo)
+.tools/
+
+# runtime data
+data/
+*.db
+*.mv.db
+*.trace.db
+logs/
+*.log
+uploads/
+
+# test artifacts
+test-results/
+playwright-report/
+blob-report/
+.nyc_output/
+coverage/
+
+# editor / os
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# local env
+.env
+.env.local

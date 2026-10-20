@@ -1,0 +1,111 @@
+server:
+  port: 8080
+  error:
+    include-message: always
+
+spring:
+  application:
+    name: paiban
+  profiles:
+    active: local
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+
+paiban:
+  security:
+    jwt-secret: ${PAIBAN_JWT_SECRET:paiban-local-development-secret-key-change-me-please-0123456789}
+    jwt-expiration-minutes: 480
+  substitution:
+    approval-mode: approval
+  notification:
+    scope: with-admin
+  ai:
+    features:
+      substitute-recommendation: false
+      natural-language-constraints: false
+  scheduling:
+    max-concurrent-jobs: 1
+    max-solve-seconds: 60
+  integration:
+    dingtalk:
+      enabled: false
+      app-key: ""
+      app-secret: ""
+      agent-id: ""
+      sync-strategy: dingtalk
+  export:
+    school-logo-path: ""
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    root: INFO
+    com.paiban: INFO
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  datasource:
+    url: jdbc:h2:file:./data/paiban;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+
+---
+spring:
+  config:
+    activate:
+      on-profile: postgres
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/paiban}
+    username: ${SPRING_DATASOURCE_USERNAME:paiban}
+    password: ${SPRING_DATASOURCE_PASSWORD:paiban}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+  datasource:
+    url: jdbc:h2:mem:paiban_test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+
+paiban:
+  scheduling:
+    max-solve-seconds: 5
+  integration:
+    dingtalk:
+      enabled: false

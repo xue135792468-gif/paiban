@@ -1,0 +1,31 @@
+:root {
+  --paiban-bg: #f6f7fb;
+  --paiban-ink: #1f2937;
+  --paiban-muted: #6b7280;
+  --paiban-primary: #4f6ef7;
+  --paiban-radius: 10px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family:
+    'PingFang SC', 'Microsoft YaHei', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color: var(--paiban-ink);
+  background: var(--paiban-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--paiban-primary);
+  text-decoration: none;
+}
