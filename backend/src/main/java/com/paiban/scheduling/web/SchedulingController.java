@@ -71,6 +71,11 @@ public class SchedulingController {
         return service.draftDetail(id);
     }
 
+    @GetMapping("/timetable-drafts/{id}/validation")
+    public DraftValidator.ValidationResult validateDraft(@PathVariable Long id) {
+        return service.validateDraft(id);
+    }
+
     @PostMapping("/timetable-drafts/{id}/validate-move")
     public DraftValidator.ValidationResult validateMove(
             @PathVariable Long id, @Valid @RequestBody ValidateMoveRequest request) {

@@ -10,4 +10,8 @@ public interface AppUserRepository extends JpaRepository<AppUser, Long> {
     boolean existsByUsername(String username);
 
     Optional<AppUser> findByTeacherId(Long teacherId);
+
+    java.util.List<AppUser> findAllByTeacherId(Long teacherId);
+
+    java.util.List<AppUser> findAllByRolesCode(String roleCode);
 }

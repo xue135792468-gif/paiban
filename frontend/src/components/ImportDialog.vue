@@ -133,7 +133,14 @@ const props = defineProps<{
   entity: string
   entityLabel: string
   semesterId?: number | null
+  previewUrl?: string
+  commitUrl?: string
+  templateUrl?: string
 }>()
+
+const previewEndpoint = computed(() => props.previewUrl ?? `/import/${props.entity}/preview`)
+const commitEndpoint = computed(() => props.commitUrl ?? `/import/${props.entity}/commit`)
+const templateEndpoint = computed(() => props.templateUrl ?? `/import/${props.entity}/template`)
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
@@ -183,7 +190,7 @@ async function doPreview() {
   if (!file.value) return
   previewing.value = true
   try {
-    const { data } = await http.post(`/import/${props.entity}/preview`, formData(), { params: params() })
+    const { data } = await http.post(previewEndpoint.value, formData(), { params: params() })
     report.value = data
     step.value = 1
   } catch (e: any) {
@@ -196,7 +203,7 @@ async function doPreview() {
 async function doCommit() {
   committing.value = true
   try {
-    const { data } = await http.post(`/import/${props.entity}/commit`, formData(), { params: params() })
+    const { data } = await http.post(commitEndpoint.value, formData(), { params: params() })
     report.value = data
     step.value = 2
     ElMessage.success(`成功导入 ${data.importedRows} 行`)
@@ -210,7 +217,7 @@ async function doCommit() {
 async function downloadTemplate() {
   downloading.value = true
   try {
-    const { data } = await http.get(`/import/${props.entity}/template`, { responseType: 'blob' })
+    const { data } = await http.get(templateEndpoint.value, { responseType: 'blob' })
     const url = URL.createObjectURL(data)
     const anchor = document.createElement('a')
     anchor.href = url

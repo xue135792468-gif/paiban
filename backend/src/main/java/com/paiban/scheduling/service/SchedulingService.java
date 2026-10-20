@@ -398,6 +398,11 @@ public class SchedulingService {
         return validator.validateMove(draftId, lessonId, periodId, roomId);
     }
 
+    @Transactional(readOnly = true)
+    public DraftValidator.ValidationResult validateDraft(Long draftId) {
+        return validator.validateDraft(draftId);
+    }
+
     @Transactional
     public MoveResult moveLesson(Long draftId, Long lessonId, Long periodId, Long roomId, boolean force) {
         DraftValidator.ValidationResult result = validator.validateMove(draftId, lessonId, periodId, roomId);

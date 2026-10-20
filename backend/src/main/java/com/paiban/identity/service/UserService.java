@@ -90,8 +90,22 @@ public class UserService {
     }
 
     @Transactional(readOnly = true)
-    public List<RoleDto> listRoles() {
-        return roles.findAll().stream()
+    public List<AppUser> usersByTeacherId(Long teacherId) {
+        return teacherId == null ? List.of() : users.findAllByTeacherId(teacherId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AppUser> adminUsers() {
+        return users.findAllByRolesCode("admin");
+    }
+
+    @Transactional(readOnly = true)
+    public List<AppUser> allUsers() {
+        return users.findAll();
+    }
+
+    @Transactional(readOnly = true)
+    public List<RoleDto> listRoles() {        return roles.findAll().stream()
                 .sorted(Comparator.comparing(Role::getId))
                 .map(role -> new RoleDto(
                         role.getId(),

@@ -44,7 +44,18 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Calendar, DataLine, Setting, User } from '@element-plus/icons-vue'
+import {
+  Calendar,
+  DataLine,
+  Document,
+  List,
+  OfficeBuilding,
+  Reading,
+  School,
+  Tickets,
+  Timer,
+  User,
+} from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -72,15 +83,19 @@ const groups: MenuGroup[] = [
     title: '教务',
     items: [
       { label: '学期与作息', path: '/admin/semesters', icon: Calendar, permission: 'semester:manage' },
+      { label: '教师', path: '/admin/teachers', icon: User, permission: 'foundation:manage' },
+      { label: '教室', path: '/admin/rooms', icon: OfficeBuilding, permission: 'foundation:manage' },
+      { label: '课程', path: '/admin/courses', icon: Reading, permission: 'foundation:manage' },
+      { label: '年级', path: '/admin/grades', icon: School, permission: 'foundation:manage' },
+      { label: '行政班', path: '/admin/classes', icon: Tickets, permission: 'foundation:manage' },
+      { label: '授课任务', path: '/admin/assignments', icon: List, permission: 'assignment:manage' },
+      { label: '约束配置', path: '/admin/constraints', icon: Document, permission: 'constraint:manage' },
+      { label: '自动排课', path: '/admin/scheduling', icon: Timer, permission: 'scheduling:run' },
     ],
   },
   {
     title: '系统',
     items: [{ label: '用户管理', path: '/admin/users', icon: User, permission: 'user:manage' }],
-  },
-  {
-    title: '设置',
-    items: [{ label: '设置中心', path: '/admin/settings', icon: Setting, permission: 'settings:manage' }],
   },
 ]
 
