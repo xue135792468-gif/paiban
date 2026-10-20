@@ -52,7 +52,18 @@ cd backend
 SPRING_PROFILES_ACTIVE=postgres ./mvnw spring-boot:run
 ```
 
-或一键：`docker compose up --build`，前端在 http://localhost:5173 ，后端在 http://localhost:8080 。
+或一键：先在 `.env` 设置 `PAIBAN_JWT_SECRET` 与 `PAIBAN_AI_ENCRYPTION_KEY`，再
+`docker compose up --build`，前端在 http://localhost:5173 ，后端在 http://localhost:8080 。
+
+### 首次 AI 部署向导
+
+```bash
+./scripts/setup-ai-prod.sh
+```
+
+向导会生成两个本地密钥、打开 DeepSeek / Gemini 控制台收集 API Key、启动 compose 栈、创建并测试两个
+供应商、把「数据导入」分配给 Gemini（视觉）、「调代推荐」分配给 DeepSeek，最后跑一次真实文本导入冒烟。
+密钥只写入 `.env`（已 gitignore），不会进入仓库。
 
 ## 测试
 
