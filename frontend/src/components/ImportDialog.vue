@@ -43,6 +43,23 @@
       </div>
 
       <el-alert
+        v-if="step === 1 && (report?.errorCount ?? 0) > 0"
+        title="存在校验错误：本次不会导入任何数据。请修正后重新上传。"
+        type="error"
+        :closable="false"
+        show-icon
+        class="warning"
+      />
+      <el-alert
+        v-if="step === 2"
+        :title="`导入完成：成功 ${report?.importedRows ?? 0} 行`"
+        type="success"
+        :closable="false"
+        show-icon
+        class="warning"
+      />
+
+      <el-alert
         v-for="(warning, index) in report?.warnings ?? []"
         :key="index"
         :title="warning"
@@ -99,7 +116,7 @@
         </el-button>
         <el-button
           type="primary"
-          :disabled="(report?.validRows ?? 0) === 0"
+          :disabled="(report?.validRows ?? 0) === 0 || (report?.errorCount ?? 0) > 0"
           :loading="committing"
           @click="doCommit"
         >
@@ -213,8 +230,13 @@ async function doCommit() {
   try {
     const { data } = await http.post(commitEndpoint.value, formData(), { params: params() })
     report.value = data
-    step.value = 2
-    ElMessage.success(`成功导入 ${data.importedRows} 行`)
+    if ((data.errorCount ?? 0) > 0 || (data.errors?.length ?? 0) > 0) {
+      step.value = 1
+      ElMessage.error(`有 ${data.errorCount ?? data.errors?.length} 处错误，本次未导入任何数据`)
+    } else {
+      step.value = 2
+      ElMessage.success(`成功导入 ${data.importedRows} 行`)
+    }
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.message ?? '导入失败')
   } finally {

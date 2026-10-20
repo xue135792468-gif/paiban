@@ -292,7 +292,10 @@ class AiProviderIntegrationTest extends ApiIntegrationTest {
 
         as(token).when().get("/api/ai-providers/presets")
                 .then().statusCode(200)
-                .body("size()", equalTo(4))
+                .body("size()", equalTo(5))
+                .body("find { it.code == 'deepseek' }.protocol", equalTo("openai"))
+                .body("find { it.code == 'anthropic' }.protocol", equalTo("anthropic"))
+                .body("find { it.code == 'anthropic' }.baseUrl", equalTo("https://api.anthropic.com"))
                 .body("find { it.code == 'deepseek' }.baseUrl", equalTo("https://api.deepseek.com"))
                 .body("find { it.code == 'qwen' }.baseUrl",
                         equalTo("https://dashscope.aliyuncs.com/compatible-mode/v1"))

@@ -59,6 +59,23 @@ class AiCallLogIntegrationTest extends ApiIntegrationTest {
             exchange.getResponseBody().write(body);
             exchange.close();
         });
+        stub.createContext("/anthropic/v1/messages", exchange -> {
+            byte[] body = ("{\"content\":[{\"type\":\"text\",\"text\":\"Anthropic 回复\"}],"
+                            + "\"usage\":{\"input_tokens\":9,\"output_tokens\":6}}")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        stub.createContext("/anthropic/v1/models", exchange -> {
+            byte[] body = "{\"data\":[{\"id\":\"claude-sonnet-4-5\"}]}"
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
         stub.createContext("/fail/chat/completions", exchange -> {
             failingCalls.incrementAndGet();
             byte[] body = "{\"error\":\"stub failure\"}".getBytes(StandardCharsets.UTF_8);
@@ -161,6 +178,28 @@ class AiCallLogIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void anthropicProtocolRoutesToMessagesApi() {
+        String admin = adminToken();
+        long providerId = createProvider(admin, "stub-anthropic", "/anthropic", "anthropic");
+        createModel(admin, providerId);
+
+        as(admin).post("/api/ai-providers/" + providerId + "/test")
+                .then().statusCode(200)
+                .body("success", equalTo(true));
+
+        AiResult result = gateway.chat(new AiRequest(
+                AiTaskType.SUBSTITUTION_RECOMMEND,
+                List.of(new AiMessage("system", "你是助手"), new AiMessage("user", "你好")),
+                null,
+                AiOptions.NONE));
+
+        assertThat(result.success()).as(result.errorMessage()).isTrue();
+        assertThat(result.content()).isEqualTo("Anthropic 回复");
+        assertThat(result.inputTokens()).isEqualTo(9);
+        assertThat(result.outputTokens()).isEqualTo(6);
+    }
+
+    @Test
     void unconfiguredSystemReportsFalseForEveryTask() {
         String admin = adminToken();
         String username = "ai_empty_" + TestData.suffix();
@@ -187,9 +226,14 @@ class AiCallLogIntegrationTest extends ApiIntegrationTest {
     }
 
     private long createProvider(String admin, String name, String path) {
+        return createProvider(admin, name, path, "openai");
+    }
+
+    private long createProvider(String admin, String name, String path, String protocol) {
         return as(admin).body(Map.of(
                         "name", name + "-" + TestData.suffix(),
                         "type", "custom",
+                        "protocol", protocol,
                         "baseUrl", "http://127.0.0.1:" + stubPort + path,
                         "apiKey", API_KEY,
                         "enabled", true))

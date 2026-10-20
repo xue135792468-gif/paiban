@@ -49,6 +49,13 @@ public class GeminiStrategy implements AiStrategy {
         if (provider == null) {
             return false;
         }
+        String protocol = provider.getProtocol();
+        if ("gemini".equalsIgnoreCase(protocol)) {
+            return true;
+        }
+        if (protocol != null && !protocol.isBlank()) {
+            return false;
+        }
         String baseUrl = provider.getBaseUrl() == null ? "" : provider.getBaseUrl().toLowerCase(Locale.ROOT);
         return baseUrl.contains("gemini") || baseUrl.contains("generativelanguage");
     }

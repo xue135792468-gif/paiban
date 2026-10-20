@@ -31,13 +31,17 @@ import org.springframework.transaction.annotation.Transactional;
 public class AiProviderService {
 
     private static final List<PresetDto> PRESETS = List.of(
-            new PresetDto("deepseek", "DeepSeek", "https://api.deepseek.com",
+            new PresetDto("deepseek", "DeepSeek", "openai", "https://api.deepseek.com",
                     List.of("deepseek-flash", "deepseek-v4-pro")),
-            new PresetDto("gemini", "Google Gemini", "https://generativelanguage.googleapis.com/v1beta",
+            new PresetDto("gemini", "Google Gemini", "gemini",
+                    "https://generativelanguage.googleapis.com/v1beta",
                     List.of("gemini-2.0-flash", "gemini-2.5-pro")),
-            new PresetDto("qwen", "通义千问", "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            new PresetDto("anthropic", "Anthropic Claude", "anthropic", "https://api.anthropic.com",
+                    List.of("claude-sonnet-4-5", "claude-opus-4-1")),
+            new PresetDto("qwen", "通义千问", "openai",
+                    "https://dashscope.aliyuncs.com/compatible-mode/v1",
                     List.of("qwen-max", "qwen-plus", "qwen-vl-max")),
-            new PresetDto("zhipu", "智谱 GLM", "https://open.bigmodel.cn/api/paas/v4",
+            new PresetDto("zhipu", "智谱 GLM", "openai", "https://open.bigmodel.cn/api/paas/v4",
                     List.of("glm-4-plus", "glm-4v-plus")));
 
     private static final int MAX_PARAMS_JSON_LENGTH = 4000;
@@ -97,6 +101,7 @@ public class AiProviderService {
         provider.setName(name);
         provider.setType(validateType(request.type()));
         provider.setBaseUrl(validateBaseUrl(request.baseUrl()));
+        provider.setProtocol(validateProtocol(request.protocol(), provider.getBaseUrl()));
         provider.setEnabled(request.enabled() == null || request.enabled());
         if (request.apiKey() != null && !request.apiKey().isBlank()) {
             provider.setApiKeyCipher(cipher.encrypt(request.apiKey().trim()));
@@ -127,6 +132,11 @@ public class AiProviderService {
         provider.setName(name);
         provider.setType(validateType(request.type()));
         provider.setBaseUrl(validateBaseUrl(request.baseUrl()));
+        provider.setProtocol(validateProtocol(
+                request.protocol() == null || request.protocol().isBlank()
+                        ? provider.getProtocol()
+                        : request.protocol(),
+                provider.getBaseUrl()));
         if (request.enabled() != null) {
             provider.setEnabled(request.enabled());
         }
@@ -209,7 +219,10 @@ public class AiProviderService {
     public ConnectionTestDto testConnection(Long id) {
         AiProvider provider = requireProvider(id);
         try {
-            return connectionTester.test(provider.getBaseUrl(), cipher.decrypt(provider.getApiKeyCipher()));
+            return connectionTester.test(
+                    provider.getBaseUrl(),
+                    provider.getProtocol(),
+                    cipher.decrypt(provider.getApiKeyCipher()));
         } catch (IllegalStateException ex) {
             return new ConnectionTestDto(false, "API Key 解密失败，请重新保存密钥", 0, List.of());
         }
@@ -251,6 +264,28 @@ public class AiProviderService {
         String normalized = type == null ? "" : type.trim().toLowerCase();
         if (!List.of("preset", "custom").contains(normalized)) {
             throw ApiException.badRequest("供应商类型只能是 preset 或 custom");
+        }
+        return normalized;
+    }
+
+    /**
+     * An omitted protocol is inferred from the URL for custom providers created by older
+     * clients; a preset always supplies its own protocol.
+     */
+    private String validateProtocol(String protocol, String baseUrl) {
+        String normalized = protocol == null ? "" : protocol.trim().toLowerCase();
+        if (normalized.isEmpty()) {
+            String url = baseUrl == null ? "" : baseUrl.toLowerCase();
+            if (url.contains("generativelanguage") || url.contains("gemini")) {
+                return "gemini";
+            }
+            if (url.contains("anthropic")) {
+                return "anthropic";
+            }
+            return "openai";
+        }
+        if (!List.of("openai", "anthropic", "gemini").contains(normalized)) {
+            throw ApiException.badRequest("协议只能是 openai / anthropic / gemini");
         }
         return normalized;
     }
@@ -310,6 +345,7 @@ public class AiProviderService {
                 provider.getId(),
                 provider.getName(),
                 provider.getType(),
+                provider.getProtocol(),
                 provider.getBaseUrl(),
                 provider.getApiKeyCipher() != null,
                 masked,
