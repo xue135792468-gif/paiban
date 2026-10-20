@@ -28,15 +28,16 @@ backend/src/main/java/com/paiban/
 
 - **Before:** code-review 双轴共 18 条发现（Standards 9 / Spec 9）；118 个后端测试、4 个 E2E。
 - **After:**
-  - `cd backend && ./mvnw test` → **119 tests, 0 failures, 1 skipped**（Testcontainers，CI 以 `-Dtestcontainers=true` 执行）
+  - `cd backend && ./mvnw test` → **119 tests, 0 failures, 1 skipped**（本地无 Docker，跳过 Testcontainers）
+  - CI 以 `-Dtestcontainers=true` 跑全量 → **119 tests, 0 failures, 0 skipped**（真实 PostgreSQL 16 容器）
   - `cd frontend && npm run test:e2e` → **5 passed**，新增拖拽场景：
     - 拖到同班已占用格 → 红色高亮 + “冲突原因”
     - 拖到空位 → “已移动课节”
   - `npm run lint && npm run build` → 通过
   - 新增 `EngineConstraintTest` 插件发现用例（18/18）
 
-> CI 定义暂存于 `docs/ci-workflow.yml`：推送时使用的 GitHub OAuth App 缺少 `workflow` scope，
-> 无法直接写入 `.github/workflows/ci.yml`。合并前请在网页上把该文件内容复制到 `.github/workflows/ci.yml`。
+> GitHub Actions 三个 job（backend / e2e / frontend）在 `feature/phase1-mvp` 上全绿；
+> backend 含 Testcontainers 真实 PostgreSQL 迁移验证，e2e 跑完 5 个验收场景。
 
 ## Merge Danger
 
