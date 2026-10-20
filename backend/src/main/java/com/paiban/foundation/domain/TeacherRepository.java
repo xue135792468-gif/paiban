@@ -12,6 +12,8 @@ public interface TeacherRepository extends JpaRepository<Teacher, Long> {
 
     Optional<Teacher> findByEmployeeNo(String employeeNo);
 
+    Optional<Teacher> findByPhone(String phone);
+
     Optional<Teacher> findByDingtalkUserId(String dingtalkUserId);
 
     Optional<Teacher> findByFeishuUserId(String feishuUserId);

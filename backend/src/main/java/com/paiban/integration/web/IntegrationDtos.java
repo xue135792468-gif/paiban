@@ -21,6 +21,13 @@ public final class IntegrationDtos {
     public record FeishuLoginRequest(@NotBlank(message = "code 不能为空") String code) {}
 
     /**
+     * Self-service binding payload. The bind token proves the Feishu identity; the
+     * teacher proves their own identity with the exact name plus employee number
+     * and/or phone.
+     */
+    public record FeishuBindRequest(String bindToken, String name, String employeeNo, String phone) {}
+
+    /**
      * {@code status="ok"} carries the session; {@code status="binding_required"} carries
      * only the short-lived {@code bindToken} used by the self-service binding flow.
      */

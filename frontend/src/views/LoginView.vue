@@ -151,6 +151,10 @@ async function tryFeishuLogin() {
       return
     }
     if (result.status === 'binding_required') {
+      if (result.bindToken) {
+        router.replace({ path: '/bind', query: { token: result.bindToken } })
+        return
+      }
       feishuNotice.value = '账号未绑定，请联系教务管理员'
     }
   } catch {

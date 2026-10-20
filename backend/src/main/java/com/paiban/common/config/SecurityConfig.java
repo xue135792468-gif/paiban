@@ -66,6 +66,7 @@ public class SecurityConfig {
                                 "/api/auth/dingtalk/config",
                                 "/api/auth/feishu",
                                 "/api/auth/feishu/config",
+                                "/api/auth/feishu/bind",
                                 "/api/health",
                                 "/actuator/**")
                         .permitAll()
