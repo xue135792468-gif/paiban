@@ -1,6 +1,5 @@
 package com.paiban.integration.feishu;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paiban.common.settings.SettingsService;
 import java.net.URI;
@@ -158,10 +157,17 @@ public class HttpFeishuClient implements FeishuClient {
         } else {
             return false;
         }
+        String content;
+        try {
+            content = new FeishuCardBuilder(objectMapper, settings.publicBaseUrl()).build(message);
+        } catch (IllegalStateException ex) {
+            log.warn("Feishu im.messages payload build failed: {}", ex.getClass().getSimpleName());
+            return false;
+        }
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("receive_id", receiveId);
         body.put("msg_type", message.card() ? "interactive" : "text");
-        body.put("content", content(message));
+        body.put("content", content);
         String uri = BASE + "/im/v1/messages?receive_id_type=" + receiveIdType;
         Boolean sent = withRetry("im.messages", () -> {
             restClient.post()
@@ -273,50 +279,6 @@ public class HttpFeishuClient implements FeishuClient {
         }
         log.warn("Feishu {} exhausted retries after {} attempts", operation, MAX_ATTEMPTS);
         return null;
-    }
-
-    private String content(FeishuMessage message) {
-        try {
-            if (message.card()) {
-                List<Object> elements = new ArrayList<>();
-                elements.add(Map.of(
-                        "tag", "div",
-                        "text", Map.of("tag", "lark_md", "content", nullToEmpty(message.content()))));
-                String absolute = absoluteLink(message.link());
-                if (absolute != null) {
-                    elements.add(Map.of(
-                            "tag", "action",
-                            "actions", List.of(Map.of(
-                                    "tag", "button",
-                                    "text", Map.of("tag", "plain_text", "content", "查看详情"),
-                                    "type", "primary",
-                                    "url", absolute))));
-                }
-                Map<String, Object> card = new LinkedHashMap<>();
-                card.put("config", Map.of("wide_screen_mode", true));
-                card.put("header", Map.of(
-                        "title", Map.of("tag", "plain_text", "content", nullToEmpty(message.title())),
-                        "template", "blue"));
-                card.put("elements", elements);
-                return objectMapper.writeValueAsString(card);
-            }
-            String text = nullToEmpty(message.content());
-            String absolute = absoluteLink(message.link());
-            if (absolute != null) {
-                text = text + "\n" + absolute;
-            }
-            return objectMapper.writeValueAsString(Map.of("text", text));
-        } catch (JsonProcessingException ex) {
-            log.warn("Feishu message serialization failed: {}", ex.getMessage());
-            return "{}";
-        }
-    }
-
-    private String absoluteLink(String link) {
-        if (link == null || link.isBlank()) {
-            return null;
-        }
-        return link.startsWith("http") ? link : settings.publicBaseUrl() + link;
     }
 
     private Map<?, ?> asMap(Object value) {
