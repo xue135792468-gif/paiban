@@ -3,6 +3,7 @@ package com.paiban.ai.service;
 import com.paiban.ai.AiGateway;
 import com.paiban.ai.AiRequest;
 import com.paiban.ai.AiResult;
+import com.paiban.ai.AiTaskType;
 import com.paiban.ai.domain.AiProvider;
 import com.paiban.ai.strategy.AiInvocation;
 import com.paiban.ai.strategy.AiStrategy;
@@ -54,6 +55,11 @@ public class AiGatewayImpl implements AiGateway {
     @Override
     public boolean configured() {
         return resolver.configured();
+    }
+
+    @Override
+    public boolean configured(AiTaskType taskType) {
+        return resolver.resolve(taskType).isPresent();
     }
 
     private AiResult execute(AiRequest request, boolean vision) {
