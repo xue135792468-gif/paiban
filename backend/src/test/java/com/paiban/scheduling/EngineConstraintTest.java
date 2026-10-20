@@ -25,6 +25,7 @@ class EngineConstraintTest {
 
     private static final PeriodSlot MON1 = new PeriodSlot(1L, 1, 1, PeriodSection.MORNING, true, false, false);
     private static final PeriodSlot MON2 = new PeriodSlot(2L, 1, 2, PeriodSection.MORNING, false, false, false);
+    private static final PeriodSlot MON3 = new PeriodSlot(5L, 1, 3, PeriodSection.MORNING, false, false, false);
     private static final PeriodSlot MON5 = new PeriodSlot(3L, 1, 5, PeriodSection.AFTERNOON, false, false, true);
     private static final PeriodSlot EVEN1 = new PeriodSlot(4L, 1, 9, PeriodSection.EVENING, false, true, false);
     private static final RoomSlot ROOM = new RoomSlot(1L, "301", "NORMAL", 50);
@@ -45,7 +46,13 @@ class EngineConstraintTest {
     }
 
     private Lesson lesson(long id, long teacherId, long classId, long courseId, PeriodSlot period, RoomSlot room) {
-        Lesson lesson = new Lesson(id, id, courseId, "课程" + courseId, teacherId, classId, null, null, null, false, 40, 0);
+        return lesson(id, teacherId, classId, courseId, period, room, null, false);
+    }
+
+    private Lesson lesson(long id, long teacherId, long classId, long courseId, PeriodSlot period, RoomSlot room,
+                          Long headTeacherId, boolean allowConsecutive) {
+        Lesson lesson = new Lesson(id, id, courseId, "课程" + courseId, teacherId, classId,
+                headTeacherId, null, null, allowConsecutive, 40, 0);
         lesson.setPeriod(period);
         lesson.setRoom(room);
         return lesson;
@@ -284,6 +291,185 @@ class EngineConstraintTest {
         scoreManager().updateScore(solution);
 
         assertThat(solution.getScore().hardScore()).isLessThan(0);
+    }
+
+    @Test
+    void classMaxPerDayIsPenalized() {
+        ConstraintSettingsHolder.set(ConstraintSettings.from(
+                List.of(config(ConstraintType.CLASS_MAX_PER_DAY, false, 50, Map.of("maxPerDay", 1))),
+                new com.fasterxml.jackson.databind.ObjectMapper()));
+        Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
+        Lesson b = lesson(2, 11, 100, 1001, MON2, ROOM_B);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(a, b), List.of(MON1, MON2), List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().softScore()).isLessThan(0);
+    }
+
+    @Test
+    void courseMaxPerDayIsPenalized() {
+        ConstraintSettingsHolder.set(ConstraintSettings.from(
+                List.of(config(ConstraintType.COURSE_MAX_PER_DAY, false, 50, Map.of("maxPerDay", 2))),
+                new com.fasterxml.jackson.databind.ObjectMapper()));
+        Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
+        Lesson b = lesson(2, 11, 100, 1000, MON2, ROOM_B);
+        Lesson c = lesson(3, 12, 100, 1000, MON3, ROOM);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(a, b, c), List.of(MON1, MON2, MON3), List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().softScore()).isLessThan(0);
+    }
+
+    @Test
+    void consecutiveLessonsNotMetIsPenalized() {
+        ConstraintSettingsHolder.set(ConstraintSettings.from(
+                List.of(config(ConstraintType.CONSECUTIVE_LESSONS, false, 60,
+                        Map.of("courseId", 1000, "minConsecutive", 2))),
+                new com.fasterxml.jackson.databind.ObjectMapper()));
+        Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM, null, true);
+        Lesson b = lesson(2, 11, 100, 1000, MON5, ROOM_B, null, true);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(a, b), List.of(MON1, MON5), List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().softScore()).isLessThan(0);
+    }
+
+    @Test
+    void courseSpreadIsPenalized() {
+        ConstraintSettingsHolder.set(ConstraintSettings.from(
+                List.of(config(ConstraintType.COURSE_SPREAD, false, 50, Map.of())),
+                new com.fasterxml.jackson.databind.ObjectMapper()));
+        Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
+        Lesson b = lesson(2, 11, 100, 1000, MON2, ROOM_B);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(a, b), List.of(MON1, MON2), List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().softScore()).isLessThan(0);
+    }
+
+    @Test
+    void mainSubjectAfterMorningIsPenalized() {
+        ConstraintSettingsHolder.set(ConstraintSettings.from(
+                List.of(config(ConstraintType.MAIN_SUBJECT_MORNING, false, 55,
+                        Map.of("courseId", 1000, "beforePeriodNo", 4))),
+                new com.fasterxml.jackson.databind.ObjectMapper()));
+        Lesson lesson = lesson(1, 10, 100, 1000, MON5, ROOM);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(lesson), List.of(MON1, MON5), List.of(ROOM));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().softScore()).isLessThan(0);
+    }
+
+    @Test
+    void teacherPreferredSlotIsRewarded() {
+        ConstraintSettingsHolder.set(ConstraintSettings.from(
+                List.of(config(ConstraintType.TEACHER_PREFERRED_SLOT, false, 40,
+                        Map.of("teacherId", 10, "dayOfWeek", 1, "periodNo", 1))),
+                new com.fasterxml.jackson.databind.ObjectMapper()));
+        Lesson lesson = lesson(1, 10, 100, 1000, MON1, ROOM);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(lesson), List.of(MON1, MON2), List.of(ROOM));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().softScore()).isGreaterThan(0);
+    }
+
+    @Test
+    void teacherMaxConsecutiveIsPenalized() {
+        ConstraintSettingsHolder.set(ConstraintSettings.from(
+                List.of(config(ConstraintType.TEACHER_MAX_CONSECUTIVE, false, 45,
+                        Map.of("maxConsecutive", 2))),
+                new com.fasterxml.jackson.databind.ObjectMapper()));
+        Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
+        Lesson b = lesson(2, 10, 200, 1001, MON2, ROOM);
+        Lesson c = lesson(3, 10, 300, 1002, MON3, ROOM);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(a, b, c), List.of(MON1, MON2, MON3), List.of(ROOM));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().softScore()).isLessThan(0);
+    }
+
+    @Test
+    void teacherNoFirstPeriodIsPenalized() {
+        ConstraintSettingsHolder.set(ConstraintSettings.from(
+                List.of(config(ConstraintType.TEACHER_NO_FIRST_PERIOD, false, 35,
+                        Map.of("teacherId", 10))),
+                new com.fasterxml.jackson.databind.ObjectMapper()));
+        Lesson lesson = lesson(1, 10, 100, 1000, MON1, ROOM);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(lesson), List.of(MON1, MON2), List.of(ROOM));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().softScore()).isLessThan(0);
+    }
+
+    @Test
+    void classGapIsPenalized() {
+        ConstraintSettingsHolder.set(ConstraintSettings.from(
+                List.of(config(ConstraintType.CLASS_GAP_MINIMIZED, false, 30, Map.of())),
+                new com.fasterxml.jackson.databind.ObjectMapper()));
+        Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
+        Lesson b = lesson(2, 11, 100, 1001, MON5, ROOM_B);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(a, b), List.of(MON1, MON5), List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().softScore()).isLessThan(0);
+    }
+
+    @Test
+    void sportLastPeriodIsPenalized() {
+        ConstraintSettingsHolder.set(ConstraintSettings.from(
+                List.of(config(ConstraintType.PE_LAST_PERIOD_AVOID, false, 35, Map.of())),
+                new com.fasterxml.jackson.databind.ObjectMapper()));
+        Lesson sport = new Lesson(1L, 1L, 1000L, "体育", 10L, 100L, null, "体育", null, false, 40, 0);
+        sport.setPeriod(EVEN1);
+        sport.setRoom(ROOM);
+        TimetableSolution solution = new TimetableSolution(List.of(sport), List.of(MON1, EVEN1), List.of(ROOM));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().softScore()).isLessThan(0);
+    }
+
+    @Test
+    void headTeacherFirstPeriodIsRewarded() {
+        ConstraintSettingsHolder.set(ConstraintSettings.from(
+                List.of(config(ConstraintType.HEAD_TEACHER_FIRST_PERIOD, false, 20, Map.of())),
+                new com.fasterxml.jackson.databind.ObjectMapper()));
+        Lesson lesson = lesson(1, 10, 100, 1000, MON1, ROOM, 10L, false);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(lesson), List.of(MON1, MON2), List.of(ROOM));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().softScore()).isGreaterThan(0);
     }
 
     @Test

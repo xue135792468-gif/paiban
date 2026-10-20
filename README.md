@@ -65,6 +65,28 @@ E2E 需要 `JAVA_HOME` 指向 JDK 21（Windows 下请使用 `E:\...` 形式的�
 > 但只在检测到 Docker 时执行：`./mvnw verify -Dtestcontainers=true`。默认执行环境没有 Docker，
 > 因此常规测试使用 H2 的 PostgreSQL 兼容模式；所有迁移脚本保持两库通用。
 
+### 性能基准（ADR-0017）
+
+`PerformanceBenchmarkIT` 按 ADR-0017 的学校规模生成数据并测量全部指标。默认跳过，手动执行：
+
+```bash
+cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test
+```
+
+本机实测（2026-10-20，Windows，H2 PostgreSQL 兼容模式，100 班 / 500 教师 / 200 教室 / 2400 节课）：
+
+| 指标 | 目标 | 实测 |
+|---|---|---|
+| 排课到零硬冲突 | < 5 分钟 | 86 秒 |
+| 拖拽冲突校验 | < 500ms | 30ms |
+| 班级课表 | < 200ms | 19ms |
+| 教师课表 | < 200ms | 25ms |
+| 教室课表 | < 200ms | 25ms |
+| 全校总表 | < 2s | 220ms |
+| 50 并发 × 5 次班级课表 | 全部成功 | 1.6 秒 |
+
+数值随机器变化；生产环境切换到 PostgreSQL 后建议重跑一次再对外承诺。
+
 ## 实现说明
 
 - **排课引擎**：24 条预置约束全部用 Timefold Constraint Streams 实现；约束配置（启用、硬/软、权重、参数）
