@@ -1,10 +1,29 @@
 #!/usr/bin/env bash
-# 提交前校验：后端测试 + 前端 lint/build
+# 本地闸门：与 CI 走同一条路径。默认后端测试 + 前端 lint/build；--full 追加 Playwright。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-echo "==> backend: ./mvnw verify"
-(cd backend && ./mvnw -B verify)
+FULL=0
+if [[ "${1:-}" == "--full" ]]; then
+  FULL=1
+fi
+
+MVN_ARGS=(-B verify)
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  MVN_ARGS+=(-Dtestcontainers=true)
+else
+  echo "==> 未检测到 Docker：跳过 PostgresContainerIT（CI 会真跑）"
+fi
+
+echo "==> backend: ./mvnw ${MVN_ARGS[*]}"
+(cd backend && ./mvnw "${MVN_ARGS[@]}")
 
 echo "==> frontend: lint + build"
 (cd frontend && npm run lint && npm run build)
+
+if [[ $FULL -eq 1 ]]; then
+  echo "==> e2e: Playwright（自动拉起后端与前端）"
+  (cd frontend && npx playwright install chromium && npm run test:e2e)
+fi
+
+echo "==> verify: ok"
