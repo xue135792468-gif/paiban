@@ -34,6 +34,9 @@ class PostgresContainerIT {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
+        // The postgres profile is treated as production, so the context refuses the
+        // default development secret. This test only checks migrations, not auth.
+        registry.add("paiban.security.jwt-secret", () -> "postgres-container-test-secret-0123456789abcdef");
     }
 
     @Autowired
