@@ -80,6 +80,12 @@ const router = createRouter({
           meta: { title: '约束配置', permission: 'constraint:manage' },
         },
         {
+          path: 'admin/ai-import',
+          name: 'ai-import',
+          component: () => import('@/views/AiDataImportView.vue'),
+          meta: { title: 'AI 数据导入', permission: 'foundation:manage' },
+        },
+        {
           path: 'admin/scheduling',
           name: 'scheduling',
           component: () => import('@/views/SchedulingView.vue'),

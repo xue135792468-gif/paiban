@@ -29,6 +29,7 @@ public class SettingsService {
     public static final String PUBLIC_BASE_URL = "public.base-url";
     public static final String AI_SUBSTITUTE_RECOMMENDATION = "ai.features.substitute-recommendation";
     public static final String AI_NATURAL_LANGUAGE_CONSTRAINTS = "ai.features.natural-language-constraints";
+    public static final String AI_IMPORT_CONFIDENCE_THRESHOLD = "ai.import.confidence-threshold";
 
     private final AppSettingRepository repository;
 
@@ -128,6 +129,16 @@ public class SettingsService {
         return Boolean.parseBoolean(get(AI_NATURAL_LANGUAGE_CONSTRAINTS, "false"));
     }
 
+    /** Cells below this AI confidence are highlighted in the import preview. */
+    public double aiImportConfidenceThreshold() {
+        try {
+            double value = Double.parseDouble(get(AI_IMPORT_CONFIDENCE_THRESHOLD, "0.8"));
+            return Math.max(0, Math.min(1, value));
+        } catch (NumberFormatException ex) {
+            return 0.8;
+        }
+    }
+
     @Transactional
     public void put(String key, String value) {
         AppSetting setting = repository.findById(key).orElseGet(() -> new AppSetting(key, value));
@@ -153,6 +164,7 @@ public class SettingsService {
         values.put(PUBLIC_BASE_URL, publicBaseUrl());
         values.put(AI_SUBSTITUTE_RECOMMENDATION, String.valueOf(aiSubstituteRecommendation()));
         values.put(AI_NATURAL_LANGUAGE_CONSTRAINTS, String.valueOf(aiNaturalLanguageConstraints()));
+        values.put(AI_IMPORT_CONFIDENCE_THRESHOLD, String.valueOf(aiImportConfidenceThreshold()));
         return values;
     }
 }
