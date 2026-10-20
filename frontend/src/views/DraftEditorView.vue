@@ -18,7 +18,7 @@
       </div>
       <div class="actions">
         <el-button @click="load">刷新</el-button>
-        <el-button @click="openCompare">比较草稿</el-button>
+        <el-button v-if="!isJunior" @click="openCompare">比较草稿</el-button>
         <el-button v-if="canEdit" @click="rename">重命名</el-button>
         <el-button
           v-if="canPublish && detail?.draft.status !== 'PUBLISHED'"
@@ -148,7 +148,7 @@
       </ul>
     </el-dialog>
 
-    <el-dialog v-model="compareVisible" title="并排比较草稿" width="1120px">
+    <el-dialog v-if="!isJunior" v-model="compareVisible" title="并排比较草稿" width="1120px">
       <div class="compare-grid">
         <div class="compare-side">
           <el-select v-model="compareA" placeholder="选择草稿 A" style="width: 100%">
@@ -191,6 +191,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Tickets } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
+import { useSettingsStore } from '@/stores/settings'
 
 interface Draft {
   id: number
@@ -254,6 +255,8 @@ interface Course {
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const settings = useSettingsStore()
+const isJunior = computed(() => settings.schoolType === 'junior')
 const draftId = Number(route.params.id)
 const canEdit = computed(() => auth.hasPermission('timetable:edit'))
 const canPublish = computed(() => auth.hasPermission('timetable:publish'))
@@ -547,6 +550,7 @@ async function removeDraft() {  try {
 }
 
 async function openCompare() {
+  if (isJunior.value) return
   const { data } = await http.get('/timetable-drafts', {
     params: { semesterId: detail.value?.draft.semesterId },
   })

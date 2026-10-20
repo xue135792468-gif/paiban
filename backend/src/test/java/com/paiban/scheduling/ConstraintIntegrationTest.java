@@ -4,6 +4,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.not;
 
 import com.paiban.support.ApiIntegrationTest;
 import com.paiban.support.TestData;
@@ -25,9 +26,11 @@ class ConstraintIntegrationTest extends ApiIntegrationTest {
         as(token).queryParam("semesterId", semesterId)
                 .when().get("/api/constraints")
                 .then().statusCode(200)
+                .body("$", hasSize(3))
                 .body("type", hasItem("TEACHER_CONFLICT"))
                 .body("type", hasItem("CLASS_CONFLICT"))
                 .body("type", hasItem("ROOM_CONFLICT"))
+                .body("type", not(hasItem("ROOM_CAPACITY_FIT")))
                 .body("find { it.type == 'TEACHER_CONFLICT' }.hard", equalTo(true))
                 .body("find { it.type == 'TEACHER_CONFLICT' }.enabled", equalTo(true));
     }

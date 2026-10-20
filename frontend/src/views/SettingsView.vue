@@ -14,6 +14,13 @@
         <el-form-item label="学校名称">
           <el-input v-model="form['school.name']" placeholder="用于课表导出与 PDF 页眉" />
         </el-form-item>
+        <el-form-item label="学校类型">
+          <el-radio-group v-model="form['school.type']">
+            <el-radio-button value="junior">初中</el-radio-button>
+            <el-radio-button value="senior">高中</el-radio-button>
+          </el-radio-group>
+          <div class="hint">初中模式会隐藏权重、模板、多草稿对比等高级功能。</div>
+        </el-form-item>
         <el-form-item label="学校 Logo">
           <div class="logo-row">
             <el-upload :auto-upload="false" :show-file-list="false" accept="image/png,image/jpeg" :on-change="uploadLogo">
@@ -85,7 +92,7 @@
             placeholder="用于校验 /integrations/dingtalk/event 回调（X-DingTalk-Token）"
           />
         </el-form-item>
-        <el-form-item label="同步策略">
+        <el-form-item v-if="!isJunior" label="同步策略">
           <el-select v-model="dingtalk.syncStrategy" style="width: 220px">
             <el-option label="钉钉为准（覆盖本地）" value="dingtalk" />
             <el-option label="本地为准（只补空字段）" value="local" />
@@ -134,8 +141,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, type UploadFile } from 'element-plus'
+import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
 import { http } from '@/api/http'
+import { useSettingsStore } from '@/stores/settings'
 
 interface DingTalkConfig {
   enabled: boolean
@@ -155,6 +163,8 @@ interface SyncLog {
 }
 
 const form = reactive<Record<string, string>>({})
+const settings = useSettingsStore()
+const isJunior = computed(() => settings.schoolType === 'junior')
 const dingtalk = reactive<DingTalkConfig>({
   enabled: false,
   appKey: '',
@@ -212,12 +222,32 @@ async function loadLogs() {
 }
 
 async function saveSettings() {
+  const typeChanged = (form['school.type'] ?? 'junior') !== settings.schoolType
+  if (typeChanged) {
+    try {
+      await ElMessageBox.confirm(
+        '切换后将刷新页面，初中模式将隐藏高级功能',
+        '切换学校类型',
+        { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' },
+      )
+    } catch {
+      return
+    }
+  }
+
   saving.value = true
   try {
-    const { data } = await http.put('/settings', { ...form })
+    // The logo path is read-only here: it is written by the upload endpoint.
+    const payload = { ...form }
+    delete payload['school.logo-path']
+    const { data } = await http.put('/settings', payload)
     Object.keys(data).forEach((key) => {
       form[key] = data[key]
     })
+    if (typeChanged) {
+      location.reload()
+      return
+    }
     ElMessage.success('设置已保存并立即生效')
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.message ?? '保存失败')

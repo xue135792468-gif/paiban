@@ -4,7 +4,12 @@
       <div>
         <h2>约束配置</h2>
         <p class="subtitle">
-          配置学期排课规则与偏好权重，支持保存与复用为模板。已启用 {{ enabledCount }} 条 / 共 {{ rows.length }} 条
+          {{
+            isJunior
+              ? '配置学期排课规则，选择「必须」或「尽量」。'
+              : '配置学期排课规则与偏好权重，支持保存与复用为模板。'
+          }}
+          已启用 {{ enabledCount }} 条 / 共 {{ visibleRows.length }} 条
         </p>
       </div>
       <div class="actions">
@@ -37,10 +42,10 @@
     <div v-if="semesters.length > 0" class="sub-toolbar">
       <div class="summary-area">
         <el-tag type="info" effect="plain" class="count-tag">
-          已启用 {{ enabledCount }} 条 / 共 {{ rows.length }} 条
+          已启用 {{ enabledCount }} 条 / 共 {{ visibleRows.length }} 条
         </el-tag>
       </div>
-      <div v-if="canManage" class="template-area">
+      <div v-if="canManage && !isJunior" class="template-area">
         <el-button :disabled="!semesterId" @click="saveAsTemplate">
           存为模板
         </el-button>
@@ -118,24 +123,36 @@
 
                 <div class="constraint-controls">
                   <el-radio-group
+                    v-if="isJunior"
                     v-model="row.hard"
                     size="small"
                     :disabled="!canManage || !row.enabled"
                   >
-                    <el-radio-button :value="true">硬约束</el-radio-button>
-                    <el-radio-button :value="false">软约束</el-radio-button>
+                    <el-radio-button :value="true">必须</el-radio-button>
+                    <el-radio-button :value="false">尽量</el-radio-button>
                   </el-radio-group>
 
-                  <div class="weight-box">
-                    <span class="weight-label">权重 {{ row.weight }}</span>
-                    <el-slider
-                      v-model="row.weight"
-                      :min="0"
-                      :max="100"
-                      :disabled="row.hard || !canManage || !row.enabled"
-                      style="width: 130px"
-                    />
-                  </div>
+                  <template v-else>
+                    <el-radio-group
+                      v-model="row.hard"
+                      size="small"
+                      :disabled="!canManage || !row.enabled"
+                    >
+                      <el-radio-button :value="true">硬约束</el-radio-button>
+                      <el-radio-button :value="false">软约束</el-radio-button>
+                    </el-radio-group>
+
+                    <div class="weight-box">
+                      <span class="weight-label">权重 {{ row.weight }}</span>
+                      <el-slider
+                        v-model="row.weight"
+                        :min="0"
+                        :max="100"
+                        :disabled="row.hard || !canManage || !row.enabled"
+                        style="width: 130px"
+                      />
+                    </div>
+                  </template>
                 </div>
               </div>
 
@@ -251,6 +268,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
+import { useSettingsStore } from '@/stores/settings'
 
 interface ParamDef {
   name: string
@@ -320,7 +338,9 @@ interface CategoryGroup {
 }
 
 const auth = useAuthStore()
+const settings = useSettingsStore()
 const canManage = computed(() => auth.hasPermission('constraint:manage'))
+const isJunior = computed(() => settings.schoolType === 'junior')
 
 const semesters = ref<Semester[]>([])
 const semesterId = ref<number | null>(null)
@@ -354,11 +374,19 @@ const roomTypeOptions = [
   { value: 'OTHER', label: '其他' },
 ]
 
-const enabledCount = computed(() => rows.value.filter((row) => row.enabled).length)
+// ADR-0018: junior mode hides senior-only constraints from the editor. Hidden
+// rows stay in `rows` so saving in junior mode does not erase a senior config.
+const visibleRows = computed(() =>
+  isJunior.value
+    ? rows.value.filter((row) => row.type !== 'TEACHER_MEETING_BLOCKED')
+    : rows.value,
+)
+
+const enabledCount = computed(() => visibleRows.value.filter((row) => row.enabled).length)
 
 const groups = computed<CategoryGroup[]>(() => {
   const map = new Map<string, CategoryGroup>()
-  rows.value.forEach((row) => {
+  visibleRows.value.forEach((row) => {
     let group = map.get(row.categoryLabel)
     if (!group) {
       group = {
@@ -474,7 +502,7 @@ async function onSemesterChange() {
 async function save() {
   if (!semesterId.value) return
 
-  const missing = rows.value
+  const missing = visibleRows.value
     .filter((row) => row.enabled)
     .flatMap((row) =>
       row.params
@@ -501,7 +529,8 @@ async function save() {
       return {
         type: row.type,
         params: cleanParams,
-        weight: row.weight,
+        // Junior mode only exposes "must / prefer": must = weight 100, prefer = 50.
+        weight: isJunior.value ? (row.hard ? 100 : 50) : row.weight,
         hard: row.hard,
         enabled: row.enabled,
       }
