@@ -35,3 +35,9 @@ Thumbs.db
 # local env
 .env
 .env.local
+
+# zcode workflow drafts
+.zcode/
+
+# local Maven overrides (E: drive repo + Aliyun mirror); never commit
+backend/.mvn/maven.config

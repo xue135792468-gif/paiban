@@ -4,7 +4,7 @@
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] Assignment 表（关联学期、行政班/教学班、课程、教师、每周节数）
 - [ ] 录入授课任务时校验：班级、课程、教师都存在且属于当前学期

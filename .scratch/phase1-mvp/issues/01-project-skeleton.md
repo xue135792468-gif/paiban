@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 后端 Maven 工程可 `./mvnw spring-boot:run` 启动，暴露 `/api/health` 返回 `{ "status": "UP" }`
 - [ ] 前端 Vite 工程可 `npm run dev` 启动，首页能调用 `/api/health` 并显示结果

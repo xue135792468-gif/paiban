@@ -4,7 +4,7 @@
 
 **Blocked by:** 08
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 发布动作：草稿 ID → 校验无硬冲突 → 写入 timetable_entry 基线表 → 标记学期当前课表
 - [ ] 基线只读：发布后 timetable_entry 不允许直接修改（ADR-0008），后续变更走调代流程

@@ -24,13 +24,12 @@ paiban:
   substitution:
     approval-mode: approval
   notification:
-    scope: with-admin
+    scope: minimal
   ai:
     features:
       substitute-recommendation: false
       natural-language-constraints: false
   scheduling:
-    max-concurrent-jobs: 1
     max-solve-seconds: 60
   integration:
     dingtalk:
@@ -39,8 +38,10 @@ paiban:
       app-secret: ""
       agent-id: ""
       sync-strategy: dingtalk
+      fake: false
   export:
     school-logo-path: ""
+    pdf-font-path: ""
 
 management:
   endpoints:
@@ -109,3 +110,4 @@ paiban:
   integration:
     dingtalk:
       enabled: false
+      fake: true

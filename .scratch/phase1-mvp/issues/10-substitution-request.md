@@ -4,7 +4,7 @@
 
 **Blocked by:** 09
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] substitution_request 表（申请人、原课节、原因、期望代课教师、状态、审批人、审批时间、审批意见）
 - [ ] 状态机实现（ADR-0009）：SUBMITTED → PENDING_APPROVAL → APPROVED/REJECTED → EFFECTIVE，直接生效模式跳过 PENDING_APPROVAL

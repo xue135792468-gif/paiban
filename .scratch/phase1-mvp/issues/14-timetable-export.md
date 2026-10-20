@@ -4,7 +4,7 @@
 
 **Blocked by:** 09
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] Excel 导出接口：GET `/api/timetable/class/{id}/export/excel`、`/teacher/{id}`、`/room/{id}` 同理
 - [ ] Excel 格式：首行学校名 + 学期名，次行班级名，表头周一到周日 + 节次，合并单元格（连堂显示为一格），课程用浅色填充

@@ -4,7 +4,7 @@
 
 **Blocked by:** 13, 14
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 设置中心页：分组展示所有配置项（审批模式、通知范围、钉钉、AI 特性占位、学校信息、Logo）
 - [ ] 所有 ADR 中提到的配置项都可在 UI 修改并立即生效（无需重启）

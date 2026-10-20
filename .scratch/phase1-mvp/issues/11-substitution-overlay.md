@@ -4,7 +4,7 @@
 
 **Blocked by:** 10
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] substitution 表（关联基线条目、生效日期、原教师、新教师、新教室、新时间、状态、来源申请）
 - [ ] 调代批准时生成 substitution 记录（原课节信息从 timetable_entry 复制，变更字段覆盖）
