@@ -32,6 +32,12 @@ public class SettingsController {
             SettingsService.DINGTALK_CORP_ID,
             SettingsService.DINGTALK_EVENT_TOKEN,
             SettingsService.DINGTALK_SYNC_STRATEGY,
+            SettingsService.FEISHU_ENABLED,
+            SettingsService.FEISHU_APP_ID,
+            SettingsService.FEISHU_APP_SECRET,
+            SettingsService.FEISHU_VERIFICATION_TOKEN,
+            SettingsService.FEISHU_ENCRYPT_KEY,
+            SettingsService.FEISHU_SYNC_STRATEGY,
             SettingsService.SCHOOL_NAME,
             SettingsService.SCHOOL_TYPE,
             SettingsService.PUBLIC_BASE_URL,
@@ -123,10 +129,15 @@ public class SettingsController {
             throw ApiException.badRequest("学校类型只能是 junior 或 senior");
         }
         if ((SettingsService.DINGTALK_ENABLED.equals(key)
+                || SettingsService.FEISHU_ENABLED.equals(key)
                 || SettingsService.AI_SUBSTITUTE_RECOMMENDATION.equals(key)
                 || SettingsService.AI_NATURAL_LANGUAGE_CONSTRAINTS.equals(key))
                 && !List.of("true", "false").contains(value)) {
             throw ApiException.badRequest(key + " 只能是 true 或 false");
+        }
+        if (SettingsService.FEISHU_SYNC_STRATEGY.equals(key)
+                && !List.of("feishu", "local").contains(value)) {
+            throw ApiException.badRequest("飞书同步策略只能是 feishu 或 local");
         }
         if (SettingsService.AI_IMPORT_CONFIDENCE_THRESHOLD.equals(key)) {
             try {

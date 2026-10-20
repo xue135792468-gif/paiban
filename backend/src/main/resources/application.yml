@@ -41,6 +41,14 @@ paiban:
       agent-id: ""
       sync-strategy: dingtalk
       fake: false
+    feishu:
+      enabled: false
+      app-id: ""
+      app-secret: ""
+      verification-token: ""
+      encrypt-key: ""
+      sync-strategy: feishu
+      fake: false
   export:
     school-logo-path: ""
     pdf-font-path: ""
@@ -114,5 +122,8 @@ paiban:
     max-solve-seconds: 5
   integration:
     dingtalk:
+      enabled: false
+      fake: true
+    feishu:
       enabled: false
       fake: true
