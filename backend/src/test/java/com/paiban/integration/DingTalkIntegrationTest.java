@@ -103,6 +103,7 @@ class DingTalkIntegrationTest extends ApiIntegrationTest {
 
         io.restassured.RestAssured.given()
                 .contentType("application/json")
+                .header("X-DingTalk-Token", "test-secret")
                 .body(Map.of("type", "user_leave", "userId", "dd-002", "name", "李四"))
                 .when().post("/api/integrations/dingtalk/event")
                 .then().statusCode(200);
@@ -114,6 +115,16 @@ class DingTalkIntegrationTest extends ApiIntegrationTest {
                 .findFirst()
                 .orElseThrow();
         org.assertj.core.api.Assertions.assertThat(li.get("active")).isEqualTo(false);
+    }
+
+    @Test
+    void eventEndpointRejectsMissingToken() {
+        configure(adminToken(), true);
+        io.restassured.RestAssured.given()
+                .contentType("application/json")
+                .body(Map.of("type", "user_leave", "userId", "dd-002"))
+                .when().post("/api/integrations/dingtalk/event")
+                .then().statusCode(403);
     }
 
     @Test

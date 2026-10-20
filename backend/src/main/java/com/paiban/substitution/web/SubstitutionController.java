@@ -64,8 +64,8 @@ public class SubstitutionController {
     }
 
     @GetMapping("/substitution-requests/{id}/history")
-    public List<HistoryDto> history(@PathVariable Long id) {
-        return service.history(id);
+    public List<HistoryDto> history(@PathVariable Long id, Principal principal) {
+        return service.history(principal.getName(), id);
     }
 
     @PostMapping("/substitution-requests/{id}/approve")

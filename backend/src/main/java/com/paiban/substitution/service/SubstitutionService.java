@@ -244,8 +244,12 @@ public class SubstitutionService {
     }
 
     @Transactional(readOnly = true)
-    public List<HistoryDto> history(Long requestId) {
-        requireRequest(requestId);
+    public List<HistoryDto> history(String username, Long requestId) {
+        SubstitutionRequest request = requireRequest(requestId);
+        AppUser user = users.getByUsername(username);
+        if (!user.hasRole("admin") && !Objects.equals(user.getTeacherId(), request.getRequesterTeacherId())) {
+            throw ApiException.forbidden("不能查看他人的调代流转记录");
+        }
         return history.findByRequestIdOrderByCreatedAtAsc(requestId).stream()
                 .map(item -> new HistoryDto(
                         item.getId(), item.getFromStatus(), item.getToStatus(), item.getActor(),

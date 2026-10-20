@@ -99,9 +99,20 @@ public class IntegrationController {
                 .toList();
     }
 
-    /** Stream-mode callback entry point (signature verification is tenant specific). */
+    /** Stream-mode callback entry point, authenticated with the configured app secret. */
     @PostMapping("/integrations/dingtalk/event")
-    public Map<String, String> event(@RequestBody DingTalkEventRequest request) {
+    public Map<String, String> event(
+            @org.springframework.web.bind.annotation.RequestHeader(
+                            value = "X-DingTalk-Token", required = false)
+                    String token,
+            @RequestBody DingTalkEventRequest request) {
+        if (!settings.dingtalkEnabled()) {
+            throw ApiException.badRequest("钉钉集成未启用");
+        }
+        String expected = settings.dingtalkAppSecret();
+        if (expected == null || expected.isBlank() || !expected.equals(token)) {
+            throw ApiException.forbidden("钉钉事件校验失败");
+        }
         orgProvider.applyEvent(
                 request.type(),
                 new DingUser(request.userId(), request.name(), request.mobile(), request.email(),

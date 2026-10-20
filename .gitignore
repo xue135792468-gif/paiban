@@ -35,3 +35,6 @@ Thumbs.db
 # local env
 .env
 .env.local
+
+# zcode workflow drafts
+.zcode/

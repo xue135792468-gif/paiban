@@ -23,6 +23,10 @@ public class JwtService {
             @Value("${paiban.security.jwt-expiration-minutes:480}") long expirationMinutes) {
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expirationMinutes = expirationMinutes;
+        if (secret.contains("paiban-local-development-secret")) {
+            org.slf4j.LoggerFactory.getLogger(JwtService.class)
+                    .warn("正在使用默认 JWT 密钥，生产环境请设置环境变量 PAIBAN_JWT_SECRET");
+        }
     }
 
     public String issue(String username, List<String> roles, List<String> permissions) {

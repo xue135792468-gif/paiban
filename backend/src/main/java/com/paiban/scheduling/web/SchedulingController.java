@@ -62,21 +62,29 @@ public class SchedulingController {
     }
 
     @GetMapping("/timetable-drafts")
+    @PreAuthorize("hasAnyAuthority('" + Permissions.TIMETABLE_EDIT + "','" + Permissions.SCHEDULING_VIEW + "','"
+            + Permissions.TIMETABLE_PUBLISH + "')")
     public List<DraftDto> drafts(@RequestParam(required = false) Long semesterId) {
         return service.listDrafts(semesterId);
     }
 
     @GetMapping("/timetable-drafts/{id}")
+    @PreAuthorize("hasAnyAuthority('" + Permissions.TIMETABLE_EDIT + "','" + Permissions.SCHEDULING_VIEW + "','"
+            + Permissions.TIMETABLE_PUBLISH + "')")
     public DraftDetailDto detail(@PathVariable Long id) {
         return service.draftDetail(id);
     }
 
     @GetMapping("/timetable-drafts/{id}/validation")
+    @PreAuthorize("hasAnyAuthority('" + Permissions.TIMETABLE_EDIT + "','" + Permissions.SCHEDULING_VIEW + "','"
+            + Permissions.TIMETABLE_PUBLISH + "')")
     public DraftValidator.ValidationResult validateDraft(@PathVariable Long id) {
         return service.validateDraft(id);
     }
 
     @PostMapping("/timetable-drafts/{id}/validate-move")
+    @PreAuthorize("hasAnyAuthority('" + Permissions.TIMETABLE_EDIT + "','" + Permissions.SCHEDULING_VIEW + "','"
+            + Permissions.TIMETABLE_PUBLISH + "')")
     public DraftValidator.ValidationResult validateMove(
             @PathVariable Long id, @Valid @RequestBody ValidateMoveRequest request) {
         return service.validateMove(id, request.lessonId(), request.periodId(), request.roomId());
