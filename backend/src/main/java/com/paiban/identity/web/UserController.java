@@ -77,8 +77,8 @@ public class UserController {
 
     @PostMapping(value = "/users/import/commit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAuthority('" + Permissions.USER_MANAGE + "')")
-    public ImportReport commitImport(@RequestParam("file") MultipartFile file) {
-        return userImportService.commit(file);
+    public ImportReport commitImport(@RequestParam("file") MultipartFile file, java.security.Principal principal) {
+        return userImportService.commit(file, principal == null ? "system" : principal.getName());
     }
 
     @GetMapping("/users/import/template")

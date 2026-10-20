@@ -21,6 +21,7 @@ public class SettingsService {
     public static final String DINGTALK_APP_SECRET = "integration.dingtalk.app-secret";
     public static final String DINGTALK_AGENT_ID = "integration.dingtalk.agent-id";
     public static final String DINGTALK_CORP_ID = "integration.dingtalk.corp-id";
+    public static final String DINGTALK_EVENT_TOKEN = "integration.dingtalk.event-token";
     public static final String DINGTALK_SYNC_STRATEGY = "integration.dingtalk.sync-strategy";
     public static final String SCHOOL_NAME = "school.name";
     public static final String SCHOOL_LOGO_PATH = "school.logo-path";
@@ -91,6 +92,10 @@ public class SettingsService {
         return get(DINGTALK_CORP_ID, "");
     }
 
+    public String dingtalkEventToken() {
+        return get(DINGTALK_EVENT_TOKEN, "");
+    }
+
     public String dingtalkSyncStrategy() {
         return get(DINGTALK_SYNC_STRATEGY, defaultDingtalkSyncStrategy);
     }
@@ -128,6 +133,7 @@ public class SettingsService {
         values.put(DINGTALK_APP_KEY, dingtalkAppKey());
         values.put(DINGTALK_AGENT_ID, dingtalkAgentId());
         values.put(DINGTALK_CORP_ID, dingtalkCorpId());
+        values.put(DINGTALK_EVENT_TOKEN, dingtalkEventToken());
         values.put(DINGTALK_SYNC_STRATEGY, dingtalkSyncStrategy());
         values.put(SCHOOL_NAME, schoolName());
         values.put(SCHOOL_LOGO_PATH, schoolLogoPath());

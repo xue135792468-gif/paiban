@@ -64,16 +64,23 @@ public class IdentityDataInitializer {
             PermissionRepository permissionRepository,
             RoleRepository roleRepository,
             AppUserRepository userRepository,
-            PasswordEncoder passwordEncoder) {
-        return args -> seed(permissionRepository, roleRepository, userRepository, passwordEncoder);
+            PasswordEncoder passwordEncoder,
+            org.springframework.transaction.support.TransactionTemplate transactionTemplate,
+            org.springframework.core.env.Environment environment,
+            @org.springframework.beans.factory.annotation.Value("${paiban.security.bootstrap-admin-password:}")
+                    String configuredAdminPassword) {
+        return args -> transactionTemplate.executeWithoutResult(status -> seed(
+                permissionRepository, roleRepository, userRepository, passwordEncoder,
+                environment, configuredAdminPassword));
     }
 
-    @Transactional
     void seed(
             PermissionRepository permissionRepository,
             RoleRepository roleRepository,
             AppUserRepository userRepository,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            org.springframework.core.env.Environment environment,
+            String configuredAdminPassword) {
         Map<String, Permission> permissions = new LinkedHashMap<>();
         PERMISSION_NAMES.forEach((code, name) -> permissions.put(
                 code, permissionRepository.findByCode(code)
@@ -95,16 +102,41 @@ public class IdentityDataInitializer {
         upsertRole(roleRepository, "head_teacher", "班主任", headTeacherPermissions);
 
         if (!userRepository.existsByUsername("admin")) {
+            String password = bootstrapPassword(environment, configuredAdminPassword);
             AppUser user = new AppUser();
             user.setUsername("admin");
             user.setDisplayName("教务管理员");
-            user.setPasswordHash(passwordEncoder.encode("admin123"));
+            user.setPasswordHash(passwordEncoder.encode(password));
             user.setCreatedAt(Instant.now());
             user.getRoles().add(admin);
             userRepository.save(user);
-            log.info("Bootstrap administrator created: admin / admin123");
+            if (password.equals("admin123")) {
+                log.info("Bootstrap administrator created: admin / admin123 (local development only)");
+            } else {
+                log.info("Bootstrap administrator created: admin / {}", password);
+            }
         }
         log.info("Identity catalogue ready: {} permissions, roles admin/teacher/head_teacher", permissions.size());
+    }
+
+    /**
+     * Local development keeps admin/admin123. Any other profile requires an explicit password
+     * or gets a generated one printed once, so the repository never ships a working credential.
+     */
+    private String bootstrapPassword(
+            org.springframework.core.env.Environment environment, String configured) {
+        if (configured != null && !configured.isBlank()) {
+            return configured;
+        }
+        for (String profile : environment.getActiveProfiles()) {
+            String value = profile.toLowerCase(java.util.Locale.ROOT);
+            if (value.equals("local") || value.equals("test") || value.equals("e2e")) {
+                return "admin123";
+            }
+        }
+        String generated = java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        log.warn("未配置 paiban.security.bootstrap-admin-password，已生成初始管理员密码（仅显示一次）: {}", generated);
+        return generated;
     }
 
     private Role upsertRole(RoleRepository roleRepository, String code, String name, Set<Permission> permissions) {

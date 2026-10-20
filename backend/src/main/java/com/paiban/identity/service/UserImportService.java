@@ -41,25 +41,28 @@ public class UserImportService {
     private final RoleRepository roles;
     private final TeacherRepository teachers;
     private final UserService userService;
+    private final com.paiban.foundation.service.FoundationService foundation;
 
     public UserImportService(
             AppUserRepository users,
             RoleRepository roles,
             TeacherRepository teachers,
-            UserService userService) {
+            UserService userService,
+            com.paiban.foundation.service.FoundationService foundation) {
         this.users = users;
         this.roles = roles;
         this.teachers = teachers;
         this.userService = userService;
+        this.foundation = foundation;
     }
 
     public ImportReport preview(MultipartFile file) {
-        return handle(file, false);
+        return handle(file, false, "system");
     }
 
     @Transactional
-    public ImportReport commit(MultipartFile file) {
-        return handle(file, true);
+    public ImportReport commit(MultipartFile file, String actor) {
+        return handle(file, true, actor);
     }
 
     public byte[] template() {
@@ -91,7 +94,7 @@ public class UserImportService {
         }
     }
 
-    private ImportReport handle(MultipartFile file, boolean commit) {
+    private ImportReport handle(MultipartFile file, boolean commit, String actor) {
         if (file == null || file.isEmpty()) {
             throw ApiException.badRequest("请上传 Excel 文件");
         }
@@ -168,6 +171,13 @@ public class UserImportService {
                         teacherId));
                 imported++;
             }
+            foundation.audit(
+                    actor,
+                    "IMPORT",
+                    "users",
+                    "文件: " + file.getOriginalFilename() + ", 成功 " + imported + " 行",
+                    imported,
+                    table.rows().size() - imported);
         }
 
         List<Map<String, String>> preview = commit ? List.of() : validRows.stream()

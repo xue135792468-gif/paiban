@@ -123,7 +123,8 @@ public class DraftValidator {
         Room room = lesson.roomId == null ? null : s.rooms.get(lesson.roomId);
         String courseName = course == null ? "课程" : course.getName();
 
-        if (room != null && room.getCapacity() < lesson.studentCount) {
+        if (s.settings.enabled(ConstraintType.ROOM_CAPACITY_FIT)
+                && room != null && room.getCapacity() < lesson.studentCount) {
             out.add(new Conflict("ROOM_CAPACITY",
                     "教室「" + room.getName() + "」容量 " + room.getCapacity()
                             + " 小于班级人数 " + lesson.studentCount,
@@ -195,19 +196,22 @@ public class DraftValidator {
             return;
         }
         if (a.periodId.equals(b.periodId)) {
-            if (Objects.equals(a.teacherId, b.teacherId)) {
+        if (s.settings.enabled(ConstraintType.TEACHER_CONFLICT)
+                && Objects.equals(a.teacherId, b.teacherId)) {
                 out.add(new Conflict("TEACHER_CONFLICT",
                         teacherName(s, a.teacherId) + " 此时在 " + className(s, b.classId)
                                 + " 有 " + courseName(s, b.courseId) + "课（" + periodLabel(periodA) + "）",
                         a.id));
             }
-            if (Objects.equals(a.classId, b.classId)) {
+            if (s.settings.enabled(ConstraintType.CLASS_CONFLICT)
+                    && Objects.equals(a.classId, b.classId)) {
                 out.add(new Conflict("CLASS_CONFLICT",
                         className(s, a.classId) + " 在 " + periodLabel(periodA)
                                 + " 已排 " + courseName(s, b.courseId),
                         a.id));
             }
-            if (a.roomId != null && Objects.equals(a.roomId, b.roomId)) {
+            if (s.settings.enabled(ConstraintType.ROOM_CONFLICT)
+                    && a.roomId != null && Objects.equals(a.roomId, b.roomId)) {
                 out.add(new Conflict("ROOM_CONFLICT",
                         "教室「" + roomName(s, a.roomId) + "」在 " + periodLabel(periodA)
                                 + " 已被 " + className(s, b.classId) + " 占用",

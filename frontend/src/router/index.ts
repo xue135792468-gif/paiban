@@ -71,7 +71,7 @@ const router = createRouter({
           path: 'admin/assignments',
           name: 'assignments',
           component: () => import('@/views/AssignmentsView.vue'),
-          meta: { title: '授课任务', permission: 'assignment:manage' },
+          meta: { title: '授课任务', permissionAny: ['assignment:manage', 'assignment:view:own'] },
         },
         {
           path: 'admin/constraints',
@@ -143,6 +143,10 @@ router.beforeEach((to) => {
   }
   const required = to.meta.permission as string | undefined
   if (required && !auth.hasPermission(required)) {
+    return { name: 'forbidden' }
+  }
+  const any = to.meta.permissionAny as string[] | undefined
+  if (any && !auth.hasAnyPermission(any)) {
     return { name: 'forbidden' }
   }
   return true

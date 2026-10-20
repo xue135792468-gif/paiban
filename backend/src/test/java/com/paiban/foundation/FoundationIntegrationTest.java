@@ -132,14 +132,14 @@ class FoundationIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void auditLogListsImportAndManualOperations() {
+    void auditLogsExposeRecordedImportActions() {
         String token = adminToken();
-        TestData.teacher(token, "审计" + TestData.suffix());
         as(token).when().get("/api/foundation/audit-logs")
-                .then().statusCode(200)
-                .body("size()", greaterThanOrEqualTo(0));
+                .then().statusCode(200);
         List<Map<String, Object>> logs = as(token).when().get("/api/foundation/audit-logs")
                 .then().statusCode(200).extract().jsonPath().getList("$");
-        org.assertj.core.api.Assertions.assertThat(logs).isNotNull();
+        // Imports are audited elsewhere; this endpoint must expose whatever has been recorded.
+        org.assertj.core.api.Assertions.assertThat(logs)
+                .allSatisfy(log -> org.assertj.core.api.Assertions.assertThat(log.get("action")).isNotNull());
     }
 }

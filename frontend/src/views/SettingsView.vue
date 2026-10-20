@@ -76,6 +76,12 @@
         <el-form-item label="CorpId">
           <el-input v-model="dingtalk.corpId" placeholder="企业 CorpId，H5 免登需要" />
         </el-form-item>
+        <el-form-item label="事件令牌">
+          <el-input
+            v-model="form['integration.dingtalk.event-token']"
+            placeholder="用于校验 /integrations/dingtalk/event 回调（X-DingTalk-Token）"
+          />
+        </el-form-item>
         <el-form-item label="同步策略">
           <el-select v-model="dingtalk.syncStrategy" style="width: 220px">
             <el-option label="钉钉为准（覆盖本地）" value="dingtalk" />

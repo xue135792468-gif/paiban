@@ -94,6 +94,7 @@ interface MenuItem {
   path: string
   icon: unknown
   permission?: string
+  permissions?: string[]
 }
 
 interface MenuGroup {
@@ -128,7 +129,12 @@ const groups: MenuGroup[] = [
       { label: '课程', path: '/admin/courses', icon: Reading, permission: 'foundation:manage' },
       { label: '年级', path: '/admin/grades', icon: School, permission: 'foundation:manage' },
       { label: '行政班', path: '/admin/classes', icon: Tickets, permission: 'foundation:manage' },
-      { label: '授课任务', path: '/admin/assignments', icon: List, permission: 'assignment:manage' },
+      {
+        label: '授课任务',
+        path: '/admin/assignments',
+        icon: List,
+        permissions: ['assignment:manage', 'assignment:view:own'],
+      },
       { label: '约束配置', path: '/admin/constraints', icon: Document, permission: 'constraint:manage' },
       { label: '自动排课', path: '/admin/scheduling', icon: Timer, permission: 'scheduling:run' },
     ],
@@ -156,7 +162,11 @@ const visibleGroups = computed(() =>
   groups
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => !item.permission || auth.hasPermission(item.permission)),
+      items: group.items.filter(
+        (item) =>
+          (!item.permission || auth.hasPermission(item.permission)) &&
+          (!item.permissions || auth.hasAnyPermission(item.permissions)),
+      ),
     }))
     .filter((group) => group.items.length > 0),
 )

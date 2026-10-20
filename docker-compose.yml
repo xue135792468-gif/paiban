@@ -25,7 +25,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/paiban
       SPRING_DATASOURCE_USERNAME: paiban
       SPRING_DATASOURCE_PASSWORD: paiban
-      PAIBAN_JWT_SECRET: ${PAIBAN_JWT_SECRET:-paiban-docker-secret-change-me-please-0123456789abcdef}
+      PAIBAN_JWT_SECRET: ${PAIBAN_JWT_SECRET:?请先设置 PAIBAN_JWT_SECRET（至少 32 个字符）}
     ports:
       - "8080:8080"
     depends_on:

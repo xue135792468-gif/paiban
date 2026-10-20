@@ -27,6 +27,9 @@ class DingTalkIntegrationTest extends ApiIntegrationTest {
                 .when().put("/api/integrations/dingtalk/config")
                 .then().statusCode(200)
                 .body("enabled", equalTo(enabled));
+        as(token).body(Map.of("integration.dingtalk.event-token", "test-event-token"))
+                .when().put("/api/settings")
+                .then().statusCode(200);
     }
 
     @AfterEach
@@ -103,7 +106,7 @@ class DingTalkIntegrationTest extends ApiIntegrationTest {
 
         io.restassured.RestAssured.given()
                 .contentType("application/json")
-                .header("X-DingTalk-Token", "test-secret")
+                .header("X-DingTalk-Token", "test-event-token")
                 .body(Map.of("type", "user_leave", "userId", "dd-002", "name", "李四"))
                 .when().post("/api/integrations/dingtalk/event")
                 .then().statusCode(200);

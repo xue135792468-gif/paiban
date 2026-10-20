@@ -46,11 +46,13 @@ public class SchedulingController {
     }
 
     @GetMapping("/scheduling-jobs/{id}")
+    @PreAuthorize("hasAuthority('" + Permissions.SCHEDULING_VIEW + "')")
     public JobDto get(@PathVariable Long id) {
         return service.get(id);
     }
 
     @GetMapping("/scheduling-jobs")
+    @PreAuthorize("hasAuthority('" + Permissions.SCHEDULING_VIEW + "')")
     public List<JobDto> list(@RequestParam(required = false) Long semesterId) {
         return service.listJobs(semesterId);
     }

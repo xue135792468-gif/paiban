@@ -78,15 +78,18 @@ E2E 需要 `JAVA_HOME` 指向 JDK 21（Windows 下请使用 `E:\...` 形式的�
 ## 已知限制
 
 - **钉钉 Stream 长连接**：一期未内嵌官方 Stream SDK。增量事件通过
-  `POST /api/integrations/dingtalk/event`（需 `X-DingTalk-Token`，值为 AppSecret）接收，
+  `POST /api/integrations/dingtalk/event`（需 `X-DingTalk-Token`，值为设置中心的“事件令牌”）接收，
   生产环境可用官方 SDK 将事件转发到该端点；全量同步走 `POST /api/integrations/dingtalk/sync`。
 - **PDF 导出**：用 OpenPDF `PdfPTable` 直接绘制，而不是 HTMLWorker；CJK 字体从系统字体或
-  `paiban.export.pdf-font-path` 加载，未找到时退化为 Helvetica。
+  `paiban.export.pdf-font-path` 加载，Docker 镜像已内置 `fonts-noto-cjk`。
 - **约束设置快照**：`ConstraintSettingsHolder` 为进程级静态变量，依赖“同一时刻只运行一个求解任务”的
   约束（`AsyncConfig` 单线程 + 数据库状态检查）。若未来放开并发求解，需要改为按 solution 携带设置。
 - **学期回看**：课表查询接口目前固定当前学期；历史学期数据已隔离存储，接口预留了扩展空间。
-- **测试**：默认使用 H2（PostgreSQL 兼容模式）；Testcontainers 版本通过
-  `./mvnw verify -Dtestcontainers=true` 在具备 Docker 的环境执行。
+- **年级组长**：一期未建模，通知范围 `with-grade-leader` 实际包含班主任；设置页已注明。
+- **登录限速**：应用层未内置失败锁定，生产部署建议在反向代理/网关层配置限流。
+- **测试**：默认使用 H2（PostgreSQL 兼容模式）；CI 使用 `-Dtestcontainers=true` 在真实 PostgreSQL 上
+  跑 Flyway 校验，并执行 4 个 Playwright 验收场景。约束引擎测试覆盖主要硬约束与部分软约束，
+  尚未做到 24 条逐一覆盖。
 
 ## 目录结构
 

@@ -58,6 +58,13 @@ test('场景 2：教师提交调代 → 教务审批 → 通知与课表叠加',
 
   await page.evaluate(() => localStorage.clear())
   await uiLogin(page, seed.username, seed.password)
+
+  await page.goto('/')
+  await expect(page.locator('.bell-badge sup').first()).toBeVisible()
+  await page.locator('.bell-badge button').click()
+  await expect(page.getByText('调代申请已批准').first()).toBeVisible()
+  await page.keyboard.press('Escape')
+
   await page.goto('/notifications')
   await expect(page.getByText('调代申请已批准').first()).toBeVisible()
 

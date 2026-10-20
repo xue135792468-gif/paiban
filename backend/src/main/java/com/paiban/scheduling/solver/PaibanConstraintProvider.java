@@ -306,18 +306,19 @@ public class PaibanConstraintProvider implements ConstraintProvider {
 
     private Constraint consecutiveLessons(ConstraintFactory f, ConstraintSettings s) {
         ConstraintType type = ConstraintType.CONSECUTIVE_LESSONS;
-        return f.forEachUniquePair(
-                        Lesson.class,
-                        Joiners.equal(Lesson::getAdminClassId),
-                        Joiners.equal(Lesson::getCourseId),
-                        Joiners.equal(lesson -> lesson.getPeriod() == null
-                                ? -1
-                                : lesson.getPeriod().getDayOfWeek()))
-                .filter((a, b) -> a.getPeriod() != null
-                        && a.isAllowConsecutive()
-                        && s.matchesCourse(type, a.getCourseId())
-                        && Math.abs(a.getPeriod().getPeriodNo() - b.getPeriod().getPeriodNo()) == 1)
-                .reward(HardSoftScore.ofSoft(Math.max(1, s.weight(type))))
+        Long courseId = s.longParam(type, "courseId");
+        int minConsecutive = s.intParam(type, "minConsecutive") == null
+                ? 2 : s.intParam(type, "minConsecutive");
+        return f.forEach(Lesson.class)
+                .filter(lesson -> lesson.getPeriod() != null
+                        && lesson.isAllowConsecutive()
+                        && Objects.equals(lesson.getCourseId(), courseId))
+                .groupBy(
+                        Lesson::getAdminClassId,
+                        lesson -> lesson.getPeriod().getDayOfWeek(),
+                        ConstraintCollectors.toList())
+                .filter((classId, day, lessons) -> longestRun(lessons) < minConsecutive)
+                .penalize(penalty(s, type))
                 .asConstraint(type.getDisplayName());
     }
 
@@ -450,7 +451,25 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         return lesson.getCourseName() != null && lesson.getCourseName().contains("体育");
     }
 
-    private int maxConsecutive(List<Lesson> lessons) {
+    private int maxConsecutive(List<Lesson> lessons) {        List<Integer> periodNos = lessons.stream()
+                .map(lesson -> lesson.getPeriod().getPeriodNo())
+                .sorted()
+                .distinct()
+                .toList();
+        int best = 0;
+        int run = 1;
+        for (int i = 0; i < periodNos.size(); i++) {
+            if (i > 0 && periodNos.get(i) == periodNos.get(i - 1) + 1) {
+                run++;
+            } else {
+                run = 1;
+            }
+            best = Math.max(best, run);
+        }
+        return best;
+    }
+
+    private int longestRun(List<Lesson> lessons) {
         List<Integer> periodNos = lessons.stream()
                 .map(lesson -> lesson.getPeriod().getPeriodNo())
                 .sorted()

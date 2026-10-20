@@ -105,6 +105,9 @@
       <el-tab-pane v-if="canViewRecords" label="调代记录" name="records">
         <el-card shadow="never" class="filter-card">
           <div class="filters">
+            <el-select v-model="filter.classId" filterable clearable placeholder="班级" style="width: 180px">
+              <el-option v-for="item in classOptions" :key="item.id" :label="item.name" :value="item.id" />
+            </el-select>
             <el-select v-model="filter.teacherId" filterable clearable placeholder="教师" style="width: 180px">
               <el-option v-for="teacher in teachers" :key="teacher.id" :label="teacher.name" :value="teacher.id" />
             </el-select>
@@ -246,11 +249,20 @@ interface Stats {
 const auth = useAuthStore()
 const route = useRoute()
 const canApprove = computed(() => auth.hasPermission('substitution:approve'))
-const canViewRecords = computed(() => auth.hasPermission('substitution:view'))
+const canViewRecords = computed(() =>
+  auth.hasAnyPermission(['substitution:view', 'substitution:view:class']),
+)
+const canViewAllRecords = computed(() => auth.hasPermission('substitution:view'))
 const myTeacherId = computed(() => auth.user?.teacherId ?? null)
 
 const activeTab = ref('mine')
 const teachers = ref<Teacher[]>([])
+const classes = ref<Array<{ id: number; name: string; headTeacherId?: number | null }>>([])
+const classOptions = computed(() =>
+  canViewAllRecords.value
+    ? classes.value
+    : classes.value.filter((item) => item.headTeacherId === auth.user?.teacherId),
+)
 const entries = ref<Entry[]>([])
 const loadingEntries = ref(false)
 const myRequests = ref<RequestRow[]>([])
@@ -270,6 +282,7 @@ const form = reactive({
 })
 
 const filter = reactive({
+  classId: null as number | null,
   teacherId: null as number | null,
   range: [] as string[],
 })
@@ -386,9 +399,14 @@ async function loadPending() {
 
 async function loadRecords() {
   if (!canViewRecords.value) return
+  if (!canViewAllRecords.value && !filter.classId) {
+    filter.classId = classOptions.value.length > 0 ? classOptions.value[0].id : null
+    if (!filter.classId) return
+  }
   loadingRecords.value = true
   try {
     const params: Record<string, unknown> = {}
+    if (filter.classId) params.classId = filter.classId
     if (filter.teacherId) params.teacherId = filter.teacherId
     if (filter.range && filter.range.length === 2) {
       params.dateFrom = filter.range[0]
@@ -467,8 +485,12 @@ async function reloadAll() {
 }
 
 onMounted(async () => {
-  const { data } = await http.get('/teachers/options')
-  teachers.value = data
+  const [teacherRes, classRes] = await Promise.all([
+    http.get('/teachers/options'),
+    http.get('/classes'),
+  ])
+  teachers.value = teacherRes.data
+  classes.value = classRes.data
   await Promise.all([loadMine(), loadPending(), loadRecords()])
   if (myTeacherId.value) {
     await loadEntries()

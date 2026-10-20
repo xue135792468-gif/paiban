@@ -33,8 +33,9 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
         }
     }
 
-    private record Context(ScheduleFixture.Result fixture, String teacherToken, long teacherA,
-                           long teacherB, long classId, long entryId, LocalDate date, String username) {}
+    private record Context(ScheduleFixture.Result fixture, String teacherToken, String substituteToken,
+                           String headTeacherToken, long teacherA, long teacherB, long classId,
+                           long entryId, LocalDate date, String username) {}
 
     private Context prepare(String token, String suffix) {
         ScheduleFixture.Result fixture = ScheduleFixture.published(token, 5);
@@ -47,6 +48,9 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
         int dayOfWeek = ((Number) entry.get("dayOfWeek")).intValue();
         LocalDate date = LocalDate.of(2025, 9, 1).plusDays(dayOfWeek - 1L);
 
+        // A teacher with no assignments, so the substitute is always free at that period.
+        long substituteTeacherId = TestData.teacher(token, "代课老师" + suffix);
+
         String username = "sub_" + suffix;
         as(token).body(Map.of(
                         "username", username,
@@ -55,19 +59,39 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
                         "roleCodes", List.of("teacher"),
                         "teacherId", fixture.teacherId()))
                 .when().post("/api/users").then().statusCode(200);
+        String substituteUsername = "subs_" + suffix;
         as(token).body(Map.of(
-                        "username", "subs_" + suffix,
+                        "username", substituteUsername,
                         "password", "teacher123",
                         "displayName", "代课人",
                         "roleCodes", List.of("teacher"),
-                        "teacherId", fixture.otherTeacherId()))
+                        "teacherId", substituteTeacherId))
+                .when().post("/api/users").then().statusCode(200);
+
+        List<Map<String, Object>> classRows = as(token).queryParam("semesterId", fixture.semesterId())
+                .when().get("/api/classes")
+                .then().statusCode(200).extract().jsonPath().getList("$");
+        long headTeacherId = classRows.stream()
+                .filter(item -> ((Number) item.get("id")).longValue() == fixture.classId())
+                .map(item -> ((Number) item.get("headTeacherId")).longValue())
+                .findFirst()
+                .orElseThrow();
+        String headUsername = "head_" + suffix;
+        as(token).body(Map.of(
+                        "username", headUsername,
+                        "password", "teacher123",
+                        "displayName", "班主任",
+                        "roleCodes", List.of("head_teacher"),
+                        "teacherId", headTeacherId))
                 .when().post("/api/users").then().statusCode(200);
 
         return new Context(
                 fixture,
                 login(username, "teacher123"),
+                login(substituteUsername, "teacher123"),
+                login(headUsername, "teacher123"),
                 fixture.teacherId(),
-                fixture.otherTeacherId(),
+                substituteTeacherId,
                 fixture.classId(),
                 entryId,
                 date,
@@ -143,6 +167,8 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
     @Test
     void approvalSendsNotificationsToOriginalAndSubstitute() {
         String token = adminToken();
+        as(token).body(Map.of("notification.scope", "with-admin"))
+                .when().put("/api/settings").then().statusCode(200);
         Context context = prepare(token, TestData.suffix());
         long requestId = submit(context, context.teacherToken(), context.teacherB());
         as(token).body(Map.of("substituteTeacherId", context.teacherB()))
@@ -157,6 +183,14 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(200)
                 .body("title", hasItem("调代申请已批准"))
                 .body("content", hasItem(containsString("代课")));
+
+        as(context.substituteToken()).when().get("/api/notifications/recent")
+                .then().statusCode(200)
+                .body("title", hasItem("您有一节代课安排"));
+
+        as(context.headTeacherToken()).when().get("/api/notifications/recent")
+                .then().statusCode(200)
+                .body("title", hasItem("本班课表有调代"));
 
         as(context.teacherToken()).when().post("/api/notifications/read-all")
                 .then().statusCode(200);
@@ -223,7 +257,8 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
         Context context = prepare(token, TestData.suffix());
         List<Map<String, Object>> entries = ScheduleFixture.classEntries(token, context.classId());
         Map<String, Object> otherEntry = entries.stream()
-                .filter(item -> ((Number) item.get("teacherId")).longValue() == context.teacherB())
+                .filter(item -> ((Number) item.get("teacherId")).longValue()
+                        == context.fixture().otherTeacherId())
                 .findFirst()
                 .orElseThrow();
         LocalDate date = LocalDate.of(2025, 9, 1)

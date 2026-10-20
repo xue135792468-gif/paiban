@@ -30,9 +30,9 @@ public class SettingsController {
             SettingsService.DINGTALK_APP_SECRET,
             SettingsService.DINGTALK_AGENT_ID,
             SettingsService.DINGTALK_CORP_ID,
+            SettingsService.DINGTALK_EVENT_TOKEN,
             SettingsService.DINGTALK_SYNC_STRATEGY,
             SettingsService.SCHOOL_NAME,
-            SettingsService.SCHOOL_LOGO_PATH,
             SettingsService.AI_SUBSTITUTE_RECOMMENDATION,
             SettingsService.AI_NATURAL_LANGUAGE_CONSTRAINTS);
 

@@ -76,12 +76,17 @@ public class AssignmentService {
 
     @Transactional(readOnly = true)
     public List<AssignmentDto> mine(String username) {
+        return mine(username, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AssignmentDto> mine(String username, Long semesterId) {
         AppUser user = users.getByUsername(username);
         if (user.getTeacherId() == null) {
             return List.of();
         }
-        Long semesterId = foundation.resolveSemester(null);
-        return toDtos(assignments.findBySemesterIdAndTeacherId(semesterId, user.getTeacherId()), semesterId);
+        Long resolved = foundation.resolveSemester(semesterId);
+        return toDtos(assignments.findBySemesterIdAndTeacherId(resolved, user.getTeacherId()), resolved);
     }
 
     @Transactional

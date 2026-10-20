@@ -87,13 +87,27 @@ public class SubstitutionController {
     }
 
     @GetMapping("/substitutions")
-    @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_VIEW + "')")
     public List<SubstitutionRecordDto> records(
             @RequestParam(required = false) Long semesterId,
             @RequestParam(required = false) Long teacherId,
             @RequestParam(required = false) Long classId,
             @RequestParam(required = false) LocalDate dateFrom,
-            @RequestParam(required = false) LocalDate dateTo) {
+            @RequestParam(required = false) LocalDate dateTo,
+            Authentication authentication,
+            Principal principal) {
+        boolean canViewAll = authentication.getAuthorities().stream()
+                .anyMatch(authority -> authority.getAuthority().equals(Permissions.SUBSTITUTION_VIEW));
+        if (!canViewAll) {
+            boolean canViewClass = authentication.getAuthorities().stream()
+                    .anyMatch(authority -> authority.getAuthority().equals(Permissions.SUBSTITUTION_VIEW_CLASS));
+            if (!canViewClass) {
+                throw com.paiban.common.web.ApiException.forbidden("没有权限查看调代记录");
+            }
+            if (classId == null) {
+                throw com.paiban.common.web.ApiException.badRequest("班主任查看调代记录时必须指定班级");
+            }
+            service.requireHeadTeacher(principal.getName(), classId);
+        }
         return service.records(semesterId, teacherId, classId, dateFrom, dateTo);
     }
 

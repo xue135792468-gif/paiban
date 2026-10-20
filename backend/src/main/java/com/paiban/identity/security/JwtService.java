@@ -33,9 +33,12 @@ public class JwtService {
                 devProfile = true;
             }
         }
-        if (secret.contains(DEV_MARKER) && !devProfile) {
+        if (!devProfile
+                && (secret.contains(DEV_MARKER)
+                || secret.contains("change-me")
+                || secret.length() < 32)) {
             throw new IllegalStateException(
-                    "检测到默认 JWT 密钥。非本地环境必须设置环境变量 PAIBAN_JWT_SECRET（至少 32 个字符）。");
+                    "JWT 密钥不安全。非本地环境必须设置 PAIBAN_JWT_SECRET（至少 32 个字符，且不能使用示例值）。");
         }
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expirationMinutes = expirationMinutes;

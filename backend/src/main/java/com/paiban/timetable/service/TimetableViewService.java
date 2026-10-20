@@ -167,10 +167,14 @@ public class TimetableViewService {
         if ("baseline".equalsIgnoreCase(view)) {
             return Map.of();
         }
-        List<Substitution> effective = date != null
-                ? substitutions.findBySemesterIdAndEffectiveDateAndStatus(
-                        semesterId, date, Substitution.EFFECTIVE)
-                : substitutions.findBySemesterIdAndStatus(semesterId, Substitution.EFFECTIVE);
+        // ADR-0008: latest view shows substitutions effective up to the requested day.
+        java.time.LocalDate cutoff = date != null ? date : java.time.LocalDate.now();
+        java.time.LocalDate semesterStart = semesters.require(semesterId).getStartDate();
+        if (cutoff.isBefore(semesterStart)) {
+            return Map.of();
+        }
+        List<Substitution> effective = substitutions.findBySemesterIdAndEffectiveDateBetweenAndStatus(
+                semesterId, semesterStart, cutoff, Substitution.EFFECTIVE);
         return effective.stream()
                 .sorted(Comparator.comparing(Substitution::getCreatedAt))
                 .collect(Collectors.toMap(

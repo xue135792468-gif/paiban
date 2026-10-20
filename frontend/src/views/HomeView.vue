@@ -12,7 +12,7 @@
       </div>
     </el-card>
 
-    <el-card v-loading="loading" shadow="never" class="hints">
+    <el-card v-if="canManageSetup" v-loading="loading" shadow="never" class="hints">
       <template #header>
         <div class="card-head">
           <span>还差什么</span>
@@ -44,6 +44,13 @@
         <div class="quick-desc">{{ card.desc }}</div>
       </el-card>
     </div>
+
+    <div class="health">
+      <el-tag :type="health === 'UP' ? 'success' : 'danger'" size="small">
+        后端服务 {{ health || '检测中' }}
+      </el-tag>
+      <span class="health-note">排课系统 · 数据不出校</span>
+    </div>
   </div>
 </template>
 
@@ -66,6 +73,8 @@ const auth = useAuthStore()
 const router = useRouter()
 const hints = ref<Hint[]>([])
 const loading = ref(false)
+const health = ref('')
+const canManageSetup = computed(() => auth.hasPermission('foundation:manage'))
 
 const pending = computed(() => hints.value.filter((hint) => !hint.done))
 
@@ -97,13 +106,24 @@ const quickLinks = computed(() => {
   if (auth.hasPermission('substitution:submit')) {
     links.push({ title: '调代课', desc: '提交申请与审批', path: '/substitutions', icon: ChatDotRound })
   }
-  if (auth.hasPermission('assignment:manage')) {
+  if (auth.hasAnyPermission(['assignment:manage', 'assignment:view:own'])) {
     links.push({ title: '授课任务', desc: '录入班级课程与教师', path: '/admin/assignments', icon: List })
   }
   return links
 })
 
 onMounted(async () => {
+  http
+    .get('/health')
+    .then(({ data }) => {
+      health.value = data.status
+    })
+    .catch(() => {
+      health.value = 'DOWN'
+    })
+  if (!canManageSetup.value) {
+    return
+  }
   loading.value = true
   try {
     const { data } = await http.get('/onboarding/status')
@@ -190,5 +210,15 @@ h1 {
   color: var(--paiban-muted);
   font-size: 12px;
   margin-top: 4px;
+}
+.health {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.health-note {
+  color: var(--paiban-muted);
+  font-size: 12px;
 }
 </style>

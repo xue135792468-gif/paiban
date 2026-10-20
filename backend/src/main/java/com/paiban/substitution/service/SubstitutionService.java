@@ -173,6 +173,29 @@ public class SubstitutionService {
             throw ApiException.badRequest("请指定代课教师");
         }
         requireTeacher(substituteTeacherId);
+        if (substituteTeacherId.equals(request.getOriginalTeacherId())) {
+            throw ApiException.badRequest("代课教师不能与原任课教师相同");
+        }
+        Long targetPeriodId = decision != null && decision.newPeriodId() != null
+                ? decision.newPeriodId() : request.getPeriodId();
+        boolean busy = entries.findBySemesterIdAndTeacherId(request.getSemesterId(), substituteTeacherId).stream()
+                .anyMatch(entry -> entry.getPeriodId().equals(targetPeriodId));
+        if (!busy) {
+            for (Substitution existing : substitutions.findBySubstituteTeacherIdAndEffectiveDateAndStatus(
+                    substituteTeacherId, request.getEffectiveDate(), Substitution.EFFECTIVE)) {
+                SubstitutionRequest other = requests.findById(existing.getRequestId()).orElse(null);
+                Long otherPeriod = existing.getNewPeriodId() != null
+                        ? existing.getNewPeriodId()
+                        : other == null ? null : other.getPeriodId();
+                if (targetPeriodId.equals(otherPeriod)) {
+                    busy = true;
+                    break;
+                }
+            }
+        }
+        if (busy) {
+            throw ApiException.conflict("代课教师在该时段已有课，不能安排代课");
+        }
         if (substitutions.findFirstByEntryIdAndEffectiveDateAndStatus(
                 request.getEntryId(), request.getEffectiveDate(), Substitution.EFFECTIVE).isPresent()) {
             throw ApiException.conflict("该课节当天已有生效的调代，不能重复生效");
@@ -279,7 +302,16 @@ public class SubstitutionService {
     public List<HistoryDto> history(String username, Long requestId) {
         SubstitutionRequest request = requireRequest(requestId);
         AppUser user = users.getByUsername(username);
-        if (!user.hasRole("admin") && !Objects.equals(user.getTeacherId(), request.getRequesterTeacherId())) {
+        boolean requester = Objects.equals(user.getTeacherId(), request.getRequesterTeacherId())
+                || Objects.equals(user.getTeacherId(), request.getOriginalTeacherId());
+        boolean substitute = user.getTeacherId() != null
+                && substitutions.findByRequestId(requestId).stream()
+                        .anyMatch(item -> user.getTeacherId().equals(item.getSubstituteTeacherId()));
+        boolean headTeacher = user.getTeacherId() != null
+                && adminClasses.findById(request.getAdminClassId())
+                        .map(adminClass -> user.getTeacherId().equals(adminClass.getHeadTeacherId()))
+                        .orElse(false);
+        if (!user.hasRole("admin") && !requester && !substitute && !headTeacher) {
             throw ApiException.forbidden("不能查看他人的调代流转记录");
         }
         return history.findByRequestIdOrderByCreatedAtAsc(requestId).stream()
@@ -461,6 +493,18 @@ public class SubstitutionService {
                 roomName,
                 substitution.getStatus(),
                 substitution.getCreatedAt());
+    }
+
+    @Transactional(readOnly = true)
+    public void requireHeadTeacher(String username, Long classId) {
+        AppUser user = users.getByUsername(username);
+        boolean headTeacher = user.getTeacherId() != null
+                && adminClasses.findById(classId)
+                        .map(adminClass -> user.getTeacherId().equals(adminClass.getHeadTeacherId()))
+                        .orElse(false);
+        if (!headTeacher) {
+            throw ApiException.forbidden("只能查看本班的调代记录");
+        }
     }
 
     @Transactional(readOnly = true)

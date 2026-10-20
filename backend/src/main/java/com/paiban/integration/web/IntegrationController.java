@@ -121,8 +121,11 @@ public class IntegrationController {
         if (!settings.dingtalkEnabled()) {
             throw ApiException.badRequest("钉钉集成未启用");
         }
-        String expected = settings.dingtalkAppSecret();
-        if (expected == null || expected.isBlank() || !expected.equals(token)) {
+        String expected = settings.dingtalkEventToken();
+        if (expected == null || expected.isBlank() || token == null
+                || !java.security.MessageDigest.isEqual(
+                        expected.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        token.getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
             throw ApiException.forbidden("钉钉事件校验失败");
         }
         orgProvider.applyEvent(

@@ -237,6 +237,9 @@ public class SchedulingService {
     private void persistDraft(Long jobId, TimetableSolution solution, long elapsed) {
         SchedulingJob job = jobs.findById(jobId)
                 .orElseThrow(() -> ApiException.notFound("排课任务不存在: " + jobId));
+        if (SchedulingJob.CANCELLED.equals(job.getStatus())) {
+            return;
+        }
         TimetableDraft draft = new TimetableDraft();
         draft.setSemesterId(job.getSemesterId());
         draft.setName(job.getDraftName());

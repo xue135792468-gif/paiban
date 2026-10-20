@@ -33,11 +33,15 @@ public class OnboardingController {
     }
 
     @PutMapping
+    @org.springframework.security.access.prepost.PreAuthorize(
+            "hasAuthority('" + com.paiban.identity.domain.Permissions.ONBOARDING_MANAGE + "')")
     public ProgressDto save(Principal principal, @RequestBody SaveProgressRequest request) {
         return service.save(principal.getName(), request);
     }
 
     @PostMapping("/reset")
+    @org.springframework.security.access.prepost.PreAuthorize(
+            "hasAuthority('" + com.paiban.identity.domain.Permissions.ONBOARDING_MANAGE + "')")
     public void reset(Principal principal) {
         service.reset(principal.getName());
     }

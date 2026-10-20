@@ -52,7 +52,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class TimetableExportService {
 
-    public record Cell(Long courseId, String courseName, String teacherName, String roomName, String color) {}
+    public record Cell(Long classId, Long courseId, String courseName, String teacherName,
+                       String roomName, String color) {}
 
     public record Grid(String title, List<Integer> days, List<Row> rows, Map<String, Cell> cells) {}
 
@@ -277,25 +278,25 @@ public class TimetableExportService {
             rowIndex++;
         }
 
-        // Merge consecutive lessons of the same course on the same day (连堂).
+        // Merge consecutive lessons of the same course in the same class on the same day (连堂).
         for (int i = 0; i < grid.days().size(); i++) {
             int day = grid.days().get(i);
             int runStart = -1;
-            Long runCourse = null;
+            String runKey = null;
             for (int r = 0; r < grid.rows().size(); r++) {
                 Cell cell = grid.cells().get(day + "-" + grid.rows().get(r).periodNo());
-                Long courseId = cell == null ? null : cell.courseId();
-                if (courseId != null && courseId.equals(runCourse)) {
+                String key = cell == null ? null : cell.classId() + "-" + cell.courseId();
+                if (key != null && key.equals(runKey)) {
                     continue;
                 }
-                if (runCourse != null && runStart >= 0 && r - runStart > 1) {
+                if (runKey != null && runStart >= 0 && r - runStart > 1) {
                     sheet.addMergedRegion(new CellRangeAddress(
                             3 + runStart, 3 + r - 1, i + 1, i + 1));
                 }
                 runStart = r;
-                runCourse = courseId;
+                runKey = key;
             }
-            if (runCourse != null && runStart >= 0 && grid.rows().size() - runStart > 1) {
+            if (runKey != null && runStart >= 0 && grid.rows().size() - runStart > 1) {
                 sheet.addMergedRegion(new CellRangeAddress(
                         3 + runStart, 3 + grid.rows().size() - 1, i + 1, i + 1));
             }
@@ -395,6 +396,7 @@ public class TimetableExportService {
             cells.put(
                     entry.dayOfWeek() + "-" + entry.periodNo(),
                     new Cell(
+                            entry.classId(),
                             entry.courseId(),
                             entry.courseName(),
                             entry.teacherName(),

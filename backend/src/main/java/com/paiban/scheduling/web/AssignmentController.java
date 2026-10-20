@@ -62,8 +62,9 @@ public class AssignmentController {
     }
 
     @GetMapping("/mine")
-    public List<AssignmentDto> mine(Principal principal) {
-        return service.mine(principal.getName());
+    public List<AssignmentDto> mine(
+            Principal principal, @RequestParam(required = false) Long semesterId) {
+        return service.mine(principal.getName(), semesterId);
     }
 
     @PostMapping

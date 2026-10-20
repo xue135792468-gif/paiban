@@ -88,12 +88,32 @@ class TimetableExportIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void teacherAndRoomExportsWork() {
+    void teacherAndRoomExportsWork() throws Exception {
         String token = adminToken();
         ScheduleFixture.Result fixture = ScheduleFixture.published(token, 5);
 
-        as(token).when().get("/api/timetable/teacher/" + fixture.teacherId() + "/export/excel")
-                .then().statusCode(200);
+        byte[] teacherExcel = as(token).when()
+                .get("/api/timetable/teacher/" + fixture.teacherId() + "/export/excel")
+                .then().statusCode(200).extract().asByteArray();
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(teacherExcel))) {
+            var sheet = workbook.getSheetAt(0);
+            boolean hasLesson = false;
+            for (int r = 3; r <= sheet.getLastRowNum(); r++) {
+                Row row = sheet.getRow(r);
+                if (row == null) {
+                    continue;
+                }
+                for (int c = 1; c < row.getLastCellNum(); c++) {
+                    var cell = row.getCell(c);
+                    if (cell != null && cell.getCellType() == org.apache.poi.ss.usermodel.CellType.STRING
+                            && !cell.getStringCellValue().isBlank()) {
+                        hasLesson = true;
+                    }
+                }
+            }
+            assertThat(hasLesson).isTrue();
+        }
+
         as(token).when().get("/api/timetable/room/" + fixture.roomId() + "/export/pdf")
                 .then().statusCode(200);
     }

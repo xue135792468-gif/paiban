@@ -20,6 +20,18 @@ import org.springframework.test.context.ActiveProfiles;
 @ActiveProfiles("test")
 class SettingsOnboardingIntegrationTest extends ApiIntegrationTest {
 
+    @org.junit.jupiter.api.AfterEach
+    void resetGlobalSettings() {
+        try {
+            as(adminToken()).body(Map.of(
+                            "notification.scope", "with-admin",
+                            "ai.features.substitute-recommendation", "false"))
+                    .when().put("/api/settings").then().statusCode(200);
+        } catch (RuntimeException ignored) {
+            // best effort
+        }
+    }
+
     @Test
     void settingsCanBeReadAndUpdated() {
         String token = adminToken();

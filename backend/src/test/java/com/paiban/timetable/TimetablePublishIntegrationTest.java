@@ -82,6 +82,17 @@ class TimetablePublishIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void publishNotifiesStaff() {
+        String token = adminToken();
+        ScheduleFixture.Result fixture = ScheduleFixture.solved(token, 5);
+        publish(token, fixture.draftId());
+
+        as(token).when().get("/api/notifications/recent")
+                .then().statusCode(200)
+                .body("title", org.hamcrest.Matchers.hasItem("课表已发布"));
+    }
+
+    @Test
     void teacherSeesOwnTimetableOnlyAndHeadTeacherSeesOwnClass() {
         String token = adminToken();
         ScheduleFixture.Result fixture = ScheduleFixture.solved(token, 5);
