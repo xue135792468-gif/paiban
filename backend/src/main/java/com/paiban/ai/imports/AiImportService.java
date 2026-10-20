@@ -35,6 +35,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
@@ -129,21 +130,20 @@ public class AiImportService {
         return preview(log);
     }
 
+    @Transactional
     public PreviewDto updateRows(long id, List<RowDto> rows, String username) {
         AiImportLog log = requireSession(id, username);
         requireEditable(log);
         List<RowDto> normalized = normalize(rows, threshold());
-        Payload existing = readPayload(log);
-        savePayload(log, existing.mappings(), normalized, existing.explanation(), AiImportLog.EDITED);
-        log.setConfirmedJson(log.getPreviewJson());
-        touch(log);
+        Payload existing = readPreviewPayload(log);
+        saveConfirmed(log, existing.mappings(), normalized, existing.explanation(), AiImportLog.EDITED);
         return preview(log);
     }
 
     public PreviewDto continueWithAi(long id, String username) {
         AiImportLog log = requireSession(id, username);
         requireEditable(log);
-        Payload existing = readPayload(log);
+        Payload existing = readWorkingPayload(log);
         List<RowDto> current = existing.rows();
         PromptBundle original = bundleFor(log);
         String continuePrompt = AiImportPrompts.continuePrompt(
@@ -155,9 +155,8 @@ public class AiImportService {
                 original.originalPrompt());
         AiImportParser.Parsed parsed = callAi(bundle, log);
         List<RowDto> merged = merge(current, parsed.rows());
-        savePayload(log, parsed.mappings(), merged, parsed.explanation(), AiImportLog.EDITED);
-        log.setConfirmedJson(log.getPreviewJson());
-        touch(log);
+        savePreview(log, parsed.mappings(), parsed.rows(), parsed.explanation(), AiImportLog.EDITED);
+        saveConfirmed(log, parsed.mappings(), merged, parsed.explanation(), AiImportLog.EDITED);
         return preview(log);
     }
 
@@ -170,10 +169,12 @@ public class AiImportService {
         return runPreview(log, bundle, bundle.originalPrompt());
     }
 
+    @Transactional
     public CommitResultDto commit(long id, String username) {
         AiImportLog log = requireSession(id, username);
         requireEditable(log);
-        List<RowDto> rows = readPayload(log).rows();
+        Payload working = readWorkingPayload(log);
+        List<RowDto> rows = working.rows();
         if (rows.isEmpty()) {
             throw ApiException.badRequest("没有可入库的数据");
         }
@@ -191,9 +192,9 @@ public class AiImportService {
             entities.add(teacher);
         }
         teachers.saveAll(entities);
-        log.setStatus(AiImportLog.COMMITTED);
+        saveConfirmed(log, working.mappings(), rows, working.explanation(), AiImportLog.COMMITTED);
         log.setImportedCount(entities.size());
-        log.setResultJson(writeJson(Map.of("imported", entities.size())));
+        log.setResultJson(writeJson(Map.of("imported", entities.size(), "rows", rows)));
         touch(log);
         return new CommitResultDto(entities.size(), List.of());
     }
@@ -211,7 +212,7 @@ public class AiImportService {
 
     private PreviewDto runPreview(AiImportLog log, PromptBundle bundle, String originalPrompt) {
         AiImportParser.Parsed parsed = callAi(bundle, log);
-        savePayload(log, parsed.mappings(), parsed.rows(), parsed.explanation(), AiImportLog.PREVIEW);
+        savePreview(log, parsed.mappings(), parsed.rows(), parsed.explanation(), AiImportLog.PREVIEW);
         log.setConfirmedJson(null);
         log.setResultJson(null);
         if (originalPrompt != null && log.getSourceText() == null && log.getFilePath() == null) {
@@ -300,25 +301,50 @@ public class AiImportService {
         return logs.save(log);
     }
 
-    private void savePayload(
+    /** The original AI answer; never overwritten by user edits or a continuation merge. */
+    private void savePreview(
             AiImportLog log, List<MappingDto> mappings, List<RowDto> rows, String explanation, String status) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("mappings", mappings);
-        payload.put("rows", rows);
-        payload.put("explanation", explanation == null ? "" : explanation);
-        log.setPreviewJson(writeJson(payload));
+        log.setPreviewJson(payloadJson(mappings, rows, explanation));
         log.setAiExplanation(explanation);
         log.setStatus(status);
         log.setRowCount(rows.size());
         touch(log);
     }
 
-    private Payload readPayload(AiImportLog log) {
-        if (log.getPreviewJson() == null || log.getPreviewJson().isBlank()) {
+    /** The user's working copy: edits, the merged continuation result, or the committed rows. */
+    private void saveConfirmed(
+            AiImportLog log, List<MappingDto> mappings, List<RowDto> rows, String explanation, String status) {
+        log.setConfirmedJson(payloadJson(mappings, rows, explanation));
+        log.setStatus(status);
+        log.setRowCount(rows.size());
+        touch(log);
+    }
+
+    private String payloadJson(List<MappingDto> mappings, List<RowDto> rows, String explanation) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("mappings", mappings);
+        payload.put("rows", rows);
+        payload.put("explanation", explanation == null ? "" : explanation);
+        return writeJson(payload);
+    }
+
+    private Payload readWorkingPayload(AiImportLog log) {
+        String json = log.getConfirmedJson() == null || log.getConfirmedJson().isBlank()
+                ? log.getPreviewJson()
+                : log.getConfirmedJson();
+        return parsePayload(json);
+    }
+
+    private Payload readPreviewPayload(AiImportLog log) {
+        return parsePayload(log.getPreviewJson());
+    }
+
+    private Payload parsePayload(String json) {
+        if (json == null || json.isBlank()) {
             return new Payload(List.of(), List.of(), "");
         }
         try {
-            JsonNode root = objectMapper.readTree(log.getPreviewJson());
+            JsonNode root = objectMapper.readTree(json);
             List<MappingDto> mappings = new ArrayList<>();
             for (JsonNode item : root.path("mappings")) {
                 mappings.add(new MappingDto(
@@ -339,7 +365,7 @@ public class AiImportService {
     }
 
     private PreviewDto preview(AiImportLog log) {
-        Payload payload = readPayload(log);
+        Payload payload = readWorkingPayload(log);
         return new PreviewDto(
                 log.getId(),
                 log.getTargetType(),
@@ -423,6 +449,14 @@ public class AiImportService {
         List<ImportValidationException.RowError> errors = new ArrayList<>();
         Set<String> employeeNos = new HashSet<>();
         Set<String> nameSubjects = new HashSet<>();
+        Set<String> existingEmployeeNos = new HashSet<>();
+        Set<String> existingNameSubjects = new HashSet<>();
+        for (Teacher teacher : teachers.findAll()) {
+            if (teacher.getEmployeeNo() != null) {
+                existingEmployeeNos.add(teacher.getEmployeeNo());
+            }
+            existingNameSubjects.add(teacher.getName() + "|" + (teacher.getSubject() == null ? "" : teacher.getSubject()));
+        }
         for (int i = 0; i < rows.size(); i++) {
             RowDto row = rows.get(i);
             int line = i + 1;
@@ -438,19 +472,15 @@ public class AiImportService {
             if (!employeeNo.isBlank()) {
                 if (!employeeNos.add(employeeNo)) {
                     errors.add(new ImportValidationException.RowError(line, "employeeNo", "工号在本次导入中重复"));
-                } else if (teachers.existsByEmployeeNo(employeeNo)) {
+                } else if (existingEmployeeNos.contains(employeeNo)) {
                     errors.add(new ImportValidationException.RowError(line, "employeeNo", "工号已存在"));
                 }
             } else if (!name.isBlank()) {
                 String key = name + "|" + subject;
                 if (!nameSubjects.add(key)) {
                     errors.add(new ImportValidationException.RowError(line, "name", "姓名与学科在本次导入中重复"));
-                } else {
-                    boolean exists = teachers.findByName(name).stream()
-                            .anyMatch(teacher -> Objects.equals(teacher.getSubject(), blankToNull(subject)));
-                    if (exists) {
-                        errors.add(new ImportValidationException.RowError(line, "name", "同名同科教师已存在"));
-                    }
+                } else if (existingNameSubjects.contains(key)) {
+                    errors.add(new ImportValidationException.RowError(line, "name", "同名同科教师已存在"));
                 }
             }
             if (!phone.isBlank() && !PHONE.matcher(phone).matches()) {

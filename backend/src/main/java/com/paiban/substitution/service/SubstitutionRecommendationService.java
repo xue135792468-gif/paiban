@@ -152,6 +152,10 @@ public class SubstitutionRecommendationService {
         Course course = courses.findById(request.getCourseId()).orElse(null);
         String courseSubject = courseSubject(course);
         Set<Long> busyTeacherIds = busyTeacherIds(request);
+        Map<Long, Long> substitutionCounts = substitutions
+                .findBySemesterIdAndStatus(request.getSemesterId(), Substitution.EFFECTIVE)
+                .stream()
+                .collect(Collectors.groupingBy(Substitution::getSubstituteTeacherId, Collectors.counting()));
 
         List<Candidate> candidates = new ArrayList<>();
         for (Teacher teacher : teachers.findAllByOrderByNameAsc()) {
@@ -164,8 +168,13 @@ public class SubstitutionRecommendationService {
                     && !teacherSubject.isEmpty()
                     && courseSubject.equalsIgnoreCase(teacherSubject);
             boolean freeAtPeriod = !busyTeacherIds.contains(teacher.getId());
-            long substitutionCount = substitutions.countBySemesterIdAndSubstituteTeacherIdAndStatus(
-                    request.getSemesterId(), teacher.getId(), Substitution.EFFECTIVE);
+            // ADR-0021: keep same-subject teachers (even if busy and adjustable) and free
+            // teachers from other subjects; a different-subject teacher who is busy cannot
+            // substitute without disturbing another class, so drop them.
+            if (!sameSubject && !freeAtPeriod) {
+                continue;
+            }
+            long substitutionCount = substitutionCounts.getOrDefault(teacher.getId(), 0L);
             int score = (sameSubject ? SAME_SUBJECT_SCORE : 0)
                     + (freeAtPeriod ? FREE_PERIOD_SCORE : 0)
                     - (int) (substitutionCount * PER_SUBSTITUTION_PENALTY);

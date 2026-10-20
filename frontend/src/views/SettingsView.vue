@@ -128,6 +128,20 @@
         </div>
         <el-button type="primary" plain @click="router.push('/admin/ai-providers')">去配置</el-button>
       </div>
+      <div class="ai-row">
+        <div>
+          <div class="ai-name">数据导入低置信度阈值</div>
+          <div class="hint">低于该值的单元格在预览中标黄，默认 0.8</div>
+        </div>
+        <el-input-number
+          :model-value="confidenceThreshold"
+          :min="0"
+          :max="1"
+          :step="0.05"
+          :precision="2"
+          @update:model-value="setConfidenceThreshold"
+        />
+      </div>
     </el-card>
 
     <el-card v-if="aiEnabled" shadow="never">
@@ -201,6 +215,12 @@ const logoName = computed(() => {
   const path = form['school.logo-path']
   return path ? path.split(/[\\/]/).pop() : ''
 })
+
+const confidenceThreshold = computed(() => Number(form['ai.import.confidence-threshold'] ?? 0.8))
+
+function setConfidenceThreshold(value: number | undefined) {
+  form['ai.import.confidence-threshold'] = String(value ?? 0.8)
+}
 
 // ADR-0003: AI entry points are hidden entirely while every feature is off.
 const aiEnabled = computed(

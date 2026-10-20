@@ -125,8 +125,8 @@ cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test
 ## 目录结构
 
 ```
-backend/   Spring Boot 单体应用（7 个业务模块：foundation / scheduling / timetable /
-           substitution / identity / integration / notification）
+backend/   Spring Boot 单体应用（业务模块：foundation / scheduling / timetable /
+           substitution / identity / integration / notification / ai）
 frontend/  Vue 3 SPA
 docs/adr/  架构决策记录
 .scratch/  规格与票据（本地 issue tracker）
@@ -141,10 +141,16 @@ docs/adr/  架构决策记录
 | `paiban.substitution.approval-mode` | 调代审批模式：`approval` / `direct` |
 | `paiban.notification.scope` | 通知范围：`minimal` / `with-grade-leader` / `with-admin` |
 | `paiban.integration.dingtalk.enabled` | 钉钉集成开关 |
-| `paiban.ai.features.*` | AI 特性开关（一期占位，默认关闭） |
+| `paiban.ai.encryption-key` | AI 供应商 API Key 的 AES-256 加密密钥（环境变量 `PAIBAN_AI_ENCRYPTION_KEY`） |
+| `paiban.ai.features.*` | AI 特性开关；二期已提供供应商管理、数据导入、调代推荐与操作历史 |
+| `school.type`（设置中心） | `junior` / `senior`，默认 `junior`，仅影响 UI 显示 |
+| `ai.import.confidence-threshold`（设置中心） | AI 导入低置信度阈值，默认 `0.8` |
 
 > 生产环境必须设置 `PAIBAN_JWT_SECRET`（至少 32 字符）。在非 `local`/`test`/`e2e` profile 下，
 > 若仍使用仓库内置的默认密钥，应用会拒绝启动。
+>
+> 生产环境还必须设置 `PAIBAN_AI_ENCRYPTION_KEY`（足够长的随机字符串）。未设置时会回退到仓库内的
+> 开发默认值，等同于公开密钥；`application.yml` 的默认值只用于本地开发。
 
 ## 术语
 

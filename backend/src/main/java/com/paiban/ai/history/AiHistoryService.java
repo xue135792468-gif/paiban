@@ -159,7 +159,7 @@ public class AiHistoryService {
                     log.getUsername(),
                     log.getCreatedAt().toString(),
                     importSummary(log),
-                    AiImportLog.COMMITTED.equals(log.getStatus()),
+                    !AiImportLog.FAILED.equals(log.getStatus()),
                     null,
                     null,
                     log.getId(),
@@ -289,12 +289,8 @@ public class AiHistoryService {
     }
 
     private List<Candidate> recommendations(String responseJson) {
-        JsonNode root = jsonNode(responseJson);
-        if (root == null) {
-            return List.of();
-        }
-        JsonNode array = root.isArray() ? root : root.path("recommendations");
-        if (!array.isArray()) {
+        JsonNode array = recommendationArray(jsonNode(responseJson));
+        if (array == null) {
             return List.of();
         }
         List<Candidate> result = new ArrayList<>();
@@ -306,6 +302,61 @@ public class AiHistoryService {
                     node.hasNonNull("score") ? node.get("score").asInt() : null));
         }
         return result;
+    }
+
+    /**
+     * The audit row stores the provider's raw HTTP body, not the extracted answer:
+     * OpenAI/DeepSeek put the JSON string under {@code choices[0].message.content},
+     * Gemini under {@code candidates[0].content.parts[].text}. Unwrap both before
+     * looking for the recommendation array.
+     */
+    private JsonNode recommendationArray(JsonNode root) {
+        if (root == null) {
+            return null;
+        }
+        if (root.isArray()) {
+            return root;
+        }
+        if (root.path("recommendations").isArray()) {
+            return root.path("recommendations");
+        }
+        String content = null;
+        JsonNode choices = root.path("choices");
+        if (choices.isArray() && !choices.isEmpty()) {
+            content = choices.get(0).path("message").path("content").asText(null);
+        }
+        JsonNode candidates = root.path("candidates");
+        if ((content == null || content.isBlank()) && candidates.isArray() && !candidates.isEmpty()) {
+            StringBuilder text = new StringBuilder();
+            for (JsonNode part : candidates.get(0).path("content").path("parts")) {
+                text.append(part.path("text").asText(""));
+            }
+            content = text.toString();
+        }
+        if (content == null || content.isBlank()) {
+            return null;
+        }
+        JsonNode parsed = jsonNode(stripCodeFence(content.trim()));
+        if (parsed == null) {
+            return null;
+        }
+        if (parsed.isArray()) {
+            return parsed;
+        }
+        return parsed.path("recommendations").isArray() ? parsed.path("recommendations") : null;
+    }
+
+    private String stripCodeFence(String text) {
+        if (!text.startsWith("```")) {
+            return text;
+        }
+        int firstLineEnd = text.indexOf('\n');
+        if (firstLineEnd < 0) {
+            return text;
+        }
+        String body = text.substring(firstLineEnd + 1);
+        int closing = body.lastIndexOf("```");
+        return closing >= 0 ? body.substring(0, closing).trim() : body.trim();
     }
 
     private Object parseJson(String value) {

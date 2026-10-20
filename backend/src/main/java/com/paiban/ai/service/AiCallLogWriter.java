@@ -68,6 +68,22 @@ public class AiCallLogWriter {
         }
     }
 
+    /** A call so malformed that it has no task type still leaves an audit trail. */
+    public void recordInvalid(String message) {
+        try {
+            AiCallLog row = new AiCallLog();
+            row.setTaskType("invalid");
+            row.setSuccess(false);
+            row.setErrorCode("INVALID_REQUEST");
+            row.setErrorMessage(truncate(message, MAX_MESSAGE_LENGTH));
+            row.setLatencyMs(0L);
+            row.setCreatedAt(Instant.now());
+            callLogs.save(row);
+        } catch (RuntimeException ex) {
+            // Auditing must never surface into the business flow.
+        }
+    }
+
     /** Prompt shape only: no base URL, no key, no image bytes. */
     private String requestJson(AiRequest request) {
         ObjectNode root = objectMapper.createObjectNode();

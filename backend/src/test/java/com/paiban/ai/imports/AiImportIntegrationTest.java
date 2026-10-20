@@ -16,8 +16,11 @@ import io.restassured.RestAssured;
 import io.restassured.response.Response;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,6 +29,7 @@ import javax.imageio.ImageIO;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,9 +48,26 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
     @Autowired
     private FakeAiGateway fake;
 
+    @Autowired
+    private AiImportLogRepository importLogs;
+
     @BeforeEach
     void resetFake() {
         fake.reset();
+    }
+
+    @AfterEach
+    void cleanUploadedSources() {
+        for (AiImportLog log : importLogs.findAll()) {
+            if (log.getFilePath() == null) {
+                continue;
+            }
+            try {
+                Files.deleteIfExists(Paths.get(log.getFilePath()));
+            } catch (IOException ignored) {
+                // best-effort cleanup of a temp upload
+            }
+        }
     }
 
     @Test
@@ -83,6 +104,13 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(200).extract().jsonPath().getList("$");
         assertThat(teacherRows).hasSize(23);
         assertThat(teacherRows).anyMatch(row -> "教师一".equals(row.get("name")));
+
+        AiImportLog stored = importLogs.findById(sessionId).orElseThrow();
+        assertThat(stored.getStatus()).isEqualTo(AiImportLog.COMMITTED);
+        // The original AI answer survives the edit; the confirmed copy carries the correction.
+        assertThat(stored.getPreviewJson()).contains("教师1").doesNotContain("教师一");
+        assertThat(stored.getConfirmedJson()).contains("教师一").contains("教师23");
+        assertThat(stored.getResultJson()).contains("\"imported\":23").contains("教师一");
     }
 
     @Test

@@ -16,6 +16,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
  * Turns {@code ai_task_config} rows into the provider/model pair an AI task runs on.
@@ -88,7 +90,8 @@ public class AiConfigResolver {
         cache.clear();
     }
 
-    @EventListener
+    /** After commit, so a concurrent read cannot cache the pre-change routing again. */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onConfigChanged(AiConfigChangedEvent event) {
         invalidate();
     }

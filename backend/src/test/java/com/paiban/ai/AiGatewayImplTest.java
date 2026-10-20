@@ -219,6 +219,19 @@ class AiGatewayImplTest {
     }
 
     @Test
+    void invalidRequestIsStillAudited() {
+        AiResult result = gateway.chat(null);
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.errorCode()).isEqualTo("INVALID_REQUEST");
+
+        AiCallLog logged = captureLog();
+        assertThat(logged.getTaskType()).isEqualTo("invalid");
+        assertThat(logged.isSuccess()).isFalse();
+        assertThat(logged.getErrorCode()).isEqualTo("INVALID_REQUEST");
+    }
+
+    @Test
     void missingTaskConfigReturnsNotConfigured() {
         AiResult result = gateway.chat(request(AiTaskType.DATA_IMPORT));
 

@@ -22,5 +22,6 @@
 
 - 前端组件通过 `v-if="schoolType === 'senior'"` 控制显示
 - 后端不感知学校类型，所有接口对两种模式一致
-- 设置项存储在 `system_config` 表，key 为 `school.type`
+- 设置项存储在现有 `app_setting` 表，key 为 `school.type`（不新建 `system_config` 表）
+- 新建学期默认只播种教师不冲突、班级不冲突、教室不冲突 3 条硬约束；`ROOM_CAPACITY_FIT` 仍在约束目录中，可按需启用。这是两种模式共享的全局默认值
 - 未来支持"完全中学"时扩展枚举为 `combined`

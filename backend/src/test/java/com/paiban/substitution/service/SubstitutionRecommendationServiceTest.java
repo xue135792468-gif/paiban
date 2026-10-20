@@ -2,8 +2,6 @@ package com.paiban.substitution.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -69,8 +67,8 @@ class SubstitutionRecommendationServiceTest {
         when(courses.findById(COURSE_ID)).thenReturn(Optional.of(course("语文", "语文")));
         when(substitutions.findBySemesterIdAndEffectiveDateAndStatus(
                 SEMESTER_ID, DATE, Substitution.EFFECTIVE)).thenReturn(List.of());
-        when(substitutions.countBySemesterIdAndSubstituteTeacherIdAndStatus(
-                eq(SEMESTER_ID), anyLong(), eq(Substitution.EFFECTIVE))).thenReturn(0L);
+        when(substitutions.findBySemesterIdAndStatus(SEMESTER_ID, Substitution.EFFECTIVE))
+                .thenReturn(List.of());
     }
 
     @Test
@@ -87,19 +85,25 @@ class SubstitutionRecommendationServiceTest {
                 otherSubjectBusy, sameSubjectHeavy, inactive));
         when(entries.findBySemesterId(SEMESTER_ID)).thenReturn(List.of(
                 entry(3L, 3, 3), entry(5L, 3, 3)));
-        when(substitutions.countBySemesterIdAndSubstituteTeacherIdAndStatus(
-                SEMESTER_ID, 6L, Substitution.EFFECTIVE)).thenReturn(5L);
+        when(substitutions.findBySemesterIdAndStatus(SEMESTER_ID, Substitution.EFFECTIVE))
+                .thenReturn(List.of(
+                        substitution(6L, 80L, null, null),
+                        substitution(6L, 81L, null, null),
+                        substitution(6L, 82L, null, null),
+                        substitution(6L, 83L, null, null),
+                        substitution(6L, 84L, null, null)));
 
         List<SubstitutionRecommendationService.Candidate> pool = service.candidatePool(request());
 
         assertThat(pool).extracting(SubstitutionRecommendationService.Candidate::teacherId)
-                .containsExactly(2L, 6L, 3L, 4L, 5L);
-        assertThat(pool).noneMatch(candidate -> candidate.teacherId() == 1L || candidate.teacherId() == 7L);
+                .containsExactly(2L, 6L, 3L, 4L);
+        assertThat(pool).noneMatch(candidate -> candidate.teacherId() == 1L
+                || candidate.teacherId() == 5L
+                || candidate.teacherId() == 7L);
         assertThat(pool.get(0).ruleScore()).isEqualTo(80);
         assertThat(pool.get(1).ruleScore()).isEqualTo(70);
         assertThat(pool.get(2).ruleScore()).isEqualTo(50);
         assertThat(pool.get(3).ruleScore()).isEqualTo(30);
-        assertThat(pool.get(4).ruleScore()).isZero();
         assertThat(pool.get(0).sameSubject()).isTrue();
         assertThat(pool.get(0).busyAtPeriod()).isFalse();
         assertThat(pool.get(2).busyAtPeriod()).isTrue();
@@ -123,8 +127,8 @@ class SubstitutionRecommendationServiceTest {
     void effectiveSubstitutionAtTheSameSlotMarksTeacherBusy() {
         when(teachers.findAllByOrderByNameAsc()).thenReturn(List.of(
                 teacher(1L, "张老师", "语文", true),
-                teacher(8L, "吴老师", "数学", true),
-                teacher(9L, "郑老师", "数学", true)));
+                teacher(8L, "吴老师", "语文", true),
+                teacher(9L, "郑老师", "语文", true)));
         Substitution sameSlot = substitution(8L, 90L, null, null);
         Substitution movedSlot = substitution(9L, 91L, 5, 5);
         when(substitutions.findBySemesterIdAndEffectiveDateAndStatus(

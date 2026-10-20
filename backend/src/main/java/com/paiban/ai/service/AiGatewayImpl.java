@@ -64,14 +64,18 @@ public class AiGatewayImpl implements AiGateway {
 
     private AiResult execute(AiRequest request, boolean vision) {
         long started = System.nanoTime();
-        if (request == null
-                || request.taskType() == null
-                || request.messages() == null
-                || request.messages().isEmpty()) {
-            // No task type means no ai_call_log row (task_type is NOT NULL).
+        if (request == null || request.taskType() == null) {
+            callLogWriter.recordInvalid("AI 请求缺少任务类型");
             return new AiResult(
-                    false, null, "INVALID_REQUEST", "AI 请求缺少任务类型或消息",
+                    false, null, "INVALID_REQUEST", "AI 请求缺少任务类型",
                     null, null, null, null, null, null, elapsed(started), null);
+        }
+        if (request.messages() == null || request.messages().isEmpty()) {
+            AiResult invalid = new AiResult(
+                    false, null, "INVALID_REQUEST", "AI 请求缺少消息",
+                    null, null, null, null, null, null, elapsed(started), null);
+            callLogWriter.record(request, null, invalid);
+            return invalid;
         }
         AiRequest effective = vision ? request : withoutImages(request);
 

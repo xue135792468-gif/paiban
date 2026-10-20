@@ -131,7 +131,7 @@ class AiHistoryIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void recommendationDetailJoinsTheRequestAndFinalSubstitute() {
+    void recommendationDetailJoinsTheRequestAndFinalSubstitute() throws Exception {
         String admin = adminToken();
         ScheduleFixture.Result fixture = ScheduleFixture.published(admin, 5);
         Map<String, Object> entry = ScheduleFixture.classEntries(admin, fixture.classId()).get(0);
@@ -149,9 +149,13 @@ class AiHistoryIntegrationTest extends ApiIntegrationTest {
         substitution.setCreatedAt(Instant.now());
         substitutions.save(substitution);
 
-        String response = """
+        String content = """
                 [{"teacherId":%d,"name":"%s","reason":"同学科，当天该时段无课","score":92}]
-                """.formatted(substitute.getId(), substitute.getName());
+                """.formatted(substitute.getId(), substitute.getName()).strip();
+        // The audit row keeps the provider's raw OpenAI-shaped body, not the extracted answer.
+        String response = "{\"choices\":[{\"message\":{\"content\":"
+                + new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(content)
+                + "}}]}";
         long callId = callLog("substitution_recommend", true, null, null, requestId, Instant.now(), response);
 
         as(adminToken()).when().get("/api/ai/history/calls/" + callId)

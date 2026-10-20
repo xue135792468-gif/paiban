@@ -21,6 +21,8 @@ import com.paiban.common.web.ApiException;
 import java.net.URI;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -72,8 +74,10 @@ public class AiProviderService {
 
     @Transactional(readOnly = true)
     public List<ProviderDto> list() {
+        Map<Long, List<AiModel>> modelsByProvider = models.findAll().stream()
+                .collect(Collectors.groupingBy(AiModel::getProviderId));
         return providers.findAllByOrderByIdAsc().stream()
-                .map(provider -> toDto(provider, models.findByProviderIdOrderByIdAsc(provider.getId())))
+                .map(provider -> toDto(provider, modelsByProvider.getOrDefault(provider.getId(), List.of())))
                 .toList();
     }
 
@@ -202,7 +206,6 @@ public class AiProviderService {
         configChanged("model-deleted");
     }
 
-    @Transactional(readOnly = true)
     public ConnectionTestDto testConnection(Long id) {
         AiProvider provider = requireProvider(id);
         try {
@@ -212,7 +215,6 @@ public class AiProviderService {
         }
     }
 
-    @Transactional(readOnly = true)
     public List<String> fetchModels(Long id) {
         return testConnection(id).modelNames();
     }

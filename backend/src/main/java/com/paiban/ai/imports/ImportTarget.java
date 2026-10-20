@@ -1,8 +1,6 @@
 package com.paiban.ai.imports;
 
-import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Target shapes the import pipeline can write into. Phase two ships teachers;
@@ -40,15 +38,4 @@ public enum ImportTarget {
         return fields.stream().map(Field::field).toList();
     }
 
-    public Optional<Field> field(String name) {
-        return fields.stream().filter(field -> field.field().equals(name)).findFirst();
-    }
-
-    public static ImportTarget fromCode(String code) {
-        String normalized = code == null ? "" : code.trim().toLowerCase();
-        return Arrays.stream(values())
-                .filter(value -> value.code.equals(normalized))
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("不支持的导入目标: " + code));
-    }
 }
