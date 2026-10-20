@@ -20,6 +20,13 @@ public class GlobalExceptionHandler {
         return body(ex.getStatus(), ex.getMessage());
     }
 
+    @ExceptionHandler(ImportValidationException.class)
+    public ResponseEntity<Map<String, Object>> handleImportValidation(ImportValidationException ex) {
+        Map<String, Object> payload = errorPayload(HttpStatus.BAD_REQUEST, ex.getMessage());
+        payload.put("errors", ex.getErrors());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(payload);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
         Map<String, String> fields = new LinkedHashMap<>();

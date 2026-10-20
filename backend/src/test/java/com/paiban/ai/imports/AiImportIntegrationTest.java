@@ -1,0 +1,352 @@
+package com.paiban.ai.imports;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasSize;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.paiban.ai.AiGateway;
+import com.paiban.ai.AiRequest;
+import com.paiban.ai.AiResult;
+import com.paiban.ai.AiTaskType;
+import com.paiban.support.ApiIntegrationTest;
+import com.paiban.support.TestData;
+import io.restassured.RestAssured;
+import io.restassured.response.Response;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import javax.imageio.ImageIO;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.test.context.ActiveProfiles;
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@ActiveProfiles("test")
+class AiImportIntegrationTest extends ApiIntegrationTest {
+
+    private static final String XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+    @Autowired
+    private FakeAiGateway fake;
+
+    @BeforeEach
+    void resetFake() {
+        fake.reset();
+    }
+
+    @Test
+    void messyExcelBecomesPreviewThenImportsTwentyThreeTeachers() throws Exception {
+        String admin = adminToken();
+        fake.response = aiResponse(teachers(23, "语文", 0.5));
+
+        Response preview = upload(admin, "/api/ai/import/excel", "教师名单.xlsx", excelBytes(23), XLSX);
+        preview.then().statusCode(200)
+                .body("targetType", equalTo("teacher"))
+                .body("columns", hasSize(5))
+                .body("rows", hasSize(23))
+                .body("mappings[0].target", equalTo("name"))
+                .body("rows[0].values.name", equalTo("教师1"))
+                .body("rows[0].lowConfidence", org.hamcrest.Matchers.hasItem("subject"));
+
+        long sessionId = preview.jsonPath().getLong("sessionId");
+
+        List<Map<String, Object>> rows = preview.jsonPath().getList("rows");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> firstValues = (Map<String, Object>) rows.get(0).get("values");
+        firstValues.put("name", "教师一");
+        as(admin).body(Map.of("rows", rows))
+                .when().put("/api/ai/import/sessions/" + sessionId + "/rows")
+                .then().statusCode(200)
+                .body("status", equalTo("EDITED"))
+                .body("rows[0].values.name", equalTo("教师一"));
+
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/commit")
+                .then().statusCode(200)
+                .body("imported", equalTo(23));
+
+        List<Map<String, Object>> teacherRows = as(admin).when().get("/api/teachers")
+                .then().statusCode(200).extract().jsonPath().getList("$");
+        assertThat(teacherRows).hasSize(23);
+        assertThat(teacherRows).anyMatch(row -> "教师一".equals(row.get("name")));
+    }
+
+    @Test
+    void pastedTextIsParsedAndCommitted() {
+        String admin = adminToken();
+        fake.response = aiResponse(List.of(
+                teacherRow("张三", "语文", "13800000001", 0.99),
+                teacherRow("李四", "数学", "13800000002", 0.98)));
+
+        Response preview = as(admin).body(Map.of("text", "张老师教语文，电话 13800000001；李老师教数学"))
+                .when().post("/api/ai/import/text");
+        preview.then().statusCode(200)
+                .body("rows", hasSize(2))
+                .body("explanation", containsString("映射"))
+                .body("threshold", org.hamcrest.Matchers.notNullValue());
+
+        long sessionId = preview.jsonPath().getLong("sessionId");
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/commit")
+                .then().statusCode(200)
+                .body("imported", equalTo(2));
+
+        assertThat(as(admin).when().get("/api/teachers").then().statusCode(200)
+                .extract().jsonPath().getList("name")).containsExactlyInAnyOrder("张三", "李四");
+    }
+
+    @Test
+    void imageInputUsesTheVisionGatewayAndCanBeDownloaded() throws Exception {
+        String admin = adminToken();
+        byte[] image = pngBytes();
+        fake.response = aiResponse(List.of(teacherRow("王五", "英语", "13800000003", 0.9)));
+
+        Response preview = upload(admin, "/api/ai/import/image", "课表照片.png", image, "image/png");
+        preview.then().statusCode(200).body("rows", hasSize(1));
+
+        assertThat(fake.lastRequest).isNotNull();
+        assertThat(fake.lastRequest.images()).hasSize(1);
+        assertThat(fake.lastRequest.images().get(0).mimeType()).isEqualTo("image/png");
+
+        long sessionId = preview.jsonPath().getLong("sessionId");
+        byte[] downloaded = RestAssured.given()
+                .header("Authorization", "Bearer " + admin)
+                .when().get("/api/ai/import/sessions/" + sessionId + "/file")
+                .then().statusCode(200)
+                .contentType("image/png")
+                .extract().asByteArray();
+        assertThat(downloaded).isEqualTo(image);
+    }
+
+    @Test
+    void csvWithGbkEncodingIsAccepted() {
+        String admin = adminToken();
+        fake.response = aiResponse(List.of(teacherRow("赵六", "化学", "13800000004", 0.95)));
+        String csv = "姓名,学科,电话\n赵六,化学,13800000004\n";
+        byte[] bytes = csv.getBytes(Charset.forName("GBK"));
+
+        Response preview = upload(admin, "/api/ai/import/excel", "教师.csv", bytes, "text/csv");
+        preview.then().statusCode(200).body("rows", hasSize(1));
+        assertThat(fake.lastRequest.messages().get(1).content()).contains("赵六");
+    }
+
+    @Test
+    void validationFailureBlocksTheWholeCommit() {
+        String admin = adminToken();
+        Map<String, Object> missingName = teacherRow("", "语文", "13800000005", 0.9);
+        fake.response = aiResponse(List.of(missingName, teacherRow("孙七", "物理", "", 0.9)));
+
+        Response preview = as(admin).body(Map.of("text", "某老师没写名字"))
+                .when().post("/api/ai/import/text");
+        preview.then().statusCode(200);
+        long sessionId = preview.jsonPath().getLong("sessionId");
+
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/commit")
+                .then().statusCode(400)
+                .body("errors[0].field", equalTo("name"))
+                .body("message", containsString("校验失败"));
+
+        assertThat(as(admin).when().get("/api/teachers").then().statusCode(200)
+                .extract().jsonPath().getList("$")).isEmpty();
+    }
+
+    @Test
+    void userEditsWinOverAiDuringContinueAndReparseStillWorks() {
+        String admin = adminToken();
+        fake.response = aiResponse(List.of(teacherRow("张三", "", "", 0.4)));
+
+        Response preview = as(admin).body(Map.of("text", "张三老师"))
+                .when().post("/api/ai/import/text");
+        long sessionId = preview.jsonPath().getLong("sessionId");
+
+        List<Map<String, Object>> rows = preview.jsonPath().getList("rows");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> values = (Map<String, Object>) rows.get(0).get("values");
+        values.put("subject", "语文");
+        as(admin).body(Map.of("rows", rows))
+                .when().put("/api/ai/import/sessions/" + sessionId + "/rows")
+                .then().statusCode(200);
+
+        fake.response = aiResponse(List.of(teacherRow("AI 覆盖", "数学", "", 0.9)));
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/continue")
+                .then().statusCode(200)
+                .body("status", equalTo("EDITED"))
+                .body("rows[0].values.name", equalTo("张三"))
+                .body("rows[0].values.subject", equalTo("语文"));
+
+        fake.response = aiResponse(List.of(
+                teacherRow("张三", "语文", "", 0.9),
+                teacherRow("李四", "数学", "", 0.9)));
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/reparse")
+                .then().statusCode(200)
+                .body("status", equalTo("PREVIEW"))
+                .body("rows", hasSize(2));
+    }
+
+    @Test
+    void teacherCannotUseTheImportPipeline() {
+        String admin = adminToken();
+        String username = "imp_" + TestData.suffix();
+        createUser(admin, username, "teacher123", "teacher");
+        String teacher = login(username, "teacher123");
+
+        as(teacher).body(Map.of("text", "张老师教语文"))
+                .when().post("/api/ai/import/text")
+                .then().statusCode(403);
+    }
+
+    @Test
+    void unconfiguredAiGivesAClearMessage() {
+        String admin = adminToken();
+        fake.available = false;
+
+        as(admin).body(Map.of("text", "张老师教语文"))
+                .when().post("/api/ai/import/text")
+                .then().statusCode(400)
+                .body("message", containsString("配置 AI 供应商"));
+    }
+
+    // ------------------------------------------------------------------ helpers
+
+    private Response upload(String token, String path, String name, byte[] bytes, String contentType) {
+        return RestAssured.given()
+                .header("Authorization", "Bearer " + token)
+                .multiPart("file", name, bytes, contentType)
+                .when().post(path);
+    }
+
+    private byte[] excelBytes(int count) throws Exception {
+        try (XSSFWorkbook workbook = new XSSFWorkbook();
+                ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("教师");
+            Row header = sheet.createRow(0);
+            header.createCell(0).setCellValue("老师姓名");
+            header.createCell(1).setCellValue("任教学科");
+            header.createCell(2).setCellValue("联系电话");
+            for (int i = 1; i <= count; i++) {
+                Row row = sheet.createRow(i);
+                row.createCell(0).setCellValue("教师" + i);
+                row.createCell(1).setCellValue("语文");
+                row.createCell(2).setCellValue("1380000" + String.format("%04d", i));
+            }
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private byte[] pngBytes() throws Exception {
+        BufferedImage image = new BufferedImage(4, 4, BufferedImage.TYPE_INT_RGB);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ImageIO.write(image, "png", out);
+        return out.toByteArray();
+    }
+
+    private List<Map<String, Object>> teachers(int count, String subject, double subjectConfidence) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (int i = 1; i <= count; i++) {
+            rows.add(teacherRow("教师" + i, subject, "1380000" + String.format("%04d", i), subjectConfidence));
+        }
+        return rows;
+    }
+
+    private Map<String, Object> teacherRow(
+            String name, String subject, String phone, double subjectConfidence) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("name", name);
+        values.put("employeeNo", "");
+        values.put("phone", phone);
+        values.put("email", "");
+        values.put("subject", subject);
+        Map<String, Object> confidence = new LinkedHashMap<>();
+        confidence.put("name", 0.99);
+        confidence.put("employeeNo", 1.0);
+        confidence.put("phone", 0.99);
+        confidence.put("email", 1.0);
+        confidence.put("subject", subjectConfidence);
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("values", values);
+        row.put("confidence", confidence);
+        return row;
+    }
+
+    private String aiResponse(List<Map<String, Object>> rows) {
+        try {
+            return new ObjectMapper().writeValueAsString(Map.of(
+                    "mappings", List.of(Map.of(
+                            "source", "老师姓名",
+                            "target", "name",
+                            "note", "原始「老师姓名」列 → 系统 name 字段")),
+                    "rows", rows,
+                    "explanation", "根据表头识别姓名与学科，按中国人民常见的教师名单格式完成映射。"));
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    @TestConfiguration
+    static class FakeAiConfig {
+
+        @Bean
+        @Primary
+        FakeAiGateway fakeAiGateway() {
+            return new FakeAiGateway();
+        }
+    }
+
+    static class FakeAiGateway implements AiGateway {
+
+        volatile boolean available = true;
+        volatile String response = "{\"mappings\":[],\"rows\":[],\"explanation\":\"\"}";
+        volatile AiRequest lastRequest;
+        volatile int calls;
+
+        void reset() {
+            available = true;
+            lastRequest = null;
+            calls = 0;
+            response = "{\"mappings\":[],\"rows\":[],\"explanation\":\"\"}";
+        }
+
+        @Override
+        public AiResult chat(AiRequest request) {
+            return answer(request);
+        }
+
+        @Override
+        public AiResult chatWithVision(AiRequest request) {
+            return answer(request);
+        }
+
+        @Override
+        public boolean configured() {
+            return available;
+        }
+
+        @Override
+        public boolean configured(AiTaskType taskType) {
+            return available;
+        }
+
+        private AiResult answer(AiRequest request) {
+            calls++;
+            lastRequest = request;
+            return new AiResult(
+                    true, response, null, null,
+                    1L, "fake", 2L, "fake-model",
+                    10, 20, 5L, response);
+        }
+    }
+}

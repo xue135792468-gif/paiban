@@ -36,7 +36,8 @@ public class SettingsController {
             SettingsService.SCHOOL_TYPE,
             SettingsService.PUBLIC_BASE_URL,
             SettingsService.AI_SUBSTITUTE_RECOMMENDATION,
-            SettingsService.AI_NATURAL_LANGUAGE_CONSTRAINTS);
+            SettingsService.AI_NATURAL_LANGUAGE_CONSTRAINTS,
+            SettingsService.AI_IMPORT_CONFIDENCE_THRESHOLD);
 
     private final SettingsService settings;
 
@@ -126,6 +127,16 @@ public class SettingsController {
                 || SettingsService.AI_NATURAL_LANGUAGE_CONSTRAINTS.equals(key))
                 && !List.of("true", "false").contains(value)) {
             throw ApiException.badRequest(key + " 只能是 true 或 false");
+        }
+        if (SettingsService.AI_IMPORT_CONFIDENCE_THRESHOLD.equals(key)) {
+            try {
+                double threshold = Double.parseDouble(value);
+                if (threshold < 0 || threshold > 1) {
+                    throw ApiException.badRequest("低置信度阈值必须在 0 到 1 之间");
+                }
+            } catch (NumberFormatException ex) {
+                throw ApiException.badRequest("低置信度阈值必须是数字");
+            }
         }
     }
 }

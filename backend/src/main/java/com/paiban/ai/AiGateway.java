@@ -20,4 +20,9 @@ public interface AiGateway {
 
     /** True when both task slots resolve to an enabled provider and model. */
     boolean configured();
+
+    /** Per-task availability; a task can be usable while the other one is not. */
+    default boolean configured(AiTaskType taskType) {
+        return configured();
+    }
 }
