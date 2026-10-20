@@ -70,7 +70,8 @@ cd frontend && npm run lint && npm run build
 cd frontend && npm run test:e2e    # Playwright 会自动启动后端（e2e profile）与前端
 ```
 
-E2E 需要 `JAVA_HOME` 指向 JDK 21（Windows 下请使用 `E:\...` 形式的路径，Playwright 通过 `mvnw.cmd` 启动后端）。
+E2E 需要 JDK 21。Playwright 配置会优先使用仓库内的 `.tools/jdk-*`（存在时自动设置 `JAVA_HOME`）；
+`scripts/verify.sh` 也会自动 source `.tools/env.sh`。CI 使用 runner 自带的 JDK。
 
 > 说明：规格要求集成测试使用 Testcontainers + 真实 PostgreSQL。`PostgresContainerIT` 已按此实现，
 > 但只在检测到 Docker 时执行：`./mvnw verify -Dtestcontainers=true`。默认执行环境没有 Docker，

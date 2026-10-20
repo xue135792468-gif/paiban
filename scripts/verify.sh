@@ -3,6 +3,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# The repo ships its own JDK/Maven under .tools; use it when present so the gate
+# works from a fresh shell and Playwright inherits JAVA_HOME.
+if [[ -f .tools/env.sh ]]; then
+  # shellcheck disable=SC1091
+  source .tools/env.sh
+fi
+
 FULL=0
 if [[ "${1:-}" == "--full" ]]; then
   FULL=1

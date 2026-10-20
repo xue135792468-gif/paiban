@@ -4,6 +4,7 @@ dist/
 node_modules/
 *.class
 *.jar
+*.tsbuildinfo
 !.mvn/wrapper/maven-wrapper.jar
 
 # tools (local toolchain, not part of the repo)
