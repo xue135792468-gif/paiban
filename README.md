@@ -16,6 +16,14 @@
 - 课表导出 Excel / PDF
 - 设置中心、初始化向导、用户账号 Excel 批量创建
 
+## 功能范围（二期）
+
+- 初中 / 高中模式切换：默认初中，隐藏权重滑块、约束模板、多草稿对比、全校视角等高级功能
+- AI 供应商与模型管理：预设 DeepSeek / Gemini / 通义千问 / 智谱，支持自定义 OpenAI 兼容端点；API Key 加密存储
+- AI 数据导入：Excel/CSV、文本粘贴、图片三种输入，AI 解析 → 预览（低置信度标黄）→ 人工微调 → 入库
+- AI 调代推荐：审批界面手动触发，返回 3 名候选教师及理由，不自动创建或批准申请
+- AI 操作历史：导入与调代调用统一审计，支持筛选、详情与 Excel/PDF 导出
+
 ## 本地启动（三条命令）
 
 ```bash
@@ -119,7 +127,7 @@ cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test
 - **年级组长**：一期未建模，通知范围 `with-grade-leader` 实际包含班主任；设置页已注明。
 - **登录限速**：应用层未内置失败锁定，生产部署建议在反向代理/网关层配置限流。
 - **测试**：默认使用 H2（PostgreSQL 兼容模式）；CI 使用 `-Dtestcontainers=true` 在真实 PostgreSQL 上
-  跑 Flyway 校验，并执行 4 个 Playwright 验收场景。约束引擎测试覆盖主要硬约束与部分软约束，
+  跑 Flyway 校验，并执行 6 个 Playwright 验收场景。约束引擎测试覆盖主要硬约束与部分软约束，
   尚未做到 24 条逐一覆盖。
 
 ## 目录结构
