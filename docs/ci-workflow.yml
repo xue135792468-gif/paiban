@@ -1,15 +1,16 @@
-# 由于 GitHub OAuth App 缺少 workflow scope，CI 定义暂存于此。
-# 首次推送后，请在 GitHub 网页上把本文件内容复制到 .github/workflows/ci.yml。
-
 name: ci
 
 on:
   push:
   pull_request:
 
+env:
+  TZ: Asia/Shanghai
+
 jobs:
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -23,6 +24,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -35,6 +37,9 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Warm backend build
+        working-directory: backend
+        run: ./mvnw -B -DskipTests package
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
@@ -44,9 +49,19 @@ jobs:
       - name: Run acceptance scenarios
         working-directory: frontend
         run: npm run test:e2e
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            frontend/test-results
+            frontend/playwright-report
+          retention-days: 7
 
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
