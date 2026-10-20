@@ -35,6 +35,9 @@ backend/src/main/java/com/paiban/
   - `npm run lint && npm run build` → 通过
   - 新增 `EngineConstraintTest` 插件发现用例（18/18）
 
+> CI 定义暂存于 `docs/ci-workflow.yml`：推送时使用的 GitHub OAuth App 缺少 `workflow` scope，
+> 无法直接写入 `.github/workflows/ci.yml`。合并前请在网页上把该文件内容复制到 `.github/workflows/ci.yml`。
+
 ## Merge Danger
 
 **Door:** two-way
