@@ -94,7 +94,7 @@ public class NotificationService {
             adminUsers.addAll(userIds(users.adminUsers()));
         }
 
-        String link = "/substitutions/" + request.getId();
+        String link = "/substitutions?requestId=" + request.getId();
         notify(NotificationTemplates.SUBSTITUTION_EFFECTIVE_ORIGINAL, originalUsers, variables, link);
         notify(NotificationTemplates.SUBSTITUTION_EFFECTIVE_SUBSTITUTE, substituteUsers, variables, link);
         notify(NotificationTemplates.SUBSTITUTION_EFFECTIVE_HEAD_TEACHER, headTeacherUsers, variables, link);
@@ -107,7 +107,7 @@ public class NotificationService {
                 NotificationTemplates.SUBSTITUTION_REJECTED,
                 userIds(users.usersByTeacherId(request.getOriginalTeacherId())),
                 variables,
-                "/substitutions/" + request.getId());
+                "/substitutions?requestId=" + request.getId());
     }
 
     @EventListener

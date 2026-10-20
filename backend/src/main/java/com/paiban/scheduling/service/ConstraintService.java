@@ -109,6 +109,11 @@ public class ConstraintService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public boolean hasConfigs(Long semesterId) {
+        return !configs.findBySemesterId(semesterId).isEmpty();
+    }
+
     @Transactional
     public TemplateDto saveTemplate(String name, Long semesterId) {
         Long resolved = semesterId != null ? semesters.require(semesterId).getId()

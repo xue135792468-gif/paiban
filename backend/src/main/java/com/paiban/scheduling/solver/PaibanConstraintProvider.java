@@ -21,6 +21,11 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         ConstraintSettings s = ConstraintSettingsHolder.get();
         java.util.List<Constraint> constraints = new java.util.ArrayList<>();
 
+        // Structural constraints that are always on: every lesson must be placed and
+        // course metadata (required room type) is part of the school's data model.
+        constraints.add(unassignedLesson(factory));
+        constraints.add(courseRoomTypeMetadata(factory));
+
         if (s.enabled(ConstraintType.TEACHER_CONFLICT)) {
             constraints.add(teacherConflict(factory, s));
         }
@@ -105,6 +110,24 @@ public class PaibanConstraintProvider implements ConstraintProvider {
     }
 
     // ---------- hard constraints ----------
+
+    private Constraint unassignedLesson(ConstraintFactory f) {
+        return f.forEachIncludingUnassigned(Lesson.class)
+                .filter(lesson -> lesson.getPeriod() == null || lesson.getRoom() == null)
+                .penalize(HardSoftScore.ONE_HARD)
+                .asConstraint("课节未排");
+    }
+
+    private Constraint courseRoomTypeMetadata(ConstraintFactory f) {
+        return f.forEach(Lesson.class)
+                .filter(lesson -> lesson.getPeriod() != null
+                        && lesson.getRequiredRoomType() != null
+                        && !lesson.getRequiredRoomType().isBlank()
+                        && (lesson.getRoom() == null
+                        || !lesson.getRequiredRoomType().equals(lesson.getRoom().getType())))
+                .penalize(HardSoftScore.ONE_HARD)
+                .asConstraint("课程教室类型要求");
+    }
 
     private Constraint teacherConflict(ConstraintFactory f, ConstraintSettings s) {
         return f.forEachUniquePair(
@@ -291,6 +314,7 @@ public class PaibanConstraintProvider implements ConstraintProvider {
                                 ? -1
                                 : lesson.getPeriod().getDayOfWeek()))
                 .filter((a, b) -> a.getPeriod() != null
+                        && a.isAllowConsecutive()
                         && s.matchesCourse(type, a.getCourseId())
                         && Math.abs(a.getPeriod().getPeriodNo() - b.getPeriod().getPeriodNo()) == 1)
                 .reward(HardSoftScore.ofSoft(Math.max(1, s.weight(type))))

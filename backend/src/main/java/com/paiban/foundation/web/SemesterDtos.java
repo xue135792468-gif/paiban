@@ -40,4 +40,6 @@ public final class SemesterDtos {
                                                 Integer afternoonCount,
                                                 Integer eveningCount,
                                                 List<Integer> days) {}
+
+    public record CopyResultDto(int periods, int grades, int classes, int assignments) {}
 }

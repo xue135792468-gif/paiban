@@ -37,8 +37,17 @@ public class FoundationController {
     }
 
     @GetMapping("/teachers")
+    @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
     public List<TeacherDto> teachers() {
         return service.listTeachers();
+    }
+
+    /** Id + name only, so teachers can pick substitutes without seeing phone/email. */
+    @GetMapping("/teachers/options")
+    public List<FoundationDtos.TeacherOptionDto> teacherOptions() {
+        return service.listTeachers().stream()
+                .map(teacher -> new FoundationDtos.TeacherOptionDto(teacher.id(), teacher.name()))
+                .toList();
     }
 
     @PostMapping("/teachers")

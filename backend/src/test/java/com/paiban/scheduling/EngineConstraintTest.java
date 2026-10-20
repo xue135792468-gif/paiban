@@ -127,6 +127,69 @@ class EngineConstraintTest {
         assertThat(solution.getScore().softScore()).isLessThan(0);
     }
 
+    @Test
+    void classConflictIsHard() {
+        ConstraintSettingsHolder.set(ConstraintSettings.defaults());
+        Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
+        Lesson b = lesson(2, 11, 100, 1001, MON1, null);
+        TimetableSolution solution = new TimetableSolution(List.of(a, b), List.of(MON1, MON2, MON5), List.of(ROOM));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isLessThan(0);
+    }
+
+    @Test
+    void roomConflictIsHard() {
+        ConstraintSettingsHolder.set(ConstraintSettings.defaults());
+        Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
+        Lesson b = lesson(2, 11, 200, 1001, MON1, ROOM);
+        TimetableSolution solution = new TimetableSolution(List.of(a, b), List.of(MON1, MON2, MON5), List.of(ROOM));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isLessThan(0);
+    }
+
+    @Test
+    void courseMetadataRoomTypeIsHardEvenWithoutConstraintConfig() {
+        ConstraintSettingsHolder.set(ConstraintSettings.defaults());
+        Lesson lesson = new Lesson(1L, 1L, 1000L, "体育", 10L, 100L, null, "体育", "PLAYGROUND", false, 40, 0);
+        lesson.setPeriod(MON1);
+        lesson.setRoom(ROOM);
+        TimetableSolution solution = new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isLessThan(0);
+    }
+
+    @Test
+    void unassignedLessonIsPenalized() {
+        ConstraintSettingsHolder.set(ConstraintSettings.defaults());
+        Lesson lesson = new Lesson(1L, 1L, 1000L, "数学", 10L, 100L, null, null, null, false, 40, 0);
+        TimetableSolution solution = new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isLessThan(0);
+    }
+
+    @Test
+    void teacherUnavailableSlotIsHard() {
+        ConstraintSettingsHolder.set(ConstraintSettings.from(
+                List.of(config(ConstraintType.TEACHER_UNAVAILABLE, true, 100,
+                        Map.of("teacherId", 10, "dayOfWeek", 1, "periodNo", 1))),
+                new com.fasterxml.jackson.databind.ObjectMapper()));
+        Lesson lesson = lesson(1, 10, 100, 1000, MON1, ROOM);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isLessThan(0);
+    }
+
     private com.paiban.scheduling.domain.ConstraintConfig config(
             ConstraintType type, boolean hard, int weight, Map<String, Object> params) {
         com.paiban.scheduling.domain.ConstraintConfig config = new com.paiban.scheduling.domain.ConstraintConfig();

@@ -21,9 +21,11 @@ import com.paiban.scheduling.domain.TimetableDraftRepository;
 import com.paiban.scheduling.solver.ConstraintSettings;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -88,6 +90,7 @@ public class DraftValidator {
                 checkPair(moved, other, snapshot, conflicts);
             }
         }
+        checkGroups(snapshot, conflicts, moved.id);
         return new ValidationResult(conflicts.isEmpty(), conflicts.size(), conflicts);
     }
 
@@ -103,6 +106,7 @@ public class DraftValidator {
                 checkPair(snapshot.lessons.get(i), snapshot.lessons.get(j), snapshot, conflicts);
             }
         }
+        checkGroups(snapshot, conflicts, null);
         return new ValidationResult(conflicts.isEmpty(), conflicts.size(), conflicts);
     }
 
@@ -182,30 +186,33 @@ public class DraftValidator {
     }
 
     private void checkPair(L a, L b, Snapshot s, List<Conflict> out) {
-        if (a.periodId == null || b.periodId == null || !a.periodId.equals(b.periodId)) {
+        if (a.periodId == null || b.periodId == null) {
             return;
         }
-        Period period = s.periods.get(a.periodId);
-        if (period == null) {
+        Period periodA = s.periods.get(a.periodId);
+        Period periodB = s.periods.get(b.periodId);
+        if (periodA == null || periodB == null) {
             return;
         }
-        if (Objects.equals(a.teacherId, b.teacherId)) {
-            out.add(new Conflict("TEACHER_CONFLICT",
-                    teacherName(s, a.teacherId) + " 此时在 " + className(s, b.classId)
-                            + " 有 " + courseName(s, b.courseId) + "课（" + periodLabel(period) + "）",
-                    a.id));
-        }
-        if (Objects.equals(a.classId, b.classId)) {
-            out.add(new Conflict("CLASS_CONFLICT",
-                    className(s, a.classId) + " 在 " + periodLabel(period)
-                            + " 已排 " + courseName(s, b.courseId),
-                    a.id));
-        }
-        if (a.roomId != null && Objects.equals(a.roomId, b.roomId)) {
-            out.add(new Conflict("ROOM_CONFLICT",
-                    "教室「" + roomName(s, a.roomId) + "」在 " + periodLabel(period)
-                            + " 已被 " + className(s, b.classId) + " 占用",
-                    a.id));
+        if (a.periodId.equals(b.periodId)) {
+            if (Objects.equals(a.teacherId, b.teacherId)) {
+                out.add(new Conflict("TEACHER_CONFLICT",
+                        teacherName(s, a.teacherId) + " 此时在 " + className(s, b.classId)
+                                + " 有 " + courseName(s, b.courseId) + "课（" + periodLabel(periodA) + "）",
+                        a.id));
+            }
+            if (Objects.equals(a.classId, b.classId)) {
+                out.add(new Conflict("CLASS_CONFLICT",
+                        className(s, a.classId) + " 在 " + periodLabel(periodA)
+                                + " 已排 " + courseName(s, b.courseId),
+                        a.id));
+            }
+            if (a.roomId != null && Objects.equals(a.roomId, b.roomId)) {
+                out.add(new Conflict("ROOM_CONFLICT",
+                        "教室「" + roomName(s, a.roomId) + "」在 " + periodLabel(periodA)
+                                + " 已被 " + className(s, b.classId) + " 占用",
+                        a.id));
+            }
         }
 
         ConstraintType oncePerDay = ConstraintType.SAME_COURSE_ONCE_PER_DAY;
@@ -213,13 +220,129 @@ public class DraftValidator {
                 && Objects.equals(a.classId, b.classId)
                 && Objects.equals(a.courseId, b.courseId)
                 && s.settings.matchesCourse(oncePerDay, a.courseId)
-                && period.getDayOfWeek() == s.periods.get(b.periodId).getDayOfWeek()
-                && period.getPeriodNo() != s.periods.get(b.periodId).getPeriodNo()) {
+                && periodA.getDayOfWeek() == periodB.getDayOfWeek()
+                && periodA.getPeriodNo() != periodB.getPeriodNo()) {
             out.add(new Conflict("SAME_COURSE_PER_DAY",
                     className(s, a.classId) + " 的 " + courseName(s, a.courseId)
-                            + " 一天最多排一节",
+                            + " 一天最多排一节（" + periodLabel(periodA) + " / " + periodLabel(periodB) + "）",
                     a.id));
         }
+    }
+
+    /** Day-level and slot-level rules that need counts rather than pairs. */
+    private void checkGroups(Snapshot s, List<Conflict> out, Long onlyLessonId) {
+        Map<String, Integer> teacherPerDay = new HashMap<>();
+        Map<String, Integer> classPerDay = new HashMap<>();
+        Map<String, Integer> coursePerDay = new HashMap<>();
+        Map<String, Integer> eveningPerClass = new HashMap<>();
+        Set<String> relevantKeys = new HashSet<>();
+        for (L lesson : s.lessons) {
+            if (lesson.periodId == null) {
+                continue;
+            }
+            Period period = s.periods.get(lesson.periodId);
+            if (period == null) {
+                continue;
+            }
+            String teacherKey = lesson.teacherId + "-" + period.getDayOfWeek();
+            String classKey = lesson.classId + "-" + period.getDayOfWeek();
+            String courseKey = lesson.classId + "-" + lesson.courseId + "-" + period.getDayOfWeek();
+            teacherPerDay.merge(teacherKey, 1, Integer::sum);
+            classPerDay.merge(classKey, 1, Integer::sum);
+            coursePerDay.merge(courseKey, 1, Integer::sum);
+            if (period.getSection() == PeriodSection.EVENING) {
+                eveningPerClass.merge(classKey, 1, Integer::sum);
+            }
+            if (onlyLessonId != null && onlyLessonId.equals(lesson.id)) {
+                relevantKeys.add(teacherKey);
+                relevantKeys.add(classKey);
+                relevantKeys.add(courseKey);
+            }
+        }
+        boolean filter = onlyLessonId != null;
+
+        ConstraintType teacherMax = ConstraintType.TEACHER_MAX_PER_DAY;
+        if (s.settings.enabled(teacherMax) && s.settings.hard(teacherMax)) {
+            int max = s.settings.intParam(teacherMax, "maxPerDay") == null
+                    ? 4 : s.settings.intParam(teacherMax, "maxPerDay");
+            teacherPerDay.forEach((key, count) -> {
+                if (count > max && (!filter || relevantKeys.contains(key))) {
+                    Long teacherId = Long.parseLong(key.substring(0, key.indexOf('-')));
+                    out.add(new Conflict("TEACHER_MAX_PER_DAY",
+                            teacherName(s, teacherId) + " 单日排了 " + count + " 节，超过上限 " + max, null));
+                }
+            });
+        }
+        ConstraintType classMax = ConstraintType.CLASS_MAX_PER_DAY;
+        if (s.settings.enabled(classMax) && s.settings.hard(classMax)) {
+            int max = s.settings.intParam(classMax, "maxPerDay") == null
+                    ? 8 : s.settings.intParam(classMax, "maxPerDay");
+            classPerDay.forEach((key, count) -> {
+                if (count > max && (!filter || relevantKeys.contains(key))) {
+                    Long classId = Long.parseLong(key.substring(0, key.indexOf('-')));
+                    out.add(new Conflict("CLASS_MAX_PER_DAY",
+                            className(s, classId) + " 单日排了 " + count + " 节，超过上限 " + max, null));
+                }
+            });
+        }
+        ConstraintType courseMax = ConstraintType.COURSE_MAX_PER_DAY;
+        if (s.settings.enabled(courseMax) && s.settings.hard(courseMax)) {
+            int max = s.settings.intParam(courseMax, "maxPerDay") == null
+                    ? 2 : s.settings.intParam(courseMax, "maxPerDay");
+            coursePerDay.forEach((key, count) -> {
+                if (count > max && (!filter || relevantKeys.contains(key))) {
+                    String[] parts = key.split("-");
+                    Long classId = Long.parseLong(parts[0]);
+                    Long courseId = Long.parseLong(parts[1]);
+                    out.add(new Conflict("COURSE_MAX_PER_DAY",
+                            className(s, classId) + " 的 " + courseName(s, courseId)
+                                    + " 单日排了 " + count + " 节，超过上限 " + max, null));
+                }
+            });
+        }
+        ConstraintType eveningMax = ConstraintType.EVENING_MAX;
+        if (s.settings.enabled(eveningMax) && s.settings.hard(eveningMax)) {
+            int max = s.settings.intParam(eveningMax, "maxPerDay") == null
+                    ? 2 : s.settings.intParam(eveningMax, "maxPerDay");
+            eveningPerClass.forEach((key, count) -> {
+                if (count > max && (!filter || relevantKeys.contains(key))) {
+                    Long classId = Long.parseLong(key.substring(0, key.indexOf('-')));
+                    out.add(new Conflict("EVENING_MAX",
+                            className(s, classId) + " 晚自习排了 " + count + " 节，超过上限 " + max, null));
+                }
+            });
+        }
+        ConstraintType sport = ConstraintType.SPORT_NOT_FIRST_AFTERNOON;
+        if (s.settings.enabled(sport) && s.settings.hard(sport)) {
+            for (L lesson : s.lessons) {
+                if (lesson.periodId == null) {
+                    continue;
+                }
+                if (filter && !onlyLessonId.equals(lesson.id)) {
+                    continue;
+                }
+                Period period = s.periods.get(lesson.periodId);
+                Course course = s.courses.get(lesson.courseId);
+                Long configured = s.settings.longParam(sport, "courseId");
+                boolean isSport = configured != null
+                        ? Objects.equals(configured, lesson.courseId)
+                        : course != null && course.getName() != null && course.getName().contains("体育");
+                if (isSport && period != null && period.getSection() == PeriodSection.AFTERNOON
+                        && isFirstAfternoon(period, s)) {
+                    out.add(new Conflict("SPORT_NOT_FIRST_AFTERNOON",
+                            courseName(s, lesson.courseId) + " 不应排在下午第一节", lesson.id));
+                }
+            }
+        }
+    }
+
+    private boolean isFirstAfternoon(Period period, Snapshot s) {
+        return s.periods.values().stream()
+                .filter(other -> other.getDayOfWeek() == period.getDayOfWeek()
+                        && other.getSection() == PeriodSection.AFTERNOON)
+                .mapToInt(Period::getPeriodNo)
+                .min()
+                .orElse(-1) == period.getPeriodNo();
     }
 
     private Snapshot snapshot(Long draftId) {
@@ -241,9 +364,9 @@ public class DraftValidator {
 
         List<com.paiban.scheduling.domain.ConstraintConfig> active =
                 constraints.active(draft.getSemesterId());
-        ConstraintSettings settings = active.isEmpty()
-                ? ConstraintSettings.defaults()
-                : ConstraintSettings.from(active, objectMapper);
+        ConstraintSettings settings = constraints.hasConfigs(draft.getSemesterId())
+                ? ConstraintSettings.from(active, objectMapper)
+                : ConstraintSettings.defaults();
         List<L> copies = lessons.stream().map(L::of).toList();
         return new Snapshot(copies, periodMap, roomMap, courseMap, teacherMap, classMap, settings);
     }

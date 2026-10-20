@@ -32,6 +32,8 @@ public class TimetablePublishService {
     private final TimetablePublishRepository publishes;
     private final DraftValidator validator;
     private final PeriodRepository periods;
+    private final com.paiban.substitution.domain.SubstitutionRepository substitutions;
+    private final com.paiban.substitution.domain.SubstitutionRequestRepository substitutionRequests;
     private final ApplicationEventPublisher events;
 
     public TimetablePublishService(
@@ -41,6 +43,8 @@ public class TimetablePublishService {
             TimetablePublishRepository publishes,
             DraftValidator validator,
             PeriodRepository periods,
+            com.paiban.substitution.domain.SubstitutionRepository substitutions,
+            com.paiban.substitution.domain.SubstitutionRequestRepository substitutionRequests,
             ApplicationEventPublisher events) {
         this.drafts = drafts;
         this.draftLessons = draftLessons;
@@ -48,6 +52,8 @@ public class TimetablePublishService {
         this.publishes = publishes;
         this.validator = validator;
         this.periods = periods;
+        this.substitutions = substitutions;
+        this.substitutionRequests = substitutionRequests;
         this.events = events;
     }
 
@@ -75,6 +81,10 @@ public class TimetablePublishService {
                     .map(DraftValidator.Conflict::message)
                     .collect(Collectors.joining("；"));
             throw ApiException.conflict("课表存在 " + validation.hardConflicts() + " 处硬冲突，不能发布：" + reasons);
+        }
+        if (substitutions.countBySemesterId(draft.getSemesterId()) > 0
+                || substitutionRequests.countBySemesterId(draft.getSemesterId()) > 0) {
+            throw ApiException.conflict("该学期已有调代记录，覆盖发布会导致历史丢失；请通过调代流程调整课表");
         }
 
         entries.deleteBySemesterId(draft.getSemesterId());

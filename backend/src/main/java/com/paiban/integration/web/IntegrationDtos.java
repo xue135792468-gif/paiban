@@ -7,10 +7,10 @@ public final class IntegrationDtos {
     private IntegrationDtos() {}
 
     public record DingTalkConfigDto(boolean enabled, String appKey, boolean hasSecret,
-                                    String agentId, String syncStrategy) {}
+                                    String agentId, String corpId, String syncStrategy) {}
 
     public record UpdateDingTalkConfigRequest(Boolean enabled, String appKey, String appSecret,
-                                              String agentId, String syncStrategy) {}
+                                              String agentId, String corpId, String syncStrategy) {}
 
     public record DingTalkEventRequest(String type, String userId, String name, String mobile,
                                        String email, String jobNumber) {}

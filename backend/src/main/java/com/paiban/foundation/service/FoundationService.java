@@ -45,6 +45,8 @@ public class FoundationService {
     private final TeachingClassRepository teachingClasses;
     private final AuditLogRepository auditLogs;
     private final SemesterService semesters;
+    private final com.paiban.scheduling.domain.AssignmentRepository assignments;
+    private final com.paiban.scheduling.domain.DraftLessonRepository draftLessons;
 
     public FoundationService(
             TeacherRepository teachers,
@@ -54,7 +56,9 @@ public class FoundationService {
             AdminClassRepository classes,
             TeachingClassRepository teachingClasses,
             AuditLogRepository auditLogs,
-            SemesterService semesters) {
+            SemesterService semesters,
+            com.paiban.scheduling.domain.AssignmentRepository assignments,
+            com.paiban.scheduling.domain.DraftLessonRepository draftLessons) {
         this.teachers = teachers;
         this.rooms = rooms;
         this.courses = courses;
@@ -63,6 +67,8 @@ public class FoundationService {
         this.teachingClasses = teachingClasses;
         this.auditLogs = auditLogs;
         this.semesters = semesters;
+        this.assignments = assignments;
+        this.draftLessons = draftLessons;
     }
 
     // ---------- teachers ----------
@@ -90,6 +96,9 @@ public class FoundationService {
     @Transactional
     public void deleteTeacher(Long id) {
         Teacher teacher = teachers.findById(id).orElseThrow(() -> ApiException.notFound("教师不存在: " + id));
+        if (assignments.countByTeacherId(id) > 0) {
+            throw ApiException.conflict("该教师仍有授课任务，请先删除或调整授课任务");
+        }
         classes.findAll().stream()
                 .filter(adminClass -> id.equals(adminClass.getHeadTeacherId()))
                 .forEach(adminClass -> adminClass.setHeadTeacherId(null));
@@ -330,6 +339,9 @@ public class FoundationService {
     @Transactional
     public void deleteClass(Long id) {
         AdminClass adminClass = classes.findById(id).orElseThrow(() -> ApiException.notFound("班级不存在: " + id));
+        if (draftLessons.countByAdminClassId(id) > 0) {
+            throw ApiException.conflict("该班级存在课表草稿数据，请先删除相关草稿");
+        }
         teachingClasses.deleteByAdminClassId(id);
         classes.delete(adminClass);
     }

@@ -29,6 +29,7 @@ public class SettingsController {
             SettingsService.DINGTALK_APP_KEY,
             SettingsService.DINGTALK_APP_SECRET,
             SettingsService.DINGTALK_AGENT_ID,
+            SettingsService.DINGTALK_CORP_ID,
             SettingsService.DINGTALK_SYNC_STRATEGY,
             SettingsService.SCHOOL_NAME,
             SettingsService.SCHOOL_LOGO_PATH,
@@ -66,24 +67,32 @@ public class SettingsController {
         if (file == null || file.isEmpty()) {
             throw ApiException.badRequest("请选择图片文件");
         }
-        String contentType = file.getContentType() == null ? "" : file.getContentType();
-        String extension = switch (contentType) {
-            case "image/png" -> "png";
-            case "image/jpeg", "image/jpg" -> "jpg";
-            case "image/svg+xml" -> "svg";
-            default -> throw ApiException.badRequest("只支持 PNG / JPG / SVG 图片");
-        };
         try {
+            byte[] bytes = file.getBytes();
+            String extension = imageExtension(bytes);
             Path directory = Paths.get("uploads");
             Files.createDirectories(directory);
             String filename = "logo-" + System.currentTimeMillis() + "." + extension;
             Path target = directory.resolve(filename).toAbsolutePath();
-            file.transferTo(target.toFile());
+            Files.write(target, bytes);
             settings.put(SettingsService.SCHOOL_LOGO_PATH, target.toString());
             return settings.all();
         } catch (java.io.IOException ex) {
             throw ApiException.badRequest("保存 Logo 失败: " + ex.getMessage());
         }
+    }
+
+    /** Validates the real file signature; SVG is rejected to avoid stored XSS. */
+    private String imageExtension(byte[] bytes) {
+        if (bytes.length > 8
+                && (bytes[0] & 0xFF) == 0x89 && bytes[1] == 'P' && bytes[2] == 'N' && bytes[3] == 'G') {
+            return "png";
+        }
+        if (bytes.length > 3
+                && (bytes[0] & 0xFF) == 0xFF && (bytes[1] & 0xFF) == 0xD8 && (bytes[2] & 0xFF) == 0xFF) {
+            return "jpg";
+        }
+        throw ApiException.badRequest("只支持 PNG / JPG 图片（不允许 SVG）");
     }
 
     private void validate(String key, String value) {

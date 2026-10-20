@@ -181,6 +181,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
@@ -243,6 +244,7 @@ interface Stats {
 }
 
 const auth = useAuthStore()
+const route = useRoute()
 const canApprove = computed(() => auth.hasPermission('substitution:approve'))
 const canViewRecords = computed(() => auth.hasPermission('substitution:view'))
 const myTeacherId = computed(() => auth.user?.teacherId ?? null)
@@ -405,10 +407,14 @@ async function loadRecords() {
   }
 }
 
-async function openHistory(row: RequestRow) {
-  const { data } = await http.get(`/substitution-requests/${row.id}/history`)
-  history.value = data
-  historyVisible.value = true
+async function openHistory(row: { id: number }) {
+  try {
+    const { data } = await http.get(`/substitution-requests/${row.id}/history`)
+    history.value = data
+    historyVisible.value = true
+  } catch {
+    // not visible to this account
+  }
 }
 
 function openApprove(row: RequestRow) {
@@ -461,11 +467,15 @@ async function reloadAll() {
 }
 
 onMounted(async () => {
-  const { data } = await http.get('/teachers')
+  const { data } = await http.get('/teachers/options')
   teachers.value = data
   await Promise.all([loadMine(), loadPending(), loadRecords()])
   if (myTeacherId.value) {
     await loadEntries()
+  }
+  const requestId = Number(route.query.requestId)
+  if (requestId) {
+    await openHistory({ id: requestId })
   }
 })
 </script>

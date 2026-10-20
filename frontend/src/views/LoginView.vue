@@ -35,16 +35,16 @@
             登录
           </el-button>
         </el-form>
-        <p class="footer-hint">默认管理员：admin / admin123</p>
+        <p class="footer-hint">首次部署请使用初始化管理员账号，并尽快修改密码</p>
       </el-card>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { FormInstance, FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { http } from '@/api/http'
 
@@ -60,6 +60,65 @@ const rules: FormRules = {
 }
 const loading = ref(false)
 const error = ref('')
+
+function loadDingTalkSdk(): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const existing = (window as any).dd
+    if (existing) {
+      resolve(existing)
+      return
+    }
+    const script = document.createElement('script')
+    script.src = 'https://g.alicdn.com/dingding/dingtalk-jsapi/3.0.25/dingtalk.open.js'
+    script.onload = () => resolve((window as any).dd)
+    script.onerror = () => reject(new Error('钉钉 JSAPI 加载失败'))
+    document.head.appendChild(script)
+  })
+}
+
+function requestAuthCode(dd: any, corpId: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (typeof dd.getAuthCode === 'function') {
+      dd.getAuthCode({ corpId })
+        .then((result: any) => resolve(result.authCode ?? result.code))
+        .catch(reject)
+      return
+    }
+    dd.runtime.permission.requestAuthCode({
+      corpId,
+      onSuccess: (result: any) => resolve(result.code),
+      onFail: reject,
+    })
+  })
+}
+
+/** Inside the DingTalk workspace the same SPA logs in through the H5免登 flow. */
+async function tryDingTalkLogin() {
+  if (!/DingTalk/i.test(navigator.userAgent)) return
+  try {
+    const { data: config } = await http.get('/auth/dingtalk/config')
+    if (!config?.enabled || !config.corpId) return
+    const dd = await loadDingTalkSdk()
+    await new Promise<void>((resolve, reject) => {
+      dd.ready(async () => {
+        try {
+          const authCode = await requestAuthCode(dd, config.corpId)
+          const { data } = await http.post('/auth/dingtalk', { authCode })
+          auth.setSession(data.token, data.user)
+          ElMessage.success('钉钉免登成功')
+          router.replace('/')
+          resolve()
+        } catch (ex) {
+          reject(ex)
+        }
+      })
+    })
+  } catch {
+    // stay on the password form
+  }
+}
+
+onMounted(tryDingTalkLogin)
 
 async function submit() {
   if (!formRef.value) return

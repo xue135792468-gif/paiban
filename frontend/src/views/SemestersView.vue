@@ -26,18 +26,52 @@
             <span>{{ periodCounts[row.id] ?? '—' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="300" fixed="right">
+        <el-table-column label="操作" width="380" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="router.push(`/admin/semesters/${row.id}/schedule`)">
               作息表
             </el-button>
             <el-button link type="primary" :disabled="row.current" @click="setCurrent(row)">设为当前</el-button>
+            <el-button link type="primary" :disabled="semesters.length < 2" @click="openCopy(row)">
+              复制结构
+            </el-button>
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
             <el-button link type="danger" :disabled="row.current" @click="remove(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
+
+    <el-dialog v-model="copyVisible" title="复制学期结构" width="460px">
+      <el-alert
+        title="将复制来源学期的作息表、年级、班级与授课任务到当前学期（不含已发布课表与调代记录）。"
+        type="info"
+        :closable="false"
+        show-icon
+        class="copy-hint"
+      />
+      <el-form label-width="90px">
+        <el-form-item label="目标学期">
+          <span>{{ copyTarget?.name }}</span>
+        </el-form-item>
+        <el-form-item label="来源学期">
+          <el-select v-model="copySourceId" placeholder="选择要复制的学期" style="width: 100%">
+            <el-option
+              v-for="item in copyCandidates"
+              :key="item.id"
+              :label="item.name"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="copyVisible = false">取消</el-button>
+        <el-button type="primary" :loading="copying" :disabled="!copySourceId" @click="confirmCopy">
+          开始复制
+        </el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="dialogVisible" :title="editingId ? '编辑学期' : '新建学期'" width="440px">
       <el-form :model="form" label-width="88px">
@@ -60,7 +94,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
@@ -82,6 +116,40 @@ const saving = ref(false)
 const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const form = reactive({ name: '', startDate: '', endDate: '' })
+
+const copyVisible = ref(false)
+const copying = ref(false)
+const copyTarget = ref<Semester | null>(null)
+const copySourceId = ref<number | null>(null)
+
+const copyCandidates = computed(() =>
+  semesters.value.filter((semester) => semester.id !== copyTarget.value?.id),
+)
+
+function openCopy(row: Semester) {
+  copyTarget.value = row
+  copySourceId.value = copyCandidates.value.length > 0 ? copyCandidates.value[0].id : null
+  copyVisible.value = true
+}
+
+async function confirmCopy() {
+  if (!copyTarget.value || !copySourceId.value) return
+  copying.value = true
+  try {
+    const { data } = await http.post(
+      `/semesters/${copyTarget.value.id}/copy-from/${copySourceId.value}`,
+    )
+    ElMessage.success(
+      `复制完成：作息 ${data.periods} 节、年级 ${data.grades} 个、班级 ${data.classes} 个、授课任务 ${data.assignments} 条`,
+    )
+    copyVisible.value = false
+    await load()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message ?? '复制失败')
+  } finally {
+    copying.value = false
+  }
+}
 
 async function load() {
   loading.value = true
@@ -187,5 +255,8 @@ h2 {
 }
 .current-tag {
   margin-left: 8px;
+}
+.copy-hint {
+  margin-bottom: 16px;
 }
 </style>

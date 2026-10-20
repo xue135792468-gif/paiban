@@ -260,7 +260,7 @@ async function loadSemesters() {
 
 async function loadTeachers() {
   try {
-    const { data } = await http.get<TeacherItem[]>('/teachers')
+    const { data } = await http.get<TeacherItem[]>('/teachers/options')
     teachers.value = data ?? []
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.message ?? '加载教师列表失败')

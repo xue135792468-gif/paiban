@@ -6,15 +6,15 @@
         <p class="subtitle">按班级、教师、教室或全校查看课表。调代生效的课节会标注「代」。</p>
       </div>
       <div class="actions">
-        <el-radio-group v-if="canViewAll" v-model="mode" @change="onModeChange">
-          <el-radio-button value="class">班级</el-radio-button>
+        <el-radio-group v-if="canViewAll || canViewClassScope" v-model="mode" @change="onModeChange">
+          <el-radio-button v-if="canViewAll || headClasses.length > 0" value="class">班级</el-radio-button>
           <el-radio-button value="teacher">教师</el-radio-button>
-          <el-radio-button value="room">教室</el-radio-button>
-          <el-radio-button value="school">全校</el-radio-button>
+          <el-radio-button v-if="canViewAll" value="room">教室</el-radio-button>
+          <el-radio-button v-if="canViewAll" value="school">全校</el-radio-button>
         </el-radio-group>
         <el-tag v-else effect="plain">我的课表</el-tag>
         <el-select
-          v-if="canViewAll && mode !== 'school'"
+          v-if="(canViewAll || canViewClassScope) && mode !== 'school'"
           v-model="targetId"
           filterable
           style="width: 200px"
@@ -167,6 +167,7 @@ interface Period {
 interface Option {
   id: number
   name: string
+  headTeacherId?: number | null
 }
 
 interface Course {
@@ -183,6 +184,10 @@ interface PublishInfo {
 const auth = useAuthStore()
 const canExport = computed(() => auth.hasPermission('export:timetable'))
 const canViewAll = computed(() => auth.hasPermission('timetable:view'))
+const canViewClassScope = computed(() => auth.hasPermission('timetable:view:class'))
+const headClasses = computed(() =>
+  classes.value.filter((item) => item.headTeacherId != null && item.headTeacherId === auth.user?.teacherId),
+)
 
 const mode = ref<'class' | 'teacher' | 'room' | 'school'>('class')
 const view = ref<'latest' | 'baseline'>('latest')
@@ -219,7 +224,7 @@ const periodRows = computed(() => {
 })
 
 const targets = computed(() => {
-  if (mode.value === 'class') return classes.value
+  if (mode.value === 'class') return canViewAll.value ? classes.value : headClasses.value
   if (mode.value === 'teacher') return teachers.value
   return rooms.value
 })
@@ -316,7 +321,7 @@ async function exportFile(format: string) {
 onMounted(async () => {
   const [classRes, teacherRes, roomRes, courseRes, currentRes] = await Promise.all([
     http.get('/classes'),
-    http.get('/teachers'),
+    http.get('/teachers/options'),
     http.get('/rooms'),
     http.get('/courses'),
     http.get('/semesters/current'),
@@ -336,8 +341,13 @@ onMounted(async () => {
   }
   targetId.value = targets.value.length > 0 ? targets.value[0].id : null
   if (!canViewAll.value) {
-    mode.value = 'teacher'
-    targetId.value = auth.user?.teacherId ?? null
+    if (canViewClassScope.value && headClasses.value.length > 0) {
+      mode.value = 'class'
+      targetId.value = headClasses.value[0].id
+    } else {
+      mode.value = 'teacher'
+      targetId.value = auth.user?.teacherId ?? null
+    }
   }
   await load()
 })

@@ -60,6 +60,12 @@ export const useAuthStore = defineStore('auth', () => {
     persist()
   }
 
+  function setSession(newToken: string, newUser: CurrentUser) {
+    token.value = newToken
+    user.value = newUser
+    persist()
+  }
+
   function hasPermission(code: string) {
     return user.value?.permissions.includes(code) ?? false
   }
@@ -80,6 +86,7 @@ export const useAuthStore = defineStore('auth', () => {
     roles,
     login,
     logout,
+    setSession,
     refresh,
     hasPermission,
     hasAnyPermission,

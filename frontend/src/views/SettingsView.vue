@@ -16,7 +16,7 @@
         </el-form-item>
         <el-form-item label="学校 Logo">
           <div class="logo-row">
-            <el-upload :auto-upload="false" :show-file-list="false" accept="image/png,image/jpeg,image/svg+xml" :on-change="uploadLogo">
+            <el-upload :auto-upload="false" :show-file-list="false" accept="image/png,image/jpeg" :on-change="uploadLogo">
               <el-button :loading="uploading">上传图片</el-button>
             </el-upload>
             <span class="logo-path">{{ logoName || '未上传' }}</span>
@@ -38,7 +38,7 @@
         <el-form-item label="通知范围">
           <el-select v-model="form['notification.scope']" style="width: 260px">
             <el-option label="仅当事人（原教师 + 代课教师）" value="minimal" />
-            <el-option label="含年级组长（增加班主任）" value="with-grade-leader" />
+            <el-option label="含班主任（一期暂无年级组长模型）" value="with-grade-leader" />
             <el-option label="含教务（增加教务管理员）" value="with-admin" />
           </el-select>
         </el-form-item>
@@ -72,6 +72,9 @@
         </el-form-item>
         <el-form-item label="AgentId">
           <el-input v-model="dingtalk.agentId" placeholder="微应用 AgentId" />
+        </el-form-item>
+        <el-form-item label="CorpId">
+          <el-input v-model="dingtalk.corpId" placeholder="企业 CorpId，H5 免登需要" />
         </el-form-item>
         <el-form-item label="同步策略">
           <el-select v-model="dingtalk.syncStrategy" style="width: 220px">
@@ -131,6 +134,7 @@ interface DingTalkConfig {
   appSecret?: string
   hasSecret: boolean
   agentId: string
+  corpId?: string
   syncStrategy: string
 }
 
@@ -148,6 +152,7 @@ const dingtalk = reactive<DingTalkConfig>({
   appSecret: '',
   hasSecret: false,
   agentId: '',
+  corpId: '',
   syncStrategy: 'dingtalk',
 })
 const logs = ref<SyncLog[]>([])
@@ -212,6 +217,7 @@ async function saveDingtalk() {
       enabled: dingtalk.enabled,
       appKey: dingtalk.appKey,
       agentId: dingtalk.agentId,
+      corpId: dingtalk.corpId,
       syncStrategy: dingtalk.syncStrategy,
     }
     if (dingtalk.appSecret) payload.appSecret = dingtalk.appSecret

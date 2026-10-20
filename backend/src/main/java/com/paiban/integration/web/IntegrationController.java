@@ -58,7 +58,16 @@ public class IntegrationController {
                 settings.dingtalkAppKey(),
                 settings.dingtalkAppSecret() != null && !settings.dingtalkAppSecret().isBlank(),
                 settings.dingtalkAgentId(),
+                settings.dingtalkCorpId(),
                 settings.dingtalkSyncStrategy());
+    }
+
+    /** Public: the login page needs to know whether to attempt H5免登 and with which corpId. */
+    @GetMapping("/auth/dingtalk/config")
+    public Map<String, Object> publicConfig() {
+        return Map.of(
+                "enabled", settings.dingtalkEnabled(),
+                "corpId", settings.dingtalkCorpId());
     }
 
     @PutMapping("/integrations/dingtalk/config")
@@ -75,6 +84,9 @@ public class IntegrationController {
         }
         if (request.agentId() != null) {
             settings.put(SettingsService.DINGTALK_AGENT_ID, request.agentId());
+        }
+        if (request.corpId() != null) {
+            settings.put(SettingsService.DINGTALK_CORP_ID, request.corpId());
         }
         if (request.syncStrategy() != null) {
             if (!List.of("dingtalk", "local").contains(request.syncStrategy())) {

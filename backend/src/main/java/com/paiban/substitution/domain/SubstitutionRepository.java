@@ -26,4 +26,6 @@ public interface SubstitutionRepository extends JpaRepository<Substitution, Long
     long countBySubstituteTeacherIdAndStatus(Long substituteTeacherId, String status);
 
     long countByOriginalTeacherIdAndStatus(Long originalTeacherId, String status);
+
+    long countBySemesterId(Long semesterId);
 }

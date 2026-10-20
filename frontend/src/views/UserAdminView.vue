@@ -5,11 +5,24 @@
         <h2>用户管理</h2>
         <p class="subtitle">创建本地账号并分配角色。教师登录后可查看个人课表并提交调代申请。</p>
       </div>
-      <el-button type="primary" @click="openCreate">
-        <el-icon><Plus /></el-icon>
-        <span>新建用户</span>
-      </el-button>
+      <div class="toolbar-actions">
+        <el-button @click="importVisible = true">批量导入账号</el-button>
+        <el-button type="primary" @click="openCreate">
+          <el-icon><Plus /></el-icon>
+          <span>新建用户</span>
+        </el-button>
+      </div>
     </div>
+
+    <ImportDialog
+      v-model="importVisible"
+      entity="users"
+      entity-label="用户账号"
+      preview-url="/users/import/preview"
+      commit-url="/users/import/commit"
+      template-url="/users/import/template"
+      @imported="load"
+    />
 
     <el-card shadow="never">
       <el-table v-loading="loading" :data="users" stripe>
@@ -118,6 +131,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
+import ImportDialog from '@/components/ImportDialog.vue'
 import { http } from '@/api/http'
 
 interface UserRow {
@@ -146,6 +160,7 @@ const roles = ref<RoleRow[]>([])
 const teachers = ref<TeacherOption[]>([])
 const loading = ref(false)
 const saving = ref(false)
+const importVisible = ref(false)
 
 const createVisible = ref(false)
 const createForm = reactive({
@@ -194,7 +209,7 @@ async function load() {
     loading.value = false
   }
   try {
-    const { data } = await http.get('/teachers')
+    const { data } = await http.get('/teachers/options')
     teachers.value = data.content ?? data
   } catch {
     teachers.value = []
@@ -289,6 +304,10 @@ onMounted(load)
   align-items: flex-start;
   justify-content: space-between;
   margin-bottom: 16px;
+}
+.toolbar-actions {
+  display: flex;
+  gap: 8px;
 }
 h2 {
   margin: 0 0 4px;

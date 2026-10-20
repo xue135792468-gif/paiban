@@ -16,4 +16,6 @@ public interface AssignmentRepository extends JpaRepository<Assignment, Long> {
             Long semesterId, Long teachingClassId, Long courseId);
 
     long countBySemesterId(Long semesterId);
+
+    long countByTeacherId(Long teacherId);
 }

@@ -412,7 +412,7 @@ async function loadSemesters() {
 async function loadTeachersAndCourses() {
   try {
     const [teacherRes, courseRes] = await Promise.all([
-      http.get<OptionItem[]>('/teachers'),
+      http.get<OptionItem[]>('/teachers/options'),
       http.get<OptionItem[]>('/courses'),
     ])
     teachers.value = teacherRes.data ?? []

@@ -107,6 +107,15 @@ public class SubstitutionService {
         if (weekday != entry.getDayOfWeek()) {
             throw ApiException.badRequest("所选日期的星期与课节不一致");
         }
+        com.paiban.foundation.domain.Semester semester = semesters.require(semesterId);
+        if (body.effectiveDate().isBefore(semester.getStartDate())
+                || body.effectiveDate().isAfter(semester.getEndDate())) {
+            throw ApiException.badRequest("调代日期不在学期范围内");
+        }
+        if (substitutions.findFirstByEntryIdAndEffectiveDateAndStatus(
+                entry.getId(), body.effectiveDate(), Substitution.EFFECTIVE).isPresent()) {
+            throw ApiException.conflict("该课节当天已有生效的调代，不能重复申请");
+        }
         String mode = settings.approvalMode();
         boolean direct = "direct".equalsIgnoreCase(mode);
         if (direct && body.expectedSubstituteTeacherId() == null) {
@@ -164,6 +173,10 @@ public class SubstitutionService {
             throw ApiException.badRequest("请指定代课教师");
         }
         requireTeacher(substituteTeacherId);
+        if (substitutions.findFirstByEntryIdAndEffectiveDateAndStatus(
+                request.getEntryId(), request.getEffectiveDate(), Substitution.EFFECTIVE).isPresent()) {
+            throw ApiException.conflict("该课节当天已有生效的调代，不能重复生效");
+        }
         AppUser approver = users.getByUsername(username);
         request.setStatus(SubstitutionRequest.APPROVED);
         request.setApproverId(approver.getId());
@@ -178,6 +191,25 @@ public class SubstitutionService {
                 decision == null ? null : decision.comment());
 
         Substitution substitution = createSubstitution(request, substituteTeacherId);
+        if (decision != null) {
+            if (decision.newRoomId() != null) {
+                if (!rooms.existsById(decision.newRoomId())) {
+                    throw ApiException.notFound("教室不存在: " + decision.newRoomId());
+                }
+                substitution.setNewRoomId(decision.newRoomId());
+            }
+            if (decision.newPeriodId() != null) {
+                Period newPeriod = periods.findById(decision.newPeriodId())
+                        .orElseThrow(() -> ApiException.notFound("课节不存在: " + decision.newPeriodId()));
+                if (!newPeriod.getSemesterId().equals(request.getSemesterId())) {
+                    throw ApiException.badRequest("新课节不属于该学期");
+                }
+                substitution.setNewPeriodId(newPeriod.getId());
+                substitution.setNewDayOfWeek(newPeriod.getDayOfWeek());
+                substitution.setNewPeriodNo(newPeriod.getPeriodNo());
+            }
+            substitutions.save(substitution);
+        }
         request.setStatus(SubstitutionRequest.EFFECTIVE);
         request.setUpdatedAt(Instant.now());
         recordHistory(

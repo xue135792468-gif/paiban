@@ -29,10 +29,10 @@ public class Lesson {
     private int studentCount;
     private int lessonIndex;
 
-    @PlanningVariable(valueRangeProviderRefs = "periodRange")
+    @PlanningVariable(valueRangeProviderRefs = "periodRange", allowsUnassigned = true)
     private PeriodSlot period;
 
-    @PlanningVariable(valueRangeProviderRefs = "roomRange")
+    @PlanningVariable(valueRangeProviderRefs = "roomRange", allowsUnassigned = true)
     private RoomSlot room;
 
     public Lesson(Long id, Long assignmentId, Long courseId, String courseName, Long teacherId,

@@ -9,5 +9,7 @@ public interface DraftLessonRepository extends JpaRepository<DraftLesson, Long> 
 
     long countByDraftId(Long draftId);
 
+    long countByAdminClassId(Long adminClassId);
+
     void deleteByDraftId(Long draftId);
 }

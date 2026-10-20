@@ -32,10 +32,15 @@ public class AssignmentImportService {
 
     private final FoundationService foundation;
     private final AssignmentService assignments;
+    private final com.paiban.scheduling.domain.AssignmentRepository assignmentRepository;
 
-    public AssignmentImportService(FoundationService foundation, AssignmentService assignments) {
+    public AssignmentImportService(
+            FoundationService foundation,
+            AssignmentService assignments,
+            com.paiban.scheduling.domain.AssignmentRepository assignmentRepository) {
         this.foundation = foundation;
         this.assignments = assignments;
+        this.assignmentRepository = assignmentRepository;
     }
 
     public List<String> headers() {
@@ -130,6 +135,11 @@ public class AssignmentImportService {
                 String key = adminClass.id() + "-" + course.id();
                 if (seen.merge(key, 1, Integer::sum) > 1) {
                     rowErrors.add(new ImportError(row.rowNumber(), "班级名称", "文件内同一班级同一课程重复"));
+                }
+                if (adminClass.teachingClassId() != null
+                        && assignmentRepository.findBySemesterIdAndTeachingClassIdAndCourseId(
+                                resolved, adminClass.teachingClassId(), course.id()).isPresent()) {
+                    rowErrors.add(new ImportError(row.rowNumber(), "课程名称", "该班级的这门课程已存在授课任务"));
                 }
             }
 

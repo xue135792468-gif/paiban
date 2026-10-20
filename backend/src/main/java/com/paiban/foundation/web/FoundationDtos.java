@@ -13,6 +13,8 @@ public final class FoundationDtos {
     public record TeacherDto(Long id, String name, String employeeNo, String phone, String email,
                              String subject, boolean active) {}
 
+    public record TeacherOptionDto(Long id, String name) {}
+
     public record SaveTeacherRequest(@NotBlank(message = "姓名不能为空") @Size(max = 100) String name,
                                      @Size(max = 50) String employeeNo,
                                      @Size(max = 30) String phone,

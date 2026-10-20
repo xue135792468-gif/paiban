@@ -86,7 +86,11 @@ public class AssignmentService {
 
     @Transactional
     public AssignmentDto create(SaveAssignmentRequest request) {
-        Long semesterId = foundation.resolveSemester(null);
+        return create(foundation.resolveSemester(null), request);
+    }
+
+    @Transactional
+    public AssignmentDto create(Long semesterId, SaveAssignmentRequest request) {
         AdminClass adminClass = foundation.requireAdminClass(request.classId());
         if (!adminClass.getSemesterId().equals(semesterId)) {
             throw ApiException.badRequest("班级不属于当前学期");

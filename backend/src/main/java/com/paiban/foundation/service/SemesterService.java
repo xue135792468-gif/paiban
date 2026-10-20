@@ -28,12 +28,17 @@ public class SemesterService {
 
     private final SemesterRepository semesters;
     private final PeriodRepository periods;
+    private final com.paiban.timetable.domain.TimetableEntryRepository timetableEntries;
     private final ApplicationEventPublisher events;
 
     public SemesterService(
-            SemesterRepository semesters, PeriodRepository periods, ApplicationEventPublisher events) {
+            SemesterRepository semesters,
+            PeriodRepository periods,
+            com.paiban.timetable.domain.TimetableEntryRepository timetableEntries,
+            ApplicationEventPublisher events) {
         this.semesters = semesters;
         this.periods = periods;
+        this.timetableEntries = timetableEntries;
         this.events = events;
     }
 
@@ -82,6 +87,9 @@ public class SemesterService {
         if (semester.isCurrent()) {
             throw ApiException.conflict("不能删除当前学期，请先切换到其他学期");
         }
+        if (timetableEntries.countBySemesterId(id) > 0) {
+            throw ApiException.conflict("该学期已发布课表，不能删除");
+        }
         periods.deleteBySemesterId(id);
         semesters.delete(semester);
     }
@@ -120,6 +128,9 @@ public class SemesterService {
     @Transactional
     public List<PeriodDto> replacePeriods(Long semesterId, List<PeriodSlot> slots) {
         require(semesterId);
+        if (timetableEntries.countBySemesterId(semesterId) > 0) {
+            throw ApiException.conflict("该学期已发布课表，不能修改作息表");
+        }
         validateSlots(slots);
         periods.deleteBySemesterId(semesterId);
         periods.flush();

@@ -14,7 +14,8 @@ public final class SubstitutionDtos {
                                             String reason,
                                             Long expectedSubstituteTeacherId) {}
 
-    public record DecisionRequest(Long substituteTeacherId, String comment) {}
+    public record DecisionRequest(Long substituteTeacherId, String comment,
+                                  Long newRoomId, Long newPeriodId) {}
 
     public record SubstitutionRequestDto(Long id,
                                          Long entryId,

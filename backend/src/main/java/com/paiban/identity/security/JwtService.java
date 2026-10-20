@@ -8,24 +8,40 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 
 @Service
 public class JwtService {
+
+    private static final String DEV_MARKER = "paiban-local-development-secret";
 
     private final SecretKey key;
     private final long expirationMinutes;
 
     public JwtService(
             @Value("${paiban.security.jwt-secret}") String secret,
-            @Value("${paiban.security.jwt-expiration-minutes:480}") long expirationMinutes) {
+            @Value("${paiban.security.jwt-expiration-minutes:480}") long expirationMinutes,
+            Environment environment) {
+        boolean devProfile = false;
+        for (String profile : environment.getActiveProfiles()) {
+            String value = profile.toLowerCase(Locale.ROOT);
+            if (value.equals("local") || value.equals("test") || value.equals("e2e")) {
+                devProfile = true;
+            }
+        }
+        if (secret.contains(DEV_MARKER) && !devProfile) {
+            throw new IllegalStateException(
+                    "检测到默认 JWT 密钥。非本地环境必须设置环境变量 PAIBAN_JWT_SECRET（至少 32 个字符）。");
+        }
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expirationMinutes = expirationMinutes;
-        if (secret.contains("paiban-local-development-secret")) {
+        if (secret.contains(DEV_MARKER)) {
             org.slf4j.LoggerFactory.getLogger(JwtService.class)
-                    .warn("正在使用默认 JWT 密钥，生产环境请设置环境变量 PAIBAN_JWT_SECRET");
+                    .warn("正在使用默认 JWT 密钥，仅限本地开发；生产环境请设置 PAIBAN_JWT_SECRET");
         }
     }
 
