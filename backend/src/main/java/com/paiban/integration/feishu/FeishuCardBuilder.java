@@ -24,10 +24,6 @@ public class FeishuCardBuilder {
     private final ObjectMapper objectMapper;
     private final String publicBaseUrl;
 
-    public FeishuCardBuilder(String publicBaseUrl) {
-        this(new ObjectMapper(), publicBaseUrl);
-    }
-
     public FeishuCardBuilder(ObjectMapper objectMapper, String publicBaseUrl) {
         this.objectMapper = objectMapper;
         this.publicBaseUrl = publicBaseUrl == null ? "" : publicBaseUrl;

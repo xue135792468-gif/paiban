@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -65,6 +66,7 @@ public class FeishuIntegrationController {
 
     @PutMapping("/integrations/feishu/config")
     @PreAuthorize("hasAuthority('" + Permissions.INTEGRATION_MANAGE + "')")
+    @Transactional
     public FeishuConfigDto update(@RequestBody UpdateFeishuConfigRequest request) {
         if (request.enabled() != null) {
             settings.put(SettingsService.FEISHU_ENABLED, String.valueOf(request.enabled()));

@@ -3,6 +3,7 @@ package com.paiban.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasItem;
 
+import com.paiban.common.settings.SettingsService;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.integration.auth.AuthCredentials;
@@ -60,6 +61,7 @@ class FeishuAdapterIntegrationTest extends ApiIntegrationTest {
 
     @BeforeEach
     void clearFakeState() {
+        resetIntegrationSettings();
         fakeClient.clearMessages();
     }
 
@@ -73,6 +75,9 @@ class FeishuAdapterIntegrationTest extends ApiIntegrationTest {
     }
 
     private void configure(boolean enabled) {
+        // Login and notification both need the explicit active platform, not the derived one.
+        settingsService.put(SettingsService.ACTIVE_PLATFORM,
+                enabled ? SettingsService.PLATFORM_FEISHU : SettingsService.PLATFORM_NONE);
         as(adminToken()).body(Map.of(
                         "integration.feishu.enabled", String.valueOf(enabled),
                         "integration.feishu.app-id", "test-app-id",

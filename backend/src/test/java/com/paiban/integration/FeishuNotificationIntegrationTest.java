@@ -2,6 +2,7 @@ package com.paiban.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.paiban.common.settings.SettingsService;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.integration.feishu.FakeFeishuClient;
@@ -12,7 +13,9 @@ import com.paiban.notification.domain.NotificationLogRepository;
 import com.paiban.notification.domain.NotificationRepository;
 import com.paiban.notification.service.NotificationService;
 import com.paiban.support.ApiIntegrationTest;
+import com.paiban.support.ScheduleFixture;
 import com.paiban.support.TestData;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -51,6 +54,7 @@ class FeishuNotificationIntegrationTest extends ApiIntegrationTest {
 
     @BeforeEach
     void resetFakeClient() {
+        resetIntegrationSettings();
         fakeClient.clearMessages();
         fakeClient.failAll(false);
     }
@@ -75,6 +79,9 @@ class FeishuNotificationIntegrationTest extends ApiIntegrationTest {
     }
 
     private void enableFeishu() {
+        // Explicit active platform: a leftover DingTalk flag must not win the derivation.
+        settingsService.put(SettingsService.ACTIVE_PLATFORM, SettingsService.PLATFORM_FEISHU);
+        settingsService.put(SettingsService.DINGTALK_ENABLED, "false");
         settings(Map.of(
                 "integration.feishu.enabled", "true",
                 "integration.feishu.app-id", "test-app-id",
@@ -192,7 +199,62 @@ class FeishuNotificationIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void dingtalkChannelLogsDingtalkPlatform() {
+    void approvedSubstitutionSendsAFeishuCardAndLogsThePlatform() {
+        enableFeishu();
+        String token = adminToken();
+        ScheduleFixture.Result fixture = ScheduleFixture.published(token, 5);
+        List<Map<String, Object>> entries = ScheduleFixture.classEntries(token, fixture.classId());
+        Map<String, Object> entry = entries.stream()
+                .filter(item -> ((Number) item.get("teacherId")).longValue() == fixture.teacherId())
+                .findFirst()
+                .orElseThrow();
+        long entryId = ((Number) entry.get("id")).longValue();
+        LocalDate date = LocalDate.of(2025, 9, 1)
+                .plusDays(((Number) entry.get("dayOfWeek")).intValue() - 1L);
+
+        // Bind the original teacher to the deterministic fake Feishu identity.
+        Teacher original = teachers.findById(fixture.teacherId()).orElseThrow();
+        original.setFeishuUserId("fs-001");
+        original.setFeishuOpenId("ou-001");
+        teachers.save(original);
+
+        String username = "fs-sub-" + TestData.suffix();
+        as(token).body(Map.of(
+                        "username", username,
+                        "password", "teacher123",
+                        "displayName", "原任课",
+                        "roleCodes", List.of("teacher"),
+                        "teacherId", fixture.teacherId()))
+                .when().post("/api/users").then().statusCode(200);
+        String teacherToken = login(username, "teacher123");
+
+        long substituteId = TestData.teacher(token, "代课老师" + TestData.suffix());
+        long requestId = as(teacherToken).body(Map.of(
+                        "entryId", entryId,
+                        "effectiveDate", date.toString(),
+                        "reason", "家中有事"))
+                .when().post("/api/substitution-requests")
+                .then().statusCode(200).extract().jsonPath().getLong("id");
+
+        as(token).body(Map.of("substituteTeacherId", substituteId, "comment", "同意"))
+                .when().post("/api/substitution-requests/" + requestId + "/approve")
+                .then().statusCode(200);
+
+        assertThat(fakeClient.sentMessages()).anySatisfy((FeishuMessage message) -> {
+            assertThat(message.openId()).isEqualTo("ou-001");
+            assertThat(message.card()).isTrue();
+            assertThat(message.templateCode()).isEqualTo(TEMPLATE);
+        });
+        assertThat(notificationLogs.findAll()).anySatisfy(log -> {
+            assertThat(log.getChannel()).isEqualTo("feishu");
+            assertThat(log.getPlatform()).isEqualTo("feishu");
+            assertThat(log.isSuccess()).isTrue();
+        });
+    }
+
+    @Test
+    void dingtalkChannelLogsDingtalkPlatform() {        settingsService.put(SettingsService.ACTIVE_PLATFORM, SettingsService.PLATFORM_DINGTALK);
+        settingsService.put(SettingsService.FEISHU_ENABLED, "false");
         settings(Map.of(
                 "integration.dingtalk.enabled", "true",
                 "integration.dingtalk.app-key", "test-key",

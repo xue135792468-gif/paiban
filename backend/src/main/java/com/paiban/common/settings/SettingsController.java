@@ -38,7 +38,6 @@ public class SettingsController {
             SettingsService.FEISHU_VERIFICATION_TOKEN,
             SettingsService.FEISHU_ENCRYPT_KEY,
             SettingsService.FEISHU_SYNC_STRATEGY,
-            SettingsService.ACTIVE_PLATFORM,
             SettingsService.SCHOOL_NAME,
             SettingsService.SCHOOL_TYPE,
             SettingsService.PUBLIC_BASE_URL,
@@ -128,9 +127,6 @@ public class SettingsController {
         if (SettingsService.SCHOOL_TYPE.equals(key)
                 && !List.of("junior", "senior").contains(value)) {
             throw ApiException.badRequest("学校类型只能是 junior 或 senior");
-        }
-        if (SettingsService.ACTIVE_PLATFORM.equals(key) && !SettingsService.isPlatform(value)) {
-            throw ApiException.badRequest("当前平台只能是 none / dingtalk / feishu");
         }
         if ((SettingsService.DINGTALK_ENABLED.equals(key)
                 || SettingsService.FEISHU_ENABLED.equals(key)

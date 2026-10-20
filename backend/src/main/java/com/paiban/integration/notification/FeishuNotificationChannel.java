@@ -51,7 +51,7 @@ public class FeishuNotificationChannel implements NotificationChannel {
 
     @Override
     public boolean send(Message message) {
-        if (!settings.feishuEnabled() || !"feishu".equals(settings.activePlatform())) {
+        if (!settings.feishuEnabled() || !settings.isActivePlatform(SettingsService.PLATFORM_FEISHU)) {
             return false;
         }
         boolean card = message.templateCode() != null && message.templateCode().startsWith("SUBSTITUTION_");
@@ -81,7 +81,7 @@ public class FeishuNotificationChannel implements NotificationChannel {
                 success = client.sendMessage(feishuMessage);
                 if (!success && attempt < 3) {
                     try {
-                        Thread.sleep(100L * attempt);
+                        Thread.sleep(Math.min(2000L, 200L * (1L << (attempt - 1))));
                     } catch (InterruptedException ex) {
                         Thread.currentThread().interrupt();
                         break;

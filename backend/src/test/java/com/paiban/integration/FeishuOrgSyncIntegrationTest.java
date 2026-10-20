@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -28,6 +29,11 @@ import org.springframework.test.context.ActiveProfiles;
 class FeishuOrgSyncIntegrationTest extends ApiIntegrationTest {
 
     private static final String VERIFICATION_TOKEN = "feishu-verify-token";
+
+    @BeforeEach
+    void resetSettingsBaseline() {
+        resetIntegrationSettings();
+    }
 
     @AfterEach
     void disableIntegration() {
@@ -95,6 +101,18 @@ class FeishuOrgSyncIntegrationTest extends ApiIntegrationTest {
                 .when().put("/api/integrations/feishu/config")
                 .then().statusCode(200)
                 .body("hasSecret", is(true));
+    }
+
+    @Test
+    void settingsEndpointDoesNotExposeTheVerificationToken() {
+        configure();
+
+        Response all = as(adminToken()).when().get("/api/settings");
+
+        all.then().statusCode(200);
+        assertThat(all.asString())
+                .doesNotContain("integration.feishu.verification-token")
+                .doesNotContain(VERIFICATION_TOKEN);
     }
 
     @Test

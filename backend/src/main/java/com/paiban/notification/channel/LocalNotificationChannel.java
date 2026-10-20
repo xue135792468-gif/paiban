@@ -15,6 +15,9 @@ import org.springframework.stereotype.Component;
 @Order(100)
 public class LocalNotificationChannel implements NotificationChannel {
 
+    /** Matches notification_log.recipient's VARCHAR(200); the id list can be long in big schools. */
+    private static final int RECIPIENT_MAX_LENGTH = 200;
+
     private final NotificationRepository notifications;
     private final NotificationLogRepository logs;
     private final ObjectMapper objectMapper;
@@ -60,12 +63,19 @@ public class LocalNotificationChannel implements NotificationChannel {
         NotificationLog entry = new NotificationLog();
         entry.setChannel(channel);
         entry.setPlatform("system");
-        entry.setRecipient(message.recipientUserIds().toString());
+        entry.setRecipient(truncate(message.recipientUserIds().toString()));
         entry.setTemplateCode(message.templateCode());
         entry.setContent(message.content());
         entry.setSuccess(success);
         entry.setErrorMessage(error);
         entry.setCreatedAt(Instant.now());
         logs.save(entry);
+    }
+
+    private static String truncate(String value) {
+        if (value == null || value.length() <= RECIPIENT_MAX_LENGTH) {
+            return value;
+        }
+        return value.substring(0, RECIPIENT_MAX_LENGTH);
     }
 }

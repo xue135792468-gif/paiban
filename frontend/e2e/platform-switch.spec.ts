@@ -30,13 +30,12 @@ test.afterAll(async () => {
 test('未绑定教师自助绑定', async ({ page }) => {
   const suffix = Math.random().toString(36).slice(2, 8)
 
-  // 通过设置接口写入当前平台（不触发目录同步），让本用例保留一个干净的未绑定教师。
-  // 切换端点的组织同步由第二个用例覆盖。
+  // 只写入飞书凭证与启用开关；当前平台由「启用开关派生」得出飞书（e2e profile 中钉钉已停用），
+  // 不经过 /settings 写 active-platform —— 该键只能由平台切换端点修改。
   await apiCall(api, token, 'put', '/settings', {
     'integration.feishu.enabled': 'true',
     'integration.feishu.app-id': 'e2e-app-id',
     'integration.feishu.app-secret': 'e2e-app-secret',
-    'integration.active-platform': 'feishu',
   })
   const teacher = await apiCall(api, token, 'post', '/teachers', {
     name: '李四',

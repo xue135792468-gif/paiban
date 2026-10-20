@@ -44,15 +44,16 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { http } from '@/api/http'
 import { isFeishuEnv, requestFeishuAuthCode } from '@/api/feishu'
+import { useLoginLanding } from '@/composables/useLoginLanding'
 
 const auth = useAuthStore()
 const router = useRouter()
-const route = useRoute()
+const { landAfterLogin } = useLoginLanding()
 
 const formRef = ref<FormInstance>()
 const form = reactive({ username: '', password: '' })
@@ -119,23 +120,6 @@ async function tryDingTalkLogin() {
   } catch {
     // stay on the password form
   }
-}
-
-/** Same landing rules as password login: first-run onboarding, then the redirect target. */
-async function landAfterLogin() {
-  const redirect = (route.query.redirect as string) || '/'
-  if (redirect === '/') {
-    try {
-      const { data } = await http.get('/onboarding/status')
-      if (data.showWizard && auth.hasPermission('onboarding:manage')) {
-        router.replace('/onboarding')
-        return
-      }
-    } catch {
-      // fall through to the normal landing page
-    }
-  }
-  router.replace(redirect)
 }
 
 /** Feishu injects `window.tt` inside its H5 container; any failure keeps the password form. */

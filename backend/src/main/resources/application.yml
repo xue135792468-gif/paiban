@@ -49,6 +49,7 @@ paiban:
       encrypt-key: ""
       sync-strategy: feishu
       fake: false
+      sync-on-startup: true
   export:
     school-logo-path: ""
     pdf-font-path: ""
@@ -127,3 +128,4 @@ paiban:
     feishu:
       enabled: false
       fake: true
+      sync-on-startup: false

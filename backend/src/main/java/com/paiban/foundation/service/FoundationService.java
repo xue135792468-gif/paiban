@@ -113,6 +113,22 @@ public class FoundationService {
                         throw ApiException.conflict("工号已存在: " + request.employeeNo());
                     });
         }
+        // The database has unique indexes on the Feishu ids; check first so an
+        // administrator editing bindings gets a 409 instead of a 500.
+        if (request.feishuUserId() != null && !request.feishuUserId().isBlank()) {
+            teachers.findByFeishuUserId(request.feishuUserId())
+                    .filter(existing -> !existing.getId().equals(teacher.getId()))
+                    .ifPresent(existing -> {
+                        throw ApiException.conflict("飞书 UserID 已被其他教师绑定");
+                    });
+        }
+        if (request.feishuOpenId() != null && !request.feishuOpenId().isBlank()) {
+            teachers.findByFeishuOpenId(request.feishuOpenId())
+                    .filter(existing -> !existing.getId().equals(teacher.getId()))
+                    .ifPresent(existing -> {
+                        throw ApiException.conflict("飞书 OpenID 已被其他教师绑定");
+                    });
+        }
         teacher.setName(request.name());
         teacher.setEmployeeNo(blankToNull(request.employeeNo()));
         teacher.setPhone(blankToNull(request.phone()));
