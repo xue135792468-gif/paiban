@@ -11,7 +11,7 @@ async function uiLogin(page: Page, username: string, password: string) {
 
 test('场景 1：录入数据 → 自动排课 → 发布 → 查看课表', async ({ page }) => {
   const api = await newContext()
-  const seed = await seedSchool(api)
+  await seedSchool(api)
 
   await uiLogin(page, 'admin', 'admin123')
 

@@ -73,7 +73,7 @@ async function submit() {
     if (redirect === '/') {
       try {
         const { data } = await http.get('/onboarding/status')
-        if (data.showWizard) {
+        if (data.showWizard && auth.hasPermission('onboarding:manage')) {
           router.replace('/onboarding')
           return
         }
