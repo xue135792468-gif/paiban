@@ -26,12 +26,27 @@ class FakeFeishuClientTest {
 
     @Test
     void recordsSentMessages() {
-        FeishuMessage message = new FeishuMessage("ou-001", "fs-001", "标题", "内容", "/link", true);
+        FeishuMessage message = new FeishuMessage(
+                "ou-001", "fs-001", "标题", "内容", "/link", true, "SUBSTITUTION_EFFECTIVE_ORIGINAL");
 
         assertThat(client.sendMessage(message)).isTrue();
         assertThat(client.sentMessages()).containsExactly(message);
 
         client.clearMessages();
         assertThat(client.sentMessages()).isEmpty();
+    }
+
+    @Test
+    void failAllSimulatesAnUnreachableTenant() {
+        FeishuMessage message = new FeishuMessage(
+                "ou-001", "fs-001", "标题", "内容", "/link", true, "SUBSTITUTION_EFFECTIVE_ORIGINAL");
+        client.failAll(true);
+
+        assertThat(client.sendMessage(message)).isFalse();
+        assertThat(client.sentMessages()).isEmpty();
+
+        client.failAll(false);
+        assertThat(client.sendMessage(message)).isTrue();
+        assertThat(client.sentMessages()).containsExactly(message);
     }
 }

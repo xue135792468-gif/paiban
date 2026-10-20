@@ -71,6 +71,7 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers("/uploads/**").permitAll()
                         .requestMatchers("/api/integrations/dingtalk/event").permitAll()
+                        .requestMatchers("/api/integrations/feishu/event").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
