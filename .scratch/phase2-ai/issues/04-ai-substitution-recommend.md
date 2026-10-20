@@ -4,17 +4,17 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 推荐接口：POST `/api/substitution-requests/{id}/recommend`，返回 3 个候选人 + 理由
-- [ ] AI Prompt 设计：系统 Prompt 定义推荐规则（同学科优先、当天无课优先、代课次数少优先），用户 Prompt 提供请假上下文与候选教师数据
-- [ ] 候选教师过滤：从数据库查询同学科教师、当天该时段无课教师、历史代课次数
-- [ ] AI 结构化输出：返回 `[{ teacherId, name, reason, score }]`，score 用于排序
-- [ ] 前端：审批界面"AI 推荐代课人"按钮（手动触发，不自动检测）
-- [ ] 前端：推荐结果展示（候选人列表 + 理由 + 选择按钮）
-- [ ] 前端：未配置 AI 供应商时按钮禁用，tooltip 提示"请先在设置中配置 AI 供应商"
-- [ ] 前端：AI 调用中显示 loading，失败时显示错误提示
-- [ ] 选择候选人后自动填充到调代申请表单
-- [ ] 调用记录写入 `ai_call_log`（任务类型 substitution_recommend）
-- [ ] REST Assured 集成测试：完整推荐流程、未配置供应商时的禁用状态
-- [ ] 单元测试：fake AI 网关验证推荐逻辑
+- [x] 推荐接口：POST `/api/substitution-requests/{id}/recommend`，返回 3 个候选人 + 理由
+- [x] AI Prompt 设计：系统 Prompt 定义推荐规则（同学科优先、当天无课优先、代课次数少优先），用户 Prompt 提供请假上下文与候选教师数据
+- [x] 候选教师过滤：从数据库查询同学科教师、当天该时段无课教师、历史代课次数
+- [x] AI 结构化输出：返回 `[{ teacherId, name, reason, score }]`，score 用于排序
+- [x] 前端：审批界面"AI 推荐代课人"按钮（手动触发，不自动检测）
+- [x] 前端：推荐结果展示（候选人列表 + 理由 + 选择按钮）
+- [x] 前端：未配置 AI 供应商时按钮禁用，tooltip 提示"请先在设置中配置 AI 供应商"
+- [x] 前端：AI 调用中显示 loading，失败时显示错误提示
+- [x] 选择候选人后自动填充到调代申请表单
+- [x] 调用记录写入 `ai_call_log`（任务类型 substitution_recommend）
+- [x] REST Assured 集成测试：完整推荐流程、未配置供应商时的禁用状态
+- [x] 单元测试：fake AI 网关验证推荐逻辑

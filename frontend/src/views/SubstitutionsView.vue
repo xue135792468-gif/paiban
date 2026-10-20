@@ -163,7 +163,40 @@
       </el-timeline>
     </el-dialog>
 
-    <el-dialog v-model="approveVisible" title="批准调代申请" width="480px">
+    <el-dialog v-model="approveVisible" title="批准调代申请" width="600px" @closed="resetRecommendations">
+      <div class="ai-recommend-bar">
+        <el-tooltip content="请先在设置中配置 AI 供应商" :disabled="aiRecommendConfigured" placement="top">
+          <span>
+            <el-button
+              type="primary"
+              plain
+              :disabled="!aiRecommendConfigured"
+              :loading="recommending"
+              @click="requestRecommendations"
+            >
+              AI 推荐代课人
+            </el-button>
+          </span>
+        </el-tooltip>
+        <span class="hint">AI 只提供建议，最终由你确认</span>
+      </div>
+      <div v-if="recommendations.length" class="recommend-list">
+        <div
+          v-for="item in recommendations"
+          :key="item.teacherId"
+          class="recommend-card"
+          :class="{ selected: approveForm.substituteTeacherId === item.teacherId }"
+        >
+          <div class="recommend-head">
+            <span class="recommend-name">{{ item.name }}</span>
+            <el-tag v-if="item.score !== null && item.score !== undefined" type="success" size="small">
+              评分 {{ item.score }}
+            </el-tag>
+          </div>
+          <p class="recommend-reason">{{ item.reason }}</p>
+          <el-button size="small" type="primary" plain @click="chooseRecommendation(item)">选择</el-button>
+        </div>
+      </div>
       <el-form label-width="90px">
         <el-form-item label="代课教师" required>
           <el-select v-model="approveForm.substituteTeacherId" filterable style="width: 100%">
@@ -246,6 +279,18 @@ interface Stats {
   substitutedIn: number
 }
 
+interface AiStatus {
+  configured: boolean
+  tasks?: Record<string, { configured: boolean } | undefined>
+}
+
+interface Recommendation {
+  teacherId: number
+  name: string
+  reason?: string
+  score?: number
+}
+
 const auth = useAuthStore()
 const route = useRoute()
 const canApprove = computed(() => auth.hasPermission('substitution:approve'))
@@ -292,6 +337,9 @@ const history = ref<HistoryRow[]>([])
 
 const approveVisible = ref(false)
 const approving = ref(false)
+const recommendations = ref<Recommendation[]>([])
+const recommending = ref(false)
+const aiRecommendConfigured = ref(false)
 const approveForm = reactive({
   requestId: 0,
   originalTeacherId: 0,
@@ -440,9 +488,45 @@ function openApprove(row: RequestRow) {
   approveForm.originalTeacherId = 0
   approveForm.substituteTeacherId = row.substituteTeacherId ?? null
   approveForm.comment = ''
+  recommendations.value = []
   const original = teachers.value.find((teacher) => teacher.name === row.originalTeacherName)
   approveForm.originalTeacherId = original ? original.id : 0
   approveVisible.value = true
+}
+
+async function loadAiStatus() {
+  try {
+    const { data } = await http.get<AiStatus>('/ai/status')
+    aiRecommendConfigured.value = data.tasks?.substitution_recommend?.configured === true
+  } catch {
+    aiRecommendConfigured.value = false
+  }
+}
+
+function resetRecommendations() {
+  recommendations.value = []
+}
+
+async function requestRecommendations() {
+  if (!approveForm.requestId) return
+  recommending.value = true
+  try {
+    const { data } = await http.post<{ recommendations?: Recommendation[] }>(
+      `/substitution-requests/${approveForm.requestId}/recommend`,
+    )
+    recommendations.value = data.recommendations ?? []
+    if (recommendations.value.length === 0) {
+      ElMessage.warning('AI 没有返回可用的代课教师，请手动选择')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message ?? 'AI 推荐失败，请稍后重试或手动选择代课教师')
+  } finally {
+    recommending.value = false
+  }
+}
+
+function chooseRecommendation(item: Recommendation) {
+  approveForm.substituteTeacherId = item.teacherId
 }
 
 async function approve() {
@@ -488,6 +572,7 @@ onMounted(async () => {
   const [teacherRes, classRes] = await Promise.all([
     http.get('/teachers/options'),
     http.get('/classes'),
+    loadAiStatus(),
   ])
   teachers.value = teacherRes.data
   classes.value = classRes.data
@@ -551,6 +636,44 @@ h2 {
 .history-title {
   font-weight: 600;
   font-size: 14px;
+}
+.ai-recommend-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.recommend-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.recommend-card {
+  border: 1px solid var(--el-border-color);
+  border-radius: 8px;
+  padding: 10px 12px;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+}
+.recommend-card.selected {
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+}
+.recommend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.recommend-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+.recommend-reason {
+  margin: 6px 0 8px;
+  color: var(--paiban-muted);
+  font-size: 13px;
+  line-height: 1.5;
 }
 .history-meta {
   color: var(--paiban-muted);
