@@ -123,6 +123,12 @@ cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test
 - **钉钉集成**：`AuthProvider` / `OrgDataProvider` / `NotificationChannel` 三组接口均有本地与钉钉实现；
   钉钉 Stream 增量事件通过 `POST /api/integrations/dingtalk/event` 接收（生产可接官方 Stream SDK 转发）。
   关闭集成后系统完整可用，通知自动降级为系统内消息。
+- **飞书集成**：与钉钉同一组接口的飞书实现；设置中心「飞书集成」卡片可配置 App ID / App Secret /
+  验证 Token 与同步策略（`feishu` 飞书为准、`local` 本地为准），并手动触发全量同步
+  （`POST /api/integrations/feishu/sync`）与查看 `FEISHU_SYNC` 同步日志。
+  飞书增量事件通过 `POST /api/integrations/feishu/event` 接收，校验头为 `X-Feishu-Token`
+  （值为设置中心的「验证 Token」）；同时兼容 v2.0 事件信封与扁平 v1 格式。
+  未启用或 Token 不匹配时分别返回 400 / 403，未知事件类型按 200 忽略。
 - **测试替身**：`paiban.integration.dingtalk.fake=true`（e2e/test profile）启用确定性的假钉钉客户端。
 
 ## 已知限制
@@ -130,6 +136,11 @@ cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test
 - **钉钉 Stream 长连接**：一期未内嵌官方 Stream SDK。增量事件通过
   `POST /api/integrations/dingtalk/event`（需 `X-DingTalk-Token`，值为设置中心的“事件令牌”）接收，
   生产环境可用官方 SDK 将事件转发到该端点；全量同步走 `POST /api/integrations/dingtalk/sync`。
+- **飞书 Stream 长连接**：本仓库未内嵌官方飞书 Stream SDK，也不自行维护 WebSocket 长连接。
+  增量事件由 `POST /api/integrations/feishu/event` 接收（需 `X-Feishu-Token`，值为设置中心的“验证 Token”），
+  生产环境可用官方 Stream SDK 订阅 `contact.user.created_v3` / `updated_v3` / `deleted_v3`
+  并转发到该端点；事件加密须在飞书开放平台关闭，否则接口返回 400。
+  全量同步走 `POST /api/integrations/feishu/sync`；删除事件只把教师标记为停用，不删除本地记录。
 - **PDF 导出**：用 OpenPDF `PdfPTable` 直接绘制，而不是 HTMLWorker；CJK 字体从系统字体或
   `paiban.export.pdf-font-path` 加载，Docker 镜像已内置 `fonts-noto-cjk`。
 - **约束设置快照**：`ConstraintSettingsHolder` 为进程级静态变量，因此一期固定为单任务串行求解
