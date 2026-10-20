@@ -24,6 +24,8 @@ public final class TimetableDtos {
                                     boolean substituted,
                                     Long substituteTeacherId,
                                     String substituteTeacherName,
+                                    String originalTeacherName,
+                                    String substitutionReason,
                                     String note) {}
 
     public record PublishResultDto(Long draftId, int entryCount, Instant publishedAt, Long publishId) {}

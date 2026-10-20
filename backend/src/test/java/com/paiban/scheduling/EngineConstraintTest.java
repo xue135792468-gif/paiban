@@ -286,6 +286,12 @@ class EngineConstraintTest {
         assertThat(solution.getScore().hardScore()).isLessThan(0);
     }
 
+    @Test
+    void customConstraintPluginsAreDiscovered() {
+        assertThat(com.paiban.scheduling.solver.plugin.PluginConstraintLoader.load())
+                .anyMatch(plugin -> plugin.name().equals("test-plugin"));
+    }
+
     private com.paiban.scheduling.domain.ConstraintConfig config(
             ConstraintType type, boolean hard, int weight, Map<String, Object> params) {
         com.paiban.scheduling.domain.ConstraintConfig config = new com.paiban.scheduling.domain.ConstraintConfig();

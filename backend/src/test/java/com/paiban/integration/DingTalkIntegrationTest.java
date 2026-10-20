@@ -73,18 +73,36 @@ class DingTalkIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void dingtalkLoginProvisionsLocalAccount() {
+    void dingtalkLoginRequiresAnExistingLocalAccount() {
         String token = adminToken();
         configure(token, true);
         as(token).when().post("/api/integrations/dingtalk/sync").then().statusCode(200);
 
-        Response response = io.restassured.RestAssured.given()
+        // No local account linked to the teacher yet: rejected, never auto-provisioned.
+        io.restassured.RestAssured.given()
                 .contentType("application/json")
                 .body(Map.of("authCode", "fake:EMP001"))
-                .when().post("/api/auth/dingtalk");
-        response.then().statusCode(200)
+                .when().post("/api/auth/dingtalk")
+                .then().statusCode(401);
+
+        Long teacherId = as(token).when().get("/api/teachers")
+                .then().statusCode(200).extract().jsonPath()
+                .getLong("find { it.name == '张三' }.id");
+        as(token).body(Map.of(
+                        "username", "zhangsan",
+                        "password", "teacher123",
+                        "displayName", "张三",
+                        "roleCodes", List.of("teacher"),
+                        "teacherId", teacherId))
+                .when().post("/api/users").then().statusCode(200);
+
+        io.restassured.RestAssured.given()
+                .contentType("application/json")
+                .body(Map.of("authCode", "fake:EMP001"))
+                .when().post("/api/auth/dingtalk")
+                .then().statusCode(200)
                 .body("token", notNullValue())
-                .body("user.username", equalTo("EMP001"))
+                .body("user.username", equalTo("zhangsan"))
                 .body("user.roles", hasItem("teacher"));
     }
 

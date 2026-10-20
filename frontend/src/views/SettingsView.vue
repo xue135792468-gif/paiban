@@ -22,6 +22,9 @@
             <span class="logo-path">{{ logoName || '未上传' }}</span>
           </div>
         </el-form-item>
+        <el-form-item label="外部访问地址">
+          <el-input v-model="form['public.base-url']" placeholder="如 https://paiban.school.cn，用于通知里的跳转链接" />
+        </el-form-item>
       </el-form>
     </el-card>
 
@@ -37,8 +40,8 @@
         </el-form-item>
         <el-form-item label="通知范围">
           <el-select v-model="form['notification.scope']" style="width: 260px">
-            <el-option label="仅当事人（原教师 + 代课教师）" value="minimal" />
-            <el-option label="含班主任（一期暂无年级组长模型）" value="with-grade-leader" />
+            <el-option label="当事人（原教师 + 代课教师 + 班主任）" value="minimal" />
+            <el-option label="含年级组长（一期未建模，等同当事人）" value="with-grade-leader" />
             <el-option label="含教务（增加教务管理员）" value="with-admin" />
           </el-select>
         </el-form-item>
@@ -107,7 +110,7 @@
       </el-collapse>
     </el-card>
 
-    <el-card shadow="never">
+    <el-card v-if="aiEnabled" shadow="never">
       <template #header><span class="card-title">AI 特性</span></template>
       <div class="ai-row">
         <div>
@@ -173,6 +176,13 @@ const logoName = computed(() => {
   const path = form['school.logo-path']
   return path ? path.split(/[\\/]/).pop() : ''
 })
+
+// ADR-0003: AI entry points are hidden entirely while every feature is off.
+const aiEnabled = computed(
+  () =>
+    form['ai.features.substitute-recommendation'] === 'true' ||
+    form['ai.features.natural-language-constraints'] === 'true',
+)
 
 function formatTime(value: string) {
   return value ? value.replace('T', ' ').slice(0, 16) : ''

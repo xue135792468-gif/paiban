@@ -33,6 +33,7 @@ public class SettingsController {
             SettingsService.DINGTALK_EVENT_TOKEN,
             SettingsService.DINGTALK_SYNC_STRATEGY,
             SettingsService.SCHOOL_NAME,
+            SettingsService.PUBLIC_BASE_URL,
             SettingsService.AI_SUBSTITUTE_RECOMMENDATION,
             SettingsService.AI_NATURAL_LANGUAGE_CONSTRAINTS);
 

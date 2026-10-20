@@ -85,11 +85,10 @@ public class NotificationService {
         String scope = settings.notificationScope();
         List<Long> headTeacherUsers = new ArrayList<>();
         List<Long> adminUsers = new ArrayList<>();
-        if (!"minimal".equals(scope)) {
-            adminClasses.findById(request.getAdminClassId())
-                    .map(AdminClass::getHeadTeacherId)
-                    .ifPresent(headTeacherId -> headTeacherUsers.addAll(userIds(users.usersByTeacherId(headTeacherId))));
-        }
+        // ADR-0014: parties (original + substitute + head teacher) are always notified.
+        adminClasses.findById(request.getAdminClassId())
+                .map(AdminClass::getHeadTeacherId)
+                .ifPresent(headTeacherId -> headTeacherUsers.addAll(userIds(users.usersByTeacherId(headTeacherId))));
         if ("with-admin".equals(scope)) {
             adminUsers.addAll(userIds(users.adminUsers()));
         }
@@ -115,7 +114,7 @@ public class NotificationService {
     public void onTimetablePublished(TimetablePublishedEvent event) {
         List<Long> recipients = new ArrayList<>();
         users.allUsers().stream()
-                .filter(user -> user.getTeacherId() != null || user.hasRole("admin"))
+                .filter(user -> user.getTeacherId() != null || users.hasPermission(user, com.paiban.identity.domain.Permissions.TIMETABLE_VIEW))
                 .forEach(user -> recipients.add(user.getId()));
         String semesterName = semesters.require(event.semesterId()).getName();
         notify(

@@ -106,6 +106,16 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         if (s.enabled(ConstraintType.HEAD_TEACHER_FIRST_PERIOD)) {
             constraints.add(headTeacherFirstPeriod(factory, s));
         }
+        try {
+            for (com.paiban.scheduling.solver.plugin.CustomConstraint plugin
+                    : com.paiban.scheduling.solver.plugin.PluginConstraintLoader.load()) {
+                constraints.addAll(plugin.define(factory, s));
+            }
+        } catch (RuntimeException ex) {
+            // A broken plugin must never prevent the core solve.
+            org.slf4j.LoggerFactory.getLogger(PaibanConstraintProvider.class)
+                    .warn("忽略加载失败的约束插件: {}", ex.getMessage());
+        }
         return constraints.toArray(new Constraint[0]);
     }
 

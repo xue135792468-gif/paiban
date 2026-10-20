@@ -430,6 +430,9 @@ public class SchedulingService {
     }
 
     private JobDto toDto(SchedulingJob job) {
+        long remaining = "RUNNING".equals(job.getStatus())
+                ? Math.max(0, job.getSolveSeconds() * 1000L - job.getElapsedMs())
+                : 0;
         return new JobDto(
                 job.getId(),
                 job.getSemesterId(),
@@ -437,6 +440,7 @@ public class SchedulingService {
                 job.getScore(),
                 job.getProgress(),
                 job.getElapsedMs(),
+                remaining,
                 job.getErrorMessage(),
                 job.getDraftId(),
                 job.getDraftName(),

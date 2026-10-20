@@ -59,7 +59,7 @@
           <el-table v-loading="loadingMine" :data="myRequests" stripe>
             <el-table-column prop="effectiveDate" label="日期" width="120" />
             <el-table-column prop="periodLabel" label="节次" width="110" />
-            <el-table-column prop="className" label="班级" min-width="120" />
+            <el-table-column prop="className" label="行政班" min-width="120" />
             <el-table-column prop="courseName" label="课程" width="100" />
             <el-table-column prop="substituteTeacherName" label="代课教师" width="110">
               <template #default="{ row }">{{ row.substituteTeacherName || '待定' }}</template>
@@ -85,7 +85,7 @@
             <el-table-column prop="originalTeacherName" label="申请人" width="110" />
             <el-table-column prop="effectiveDate" label="日期" width="120" />
             <el-table-column prop="periodLabel" label="节次" width="110" />
-            <el-table-column prop="className" label="班级" min-width="120" />
+            <el-table-column prop="className" label="行政班" min-width="120" />
             <el-table-column prop="courseName" label="课程" width="100" />
             <el-table-column prop="substituteTeacherName" label="期望代课" width="110">
               <template #default="{ row }">{{ row.substituteTeacherName || '未指定' }}</template>
@@ -105,7 +105,7 @@
       <el-tab-pane v-if="canViewRecords" label="调代记录" name="records">
         <el-card shadow="never" class="filter-card">
           <div class="filters">
-            <el-select v-model="filter.classId" filterable clearable placeholder="班级" style="width: 180px">
+            <el-select v-model="filter.classId" filterable clearable placeholder="行政班" style="width: 180px">
               <el-option v-for="item in classOptions" :key="item.id" :label="item.name" :value="item.id" />
             </el-select>
             <el-select v-model="filter.teacherId" filterable clearable placeholder="教师" style="width: 180px">
@@ -129,7 +129,7 @@
         <el-card shadow="never">
           <el-table v-loading="loadingRecords" :data="records" stripe>
             <el-table-column prop="effectiveDate" label="生效日期" width="120" />
-            <el-table-column prop="className" label="班级" min-width="120" />
+            <el-table-column prop="className" label="行政班" min-width="120" />
             <el-table-column prop="courseName" label="课程" width="100" />
             <el-table-column prop="originalTeacherName" label="原教师" width="110" />
             <el-table-column prop="substituteTeacherName" label="代课教师" width="110" />

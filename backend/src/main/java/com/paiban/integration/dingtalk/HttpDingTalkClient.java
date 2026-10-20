@@ -88,16 +88,21 @@ public class HttpDingTalkClient implements DingTalkClient {
     @Override
     public boolean sendWorkNotification(String dingtalkUserId, String title, String markdown, String link) {
         try {
+            String absolute = link == null || link.startsWith("http")
+                    ? link
+                    : settings.publicBaseUrl() + link;
             restClient.post()
                     .uri(OAPI + "/topapi/message/corpconversation/asyncsend_v2?access_token=" + accessToken())
                     .body(Map.of(
                             "agent_id", settings.dingtalkAgentId(),
                             "userid_list", dingtalkUserId,
                             "msg", Map.of(
-                                    "msgtype", "markdown",
-                                    "markdown", Map.of(
+                                    "msgtype", "actionCard",
+                                    "actionCard", Map.of(
                                             "title", title,
-                                            "text", markdown + "\n\n[查看详情](" + link + ")"))))
+                                            "text", markdown,
+                                            "singleTitle", "查看详情",
+                                            "singleURL", absolute == null ? "" : absolute))))
                     .retrieve()
                     .toBodilessEntity();
             return true;

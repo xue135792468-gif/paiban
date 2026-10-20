@@ -3,7 +3,7 @@
     <div class="toolbar">
       <div>
         <h2>授课任务管理</h2>
-        <p class="subtitle">配置班级课程的每周课时与授课教师，作为智能排课的核心输入依据。</p>
+        <p class="subtitle">配置行政班课程的每周课节与授课教师，作为智能排课的核心输入依据。</p>
       </div>
       <div class="actions">
         <el-select
@@ -53,7 +53,7 @@
       type="info"
       :closable="false"
       show-icon
-      title="授课任务 = 班级 + 课程 + 每周节数 + 任课教师"
+      title="授课任务 = 行政班 + 课程 + 每周节数 + 任课教师"
       class="hint-alert"
     />
 
@@ -62,7 +62,7 @@
         <template v-if="canManage">
           <el-select
             v-model="filters.classId"
-            placeholder="全部班级"
+            placeholder="全部行政班"
             clearable
             filterable
             style="width: 180px"
@@ -130,7 +130,7 @@
         :data="assignments"
         stripe
       >
-        <el-table-column prop="className" label="班级" min-width="140" />
+        <el-table-column prop="className" label="行政班" min-width="140" />
         <el-table-column prop="gradeName" label="年级" min-width="120" />
         <el-table-column prop="courseName" label="课程" min-width="140" />
         <el-table-column prop="teacherName" label="教师" min-width="140">
@@ -170,10 +170,10 @@
         :rules="rules"
         label-width="88px"
       >
-        <el-form-item label="班级" prop="classId">
+        <el-form-item label="行政班" prop="classId">
           <el-select
             v-model="form.classId"
-            placeholder="请选择班级"
+            placeholder="请选择行政班"
             filterable
             style="width: 100%"
           >
@@ -341,7 +341,7 @@ const form = reactive<FormState>({
 })
 
 const rules: FormRules = {
-  classId: [{ required: true, message: '请选择班级', trigger: 'change' }],
+  classId: [{ required: true, message: '请选择行政班', trigger: 'change' }],
   courseId: [{ required: true, message: '请选择课程', trigger: 'change' }],
   teacherId: [{ required: true, message: '请选择任课教师', trigger: 'change' }],
   weeklyLessons: [{ required: true, message: '请输入每周节数', trigger: 'blur' }],
@@ -383,7 +383,7 @@ async function loadClasses() {
     })
     classes.value = data ?? []
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '加载班级列表失败')
+    ElMessage.error(e?.response?.data?.message ?? '加载行政班列表失败')
   }
 }
 

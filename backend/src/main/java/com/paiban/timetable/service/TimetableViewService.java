@@ -48,6 +48,7 @@ public class TimetableViewService {
     private final TeacherRepository teachers;
     private final AdminClassRepository adminClasses;
     private final SubstitutionRepository substitutions;
+    private final com.paiban.substitution.domain.SubstitutionRequestRepository substitutionRequests;
     private final SemesterService semesters;
     private final UserService users;
 
@@ -59,6 +60,7 @@ public class TimetableViewService {
             TeacherRepository teachers,
             AdminClassRepository adminClasses,
             SubstitutionRepository substitutions,
+            com.paiban.substitution.domain.SubstitutionRequestRepository substitutionRequests,
             SemesterService semesters,
             UserService users) {
         this.entries = entries;
@@ -68,6 +70,7 @@ public class TimetableViewService {
         this.teachers = teachers;
         this.adminClasses = adminClasses;
         this.substitutions = substitutions;
+        this.substitutionRequests = substitutionRequests;
         this.semesters = semesters;
         this.users = users;
     }
@@ -216,6 +219,10 @@ public class TimetableViewService {
                 true,
                 substitution.getSubstituteTeacherId(),
                 substitute == null ? null : substitute.getName(),
+                teachers.findById(substitution.getOriginalTeacherId())
+                        .map(Teacher::getName).orElse(null),
+                substitutionRequests.findById(substitution.getRequestId())
+                        .map(com.paiban.substitution.domain.SubstitutionRequest::getReason).orElse(null),
                 "调代生效于 " + substitution.getEffectiveDate());
     }
 
@@ -256,6 +263,8 @@ public class TimetableViewService {
                     period == null ? null : period.getSection().name(),
                     "周" + entry.getDayOfWeek() + "第" + entry.getPeriodNo() + "节",
                     false,
+                    null,
+                    null,
                     null,
                     null,
                     null));

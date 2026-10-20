@@ -82,8 +82,9 @@ E2E 需要 `JAVA_HOME` 指向 JDK 21（Windows 下请使用 `E:\...` 形式的�
   生产环境可用官方 SDK 将事件转发到该端点；全量同步走 `POST /api/integrations/dingtalk/sync`。
 - **PDF 导出**：用 OpenPDF `PdfPTable` 直接绘制，而不是 HTMLWorker；CJK 字体从系统字体或
   `paiban.export.pdf-font-path` 加载，Docker 镜像已内置 `fonts-noto-cjk`。
-- **约束设置快照**：`ConstraintSettingsHolder` 为进程级静态变量，依赖“同一时刻只运行一个求解任务”的
-  约束（`AsyncConfig` 单线程 + 数据库状态检查）。若未来放开并发求解，需要改为按 solution 携带设置。
+- **约束设置快照**：`ConstraintSettingsHolder` 为进程级静态变量，因此一期固定为单任务串行求解
+  （`AsyncConfig` 单线程 + 数据库状态检查），不提供 `max-concurrent-jobs` 配置项。若未来放开并发求解，
+  需要改为按 solution 携带设置。
 - **学期回看**：课表查询接口目前固定当前学期；历史学期数据已隔离存储，接口预留了扩展空间。
 - **年级组长**：一期未建模，通知范围 `with-grade-leader` 实际包含班主任；设置页已注明。
 - **登录限速**：应用层未内置失败锁定，生产部署建议在反向代理/网关层配置限流。
@@ -111,7 +112,6 @@ docs/adr/  架构决策记录
 | `paiban.notification.scope` | 通知范围：`minimal` / `with-grade-leader` / `with-admin` |
 | `paiban.integration.dingtalk.enabled` | 钉钉集成开关 |
 | `paiban.ai.features.*` | AI 特性开关（一期占位，默认关闭） |
-| `paiban.scheduling.max-concurrent-jobs` | 同时运行的排课任务数 |
 
 > 生产环境必须设置 `PAIBAN_JWT_SECRET`（至少 32 字符）。在非 `local`/`test`/`e2e` profile 下，
 > 若仍使用仓库内置的默认密钥，应用会拒绝启动。

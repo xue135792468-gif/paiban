@@ -3,11 +3,11 @@
     <div class="toolbar">
       <div>
         <h2>课表</h2>
-        <p class="subtitle">按班级、教师、教室或全校查看课表。调代生效的课节会标注「代」。</p>
+        <p class="subtitle">按行政班、教师、教室或全校查看课表。调代生效的课节会标注「代」。</p>
       </div>
       <div class="actions">
         <el-radio-group v-if="canViewAll || canViewClassScope" v-model="mode" @change="onModeChange">
-          <el-radio-button v-if="canViewAll || headClasses.length > 0" value="class">班级</el-radio-button>
+          <el-radio-button v-if="canViewAll || headClasses.length > 0" value="class">行政班</el-radio-button>
           <el-radio-button value="teacher">教师</el-radio-button>
           <el-radio-button v-if="canViewAll" value="room">教室</el-radio-button>
           <el-radio-button v-if="canViewAll" value="school">全校</el-radio-button>
@@ -62,35 +62,14 @@
       <el-empty v-if="!hasData" description="暂无课表数据" />
 
       <template v-else-if="mode === 'school'">
-        <div v-for="group in schoolGroups" :key="group.classId" class="school-block">
-          <h3>{{ group.className }}</h3>
-          <div class="grid" :style="{ gridTemplateColumns: `96px repeat(${days.length}, minmax(140px, 1fr))` }">
-            <div class="corner">节次</div>
-            <div v-for="day in days" :key="`h-${group.classId}-${day}`" class="day-head">{{ dayName(day) }}</div>
-            <template v-for="row in periodRows" :key="`r-${group.classId}-${row.periodNo}`">
-              <div class="row-head">
-                <div class="row-title">第{{ row.periodNo }}节</div>
-                <div class="row-time">{{ row.time }}</div>
-              </div>
-              <div v-for="day in days" :key="`c-${group.classId}-${day}-${row.periodNo}`" class="cell">
-                <div
-                  v-if="group.cells[`${day}-${row.periodNo}`]"
-                  class="lesson"
-                  :style="{ background: courseColor(group.cells[`${day}-${row.periodNo}`].courseId) }"
-                >
-                  <div class="lesson-course">
-                    {{ group.cells[`${day}-${row.periodNo}`].courseName }}
-                    <el-tag v-if="group.cells[`${day}-${row.periodNo}`].substituted" size="small" type="warning">
-                      代
-                    </el-tag>
-                  </div>
-                  <div class="lesson-meta">{{ group.cells[`${day}-${row.periodNo}`].teacherName }}</div>
-                </div>
-                <div v-else class="empty-cell">—</div>
-              </div>
-            </template>
-          </div>
-        </div>
+        <el-table-v2
+          :columns="schoolColumns"
+          :data="schoolRows"
+          :width="1180"
+          :height="620"
+          :row-height="46"
+          fixed
+        />
       </template>
 
       <template v-else>
@@ -152,6 +131,8 @@ interface Entry {
   periodNo: number
   substituted: boolean
   substituteTeacherName?: string
+  originalTeacherName?: string
+  substitutionReason?: string
   note?: string
 }
 
@@ -247,6 +228,43 @@ function dayName(day: number) {
   return ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'][day] ?? `周${day}`
 }
 
+function schoolCell(group: { cells: Record<string, Entry> }, day: number, periodNo: number) {
+  const entry = group.cells[`${day}-${periodNo}`]
+  if (!entry) return ''
+  return `${entry.courseName} · ${entry.teacherName}${entry.substituted ? '（代）' : ''}`
+}
+
+// ADR-0017: the school-wide table is virtualised instead of rendering every class at once.
+const schoolRows = computed(() => {
+  const rows: Array<Record<string, string | number>> = []
+  let id = 0
+  schoolGroups.value.forEach((group) => {
+    periodRows.value.forEach((row) => {
+      const record: Record<string, string | number> = {
+        id: id++,
+        className: group.className,
+        period: `第${row.periodNo}节 ${row.time}`,
+      }
+      days.value.forEach((day) => {
+        record[`d${day}`] = schoolCell(group, day, row.periodNo)
+      })
+      rows.push(record)
+    })
+  })
+  return rows
+})
+
+const schoolColumns = computed(() => [
+  { key: 'className', dataKey: 'className', title: '行政班', width: 140, fixed: true },
+  { key: 'period', dataKey: 'period', title: '节次', width: 150, fixed: true },
+  ...days.value.map((day) => ({
+    key: `d${day}`,
+    dataKey: `d${day}`,
+    title: dayName(day),
+    width: 160,
+  })),
+])
+
 function courseColor(courseId: number) {
   const course = courses.value.find((item) => item.id === courseId)
   return course?.color || palette[courseId % palette.length]
@@ -259,7 +277,8 @@ function cellAt(day: number, periodNo: number) {
 function tooltip(entry: Entry) {
   const base = `${entry.courseName} · ${entry.teacherName}`
   if (!entry.substituted) return base
-  return `${base}（由 ${entry.substituteTeacherName} 代课）`
+  const reason = entry.substitutionReason ? `；原因：${entry.substitutionReason}` : ''
+  return `${base}（代课）；原教师：${entry.originalTeacherName ?? '—'}${reason}；${entry.note ?? ''}`
 }
 
 function onModeChange() {

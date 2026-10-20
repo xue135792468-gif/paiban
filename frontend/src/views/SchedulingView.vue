@@ -134,6 +134,12 @@
               <span class="metric-value">{{ Math.round((activeJob.elapsedMs || 0) / 1000) }} 秒</span>
             </div>
             <div class="metric-item">
+              <span class="metric-label">预计剩余</span>
+              <span class="metric-value">
+                {{ activeJob.status === 'RUNNING' ? Math.max(0, Math.round((activeJob.estimatedRemainingMs || 0) / 1000)) + ' 秒' : '—' }}
+              </span>
+            </div>
+            <div class="metric-item">
               <span class="metric-label">设定时长</span>
               <span class="metric-value">{{ activeJob.solveSeconds }} 秒</span>
             </div>
@@ -291,6 +297,7 @@ interface JobItem {
   score?: string | null
   progress: number
   elapsedMs: number
+  estimatedRemainingMs?: number
   errorMessage?: string | null
   draftId?: number | null
   draftName?: string | null

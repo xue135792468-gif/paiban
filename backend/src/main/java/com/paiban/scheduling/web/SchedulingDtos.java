@@ -18,8 +18,9 @@ public final class SchedulingDtos {
                                   @Max(value = 600, message = "求解时长最多 600 秒") Integer maxSeconds) {}
 
     public record JobDto(Long id, Long semesterId, String status, String score, int progress,
-                         long elapsedMs, String errorMessage, Long draftId, String draftName,
-                         int solveSeconds, Instant createdAt, Instant startedAt, Instant finishedAt) {}
+                         long elapsedMs, long estimatedRemainingMs, String errorMessage, Long draftId,
+                         String draftName, int solveSeconds, Instant createdAt, Instant startedAt,
+                         Instant finishedAt) {}
 
     public record DraftDto(Long id, Long semesterId, String name, String status, int scoreHard,
                            int scoreSoft, String createdBy, Instant createdAt, long lessonCount) {}

@@ -3,7 +3,7 @@
     <div class="toolbar">
       <div>
         <h2>年级设置</h2>
-        <p class="subtitle">维护学期年级划分与排序。删除年级将级联删除其关联的所有班级与排课数据。</p>
+        <p class="subtitle">维护学期年级划分与排序。删除年级将级联删除其关联的所有行政班与排课数据。</p>
       </div>
       <div class="actions">
         <el-select
@@ -269,7 +269,7 @@ async function submitForm() {
 async function handleDelete(row: GradeItem) {
   try {
     await ElMessageBox.confirm(
-      `确定要删除年级「${row.name}」吗？删除年级将同时级联删除该年级下的所有班级及关联数据，此操作不可撤销！`,
+      `确定要删除年级「${row.name}」吗？删除年级将同时级联删除该年级下的所有行政班及关联数据，此操作不可撤销！`,
       '删除确认',
       {
         confirmButtonText: '确定删除',

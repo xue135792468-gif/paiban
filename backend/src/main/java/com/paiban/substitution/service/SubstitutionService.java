@@ -99,7 +99,7 @@ public class SubstitutionService {
             throw ApiException.badRequest("该课节不属于当前学期");
         }
         AppUser user = users.getByUsername(username);
-        boolean admin = user.hasRole("admin");
+        boolean admin = users.hasPermission(user, com.paiban.identity.domain.Permissions.SUBSTITUTION_VIEW);
         if (!admin && !Objects.equals(user.getTeacherId(), entry.getTeacherId())) {
             throw ApiException.forbidden("只能为自己的课提交调代申请");
         }
@@ -268,7 +268,7 @@ public class SubstitutionService {
     @Transactional(readOnly = true)
     public List<SubstitutionRequestDto> list(String username, Long semesterId, String status, boolean mineOnly) {
         AppUser user = users.getByUsername(username);
-        boolean admin = user.hasRole("admin");
+        boolean admin = users.hasPermission(user, com.paiban.identity.domain.Permissions.SUBSTITUTION_VIEW);
         Long resolved = semesterId != null ? semesterId : semesters.requireCurrent().getId();
         List<SubstitutionRequest> result;
         if (mineOnly || !admin) {
@@ -292,7 +292,7 @@ public class SubstitutionService {
     public SubstitutionRequestDto detail(String username, Long requestId) {
         SubstitutionRequest request = requireRequest(requestId);
         AppUser user = users.getByUsername(username);
-        if (!user.hasRole("admin") && !Objects.equals(user.getTeacherId(), request.getRequesterTeacherId())) {
+        if (!users.hasPermission(user, com.paiban.identity.domain.Permissions.SUBSTITUTION_VIEW) && !Objects.equals(user.getTeacherId(), request.getRequesterTeacherId())) {
             throw ApiException.forbidden("不能查看他人的调代申请");
         }
         return toDto(request);
@@ -311,7 +311,7 @@ public class SubstitutionService {
                 && adminClasses.findById(request.getAdminClassId())
                         .map(adminClass -> user.getTeacherId().equals(adminClass.getHeadTeacherId()))
                         .orElse(false);
-        if (!user.hasRole("admin") && !requester && !substitute && !headTeacher) {
+        if (!users.hasPermission(user, com.paiban.identity.domain.Permissions.SUBSTITUTION_VIEW) && !requester && !substitute && !headTeacher) {
             throw ApiException.forbidden("不能查看他人的调代流转记录");
         }
         return history.findByRequestIdOrderByCreatedAtAsc(requestId).stream()
@@ -354,8 +354,11 @@ public class SubstitutionService {
     @Transactional(readOnly = true)
     public TeacherStatsDto stats(Long teacherId) {
         requireTeacher(teacherId);
-        long out = substitutions.countByOriginalTeacherIdAndStatus(teacherId, Substitution.EFFECTIVE);
-        long in = substitutions.countBySubstituteTeacherIdAndStatus(teacherId, Substitution.EFFECTIVE);
+        Long semesterId = semesters.requireCurrent().getId();
+        long out = substitutions.countBySemesterIdAndOriginalTeacherIdAndStatus(
+                semesterId, teacherId, Substitution.EFFECTIVE);
+        long in = substitutions.countBySemesterIdAndSubstituteTeacherIdAndStatus(
+                semesterId, teacherId, Substitution.EFFECTIVE);
         Teacher teacher = teachers.findById(teacherId).orElse(null);
         return new TeacherStatsDto(teacherId, teacher == null ? null : teacher.getName(), out, in);
     }

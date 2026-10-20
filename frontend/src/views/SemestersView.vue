@@ -44,7 +44,7 @@
 
     <el-dialog v-model="copyVisible" title="复制学期结构" width="460px">
       <el-alert
-        title="将复制来源学期的作息表、年级、班级与授课任务到当前学期（不含已发布课表与调代记录）。"
+        title="将复制来源学期的作息表、年级、行政班与授课任务到当前学期（不含已发布课表与调代记录）。"
         type="info"
         :closable="false"
         show-icon
@@ -140,7 +140,7 @@ async function confirmCopy() {
       `/semesters/${copyTarget.value.id}/copy-from/${copySourceId.value}`,
     )
     ElMessage.success(
-      `复制完成：作息 ${data.periods} 节、年级 ${data.grades} 个、班级 ${data.classes} 个、授课任务 ${data.assignments} 条`,
+      `复制完成：作息 ${data.periods} 节、年级 ${data.grades} 个、行政班 ${data.classes} 个、授课任务 ${data.assignments} 条`,
     )
     copyVisible.value = false
     await load()

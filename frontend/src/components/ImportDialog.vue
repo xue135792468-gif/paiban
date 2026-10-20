@@ -91,6 +91,13 @@
       <template v-else-if="step === 1">
         <el-button @click="reset">重新选择</el-button>
         <el-button
+          v-if="(report?.errors?.length ?? 0) > 0"
+          :loading="exportingErrors"
+          @click="exportErrors"
+        >
+          导出错误清单
+        </el-button>
+        <el-button
           type="primary"
           :disabled="(report?.validRows ?? 0) === 0"
           :loading="committing"
@@ -153,6 +160,7 @@ const report = ref<ImportReport | null>(null)
 const previewing = ref(false)
 const committing = ref(false)
 const downloading = ref(false)
+const exportingErrors = ref(false)
 
 const previewHeaders = computed(() => {
   const first = report.value?.rows?.[0]
@@ -211,6 +219,28 @@ async function doCommit() {
     ElMessage.error(e?.response?.data?.message ?? '导入失败')
   } finally {
     committing.value = false
+  }
+}
+
+async function exportErrors() {
+  if (!report.value?.errors?.length) return
+  exportingErrors.value = true
+  try {
+    const { data } = await http.post(
+      '/import/errors/export',
+      { entity: props.entity, errors: report.value.errors },
+      { responseType: 'blob' },
+    )
+    const url = URL.createObjectURL(data)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `${props.entityLabel}导入错误清单.xlsx`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  } catch {
+    ElMessage.error('导出错误清单失败')
+  } finally {
+    exportingErrors.value = false
   }
 }
 

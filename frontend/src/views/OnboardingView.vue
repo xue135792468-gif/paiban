@@ -101,7 +101,7 @@ const steps = [
   },
   {
     key: 'grades',
-    title: '年级与班级',
+    title: '年级与行政班',
     description: '录入年级和行政班，可下载模板后 Excel 批量导入。',
     route: '/admin/grades',
   },
@@ -126,13 +126,13 @@ const steps = [
   {
     key: 'assignments',
     title: '授课任务',
-    description: '录入「班级 + 课程 + 每周节数 + 教师」，这是排课的输入。',
+    description: '录入「行政班 + 课程 + 每周节数 + 教师」，这是排课的输入。',
     route: '/admin/assignments',
   },
   {
     key: 'constraints',
     title: '约束规则',
-    description: '勾选启用的排课约束并调整权重，默认已启用教师/班级/教室不冲突。',
+    description: '勾选启用的排课约束并调整权重，默认已启用教师/行政班/教室不冲突。',
     route: '/admin/constraints',
   },
 ]

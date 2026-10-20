@@ -25,6 +25,7 @@ public class SettingsService {
     public static final String DINGTALK_SYNC_STRATEGY = "integration.dingtalk.sync-strategy";
     public static final String SCHOOL_NAME = "school.name";
     public static final String SCHOOL_LOGO_PATH = "school.logo-path";
+    public static final String PUBLIC_BASE_URL = "public.base-url";
     public static final String AI_SUBSTITUTE_RECOMMENDATION = "ai.features.substitute-recommendation";
     public static final String AI_NATURAL_LANGUAGE_CONSTRAINTS = "ai.features.natural-language-constraints";
 
@@ -42,7 +43,7 @@ public class SettingsService {
     public SettingsService(
             AppSettingRepository repository,
             @Value("${paiban.substitution.approval-mode:approval}") String defaultApprovalMode,
-            @Value("${paiban.notification.scope:with-admin}") String defaultNotificationScope,
+            @Value("${paiban.notification.scope:minimal}") String defaultNotificationScope,
             @Value("${paiban.integration.dingtalk.enabled:false}") boolean defaultDingtalkEnabled,
             @Value("${paiban.integration.dingtalk.app-key:}") String defaultDingtalkAppKey,
             @Value("${paiban.integration.dingtalk.app-secret:}") String defaultDingtalkAppSecret,
@@ -108,6 +109,11 @@ public class SettingsService {
         return get(SCHOOL_LOGO_PATH, defaultSchoolLogoPath);
     }
 
+    /** Absolute base URL used in notifications so links open from DingTalk. */
+    public String publicBaseUrl() {
+        return get(PUBLIC_BASE_URL, "http://localhost:5173");
+    }
+
     public boolean aiSubstituteRecommendation() {
         return Boolean.parseBoolean(get(AI_SUBSTITUTE_RECOMMENDATION, "false"));
     }
@@ -137,6 +143,7 @@ public class SettingsService {
         values.put(DINGTALK_SYNC_STRATEGY, dingtalkSyncStrategy());
         values.put(SCHOOL_NAME, schoolName());
         values.put(SCHOOL_LOGO_PATH, schoolLogoPath());
+        values.put(PUBLIC_BASE_URL, publicBaseUrl());
         values.put(AI_SUBSTITUTE_RECOMMENDATION, String.valueOf(aiSubstituteRecommendation()));
         values.put(AI_NATURAL_LANGUAGE_CONSTRAINTS, String.valueOf(aiNaturalLanguageConstraints()));
         return values;

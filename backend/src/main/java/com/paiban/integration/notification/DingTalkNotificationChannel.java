@@ -62,8 +62,19 @@ public class DingTalkNotificationChannel implements NotificationChannel {
                 continue;
             }
             attempted++;
-            boolean success = client.sendWorkNotification(
-                    teacher.getDingtalkUserId(), message.title(), message.content(), message.link());
+            boolean success = false;
+            for (int attempt = 1; attempt <= 3 && !success; attempt++) {
+                success = client.sendWorkNotification(
+                        teacher.getDingtalkUserId(), message.title(), message.content(), message.link());
+                if (!success && attempt < 3) {
+                    try {
+                        Thread.sleep(100L * attempt);
+                    } catch (InterruptedException ex) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
             log(teacher.getDingtalkUserId(), message, success);
             if (success) {
                 sent++;

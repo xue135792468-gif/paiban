@@ -53,7 +53,7 @@
     <el-card shadow="never" class="control-card">
       <div class="controls">
         <el-radio-group v-model="viewMode" @change="resetTarget">
-          <el-radio-button value="class">按班级</el-radio-button>
+          <el-radio-button value="class">按行政班</el-radio-button>
           <el-radio-button value="teacher">按教师</el-radio-button>
           <el-radio-button value="room">按教室</el-radio-button>
         </el-radio-group>
@@ -63,7 +63,7 @@
         <div class="spacer" />
         <el-button @click="drawerVisible = !drawerVisible">
           <el-icon><Tickets /></el-icon>
-          <span>未排课时（{{ unassigned.length }}）</span>
+          <span>未排课节（{{ unassigned.length }}）</span>
         </el-button>
       </div>
     </el-card>
@@ -115,7 +115,7 @@
       <el-card v-if="drawerVisible" shadow="never" class="drawer-card">
         <template #header>
           <div class="drawer-header">
-            <span>未排课时</span>
+            <span>未排课节</span>
             <el-button link @click="drawerVisible = false">收起</el-button>
           </div>
         </template>
@@ -148,20 +148,44 @@
       </ul>
     </el-dialog>
 
-    <el-dialog v-model="compareVisible" title="比较草稿" width="720px">
-      <el-table :data="compareRows" border>
-        <el-table-column prop="name" label="草稿" min-width="140" />
-        <el-table-column prop="score" label="得分" min-width="150" />
-        <el-table-column prop="lessonCount" label="课节数" width="100" />
-        <el-table-column prop="createdAt" label="创建时间" min-width="170" />
-      </el-table>
+    <el-dialog v-model="compareVisible" title="并排比较草稿" width="1120px">
+      <div class="compare-grid">
+        <div class="compare-side">
+          <el-select v-model="compareA" placeholder="选择草稿 A" style="width: 100%">
+            <el-option v-for="item in allDrafts" :key="item.id" :label="item.name" :value="item.id" />
+          </el-select>
+          <div v-if="draftSummary(compareA)" class="compare-score">
+            {{ draftSummary(compareA) }}
+          </div>
+          <el-table :data="compareLessonsA" size="small" max-height="420" border>
+            <el-table-column prop="periodLabel" label="课节" width="96" />
+            <el-table-column prop="courseName" label="课程" width="96" />
+            <el-table-column prop="teacherName" label="教师" width="96" />
+            <el-table-column prop="roomName" label="教室" width="96" />
+          </el-table>
+        </div>
+        <div class="compare-side">
+          <el-select v-model="compareB" placeholder="选择草稿 B" style="width: 100%">
+            <el-option v-for="item in allDrafts" :key="item.id" :label="item.name" :value="item.id" />
+          </el-select>
+          <div v-if="draftSummary(compareB)" class="compare-score">
+            {{ draftSummary(compareB) }}
+          </div>
+          <el-table :data="compareLessonsB" size="small" max-height="420" border>
+            <el-table-column prop="periodLabel" label="课节" width="96" />
+            <el-table-column prop="courseName" label="课程" width="96" />
+            <el-table-column prop="teacherName" label="教师" width="96" />
+            <el-table-column prop="roomName" label="教室" width="96" />
+          </el-table>
+        </div>
+      </div>
       <p class="compare-hint">得分越高越好（硬分必须为 0 才能发布）。</p>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Tickets } from '@element-plus/icons-vue'
@@ -297,7 +321,7 @@ const targetOptions = computed(() => {
   const map = new Map<number, string>()
   detail.value?.lessons.forEach((lesson) => {
     if (viewMode.value === 'class') {
-      map.set(lesson.classId, lesson.className ?? `班级${lesson.classId}`)
+      map.set(lesson.classId, lesson.className ?? `行政班${lesson.classId}`)
     } else {
       map.set(lesson.teacherId, lesson.teacherName ?? `教师${lesson.teacherId}`)
     }
@@ -305,14 +329,40 @@ const targetOptions = computed(() => {
   return [...map.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
 })
 
-const compareRows = computed(() =>
-  allDrafts.value.map((draft) => ({
-    name: draft.name,
-    score: `${draft.scoreHard} hard / ${draft.scoreSoft} soft`,
-    lessonCount: draft.lessonCount,
-    createdAt: draft.createdAt?.replace('T', ' ').slice(0, 16),
-  })),
-)
+const compareA = ref<number | null>(null)
+const compareB = ref<number | null>(null)
+const compareLessonsA = ref<Lesson[]>([])
+const compareLessonsB = ref<Lesson[]>([])
+
+function draftSummary(id: number | null) {
+  const draft = allDrafts.value.find((item) => item.id === id)
+  if (!draft) return ''
+  return `${draft.scoreHard} hard / ${draft.scoreSoft} soft · ${draft.lessonCount} 节`
+}
+
+async function loadCompareSide(side: 'A' | 'B') {
+  const id = side === 'A' ? compareA.value : compareB.value
+  const target = side === 'A' ? compareLessonsA : compareLessonsB
+  if (!id) {
+    target.value = []
+    return
+  }
+  try {
+    const { data } = await http.get(`/timetable-drafts/${id}`)
+    target.value = [...(data.lessons as Lesson[])].sort((a, b) => {
+      const dayA = a.dayOfWeek ?? 9
+      const dayB = b.dayOfWeek ?? 9
+      return dayA !== dayB ? dayA - dayB : (a.periodNo ?? 99) - (b.periodNo ?? 99)
+    })
+  } catch {
+    target.value = []
+  }
+}
+
+watch([compareA, compareB], () => {
+  loadCompareSide('A')
+  loadCompareSide('B')
+})
 
 const palette = [
   '#AEC6CF',
@@ -501,7 +551,11 @@ async function openCompare() {
     params: { semesterId: detail.value?.draft.semesterId },
   })
   allDrafts.value = data
+  compareA.value = draftId
+  const other = (data as Draft[]).find((item) => item.id !== draftId)
+  compareB.value = other ? other.id : draftId
   compareVisible.value = true
+  await Promise.all([loadCompareSide('A'), loadCompareSide('B')])
 }
 
 onMounted(load)
@@ -695,5 +749,19 @@ h2 {
   margin: 12px 0 0;
   color: var(--paiban-muted);
   font-size: 12px;
+}
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.compare-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.compare-score {
+  font-size: 12px;
+  color: var(--paiban-muted);
 }
 </style>

@@ -3,7 +3,7 @@
     <div class="toolbar">
       <div>
         <h2>行政班管理</h2>
-        <p class="subtitle">维护学期行政班级及班主任配置（一期行政班与教学班一对一自动创建）。</p>
+        <p class="subtitle">维护学期行政行政班及班主任配置（一期行政班与教学班一对一自动创建）。</p>
       </div>
       <div class="actions">
         <el-select
@@ -44,7 +44,7 @@
           @click="openCreate"
         >
           <el-icon><Plus /></el-icon>
-          <span>新建班级</span>
+          <span>新建行政班</span>
         </el-button>
       </div>
     </div>
@@ -61,7 +61,7 @@
         stripe
       >
         <el-table-column prop="gradeName" label="年级" min-width="120" />
-        <el-table-column prop="name" label="班级名称" min-width="140" />
+        <el-table-column prop="name" label="行政班名称" min-width="140" />
         <el-table-column label="班主任" min-width="140">
           <template #default="{ row }">
             <span v-if="row.headTeacherName">{{ row.headTeacherName }}</span>
@@ -109,7 +109,7 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="班级名称" prop="name">
+        <el-form-item label="行政班名称" prop="name">
           <el-input v-model="form.name" placeholder="例如：1班、高一(1)班" maxlength="100" />
         </el-form-item>
         <el-form-item label="班主任" prop="headTeacherId">
@@ -227,8 +227,8 @@ const form = reactive<FormState>({
 const rules: FormRules = {
   gradeId: [{ required: true, message: '请选择所属年级', trigger: 'change' }],
   name: [
-    { required: true, message: '请输入班级名称', trigger: 'blur' },
-    { max: 100, message: '班级名称不能超过100个字符', trigger: 'blur' },
+    { required: true, message: '请输入行政班名称', trigger: 'blur' },
+    { max: 100, message: '行政班名称不能超过100个字符', trigger: 'blur' },
   ],
   studentCount: [{ required: true, message: '请输入学生人数', trigger: 'blur' }],
 }
@@ -294,7 +294,7 @@ async function loadClasses() {
     })
     classes.value = data ?? []
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '加载班级列表失败')
+    ElMessage.error(e?.response?.data?.message ?? '加载行政班列表失败')
   } finally {
     loading.value = false
   }
@@ -340,12 +340,12 @@ async function submitForm() {
     }
     if (isEdit.value && editId.value) {
       await http.put(`/classes/${editId.value}`, payload)
-      ElMessage.success('更新班级成功')
+      ElMessage.success('更新行政班成功')
     } else {
       await http.post('/classes', payload, {
         params: { semesterId: semesterId.value },
       })
-      ElMessage.success('新建班级成功')
+      ElMessage.success('新建行政班成功')
     }
     dialogVisible.value = false
     await loadClasses()
@@ -359,7 +359,7 @@ async function submitForm() {
 async function handleDelete(row: ClassItem) {
   try {
     await ElMessageBox.confirm(
-      `确定要删除班级「${row.name}」吗？删除后关联教学班也将被移除，此操作不可撤销！`,
+      `确定要删除行政班「${row.name}」吗？删除后关联教学班也将被移除，此操作不可撤销！`,
       '删除确认',
       {
         confirmButtonText: '确定删除',

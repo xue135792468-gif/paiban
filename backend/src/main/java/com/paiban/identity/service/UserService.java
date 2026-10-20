@@ -109,6 +109,13 @@ public class UserService {
         return users.save(user);
     }
 
+    /** Authorization must be expressed with permission codes, never with role names (ADR-0006). */
+    public boolean hasPermission(AppUser user, String permissionCode) {
+        return user.getRoles().stream()
+                .flatMap(role -> role.getPermissions().stream())
+                .anyMatch(permission -> permission.getCode().equals(permissionCode));
+    }
+
     @Transactional(readOnly = true)
     public List<RoleDto> listRoles() {        return roles.findAll().stream()
                 .sorted(Comparator.comparing(Role::getId))
