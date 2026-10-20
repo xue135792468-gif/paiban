@@ -1,10 +1,12 @@
 package com.paiban.substitution.web;
 
 import com.paiban.identity.domain.Permissions;
+import com.paiban.substitution.service.SubstitutionRecommendationService;
 import com.paiban.substitution.service.SubstitutionService;
 import com.paiban.substitution.web.SubstitutionDtos.CreateSubstitutionRequest;
 import com.paiban.substitution.web.SubstitutionDtos.DecisionRequest;
 import com.paiban.substitution.web.SubstitutionDtos.HistoryDto;
+import com.paiban.substitution.web.SubstitutionDtos.RecommendationResponse;
 import com.paiban.substitution.web.SubstitutionDtos.SubstitutionRecordDto;
 import com.paiban.substitution.web.SubstitutionDtos.SubstitutionRequestDto;
 import com.paiban.substitution.web.SubstitutionDtos.TeacherStatsDto;
@@ -28,9 +30,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class SubstitutionController {
 
     private final SubstitutionService service;
+    private final SubstitutionRecommendationService recommendations;
 
-    public SubstitutionController(SubstitutionService service) {
+    public SubstitutionController(
+            SubstitutionService service, SubstitutionRecommendationService recommendations) {
         this.service = service;
+        this.recommendations = recommendations;
     }
 
     @PostMapping("/substitution-requests")
@@ -84,6 +89,12 @@ public class SubstitutionController {
             @RequestBody(required = false) Map<String, String> body,
             Principal principal) {
         return service.reject(id, principal.getName(), body == null ? null : body.get("comment"));
+    }
+
+    @PostMapping("/substitution-requests/{id}/recommend")
+    @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_APPROVE + "')")
+    public RecommendationResponse recommend(@PathVariable Long id) {
+        return recommendations.recommend(id);
     }
 
     @GetMapping("/substitutions")
