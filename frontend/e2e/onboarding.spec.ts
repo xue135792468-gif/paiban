@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
+// Depends on an empty e2e database. Specs that call seedSchool run later
+// (zz-junior-mode.spec.ts), so this file sees the "first login" condition.
 async function uiLogin(page: Page, username: string, password: string) {
   await page.goto('/login')
   await page.getByPlaceholder('请输入用户名').fill(username)

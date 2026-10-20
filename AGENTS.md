@@ -5,6 +5,7 @@
 ## 文档入口
 
 - `README.md` — 启动、测试、部署与实现说明
+- `CODING_STANDARDS.md` — 评审时的判断标准（审计、事务、权限、测试、前端拆分）
 - `docs/adr/` — 21 份决策记录，改行为前先找对应 ADR
 - `GLOSSARY.md` — 领域术语：行政班、授课任务、基线、调代
 - `.scratch/phase1-mvp/` — 一期规格、15 张票据与 PR 记录
@@ -28,7 +29,8 @@
 
 ## 本地开发
 
-- 构建前 `source .tools/env.sh`：JDK 21、Maven、E 盘仓库
+- 构建前 `source .tools/env.sh`：JDK 21、Maven、E 盘仓库；`scripts/verify.sh` 会在 `.tools/env.sh` 存在时自动 source
 - `scripts/verify.sh` — 本地闸门，与 CI 同一条路径；`--full` 追加 Playwright
+- 多票据 worktree：`frontend/node_modules` 从主仓库做 junction，Maven 用 `.tools/env.sh` 的绝对路径（worktree 内没有 `.tools`）
 - 性能基准（ADR-0017，约 3 分钟）：`cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test`
 - Git Bash 下 `git show branch:path` 会被路径转换改写，前面加 `MSYS_NO_PATHCONV=1`

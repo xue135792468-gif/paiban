@@ -1,3 +1,5 @@
+// The zz- prefix keeps this spec after onboarding.spec.ts: it seeds school data,
+// which would otherwise remove the onboarding "first login" condition.
 import { expect, test, type Page } from '@playwright/test'
 import { apiCall, apiLogin, newContext, seedSchool, solveAndPublish } from './helpers'
 

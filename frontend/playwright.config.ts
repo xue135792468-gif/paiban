@@ -1,7 +1,19 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { defineConfig, devices } from '@playwright/test'
 
 const backendCommand =
   process.platform === 'win32' ? 'mvnw.cmd -q spring-boot:run -Dspring-boot.run.profiles=e2e' : './mvnw -q spring-boot:run -Dspring-boot.run.profiles=e2e'
+
+// Outside CI the repo keeps its JDK under .tools; hand it to the spawned Maven
+// so `npm run test:e2e` works from a shell that never sourced .tools/env.sh.
+const toolsDir = path.resolve(process.cwd(), '../.tools')
+const localJdk = fs.existsSync(toolsDir)
+  ? fs.readdirSync(toolsDir).find((entry) => entry.startsWith('jdk-'))
+  : undefined
+const backendEnv = localJdk
+  ? ({ ...process.env, JAVA_HOME: path.join(toolsDir, localJdk) } as Record<string, string>)
+  : undefined
 
 export default defineConfig({
   testDir: './e2e',
@@ -25,6 +37,7 @@ export default defineConfig({
       reuseExistingServer: true,
       stdout: 'ignore',
       stderr: 'pipe',
+      ...(backendEnv ? { env: backendEnv } : {}),
     },
     {
       command: 'npm run dev -- --host 127.0.0.1',
