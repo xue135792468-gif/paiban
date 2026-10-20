@@ -180,6 +180,18 @@ docs/adr/  架构决策记录
 | `school.type`（设置中心） | `junior` / `senior`，默认 `junior`，仅影响 UI 显示 |
 | `ai.import.confidence-threshold`（设置中心） | AI 导入低置信度阈值，默认 `0.8` |
 
+### 飞书应用创建与配置
+
+1. **创建应用**：飞书开放平台 → 开发者后台 → 创建「企业自建应用」，在「凭证与基础信息」获取 App ID / App Secret。
+2. **H5 微应用主页**：「添加应用能力」启用「网页应用」，桌面端/移动端主页地址填 `https://<你的域名>/login`
+   （与系统前端同源，浏览器访问仍走账号密码登录）。
+3. **免登权限**：「权限管理」申请用户基本信息与 user id 读取权限（如 `contact:user.base:readonly`、
+   `contact:user.employee_id:readonly`），创建版本并发布，由企业管理员审核通过。
+4. **安全设置**：「安全设置 → 重定向 URL」填 `https://<你的域名>/login`；若启用组织事件，
+   在「事件与回调」把请求地址指向 `https://<你的域名>/api/integrations/feishu/event` 并填写 Verification Token。
+5. **启用集成**：设置中心 →「飞书集成」填入 App ID / App Secret 并启用。教师从飞书工作台点击应用图标即免登；
+   本地无账号时提示「账号未绑定，请联系教务管理员」。
+
 > 生产环境必须设置 `PAIBAN_JWT_SECRET`（至少 32 字符）。在非 `local`/`test`/`e2e` profile 下，
 > 若仍使用仓库内置的默认密钥，应用会拒绝启动。
 >

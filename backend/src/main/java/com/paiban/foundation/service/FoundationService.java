@@ -118,6 +118,17 @@ public class FoundationService {
         teacher.setPhone(blankToNull(request.phone()));
         teacher.setEmail(blankToNull(request.email()));
         teacher.setSubject(blankToNull(request.subject()));
+        // Binding ids are optional on update: an omitted value leaves the existing binding
+        // intact (the teacher edit dialog does not always carry them), a blank clears it.
+        if (request.dingtalkUserId() != null) {
+            teacher.setDingtalkUserId(blankToNull(request.dingtalkUserId()));
+        }
+        if (request.feishuUserId() != null) {
+            teacher.setFeishuUserId(blankToNull(request.feishuUserId()));
+        }
+        if (request.feishuOpenId() != null) {
+            teacher.setFeishuOpenId(blankToNull(request.feishuOpenId()));
+        }
         if (request.active() != null) {
             teacher.setActive(request.active());
         }
@@ -432,7 +443,18 @@ public class FoundationService {
     private TeacherDto toDto(Teacher teacher) {
         return new TeacherDto(
                 teacher.getId(), teacher.getName(), teacher.getEmployeeNo(), teacher.getPhone(),
-                teacher.getEmail(), teacher.getSubject(), teacher.isActive());
+                teacher.getEmail(), teacher.getSubject(), teacher.isActive(),
+                teacher.getDingtalkUserId(), teacher.getFeishuUserId(), teacher.getFeishuOpenId(),
+                bindingStatus(teacher));
+    }
+
+    private static String bindingStatus(Teacher teacher) {
+        boolean dingtalk = teacher.getDingtalkUserId() != null;
+        boolean feishu = teacher.getFeishuUserId() != null || teacher.getFeishuOpenId() != null;
+        if (dingtalk && feishu) {
+            return "both";
+        }
+        return dingtalk ? "dingtalk" : feishu ? "feishu" : "none";
     }
 
     private RoomDto toDto(Room room) {

@@ -52,6 +52,16 @@ public class FeishuAuthProvider implements AuthProvider {
         } catch (RuntimeException ex) {
             return Optional.empty();
         }
+        return authenticate(user);
+    }
+
+    /**
+     * Resolves an already-exchanged Feishu user to a local username. Feishu auth codes
+     * are single-use, so callers that need the user (H5免登, binding) exchange once and
+     * delegate here instead of calling {@link #authenticate(AuthCredentials)} again.
+     */
+    @Transactional(readOnly = true)
+    public Optional<String> authenticate(FeishuUser user) {
         if (user == null) {
             return Optional.empty();
         }
