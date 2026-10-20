@@ -15,6 +15,7 @@ public class FakeFeishuClient implements FeishuClient {
 
     private final Map<String, FeishuUser> usersByEmployeeNo = new ConcurrentHashMap<>();
     private final List<FeishuMessage> sentMessages = new CopyOnWriteArrayList<>();
+    private volatile boolean failAll;
 
     public FakeFeishuClient() {
         usersByEmployeeNo.put("EMP001",
@@ -48,11 +49,19 @@ public class FakeFeishuClient implements FeishuClient {
 
     @Override
     public boolean sendMessage(FeishuMessage message) {
+        if (failAll) {
+            return false;
+        }
         if (message == null || (message.openId() == null && message.userId() == null)) {
             return false;
         }
         sentMessages.add(message);
         return true;
+    }
+
+    /** Simulates an unreachable tenant so degradation to in-system notifications can be tested. */
+    public void failAll(boolean value) {
+        this.failAll = value;
     }
 
     public List<FeishuMessage> sentMessages() {

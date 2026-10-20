@@ -129,6 +129,9 @@ cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test
   飞书增量事件通过 `POST /api/integrations/feishu/event` 接收，校验头为 `X-Feishu-Token`
   （值为设置中心的「验证 Token」）；同时兼容 v2.0 事件信封与扁平 v1 格式。
   未启用或 Token 不匹配时分别返回 400 / 403，未知事件类型按 200 忽略。
+- **飞书通知**：调代等通知以飞书交互卡片发送（Markdown 正文 +「查看详情」按钮，按模板着色）；
+  飞书不可达或教师未绑定飞书账号时自动降级为系统内通知。通知记录用 `platform` 标记来源
+  （`feishu` / `dingtalk` / `system`）。复用现有通知接口，不新增端点。
 - **测试替身**：`paiban.integration.dingtalk.fake=true`（e2e/test profile）启用确定性的假钉钉客户端。
 
 ## 已知限制
