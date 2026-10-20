@@ -1,5 +1,5 @@
 <template>
-  <div class="draft-page" v-loading="loading">
+  <div v-loading="loading" class="draft-page">
     <div class="toolbar">
       <div>
         <el-button link @click="router.push('/admin/scheduling')">
@@ -20,6 +20,13 @@
         <el-button @click="load">刷新</el-button>
         <el-button @click="openCompare">比较草稿</el-button>
         <el-button v-if="canEdit" @click="rename">重命名</el-button>
+        <el-button
+          v-if="canPublish && detail?.draft.status !== 'PUBLISHED'"
+          type="success"
+          @click="publishDraft"
+        >
+          发布课表
+        </el-button>
         <el-button v-if="canEdit" type="danger" plain @click="removeDraft">删除</el-button>
       </div>
     </div>
@@ -225,6 +232,7 @@ const router = useRouter()
 const auth = useAuthStore()
 const draftId = Number(route.params.id)
 const canEdit = computed(() => auth.hasPermission('timetable:edit'))
+const canPublish = computed(() => auth.hasPermission('timetable:publish'))
 
 const loading = ref(false)
 const detail = ref<{ draft: Draft; lessons: Lesson[]; periods: Period[]; rooms: Room[] } | null>(null)
@@ -454,8 +462,27 @@ async function rename() {
   }
 }
 
-async function removeDraft() {
+async function publishDraft() {
+  if (!detail.value) return
   try {
+    await ElMessageBox.confirm(
+      '发布后该草稿将成为正式课表基线，后续变更需走调代流程。确定发布？',
+      '发布课表',
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  try {
+    const { data } = await http.post(`/timetable-drafts/${draftId}/publish`)
+    ElMessage.success(`课表已发布，共 ${data.entryCount} 节课`)
+    await load()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message ?? '发布失败')
+  }
+}
+
+async function removeDraft() {  try {
     await ElMessageBox.confirm('确定删除该草稿吗？删除后无法恢复。', '删除草稿', { type: 'warning' })
   } catch {
     return

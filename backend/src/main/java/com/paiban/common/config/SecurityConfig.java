@@ -60,7 +60,9 @@ public class SecurityConfig {
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(authenticationEntryPoint))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/api/auth/login", "/api/health", "/actuator/**").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/dingtalk", "/api/health", "/actuator/**")
+                        .permitAll()
+                        .requestMatchers("/uploads/**").permitAll()
                         .requestMatchers("/api/integrations/dingtalk/event").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

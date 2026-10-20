@@ -4,7 +4,7 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 五张表的数据库迁移脚本，字段遵循 GLOSSARY 与 ADR-0011（年级/班级按学期隔离，教师/教室/课程全局）
 - [ ] 行政班表与教学班表分离（ADR-0001），一期 UI 上行政班与教学班一对一自动创建

@@ -4,7 +4,7 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 学期表（id、名称、开始日期、结束日期、是否当前学期）
 - [ ] 设置当前学期接口：全局只有一个当前学期，切换时把旧的取消

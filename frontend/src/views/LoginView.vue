@@ -46,6 +46,7 @@ import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
+import { http } from '@/api/http'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -69,6 +70,17 @@ async function submit() {
   try {
     await auth.login(form.username, form.password)
     const redirect = (route.query.redirect as string) || '/'
+    if (redirect === '/') {
+      try {
+        const { data } = await http.get('/onboarding/status')
+        if (data.showWizard) {
+          router.replace('/onboarding')
+          return
+        }
+      } catch {
+        // fall through to the normal landing page
+      }
+    }
     router.replace(redirect)
   } catch (e: any) {
     error.value = e?.response?.data?.message ?? '登录失败，请稍后重试'

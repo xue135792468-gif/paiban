@@ -4,7 +4,7 @@
 
 **Blocked by:** 12
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 三个接口（OrgDataProvider/AuthProvider/NotificationChannel）的钉钉实现与本地实现，配置开关切换
 - [ ] 钉钉企业内部应用 H5 微应用：前端检测在钉钉环境则调用 `dd.getAuthCode`，后端 `/v1.0/oauth/users/auth` 换 userId，颁发 JWT

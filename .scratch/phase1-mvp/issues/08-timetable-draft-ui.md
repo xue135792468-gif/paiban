@@ -4,7 +4,7 @@
 
 **Blocked by:** 07
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] CSS Grid 课表矩阵：行是节次（按作息表渲染），列是周一到周日（可扩展），单元格显示课程名 + 教师 + 教室
 - [ ] 支持班级视角 / 教师视角 / 教室视角切换

@@ -4,7 +4,7 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] 数据库迁移脚本包含 user/role/permission/user_role/role_permission 五张表
 - [ ] 预置三个角色及其权限点（权限点命名遵循 `<resource>:<action>` 规范）

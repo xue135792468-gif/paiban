@@ -86,8 +86,7 @@ public class IdentityDataInitializer {
                 permissions.get(Permissions.ASSIGNMENT_VIEW_OWN),
                 permissions.get(Permissions.SUBSTITUTION_SUBMIT),
                 permissions.get(Permissions.SUBSTITUTION_VIEW_OWN),
-                permissions.get(Permissions.NOTIFICATION_VIEW),
-                permissions.get(Permissions.ONBOARDING_MANAGE));
+                permissions.get(Permissions.NOTIFICATION_VIEW));
         Role teacher = upsertRole(roleRepository, "teacher", "教师", teacherPermissions);
 
         Set<Permission> headTeacherPermissions = new java.util.HashSet<>(teacherPermissions);

@@ -4,7 +4,7 @@
 
 **Blocked by:** 06
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] Lesson 类标记 `@PlanningEntity`，包含 `@PlanningVariable` 的 timeslot 与 room
 - [ ] Constraint Streams 实现所有 06 票定义的预置约束（每条约束一个 Constraint 方法）

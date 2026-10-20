@@ -48,12 +48,32 @@ SPRING_PROFILES_ACTIVE=postgres ./mvnw spring-boot:run
 ```bash
 cd backend && ./mvnw verify        # 单元 + 集成测试（默认 H2，PostgreSQL 兼容模式）
 cd frontend && npm run lint && npm run build
-cd frontend && npm run test:e2e    # Playwright 验收场景
+
+# E2E：Playwright 会自动启动后端（e2e profile）与前端
+cd frontend && npx playwright install chromium
+cd frontend && npm run test:e2e
 ```
 
-> 说明：规格要求集成测试使用 Testcontainers + 真实 PostgreSQL。本仓库保留了 Testcontainers 依赖与
-> `PostgresContainerSupport`，在检测到 Docker 时可通过 `-Dtestcontainers=true` 启用；
-> 默认执行环境没有 Docker，因此测试使用 H2 的 PostgreSQL 兼容模式。SQL 迁移脚本保持两库通用。
+E2E 需要 `JAVA_HOME` 指向 JDK 21（Windows 下请使用 `E:\...` 形式的路径，Playwright 通过 `mvnw.cmd` 启动后端）。
+
+> 说明：规格要求集成测试使用 Testcontainers + 真实 PostgreSQL。`PostgresContainerIT` 已按此实现，
+> 但只在检测到 Docker 时执行：`./mvnw verify -Dtestcontainers=true`。默认执行环境没有 Docker，
+> 因此常规测试使用 H2 的 PostgreSQL 兼容模式；所有迁移脚本保持两库通用。
+
+## 实现说明
+
+- **排课引擎**：24 条预置约束全部用 Timefold Constraint Streams 实现；约束配置（启用、硬/软、权重、参数）
+  在每次求解前生成不可变快照，支持不同学期使用不同规则。同一学期同一时刻只允许一个求解任务。
+- **增量校验**：手工微调通过 `DraftValidator` 直接检查硬约束并返回人类可读原因
+  （"张老师此时在 3 班有数学课"），毫秒级返回；`GET /api/timetable-drafts/{id}/validation` 返回整份草稿的冲突。
+- **课表合并视图**：`timetable_entry` 基线只读，调代以 `substitution` 追加事件叠加；`view=baseline`
+  返回原始基线，`view=latest&date=YYYY-MM-DD` 叠加该日生效的调代。
+- **PDF 导出**：使用 OpenPDF 直接绘制 A4 横向表格（PdfPTable），并自动查找系统中文字体
+  （`paiban.export.pdf-font-path` 可指定）。未使用 HTMLWorker，以避免 CJK 字体解析问题。
+- **钉钉集成**：`AuthProvider` / `OrgDataProvider` / `NotificationChannel` 三组接口均有本地与钉钉实现；
+  钉钉 Stream 增量事件通过 `POST /api/integrations/dingtalk/event` 接收（生产可接官方 Stream SDK 转发）。
+  关闭集成后系统完整可用，通知自动降级为系统内消息。
+- **测试替身**：`paiban.integration.dingtalk.fake=true`（e2e/test profile）启用确定性的假钉钉客户端。
 
 ## 目录结构
 

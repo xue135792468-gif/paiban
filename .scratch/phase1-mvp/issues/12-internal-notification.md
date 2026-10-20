@@ -4,7 +4,7 @@
 
 **Blocked by:** 11
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] notification 表（接收人、模板 code、变量 JSON、是否已读、创建时间、读取时间）
 - [ ] notification_log 表（发送记录：谁、何时、什么内容、通道、成功/失败）

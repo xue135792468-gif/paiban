@@ -104,6 +104,11 @@ public class UserService {
         return users.findAll();
     }
 
+    @Transactional
+    public AppUser save(AppUser user) {
+        return users.save(user);
+    }
+
     @Transactional(readOnly = true)
     public List<RoleDto> listRoles() {        return roles.findAll().stream()
                 .sorted(Comparator.comparing(Role::getId))

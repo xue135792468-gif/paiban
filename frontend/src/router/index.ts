@@ -92,6 +92,36 @@ const router = createRouter({
           meta: { title: '课表草稿', permission: 'timetable:edit' },
         },
         {
+          path: 'timetable',
+          name: 'timetable',
+          component: () => import('@/views/TimetableView.vue'),
+          meta: { title: '课表查看' },
+        },
+        {
+          path: 'substitutions',
+          name: 'substitutions',
+          component: () => import('@/views/SubstitutionsView.vue'),
+          meta: { title: '调代课', permission: 'substitution:submit' },
+        },
+        {
+          path: 'notifications',
+          name: 'notifications',
+          component: () => import('@/views/NotificationsView.vue'),
+          meta: { title: '通知中心', permission: 'notification:view' },
+        },
+        {
+          path: 'admin/settings',
+          name: 'settings',
+          component: () => import('@/views/SettingsView.vue'),
+          meta: { title: '设置中心', permission: 'settings:manage' },
+        },
+        {
+          path: 'onboarding',
+          name: 'onboarding',
+          component: () => import('@/views/OnboardingView.vue'),
+          meta: { title: '初始化向导', permission: 'onboarding:manage' },
+        },
+        {
           path: 'admin/users',
           name: 'users',
           component: () => import('@/views/UserAdminView.vue'),

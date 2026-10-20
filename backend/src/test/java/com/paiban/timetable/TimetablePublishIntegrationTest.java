@@ -38,12 +38,17 @@ class TimetablePublishIntegrationTest extends ApiIntegrationTest {
                 .body("[0].courseName", org.hamcrest.Matchers.notNullValue())
                 .body("[0].periodLabel", org.hamcrest.Matchers.notNullValue());
 
+        List<Map<String, Object>> classEntries = as(token)
+                .when().get("/api/timetable/class/" + fixture.classId())
+                .then().statusCode(200).extract().jsonPath().getList("$");
+        long usedRoomId = ((Number) classEntries.get(0).get("roomId")).longValue();
+
         as(token).when().get("/api/timetable/teacher/" + fixture.teacherId())
                 .then().statusCode(200)
                 .body("$", hasSize(greaterThan(0)))
                 .body("teacherId", org.hamcrest.Matchers.everyItem(equalTo((int) fixture.teacherId())));
 
-        as(token).when().get("/api/timetable/room/" + fixture.roomId())
+        as(token).when().get("/api/timetable/room/" + usedRoomId)
                 .then().statusCode(200)
                 .body("$", hasSize(greaterThan(0)));
 

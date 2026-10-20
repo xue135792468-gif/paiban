@@ -39,8 +39,10 @@ paiban:
       app-secret: ""
       agent-id: ""
       sync-strategy: dingtalk
+      fake: false
   export:
     school-logo-path: ""
+    pdf-font-path: ""
 
 management:
   endpoints:
@@ -109,3 +111,4 @@ paiban:
   integration:
     dingtalk:
       enabled: false
+      fake: true

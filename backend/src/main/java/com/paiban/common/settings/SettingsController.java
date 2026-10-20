@@ -2,14 +2,21 @@ package com.paiban.common.settings;
 
 import com.paiban.common.web.ApiException;
 import com.paiban.identity.domain.Permissions;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/settings")
@@ -51,6 +58,32 @@ public class SettingsController {
         });
         values.forEach(settings::put);
         return settings.all();
+    }
+
+    @PostMapping(value = "/logo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAuthority('" + Permissions.SETTINGS_MANAGE + "')")
+    public Map<String, String> uploadLogo(@RequestParam("file") MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw ApiException.badRequest("请选择图片文件");
+        }
+        String contentType = file.getContentType() == null ? "" : file.getContentType();
+        String extension = switch (contentType) {
+            case "image/png" -> "png";
+            case "image/jpeg", "image/jpg" -> "jpg";
+            case "image/svg+xml" -> "svg";
+            default -> throw ApiException.badRequest("只支持 PNG / JPG / SVG 图片");
+        };
+        try {
+            Path directory = Paths.get("uploads");
+            Files.createDirectories(directory);
+            String filename = "logo-" + System.currentTimeMillis() + "." + extension;
+            Path target = directory.resolve(filename).toAbsolutePath();
+            file.transferTo(target.toFile());
+            settings.put(SettingsService.SCHOOL_LOGO_PATH, target.toString());
+            return settings.all();
+        } catch (java.io.IOException ex) {
+            throw ApiException.badRequest("保存 Logo 失败: " + ex.getMessage());
+        }
     }
 
     private void validate(String key, String value) {
