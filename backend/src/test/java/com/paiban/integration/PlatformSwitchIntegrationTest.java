@@ -3,6 +3,7 @@ package com.paiban.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 
+import com.paiban.common.settings.SettingsService;
 import com.paiban.foundation.domain.AuditLog;
 import com.paiban.foundation.domain.AuditLogRepository;
 import com.paiban.notification.domain.NotificationLog;
@@ -13,6 +14,7 @@ import com.paiban.support.TestData;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -34,6 +36,11 @@ class PlatformSwitchIntegrationTest extends ApiIntegrationTest {
 
     @Autowired
     private NotificationService notificationService;
+
+    @BeforeEach
+    void resetSettingsBaseline() {
+        resetIntegrationSettings();
+    }
 
     @AfterEach
     void resetPlatform() {
@@ -76,6 +83,9 @@ class PlatformSwitchIntegrationTest extends ApiIntegrationTest {
     void switchingToFeishuKeepsLocalDataAndAuditsTheSwitch() {
         configureDingtalk(true);
         configureFeishu(true);
+        // Explicit starting platform (backend tests may set it directly); the only
+        // user-facing write path remains PUT /api/integrations/platform.
+        settingsService.put(SettingsService.ACTIVE_PLATFORM, SettingsService.PLATFORM_DINGTALK);
         long semesterId = TestData.semester(adminToken());
         long gradeId = TestData.grade(adminToken(), semesterId, "高一");
         long classId = TestData.adminClass(adminToken(), semesterId, gradeId, "高一(1)班");
@@ -125,6 +135,10 @@ class PlatformSwitchIntegrationTest extends ApiIntegrationTest {
 
     @Test
     void unconfiguredTargetPlatformIsRejected() {
+        // Explicitly unconfigure Feishu: never rely on the previous test's leftovers.
+        settingsService.put(SettingsService.FEISHU_APP_ID, "");
+        settingsService.put(SettingsService.FEISHU_APP_SECRET, "");
+        settingsService.put(SettingsService.FEISHU_ENABLED, "false");
         configureDingtalk(true);
 
         switchTo("feishu").then().statusCode(400);
@@ -133,6 +147,13 @@ class PlatformSwitchIntegrationTest extends ApiIntegrationTest {
     @Test
     void invalidPlatformIsRejected() {
         switchTo("wechat").then().statusCode(400);
+    }
+
+    @Test
+    void activePlatformCannotBeChangedThroughTheSettingsEndpoint() {
+        as(adminToken()).body(Map.of("integration.active-platform", "feishu"))
+                .when().put("/api/settings")
+                .then().statusCode(400);
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.paiban.integration.feishu;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paiban.common.settings.SettingsService;
 import java.net.URI;
@@ -57,7 +58,7 @@ public class HttpFeishuClient implements FeishuClient {
                 .body(Map.of("grant_type", "authorization_code", "code", code))
                 .retrieve()
                 .body(Map.class));
-        if (response == null) {
+        if (response == null || !isBusinessSuccess("authen.access_token", response)) {
             return null;
         }
         Map<?, ?> data = asMap(response.get("data"));
@@ -88,9 +89,12 @@ public class HttpFeishuClient implements FeishuClient {
                     .build()
                     .toUri();
             Map<?, ?> response = withRetry("contact.departments", () -> get(uri));
-            Map<?, ?> data = response == null ? null : asMap(response.get("data"));
+            if (response == null || !isBusinessSuccess("contact.departments", response)) {
+                throw new IllegalStateException("飞书部门接口调用失败");
+            }
+            Map<?, ?> data = asMap(response.get("data"));
             if (data == null) {
-                break;
+                throw new IllegalStateException("飞书部门接口未返回数据");
             }
             for (Object item : asList(data.get("items"))) {
                 Map<?, ?> department = asMap(item);
@@ -120,9 +124,12 @@ public class HttpFeishuClient implements FeishuClient {
                     .build()
                     .toUri();
             Map<?, ?> response = withRetry("contact.users", () -> get(uri));
-            Map<?, ?> data = response == null ? null : asMap(response.get("data"));
+            if (response == null || !isBusinessSuccess("contact.users", response)) {
+                throw new IllegalStateException("飞书用户接口调用失败");
+            }
+            Map<?, ?> data = asMap(response.get("data"));
             if (data == null) {
-                break;
+                throw new IllegalStateException("飞书用户接口未返回数据");
             }
             for (Object item : asList(data.get("items"))) {
                 Map<?, ?> user = asMap(item);
@@ -169,17 +176,14 @@ public class HttpFeishuClient implements FeishuClient {
         body.put("msg_type", message.card() ? "interactive" : "text");
         body.put("content", content);
         String uri = BASE + "/im/v1/messages?receive_id_type=" + receiveIdType;
-        Boolean sent = withRetry("im.messages", () -> {
-            restClient.post()
-                    .uri(uri)
-                    .header("Authorization", "Bearer " + tenantAccessToken())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(body)
-                    .retrieve()
-                    .toBodilessEntity();
-            return Boolean.TRUE;
-        });
-        return Boolean.TRUE.equals(sent);
+        Map<?, ?> response = withRetry("im.messages", () -> restClient.post()
+                .uri(uri)
+                .header("Authorization", "Bearer " + tenantAccessToken())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .body(Map.class));
+        return response != null && isBusinessSuccess("im.messages", response);
     }
 
     private Map<?, ?> get(URI uri) {
@@ -258,10 +262,10 @@ public class HttpFeishuClient implements FeishuClient {
             } catch (RestClientResponseException ex) {
                 int status = ex.getStatusCode().value();
                 if (status != 429 && status < 500) {
-                    log.warn("Feishu {} failed with status {}", operation, status);
+                    logHttpFailure(operation, ex);
                     return null;
                 }
-                log.warn("Feishu {} retryable status {}", operation, status);
+                logHttpFailure(operation, ex);
             } catch (ResourceAccessException ignored) {
                 log.warn("Feishu {} I/O failure", operation);
             } catch (RuntimeException ex) {
@@ -270,7 +274,7 @@ public class HttpFeishuClient implements FeishuClient {
             }
             if (attempt < MAX_ATTEMPTS) {
                 try {
-                    Thread.sleep(200L * attempt);
+                    Thread.sleep(backoffMillis(attempt));
                 } catch (InterruptedException ex) {
                     Thread.currentThread().interrupt();
                     return null;
@@ -278,6 +282,75 @@ public class HttpFeishuClient implements FeishuClient {
             }
         }
         log.warn("Feishu {} exhausted retries after {} attempts", operation, MAX_ATTEMPTS);
+        return null;
+    }
+
+    /** 200ms, 400ms, 800ms ... capped at 2s. */
+    private static long backoffMillis(int attempt) {
+        return Math.min(2000L, 200L * (1L << (attempt - 1)));
+    }
+
+    /**
+     * Feishu reports most failures as HTTP 200 with a non-zero business {@code code}.
+     * Absent or {@code 0} means success; anything else is logged with its numeric
+     * code and message (never credentials) and treated as a failure.
+     */
+    private boolean isBusinessSuccess(String operation, Map<?, ?> response) {
+        if (response == null) {
+            return false;
+        }
+        Integer code = numericCode(response.get("code"));
+        if (code == null || code == 0) {
+            return true;
+        }
+        log.warn("Feishu {} returned business error code={} msg={}", operation, code, response.get("msg"));
+        return false;
+    }
+
+    /** HTTP-level failures still carry a JSON body with {@code code}/{@code msg}. */
+    private void logHttpFailure(String operation, RestClientResponseException ex) {
+        int status = ex.getStatusCode().value();
+        Integer code = null;
+        String msg = null;
+        try {
+            JsonNode node = objectMapper.readTree(ex.getResponseBodyAsString());
+            if (node != null) {
+                code = numericCode(node.get("code"));
+                if (node.hasNonNull("msg")) {
+                    msg = node.get("msg").asText();
+                }
+            }
+        } catch (Exception ignored) {
+            // Body may be empty or not JSON; the status alone is still useful.
+        }
+        if (code == null) {
+            log.warn("Feishu {} failed with status {}", operation, status);
+        } else {
+            log.warn("Feishu {} failed with status {} code={} msg={}", operation, status, code, msg);
+        }
+    }
+
+    private static Integer numericCode(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value instanceof JsonNode node) {
+            if (node.isNumber()) {
+                return node.asInt();
+            }
+            if (node.isTextual()) {
+                value = node.asText();
+            } else {
+                return null;
+            }
+        }
+        if (value instanceof String text) {
+            try {
+                return Integer.parseInt(text.trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
         return null;
     }
 
@@ -295,10 +368,6 @@ public class HttpFeishuClient implements FeishuClient {
         }
         String text = value.toString();
         return text.isBlank() ? null : text;
-    }
-
-    private String nullToEmpty(String value) {
-        return value == null ? "" : value;
     }
 
     private record CachedToken(String value, Instant expiresAt) {}

@@ -1,5 +1,6 @@
 package com.paiban.integration.auth;
 
+import com.paiban.common.settings.SettingsService;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
@@ -31,20 +32,26 @@ public class FeishuBindingService {
     private final UserService users;
     private final FoundationService foundation;
     private final AuthService authService;
+    private final SettingsService settings;
 
     public FeishuBindingService(
             TeacherRepository teachers,
             UserService users,
             FoundationService foundation,
-            AuthService authService) {
+            AuthService authService,
+            SettingsService settings) {
         this.teachers = teachers;
         this.users = users;
         this.foundation = foundation;
         this.authService = authService;
+        this.settings = settings;
     }
 
     @Transactional
     public LoginResponse bind(FeishuUser identity, String rawName, String rawEmployeeNo, String rawPhone) {
+        if (!settings.feishuEnabled()) {
+            throw ApiException.badRequest("飞书集成未启用");
+        }
         String name = rawName == null ? "" : rawName.trim();
         String employeeNo = blankToNull(rawEmployeeNo);
         String phone = blankToNull(rawPhone);

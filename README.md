@@ -88,6 +88,23 @@ E2E 需要 JDK 21。Playwright 配置会优先使用仓库内的 `.tools/jdk-*`�
 > 但只在检测到 Docker 时执行：`./mvnw verify -Dtestcontainers=true`。默认执行环境没有 Docker，
 > 因此常规测试使用 H2 的 PostgreSQL 兼容模式；所有迁移脚本保持两库通用。
 
+### 手动验收（飞书沙箱）
+
+飞书沙箱验收依赖真实租户与 H5 容器，CI 不执行；发版前在测试企业内逐项确认：
+
+1. **启动同步**：飞书启用且为当前平台时，启动日志出现「启动时飞书组织同步完成」，教师按
+   `feishuUserId` → `feishuOpenId` → 工号导入/更新；把 App Secret 改错后重启，只记录告警与
+   `FEISHU_SYNC` 失败审计，应用仍能启动。
+2. **免登与绑定**：从飞书工作台打开 H5 应用应自动免登；未绑定时跳转 `/bind`，用「姓名 + 工号/手机号」
+   完成绑定后进入首页。已绑定其他教师/其他飞书账号时提示 409 文案。
+3. **平台切换**：设置页「IM 平台」从钉钉切到飞书，确认弹窗文案、切换后教师/班级/课表数据仍在，
+   `PLATFORM_SWITCH` 审计包含 from → to，目标平台目录同步被触发。
+4. **调代卡片**：审批通过后，原教师/代课教师飞书收到交互卡片（标题、正文、「查看详情」按钮）；
+   断开网络或教师未绑定时降级为系统内通知，`notification_log.platform` 分别记为 `feishu` / `system`。
+5. **事件回调**：`challenge` 原样返回；错误 `X-Feishu-Token` 返回 403；加密事件返回 400；
+   `contact.user.created_v3` / `updated_v3` / `deleted_v3` 分别新增、更新、停用教师（不删除）。
+
+
 ### 性能基准（ADR-0017）
 
 `PerformanceBenchmarkIT` 按 ADR-0017 的学校规模生成数据并测量全部指标。默认跳过，手动执行：
@@ -126,15 +143,24 @@ cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test
 - **飞书集成**：与钉钉同一组接口的飞书实现；设置中心「飞书集成」卡片可配置 App ID / App Secret /
   验证 Token 与同步策略（`feishu` 飞书为准、`local` 本地为准），并手动触发全量同步
   （`POST /api/integrations/feishu/sync`）与查看 `FEISHU_SYNC` 同步日志。
+  飞书启用且为当前平台时，应用启动后会执行一次全量同步（`paiban.integration.feishu.sync-on-startup`，
+  默认 `true`；test / e2e profile 关闭）。拉取失败只写 `FEISHU_SYNC` 失败审计并告警，不会把
+  「拉取失败」误判为「全员离职」，也不阻塞启动。
   飞书增量事件通过 `POST /api/integrations/feishu/event` 接收，校验头为 `X-Feishu-Token`
   （值为设置中心的「验证 Token」）；同时兼容 v2.0 事件信封与扁平 v1 格式。
   未启用或 Token 不匹配时分别返回 400 / 403，未知事件类型按 200 忽略。
+  飞书开放平台以 HTTP 200 + 非零 `code` 表示业务失败，客户端会按失败处理并记录数字错误码，
+  通讯录拉取失败时抛出结构化失败而不是返回空列表。
 - **飞书通知**：调代等通知以飞书交互卡片发送（Markdown 正文 +「查看详情」按钮，按模板着色）；
   飞书不可达或教师未绑定飞书账号时自动降级为系统内通知。通知记录用 `platform` 标记来源
   （`feishu` / `dingtalk` / `system`）。复用现有通知接口，不新增端点。
-- **IM 平台切换**：设置中心「IM 平台」卡片用单选按钮选择「不启用 / 钉钉 / 飞书」，保存到
-  `integration.active-platform`（`none` / `dingtalk` / `feishu`）。切换时停用原平台、启用新平台，
-  触发新平台的组织目录同步，并写入 `PLATFORM_SWITCH` 审计（含 from → to 与同步结果）。
+  升级到本版本时，V19 迁移按 `channel` 回填历史 `notification_log.platform`
+  （`dingtalk` → `dingtalk`，`local`/`system` → `system`，其余取 `channel` 原值）。
+- **IM 平台切换**：设置中心「IM 平台」卡片用单选按钮选择「不启用 / 钉钉 / 飞书」，
+  **当前平台只能通过 `PUT /api/integrations/platform` 修改**；`PUT /api/settings` 不再接受
+  `integration.active-platform`（返回 400）。切换时停用原平台、启用新平台，
+  触发新平台的组织目录同步，并写入 `PLATFORM_SWITCH` 审计（含 from → to）。
+  设置写入与审计在同一事务内提交，目录同步（网络调用）在事务外执行。
   切换只改平台开关，不触碰教师、班级、课程、课表与调代数据；历史通知记录按 `platform` 保留来源。
   未配置凭证（钉钉 AppKey/AppSecret 或飞书 App ID/App Secret）时切换返回 400。
   通知渠道只在当前平台生效：`FeishuNotificationChannel` 要求飞书已启用且为当前平台，
@@ -159,6 +185,10 @@ cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test
   生产环境可用官方 Stream SDK 订阅 `contact.user.created_v3` / `updated_v3` / `deleted_v3`
   并转发到该端点；事件加密须在飞书开放平台关闭，否则接口返回 400。
   全量同步走 `POST /api/integrations/feishu/sync`；删除事件只把教师标记为停用，不删除本地记录。
+- **自助绑定范围**：仅飞书提供 `/bind` 自助绑定（姓名 + 工号/手机号）；钉钉没有自助绑定页面，
+  绑定关系由管理员在「教师管理」的编辑弹窗中填写/修正。
+- **前端测试**：仓库没有前端单元测试 runner；飞书环境检测（`window.tt`）、免登与自助绑定流程
+  由 Playwright 验收场景覆盖（`frontend/e2e/feishu-login.spec.ts`、`platform-switch.spec.ts`）。
 - **PDF 导出**：用 OpenPDF `PdfPTable` 直接绘制，而不是 HTMLWorker；CJK 字体从系统字体或
   `paiban.export.pdf-font-path` 加载，Docker 镜像已内置 `fonts-noto-cjk`。
 - **约束设置快照**：`ConstraintSettingsHolder` 为进程级静态变量，因此一期固定为单任务串行求解
@@ -190,7 +220,8 @@ docs/adr/  架构决策记录
 | `paiban.substitution.approval-mode` | 调代审批模式：`approval` / `direct` |
 | `paiban.notification.scope` | 通知范围：`minimal` / `with-grade-leader` / `with-admin` |
 | `paiban.integration.dingtalk.enabled` | 钉钉集成开关 |
-| `integration.active-platform`（设置中心） | 当前 IM 平台：`none` / `dingtalk` / `feishu`；为空时按启用开关派生（钉钉优先） |
+| `paiban.integration.feishu.sync-on-startup` | 启动时是否全量拉取飞书通讯录，默认 `true`（仅当飞书启用且为当前平台；test/e2e 为 `false`） |
+| `integration.active-platform`（只读） | 当前 IM 平台：`none` / `dingtalk` / `feishu`；只能通过 `PUT /api/integrations/platform` 修改，为空时按启用开关派生（钉钉优先） |
 | `paiban.ai.encryption-key` | AI 供应商 API Key 的 AES-256 加密密钥（环境变量 `PAIBAN_AI_ENCRYPTION_KEY`） |
 | `paiban.ai.features.*` | AI 特性开关；二期已提供供应商管理、数据导入、调代推荐与操作历史 |
 | `school.type`（设置中心） | `junior` / `senior`，默认 `junior`，仅影响 UI 显示 |

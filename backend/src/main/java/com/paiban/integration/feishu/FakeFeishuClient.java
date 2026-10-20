@@ -16,6 +16,7 @@ public class FakeFeishuClient implements FeishuClient {
     private final Map<String, FeishuUser> usersByEmployeeNo = new ConcurrentHashMap<>();
     private final List<FeishuMessage> sentMessages = new CopyOnWriteArrayList<>();
     private volatile boolean failAll;
+    private volatile boolean failDirectory;
 
     public FakeFeishuClient() {
         usersByEmployeeNo.put("EMP001",
@@ -39,11 +40,17 @@ public class FakeFeishuClient implements FeishuClient {
 
     @Override
     public List<FeishuDepartment> listDepartments() {
+        if (failDirectory) {
+            throw new IllegalStateException("模拟飞书通讯录不可用");
+        }
         return List.of(new FeishuDepartment("0", "根部门", null));
     }
 
     @Override
     public List<FeishuUser> listUsers() {
+        if (failDirectory) {
+            throw new IllegalStateException("模拟飞书通讯录不可用");
+        }
         return new ArrayList<>(usersByEmployeeNo.values());
     }
 
@@ -62,6 +69,11 @@ public class FakeFeishuClient implements FeishuClient {
     /** Simulates an unreachable tenant so degradation to in-system notifications can be tested. */
     public void failAll(boolean value) {
         this.failAll = value;
+    }
+
+    /** Simulates an unreachable contact directory so sync-failure handling can be tested. */
+    public void failDirectory(boolean value) {
+        this.failDirectory = value;
     }
 
     public List<FeishuMessage> sentMessages() {

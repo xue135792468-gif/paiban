@@ -1,11 +1,13 @@
 package com.paiban.support;
 
+import com.paiban.common.settings.SettingsService;
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
 /**
@@ -17,6 +19,24 @@ public abstract class ApiIntegrationTest {
 
     @LocalServerPort
     protected int port;
+
+    @Autowired
+    protected SettingsService settingsService;
+
+    /**
+     * Explicit, order-independent baseline for the integration flags and credentials.
+     * Classes that assert integration behaviour call this from {@code @BeforeEach}
+     * instead of relying on defaults or on what the previous test left behind.
+     */
+    protected void resetIntegrationSettings() {
+        settingsService.put(SettingsService.ACTIVE_PLATFORM, SettingsService.PLATFORM_NONE);
+        settingsService.put(SettingsService.FEISHU_ENABLED, "false");
+        settingsService.put(SettingsService.DINGTALK_ENABLED, "false");
+        settingsService.put(SettingsService.FEISHU_APP_ID, "");
+        settingsService.put(SettingsService.FEISHU_APP_SECRET, "");
+        settingsService.put(SettingsService.DINGTALK_APP_KEY, "");
+        settingsService.put(SettingsService.DINGTALK_APP_SECRET, "");
+    }
 
     @BeforeEach
     void configureRestAssured() {

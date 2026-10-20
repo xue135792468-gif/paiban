@@ -12,7 +12,7 @@ class FeishuCardBuilderTest {
     private static final String BASE_URL = "https://paiban.example.com";
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    private final FeishuCardBuilder builder = new FeishuCardBuilder(BASE_URL);
+    private final FeishuCardBuilder builder = new FeishuCardBuilder(JSON, BASE_URL);
 
     private JsonNode buildCard(String templateCode, String link) throws Exception {
         FeishuMessage message = new FeishuMessage(

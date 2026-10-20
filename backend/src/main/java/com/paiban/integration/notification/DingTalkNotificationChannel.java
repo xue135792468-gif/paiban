@@ -47,7 +47,7 @@ public class DingTalkNotificationChannel implements NotificationChannel {
 
     @Override
     public boolean send(Message message) {
-        if (!settings.dingtalkEnabled() || !"dingtalk".equals(settings.activePlatform())) {
+        if (!settings.dingtalkEnabled() || !settings.isActivePlatform(SettingsService.PLATFORM_DINGTALK)) {
             return false;
         }
         int attempted = 0;

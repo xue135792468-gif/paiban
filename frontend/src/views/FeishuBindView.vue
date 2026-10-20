@@ -46,14 +46,15 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { http } from '@/api/http'
+import { useLoginLanding } from '@/composables/useLoginLanding'
 
 const route = useRoute()
-const router = useRouter()
 const auth = useAuthStore()
+const { landAfterLogin } = useLoginLanding()
 
 const token = computed(() => (route.query.token as string) || '')
 const tokenMissing = computed(() => !token.value)
@@ -65,20 +66,6 @@ const rules: FormRules = {
 }
 const loading = ref(false)
 const error = ref('')
-
-/** Same landing rules as password login: first-run onboarding, then the home page. */
-async function land() {
-  try {
-    const { data } = await http.get('/onboarding/status')
-    if (data.showWizard && auth.hasPermission('onboarding:manage')) {
-      router.replace('/onboarding')
-      return
-    }
-  } catch {
-    // fall through to the normal landing page
-  }
-  router.replace('/')
-}
 
 async function submit() {
   if (!token.value) {
@@ -103,7 +90,7 @@ async function submit() {
     const { data } = await http.post('/auth/feishu/bind', payload)
     auth.setSession(data.token, data.user)
     ElMessage.success('绑定成功')
-    await land()
+    await landAfterLogin()
   } catch (e: any) {
     error.value = e?.response?.data?.message ?? '绑定失败，请联系教务管理员'
   } finally {

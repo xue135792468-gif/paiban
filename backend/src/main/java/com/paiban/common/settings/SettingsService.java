@@ -31,6 +31,9 @@ public class SettingsService {
     public static final String FEISHU_SYNC_STRATEGY = "integration.feishu.sync-strategy";
     /** none | dingtalk | feishu; blank derives from the enabled flags for backward compatibility. */
     public static final String ACTIVE_PLATFORM = "integration.active-platform";
+    public static final String PLATFORM_NONE = "none";
+    public static final String PLATFORM_DINGTALK = "dingtalk";
+    public static final String PLATFORM_FEISHU = "feishu";
     public static final String SCHOOL_NAME = "school.name";
     public static final String SCHOOL_TYPE = "school.type";
     public static final String SCHOOL_LOGO_PATH = "school.logo-path";
@@ -165,13 +168,18 @@ public class SettingsService {
             return stored;
         }
         if (dingtalkEnabled()) {
-            return "dingtalk";
+            return PLATFORM_DINGTALK;
         }
-        return feishuEnabled() ? "feishu" : "none";
+        return feishuEnabled() ? PLATFORM_FEISHU : PLATFORM_NONE;
+    }
+
+    /** True when the given platform is the one currently in charge. */
+    public boolean isActivePlatform(String platform) {
+        return platform != null && platform.equals(activePlatform());
     }
 
     public static boolean isPlatform(String value) {
-        return "none".equals(value) || "dingtalk".equals(value) || "feishu".equals(value);
+        return PLATFORM_NONE.equals(value) || PLATFORM_DINGTALK.equals(value) || PLATFORM_FEISHU.equals(value);
     }
 
     public String schoolName() {
@@ -231,7 +239,6 @@ public class SettingsService {
         values.put(DINGTALK_SYNC_STRATEGY, dingtalkSyncStrategy());
         values.put(FEISHU_ENABLED, String.valueOf(feishuEnabled()));
         values.put(FEISHU_APP_ID, feishuAppId());
-        values.put(FEISHU_VERIFICATION_TOKEN, feishuVerificationToken());
         values.put(FEISHU_SYNC_STRATEGY, feishuSyncStrategy());
         values.put(ACTIVE_PLATFORM, activePlatform());
         values.put(SCHOOL_NAME, schoolName());
