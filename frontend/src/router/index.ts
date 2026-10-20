@@ -11,6 +11,13 @@ const router = createRouter({
       meta: { public: true },
     },
     {
+      // Reached from the Feishu H5 container with a short-lived bind token.
+      path: '/bind',
+      name: 'feishu-bind',
+      component: () => import('@/views/FeishuBindView.vue'),
+      meta: { public: true },
+    },
+    {
       path: '/403',
       name: 'forbidden',
       component: () => import('@/views/ForbiddenView.vue'),

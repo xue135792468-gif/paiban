@@ -51,7 +51,7 @@ public class FeishuNotificationChannel implements NotificationChannel {
 
     @Override
     public boolean send(Message message) {
-        if (!settings.feishuEnabled()) {
+        if (!settings.feishuEnabled() || !"feishu".equals(settings.activePlatform())) {
             return false;
         }
         boolean card = message.templateCode() != null && message.templateCode().startsWith("SUBSTITUTION_");

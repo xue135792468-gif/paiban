@@ -6,8 +6,10 @@ import com.paiban.identity.service.AuthService;
 import com.paiban.identity.web.IdentityDtos.LoginResponse;
 import com.paiban.integration.auth.FeishuAuthProvider;
 import com.paiban.integration.auth.FeishuBindTokenService;
+import com.paiban.integration.auth.FeishuBindingService;
 import com.paiban.integration.feishu.FeishuClient;
 import com.paiban.integration.feishu.FeishuUser;
+import com.paiban.integration.web.IntegrationDtos.FeishuBindRequest;
 import com.paiban.integration.web.IntegrationDtos.FeishuLoginRequest;
 import com.paiban.integration.web.IntegrationDtos.FeishuLoginResponse;
 import jakarta.validation.Valid;
@@ -31,6 +33,7 @@ public class FeishuAuthController {
     private final FeishuClient client;
     private final FeishuAuthProvider authProvider;
     private final FeishuBindTokenService bindTokens;
+    private final FeishuBindingService bindingService;
     private final AuthService authService;
 
     public FeishuAuthController(
@@ -38,11 +41,13 @@ public class FeishuAuthController {
             FeishuClient client,
             FeishuAuthProvider authProvider,
             FeishuBindTokenService bindTokens,
+            FeishuBindingService bindingService,
             AuthService authService) {
         this.settings = settings;
         this.client = client;
         this.authProvider = authProvider;
         this.bindTokens = bindTokens;
+        this.bindingService = bindingService;
         this.authService = authService;
     }
 
@@ -77,5 +82,16 @@ public class FeishuAuthController {
         // No local account: hand back a short-lived bind token, never auto-provision.
         return new FeishuLoginResponse(
                 "binding_required", null, null, null, bindTokens.issue(feishuUser));
+    }
+
+    /**
+     * Public: the bind page exchanges the short-lived bind token for a session after
+     * the teacher proves their identity with name + employee number/phone.
+     */
+    @PostMapping("/bind")
+    public LoginResponse bind(@RequestBody FeishuBindRequest request) {
+        FeishuUser identity = bindTokens.parse(request.bindToken())
+                .orElseThrow(() -> ApiException.unauthorized("绑定链接已过期，请重新从飞书进入"));
+        return bindingService.bind(identity, request.name(), request.employeeNo(), request.phone());
     }
 }

@@ -55,7 +55,9 @@
       </el-form>
     </el-card>
 
-    <el-card shadow="never">
+    <ImPlatformCard @switched="reloadIntegrations" />
+
+    <el-card id="dingtalk-integration" shadow="never">
       <template #header>
         <div class="card-head">
           <span class="card-title">钉钉集成</span>
@@ -117,7 +119,7 @@
       </el-collapse>
     </el-card>
 
-    <el-card shadow="never">
+    <el-card id="feishu-integration" shadow="never">
       <template #header>
         <div class="card-head">
           <span class="card-title">飞书集成</span>
@@ -241,6 +243,7 @@ import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { http } from '@/api/http'
 import { useSettingsStore } from '@/stores/settings'
+import ImPlatformCard from '@/components/ImPlatformCard.vue'
 
 interface DingTalkConfig {
   enabled: boolean
@@ -369,6 +372,17 @@ async function loadFeishuLogs() {
   } finally {
     loadingFeishuLogs.value = false
   }
+}
+
+/** A platform switch flips both integrations, so every integration card reloads. */
+async function reloadIntegrations() {
+  await Promise.all([
+    loadSettings(),
+    loadDingtalk(),
+    loadLogs(),
+    loadFeishu(),
+    loadFeishuLogs(),
+  ])
 }
 
 async function saveSettings() {

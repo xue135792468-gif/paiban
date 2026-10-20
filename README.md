@@ -132,6 +132,21 @@ cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test
 - **飞书通知**：调代等通知以飞书交互卡片发送（Markdown 正文 +「查看详情」按钮，按模板着色）；
   飞书不可达或教师未绑定飞书账号时自动降级为系统内通知。通知记录用 `platform` 标记来源
   （`feishu` / `dingtalk` / `system`）。复用现有通知接口，不新增端点。
+- **IM 平台切换**：设置中心「IM 平台」卡片用单选按钮选择「不启用 / 钉钉 / 飞书」，保存到
+  `integration.active-platform`（`none` / `dingtalk` / `feishu`）。切换时停用原平台、启用新平台，
+  触发新平台的组织目录同步，并写入 `PLATFORM_SWITCH` 审计（含 from → to 与同步结果）。
+  切换只改平台开关，不触碰教师、班级、课程、课表与调代数据；历史通知记录按 `platform` 保留来源。
+  未配置凭证（钉钉 AppKey/AppSecret 或飞书 App ID/App Secret）时切换返回 400。
+  通知渠道只在当前平台生效：`FeishuNotificationChannel` 要求飞书已启用且为当前平台，
+  `DingTalkNotificationChannel` 同理；免登与组织同步仍各自按启用开关判断。
+  `integration.active-platform` 为空时按「钉钉优先、其次飞书、否则不启用」派生，兼容一期部署。
+- **飞书自助绑定**：飞书免登找不到本地账号时返回 `binding_required` 与 10 分钟有效的 `bindToken`，
+  前端跳转 `/bind?token=...`；教师填写姓名并至少提供工号或手机号，两者都填时必须指向同一教师，
+  姓名需与档案完全一致。绑定成功写入 `teacher.feishu_user_id` / `feishu_open_id`、审计 `FEISHU_BIND`
+  并签发本地账号会话。飞书账号已绑定其他教师、教师已绑定其他飞书账号、或教师尚未开通系统账号时
+  返回 409，由教务管理员在「教师管理」中手动修正。
+- **教师平台绑定**：教师列表显示「平台绑定」标签（钉钉 / 飞书 / 两者 / 未绑定）；新建或编辑教师时
+  可直接填写钉钉 UserID、飞书 UserID 与飞书 OpenID，留空表示清除该绑定。
 - **测试替身**：`paiban.integration.dingtalk.fake=true`（e2e/test profile）启用确定性的假钉钉客户端。
 
 ## 已知限制
@@ -175,6 +190,7 @@ docs/adr/  架构决策记录
 | `paiban.substitution.approval-mode` | 调代审批模式：`approval` / `direct` |
 | `paiban.notification.scope` | 通知范围：`minimal` / `with-grade-leader` / `with-admin` |
 | `paiban.integration.dingtalk.enabled` | 钉钉集成开关 |
+| `integration.active-platform`（设置中心） | 当前 IM 平台：`none` / `dingtalk` / `feishu`；为空时按启用开关派生（钉钉优先） |
 | `paiban.ai.encryption-key` | AI 供应商 API Key 的 AES-256 加密密钥（环境变量 `PAIBAN_AI_ENCRYPTION_KEY`） |
 | `paiban.ai.features.*` | AI 特性开关；二期已提供供应商管理、数据导入、调代推荐与操作历史 |
 | `school.type`（设置中心） | `junior` / `senior`，默认 `junior`，仅影响 UI 显示 |
@@ -189,8 +205,10 @@ docs/adr/  架构决策记录
    `contact:user.employee_id:readonly`），创建版本并发布，由企业管理员审核通过。
 4. **安全设置**：「安全设置 → 重定向 URL」填 `https://<你的域名>/login`；若启用组织事件，
    在「事件与回调」把请求地址指向 `https://<你的域名>/api/integrations/feishu/event` 并填写 Verification Token。
-5. **启用集成**：设置中心 →「飞书集成」填入 App ID / App Secret 并启用。教师从飞书工作台点击应用图标即免登；
-   本地无账号时提示「账号未绑定，请联系教务管理员」。
+5. **启用集成**：设置中心 →「飞书集成」填入 App ID / App Secret 并启用，再到「IM 平台」选择飞书并切换。
+   教师从飞书工作台点击应用图标即免登；尚未绑定飞书身份时自动进入 `/bind` 页面，
+   填写姓名与工号（或手机号）完成自助绑定。若提示「未找到您的信息」，请联系教务管理员核对档案，
+   或在「教师管理」中直接填写飞书 UserID / OpenID。
 
 > 生产环境必须设置 `PAIBAN_JWT_SECRET`（至少 32 字符）。在非 `local`/`test`/`e2e` profile 下，
 > 若仍使用仓库内置的默认密钥，应用会拒绝启动。
