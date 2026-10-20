@@ -59,6 +59,7 @@ public class LocalNotificationChannel implements NotificationChannel {
     private void log(Message message, String channel, boolean success, String error) {
         NotificationLog entry = new NotificationLog();
         entry.setChannel(channel);
+        entry.setPlatform("system");
         entry.setRecipient(message.recipientUserIds().toString());
         entry.setTemplateCode(message.templateCode());
         entry.setContent(message.content());

@@ -23,6 +23,12 @@ public class SettingsService {
     public static final String DINGTALK_CORP_ID = "integration.dingtalk.corp-id";
     public static final String DINGTALK_EVENT_TOKEN = "integration.dingtalk.event-token";
     public static final String DINGTALK_SYNC_STRATEGY = "integration.dingtalk.sync-strategy";
+    public static final String FEISHU_ENABLED = "integration.feishu.enabled";
+    public static final String FEISHU_APP_ID = "integration.feishu.app-id";
+    public static final String FEISHU_APP_SECRET = "integration.feishu.app-secret";
+    public static final String FEISHU_VERIFICATION_TOKEN = "integration.feishu.verification-token";
+    public static final String FEISHU_ENCRYPT_KEY = "integration.feishu.encrypt-key";
+    public static final String FEISHU_SYNC_STRATEGY = "integration.feishu.sync-strategy";
     public static final String SCHOOL_NAME = "school.name";
     public static final String SCHOOL_TYPE = "school.type";
     public static final String SCHOOL_LOGO_PATH = "school.logo-path";
@@ -40,6 +46,12 @@ public class SettingsService {
     private final String defaultDingtalkAppSecret;
     private final String defaultDingtalkAgentId;
     private final String defaultDingtalkSyncStrategy;
+    private final boolean defaultFeishuEnabled;
+    private final String defaultFeishuAppId;
+    private final String defaultFeishuAppSecret;
+    private final String defaultFeishuVerificationToken;
+    private final String defaultFeishuEncryptKey;
+    private final String defaultFeishuSyncStrategy;
     private final String defaultSchoolLogoPath;
 
     public SettingsService(
@@ -51,6 +63,12 @@ public class SettingsService {
             @Value("${paiban.integration.dingtalk.app-secret:}") String defaultDingtalkAppSecret,
             @Value("${paiban.integration.dingtalk.agent-id:}") String defaultDingtalkAgentId,
             @Value("${paiban.integration.dingtalk.sync-strategy:dingtalk}") String defaultDingtalkSyncStrategy,
+            @Value("${paiban.integration.feishu.enabled:false}") boolean defaultFeishuEnabled,
+            @Value("${paiban.integration.feishu.app-id:}") String defaultFeishuAppId,
+            @Value("${paiban.integration.feishu.app-secret:}") String defaultFeishuAppSecret,
+            @Value("${paiban.integration.feishu.verification-token:}") String defaultFeishuVerificationToken,
+            @Value("${paiban.integration.feishu.encrypt-key:}") String defaultFeishuEncryptKey,
+            @Value("${paiban.integration.feishu.sync-strategy:feishu}") String defaultFeishuSyncStrategy,
             @Value("${paiban.export.school-logo-path:}") String defaultSchoolLogoPath) {
         this.repository = repository;
         this.defaultApprovalMode = defaultApprovalMode;
@@ -60,6 +78,12 @@ public class SettingsService {
         this.defaultDingtalkAppSecret = defaultDingtalkAppSecret;
         this.defaultDingtalkAgentId = defaultDingtalkAgentId;
         this.defaultDingtalkSyncStrategy = defaultDingtalkSyncStrategy;
+        this.defaultFeishuEnabled = defaultFeishuEnabled;
+        this.defaultFeishuAppId = defaultFeishuAppId;
+        this.defaultFeishuAppSecret = defaultFeishuAppSecret;
+        this.defaultFeishuVerificationToken = defaultFeishuVerificationToken;
+        this.defaultFeishuEncryptKey = defaultFeishuEncryptKey;
+        this.defaultFeishuSyncStrategy = defaultFeishuSyncStrategy;
         this.defaultSchoolLogoPath = defaultSchoolLogoPath;
     }
 
@@ -101,6 +125,30 @@ public class SettingsService {
 
     public String dingtalkSyncStrategy() {
         return get(DINGTALK_SYNC_STRATEGY, defaultDingtalkSyncStrategy);
+    }
+
+    public boolean feishuEnabled() {
+        return Boolean.parseBoolean(get(FEISHU_ENABLED, String.valueOf(defaultFeishuEnabled)));
+    }
+
+    public String feishuAppId() {
+        return get(FEISHU_APP_ID, defaultFeishuAppId);
+    }
+
+    public String feishuAppSecret() {
+        return get(FEISHU_APP_SECRET, defaultFeishuAppSecret);
+    }
+
+    public String feishuVerificationToken() {
+        return get(FEISHU_VERIFICATION_TOKEN, defaultFeishuVerificationToken);
+    }
+
+    public String feishuEncryptKey() {
+        return get(FEISHU_ENCRYPT_KEY, defaultFeishuEncryptKey);
+    }
+
+    public String feishuSyncStrategy() {
+        return get(FEISHU_SYNC_STRATEGY, defaultFeishuSyncStrategy);
     }
 
     public String schoolName() {
@@ -158,6 +206,10 @@ public class SettingsService {
         values.put(DINGTALK_CORP_ID, dingtalkCorpId());
         values.put(DINGTALK_EVENT_TOKEN, dingtalkEventToken());
         values.put(DINGTALK_SYNC_STRATEGY, dingtalkSyncStrategy());
+        values.put(FEISHU_ENABLED, String.valueOf(feishuEnabled()));
+        values.put(FEISHU_APP_ID, feishuAppId());
+        values.put(FEISHU_VERIFICATION_TOKEN, feishuVerificationToken());
+        values.put(FEISHU_SYNC_STRATEGY, feishuSyncStrategy());
         values.put(SCHOOL_NAME, schoolName());
         values.put(SCHOOL_TYPE, schoolType());
         values.put(SCHOOL_LOGO_PATH, schoolLogoPath());
