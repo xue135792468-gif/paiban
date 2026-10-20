@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 public final class AiDtos {
 
@@ -70,4 +71,9 @@ public final class AiDtos {
             Long providerId,
             Long modelId,
             List<TaskAssignment> tasks) {}
+
+    /** Per-task AI availability; null fields are dropped by the serializer when unconfigured. */
+    public record AiTaskStatusDto(boolean configured, Long providerId, Long modelId, Boolean visionCapable) {}
+
+    public record AiStatusDto(boolean configured, Map<String, AiTaskStatusDto> tasks) {}
 }
