@@ -15,7 +15,7 @@ echo "[2/3] 启动后端 http://localhost:8080 ..."
 BACKEND_PID=$!
 
 echo "[3/3] 启动前端 http://localhost:5173 ..."
-(cd frontend && npm install --no-audit --no-fund && npm run dev) &
+(cd frontend && npm install --no-audit --no-fund && npm run dev -- --host 127.0.0.1) &
 FRONTEND_PID=$!
 
 trap 'kill $BACKEND_PID $FRONTEND_PID 2>/dev/null || true' EXIT INT TERM
