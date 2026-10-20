@@ -10,6 +10,7 @@ import com.paiban.ai.domain.AiProvider;
 import com.paiban.ai.domain.AiProviderRepository;
 import com.paiban.ai.domain.AiTaskConfig;
 import com.paiban.ai.domain.AiTaskConfigRepository;
+import com.paiban.ai.event.AiConfigChangedEvent;
 import com.paiban.ai.web.AiDtos.ConnectionTestDto;
 import com.paiban.ai.web.AiDtos.ModelDto;
 import com.paiban.ai.web.AiDtos.PresetDto;
@@ -20,6 +21,7 @@ import com.paiban.common.web.ApiException;
 import java.net.URI;
 import java.time.Instant;
 import java.util.List;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,6 +46,7 @@ public class AiProviderService {
     private final ApiKeyCipher cipher;
     private final AiConnectionTester connectionTester;
     private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher events;
 
     public AiProviderService(
             AiProviderRepository providers,
@@ -51,13 +54,15 @@ public class AiProviderService {
             AiTaskConfigRepository taskConfigs,
             ApiKeyCipher cipher,
             AiConnectionTester connectionTester,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            ApplicationEventPublisher events) {
         this.providers = providers;
         this.models = models;
         this.taskConfigs = taskConfigs;
         this.cipher = cipher;
         this.connectionTester = connectionTester;
         this.objectMapper = objectMapper;
+        this.events = events;
     }
 
     @Transactional(readOnly = true)
@@ -102,6 +107,7 @@ public class AiProviderService {
                 createModel(provider.getId(), modelRequest);
             }
         }
+        configChanged("provider-created");
         return get(provider.getId());
     }
 
@@ -125,6 +131,7 @@ public class AiProviderService {
             provider.setApiKeyCipher(cipher.encrypt(request.apiKey().trim()));
         }
         provider.setUpdatedAt(Instant.now());
+        configChanged("provider-updated");
         return toDto(provider, models.findByProviderIdOrderByIdAsc(id));
     }
 
@@ -134,6 +141,7 @@ public class AiProviderService {
         taskConfigs.deleteByProviderId(id);
         models.deleteAll(models.findByProviderIdOrderByIdAsc(id));
         providers.delete(provider);
+        configChanged("provider-deleted");
     }
 
     @Transactional
@@ -153,6 +161,7 @@ public class AiProviderService {
         model.setCreatedAt(Instant.now());
         models.save(model);
         applyDefaultAssignmentIfEmpty(provider, model);
+        configChanged("model-created");
         return toDto(model);
     }
 
@@ -179,6 +188,7 @@ public class AiProviderService {
         if (request.paramsJson() != null) {
             model.setParamsJson(validateParamsJson(request.paramsJson()));
         }
+        configChanged("model-updated");
         return toDto(model);
     }
 
@@ -189,6 +199,7 @@ public class AiProviderService {
                 .orElseThrow(() -> ApiException.notFound("模型不存在: " + modelId));
         taskConfigs.deleteByModelId(modelId);
         models.delete(model);
+        configChanged("model-deleted");
     }
 
     @Transactional(readOnly = true)
@@ -227,6 +238,11 @@ public class AiProviderService {
 
     private AiProvider requireProvider(Long id) {
         return providers.findById(id).orElseThrow(() -> ApiException.notFound("AI 供应商不存在: " + id));
+    }
+
+    /** Routing may have changed, so the gateway's cached configuration must be dropped. */
+    private void configChanged(String source) {
+        events.publishEvent(new AiConfigChangedEvent(source));
     }
 
     private String validateType(String type) {

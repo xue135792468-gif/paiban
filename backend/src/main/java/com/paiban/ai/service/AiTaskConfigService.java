@@ -7,6 +7,7 @@ import com.paiban.ai.domain.AiProvider;
 import com.paiban.ai.domain.AiProviderRepository;
 import com.paiban.ai.domain.AiTaskConfig;
 import com.paiban.ai.domain.AiTaskConfigRepository;
+import com.paiban.ai.event.AiConfigChangedEvent;
 import com.paiban.ai.web.AiDtos.SaveTaskConfigRequest;
 import com.paiban.ai.web.AiDtos.TaskAssignment;
 import com.paiban.ai.web.AiDtos.TaskConfigBundleDto;
@@ -19,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,14 +33,17 @@ public class AiTaskConfigService {
     private final AiTaskConfigRepository taskConfigs;
     private final AiProviderRepository providers;
     private final AiModelRepository models;
+    private final ApplicationEventPublisher events;
 
     public AiTaskConfigService(
             AiTaskConfigRepository taskConfigs,
             AiProviderRepository providers,
-            AiModelRepository models) {
+            AiModelRepository models,
+            ApplicationEventPublisher events) {
         this.taskConfigs = taskConfigs;
         this.providers = providers;
         this.models = models;
+        this.events = events;
     }
 
     @Transactional(readOnly = true)
@@ -68,6 +73,7 @@ public class AiTaskConfigService {
         } else {
             saveCustom(request.tasks());
         }
+        events.publishEvent(new AiConfigChangedEvent("task-config"));
         return get();
     }
 
