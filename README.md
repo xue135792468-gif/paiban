@@ -31,6 +31,9 @@ cd frontend && npm install && npm run dev
 
 打开 http://localhost:5173 ，首页会显示后端 `/api/health` 的返回结果。
 
+Windows 下也可以直接双击根目录的 `启动排课系统.cmd`：自动启动前后端、等后端就绪后打开浏览器；
+`停止排课系统.cmd` 负责停止。日志在 `.tools/logs/`。
+
 默认管理员账号：`admin` / `admin123`。
 
 ### 使用 PostgreSQL 运行
