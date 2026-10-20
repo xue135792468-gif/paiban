@@ -1,5 +1,6 @@
 package com.paiban.foundation.service;
 
+import com.paiban.common.event.SemesterCreatedEvent;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
@@ -18,6 +19,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,10 +28,13 @@ public class SemesterService {
 
     private final SemesterRepository semesters;
     private final PeriodRepository periods;
+    private final ApplicationEventPublisher events;
 
-    public SemesterService(SemesterRepository semesters, PeriodRepository periods) {
+    public SemesterService(
+            SemesterRepository semesters, PeriodRepository periods, ApplicationEventPublisher events) {
         this.semesters = semesters;
         this.periods = periods;
+        this.events = events;
     }
 
     @Transactional(readOnly = true)
@@ -53,7 +58,9 @@ public class SemesterService {
         semester.setStartDate(request.startDate());
         semester.setEndDate(request.endDate());
         semester.setCreatedAt(Instant.now());
-        return toDto(semesters.save(semester));
+        Semester saved = semesters.save(semester);
+        events.publishEvent(new SemesterCreatedEvent(saved.getId()));
+        return toDto(saved);
     }
 
     @Transactional
