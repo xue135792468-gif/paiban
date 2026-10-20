@@ -64,6 +64,8 @@ public class SecurityConfig {
                                 "/api/auth/login",
                                 "/api/auth/dingtalk",
                                 "/api/auth/dingtalk/config",
+                                "/api/auth/feishu",
+                                "/api/auth/feishu/config",
                                 "/api/health",
                                 "/actuator/**")
                         .permitAll()

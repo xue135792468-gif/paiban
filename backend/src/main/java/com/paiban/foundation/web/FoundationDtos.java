@@ -11,7 +11,8 @@ public final class FoundationDtos {
     private FoundationDtos() {}
 
     public record TeacherDto(Long id, String name, String employeeNo, String phone, String email,
-                             String subject, boolean active) {}
+                             String subject, boolean active, String dingtalkUserId,
+                             String feishuUserId, String feishuOpenId, String bindingStatus) {}
 
     public record TeacherOptionDto(Long id, String name) {}
 
@@ -20,7 +21,10 @@ public final class FoundationDtos {
                                      @Size(max = 30) String phone,
                                      @Size(max = 120) String email,
                                      @Size(max = 100) String subject,
-                                     Boolean active) {}
+                                     Boolean active,
+                                     @Size(max = 100) String dingtalkUserId,
+                                     @Size(max = 100) String feishuUserId,
+                                     @Size(max = 100) String feishuOpenId) {}
 
     public record RoomDto(Long id, String name, int capacity, String type, String building) {}
 

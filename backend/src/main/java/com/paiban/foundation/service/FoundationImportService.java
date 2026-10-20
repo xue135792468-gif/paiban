@@ -350,7 +350,8 @@ public class FoundationImportService {
     private void insert(String entity, Map<String, String> row, Long semesterId) {
         switch (entity) {
             case "teachers" -> foundation.createTeacher(new SaveTeacherRequest(
-                    row.get("姓名"), row.get("工号"), row.get("手机号"), row.get("邮箱"), row.get("学科"), true));
+                    row.get("姓名"), row.get("工号"), row.get("手机号"), row.get("邮箱"), row.get("学科"), true,
+                    null, null, null));
             case "rooms" -> foundation.createRoom(new SaveRoomRequest(
                     row.get("教室名称"),
                     intOrNull(row.get("容量")),

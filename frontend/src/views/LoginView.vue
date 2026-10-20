@@ -30,6 +30,7 @@
               @keyup.enter="submit"
             />
           </el-form-item>
+          <el-alert v-if="feishuNotice" :title="feishuNotice" type="warning" :closable="false" show-icon class="error" />
           <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="error" />
           <el-button type="primary" size="large" class="submit" :loading="loading" @click="submit">
             登录
@@ -47,6 +48,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { http } from '@/api/http'
+import { isFeishuEnv, requestFeishuAuthCode } from '@/api/feishu'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -60,6 +62,7 @@ const rules: FormRules = {
 }
 const loading = ref(false)
 const error = ref('')
+const feishuNotice = ref('')
 
 function loadDingTalkSdk(): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -118,7 +121,50 @@ async function tryDingTalkLogin() {
   }
 }
 
-onMounted(tryDingTalkLogin)
+/** Same landing rules as password login: first-run onboarding, then the redirect target. */
+async function landAfterLogin() {
+  const redirect = (route.query.redirect as string) || '/'
+  if (redirect === '/') {
+    try {
+      const { data } = await http.get('/onboarding/status')
+      if (data.showWizard && auth.hasPermission('onboarding:manage')) {
+        router.replace('/onboarding')
+        return
+      }
+    } catch {
+      // fall through to the normal landing page
+    }
+  }
+  router.replace(redirect)
+}
+
+/** Feishu injects `window.tt` inside its H5 container; any failure keeps the password form. */
+async function tryFeishuLogin() {
+  try {
+    const { data: config } = await http.get('/auth/feishu/config')
+    if (!config?.enabled) return
+    const code = await requestFeishuAuthCode(config.appId ?? '')
+    const result = await auth.feishuLogin(code)
+    if (result.status === 'ok') {
+      ElMessage.success('飞书免登成功')
+      await landAfterLogin()
+      return
+    }
+    if (result.status === 'binding_required') {
+      feishuNotice.value = '账号未绑定，请联系教务管理员'
+    }
+  } catch {
+    // stay on the password form
+  }
+}
+
+onMounted(async () => {
+  if (isFeishuEnv()) {
+    await tryFeishuLogin()
+    return
+  }
+  await tryDingTalkLogin()
+})
 
 async function submit() {
   if (!formRef.value) return
@@ -128,19 +174,7 @@ async function submit() {
   error.value = ''
   try {
     await auth.login(form.username, form.password)
-    const redirect = (route.query.redirect as string) || '/'
-    if (redirect === '/') {
-      try {
-        const { data } = await http.get('/onboarding/status')
-        if (data.showWizard && auth.hasPermission('onboarding:manage')) {
-          router.replace('/onboarding')
-          return
-        }
-      } catch {
-        // fall through to the normal landing page
-      }
-    }
-    router.replace(redirect)
+    await landAfterLogin()
   } catch (e: any) {
     error.value = e?.response?.data?.message ?? '登录失败，请稍后重试'
   } finally {
