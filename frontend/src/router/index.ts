@@ -128,6 +128,12 @@ const router = createRouter({
           meta: { title: 'AI 供应商', permission: 'settings:manage' },
         },
         {
+          path: 'admin/ai-history',
+          name: 'ai-history',
+          component: () => import('@/views/AiHistoryView.vue'),
+          meta: { title: 'AI 操作历史', permission: 'settings:manage' },
+        },
+        {
           path: 'onboarding',
           name: 'onboarding',
           component: () => import('@/views/OnboardingView.vue'),
