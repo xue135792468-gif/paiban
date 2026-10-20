@@ -28,4 +28,5 @@
 
 - 构建前 `source .tools/env.sh`：JDK 21、Maven、E 盘仓库
 - `scripts/verify.sh` — 本地闸门，与 CI 同一条路径；`--full` 追加 Playwright
+- 性能基准（ADR-0017，约 3 分钟）：`cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test`
 - Git Bash 下 `git show branch:path` 会被路径转换改写，前面加 `MSYS_NO_PATHCONV=1`

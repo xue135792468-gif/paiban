@@ -5,12 +5,14 @@ import io.restassured.http.ContentType;
 import io.restassured.response.Response;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
 /**
  * Shared setup for REST-level integration tests. Tests exercise the public
  * HTTP contract only, per the testing decisions in the spec.
  */
+@ExtendWith(DatabaseResetExtension.class)
 public abstract class ApiIntegrationTest {
 
     @LocalServerPort
