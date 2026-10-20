@@ -24,6 +24,7 @@ public class SettingsService {
     public static final String DINGTALK_EVENT_TOKEN = "integration.dingtalk.event-token";
     public static final String DINGTALK_SYNC_STRATEGY = "integration.dingtalk.sync-strategy";
     public static final String SCHOOL_NAME = "school.name";
+    public static final String SCHOOL_TYPE = "school.type";
     public static final String SCHOOL_LOGO_PATH = "school.logo-path";
     public static final String PUBLIC_BASE_URL = "public.base-url";
     public static final String AI_SUBSTITUTE_RECOMMENDATION = "ai.features.substitute-recommendation";
@@ -105,6 +106,11 @@ public class SettingsService {
         return get(SCHOOL_NAME, "示例中学");
     }
 
+    /** Junior (初中) or senior (高中) mode; UI-only, never read by business logic. */
+    public String schoolType() {
+        return get(SCHOOL_TYPE, "junior");
+    }
+
     public String schoolLogoPath() {
         return get(SCHOOL_LOGO_PATH, defaultSchoolLogoPath);
     }
@@ -142,6 +148,7 @@ public class SettingsService {
         values.put(DINGTALK_EVENT_TOKEN, dingtalkEventToken());
         values.put(DINGTALK_SYNC_STRATEGY, dingtalkSyncStrategy());
         values.put(SCHOOL_NAME, schoolName());
+        values.put(SCHOOL_TYPE, schoolType());
         values.put(SCHOOL_LOGO_PATH, schoolLogoPath());
         values.put(PUBLIC_BASE_URL, publicBaseUrl());
         values.put(AI_SUBSTITUTE_RECOMMENDATION, String.valueOf(aiSubstituteRecommendation()));

@@ -89,6 +89,7 @@ import {
 } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
+import { useSettingsStore } from '@/stores/settings'
 
 interface MenuItem {
   label: string
@@ -113,6 +114,7 @@ interface NotificationItem {
 }
 
 const auth = useAuthStore()
+const settings = useSettingsStore()
 const route = useRoute()
 const router = useRouter()
 
@@ -227,6 +229,7 @@ function onCommand(command: string) {
 
 onMounted(() => {
   auth.refresh().catch(() => undefined)
+  settings.load()
   loadNotifications()
   timer = window.setInterval(loadNotifications, 30000)
 })
