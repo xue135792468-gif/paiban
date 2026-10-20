@@ -110,6 +110,19 @@
       </el-collapse>
     </el-card>
 
+    <el-card shadow="never">
+      <template #header><span class="card-title">AI 供应商</span></template>
+      <div class="ai-row">
+        <div>
+          <div class="ai-name">AI 供应商与模型管理</div>
+          <div class="hint">
+            配置 DeepSeek、Gemini、通义千问、智谱或自定义 OpenAI 兼容端点，并分配 AI 任务使用的模型。
+          </div>
+        </div>
+        <el-button type="primary" plain @click="router.push('/admin/ai-providers')">去配置</el-button>
+      </div>
+    </el-card>
+
     <el-card v-if="aiEnabled" shadow="never">
       <template #header><span class="card-title">AI 特性</span></template>
       <div class="ai-row">
@@ -135,6 +148,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, type UploadFile } from 'element-plus'
+import { useRouter } from 'vue-router'
 import { http } from '@/api/http'
 
 interface DingTalkConfig {
@@ -171,6 +185,7 @@ const savingDingtalk = ref(false)
 const syncing = ref(false)
 const uploading = ref(false)
 const loadingLogs = ref(false)
+const router = useRouter()
 
 const logoName = computed(() => {
   const path = form['school.logo-path']

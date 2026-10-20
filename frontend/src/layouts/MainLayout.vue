@@ -74,6 +74,7 @@ import {
   Bell,
   Calendar,
   ChatDotRound,
+  Cpu,
   DataLine,
   Document,
   Guide,
@@ -152,6 +153,7 @@ const groups: MenuGroup[] = [
     items: [
       { label: '通知中心', path: '/notifications', icon: Bell, permission: 'notification:view' },
       { label: '设置中心', path: '/admin/settings', icon: Setting, permission: 'settings:manage' },
+      { label: 'AI 供应商', path: '/admin/ai-providers', icon: Cpu, permission: 'settings:manage' },
       { label: '初始化向导', path: '/onboarding', icon: Guide, permission: 'onboarding:manage' },
       { label: '用户管理', path: '/admin/users', icon: User, permission: 'user:manage' },
     ],
