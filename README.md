@@ -46,12 +46,17 @@ SPRING_PROFILES_ACTIVE=postgres ./mvnw spring-boot:run
 ## 测试
 
 ```bash
+scripts/verify.sh          # 后端 verify + 前端 lint/build
+scripts/verify.sh --full   # 追加 Playwright 验收场景
+```
+
+`scripts/verify.sh` 与 CI（`.github/workflows/ci.yml`）走同一条路径：检测到 Docker 时自动带
+`-Dtestcontainers=true`，CI 里一定带。需要单独跑某一步时：
+
+```bash
 cd backend && ./mvnw verify        # 单元 + 集成测试（默认 H2，PostgreSQL 兼容模式）
 cd frontend && npm run lint && npm run build
-
-# E2E：Playwright 会自动启动后端（e2e profile）与前端
-cd frontend && npx playwright install chromium
-cd frontend && npm run test:e2e
+cd frontend && npm run test:e2e    # Playwright 会自动启动后端（e2e profile）与前端
 ```
 
 E2E 需要 `JAVA_HOME` 指向 JDK 21（Windows 下请使用 `E:\...` 形式的路径，Playwright 通过 `mvnw.cmd` 启动后端）。
