@@ -1,5 +1,6 @@
 package com.paiban.ai.imports;
 
+import com.paiban.ai.imports.ImportDtos.CommitRequest;
 import com.paiban.ai.imports.ImportDtos.CommitResultDto;
 import com.paiban.ai.imports.ImportDtos.PreviewDto;
 import com.paiban.ai.imports.ImportDtos.RowsUpdateRequest;
@@ -91,8 +92,11 @@ public class AiImportController {
     }
 
     @PostMapping("/sessions/{id}/commit")
-    public CommitResultDto commit(@PathVariable Long id, Principal principal) {
-        return service.commit(id, principal.getName());
+    public CommitResultDto commit(
+            @PathVariable Long id,
+            @RequestBody(required = false) CommitRequest request,
+            Principal principal) {
+        return service.commit(id, request == null ? null : request.semesterId(), principal.getName());
     }
 
     @GetMapping("/sessions/{id}/file")

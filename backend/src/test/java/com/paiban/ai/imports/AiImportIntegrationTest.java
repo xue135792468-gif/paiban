@@ -10,6 +10,10 @@ import com.paiban.ai.AiGateway;
 import com.paiban.ai.AiRequest;
 import com.paiban.ai.AiResult;
 import com.paiban.ai.AiTaskType;
+import com.paiban.identity.domain.PermissionRepository;
+import com.paiban.identity.domain.Permissions;
+import com.paiban.identity.domain.Role;
+import com.paiban.identity.domain.RoleRepository;
 import com.paiban.support.ApiIntegrationTest;
 import com.paiban.support.TestData;
 import io.restassured.RestAssured;
@@ -25,6 +29,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import javax.imageio.ImageIO;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -50,6 +55,12 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
 
     @Autowired
     private AiImportLogRepository importLogs;
+
+    @Autowired
+    private RoleRepository roleRepository;
+
+    @Autowired
+    private PermissionRepository permissionRepository;
 
     @BeforeEach
     void resetFake() {
@@ -98,7 +109,8 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
 
         as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/commit")
                 .then().statusCode(200)
-                .body("imported", equalTo(23));
+                .body("imported", equalTo(23))
+                .body("draftId", org.hamcrest.Matchers.nullValue());
 
         List<Map<String, Object>> teacherRows = as(admin).when().get("/api/teachers")
                 .then().statusCode(200).extract().jsonPath().getList("$");
@@ -135,6 +147,98 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
 
         String prompt = fake.lastRequest.messages().get(1).content();
         assertThat(prompt).contains("2026 春季课表").contains("原始网格").contains("每一行代表一节课");
+    }
+
+    @Test
+    void timetableCommitCreatesADraftAndRecordsItsId() {
+        String admin = adminToken();
+        TimetableFixture fixture = timetableFixture(admin);
+        TestData.semester(admin);
+        fake.response = aiResponse(List.of(timetableRow()));
+
+        Response preview = as(admin)
+                .body(Map.of("text", "一年级1班 周一 第1节 语文 张三 101"))
+                .when().post("/api/ai/import/text?target=timetable");
+        preview.then().statusCode(200);
+        long sessionId = preview.jsonPath().getLong("sessionId");
+
+        Response commit = as(admin).body(Map.of("semesterId", fixture.semesterId()))
+                .when().post("/api/ai/import/sessions/" + sessionId + "/commit");
+        commit.then().statusCode(200)
+                .body("imported", equalTo(1))
+                .body("draftId", org.hamcrest.Matchers.notNullValue())
+                .body("warnings", hasSize(0));
+        long draftId = commit.jsonPath().getLong("draftId");
+
+        as(admin).when().get("/api/timetable-drafts/" + draftId)
+                .then().statusCode(200)
+                .body("draft.status", equalTo("DRAFT"))
+                .body("draft.semesterId", equalTo((int) fixture.semesterId()))
+                .body("lessons", hasSize(1))
+                .body("lessons[0].className", equalTo("一年级1班"))
+                .body("lessons[0].courseName", equalTo("语文"))
+                .body("lessons[0].teacherName", equalTo("张三"))
+                .body("lessons[0].roomName", equalTo("101"));
+
+        AiImportLog stored = importLogs.findById(sessionId).orElseThrow();
+        assertThat(stored.getStatus()).isEqualTo(AiImportLog.COMMITTED);
+        assertThat(stored.getResultJson())
+                .contains("\"draftId\":" + draftId)
+                .contains("\"lessons\":1");
+    }
+
+    @Test
+    void timetableCommitReturnsRowErrorsWithCandidatesAndWritesNoDraft() {
+        String admin = adminToken();
+        timetableFixture(admin);
+        Map<String, Object> row = timetableRow();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> values = (Map<String, Object>) row.get("values");
+        values.put("className", "不存在的班级");
+        fake.response = aiResponse(List.of(row));
+
+        Response preview = as(admin)
+                .body(Map.of("text", "一年级1班 周一 第1节 语文 张三 101"))
+                .when().post("/api/ai/import/text?target=timetable");
+        preview.then().statusCode(200);
+        long sessionId = preview.jsonPath().getLong("sessionId");
+
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/commit")
+                .then().statusCode(400)
+                .body("errors[0].row", equalTo(1))
+                .body("errors[0].field", equalTo("className"))
+                .body("errors[0].candidates", org.hamcrest.Matchers.hasItem("一年级1班"));
+
+        assertThat(as(admin).when().get("/api/timetable-drafts")
+                .then().statusCode(200).extract().jsonPath().getList("$")).isEmpty();
+    }
+
+    @Test
+    void timetableCommitRequiresTimetableEditBeyondFoundationManage() {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.response = aiResponse(List.of(timetableRow()));
+
+        Role role = new Role("foundation_only_" + TestData.suffix(), "仅基础数据");
+        role.setPermissions(Set.of(
+                permissionRepository.findByCode(Permissions.FOUNDATION_MANAGE).orElseThrow()));
+        roleRepository.save(role);
+        String username = "imp_" + TestData.suffix();
+        createUser(admin, username, "import123", role.getCode());
+        String importer = login(username, "import123");
+
+        Response preview = as(importer)
+                .body(Map.of("text", "一年级1班 周一 第1节 语文 张三 101"))
+                .when().post("/api/ai/import/text?target=timetable");
+        preview.then().statusCode(200);
+        long sessionId = preview.jsonPath().getLong("sessionId");
+
+        as(importer).when().post("/api/ai/import/sessions/" + sessionId + "/commit")
+                .then().statusCode(403)
+                .body("message", containsString("没有权限"));
+
+        assertThat(as(admin).when().get("/api/timetable-drafts")
+                .then().statusCode(200).extract().jsonPath().getList("$")).isEmpty();
     }
 
     @Test
@@ -282,6 +386,21 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
     }
 
     // ------------------------------------------------------------------ helpers
+
+    private record TimetableFixture(long semesterId, long classId, long courseId, long teacherId, long roomId) {}
+
+    private TimetableFixture timetableFixture(String token) {
+        long semesterId = TestData.semester(token);
+        as(token).body(Map.of("morningCount", 4, "afternoonCount", 4, "eveningCount", 0))
+                .when().post("/api/semesters/" + semesterId + "/periods/default")
+                .then().statusCode(200);
+        long gradeId = TestData.grade(token, semesterId, "一年级");
+        long classId = TestData.adminClass(token, semesterId, gradeId, "一年级1班");
+        long courseId = TestData.course(token, "语文");
+        long teacherId = TestData.teacher(token, "张三");
+        long roomId = TestData.room(token, "101");
+        return new TimetableFixture(semesterId, classId, courseId, teacherId, roomId);
+    }
 
     private Response upload(String token, String path, String name, byte[] bytes, String contentType) {
         return RestAssured.given()

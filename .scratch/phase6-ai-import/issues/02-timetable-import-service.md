@@ -4,12 +4,12 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `TimetableImportService`：行解析（星期/节次归一化）与名称匹配
-- [ ] 未匹配 → `RowErrorDto`（1 基行号 + 字段 + 原因 + 候选），整批不落库
-- [ ] `(班级, 课程)` 复用或创建 `Assignment`；`TeachingClass` 缺失时创建
-- [ ] 创建 `TimetableDraft`（DRAFT）+ `DraftLesson`，`lessonIndex` 按任务递增
-- [ ] 同一 `(班级, 课程)` 多个教师时：授课任务取首个教师，课节保留各自教师并给警告（ADR-0022）
-- [ ] 事务回滚测试
-- [ ] `TimetableImportServiceTest`：正常、未匹配、复用/创建任务、重复节次允许生成草稿
+- [x] `TimetableImportService`：行解析（星期/节次归一化）与名称匹配
+- [x] 未匹配 → `RowErrorDto`（1 基行号 + 字段 + 原因 + 候选），整批不落库
+- [x] `(班级, 课程)` 复用或创建 `Assignment`；`TeachingClass` 缺失时创建
+- [x] 创建 `TimetableDraft`（DRAFT）+ `DraftLesson`，`lessonIndex` 按任务递增
+- [x] 同一 `(班级, 课程)` 多个教师时：授课任务取首个教师，课节保留各自教师并给警告（ADR-0022）
+- [x] 事务回滚测试
+- [x] `TimetableImportServiceTest`：正常、未匹配、复用/创建任务、重复节次允许生成草稿

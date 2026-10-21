@@ -33,7 +33,11 @@ public final class ImportDtos {
 
     public record RowsUpdateRequest(@NotNull(message = "rows 不能为空") List<RowDto> rows) {}
 
-    public record RowErrorDto(int row, String field, String message) {}
+    /** Optional commit options; the timetable target defaults to the current semester. */
+    public record CommitRequest(Long semesterId) {}
 
-    public record CommitResultDto(int imported, List<RowErrorDto> errors) {}
+    /** A row that could not be imported, with the system values the user may pick instead. */
+    public record RowErrorDto(int row, String field, String message, List<String> candidates) {}
+
+    public record CommitResultDto(int imported, List<RowErrorDto> errors, Long draftId, List<String> warnings) {}
 }
