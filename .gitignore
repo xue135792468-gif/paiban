@@ -29,6 +29,9 @@ coverage/
 # local backups
 backups/
 
+# production TLS material (the directory itself is tracked via .gitkeep)
+deploy/certs/*.pem
+
 # editor / os
 .idea/
 .vscode/
