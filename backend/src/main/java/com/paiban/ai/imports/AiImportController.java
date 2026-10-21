@@ -1,6 +1,5 @@
 package com.paiban.ai.imports;
 
-import com.paiban.ai.imports.ImportDtos.CommitRequest;
 import com.paiban.ai.imports.ImportDtos.CommitResultDto;
 import com.paiban.ai.imports.ImportDtos.LookupDto;
 import com.paiban.ai.imports.ImportDtos.MappingRequest;
@@ -44,9 +43,8 @@ public class AiImportController {
     @GetMapping("/lookup")
     public List<LookupDto> lookup(
             @RequestParam("type") String type,
-            @RequestParam(value = "q", required = false, defaultValue = "") String query,
-            @RequestParam(value = "semesterId", required = false) Long semesterId) {
-        return mappings.lookup(type, query, semesterId);
+            @RequestParam(value = "q", required = false, defaultValue = "") String query) {
+        return mappings.lookup(type, query);
     }
 
     @PostMapping(value = "/excel", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -113,11 +111,8 @@ public class AiImportController {
     }
 
     @PostMapping("/sessions/{id}/commit")
-    public CommitResultDto commit(
-            @PathVariable Long id,
-            @RequestBody(required = false) CommitRequest request,
-            Principal principal) {
-        return service.commit(id, request == null ? null : request.semesterId(), principal.getName());
+    public CommitResultDto commit(@PathVariable Long id, Principal principal) {
+        return service.commit(id, principal.getName());
     }
 
     @GetMapping("/sessions/{id}/file")

@@ -30,7 +30,7 @@ export const IMPORT_TARGETS: ImportTargetCard[] = [
     available: true,
     handles: '年级课表、班级课表（班级 × 星期 × 节次），一行一节课',
     output: '一份课表草稿，可在草稿编辑器里调整后再发布',
-    limits: '只生成草稿，不直接改动已发布课表；班级、课程、教师需与系统数据匹配',
+    limits: '只生成草稿，不直接改动已发布课表；班级、课程、教师需与系统数据匹配；图片导入暂只支持教师',
     excelHint: '支持年级课表、班级课表，AI 会按班级、星期、节次读出每节课。',
     textPlaceholder: '例如：高一（1）班 周一第 1 节 语文 张老师；周一第 2 节 数学 李老师……',
   },

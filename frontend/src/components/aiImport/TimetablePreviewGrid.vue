@@ -1,7 +1,9 @@
 <template>
   <div class="timetable-preview">
     <div v-if="summary" class="summary" data-testid="timetable-summary">
-      <el-tag size="small" type="info" effect="plain">共 {{ summary.lessons }} 节课</el-tag>
+      <el-tag size="small" type="info" effect="plain">
+        共 {{ summary.lessons }} 节，{{ summary.unresolved }} 节待映射
+      </el-tag>
       <el-tag size="small" type="success" effect="plain">
         将创建 {{ summary.newAssignments }} 条授课任务
       </el-tag>

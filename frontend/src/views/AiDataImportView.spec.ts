@@ -223,6 +223,13 @@ describe('图片入口受视觉模型能力控制', () => {
     const imageTab = wrapper.get('[data-testid="image-tab"]')
     expect(imageTab.element.closest('.el-tabs__item')?.classList.contains('is-disabled')).toBe(false)
   })
+
+  it('课表目标下图片入口不可用（图片导入暂只支持教师）', async () => {
+    const { wrapper } = await mountImport('/admin/ai-import?target=timetable', true)
+
+    const imageTab = wrapper.get('[data-testid="image-tab"]')
+    expect(imageTab.element.closest('.el-tabs__item')?.classList.contains('is-disabled')).toBe(true)
+  })
 })
 
 describe('预览反映导入目标', () => {
@@ -252,6 +259,48 @@ describe('预览反映导入目标', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-testid="preview-target"]').text()).toContain('教师')
+  })
+})
+
+describe('AI 目标提议', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('AI 提议与当前目标不同时显示可操作提示，但不自动切换', async () => {
+    const { wrapper } = await mountImport()
+    await showTimetable(
+      wrapper,
+      timetablePreview({ targetType: 'teacher', suggestedTarget: 'timetable' }),
+    )
+
+    expect(wrapper.get('[data-testid="preview-target"]').text()).toContain('教师')
+    const hint = wrapper.get('[data-testid="suggested-target-hint"]')
+    expect(hint.text()).toContain('AI 认为这更像课表')
+    expect(hint.text()).toContain('切换目标')
+  })
+
+  it('点击切换后回到目标选择并预选 AI 提议的目标', async () => {
+    const { wrapper } = await mountImport()
+    await showTimetable(
+      wrapper,
+      timetablePreview({ targetType: 'teacher', suggestedTarget: 'timetable' }),
+    )
+
+    await button(wrapper, '切换目标').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="suggested-target-hint"]').exists()).toBe(false)
+    expect(
+      wrapper.get('[data-testid="target-card"][data-target="timetable"]').text(),
+    ).toContain('已选择')
+  })
+
+  it('AI 提议与当前目标一致时不显示提示', async () => {
+    const { wrapper } = await mountImport('/admin/ai-import?target=timetable')
+    await showTimetable(wrapper, timetablePreview({ suggestedTarget: 'timetable' }))
+
+    expect(wrapper.find('[data-testid="suggested-target-hint"]').exists()).toBe(false)
   })
 })
 
@@ -298,7 +347,7 @@ function timetablePreview(overrides: Record<string, unknown> = {}) {
       threshold: 0.7,
       status: 'PREVIEW',
       issues: [],
-      summary: { lessons: 2, groups: 2, newAssignments: 2, updatedAssignments: 0 },
+      summary: { lessons: 2, unresolved: 0, groups: 2, newAssignments: 2, updatedAssignments: 0 },
       ...overrides,
     },
   }
@@ -346,6 +395,7 @@ describe('课表预览网格与摘要', () => {
     await showTimetable(wrapper)
 
     const summary = wrapper.get('[data-testid="timetable-summary"]').text()
+    expect(summary).toContain('共 2 节，0 节待映射')
     expect(summary).toContain('将创建 2 条授课任务')
     expect(summary).toContain('将更新 0 条授课任务')
     expect(wrapper.find('.grid').exists()).toBe(true)
@@ -449,5 +499,38 @@ describe('映射步骤与入库可用性', () => {
 
     finish(timetablePreview())
     await flushPromises()
+  })
+})
+
+describe('没有当前学期时的阻塞提示', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('显示阻塞原因并禁用入库，且不渲染映射步骤', async () => {
+    const { wrapper } = await mountImport('/admin/ai-import?target=timetable')
+    await showTimetable(
+      wrapper,
+      timetablePreview({
+        issues: [
+          {
+            row: 0,
+            field: 'semester',
+            value: '',
+            candidates: [],
+            required: false,
+            message: '请先设置当前学期',
+          },
+        ],
+        summary: { lessons: 2, unresolved: 2, groups: 0, newAssignments: 0, updatedAssignments: 0 },
+      }),
+    )
+
+    expect(wrapper.get('[data-testid="blocking-issue"]').text()).toContain('请先设置当前学期')
+    const commit = commitButton(wrapper)
+    expect((commit.element as HTMLButtonElement).disabled).toBe(true)
+    expect(commit.text()).toContain('还有 1 项未解决')
+    expect(wrapper.find('[data-testid="mapping-step"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="mapping-clear"]').exists()).toBe(false)
   })
 })

@@ -172,32 +172,32 @@ class TimetableImportServiceTest extends ApiIntegrationTest {
     }
 
     @Test
-    void analyzeReportsUnmatchedNamesWithoutPersistingAnything() {
+    void inspectReportsUnmatchedNamesWithoutPersistingAnything() {
         fixture();
 
-        List<ImportDtos.RowErrorDto> errors = service.analyze(
+        TimetableImportService.Analysis analysis = service.inspect(
                 List.of(
                         row("一年级1班", "周一", "第1节", "语文", "张三", "101"),
                         row("不存在班", "周一", "第1节", "语文", "张三", "101")),
                 null);
 
-        assertThat(errors).hasSize(1);
-        assertThat(errors.get(0).row()).isEqualTo(2);
-        assertThat(errors.get(0).field()).isEqualTo("className");
-        assertThat(errors.get(0).message()).contains("不存在班");
-        assertThat(errors.get(0).candidates()).contains("一年级1班");
+        assertThat(analysis.errors()).hasSize(1);
+        assertThat(analysis.errors().get(0).row()).isEqualTo(2);
+        assertThat(analysis.errors().get(0).field()).isEqualTo("className");
+        assertThat(analysis.errors().get(0).message()).contains("不存在班");
+        assertThat(analysis.errors().get(0).candidates()).contains("一年级1班");
         assertThat(drafts.count()).isZero();
         assertThat(assignments.count()).isZero();
     }
 
     @Test
-    void analyzeAcceptsFullyMatchedRowsAndWritesNothing() {
+    void inspectAcceptsFullyMatchedRowsAndWritesNothing() {
         fixture();
 
-        List<ImportDtos.RowErrorDto> errors = service.analyze(
+        TimetableImportService.Analysis analysis = service.inspect(
                 List.of(row("一年级1班", "周一", "第1节", "语文", "张三", "101")), null);
 
-        assertThat(errors).isEmpty();
+        assertThat(analysis.errors()).isEmpty();
         assertThat(drafts.count()).isZero();
         assertThat(draftLessons.count()).isZero();
         assertThat(assignments.count()).isZero();
@@ -226,26 +226,44 @@ class TimetableImportServiceTest extends ApiIntegrationTest {
 
         assertThat(analysis.errors()).isEmpty();
         assertThat(analysis.summary().lessons()).isEqualTo(3);
+        assertThat(analysis.summary().unresolved()).isZero();
         assertThat(analysis.summary().groups()).isEqualTo(2);
         assertThat(analysis.summary().newAssignments()).isEqualTo(1);
         assertThat(analysis.summary().updatedAssignments()).isEqualTo(1);
     }
 
     @Test
-    void inspectOnlyCountsRowsThatCanBeImported() {
+    void inspectCountsEveryRowAsALessonAndReportsTheUnresolvedOnes() {
         fixture();
 
         TimetableImportService.Analysis analysis = service.inspect(
                 List.of(
                         row("一年级1班", "周一", "第1节", "语文", "张三", "101"),
-                        row("不存在班", "周一", "第1节", "语文", "张三", "101")),
+                        row("一年级1班", "周一", "第2节", "语文", "张三", "101"),
+                        row("一年级1班", "周二", "第1节", "语文", "张三", "101"),
+                        row("不存在班", "周二", "第2节", "语文", "张三", "101")),
                 null);
 
         assertThat(analysis.errors()).hasSize(1);
-        assertThat(analysis.summary().lessons()).isEqualTo(1);
+        assertThat(analysis.summary().lessons()).isEqualTo(4);
+        assertThat(analysis.summary().unresolved()).isEqualTo(1);
         assertThat(analysis.summary().groups()).isEqualTo(1);
         assertThat(analysis.summary().newAssignments()).isEqualTo(1);
         assertThat(analysis.summary().updatedAssignments()).isZero();
+    }
+
+    @Test
+    void inspectWithoutACurrentSemesterReportsABlockingIssue() {
+        TimetableImportService.Analysis analysis = service.inspect(
+                List.of(row("一年级1班", "周一", "第1节", "语文", "张三", "101")), null);
+
+        assertThat(analysis.errors()).hasSize(1);
+        assertThat(analysis.errors().get(0).row()).isZero();
+        assertThat(analysis.errors().get(0).field()).isEqualTo("semester");
+        assertThat(analysis.errors().get(0).message()).contains("请先设置当前学期");
+        assertThat(analysis.summary().lessons()).isEqualTo(1);
+        assertThat(analysis.summary().unresolved()).isEqualTo(1);
+        assertThat(analysis.summary().groups()).isZero();
     }
 
     @Test

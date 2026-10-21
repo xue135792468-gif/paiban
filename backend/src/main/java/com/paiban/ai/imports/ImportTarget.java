@@ -73,4 +73,30 @@ public enum ImportTarget {
         }
         throw new IllegalArgumentException("不支持的导入目标: " + code);
     }
+
+    /**
+     * The canonical code when {@code code} names a known target, otherwise an empty
+     * string. Used for AI suggestions, where an unknown answer is not an error.
+     */
+    public static String codeOrEmpty(String code) {
+        if (code == null || code.isBlank()) {
+            return "";
+        }
+        String normalized = code.trim();
+        for (ImportTarget target : values()) {
+            if (target.code.equalsIgnoreCase(normalized)) {
+                return target.code;
+            }
+        }
+        return "";
+    }
+
+    /** The display label of a field, falling back to the field name itself. */
+    public String labelOf(String field) {
+        return fields.stream()
+                .filter(candidate -> candidate.field().equals(field))
+                .map(Field::label)
+                .findFirst()
+                .orElse(field);
+    }
 }

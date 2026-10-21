@@ -106,7 +106,25 @@ class ExcelTableReaderTest {
     }
 
     @Test
-    void readsOnlyTheFirstSheetAndReportsItsName() throws Exception {
+    void skipsAnEmptyLeadingSheetAndReadsTheSheetWithData() throws Exception {
+        byte[] bytes;
+        try (XSSFWorkbook workbook = new XSSFWorkbook();
+                ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            workbook.createSheet("说明");
+            Sheet second = workbook.createSheet("课表");
+            second.createRow(0).createCell(0).setCellValue("一年级1班");
+            workbook.write(out);
+            bytes = out.toByteArray();
+        }
+
+        ExcelTableReader.Grid grid = ExcelTableReader.readGrid(new ByteArrayInputStream(bytes));
+
+        assertThat(grid.sheetName()).isEqualTo("课表");
+        assertThat(grid.rows()).containsExactly(List.of("一年级1班"));
+    }
+
+    @Test
+    void rejectsWorkbooksWithMoreThanOneNonEmptySheet() throws Exception {
         byte[] bytes;
         try (XSSFWorkbook workbook = new XSSFWorkbook();
                 ByteArrayOutputStream out = new ByteArrayOutputStream()) {
@@ -118,10 +136,12 @@ class ExcelTableReaderTest {
             bytes = out.toByteArray();
         }
 
-        ExcelTableReader.Grid grid = ExcelTableReader.readGrid(new ByteArrayInputStream(bytes));
-
-        assertThat(grid.sheetName()).isEqualTo("课表");
-        assertThat(grid.rows()).containsExactly(List.of("第一张"));
+        assertThatThrownBy(() -> ExcelTableReader.readGrid(new ByteArrayInputStream(bytes)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("多个有数据的工作表")
+                .hasMessageContaining("课表")
+                .hasMessageContaining("说明")
+                .hasMessageContaining("拆分");
     }
 
     @Test

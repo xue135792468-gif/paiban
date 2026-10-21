@@ -53,11 +53,11 @@ public class TimetableImportService {
     public record Result(Long draftId, int imported, List<RowErrorDto> errors, List<String> warnings) {}
 
     /**
-     * Preview-side counts. {@code lessons} and {@code groups} cover only rows that
-     * matched foundation data; {@code newAssignments}/{@code updatedAssignments} split
-     * those groups by whether a teaching task already exists.
+     * Preview-side counts. {@code lessons} covers every preview row and
+     * {@code unresolved} the rows that could not be matched; {@code groups} and the
+     * new/updated split are computed over the matched rows only.
      */
-    public record Summary(int lessons, int groups, int newAssignments, int updatedAssignments) {}
+    public record Summary(int lessons, int unresolved, int groups, int newAssignments, int updatedAssignments) {}
 
     /** Read-only analysis of a preview: what blocks it, and what it would write. */
     public record Analysis(List<RowErrorDto> errors, Summary summary) {}
@@ -160,32 +160,23 @@ public class TimetableImportService {
     }
 
     /**
-     * Matches the rows against foundation data without writing anything. This is the
-     * preview-side half of {@link #importRows}: same name matching, same row errors,
-     * no draft and no task changes.
-     */
-    @Transactional(readOnly = true)
-    public List<RowErrorDto> analyze(List<RowDto> rows, Long semesterId) {
-        return inspect(rows, semesterId).errors();
-    }
-
-    /**
-     * The preview analysis: the row errors {@link #analyze} reports plus the lesson and
-     * teaching-task counts the grid shows before anything is written.
+     * The preview analysis: the row errors {@link #importRows} would report plus the
+     * lesson and teaching-task counts the grid shows before anything is written.
      */
     @Transactional(readOnly = true)
     public Analysis inspect(List<RowDto> rows, Long semesterId) {
         if (rows == null || rows.isEmpty()) {
-            return new Analysis(List.of(), new Summary(0, 0, 0, 0));
+            return new Analysis(List.of(), new Summary(0, 0, 0, 0, 0));
         }
         Long sid = semesterId == null
                 ? semesterService.current().map(SemesterDto::id).orElse(null)
                 : semesterService.require(semesterId).getId();
         if (sid == null) {
-            // Nothing to match against until a current semester exists; commit reports it.
-            // The grid can still count what the preview would write by name.
-            int groups = distinctNamePairs(rows);
-            return new Analysis(List.of(), new Summary(rows.size(), groups, groups, 0));
+            // Nothing can be matched without a current semester: report it as a
+            // page-level blocker instead of a preview that looks importable.
+            return new Analysis(
+                    List.of(new RowErrorDto(0, "semester", "请先设置当前学期", List.of())),
+                    new Summary(rows.size(), rows.size(), 0, 0, 0));
         }
         Match match = match(rows, sid);
         Map<AssignmentKey, List<ResolvedRow>> groups = new LinkedHashMap<>();
@@ -213,17 +204,10 @@ public class TimetableImportService {
             }
         }
         int total = groups.size();
+        int unresolved = rows.size() - match.resolved().size();
         return new Analysis(
                 List.copyOf(match.errors()),
-                new Summary(match.resolved().size(), total, total - updated, updated));
-    }
-
-    private static int distinctNamePairs(List<RowDto> rows) {
-        java.util.Set<String> pairs = new java.util.LinkedHashSet<>();
-        for (RowDto row : rows) {
-            pairs.add(normalizeName(value(row, "className")) + "|" + normalizeName(value(row, "courseName")));
-        }
-        return pairs.size();
+                new Summary(rows.size(), unresolved, total, total - updated, updated));
     }
 
     /** Resolves every row to foundation entities; any unmatched name becomes a row error. */

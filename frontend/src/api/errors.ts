@@ -10,12 +10,14 @@ export function serverMessage(error: unknown, fallback: string): string {
 /**
  * AI parsing can run for minutes. A timeout or a dropped connection is not a
  * generic failure: tell the user the parse timed out and what to do about it.
+ * Server-provided messages win, so the backend's specific reason is never hidden.
  */
 export function aiParseErrorMessage(error: unknown): string {
-  const response = (error as { response?: { data?: { message?: string } } })?.response
-  if (response?.data?.message) {
-    return response.data.message
+  const message = serverMessage(error, '')
+  if (message) {
+    return message
   }
+  const response = (error as { response?: unknown } | null | undefined)?.response
   const code = (error as { code?: string } | null | undefined)?.code
   if (!response || code === 'ECONNABORTED' || code === 'ETIMEDOUT' || code === 'ERR_NETWORK') {
     return 'AI 解析超时，请重试或拆分文件'
