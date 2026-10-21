@@ -193,16 +193,30 @@ class AiGatewayImplTest {
     void timeoutIsReportedAsTimeout() {
         assign(AiTaskType.DATA_IMPORT, provider(1L, "一号", "http://x/v1"), model(10L, 1L, "m", false));
         strategy.script(
-                AiStrategyOutcome.failure("TIMEOUT", "AI 调用超时（30 秒）", null),
-                AiStrategyOutcome.failure("TIMEOUT", "AI 调用超时（30 秒）", null),
-                AiStrategyOutcome.failure("TIMEOUT", "AI 调用超时（30 秒）", null));
+                AiStrategyOutcome.failure("TIMEOUT", "AI 调用超时（120 秒）", null),
+                AiStrategyOutcome.failure("TIMEOUT", "AI 调用超时（120 秒）", null),
+                AiStrategyOutcome.failure("TIMEOUT", "AI 调用超时（120 秒）", null));
 
         AiResult result = gateway.chat(request(AiTaskType.DATA_IMPORT));
 
         assertThat(result.success()).isFalse();
         assertThat(result.errorCode()).isEqualTo("TIMEOUT");
-        assertThat(strategy.invocations).isEqualTo(3);
+        // A timed-out request already waited a full timeout window, so it is tried twice, not three times.
+        assertThat(strategy.invocations).isEqualTo(2);
         assertThat(captureLog().getErrorCode()).isEqualTo("TIMEOUT");
+    }
+
+    @Test
+    void timeoutStillSucceedsWhenTheSecondAttemptWorks() {
+        assign(AiTaskType.DATA_IMPORT, provider(1L, "一号", "http://x/v1"), model(10L, 1L, "m", false));
+        strategy.script(
+                AiStrategyOutcome.failure("TIMEOUT", "AI 调用超时（120 秒）", null),
+                AiStrategyOutcome.success("finally ok", 1, 2, "{}"));
+
+        AiResult result = gateway.chat(request(AiTaskType.DATA_IMPORT));
+
+        assertThat(result.success()).isTrue();
+        assertThat(strategy.invocations).isEqualTo(2);
     }
 
     @Test

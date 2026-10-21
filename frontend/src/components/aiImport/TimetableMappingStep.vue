@@ -1,0 +1,299 @@
+<template>
+  <el-card v-if="groups.length" shadow="never" data-testid="mapping-step">
+    <template #header>
+      <div class="card-head">
+        <span class="card-title">映射与修正（{{ issues.length }} 项未解决）</span>
+        <span class="hint">未匹配的名称必须映射到系统数据或确认创建后才能入库。</span>
+      </div>
+    </template>
+
+    <el-table :data="groups" size="small" border row-key="key">
+      <el-table-column label="行号" width="100">
+        <template #default="{ row }">{{ row.rows.join('、') }}</template>
+      </el-table-column>
+      <el-table-column prop="label" label="字段" width="80" />
+      <el-table-column prop="value" label="原值" min-width="140" />
+      <el-table-column label="处理" min-width="420">
+        <template #default="{ row }">
+          <div v-if="row.kind === 'entity'" class="resolve">
+            <el-select
+              :model-value="null"
+              size="small"
+              filterable
+              clearable
+              placeholder="选择系统中已有的记录"
+              :loading="busy === row.key"
+              class="resolve-select"
+              :data-testid="`resolve-${row.field}`"
+              remote
+              :remote-method="(query: string) => search(row, query)"
+              @visible-change="(open: boolean) => toggleOptions(row, open)"
+              @change="(value: string) => mapToEntity(row, value)"
+            >
+              <el-option
+                v-for="candidate in optionsOf(row)"
+                :key="candidate"
+                :label="candidate"
+                :value="candidate"
+              />
+            </el-select>
+            <div class="create-line">
+              <el-checkbox v-model="createEnabled[row.key]">系统中没有，创建</el-checkbox>
+              <template v-if="createEnabled[row.key]">
+                <el-input
+                  :model-value="createNames[row.key] ?? row.value"
+                  size="small"
+                  class="create-name"
+                  placeholder="新记录名称"
+                  @update:model-value="(value: string) => setCreateName(row, value)"
+                />
+                <el-select
+                  v-if="createRequiresGrade(row.field)"
+                  v-model="createGrades[row.key]"
+                  size="small"
+                  placeholder="选择年级"
+                  class="grade-select"
+                >
+                  <el-option
+                    v-for="grade in grades"
+                    :key="grade.id"
+                    :label="grade.name"
+                    :value="grade.id"
+                  />
+                </el-select>
+                <el-button
+                  size="small"
+                  type="primary"
+                  :loading="busy === row.key"
+                  @click="create(row)"
+                >
+                  确认创建
+                </el-button>
+              </template>
+            </div>
+          </div>
+          <div v-else class="resolve">
+            <el-select
+              :model-value="null"
+              size="small"
+              placeholder="选择正确的值"
+              class="resolve-select"
+              :data-testid="`resolve-${row.field}`"
+              @change="(value: string) => fixSlot(row, value)"
+            >
+              <el-option
+                v-for="candidate in row.candidates"
+                :key="candidate"
+                :label="candidate"
+                :value="candidate"
+              />
+            </el-select>
+            <span class="hint">把第 {{ row.rows.join('、') }} 行改成所选值</span>
+          </div>
+        </template>
+      </el-table-column>
+    </el-table>
+  </el-card>
+
+  <el-alert
+    v-else
+    type="success"
+    show-icon
+    :closable="false"
+    title="所有名称都已匹配，可以确认入库"
+    data-testid="mapping-clear"
+  />
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import { http } from '@/api/http'
+import { serverMessage } from '@/api/errors'
+import {
+  applySlotValue,
+  createRequiresGrade,
+  lookupType,
+  mappingGroups,
+  type CreateItemPayload,
+  type ImportPreview,
+  type LookupItem,
+  type MappingGroup,
+  type MappingItemPayload,
+  type PreviewIssue,
+  type PreviewRow,
+} from './timetablePreview'
+
+const props = defineProps<{
+  sessionId: number
+  rows: PreviewRow[]
+  issues: PreviewIssue[]
+}>()
+
+const emit = defineEmits<{
+  (e: 'updated', preview: ImportPreview): void
+}>()
+
+interface GradeOption {
+  id: number
+  name: string
+}
+
+const groups = computed(() => mappingGroups(props.issues))
+const busy = ref('')
+const grades = ref<GradeOption[]>([])
+const lookupOptions = reactive<Record<string, string[]>>({})
+const createEnabled = reactive<Record<string, boolean>>({})
+const createNames = reactive<Record<string, string>>({})
+const createGrades = reactive<Record<string, number | undefined>>({})
+
+onMounted(async () => {
+  try {
+    const { data } = await http.get<GradeOption[]>('/grades')
+    grades.value = data ?? []
+  } catch {
+    grades.value = []
+  }
+})
+
+function optionsOf(group: MappingGroup): string[] {
+  const searched = lookupOptions[group.key]
+  return searched?.length ? searched : group.candidates
+}
+
+async function search(group: MappingGroup, query: string) {
+  const type = lookupType(group.field)
+  if (!type) return
+  try {
+    const { data } = await http.get<LookupItem[]>('/ai/import/lookup', {
+      params: { type, q: query ?? '' },
+    })
+    lookupOptions[group.key] = (data ?? []).map((item) => item.name)
+  } catch {
+    // Keep the previous options; the candidates from the preview still work.
+  }
+}
+
+function toggleOptions(group: MappingGroup, open: boolean) {
+  if (open && !lookupOptions[group.key]) {
+    void search(group, '')
+  }
+}
+
+function setCreateName(group: MappingGroup, value: string) {
+  createNames[group.key] = value
+}
+
+async function post(body: {
+  mappings?: MappingItemPayload[]
+  creates?: CreateItemPayload[]
+}) {
+  const { data } = await http.post<ImportPreview>(
+    `/ai/import/sessions/${props.sessionId}/mapping`,
+    { mappings: body.mappings ?? [], creates: body.creates ?? [] },
+  )
+  emit('updated', data)
+}
+
+async function mapToEntity(group: MappingGroup, name: string) {
+  const type = lookupType(group.field)
+  if (!type || !name) return
+  busy.value = group.key
+  try {
+    const { data } = await http.get<LookupItem[]>('/ai/import/lookup', {
+      params: { type, q: name },
+    })
+    const match = (data ?? []).find((item) => item.name.trim() === name.trim())
+    if (!match) {
+      ElMessage.error(`找不到记录：${name}`)
+      return
+    }
+    await post({ mappings: [{ field: group.field, source: group.value, targetId: match.id }] })
+    ElMessage.success('已映射到系统记录')
+  } catch (error) {
+    ElMessage.error(serverMessage(error, '映射失败，请重试'))
+  } finally {
+    busy.value = ''
+  }
+}
+
+async function create(group: MappingGroup) {
+  const name = (createNames[group.key] ?? group.value).trim() || group.value
+  const gradeId = createRequiresGrade(group.field) ? createGrades[group.key] : undefined
+  if (createRequiresGrade(group.field) && !gradeId) {
+    ElMessage.warning('创建班级需要先选择年级')
+    return
+  }
+  busy.value = group.key
+  try {
+    await post({ creates: [{ field: group.field, source: group.value, name, gradeId }] })
+    createEnabled[group.key] = false
+    ElMessage.success(`已创建并映射：${name}`)
+  } catch (error) {
+    ElMessage.error(serverMessage(error, '创建失败，请重试'))
+  } finally {
+    busy.value = ''
+  }
+}
+
+async function fixSlot(group: MappingGroup, value: string) {
+  if (!value || (group.field !== 'dayOfWeek' && group.field !== 'periodNo')) return
+  busy.value = group.key
+  try {
+    const rows = applySlotValue(props.rows, group.field, value, group.rows)
+    const { data } = await http.put<ImportPreview>(
+      `/ai/import/sessions/${props.sessionId}/rows`,
+      { rows },
+    )
+    emit('updated', data)
+    ElMessage.success('已修正')
+  } catch (error) {
+    ElMessage.error(serverMessage(error, '修正失败，请重试'))
+  } finally {
+    busy.value = ''
+  }
+}
+</script>
+
+<style scoped>
+.card-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.card-title {
+  font-weight: 600;
+}
+
+.resolve {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.resolve-select {
+  width: 240px;
+}
+
+.create-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.create-name {
+  width: 180px;
+}
+
+.grade-select {
+  width: 140px;
+}
+
+.hint {
+  color: #6b7280;
+  font-size: 12px;
+}
+</style>

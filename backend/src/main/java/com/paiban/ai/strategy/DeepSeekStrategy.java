@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class DeepSeekStrategy extends OpenAiCompatibleStrategy {
 
-    public DeepSeekStrategy(ObjectMapper objectMapper, @Value("${paiban.ai.timeout-seconds:30}") long timeoutSeconds) {
+    public DeepSeekStrategy(ObjectMapper objectMapper, @Value("${paiban.ai.timeout-seconds:120}") long timeoutSeconds) {
         super(objectMapper, timeoutSeconds);
     }
 

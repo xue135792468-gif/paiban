@@ -1,14 +1,18 @@
 package com.paiban.ai.imports;
 
 import com.paiban.ai.imports.ImportDtos.CommitResultDto;
+import com.paiban.ai.imports.ImportDtos.LookupDto;
+import com.paiban.ai.imports.ImportDtos.MappingRequest;
 import com.paiban.ai.imports.ImportDtos.PreviewDto;
 import com.paiban.ai.imports.ImportDtos.RowsUpdateRequest;
 import com.paiban.ai.imports.ImportDtos.TextImportRequest;
+import com.paiban.common.web.ApiException;
 import com.paiban.identity.domain.Permissions;
 import jakarta.validation.Valid;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.Principal;
+import java.util.List;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -29,24 +33,50 @@ import org.springframework.web.multipart.MultipartFile;
 public class AiImportController {
 
     private final AiImportService service;
+    private final ImportMappingService mappings;
 
-    public AiImportController(AiImportService service) {
+    public AiImportController(AiImportService service, ImportMappingService mappings) {
         this.service = service;
+        this.mappings = mappings;
+    }
+
+    @GetMapping("/lookup")
+    public List<LookupDto> lookup(
+            @RequestParam("type") String type,
+            @RequestParam(value = "q", required = false, defaultValue = "") String query) {
+        return mappings.lookup(type, query);
     }
 
     @PostMapping(value = "/excel", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public PreviewDto excel(@RequestParam("file") MultipartFile file, Principal principal) {
-        return service.startExcel(file, principal.getName());
+    public PreviewDto excel(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "target", required = false, defaultValue = "teacher") String target,
+            Principal principal) {
+        return service.startExcel(file, principal.getName(), targetOf(target));
     }
 
     @PostMapping("/text")
-    public PreviewDto text(@Valid @RequestBody TextImportRequest request, Principal principal) {
-        return service.startText(request.text(), principal.getName());
+    public PreviewDto text(
+            @Valid @RequestBody TextImportRequest request,
+            @RequestParam(value = "target", required = false, defaultValue = "teacher") String target,
+            Principal principal) {
+        return service.startText(request.text(), principal.getName(), targetOf(target));
     }
 
     @PostMapping(value = "/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public PreviewDto image(@RequestParam("file") MultipartFile file, Principal principal) {
-        return service.startImage(file, principal.getName());
+    public PreviewDto image(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "target", required = false, defaultValue = "teacher") String target,
+            Principal principal) {
+        return service.startImage(file, principal.getName(), targetOf(target));
+    }
+
+    private ImportTarget targetOf(String code) {
+        try {
+            return ImportTarget.fromCode(code);
+        } catch (IllegalArgumentException ex) {
+            throw ApiException.badRequest(ex.getMessage());
+        }
     }
 
     @GetMapping("/sessions/{id}")
@@ -60,6 +90,14 @@ public class AiImportController {
             @Valid @RequestBody RowsUpdateRequest request,
             Principal principal) {
         return service.updateRows(id, request.rows(), principal.getName());
+    }
+
+    @PostMapping("/sessions/{id}/mapping")
+    public PreviewDto mapping(
+            @PathVariable Long id,
+            @Valid @RequestBody MappingRequest request,
+            Principal principal) {
+        return service.applyMapping(id, request, principal.getName());
     }
 
     @PostMapping("/sessions/{id}/continue")

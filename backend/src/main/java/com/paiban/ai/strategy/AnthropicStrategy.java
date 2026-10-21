@@ -39,7 +39,7 @@ public class AnthropicStrategy implements AiStrategy {
     private final Duration timeout;
 
     public AnthropicStrategy(
-            ObjectMapper objectMapper, @Value("${paiban.ai.timeout-seconds:30}") long timeoutSeconds) {
+            ObjectMapper objectMapper, @Value("${paiban.ai.timeout-seconds:120}") long timeoutSeconds) {
         this.objectMapper = objectMapper;
         this.timeout = Duration.ofSeconds(timeoutSeconds);
         this.httpClient = HttpClient.newBuilder()

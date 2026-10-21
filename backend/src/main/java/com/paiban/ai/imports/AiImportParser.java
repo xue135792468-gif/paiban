@@ -26,7 +26,8 @@ public class AiImportParser {
         this.objectMapper = objectMapper;
     }
 
-    public record Parsed(List<MappingDto> mappings, List<RowDto> rows, String explanation) {}
+    public record Parsed(
+            List<MappingDto> mappings, List<RowDto> rows, String explanation, String suggestedTarget) {}
 
     public Parsed parse(String content, ImportTarget target, double threshold) {
         JsonNode root = readRoot(content);
@@ -36,7 +37,8 @@ public class AiImportParser {
             throw new IllegalArgumentException("AI 未返回任何数据行，请打回重析或检查原始数据");
         }
         String explanation = root.path("explanation").asText("");
-        return new Parsed(mappings, rows, explanation);
+        String suggestedTarget = ImportTarget.codeOrEmpty(root.path("suggestedTarget").asText(""));
+        return new Parsed(mappings, rows, explanation, suggestedTarget);
     }
 
     private JsonNode readRoot(String content) {

@@ -20,6 +20,7 @@
             :value="s.id"
           />
         </el-select>
+        <el-button v-if="canImport" @click="goImportTimetable">导入课表</el-button>
         <el-button :loading="refreshing" @click="handleManualRefresh">刷新</el-button>
       </div>
     </div>
@@ -367,6 +368,7 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const canRunScheduling = computed(() => auth.hasPermission('scheduling:run'))
 const canEditDraft = computed(() => auth.hasPermission('timetable:edit'))
+const canImport = computed(() => auth.hasPermission('foundation:manage'))
 
 const isJobRunning = computed(() => {
   return isRunning(activeJob.value?.status)
@@ -683,6 +685,10 @@ async function handleDeleteDraft(row: DraftItem) {
 
 function openDraftEditor(draftId: number) {
   router.push(`/admin/drafts/${draftId}`)
+}
+
+function goImportTimetable() {
+  router.push({ path: '/admin/ai-import', query: { target: 'timetable' } })
 }
 
 onMounted(async () => {

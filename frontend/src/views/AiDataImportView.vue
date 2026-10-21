@@ -4,7 +4,7 @@
       <div>
         <h2>AI 数据导入</h2>
         <p class="subtitle">
-          上传 Excel / CSV、粘贴文本或上传图片，AI 解析后先预览，确认无误再写入教师档案。
+          上传 Excel / CSV、粘贴文本或上传图片（图片导入需视觉模型），AI 解析后先预览，确认无误再写入系统。
         </p>
       </div>
       <el-tag v-if="!configured" type="warning" effect="plain">未配置 AI 供应商</el-tag>
@@ -21,6 +21,15 @@
     />
 
     <el-card v-if="!preview" shadow="never">
+      <template #header><span class="card-title">选择导入目标</span></template>
+      <ImportTargetPicker
+        :targets="IMPORT_TARGETS"
+        :selected="selectedTarget"
+        @select="onSelectTarget"
+      />
+    </el-card>
+
+    <el-card v-if="!preview" shadow="never">
       <el-tabs v-model="inputMode">
         <el-tab-pane label="Excel / CSV" name="excel">
           <el-upload
@@ -33,7 +42,7 @@
             <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
             <div class="el-upload__text">把文件拖到这里，或<em>点击选择</em></div>
             <template #tip>
-              <div class="el-upload__tip">支持格式混乱的表格，AI 会自动识别姓名、学科、电话等列。</div>
+              <div class="el-upload__tip">{{ currentTarget.excelHint }}</div>
             </template>
           </el-upload>
           <div v-if="selectedFile" class="file-hint">已选择：{{ selectedFile.name }}</div>
@@ -44,12 +53,15 @@
             v-model="text"
             type="textarea"
             :rows="9"
-            placeholder="例如：张老师教语文，电话 13800000001；李老师教数学，工号 T002……"
+            :placeholder="currentTarget.textPlaceholder"
           />
           <div class="hint">可以直接从微信聊天记录、通知里复制粘贴。</div>
         </el-tab-pane>
 
-        <el-tab-pane label="上传图片" name="image">
+        <el-tab-pane label="上传图片" name="image" :disabled="!visionCapable || selectedTarget !== 'teacher'">
+          <template #label>
+            <span data-testid="image-tab">上传图片</span>
+          </template>
           <el-upload
             drag
             :auto-upload="false"
@@ -67,27 +79,71 @@
         </el-tab-pane>
       </el-tabs>
 
+      <el-alert
+        v-if="configured && !visionCapable"
+        data-testid="vision-warning"
+        title="当前模型不支持图片，请在设置中换用视觉模型"
+        type="warning"
+        show-icon
+        :closable="false"
+        class="vision-warning"
+      />
+
       <div class="parse-actions">
         <el-button type="primary" :loading="parsing" :disabled="!configured || !canParse" @click="parse">
           开始解析
         </el-button>
         <span class="hint">AI 只生成预览，点击「入库」才会写入数据。</span>
       </div>
+
+      <el-alert
+        v-if="parsing"
+        data-testid="parse-progress"
+        title="AI 正在解析，大表可能需要 1–2 分钟"
+        type="info"
+        show-icon
+        :closable="false"
+        class="parse-progress"
+      />
     </el-card>
 
     <template v-else>
+      <el-alert
+        v-if="suggestedTarget"
+        data-testid="suggested-target-hint"
+        type="info"
+        show-icon
+        :closable="false"
+        class="suggested-target"
+      >
+        <template #title>
+          <span>AI 认为这更像{{ targetTitle(suggestedTarget) }}，切换到{{ targetTitle(suggestedTarget) }}导入？</span>
+          <el-button link type="primary" @click="switchToSuggestedTarget">切换目标</el-button>
+        </template>
+      </el-alert>
+
       <el-card shadow="never">
         <template #header>
           <div class="card-head">
             <span class="card-title">解析预览（{{ preview.rows.length }} 行）</span>
             <div class="head-actions">
+              <el-tag size="small" type="info" effect="plain" data-testid="preview-target">
+                目标：{{ targetTitle(preview.targetType) }}
+              </el-tag>
               <el-tag size="small" :type="statusType">{{ statusLabel }}</el-tag>
               <el-button link type="primary" @click="reset">重新导入</el-button>
             </div>
           </div>
         </template>
 
-        <el-table :data="preview.rows" border size="small" max-height="520">
+        <el-table
+          v-if="!isTimetable"
+          data-testid="preview-rows-table"
+          :data="preview.rows"
+          border
+          size="small"
+          max-height="520"
+        >
           <el-table-column type="index" label="#" width="52" />
           <el-table-column
             v-for="column in preview.columns"
@@ -113,11 +169,36 @@
           </el-table-column>
         </el-table>
 
-        <div class="legend">
+        <TimetablePreviewGrid
+          v-else
+          :rows="preview.rows"
+          :issues="previewIssues"
+          :summary="preview.summary"
+        />
+
+        <div v-if="!isTimetable" class="legend">
           <span class="swatch" /> 浅黄表示 AI 置信度低于
           {{ Math.round(preview.threshold * 100) }}%，建议重点核对
         </div>
       </el-card>
+
+      <el-alert
+        v-for="issue in blockingIssues"
+        :key="issue.field + '-' + issue.message"
+        data-testid="blocking-issue"
+        type="warning"
+        show-icon
+        :closable="false"
+        :title="issue.message || '当前数据无法入库，请先处理预览中的问题'"
+      />
+
+      <TimetableMappingStep
+        v-if="showMappingStep"
+        :session-id="preview.sessionId"
+        :rows="preview.rows"
+        :issues="mappableIssues"
+        @updated="setPreview"
+      />
 
       <el-alert
         v-if="preview.status === 'COMMITTED'"
@@ -126,9 +207,18 @@
         :closable="false"
         class="result-alert"
       >
-        <template #title>已成功入库 {{ importedCount }} 条教师数据</template>
+        <template #title>
+          已成功入库 {{ importedCount }} 条{{ targetTitle(preview.targetType) }}数据
+        </template>
         <div class="result-actions">
-          <el-button link type="primary" @click="goTeachers">查看教师</el-button>
+          <el-button
+            v-if="preview.targetType === 'teacher'"
+            link
+            type="primary"
+            @click="goTeachers"
+          >
+            查看教师
+          </el-button>
           <el-button link type="primary" @click="reset">继续导入</el-button>
         </div>
       </el-alert>
@@ -157,7 +247,20 @@
       </el-alert>
 
       <div class="footer-actions">
-        <template v-if="!editing">
+        <template v-if="isTimetable">
+          <el-button
+            type="primary"
+            :loading="committing"
+            :disabled="commitDisabled"
+            @click="commit"
+          >
+            {{ commitLabel }}
+          </el-button>
+          <el-button :loading="reparsing" :disabled="preview.status === 'COMMITTED'" @click="reparse">
+            打回重析
+          </el-button>
+        </template>
+        <template v-else-if="!editing">
           <el-button
             type="primary"
             :loading="committing"
@@ -183,61 +286,69 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage, type UploadFile } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
-import { http } from '@/api/http'
-
-interface Column {
-  field: string
-  label: string
-  required: boolean
-}
-
-interface Row {
-  values: Record<string, string>
-  confidence: Record<string, number>
-  lowConfidence?: string[]
-}
-
-interface Mapping {
-  source: string
-  target: string
-  note: string
-}
-
-interface Preview {
-  sessionId: number
-  targetType: string
-  columns: Column[]
-  rows: Row[]
-  mappings: Mapping[]
-  explanation: string
-  threshold: number
-  status: string
-}
-
-interface RowError {
-  row: number
-  field: string
-  message: string
-}
+import { AI_IMPORT_TIMEOUT_MS, http } from '@/api/http'
+import { aiParseErrorMessage } from '@/api/errors'
+import ImportTargetPicker from '@/components/aiImport/ImportTargetPicker.vue'
+import TimetableMappingStep from '@/components/aiImport/TimetableMappingStep.vue'
+import TimetablePreviewGrid from '@/components/aiImport/TimetablePreviewGrid.vue'
+import { useImportSession } from '@/components/aiImport/useImportSession'
+import { type ImportPreview, type PreviewRow } from '@/components/aiImport/timetablePreview'
+import {
+  IMPORT_TARGETS,
+  preselectedTarget,
+  targetCard,
+  targetTitle,
+} from '@/components/aiImport/importTargets'
 
 const router = useRouter()
+const route = useRoute()
 const configured = ref(false)
-const importedCount = ref(0)
+const visionCapable = ref(false)
 const inputMode = ref<'excel' | 'text' | 'image'>('excel')
+const selectedTarget = ref(preselectedTarget(route.query.target))
 const selectedFile = ref<File | null>(null)
 const imageFile = ref<File | null>(null)
 const text = ref('')
-const preview = ref<Preview | null>(null)
-const editing = ref(false)
 const parsing = ref(false)
-const committing = ref(false)
-const continuing = ref(false)
-const reparsing = ref(false)
-const commitErrors = ref<RowError[]>([])
+
+const {
+  preview,
+  editing,
+  committing,
+  continuing,
+  reparsing,
+  commitErrors,
+  importedCount,
+  isTimetable,
+  previewIssues,
+  commitDisabled,
+  commitLabel,
+  statusLabel,
+  statusType,
+  setPreview,
+  commit,
+  continueWithAi,
+  reparse,
+  clear,
+} = useImportSession()
+
+const currentTarget = computed(() => targetCard(selectedTarget.value) ?? IMPORT_TARGETS[0])
+const mappableIssues = computed(() => previewIssues.value.filter((issue) => issue.row > 0))
+const blockingIssues = computed(() => previewIssues.value.filter((issue) => issue.row === 0))
+const suggestedTarget = computed(() => {
+  const suggested = preview.value?.suggestedTarget
+  return suggested && suggested !== preview.value?.targetType ? suggested : ''
+})
+const showMappingStep = computed(
+  () =>
+    isTimetable.value &&
+    preview.value?.status !== 'COMMITTED' &&
+    (mappableIssues.value.length > 0 || blockingIssues.value.length === 0),
+)
 
 const canParse = computed(() => {
   if (inputMode.value === 'excel') return selectedFile.value !== null
@@ -245,33 +356,28 @@ const canParse = computed(() => {
   return text.value.trim().length > 0
 })
 
-const statusLabel = computed(() => {
-  if (!preview.value) return ''
-  return (
-    {
-      PREVIEW: '待确认',
-      EDITED: '已微调',
-      COMMITTED: '已入库',
-      FAILED: '解析失败',
-    }[preview.value.status] ?? preview.value.status
-  )
-})
-
-const statusType = computed(() => {
-  if (!preview.value) return 'info'
-  if (preview.value.status === 'COMMITTED') return 'success'
-  if (preview.value.status === 'FAILED') return 'danger'
-  return 'info'
+// Image import is teacher-only; leaving the tab selected after switching target
+// would send a request the backend rejects.
+watch(selectedTarget, (target) => {
+  if (target !== 'teacher' && inputMode.value === 'image') {
+    inputMode.value = 'excel'
+  }
 })
 
 onMounted(async () => {
   try {
     const { data } = await http.get('/ai/status')
     configured.value = Boolean(data?.tasks?.data_import?.configured)
+    visionCapable.value = Boolean(data?.tasks?.data_import?.visionCapable)
   } catch {
     configured.value = false
   }
 })
+
+function onSelectTarget(code: string) {
+  selectedTarget.value = code
+  commitErrors.value = []
+}
 
 function onExcelChange(file: UploadFile) {
   selectedFile.value = file.raw ?? null
@@ -287,109 +393,39 @@ async function parse() {
   if (!configured.value) return
   parsing.value = true
   commitErrors.value = []
+  const config = { params: { target: selectedTarget.value }, timeout: AI_IMPORT_TIMEOUT_MS }
   try {
     let response
     if (inputMode.value === 'excel') {
       const form = new FormData()
       form.append('file', selectedFile.value as File)
-      response = await http.post<Preview>('/ai/import/excel', form)
+      response = await http.post<ImportPreview>('/ai/import/excel', form, config)
     } else if (inputMode.value === 'image') {
       const form = new FormData()
       form.append('file', imageFile.value as File)
-      response = await http.post<Preview>('/ai/import/image', form)
+      response = await http.post<ImportPreview>('/ai/import/image', form, config)
     } else {
-      response = await http.post<Preview>('/ai/import/text', { text: text.value })
+      response = await http.post<ImportPreview>('/ai/import/text', { text: text.value }, config)
     }
-    preview.value = response.data
+    setPreview(response.data)
     editing.value = false
   } catch (error) {
-    ElMessage.error(messageOf(error))
+    ElMessage.error(aiParseErrorMessage(error))
   } finally {
     parsing.value = false
   }
 }
 
-async function saveRows() {
-  if (!preview.value) return
-  const { data } = await http.put<Preview>(`/ai/import/sessions/${preview.value.sessionId}/rows`, {
-    rows: preview.value.rows,
-  })
-  preview.value = data
-}
-
-async function commit() {
-  if (!preview.value) return
-  committing.value = true
-  commitErrors.value = []
-  try {
-    if (editing.value) {
-      await saveRows()
-    }
-    const { data } = await http.post<{ imported: number }>(
-      `/ai/import/sessions/${preview.value.sessionId}/commit`,
-    )
-    importedCount.value = data.imported
-    preview.value = { ...preview.value, status: 'COMMITTED' }
-    ElMessage.success(`已入库 ${data.imported} 条教师数据`)
-  } catch (error) {
-    const errors = (error as { response?: { data?: { errors?: RowError[] } } }).response?.data?.errors
-    if (errors?.length) {
-      commitErrors.value = errors
-      editing.value = true
-      ElMessage.error('有数据未通过校验，请修正后再入库')
-    } else {
-      ElMessage.error(messageOf(error))
-    }
-  } finally {
-    committing.value = false
-  }
-}
-
-async function continueWithAi() {
-  if (!preview.value) return
-  continuing.value = true
-  try {
-    await saveRows()
-    const { data } = await http.post<Preview>(
-      `/ai/import/sessions/${preview.value.sessionId}/continue`,
-    )
-    preview.value = data
-    ElMessage.success('AI 已基于你的修正继续解析')
-  } catch (error) {
-    ElMessage.error(messageOf(error))
-  } finally {
-    continuing.value = false
-  }
-}
-
-async function reparse() {
-  if (!preview.value) return
-  try {
-    await ElMessageBox.confirm('将丢弃当前预览并重新调用 AI 解析原始文件，确定继续？', '打回重析', {
-      type: 'warning',
-    })
-  } catch {
-    return
-  }
-  reparsing.value = true
-  try {
-    const { data } = await http.post<Preview>(`/ai/import/sessions/${preview.value.sessionId}/reparse`)
-    preview.value = data
-    editing.value = false
-    commitErrors.value = []
-    ElMessage.success('已重新解析')
-  } catch (error) {
-    ElMessage.error(messageOf(error))
-  } finally {
-    reparsing.value = false
-  }
+/** Switches the target the AI suggested, keeping the chosen file for a re-parse. */
+function switchToSuggestedTarget() {
+  if (!suggestedTarget.value) return
+  selectedTarget.value = suggestedTarget.value
+  clear()
+  ElMessage.info(`已切换到${targetTitle(selectedTarget.value)}，请重新解析`)
 }
 
 function reset() {
-  preview.value = null
-  editing.value = false
-  commitErrors.value = []
-  importedCount.value = 0
+  clear()
   selectedFile.value = null
   imageFile.value = null
   text.value = ''
@@ -399,18 +435,13 @@ function goTeachers() {
   router.push('/admin/teachers')
 }
 
-function confidenceTitle(row: Row, field: string) {
+function confidenceTitle(row: PreviewRow, field: string) {
   const value = row.confidence?.[field]
   return value === undefined ? undefined : `AI 置信度 ${Math.round(value * 100)}%`
 }
 
 function fieldLabel(field: string) {
   return preview.value?.columns.find((column) => column.field === field)?.label ?? field
-}
-
-function messageOf(error: unknown) {
-  const response = (error as { response?: { data?: { message?: string } } }).response
-  return response?.data?.message ?? '操作失败，请稍后重试'
 }
 </script>
 
@@ -457,6 +488,18 @@ function messageOf(error: unknown) {
   align-items: center;
   gap: 14px;
   margin-top: 16px;
+}
+
+.parse-progress {
+  margin-top: 12px;
+}
+
+.vision-warning {
+  margin-top: 8px;
+}
+
+.suggested-target {
+  margin-bottom: 4px;
 }
 
 .card-head {

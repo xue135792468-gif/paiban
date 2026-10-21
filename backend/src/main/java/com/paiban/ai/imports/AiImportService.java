@@ -11,10 +11,15 @@ import com.paiban.ai.AiResult;
 import com.paiban.ai.AiTaskType;
 import com.paiban.ai.imports.ImportDtos.ColumnDto;
 import com.paiban.ai.imports.ImportDtos.CommitResultDto;
+import com.paiban.ai.imports.ImportDtos.CreateItem;
+import com.paiban.ai.imports.ImportDtos.IssueDto;
 import com.paiban.ai.imports.ImportDtos.MappingDto;
+import com.paiban.ai.imports.ImportDtos.MappingItem;
+import com.paiban.ai.imports.ImportDtos.MappingRequest;
 import com.paiban.ai.imports.ImportDtos.PreviewDto;
 import com.paiban.ai.imports.ImportDtos.RowDto;
 import com.paiban.ai.imports.ImportDtos.RowErrorDto;
+import com.paiban.ai.imports.ImportDtos.TimetableSummaryDto;
 import com.paiban.common.excel.ExcelTableReader;
 import com.paiban.common.settings.SettingsService;
 import com.paiban.common.web.ApiException;
@@ -39,8 +44,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * Multi-channel AI import: spreadsheet/text/image in, teacher preview out, and a
- * human-in-the-loop correction step before anything reaches the teacher table.
+ * Multi-channel AI import: spreadsheet/text/image in, a target-shaped preview out, and
+ * a human-in-the-loop correction step before anything is persisted. The target decides
+ * which fields the AI is asked for, which columns the preview shows and which rows a
+ * commit would write.
  */
 @Service
 public class AiImportService {
@@ -57,6 +64,8 @@ public class AiImportService {
     private final UploadStorage storage;
     private final ObjectMapper objectMapper;
     private final UserService users;
+    private final TimetableImportService timetableImports;
+    private final ImportMappingService nameMappings;
 
     public AiImportService(
             AiGateway gateway,
@@ -66,7 +75,9 @@ public class AiImportService {
             SettingsService settings,
             UploadStorage storage,
             ObjectMapper objectMapper,
-            UserService users) {
+            UserService users,
+            TimetableImportService timetableImports,
+            ImportMappingService nameMappings) {
         this.gateway = gateway;
         this.logs = logs;
         this.parser = parser;
@@ -75,18 +86,25 @@ public class AiImportService {
         this.storage = storage;
         this.objectMapper = objectMapper;
         this.users = users;
+        this.timetableImports = timetableImports;
+        this.nameMappings = nameMappings;
     }
 
     // ---------------------------------------------------------------- channels
 
     public PreviewDto startExcel(MultipartFile file, String username) {
+        return startExcel(file, username, ImportTarget.TEACHER);
+    }
+
+    public PreviewDto startExcel(MultipartFile file, String username, ImportTarget target) {
+        ImportTarget effective = target == null ? ImportTarget.TEACHER : target;
         requireConfigured();
         UploadStorage.StoredFile stored = storage.storeSpreadsheet(file);
-        AiImportLog log = newLog("excel", stored, username);
+        AiImportLog log = newLog("excel", stored, username, effective);
         try {
-            TableData table = readSpreadsheet(stored.path());
-            String prompt = AiImportPrompts.tablePrompt(ImportTarget.TEACHER, table.headers(), table.rows(), objectMapper);
-            return runPreview(log, bundle(prompt, List.of()), null);
+            GridData grid = readGrid(stored.path());
+            String prompt = AiImportPrompts.gridPrompt(effective, grid.sheetName(), grid.rows(), objectMapper);
+            return runPreview(log, bundle(prompt, List.of(), effective), null, effective);
         } catch (RuntimeException ex) {
             markFailed(log, ex.getMessage());
             throw ex;
@@ -94,16 +112,21 @@ public class AiImportService {
     }
 
     public PreviewDto startText(String text, String username) {
+        return startText(text, username, ImportTarget.TEACHER);
+    }
+
+    public PreviewDto startText(String text, String username, ImportTarget target) {
+        ImportTarget effective = target == null ? ImportTarget.TEACHER : target;
         requireConfigured();
         String source = text == null ? "" : text.trim();
         if (source.isEmpty()) {
             throw ApiException.badRequest("请粘贴需要解析的文本");
         }
-        AiImportLog log = newLog("text", null, username);
+        AiImportLog log = newLog("text", null, username, effective);
         log.setSourceText(source);
         try {
-            String prompt = AiImportPrompts.textPrompt(ImportTarget.TEACHER, source);
-            return runPreview(log, bundle(prompt, List.of()), null);
+            String prompt = AiImportPrompts.textPrompt(effective, source);
+            return runPreview(log, bundle(prompt, List.of(), effective), null, effective);
         } catch (RuntimeException ex) {
             markFailed(log, ex.getMessage());
             throw ex;
@@ -111,12 +134,21 @@ public class AiImportService {
     }
 
     public PreviewDto startImage(MultipartFile file, String username) {
+        return startImage(file, username, ImportTarget.TEACHER);
+    }
+
+    public PreviewDto startImage(MultipartFile file, String username, ImportTarget target) {
+        ImportTarget effective = target == null ? ImportTarget.TEACHER : target;
+        // Image import is out of scope for this phase beyond the teacher list.
+        if (effective != ImportTarget.TEACHER) {
+            throw ApiException.badRequest("图片导入暂只支持教师");
+        }
         requireConfigured();
         UploadStorage.StoredFile stored = storage.storeImage(file);
-        AiImportLog log = newLog("image", stored, username);
+        AiImportLog log = newLog("image", stored, username, effective);
         try {
-            PromptBundle bundle = imageBundle(stored);
-            return runPreview(log, bundle, bundle.originalPrompt());
+            PromptBundle bundle = imageBundle(stored, effective);
+            return runPreview(log, bundle, bundle.originalPrompt(), effective);
         } catch (RuntimeException ex) {
             markFailed(log, ex.getMessage());
             throw ex;
@@ -134,29 +166,65 @@ public class AiImportService {
     public PreviewDto updateRows(long id, List<RowDto> rows, String username) {
         AiImportLog log = requireSession(id, username);
         requireEditable(log);
-        List<RowDto> normalized = normalize(rows, threshold());
-        Payload existing = readPreviewPayload(log);
-        saveConfirmed(log, existing.mappings(), normalized, existing.explanation(), AiImportLog.EDITED);
+        ImportTarget target = targetOf(log);
+        List<RowDto> normalized = normalize(rows, threshold(), target);
+        Payload existing = readPreviewPayload(log, target);
+        saveConfirmed(log, existing.mappings(), normalized, existing.explanation(),
+                existing.suggestedTarget(), AiImportLog.EDITED);
+        return preview(log);
+    }
+
+    /**
+     * Applies the user's name mappings to the working rows, records them for
+     * traceability, and returns the preview with the issues recalculated. The raw AI
+     * answer is never rewritten.
+     */
+    @Transactional
+    public PreviewDto applyMapping(long id, MappingRequest request, String username) {
+        AiImportLog log = requireSession(id, username);
+        requireEditable(log);
+        ImportTarget target = targetOf(log);
+        if (target != ImportTarget.TIMETABLE) {
+            throw ApiException.badRequest("该导入目标不支持名称映射");
+        }
+        requireTimetableEdit(username);
+        Payload working = readWorkingPayload(log, target);
+        if (working.rows().isEmpty()) {
+            throw ApiException.badRequest("没有可映射的数据");
+        }
+        List<MappingItem> items = request == null || request.mappings() == null
+                ? List.of()
+                : request.mappings();
+        List<CreateItem> creates = request == null || request.creates() == null
+                ? List.of()
+                : request.creates();
+        List<MappingDto> merged = new ArrayList<>(working.mappings());
+        merged.addAll(nameMappings.apply(working.rows(), items, creates));
+        saveConfirmed(log, merged, working.rows(), working.explanation(), working.suggestedTarget(),
+                AiImportLog.EDITED);
         return preview(log);
     }
 
     public PreviewDto continueWithAi(long id, String username) {
         AiImportLog log = requireSession(id, username);
         requireEditable(log);
-        Payload existing = readWorkingPayload(log);
+        ImportTarget target = targetOf(log);
+        Payload existing = readWorkingPayload(log, target);
         List<RowDto> current = existing.rows();
-        PromptBundle original = bundleFor(log);
+        PromptBundle original = bundleFor(log, target);
         String continuePrompt = AiImportPrompts.continuePrompt(
-                ImportTarget.TEACHER, original.originalPrompt(), current, objectMapper);
+                target, original.originalPrompt(), current, objectMapper);
         PromptBundle bundle = new PromptBundle(
-                List.of(new AiMessage("system", AiImportPrompts.system(ImportTarget.TEACHER)),
+                List.of(new AiMessage("system", AiImportPrompts.system(target)),
                         new AiMessage("user", continuePrompt)),
                 original.images(),
                 original.originalPrompt());
-        AiImportParser.Parsed parsed = callAi(bundle, log);
-        List<RowDto> merged = merge(current, parsed.rows());
-        savePreview(log, parsed.mappings(), parsed.rows(), parsed.explanation(), AiImportLog.EDITED);
-        saveConfirmed(log, parsed.mappings(), merged, parsed.explanation(), AiImportLog.EDITED);
+        AiImportParser.Parsed parsed = callAi(bundle, log, target);
+        List<RowDto> merged = merge(current, parsed.rows(), target);
+        savePreview(log, parsed.mappings(), parsed.rows(), parsed.explanation(),
+                parsed.suggestedTarget(), AiImportLog.EDITED);
+        saveConfirmed(log, parsed.mappings(), merged, parsed.explanation(),
+                parsed.suggestedTarget(), AiImportLog.EDITED);
         return preview(log);
     }
 
@@ -165,18 +233,31 @@ public class AiImportService {
         if (AiImportLog.COMMITTED.equals(log.getStatus())) {
             throw ApiException.conflict("已入库的导入不能再重新解析");
         }
-        PromptBundle bundle = bundleFor(log);
-        return runPreview(log, bundle, bundle.originalPrompt());
+        ImportTarget target = targetOf(log);
+        PromptBundle bundle = bundleFor(log, target);
+        return runPreview(log, bundle, bundle.originalPrompt(), target);
     }
 
+    /**
+     * Writes the session's working rows into their target. Teacher rows become
+     * teacher records; timetable rows become a DRAFT timetable in the current
+     * semester and return its id.
+     */
     @Transactional
     public CommitResultDto commit(long id, String username) {
         AiImportLog log = requireSession(id, username);
         requireEditable(log);
-        Payload working = readWorkingPayload(log);
+        ImportTarget target = targetOf(log);
+        Payload working = readWorkingPayload(log, target);
         List<RowDto> rows = working.rows();
         if (rows.isEmpty()) {
             throw ApiException.badRequest("没有可入库的数据");
+        }
+        if (target.kind() == ImportTarget.Kind.GRID) {
+            if (target != ImportTarget.TIMETABLE) {
+                throw ApiException.badRequest("导入目标 " + target.code() + " 的入库功能尚未实现");
+            }
+            return commitTimetable(log, working, rows, username);
         }
         validate(rows);
         List<Teacher> entities = new ArrayList<>();
@@ -192,11 +273,38 @@ public class AiImportService {
             entities.add(teacher);
         }
         teachers.saveAll(entities);
-        saveConfirmed(log, working.mappings(), rows, working.explanation(), AiImportLog.COMMITTED);
+        saveConfirmed(log, working.mappings(), rows, working.explanation(),
+                working.suggestedTarget(), AiImportLog.COMMITTED);
         log.setImportedCount(entities.size());
         log.setResultJson(writeJson(Map.of("imported", entities.size(), "rows", rows)));
         touch(log);
-        return new CommitResultDto(entities.size(), List.of());
+        return new CommitResultDto(entities.size(), List.of(), null, List.of());
+    }
+
+    private CommitResultDto commitTimetable(
+            AiImportLog log, Payload working, List<RowDto> rows, String username) {
+        requireTimetableEdit(username);
+        TimetableImportService.Result result = timetableImports.importRows(rows, null, username);
+        if (!result.errors().isEmpty()) {
+            List<ImportValidationException.RowError> rowErrors = result.errors().stream()
+                    .map(error -> new ImportValidationException.RowError(
+                            error.row(), error.field(), error.message(), error.candidates()))
+                    .toList();
+            throw new ImportValidationException("数据校验失败，请修正后重试", rowErrors);
+        }
+        saveConfirmed(log, working.mappings(), rows, working.explanation(),
+                working.suggestedTarget(), AiImportLog.COMMITTED);
+        log.setImportedCount(result.imported());
+        log.setResultJson(writeJson(Map.of("draftId", result.draftId(), "lessons", result.imported())));
+        touch(log);
+        return new CommitResultDto(result.imported(), List.of(), result.draftId(), result.warnings());
+    }
+
+    private void requireTimetableEdit(String username) {
+        AppUser user = users.getByUsername(username);
+        if (user == null || !users.hasPermission(user, Permissions.TIMETABLE_EDIT)) {
+            throw ApiException.forbidden("没有权限导入课表");
+        }
     }
 
     public byte[] file(long id, String username) {
@@ -210,9 +318,11 @@ public class AiImportService {
 
     // ------------------------------------------------------------------ AI I/O
 
-    private PreviewDto runPreview(AiImportLog log, PromptBundle bundle, String originalPrompt) {
-        AiImportParser.Parsed parsed = callAi(bundle, log);
-        savePreview(log, parsed.mappings(), parsed.rows(), parsed.explanation(), AiImportLog.PREVIEW);
+    private PreviewDto runPreview(
+            AiImportLog log, PromptBundle bundle, String originalPrompt, ImportTarget target) {
+        AiImportParser.Parsed parsed = callAi(bundle, log, target);
+        savePreview(log, parsed.mappings(), parsed.rows(), parsed.explanation(),
+                parsed.suggestedTarget(), AiImportLog.PREVIEW);
         log.setConfirmedJson(null);
         log.setResultJson(null);
         if (originalPrompt != null && log.getSourceText() == null && log.getFilePath() == null) {
@@ -222,7 +332,7 @@ public class AiImportService {
         return preview(log);
     }
 
-    private AiImportParser.Parsed callAi(PromptBundle bundle, AiImportLog log) {
+    private AiImportParser.Parsed callAi(PromptBundle bundle, AiImportLog log, ImportTarget target) {
         AiRequest request = new AiRequest(
                 AiTaskType.DATA_IMPORT, bundle.messages(), bundle.images(), AiOptions.asJson());
         AiResult result = bundle.images().isEmpty() ? gateway.chat(request) : gateway.chatWithVision(request);
@@ -234,7 +344,7 @@ public class AiImportService {
             throw ApiException.badRequest("AI 解析失败：" + (result.errorMessage() == null ? "请检查 AI 供应商配置" : result.errorMessage()));
         }
         try {
-            return parser.parse(result.content(), ImportTarget.TEACHER, threshold());
+            return parser.parse(result.content(), target, threshold());
         } catch (IllegalArgumentException ex) {
             log.setAiExplanation(ex.getMessage());
             log.setStatus(AiImportLog.FAILED);
@@ -243,35 +353,35 @@ public class AiImportService {
         }
     }
 
-    private PromptBundle bundleFor(AiImportLog log) {
+    private PromptBundle bundleFor(AiImportLog log, ImportTarget target) {
         String type = log.getImportType();
         if ("image".equals(type)) {
             return imageBundle(new UploadStorage.StoredFile(
-                    log.getFilePath(), log.getFileName(), log.getFileSize(), null));
+                    log.getFilePath(), log.getFileName(), log.getFileSize(), null), target);
         }
         if ("text".equals(type)) {
-            String prompt = AiImportPrompts.textPrompt(ImportTarget.TEACHER, log.getSourceText());
-            return bundle(prompt, List.of());
+            String prompt = AiImportPrompts.textPrompt(target, log.getSourceText());
+            return bundle(prompt, List.of(), target);
         }
-        TableData table = readSpreadsheet(log.getFilePath());
-        String prompt = AiImportPrompts.tablePrompt(ImportTarget.TEACHER, table.headers(), table.rows(), objectMapper);
-        return bundle(prompt, List.of());
+        GridData grid = readGrid(log.getFilePath());
+        String prompt = AiImportPrompts.gridPrompt(target, grid.sheetName(), grid.rows(), objectMapper);
+        return bundle(prompt, List.of(), target);
     }
 
-    private PromptBundle bundle(String userPrompt, List<AiImage> images) {
+    private PromptBundle bundle(String userPrompt, List<AiImage> images, ImportTarget target) {
         return new PromptBundle(
-                List.of(new AiMessage("system", AiImportPrompts.system(ImportTarget.TEACHER)),
+                List.of(new AiMessage("system", AiImportPrompts.system(target)),
                         new AiMessage("user", userPrompt)),
                 images,
                 userPrompt);
     }
 
-    private PromptBundle imageBundle(UploadStorage.StoredFile stored) {
+    private PromptBundle imageBundle(UploadStorage.StoredFile stored, ImportTarget target) {
         byte[] bytes = storage.read(stored.path());
         String mime = stored.contentType() == null ? mimeFor(stored.path()) : stored.contentType();
-        String prompt = AiImportPrompts.imagePrompt(ImportTarget.TEACHER);
+        String prompt = AiImportPrompts.imagePrompt(target);
         return new PromptBundle(
-                List.of(new AiMessage("system", AiImportPrompts.system(ImportTarget.TEACHER)),
+                List.of(new AiMessage("system", AiImportPrompts.system(target)),
                         new AiMessage("user", prompt)),
                 List.of(new AiImage(mime, bytes)),
                 prompt);
@@ -281,10 +391,11 @@ public class AiImportService {
 
     // ------------------------------------------------------------- persistence
 
-    private AiImportLog newLog(String importType, UploadStorage.StoredFile stored, String username) {
+    private AiImportLog newLog(
+            String importType, UploadStorage.StoredFile stored, String username, ImportTarget target) {
         AiImportLog log = new AiImportLog();
         log.setImportType(importType);
-        log.setTargetType(ImportTarget.TEACHER.code());
+        log.setTargetType(target.code());
         log.setUsername(username);
         AppUser user = users.getByUsername(username);
         log.setUserId(user == null ? null : user.getId());
@@ -303,8 +414,13 @@ public class AiImportService {
 
     /** The original AI answer; never overwritten by user edits or a continuation merge. */
     private void savePreview(
-            AiImportLog log, List<MappingDto> mappings, List<RowDto> rows, String explanation, String status) {
-        log.setPreviewJson(payloadJson(mappings, rows, explanation));
+            AiImportLog log,
+            List<MappingDto> mappings,
+            List<RowDto> rows,
+            String explanation,
+            String suggestedTarget,
+            String status) {
+        log.setPreviewJson(payloadJson(mappings, rows, explanation, suggestedTarget));
         log.setAiExplanation(explanation);
         log.setStatus(status);
         log.setRowCount(rows.size());
@@ -313,35 +429,42 @@ public class AiImportService {
 
     /** The user's working copy: edits, the merged continuation result, or the committed rows. */
     private void saveConfirmed(
-            AiImportLog log, List<MappingDto> mappings, List<RowDto> rows, String explanation, String status) {
-        log.setConfirmedJson(payloadJson(mappings, rows, explanation));
+            AiImportLog log,
+            List<MappingDto> mappings,
+            List<RowDto> rows,
+            String explanation,
+            String suggestedTarget,
+            String status) {
+        log.setConfirmedJson(payloadJson(mappings, rows, explanation, suggestedTarget));
         log.setStatus(status);
         log.setRowCount(rows.size());
         touch(log);
     }
 
-    private String payloadJson(List<MappingDto> mappings, List<RowDto> rows, String explanation) {
+    private String payloadJson(
+            List<MappingDto> mappings, List<RowDto> rows, String explanation, String suggestedTarget) {
         Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("suggestedTarget", suggestedTarget == null ? "" : suggestedTarget);
         payload.put("mappings", mappings);
         payload.put("rows", rows);
         payload.put("explanation", explanation == null ? "" : explanation);
         return writeJson(payload);
     }
 
-    private Payload readWorkingPayload(AiImportLog log) {
+    private Payload readWorkingPayload(AiImportLog log, ImportTarget target) {
         String json = log.getConfirmedJson() == null || log.getConfirmedJson().isBlank()
                 ? log.getPreviewJson()
                 : log.getConfirmedJson();
-        return parsePayload(json);
+        return parsePayload(json, target);
     }
 
-    private Payload readPreviewPayload(AiImportLog log) {
-        return parsePayload(log.getPreviewJson());
+    private Payload readPreviewPayload(AiImportLog log, ImportTarget target) {
+        return parsePayload(log.getPreviewJson(), target);
     }
 
-    private Payload parsePayload(String json) {
+    private Payload parsePayload(String json, ImportTarget target) {
         if (json == null || json.isBlank()) {
-            return new Payload(List.of(), List.of(), "");
+            return new Payload(List.of(), List.of(), "", "");
         }
         try {
             JsonNode root = objectMapper.readTree(json);
@@ -354,35 +477,95 @@ public class AiImportService {
             }
             // Reuse the AI parser so confidence/low-confidence stay consistent with the threshold.
             String normalized = objectMapper.writeValueAsString(Map.of(
+                    "suggestedTarget", root.path("suggestedTarget").asText(""),
                     "mappings", mappings,
                     "rows", root.path("rows"),
                     "explanation", root.path("explanation").asText("")));
-            AiImportParser.Parsed parsed = parser.parse(normalized, ImportTarget.TEACHER, threshold());
-            return new Payload(parsed.mappings(), parsed.rows(), parsed.explanation());
+            AiImportParser.Parsed parsed = parser.parse(normalized, target, threshold());
+            return new Payload(
+                    parsed.mappings(), parsed.rows(), parsed.explanation(), parsed.suggestedTarget());
         } catch (Exception ex) {
-            return new Payload(List.of(), List.of(), "");
+            return new Payload(List.of(), List.of(), "", "");
         }
     }
 
     private PreviewDto preview(AiImportLog log) {
-        Payload payload = readWorkingPayload(log);
+        ImportTarget target = targetOf(log);
+        Payload payload = readWorkingPayload(log, target);
+        TimetableImportService.Analysis analysis = analysis(target, payload.rows());
         return new PreviewDto(
                 log.getId(),
                 log.getTargetType(),
-                columns(),
+                payload.suggestedTarget().isEmpty() ? null : payload.suggestedTarget(),
+                columns(target),
                 payload.rows(),
                 payload.mappings(),
                 payload.explanation(),
                 threshold(),
-                log.getStatus());
+                log.getStatus(),
+                issues(analysis, payload.rows()),
+                summary(analysis));
     }
 
-    private record Payload(List<MappingDto> mappings, List<RowDto> rows, String explanation) {}
+    private TimetableImportService.Analysis analysis(ImportTarget target, List<RowDto> rows) {
+        if (target != ImportTarget.TIMETABLE || rows.isEmpty()) {
+            return null;
+        }
+        return timetableImports.inspect(rows, null);
+    }
 
-    private List<ColumnDto> columns() {
-        return ImportTarget.TEACHER.fields().stream()
+    private TimetableSummaryDto summary(TimetableImportService.Analysis analysis) {
+        if (analysis == null) {
+            return null;
+        }
+        TimetableImportService.Summary summary = analysis.summary();
+        return new TimetableSummaryDto(
+                summary.lessons(), summary.unresolved(), summary.groups(),
+                summary.newAssignments(), summary.updatedAssignments());
+    }
+
+    /**
+     * Unmatched names in a timetable preview. The same matching the commit runs, but
+     * read-only, so the user can resolve every issue before anything is written.
+     * Page-level blockers (row 0) carry their reason in {@code message}.
+     */
+    private List<IssueDto> issues(TimetableImportService.Analysis analysis, List<RowDto> rows) {
+        if (analysis == null) {
+            return List.of();
+        }
+        List<String> requiredFields = ImportTarget.TIMETABLE.fields().stream()
+                .filter(field -> field.required())
+                .map(field -> field.field())
+                .toList();
+        List<IssueDto> issues = new ArrayList<>();
+        for (RowErrorDto error : analysis.errors()) {
+            String value = error.row() >= 1 && error.row() <= rows.size()
+                    ? value(rows.get(error.row() - 1), error.field())
+                    : "";
+            issues.add(new IssueDto(
+                    error.row(), error.field(), value, error.candidates(),
+                    requiredFields.contains(error.field()),
+                    error.row() == 0 ? error.message() : ""));
+        }
+        return List.copyOf(issues);
+    }
+
+    private record Payload(
+            List<MappingDto> mappings, List<RowDto> rows, String explanation, String suggestedTarget) {}
+
+    private List<ColumnDto> columns(ImportTarget target) {
+        return target.fields().stream()
                 .map(field -> new ColumnDto(field.field(), field.label(), field.required()))
                 .toList();
+    }
+
+    private ImportTarget targetOf(AiImportLog log) {
+        try {
+            return ImportTarget.fromCode(log.getTargetType());
+        } catch (IllegalArgumentException ex) {
+            // A stored target is data, not user input: never let it surface as a 500.
+            throw ApiException.badRequest("导入目标类型无效: " + log.getTargetType());
+        }
     }
 
     private void markFailed(AiImportLog log, String message) {
@@ -423,25 +606,31 @@ public class AiImportService {
 
     // ------------------------------------------------------------ source data
 
-    private TableData readSpreadsheet(String path) {
+    private GridData readGrid(String path) {
         String name = path == null ? "" : path.toLowerCase();
         byte[] bytes = storage.read(path);
         try {
             if (name.endsWith(".csv")) {
-                CsvTableReader.Table table = CsvTableReader.read(bytes);
-                return new TableData(table.headers(), table.rows());
+                // No header assumption: a title row before the header must reach the AI.
+                return new GridData(fileName(path), CsvTableReader.readGrid(bytes));
             }
-            ExcelTableReader.Table table = ExcelTableReader.read(new ByteArrayInputStream(bytes));
-            List<Map<String, String>> rows = table.rows().stream()
-                    .map(ExcelTableReader.TableRow::values)
-                    .toList();
-            return new TableData(table.headers(), rows);
+            ExcelTableReader.Grid grid = ExcelTableReader.readGrid(new ByteArrayInputStream(bytes));
+            return new GridData(grid.sheetName(), grid.rows());
         } catch (Exception ex) {
             throw ApiException.badRequest("无法读取表格文件: " + ex.getMessage());
         }
     }
 
-    private record TableData(List<String> headers, List<Map<String, String>> rows) {}
+    private String fileName(String path) {
+        if (path == null || path.isBlank()) {
+            return "";
+        }
+        int slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        return slash < 0 ? path : path.substring(slash + 1);
+    }
+
+    /** One sheet as laid out: a name to show the AI, and the raw rows. */
+    private record GridData(String sheetName, List<List<String>> rows) {}
 
     // -------------------------------------------------------------- validation
 
@@ -497,7 +686,7 @@ public class AiImportService {
 
     // ------------------------------------------------------------------ helpers
 
-    private List<RowDto> normalize(List<RowDto> rows, double threshold) {
+    private List<RowDto> normalize(List<RowDto> rows, double threshold, ImportTarget target) {
         if (rows == null || rows.isEmpty()) {
             throw ApiException.badRequest("请至少保留一行数据");
         }
@@ -509,7 +698,7 @@ public class AiImportService {
             Map<String, String> values = new LinkedHashMap<>();
             Map<String, Double> confidence = new LinkedHashMap<>();
             List<String> low = new ArrayList<>();
-            for (String field : ImportTarget.TEACHER.fieldNames()) {
+            for (String field : target.fieldNames()) {
                 String value = row.values() == null ? "" : row.values().getOrDefault(field, "");
                 value = value == null ? "" : value.trim();
                 double score = row.confidence() == null || row.confidence().get(field) == null
@@ -527,7 +716,7 @@ public class AiImportService {
         return result;
     }
 
-    private List<RowDto> merge(List<RowDto> userRows, List<RowDto> aiRows) {
+    private List<RowDto> merge(List<RowDto> userRows, List<RowDto> aiRows, ImportTarget target) {
         int count = Math.max(userRows.size(), aiRows.size());
         List<RowDto> merged = new ArrayList<>();
         for (int i = 0; i < count; i++) {
@@ -536,7 +725,7 @@ public class AiImportService {
             Map<String, String> values = new LinkedHashMap<>();
             Map<String, Double> confidence = new LinkedHashMap<>();
             List<String> low = new ArrayList<>();
-            for (String field : ImportTarget.TEACHER.fieldNames()) {
+            for (String field : target.fieldNames()) {
                 String userValue = user == null ? "" : user.values().getOrDefault(field, "");
                 String aiValue = ai == null ? "" : ai.values().getOrDefault(field, "");
                 String value = userValue == null || userValue.isBlank() ? aiValue : userValue;
