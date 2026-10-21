@@ -2,6 +2,48 @@
 
 面向国内单一中学的排课与调代课系统。后端 Spring Boot 3 + Timefold Solver，前端 Vue 3 + Vite + TypeScript，数据库 PostgreSQL 16（本地演示可用内嵌 H2）。
 
+## 一键启动（推荐给非技术用户）
+
+前提只有一个：安装 Docker Desktop（Windows / macOS）或 Docker Engine（Linux）。
+**宿主机不需要安装 Java、Node 或 Maven**，所有依赖都在容器里构建和运行。
+
+- Windows：双击仓库根目录的 `start.bat`
+- Linux / macOS：在仓库根目录执行 `./start.sh`
+
+脚本会自动完成这些事：检测 Docker 是否安装并运行 → 检查内存与 8080 / 5173 / 5432 端口 →
+生成 `.env` 密钥 → 构建并启动数据库、后端、前端 → 等待后端健康检查通过 →
+打印访问地址和默认账号。
+
+启动成功后：
+
+- 前端地址：http://localhost:5173
+- 后端地址：http://localhost:8080
+- 默认账号：`admin` / `admin123`
+- 首次使用请访问前端地址，按初始化向导操作
+
+常用参数：
+
+| 参数 | 说明 |
+| --- | --- |
+| `--quiet` / `--no-prompt` | 非交互模式：不打印进度、不暂停，失败时直接返回非零退出码，适合 AI Agent / CI |
+| `--admin-password=密码` | 指定初始管理员密码（默认 `admin123`） |
+| `--timeout=秒数` | 健康检查最长等待时间，默认 60 秒 |
+| `--no-build` | 不重新构建镜像，直接启动已有镜像 |
+| `--env-only` | 只生成/检查 `.env`，不启动服务（排障用） |
+
+退出码：`0` 成功；`1` 启动失败；`2` 环境或前置条件不满足（例如未安装 Docker、Docker 未启动）。
+
+启动失败时：
+
+1. 先看后端日志：`docker compose logs backend`
+2. 再运行自检：`doctor.bat`（Windows）或 `./doctor.sh`（Linux / macOS）
+3. 首次构建需要下载依赖，可能较慢；可以加大等待时间，例如 `--timeout=180`
+
+`.env` 中的密钥只在缺失或仍是占位值时生成，重复运行不会覆盖已有值；`.env` 已加入 `.gitignore`。
+
+> 仓库里的 `启动排课系统.cmd` 是本地开发快捷方式，要求宿主机安装 JDK / Node；日常演示优先用上面的
+> 一键启动。
+
 ## 功能范围（一期）
 
 - 基础数据：年级、行政班、教师、教室、课程，支持 Excel 批量导入（先预览、后入库）
