@@ -229,7 +229,11 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="每周节数" prop="weeklyLessons">
+        <el-form-item prop="weeklyLessons">
+          <template #label>
+            每周节数
+            <InfoTooltip field="assignment.weeklyLessons" />
+          </template>
           <el-input-number
             v-model="form.weeklyLessons"
             :min="1"
@@ -265,6 +269,7 @@ import { Download, Plus, Upload } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ImportDialog from '@/components/ImportDialog.vue'
+import InfoTooltip from '@/components/InfoTooltip.vue'
 import { useAuthStore } from '@/stores/auth'
 
 interface Semester {

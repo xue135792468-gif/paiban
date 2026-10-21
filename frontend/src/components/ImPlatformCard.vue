@@ -10,7 +10,10 @@
     </template>
 
     <div class="platform-row">
-      <div class="row-label">启用平台</div>
+      <div class="row-label">
+        启用平台
+        <InfoTooltip field="settings.platformSwitch" />
+      </div>
       <el-radio-group v-model="selected">
         <el-radio-button value="none">不启用</el-radio-button>
         <el-radio-button value="dingtalk">钉钉</el-radio-button>
@@ -56,6 +59,7 @@
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
+import InfoTooltip from '@/components/InfoTooltip.vue'
 
 interface PlatformStatus {
   activePlatform: string
