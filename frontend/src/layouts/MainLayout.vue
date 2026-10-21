@@ -8,7 +8,7 @@
       <el-menu :default-active="route.path" router class="menu">
         <template v-for="group in visibleGroups" :key="group.title">
           <div class="group-title">{{ group.title }}</div>
-          <el-menu-item v-for="item in group.items" :key="item.path" :index="item.path">
+          <el-menu-item v-for="item in group.items" :key="item.path" :index="item.path" :data-tour="item.path">
             <el-icon><component :is="item.icon" /></el-icon>
             <span>{{ item.label }}</span>
           </el-menu-item>
@@ -68,7 +68,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Bell,
@@ -92,6 +92,7 @@ import {
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
+import { hasSeenTour, startTour, type TourStage } from '@/onboarding/tour'
 
 interface MenuItem {
   label: string
@@ -232,6 +233,35 @@ function onCommand(command: string) {
   }
 }
 
+// The tour waits one layout frame so the sidebar menu has real geometry to highlight.
+const TOUR_DELAY_MS = 600
+let tourTimer: number | undefined
+
+function scheduleTour(stage: TourStage) {
+  if (!auth.isLoggedIn || !auth.hasPermission('onboarding:manage')) return
+  if (hasSeenTour(stage)) return
+  if (stage === 'basic' && route.path !== '/') return
+  if (stage === 'advanced' && (route.path !== '/admin/scheduling' || !hasSeenTour('basic'))) return
+
+  if (tourTimer) window.clearTimeout(tourTimer)
+  tourTimer = window.setTimeout(() => {
+    tourTimer = undefined
+    if (stage === 'basic' ? route.path !== '/' : route.path !== '/admin/scheduling') return
+    if (hasSeenTour(stage) || !auth.hasPermission('onboarding:manage')) return
+    startTour(stage)
+  }, TOUR_DELAY_MS)
+}
+
+// Basic tour on the home page; the advanced one the first time scheduling is opened.
+watch(
+  () => route.path,
+  (path) => {
+    if (path === '/') scheduleTour('basic')
+    else if (path === '/admin/scheduling') scheduleTour('advanced')
+  },
+  { immediate: true },
+)
+
 onMounted(() => {
   auth.refresh().catch(() => undefined)
   settings.load()
@@ -241,6 +271,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (timer) window.clearInterval(timer)
+  if (tourTimer) window.clearTimeout(tourTimer)
 })
 </script>
 

@@ -1,15 +1,7 @@
 // The zz- prefix keeps this spec after onboarding.spec.ts: it seeds school data,
 // which would otherwise remove the onboarding "first login" condition.
-import { expect, test, type Page } from '@playwright/test'
-import { apiCall, apiLogin, newContext, seedSchool, solveAndPublish } from './helpers'
-
-async function uiLogin(page: Page, username: string, password: string) {
-  await page.goto('/login')
-  await page.getByPlaceholder('请输入用户名').fill(username)
-  await page.getByPlaceholder('请输入密码').fill(password)
-  await page.getByRole('button', { name: '登录' }).click()
-  await page.waitForURL((url) => !url.pathname.startsWith('/login'))
-}
+import { expect, test } from '@playwright/test'
+import { apiCall, apiLogin, newContext, seedSchool, solveAndPublish, uiLogin } from './helpers'
 
 async function setSchoolType(type: 'junior' | 'senior') {
   const api = await newContext()

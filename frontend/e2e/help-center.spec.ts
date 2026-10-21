@@ -1,22 +1,8 @@
-import { expect, test, type Page } from '@playwright/test'
-
-// Local login helper: ticket 01 owns the shared `uiLogin` in helpers.ts, and this
-// spec must stay runnable on its own branch. The tour flags keep the onboarding
-// tour from covering the help page once that ticket lands.
-async function uiLogin(page: Page, username = 'admin', password = 'admin123') {
-  await page.addInitScript(() => {
-    localStorage.setItem('paiban.tour.seen', '1')
-    localStorage.setItem('paiban.tour.advanced', '1')
-  })
-  await page.goto('/login')
-  await page.getByPlaceholder('请输入用户名').fill(username)
-  await page.getByPlaceholder('请输入密码').fill(password)
-  await page.getByRole('button', { name: '登录' }).click()
-  await page.waitForURL((url) => !url.pathname.startsWith('/login'))
-}
+import { expect, test } from '@playwright/test'
+import { uiLogin } from './helpers'
 
 test('帮助中心首页展示目录树与分组', async ({ page }) => {
-  await uiLogin(page)
+  await uiLogin(page, 'admin', 'admin123')
   await page.goto('/help')
 
   await expect(page.getByRole('heading', { name: '帮助中心', level: 1 })).toBeVisible()
@@ -31,7 +17,7 @@ test('帮助中心首页展示目录树与分组', async ({ page }) => {
 })
 
 test('打开文档后渲染 Markdown 正文', async ({ page }) => {
-  await uiLogin(page)
+  await uiLogin(page, 'admin', 'admin123')
   await page.goto('/help')
 
   await page.getByTestId('help-sidebar').getByRole('link', { name: '基础数据' }).click()
@@ -45,7 +31,7 @@ test('打开文档后渲染 Markdown 正文', async ({ page }) => {
 })
 
 test('搜索关键词返回结果并可跳转', async ({ page }) => {
-  await uiLogin(page)
+  await uiLogin(page, 'admin', 'admin123')
   await page.goto('/help')
 
   await page.getByPlaceholder('搜索帮助文档，例如：每周节数').fill('每周节数')
@@ -59,7 +45,7 @@ test('搜索关键词返回结果并可跳转', async ({ page }) => {
 })
 
 test('文档内站内链接跳到真实路由', async ({ page }) => {
-  await uiLogin(page)
+  await uiLogin(page, 'admin', 'admin123')
   await page.goto('/help/foundation')
 
   await page.getByTestId('help-content').getByRole('link', { name: '创建班级' }).click()

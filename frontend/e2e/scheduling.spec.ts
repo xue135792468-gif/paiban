@@ -1,13 +1,5 @@
 import { expect, test, type ElementHandle, type Page } from '@playwright/test'
-import { apiCall, apiLogin, newContext, seedSchool } from './helpers'
-
-async function uiLogin(page: Page, username: string, password: string) {
-  await page.goto('/login')
-  await page.getByPlaceholder('请输入用户名').fill(username)
-  await page.getByPlaceholder('请输入密码').fill(password)
-  await page.getByRole('button', { name: '登录' }).click()
-  await page.waitForURL((url) => !url.pathname.startsWith('/login'))
-}
+import { apiCall, apiLogin, newContext, seedSchool, uiLogin } from './helpers'
 
 async function solveDraft(api: Awaited<ReturnType<typeof newContext>>, semesterId: number): Promise<number> {
   const token = await apiLogin(api)

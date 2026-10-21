@@ -228,6 +228,17 @@
       </div>
     </el-card>
 
+    <el-card id="tour-reopen" shadow="never">
+      <template #header><span class="card-title">新手教程</span></template>
+      <div class="ai-row">
+        <div>
+          <div class="ai-name">重新查看新手教程</div>
+          <div class="hint">重新播放首次登录时的界面引导，介绍基础数据、排课、调代与课表入口。</div>
+        </div>
+        <el-button plain @click="reopenTour">重新查看新手教程</el-button>
+      </div>
+    </el-card>
+
     <el-card v-if="aiEnabled" shadow="never">
       <template #header><span class="card-title">AI 特性</span></template>
       <div class="ai-row">
@@ -258,6 +269,7 @@ import { http } from '@/api/http'
 import { useSettingsStore } from '@/stores/settings'
 import ImPlatformCard from '@/components/ImPlatformCard.vue'
 import InfoTooltip from '@/components/InfoTooltip.vue'
+import { resetTour, startTour } from '@/onboarding/tour'
 
 interface DingTalkConfig {
   enabled: boolean
@@ -335,6 +347,11 @@ const confidenceThreshold = computed(() => Number(form['ai.import.confidence-thr
 
 function setConfidenceThreshold(value: number | undefined) {
   form['ai.import.confidence-threshold'] = String(value ?? 0.8)
+}
+
+function reopenTour() {
+  resetTour()
+  startTour('basic')
 }
 
 // ADR-0003: AI entry points are hidden entirely while every feature is off.
