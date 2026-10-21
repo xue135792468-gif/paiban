@@ -26,7 +26,7 @@
         v-if="!loading && teachers.length === 0"
         title="还没有教师数据"
         description="教师是授课任务与调代的基础。点击下方按钮新建教师，或使用右上角「导入」从 Excel 批量导入。"
-        button-text="新建教师"
+        :button-text="auth.hasPermission('foundation:manage') ? '新建教师' : undefined"
         help-slug="foundation"
         help-anchor="teachers"
         @action="openCreate"

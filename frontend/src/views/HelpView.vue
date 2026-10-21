@@ -141,7 +141,9 @@ function onArticleClick(event: MouseEvent) {
   const anchor = target?.closest('a')
   if (!anchor) return
   const href = anchor.getAttribute('href') ?? ''
-  if (!href.startsWith('/') || href.startsWith('/help')) return
+  // Only protocol-relative URLs (//host) are external; every root-relative path,
+  // including /help/<slug>, must stay inside the SPA instead of reloading.
+  if (!href.startsWith('/') || href.startsWith('//')) return
   event.preventDefault()
   router.push(href)
 }

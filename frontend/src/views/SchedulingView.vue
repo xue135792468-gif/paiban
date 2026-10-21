@@ -175,7 +175,14 @@
           </div>
         </template>
 
-        <el-table v-loading="draftsLoading" :data="drafts" style="width: 100%">
+        <EmptyStateGuide
+          v-if="!draftsLoading && drafts.length === 0"
+          title="还没有课表草稿"
+          description="提交一次排课任务后，生成的课表会出现在这里，可以打开编辑器手工微调。"
+          help-slug="scheduling"
+          help-anchor="draft"
+        />
+        <el-table v-else v-loading="draftsLoading" :data="drafts" style="width: 100%">
           <el-table-column prop="name" label="名称" min-width="180" />
           <el-table-column label="状态" width="110">
             <template #default="{ row }">
@@ -229,7 +236,14 @@
           </div>
         </template>
 
-        <el-table v-loading="jobsLoading" :data="jobs" style="width: 100%">
+        <EmptyStateGuide
+          v-if="!jobsLoading && jobs.length === 0"
+          title="还没有排课历史"
+          description="每次提交的排课任务都会记录在这里，包括状态、得分与耗时。"
+          help-slug="scheduling"
+          help-anchor="run"
+        />
+        <el-table v-else v-loading="jobsLoading" :data="jobs" style="width: 100%">
           <el-table-column label="创建时间" min-width="170">
             <template #default="{ row }">
               {{ formatDateTime(row.createdAt) }}

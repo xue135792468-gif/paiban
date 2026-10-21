@@ -26,7 +26,7 @@
         v-if="!loading && courses.length === 0"
         title="还没有课程数据"
         description="课程是授课任务与课表的基础。点击下方按钮新建课程，或使用右上角「导入」从 Excel 批量导入。"
-        button-text="新建课程"
+        :button-text="auth.hasPermission('foundation:manage') ? '新建课程' : undefined"
         help-slug="foundation"
         help-anchor="courses"
         @action="openCreate"

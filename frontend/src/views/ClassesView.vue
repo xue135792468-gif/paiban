@@ -63,7 +63,7 @@
         v-else-if="!loading && classes.length === 0"
         title="还没有行政班数据"
         description="行政班是授课任务与课表的基础。请先确认已创建年级，再点击下方按钮新建行政班，或使用右上角「导入」批量导入。"
-        button-text="新建行政班"
+        :button-text="auth.hasPermission('foundation:manage') ? '新建行政班' : undefined"
         help-slug="foundation"
         help-anchor="classes"
         @action="openCreate"
