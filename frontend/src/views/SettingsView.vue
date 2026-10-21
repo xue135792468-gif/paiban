@@ -401,9 +401,11 @@ async function saveSettings() {
 
   saving.value = true
   try {
-    // The logo path is read-only here: it is written by the upload endpoint.
+    // Read-only settings: the logo is written by the upload endpoint, and the
+    // active IM platform only by PUT /integrations/platform.
     const payload = { ...form }
     delete payload['school.logo-path']
+    delete payload['integration.active-platform']
     const { data } = await http.put('/settings', payload)
     Object.keys(data).forEach((key) => {
       form[key] = data[key]
