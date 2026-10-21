@@ -75,6 +75,19 @@
           />
         </el-select>
         <div class="spacer" />
+        <template v-if="selectedLesson">
+          <el-tag type="primary" effect="plain" closable @close="clearSelection">
+            已选：{{ selectedLesson.courseName }} · {{ selectedLesson.teacherName }} ·
+            {{ selectedLesson.periodLabel }}
+          </el-tag>
+          <el-button
+            type="primary"
+            :disabled="!canEdit || selectedLesson.periodId == null"
+            @click="openForSelected"
+          >
+            换课
+          </el-button>
+        </template>
         <el-button @click="drawerVisible = !drawerVisible">
           <el-icon><Tickets /></el-icon>
           <span>未排课节（{{ unassigned.length }}）</span>
@@ -134,44 +147,51 @@
       </ul>
     </el-dialog>
 
-    <el-dialog v-if="!isJunior" v-model="compareVisible" title="并排比较草稿" width="1120px">
-      <div class="compare-grid">
-        <div class="compare-side">
-          <el-select v-model="compareA" placeholder="选择草稿 A" style="width: 100%">
-            <el-option v-for="item in allDrafts" :key="item.id" :label="item.name" :value="item.id" />
-          </el-select>
-          <div v-if="draftSummary(compareA)" class="compare-score">
-            {{ draftSummary(compareA) }}
-          </div>
-          <el-table :data="compareLessonsA" size="small" max-height="420" border>
-            <el-table-column prop="periodLabel" label="课节" width="96" />
-            <el-table-column prop="courseName" label="课程" width="96" />
-            <el-table-column prop="teacherName" label="教师" width="96" />
-            <el-table-column prop="roomName" label="教室" width="96" />
-          </el-table>
-        </div>
-        <div class="compare-side">
-          <el-select v-model="compareB" placeholder="选择草稿 B" style="width: 100%">
-            <el-option v-for="item in allDrafts" :key="item.id" :label="item.name" :value="item.id" />
-          </el-select>
-          <div v-if="draftSummary(compareB)" class="compare-score">
-            {{ draftSummary(compareB) }}
-          </div>
-          <el-table :data="compareLessonsB" size="small" max-height="420" border>
-            <el-table-column prop="periodLabel" label="课节" width="96" />
-            <el-table-column prop="courseName" label="课程" width="96" />
-            <el-table-column prop="teacherName" label="教师" width="96" />
-            <el-table-column prop="roomName" label="教室" width="96" />
-          </el-table>
-        </div>
-      </div>
-      <p class="compare-hint">得分越高越好（硬分必须为 0 才能发布）。</p>
+    <DraftCompareDialog
+      v-if="!isJunior"
+      v-model="compareVisible"
+      :draft-id="draftId"
+      :semester-id="detail?.draft.semesterId"
+    />
+
+    <el-drawer
+      v-model="panelVisible"
+      title="换课候选"
+      size="620px"
+      destroy-on-close
+      @closed="closePanel"
+    >
+      <SwapCandidatePanel
+        :lesson="panelLesson"
+        :response="candidates"
+        :loading="candidatesLoading"
+        :include-unavailable="includeUnavailable"
+        :initial-group="initialGroup"
+        @update:include-unavailable="setIncludeUnavailable"
+        @select="selectCandidate"
+      />
+    </el-drawer>
+
+    <el-dialog v-model="previewVisible" title="换课预览" width="92%" top="4vh">
+      <DualTimetablePreview
+        v-if="panelLesson && previewCandidate"
+        v-model:swap-rooms="swapRooms"
+        :periods="detail?.periods ?? []"
+        :lessons="detail?.lessons ?? []"
+        :courses="courses"
+        :source="panelLesson"
+        :candidate="previewCandidate"
+      />
+      <template #footer>
+        <el-button @click="closePreview">取消</el-button>
+        <el-button type="primary" :loading="swapping" @click="onConfirmSwap">确认换课</el-button>
+      </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, RefreshLeft, Tickets } from '@element-plus/icons-vue'
@@ -179,8 +199,12 @@ import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import DraftGrid from '@/components/draft/DraftGrid.vue'
+import DraftCompareDialog from '@/components/draft/DraftCompareDialog.vue'
+import SwapCandidatePanel from '@/components/draft/SwapCandidatePanel.vue'
+import DualTimetablePreview from '@/components/draft/DualTimetablePreview.vue'
 import { courseColor } from '@/components/draft/colors'
 import { useDraftAdjust } from '@/composables/useDraftAdjust'
+import { useSwapFlow } from '@/composables/useSwapFlow'
 import type {
   Draft,
   DraftConflict,
@@ -200,7 +224,30 @@ const draftId = Number(route.params.id)
 const canEdit = computed(() => auth.hasPermission('timetable:edit'))
 const canPublish = computed(() => auth.hasPermission('timetable:publish'))
 
-const { undoCount, canUndo, undoing, move, undo, loadMoveTargets } = useDraftAdjust(draftId)
+const adjust = useDraftAdjust(draftId)
+const { undoCount, canUndo, undoing, move, undo, loadMoveTargets } = adjust
+const {
+  selectedLesson,
+  panelVisible,
+  panelLesson,
+  candidates,
+  candidatesLoading,
+  includeUnavailable,
+  initialGroup,
+  previewVisible,
+  previewCandidate,
+  swapRooms,
+  swapping,
+  selectLesson,
+  clearSelection,
+  openPanel,
+  openForSelected,
+  setIncludeUnavailable,
+  selectCandidate,
+  confirm: confirmSwap,
+  closePanel,
+  closePreview,
+} = useSwapFlow({ adjust })
 
 const loading = ref(false)
 type DraftDetail = { draft: Draft; lessons: DraftLesson[]; periods: DraftPeriod[]; rooms: DraftRoom[] }
@@ -215,7 +262,6 @@ const dragTargets = ref<Record<number, MoveTargetState> | null>(null)
 const conflictVisible = ref(false)
 const cellConflicts = ref<DraftConflict[]>([])
 const compareVisible = ref(false)
-const allDrafts = ref<Draft[]>([])
 
 const filteredLessons = computed(() => {
   const lessons = detail.value?.lessons ?? []
@@ -249,41 +295,6 @@ const targetOptions = computed(() => {
   return [...map.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
 })
 
-const compareA = ref<number | null>(null)
-const compareB = ref<number | null>(null)
-const compareLessonsA = ref<DraftLesson[]>([])
-const compareLessonsB = ref<DraftLesson[]>([])
-
-function draftSummary(id: number | null) {
-  const draft = allDrafts.value.find((item) => item.id === id)
-  if (!draft) return ''
-  return `${draft.scoreHard} hard / ${draft.scoreSoft} soft · ${draft.lessonCount} 节`
-}
-
-async function loadCompareSide(side: 'A' | 'B') {
-  const id = side === 'A' ? compareA.value : compareB.value
-  const target = side === 'A' ? compareLessonsA : compareLessonsB
-  if (!id) {
-    target.value = []
-    return
-  }
-  try {
-    const { data } = await http.get(`/timetable-drafts/${id}`)
-    target.value = [...(data.lessons as DraftLesson[])].sort((a, b) => {
-      const dayA = a.dayOfWeek ?? 9
-      const dayB = b.dayOfWeek ?? 9
-      return dayA !== dayB ? dayA - dayB : (a.periodNo ?? 99) - (b.periodNo ?? 99)
-    })
-  } catch {
-    target.value = []
-  }
-}
-
-watch([compareA, compareB], () => {
-  loadCompareSide('A')
-  loadCompareSide('B')
-})
-
 async function load() {
   loading.value = true
   try {
@@ -296,6 +307,7 @@ async function load() {
     validation.value = validationRes.data
     courses.value = courseRes.data
     if (targetId.value == null) resetTarget()
+    clearSelection()
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.message ?? '加载草稿失败')
   } finally {
@@ -333,6 +345,22 @@ async function onDropCell(payload: { day: number; periodNo: number; periodId: nu
   const state = dragTargets.value?.[payload.periodId]
   if (!state) return
   if (!state.available) {
+    const occupied = filteredLessons.value.find(
+      (item) =>
+        item.dayOfWeek === payload.day &&
+        item.periodNo === payload.periodNo &&
+        item.id !== lesson.id,
+    )
+    if (occupied && occupied.classId === lesson.classId && canEdit.value) {
+      openPanel(lesson, 'INTRA_CLASS')
+      onDragEnd()
+      return
+    }
+    if (occupied && occupied.classId !== lesson.classId) {
+      ElMessage.warning(
+        `该节次属于${occupied.className ?? '其他班级'}的课，跨班只能换老师、不能换节次`,
+      )
+    }
     showConflicts(state.conflicts)
     onDragEnd()
     return
@@ -352,9 +380,19 @@ function onCellClick(payload: { day: number; periodNo: number }) {
     (item) => item.dayOfWeek === payload.day && item.periodNo === payload.periodNo,
   )
   if (!lesson) return
+  selectLesson(lesson)
   const related = (validation.value?.conflicts ?? []).filter((conflict) => conflict.lessonId === lesson.id)
   if (related.length > 0) {
     showConflicts(related)
+  }
+}
+
+async function onConfirmSwap() {
+  const outcome = await confirmSwap()
+  if (outcome.saved) {
+    await load()
+  } else if (outcome.conflicts.length > 0) {
+    showConflicts(outcome.conflicts)
   }
 }
 
@@ -431,15 +469,7 @@ async function removeDraft() {
 
 async function openCompare() {
   if (isJunior.value) return
-  const { data } = await http.get('/timetable-drafts', {
-    params: { semesterId: detail.value?.draft.semesterId },
-  })
-  allDrafts.value = data
-  compareA.value = draftId
-  const other = (data as Draft[]).find((item) => item.id !== draftId)
-  compareB.value = other ? other.id : draftId
   compareVisible.value = true
-  await Promise.all([loadCompareSide('A'), loadCompareSide('B')])
 }
 
 onMounted(() => {
@@ -564,24 +594,5 @@ h2 {
   padding-left: 20px;
   line-height: 1.9;
   color: #b43b3b;
-}
-.compare-hint {
-  margin: 12px 0 0;
-  color: var(--paiban-muted);
-  font-size: 12px;
-}
-.compare-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-.compare-side {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.compare-score {
-  font-size: 12px;
-  color: var(--paiban-muted);
 }
 </style>

@@ -1,5 +1,9 @@
 <template>
-  <div class="grid" :style="{ gridTemplateColumns: `96px repeat(${days.length}, minmax(150px, 1fr))` }">
+  <div
+    class="grid"
+    :class="{ compact }"
+    :style="{ gridTemplateColumns: `96px repeat(${days.length}, minmax(${columnWidth}px, 1fr))` }"
+  >
     <div class="corner">节次</div>
     <div v-for="day in days" :key="`h-${day}`" class="day-head">{{ dayName(day) }}</div>
 
@@ -22,7 +26,10 @@
         <div
           v-if="lessonAt(day, row.periodNo)"
           class="lesson"
-          :class="{ dragging: draggedLessonId === lessonAt(day, row.periodNo)?.id }"
+          :class="{
+            dragging: draggedLessonId === lessonAt(day, row.periodNo)?.id,
+            highlight: highlightedIds.has(lessonAt(day, row.periodNo)!.id),
+          }"
           :style="{ background: courseColor(courses, lessonAt(day, row.periodNo)!.courseId) }"
           :draggable="draggable"
           @dragstart="emit('drag-start', lessonAt(day, row.periodNo)!)"
@@ -54,6 +61,10 @@ const props = defineProps<{
   draggedLessonId?: number | null
   /** null while the move-targets request is in flight; empty map means "no target". */
   targets?: Record<number, MoveTargetState> | null
+  /** Lessons the preview wants to call out, for example the two affected cells. */
+  highlightLessonIds?: number[]
+  /** Narrower columns for the side-by-side preview. */
+  compact?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -68,6 +79,10 @@ const days = computed(() => {
   props.periods.forEach((period) => set.add(period.dayOfWeek))
   return [...set].sort((a, b) => a - b)
 })
+
+const columnWidth = computed(() => (props.compact ? 110 : 150))
+
+const highlightedIds = computed(() => new Set(props.highlightLessonIds ?? []))
 
 const periodRows = computed(() => {
   const map = new Map<number, { periodNo: number; time: string; section: string }>()
@@ -144,6 +159,9 @@ function onDrop(day: number, periodNo: number) {
   border-left: 1px solid #eef0f5;
   min-width: 900px;
 }
+.grid.compact {
+  min-width: 640px;
+}
 .corner,
 .day-head,
 .row-head,
@@ -214,6 +232,11 @@ function onDrop(day: number, periodNo: number) {
 }
 .lesson.dragging {
   opacity: 0.45;
+}
+.lesson.highlight {
+  outline: 2px solid #409eff;
+  outline-offset: -2px;
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.25);
 }
 .lesson-course {
   font-weight: 600;
