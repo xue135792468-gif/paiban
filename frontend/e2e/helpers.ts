@@ -1,6 +1,10 @@
 import { request, type APIRequestContext, type Page } from '@playwright/test'
 
-export const API = 'http://127.0.0.1:8080/api'
+/**
+ * API origin used by direct calls. Defaults to the Playwright config's backend;
+ * isolated local runs can point it at another port without touching the specs.
+ */
+export const API = process.env.PAIBAN_E2E_API ?? 'http://127.0.0.1:8080/api'
 
 const TOUR_KEYS = ['paiban.tour.seen', 'paiban.tour.advanced']
 

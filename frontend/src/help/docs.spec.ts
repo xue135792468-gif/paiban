@@ -47,8 +47,8 @@ describe('HELP_DOCS', () => {
 
   it('groups documents by feature module and by scenario flow', () => {
     expect(HELP_GROUPS.map((group) => group.title)).toEqual(['功能模块', '场景流程'])
-    expect(HELP_GROUPS[0].docs.map((doc) => doc.slug)).toEqual(HELP_SLUGS.slice(0, 6))
-    expect(HELP_GROUPS[1].docs.map((doc) => doc.slug)).toEqual(HELP_SLUGS.slice(6))
+    expect(HELP_GROUPS[0].docs.map((doc) => doc.slug)).toEqual(HELP_SLUGS.slice(0, 7))
+    expect(HELP_GROUPS[1].docs.map((doc) => doc.slug)).toEqual(HELP_SLUGS.slice(7))
   })
 
   it('links to routes that exist in the router', () => {
@@ -100,6 +100,11 @@ describe('searchDocs', () => {
   it('matches document titles', () => {
     const results = searchDocs('课表查看')
     expect(results.map((result) => result.doc.slug)).toContain('timetable')
+  })
+
+  it('indexes the AI import guide', () => {
+    expect(searchDocs('AI 数据导入').map((result) => result.doc.slug)).toContain('ai-import')
+    expect(searchDocs('映射步骤').map((result) => result.doc.slug)).toContain('ai-import')
   })
 
   it('matches body text and returns a snippet around the hit', () => {

@@ -10,6 +10,7 @@ export const HELP_SLUGS = [
   'substitution',
   'timetable',
   'settings',
+  'ai-import',
   'flow-term-start',
   'flow-substitution',
   'flow-term-end',
