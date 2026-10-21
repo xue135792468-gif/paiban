@@ -13,5 +13,9 @@ if not defined INTERACTIVE set "INTERACTIVE=1"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start.ps1" %*
 set "RC=%ERRORLEVEL%"
 
-if "%INTERACTIVE%"=="1" pause
+if "%INTERACTIVE%"=="1" (
+    echo.
+    echo 提示：如果是 AI Agent 或无人值守部署，请使用 start.bat --quiet
+    pause
+)
 exit /b %RC%

@@ -39,6 +39,8 @@
   </ol>
 </nav>
 
+> **🤖 AI Agent 快速通道**：如果您是 AI Agent 或进行自动化部署，请直接跳转到 [给 AI Agent 的无人值守安装](#agent)，使用 `start.bat --quiet` / `./start.sh --quiet` 避免交互阻塞。
+
 <a id="prereq"></a>
 
 ## 开始前你需要什么
@@ -99,6 +101,18 @@ docker --version
 3. 下载完成后解压，建议解压到简单路径，例如 `D:\paiban`，并记住这个位置。
 4. 打开解压后的文件夹，应该能直接看到 `start.bat`、`start.sh`、`docker-compose.yml` 这些文件。
 
+**命令行解压（适合 AI Agent 或自动化脚本）**：
+
+```powershell
+# Windows PowerShell
+powershell -Command "Expand-Archive -Path paiban-main.zip -DestinationPath ."
+```
+
+```bash
+# macOS / Linux
+unzip paiban-main.zip
+```
+
 也可以直接访问压缩包地址（需要先登录有权限的 GitHub 账号）：
 
 ```text
@@ -123,6 +137,8 @@ git clone https://github.com/xue135792468-gif/paiban.git
 cd paiban
 ```
 
+> **注意**：`xue135792468-gif` 是示例用户名，实际使用时请替换为真实的 GitHub 用户名或组织名。
+
 下载完成后，终端要停留在 `paiban` 这个文件夹里，后面的启动命令都在这里执行。
 
 ![第 2 步：下载排课系统](./images/step2-download.png)
@@ -137,7 +153,7 @@ cd paiban
 
 打开解压后的文件夹，**双击 `start.bat`**。
 
-- 不需要右键选择“以管理员身份运行”，普通双击即可。
+- 不需要右键选择”以管理员身份运行”，普通双击即可。
 - 会弹出一个黑色窗口，自动检查 Docker、检查端口、生成配置，然后构建并启动服务。
 - 启动过程中**不要关闭这个窗口**。看到 `[完成] 排课系统已启动` 之后可以关闭，服务会继续在 Docker 里后台运行。
 
@@ -146,6 +162,8 @@ cd paiban
 ```bat
 start.bat
 ```
+
+> **AI Agent / 无人值守部署**：请使用 `start.bat --quiet` 避免窗口阻塞等待按键。
 
 ### macOS / Linux
 
