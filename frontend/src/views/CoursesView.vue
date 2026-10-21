@@ -102,7 +102,11 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="连堂设置" prop="allowConsecutive">
+        <el-form-item prop="allowConsecutive">
+          <template #label>
+            连堂设置
+            <InfoTooltip field="course.consecutive" />
+          </template>
           <el-switch
             v-model="form.allowConsecutive"
             active-text="允许连堂"
@@ -153,6 +157,7 @@ import { Plus, Download, Upload } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import ImportDialog from '@/components/ImportDialog.vue'
+import InfoTooltip from '@/components/InfoTooltip.vue'
 
 interface Course {
   id: number

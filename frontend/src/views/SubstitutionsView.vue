@@ -128,7 +128,12 @@
         </el-card>
         <el-card shadow="never">
           <el-table v-loading="loadingRecords" :data="records" stripe>
-            <el-table-column prop="effectiveDate" label="生效日期" width="120" />
+            <el-table-column prop="effectiveDate" width="120">
+              <template #header>
+                生效日期
+                <InfoTooltip field="substitution.effectiveDate" />
+              </template>
+            </el-table-column>
             <el-table-column prop="className" label="行政班" min-width="120" />
             <el-table-column prop="courseName" label="课程" width="100" />
             <el-table-column prop="originalTeacherName" label="原教师" width="110" />
@@ -221,6 +226,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
+import InfoTooltip from '@/components/InfoTooltip.vue'
 
 interface Teacher {
   id: number

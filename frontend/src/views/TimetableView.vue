@@ -9,6 +9,7 @@
               ? '按行政班、教师或教室查看课表。调代生效的课节会标注「代」。'
               : '按行政班、教师、教室或全校查看课表。调代生效的课节会标注「代」。'
           }}
+          <InfoTooltip field="timetable.substitutionMark" />
         </p>
       </div>
       <div class="actions">
@@ -40,6 +41,7 @@
           <el-radio-button value="latest">最新</el-radio-button>
           <el-radio-button value="baseline">原始</el-radio-button>
         </el-radio-group>
+        <InfoTooltip field="timetable.view" />
         <el-dropdown v-if="canExport" @command="exportFile">
           <el-button>
             <el-icon><Download /></el-icon>
@@ -122,6 +124,7 @@ import { Download } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
+import InfoTooltip from '@/components/InfoTooltip.vue'
 
 interface Entry {
   id: number
