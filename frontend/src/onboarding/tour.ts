@@ -134,6 +134,16 @@ export function startTour(stage: TourStage): void {
     allowClose: true,
     overlayClickBehavior: 'none',
     skipMissingElement: true,
+    // driver.js skips onDestroyed when the tour is closed before its first highlight
+    // settles, so the explicit buttons record the stage themselves.
+    onCloseClick: (_element, _step, opts) => {
+      markTourSeen(stage)
+      opts.driver.destroy()
+    },
+    onDoneClick: (_element, _step, opts) => {
+      markTourSeen(stage)
+      opts.driver.destroy()
+    },
     onDestroyed: () => {
       markTourSeen(stage)
       activeDriver = undefined

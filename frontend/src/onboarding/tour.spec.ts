@@ -108,6 +108,34 @@ describe('startTour', () => {
     expect(hasSeenTour('basic')).toBe(true)
   })
 
+  it('marks the tour as seen when the skip button is clicked', () => {
+    startTour('basic')
+
+    const onCloseClick = lastConfig().onCloseClick as (
+      element: unknown,
+      step: unknown,
+      opts: { driver: { destroy: () => void } },
+    ) => void
+    onCloseClick(undefined, {}, { driver: { destroy: driverMock.destroy } })
+
+    expect(hasSeenTour('basic')).toBe(true)
+    expect(driverMock.destroy).toHaveBeenCalled()
+  })
+
+  it('marks the tour as seen when the done button is clicked', () => {
+    startTour('basic')
+
+    const onDoneClick = lastConfig().onDoneClick as (
+      element: unknown,
+      step: unknown,
+      opts: { driver: { destroy: () => void } },
+    ) => void
+    onDoneClick(undefined, {}, { driver: { destroy: driverMock.destroy } })
+
+    expect(hasSeenTour('basic')).toBe(true)
+    expect(driverMock.destroy).toHaveBeenCalled()
+  })
+
   it('marks the advanced tour as seen once it is destroyed', () => {
     addTourTargets(['/admin/constraints', '/admin/scheduling', '/timetable'])
 
