@@ -95,6 +95,16 @@
         </el-button>
         <span class="hint">AI 只生成预览，点击「入库」才会写入数据。</span>
       </div>
+
+      <el-alert
+        v-if="parsing"
+        data-testid="parse-progress"
+        title="AI 正在解析，大表可能需要 1–2 分钟"
+        type="info"
+        show-icon
+        :closable="false"
+        class="parse-progress"
+      />
     </el-card>
 
     <template v-else>
@@ -112,7 +122,14 @@
           </div>
         </template>
 
-        <el-table :data="preview.rows" border size="small" max-height="520">
+        <el-table
+          v-if="!isTimetable"
+          data-testid="preview-rows-table"
+          :data="preview.rows"
+          border
+          size="small"
+          max-height="520"
+        >
           <el-table-column type="index" label="#" width="52" />
           <el-table-column
             v-for="column in preview.columns"
@@ -138,11 +155,26 @@
           </el-table-column>
         </el-table>
 
-        <div class="legend">
+        <TimetablePreviewGrid
+          v-else
+          :rows="preview.rows"
+          :issues="previewIssues"
+          :summary="preview.summary"
+        />
+
+        <div v-if="!isTimetable" class="legend">
           <span class="swatch" /> 浅黄表示 AI 置信度低于
           {{ Math.round(preview.threshold * 100) }}%，建议重点核对
         </div>
       </el-card>
+
+      <TimetableMappingStep
+        v-if="isTimetable && preview.status !== 'COMMITTED'"
+        :session-id="preview.sessionId"
+        :rows="preview.rows"
+        :issues="previewIssues"
+        @updated="applyPreview"
+      />
 
       <el-alert
         v-if="preview.status === 'COMMITTED'"
@@ -191,7 +223,20 @@
       </el-alert>
 
       <div class="footer-actions">
-        <template v-if="!editing">
+        <template v-if="isTimetable">
+          <el-button
+            type="primary"
+            :loading="committing"
+            :disabled="commitDisabled"
+            @click="commit"
+          >
+            {{ commitLabel }}
+          </el-button>
+          <el-button :loading="reparsing" :disabled="preview.status === 'COMMITTED'" @click="reparse">
+            打回重析
+          </el-button>
+        </template>
+        <template v-else-if="!editing">
           <el-button
             type="primary"
             :loading="committing"
@@ -221,8 +266,17 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
-import { http } from '@/api/http'
+import { AI_IMPORT_TIMEOUT_MS, http } from '@/api/http'
+import { aiParseErrorMessage } from '@/api/errors'
 import ImportTargetPicker from '@/components/aiImport/ImportTargetPicker.vue'
+import TimetableMappingStep from '@/components/aiImport/TimetableMappingStep.vue'
+import TimetablePreviewGrid from '@/components/aiImport/TimetablePreviewGrid.vue'
+import {
+  canCommit,
+  remainingIssueCount,
+  type ImportPreview,
+  type PreviewRow,
+} from '@/components/aiImport/timetablePreview'
 import {
   IMPORT_TARGETS,
   preselectedTarget,
@@ -230,39 +284,17 @@ import {
   targetTitle,
 } from '@/components/aiImport/importTargets'
 
-interface Column {
-  field: string
-  label: string
-  required: boolean
-}
-
-interface Row {
-  values: Record<string, string>
-  confidence: Record<string, number>
-  lowConfidence?: string[]
-}
-
-interface Mapping {
-  source: string
-  target: string
-  note: string
-}
-
-interface Preview {
-  sessionId: number
-  targetType: string
-  columns: Column[]
-  rows: Row[]
-  mappings: Mapping[]
-  explanation: string
-  threshold: number
-  status: string
-}
-
 interface RowError {
   row: number
   field: string
   message: string
+}
+
+interface CommitResult {
+  imported: number
+  errors?: RowError[]
+  warnings?: string[]
+  draftId?: number | null
 }
 
 const router = useRouter()
@@ -275,7 +307,7 @@ const selectedTarget = ref(preselectedTarget(route.query.target))
 const selectedFile = ref<File | null>(null)
 const imageFile = ref<File | null>(null)
 const text = ref('')
-const preview = ref<Preview | null>(null)
+const preview = ref<ImportPreview | null>(null)
 const editing = ref(false)
 const parsing = ref(false)
 const committing = ref(false)
@@ -284,6 +316,24 @@ const reparsing = ref(false)
 const commitErrors = ref<RowError[]>([])
 
 const currentTarget = computed(() => targetCard(selectedTarget.value) ?? IMPORT_TARGETS[0])
+
+const isTimetable = computed(() => preview.value?.targetType === 'timetable')
+const previewIssues = computed(() => preview.value?.issues ?? [])
+const remainingIssues = computed(() => remainingIssueCount(previewIssues.value))
+const allIssuesResolved = computed(() => canCommit(previewIssues.value))
+const commitDisabled = computed(
+  () =>
+    !preview.value ||
+    preview.value.status === 'COMMITTED' ||
+    (isTimetable.value && !allIssuesResolved.value),
+)
+const commitLabel = computed(() => {
+  if (preview.value?.status === 'COMMITTED') return '已入库'
+  if (isTimetable.value && !allIssuesResolved.value) {
+    return `确认入库（还有 ${remainingIssues.value} 项未解决）`
+  }
+  return '确认入库'
+})
 
 const canParse = computed(() => {
   if (inputMode.value === 'excel') return selectedFile.value !== null
@@ -339,56 +389,72 @@ async function parse() {
   if (!configured.value) return
   parsing.value = true
   commitErrors.value = []
+  const config = { params: { target: selectedTarget.value }, timeout: AI_IMPORT_TIMEOUT_MS }
   try {
-    const config = { params: { target: selectedTarget.value } }
     let response
     if (inputMode.value === 'excel') {
       const form = new FormData()
       form.append('file', selectedFile.value as File)
-      response = await http.post<Preview>('/ai/import/excel', form, config)
+      response = await http.post<ImportPreview>('/ai/import/excel', form, config)
     } else if (inputMode.value === 'image') {
       const form = new FormData()
       form.append('file', imageFile.value as File)
-      response = await http.post<Preview>('/ai/import/image', form, config)
+      response = await http.post<ImportPreview>('/ai/import/image', form, config)
     } else {
-      response = await http.post<Preview>('/ai/import/text', { text: text.value }, config)
+      response = await http.post<ImportPreview>('/ai/import/text', { text: text.value }, config)
     }
     preview.value = response.data
     editing.value = false
   } catch (error) {
-    ElMessage.error(messageOf(error))
+    ElMessage.error(aiParseErrorMessage(error))
   } finally {
     parsing.value = false
   }
 }
 
+function applyPreview(data: ImportPreview) {
+  preview.value = data
+  commitErrors.value = []
+}
+
 async function saveRows() {
   if (!preview.value) return
-  const { data } = await http.put<Preview>(`/ai/import/sessions/${preview.value.sessionId}/rows`, {
+  const { data } = await http.put<ImportPreview>(`/ai/import/sessions/${preview.value.sessionId}/rows`, {
     rows: preview.value.rows,
   })
   preview.value = data
 }
 
 async function commit() {
-  if (!preview.value) return
+  const current = preview.value
+  if (!current) return
   committing.value = true
   commitErrors.value = []
   try {
-    if (editing.value) {
+    if (!isTimetable.value && editing.value) {
       await saveRows()
     }
-    const { data } = await http.post<{ imported: number }>(
-      `/ai/import/sessions/${preview.value.sessionId}/commit`,
+    const { data } = await http.post<CommitResult>(
+      `/ai/import/sessions/${current.sessionId}/commit`,
     )
     importedCount.value = data.imported
-    preview.value = { ...preview.value, status: 'COMMITTED' }
-    ElMessage.success(`已入库 ${data.imported} 条${targetTitle(preview.value.targetType)}数据`)
+    preview.value = { ...current, status: 'COMMITTED' }
+    if (data.draftId) {
+      for (const warning of data.warnings ?? []) {
+        ElMessage({ type: 'warning', message: warning, duration: 6000, showClose: true })
+      }
+      ElMessage.success(`已生成草稿，共 ${data.imported} 节课`)
+      router.push(`/admin/drafts/${data.draftId}`)
+      return
+    }
+    ElMessage.success(`已入库 ${data.imported} 条${targetTitle(current.targetType)}数据`)
   } catch (error) {
     const errors = (error as { response?: { data?: { errors?: RowError[] } } }).response?.data?.errors
     if (errors?.length) {
       commitErrors.value = errors
-      editing.value = true
+      if (!isTimetable.value) {
+        editing.value = true
+      }
       ElMessage.error('有数据未通过校验，请修正后再入库')
     } else {
       ElMessage.error(messageOf(error))
@@ -403,13 +469,15 @@ async function continueWithAi() {
   continuing.value = true
   try {
     await saveRows()
-    const { data } = await http.post<Preview>(
+    const { data } = await http.post<ImportPreview>(
       `/ai/import/sessions/${preview.value.sessionId}/continue`,
+      undefined,
+      { timeout: AI_IMPORT_TIMEOUT_MS },
     )
     preview.value = data
     ElMessage.success('AI 已基于你的修正继续解析')
   } catch (error) {
-    ElMessage.error(messageOf(error))
+    ElMessage.error(aiParseErrorMessage(error))
   } finally {
     continuing.value = false
   }
@@ -426,13 +494,17 @@ async function reparse() {
   }
   reparsing.value = true
   try {
-    const { data } = await http.post<Preview>(`/ai/import/sessions/${preview.value.sessionId}/reparse`)
+    const { data } = await http.post<ImportPreview>(
+      `/ai/import/sessions/${preview.value.sessionId}/reparse`,
+      undefined,
+      { timeout: AI_IMPORT_TIMEOUT_MS },
+    )
     preview.value = data
     editing.value = false
     commitErrors.value = []
     ElMessage.success('已重新解析')
   } catch (error) {
-    ElMessage.error(messageOf(error))
+    ElMessage.error(aiParseErrorMessage(error))
   } finally {
     reparsing.value = false
   }
@@ -452,7 +524,7 @@ function goTeachers() {
   router.push('/admin/teachers')
 }
 
-function confidenceTitle(row: Row, field: string) {
+function confidenceTitle(row: PreviewRow, field: string) {
   const value = row.confidence?.[field]
   return value === undefined ? undefined : `AI 置信度 ${Math.round(value * 100)}%`
 }
@@ -510,6 +582,10 @@ function messageOf(error: unknown) {
   align-items: center;
   gap: 14px;
   margin-top: 16px;
+}
+
+.parse-progress {
+  margin-top: 12px;
 }
 
 .vision-warning {

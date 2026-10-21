@@ -5,7 +5,7 @@ import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import AiDataImportView from './AiDataImportView.vue'
 
 const httpMock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() }))
-vi.mock('@/api/http', () => ({ http: httpMock }))
+vi.mock('@/api/http', () => ({ http: httpMock, AI_IMPORT_TIMEOUT_MS: 300000 }))
 
 function aiStatus(visionCapable = true) {
   return {
@@ -19,6 +19,7 @@ function makeRouter(): Router {
     routes: [
       { path: '/admin/ai-import', component: { template: '<div />' } },
       { path: '/admin/teachers', component: { template: '<div />' } },
+      { path: '/admin/drafts/:id', component: { template: '<div />' } },
       { path: '/:pathMatch(.*)*', component: { template: '<div />' } },
     ],
   })
@@ -163,6 +164,7 @@ describe('上传请求携带导入目标', () => {
 
     expect(httpMock.post).toHaveBeenCalledWith('/ai/import/excel', expect.any(FormData), {
       params: { target: 'teacher' },
+      timeout: 300000,
     })
   })
 
@@ -177,6 +179,7 @@ describe('上传请求携带导入目标', () => {
 
     expect(httpMock.post).toHaveBeenCalledWith('/ai/import/excel', expect.any(FormData), {
       params: { target: 'timetable' },
+      timeout: 300000,
     })
   })
 
@@ -193,7 +196,7 @@ describe('上传请求携带导入目标', () => {
     expect(httpMock.post).toHaveBeenCalledWith(
       '/ai/import/text',
       { text: '高一（1）班 周一第 1 节 语文 张老师' },
-      { params: { target: 'timetable' } },
+      { params: { target: 'timetable' }, timeout: 300000 },
     )
   })
 })
@@ -249,5 +252,202 @@ describe('预览反映导入目标', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-testid="preview-target"]').text()).toContain('教师')
+  })
+})
+
+function timetableRow(
+  className: string,
+  day: string,
+  period: string,
+  course: string,
+  teacher: string,
+) {
+  return {
+    values: {
+      className,
+      dayOfWeek: day,
+      periodNo: period,
+      courseName: course,
+      teacherName: teacher,
+      roomName: '101',
+    },
+    confidence: {},
+    lowConfidence: [],
+  }
+}
+
+function timetablePreview(overrides: Record<string, unknown> = {}) {
+  return {
+    data: {
+      sessionId: 9,
+      targetType: 'timetable',
+      columns: [
+        { field: 'className', label: '班级', required: true },
+        { field: 'dayOfWeek', label: '星期', required: true },
+        { field: 'periodNo', label: '节次', required: true },
+        { field: 'courseName', label: '课程', required: true },
+        { field: 'teacherName', label: '教师', required: true },
+        { field: 'roomName', label: '教室', required: false },
+      ],
+      rows: [
+        timetableRow('一年级1班', '周一', '1', '语文', '张三'),
+        timetableRow('一年级1班', '周一', '2', '数学', '李四'),
+      ],
+      mappings: [],
+      explanation: '',
+      threshold: 0.7,
+      status: 'PREVIEW',
+      issues: [],
+      summary: { lessons: 2, groups: 2, newAssignments: 2, updatedAssignments: 0 },
+      ...overrides,
+    },
+  }
+}
+
+function unresolvedIssue() {
+  return {
+    row: 1,
+    field: 'className',
+    value: '一年级(1)班',
+    candidates: ['一年级1班'],
+    required: true,
+  }
+}
+
+async function showTimetable(wrapper: VueWrapper, response: unknown = timetablePreview()) {
+  httpMock.post.mockResolvedValue(response)
+  chooseFile(wrapper, 0, 'grade-1.xlsx')
+  await flushPromises()
+  await button(wrapper, '开始解析').trigger('click')
+  await flushPromises()
+}
+
+function commitButton(wrapper: VueWrapper) {
+  const found = wrapper.findAll('button').find((candidate) => candidate.text().includes('确认入库'))
+  if (!found) throw new Error('commit button not found')
+  return found
+}
+
+function mappingSelect(wrapper: VueWrapper) {
+  const found = wrapper
+    .findAllComponents({ name: 'ElSelect' })
+    .find((component) => component.element.closest('[data-testid="mapping-step"]'))
+  if (!found) throw new Error('mapping select not found')
+  return found
+}
+
+describe('课表预览网格与摘要', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('课表目标使用只读网格，并显示将创建与更新的授课任务数', async () => {
+    const { wrapper } = await mountImport('/admin/ai-import?target=timetable')
+    await showTimetable(wrapper)
+
+    const summary = wrapper.get('[data-testid="timetable-summary"]').text()
+    expect(summary).toContain('将创建 2 条授课任务')
+    expect(summary).toContain('将更新 0 条授课任务')
+    expect(wrapper.find('.grid').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="preview-rows-table"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="mapping-clear"]').text()).toContain('可以确认入库')
+  })
+
+  it('教师目标仍然使用行表格', async () => {
+    const { wrapper } = await mountImport()
+    await showTimetable(wrapper, preview('teacher'))
+
+    expect(wrapper.find('[data-testid="preview-rows-table"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="timetable-summary"]').exists()).toBe(false)
+  })
+
+  it('课表预览可以切换按班级与按教师查看', async () => {
+    const { wrapper } = await mountImport('/admin/ai-import?target=timetable')
+    await showTimetable(wrapper)
+
+    const mode = wrapper.get('[data-testid="timetable-view-mode"]')
+    expect(mode.text()).toContain('按班级')
+    expect(mode.text()).toContain('按教师')
+    expect(wrapper.get('[data-testid="timetable-view-select"]').text()).toContain('一年级1班')
+  })
+})
+
+describe('映射步骤与入库可用性', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('存在未解决映射时禁用确认入库并显示剩余数量', async () => {
+    const { wrapper } = await mountImport('/admin/ai-import?target=timetable')
+    await showTimetable(wrapper, timetablePreview({ issues: [unresolvedIssue()] }))
+
+    const commit = commitButton(wrapper)
+    expect(commit.text()).toContain('还有 1 项未解决')
+    expect((commit.element as HTMLButtonElement).disabled).toBe(true)
+    expect(wrapper.find('[data-testid="mapping-step"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="mapping-step"]').text()).toContain('一年级(1)班')
+  })
+
+  it('映射完成后刷新预览并解除入库禁用', async () => {
+    const { wrapper } = await mountImport('/admin/ai-import?target=timetable')
+    await showTimetable(wrapper, timetablePreview({ issues: [unresolvedIssue()] }))
+
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/ai/status') return Promise.resolve(aiStatus())
+      if (url === '/ai/import/lookup') {
+        return Promise.resolve({ data: [{ id: 3, name: '一年级1班', extra: '一年级' }] })
+      }
+      return Promise.resolve({ data: [] })
+    })
+    httpMock.post.mockResolvedValue({ data: timetablePreview().data })
+
+    mappingSelect(wrapper).vm.$emit('change', '一年级1班')
+    await flushPromises()
+
+    expect(httpMock.post).toHaveBeenCalledWith('/ai/import/sessions/9/mapping', {
+      mappings: [{ field: 'className', source: '一年级(1)班', targetId: 3 }],
+      creates: [],
+    })
+    const commit = commitButton(wrapper)
+    expect(commit.text()).toBe('确认入库')
+    expect((commit.element as HTMLButtonElement).disabled).toBe(false)
+    expect(wrapper.find('[data-testid="mapping-clear"]').exists()).toBe(true)
+  })
+
+  it('入库成功后跳转到生成的草稿', async () => {
+    const { wrapper, router } = await mountImport('/admin/ai-import?target=timetable')
+    await showTimetable(wrapper)
+    httpMock.post.mockResolvedValue({
+      data: { imported: 2, errors: [], warnings: ['班级 一年级1班 有多位教师'], draftId: 42 },
+    })
+
+    await commitButton(wrapper).trigger('click')
+    await flushPromises()
+
+    expect(httpMock.post).toHaveBeenCalledWith('/ai/import/sessions/9/commit')
+    expect(router.currentRoute.value.path).toBe('/admin/drafts/42')
+  })
+
+  it('解析期间显示大表可能需要 1–2 分钟的提示', async () => {
+    const { wrapper } = await mountImport('/admin/ai-import?target=timetable')
+    let finish: (value: unknown) => void = () => {}
+    httpMock.post.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+
+    chooseFile(wrapper, 0, 'grade-1.xlsx')
+    await flushPromises()
+    await button(wrapper, '开始解析').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="parse-progress"]').text()).toContain(
+      'AI 正在解析，大表可能需要 1–2 分钟',
+    )
+
+    finish(timetablePreview())
+    await flushPromises()
   })
 })

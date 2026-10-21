@@ -204,6 +204,51 @@ class TimetableImportServiceTest extends ApiIntegrationTest {
     }
 
     @Test
+    void inspectSummarizesLessonsAndCountsNewVersusUpdatedAssignments() {
+        Fixture f = fixture();
+        String token = adminToken();
+        as(token).body(Map.of(
+                        "classId", f.classId(),
+                        "courseId", f.courseId(),
+                        "teacherId", f.teacherId(),
+                        "weeklyLessons", 3))
+                .when().post("/api/assignments")
+                .then().statusCode(200);
+        TestData.course(token, "数学");
+        TestData.teacher(token, "李四");
+
+        TimetableImportService.Analysis analysis = service.inspect(
+                List.of(
+                        row("一年级1班", "周一", "第1节", "语文", "张三", "101"),
+                        row("一年级1班", "周一", "第2节", "语文", "张三", "101"),
+                        row("一年级1班", "周一", "第1节", "数学", "李四", "101")),
+                null);
+
+        assertThat(analysis.errors()).isEmpty();
+        assertThat(analysis.summary().lessons()).isEqualTo(3);
+        assertThat(analysis.summary().groups()).isEqualTo(2);
+        assertThat(analysis.summary().newAssignments()).isEqualTo(1);
+        assertThat(analysis.summary().updatedAssignments()).isEqualTo(1);
+    }
+
+    @Test
+    void inspectOnlyCountsRowsThatCanBeImported() {
+        fixture();
+
+        TimetableImportService.Analysis analysis = service.inspect(
+                List.of(
+                        row("一年级1班", "周一", "第1节", "语文", "张三", "101"),
+                        row("不存在班", "周一", "第1节", "语文", "张三", "101")),
+                null);
+
+        assertThat(analysis.errors()).hasSize(1);
+        assertThat(analysis.summary().lessons()).isEqualTo(1);
+        assertThat(analysis.summary().groups()).isEqualTo(1);
+        assertThat(analysis.summary().newAssignments()).isEqualTo(1);
+        assertThat(analysis.summary().updatedAssignments()).isZero();
+    }
+
+    @Test
     void normalizesWeekdayAndPeriodVariantsAndTrimsNames() {
         Fixture f = fixture();
         long firstPeriod = periodId(f.semesterId(), 1, 1);
