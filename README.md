@@ -103,7 +103,70 @@ compose 会先等 PostgreSQL 通过 `pg_isready` 健康检查再启动后端，�
 后端健康检查打 `/api/health`，也就是整套服务的就绪信号。`backend/Dockerfile` 留了 60s
 `start-period` 给 Spring Boot 启动，这些配置可用 `scripts/tests/test-docker-config.sh` 静态校验。
 
-### 生产部署清单
+### 生产环境部署（docker-compose.prod.yml）
+
+`docker-compose.prod.yml` 是独立的生产栈：PostgreSQL、后端、前端都只在内部网络暴露，
+只有 nginx 发布 80 / 443，TLS 在 nginx 终止，日志写到 `./logs/nginx`。
+`chore/prod-hardening` 已合入主线，本文件与 nginx / 备份脚本即其最终形态，无需再合并分支。
+
+**1. 准备证书**：把 `fullchain.pem` 与 `privkey.pem` 放进 `deploy/certs/`（目录已存在，证书被 gitignore）。
+本地/测试可先自签：
+
+```bash
+mkdir -p deploy/certs
+openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
+  -keyout deploy/certs/privkey.pem \
+  -out deploy/certs/fullchain.pem \
+  -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+```
+
+正式环境用 Let's Encrypt（certbot）签发后把两个文件复制到 `deploy/certs/`，或在前面再加一层
+Caddy / Cloudflare Tunnel 管理证书。证书缺失时 nginx 容器会启动失败，这是预期的快速失败。
+
+**2. 配置 `.env`**：`cp .env.example .env`，然后：
+
+- `POSTGRES_PASSWORD` **必填**：生产 compose 用 `${POSTGRES_PASSWORD:?...}` 快速失败，
+  避免用默认数据库密码上线；可用 `openssl rand -hex 32` 生成。
+- `PAIBAN_JWT_SECRET`、`PAIBAN_AI_ENCRYPTION_KEY` 可以留空：后端 entrypoint 首次启动时
+  自动生成并写入 `./data/app/secrets.env`，重启复用、不会覆盖显式提供的值。
+- `PAIBAN_SECURITY_BOOTSTRAP_ADMIN_PASSWORD` 留空时同样自动生成，首次登录密码见后端日志。
+- 同源部署（nginx 同时代理前端与 `/api`）不需要设置 `PAIBAN_CORS_ALLOWED_ORIGINS`。
+
+**3. 启动**：
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml ps
+```
+
+**4. 验证健康**（自签证书需要 `-k`）：
+
+```bash
+curl -k https://127.0.0.1/healthz       # ok
+curl -k https://127.0.0.1/api/health    # {"status":"UP",...}
+curl -I http://127.0.0.1/               # 301 跳转到 https
+```
+
+**5. 备份与恢复**（生产 compose 用 `COMPOSE_FILE` 或 `--compose-file` 指定）：
+
+```bash
+COMPOSE_FILE=docker-compose.prod.yml ./scripts/backup.sh
+COMPOSE_FILE=docker-compose.prod.yml ./scripts/restore.sh          # 只打印计划，退出码 2
+COMPOSE_FILE=docker-compose.prod.yml ./scripts/restore.sh --yes    # 真正执行
+```
+
+`restore.sh` 默认选 `backups/` 里最新的 `paiban-*.dump`，校验文件非空后才停止
+backend / frontend，再执行 `pg_restore --clean --if-exists`，并在存在
+`backups/uploads-<stamp>.tar.gz` 时一并恢复上传文件。两个脚本都支持 `--help`。
+定时备份示例（cron，每天 3 点）：
+
+```cron
+0 3 * * * cd /opt/paiban && COMPOSE_FILE=docker-compose.prod.yml ./scripts/backup.sh >> /var/log/paiban-backup.log 2>&1
+```
+
+生产栈的静态校验：`scripts/tests/test-prod-config.sh`（无需 Docker）。
+
+#### 上线前安全检查清单
 
 上线前逐项确认：
 
@@ -111,19 +174,19 @@ compose 会先等 PostgreSQL 通过 `pg_isready` 健康检查再启动后端，�
    `PAIBAN_AI_ENCRYPTION_KEY`、`POSTGRES_PASSWORD` 全部换成强随机值；
    `openssl rand -hex 32` 可直接生成。跨域访问时再设置
    `PAIBAN_CORS_ALLOWED_ORIGINS`（同源 nginx 部署不需要）。
-2. **HTTPS 与域名**：飞书 H5 要求 HTTPS。用 Caddy / Traefik / nginx + Let's Encrypt
-   或 Cloudflare Tunnel 在 443 终止 TLS，转发到 `127.0.0.1:5173`。
-3. **端口**：compose 已把 PostgreSQL（`127.0.0.1:5432`）和后端（`127.0.0.1:8080`）限制在本机；
+2. **HTTPS 与域名**：飞书 H5 要求 HTTPS。生产 compose 已内置 nginx 在 443 终止 TLS；
+   证书放在 `deploy/certs/`，或改用 Caddy / Cloudflare Tunnel 在前置层终止。
+3. **端口**：生产 compose 只发布 80/443；PostgreSQL、后端、前端都只在内部网络，
    防火墙只对公网开放 80/443。
-4. **首次启动**：`docker compose up -d --build`，确认
-   `curl http://127.0.0.1:8080/api/health` 返回 `UP`。
+4. **首次启动**：`docker compose -f docker-compose.prod.yml up -d --build`，确认
+   `curl -k https://127.0.0.1/api/health` 返回 `UP`。
 5. **初始管理员**：若未设置 `PAIBAN_SECURITY_BOOTSTRAP_ADMIN_PASSWORD`，从
-   `docker compose logs backend` 读取一次性生成的密码；登录后立即修改。
+   `docker compose -f docker-compose.prod.yml logs backend` 读取一次性生成的密码；登录后立即修改。
 6. **系统设置**：设置中心把「外部访问地址」填成 `https://你的域名`；
    启用飞书时填写 App ID / App Secret / 验证 Token，并把事件回调地址设为
    `https://你的域名/api/integrations/feishu/event`。
-7. **备份**：`./scripts/backup.sh` 生成 PostgreSQL 与 uploads 备份，默认保留 14 天；
-   恢复命令见脚本头部注释。建议加到 cron。
+7. **备份**：`COMPOSE_FILE=docker-compose.prod.yml ./scripts/backup.sh` 生成 PostgreSQL 与
+   uploads 备份，默认保留 14 天；恢复用 `scripts/restore.sh`。建议加到 cron。
 8. **限流**：应用本身没有登录失败锁定，请在反向代理层加登录限流。
 
 > 生产环境不要使用默认的 `admin/admin123`；非 local/test/e2e profile 下应用会拒绝默认 JWT 密钥。
