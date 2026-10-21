@@ -26,7 +26,81 @@ public final class ExcelTableReader {
 
     public record Table(List<String> headers, List<TableRow> rows, List<String> extraHeaders) {}
 
+    /** The first sheet exactly as laid out: no header assumption, no column trimming. */
+    public record Grid(String sheetName, List<List<String>> rows) {}
+
+    private static final int MAX_GRID_ROWS = 500;
+    private static final int MAX_GRID_COLUMNS = 60;
+
     private ExcelTableReader() {}
+
+    /**
+     * Reads the first sheet as a raw grid: used cells only, merged regions expanded to
+     * every covered cell, formulas replaced by their computed value. Rows and columns
+     * are bounded by the actual cells (not the workbook's declared dimension), and any
+     * gaps inside that range stay as empty strings so the AI sees the real layout.
+     */
+    public static Grid readGrid(InputStream input) throws IOException {
+        try (Workbook workbook = WorkbookFactory.create(input)) {
+            if (workbook.getNumberOfSheets() == 0) {
+                throw new IllegalArgumentException("Excel 中没有工作表");
+            }
+            Sheet sheet = workbook.getSheetAt(0);
+            DataFormatter formatter = new DataFormatter();
+            FormulaEvaluator evaluator = workbook.getCreationHelper().createFormulaEvaluator();
+
+            int firstRow = Integer.MAX_VALUE;
+            int lastRow = -1;
+            int firstColumn = Integer.MAX_VALUE;
+            int lastColumn = -1;
+            for (Row row : sheet) {
+                for (Cell cell : row) {
+                    if (formatter.formatCellValue(cell, evaluator).trim().isEmpty()) {
+                        continue;
+                    }
+                    firstRow = Math.min(firstRow, row.getRowNum());
+                    lastRow = Math.max(lastRow, row.getRowNum());
+                    firstColumn = Math.min(firstColumn, cell.getColumnIndex());
+                    lastColumn = Math.max(lastColumn, cell.getColumnIndex());
+                }
+            }
+            for (CellRangeAddress region : sheet.getMergedRegions()) {
+                firstRow = Math.min(firstRow, region.getFirstRow());
+                lastRow = Math.max(lastRow, region.getLastRow());
+                firstColumn = Math.min(firstColumn, region.getFirstColumn());
+                lastColumn = Math.max(lastColumn, region.getLastColumn());
+            }
+            if (lastRow < 0) {
+                return new Grid(sheet.getSheetName(), List.of());
+            }
+
+            int rowCount = lastRow - firstRow + 1;
+            int columnCount = lastColumn - firstColumn + 1;
+            if (rowCount > MAX_GRID_ROWS) {
+                throw new IllegalArgumentException(
+                        "工作表「" + sheet.getSheetName() + "」使用了 " + rowCount
+                                + " 行，超过 " + MAX_GRID_ROWS + " 行上限，请拆分文件后重试");
+            }
+            if (columnCount > MAX_GRID_COLUMNS) {
+                throw new IllegalArgumentException(
+                        "工作表「" + sheet.getSheetName() + "」使用了 " + columnCount
+                                + " 列，超过 " + MAX_GRID_COLUMNS + " 列上限，请拆分文件后重试");
+            }
+
+            Map<Long, String> mergedValues = mergedValues(sheet, formatter, evaluator);
+            List<List<String>> rows = new ArrayList<>();
+            for (int r = firstRow; r <= lastRow; r++) {
+                Row row = sheet.getRow(r);
+                List<String> values = new ArrayList<>();
+                for (int c = firstColumn; c <= lastColumn; c++) {
+                    Cell cell = row == null ? null : row.getCell(c);
+                    values.add(cellValue(r, c, cell, formatter, evaluator, mergedValues));
+                }
+                rows.add(List.copyOf(values));
+            }
+            return new Grid(sheet.getSheetName(), List.copyOf(rows));
+        }
+    }
 
     public static Table read(InputStream input) throws IOException {
         try (Workbook workbook = WorkbookFactory.create(input)) {

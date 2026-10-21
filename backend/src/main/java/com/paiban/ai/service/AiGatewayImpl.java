@@ -16,15 +16,18 @@ import org.springframework.stereotype.Service;
  * Default {@link AiGateway}: resolves the task's provider/model, picks the protocol
  * strategy, retries transient failures and always answers with a structured result.
  *
- * <p>Timeout is owned by the strategies (default 30s). A failed attempt is retried
+ * <p>Timeout is owned by the strategies (default 120s). A failed attempt is retried
  * twice, 1s apart, except when the provider answered with a 4xx that is not 429 —
- * retrying a rejected request only wastes time. Every call, successful or not, is
- * written to {@code ai_call_log} and no exception ever escapes this class.
+ * retrying a rejected request only wastes time — and except on timeout, where one
+ * retry is enough because each attempt already waited a full timeout window. Every
+ * call, successful or not, is written to {@code ai_call_log} and no exception ever
+ * escapes this class.
  */
 @Service
 public class AiGatewayImpl implements AiGateway {
 
     private static final int MAX_ATTEMPTS = 3;
+    private static final int TIMEOUT_MAX_ATTEMPTS = 2;
 
     private final AiConfigResolver resolver;
     private final List<AiStrategy> strategies;
@@ -105,13 +108,17 @@ public class AiGatewayImpl implements AiGateway {
         }
 
         AiStrategyOutcome outcome = null;
-        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        int maxAttempts = MAX_ATTEMPTS;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             outcome = invoke(strategy, new AiInvocation(
                     target.provider(), target.apiKey(), target.model(), effective));
             if (outcome.success() || !retryable(outcome)) {
                 break;
             }
-            if (attempt < MAX_ATTEMPTS && !sleepBeforeRetry()) {
+            if (timedOut(outcome)) {
+                maxAttempts = Math.min(maxAttempts, TIMEOUT_MAX_ATTEMPTS);
+            }
+            if (attempt < maxAttempts && !sleepBeforeRetry()) {
                 break;
             }
         }
@@ -184,6 +191,10 @@ public class AiGatewayImpl implements AiGateway {
             return true;
         }
         return status >= 500;
+    }
+
+    private boolean timedOut(AiStrategyOutcome outcome) {
+        return "TIMEOUT".equals(outcome.errorCode());
     }
 
     /** Returns false when the thread was interrupted and the retry loop must stop. */

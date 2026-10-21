@@ -12,6 +12,7 @@ final class AiImportPrompts {
 
     private static final int MAX_CELL = 500;
     private static final int MAX_ROWS = 500;
+    private static final int MAX_COLUMNS = 60;
 
     private AiImportPrompts() {}
 
@@ -32,33 +33,45 @@ final class AiImportPrompts {
                 %s
                 只输出一个 JSON 对象，不要 Markdown 代码块，不要额外解释。结构必须是：
                 {"mappings":[{"source":"原始列或片段","target":"系统字段名","note":"映射说明"}],
-                 "rows":[{"values":{"name":"张三","employeeNo":"T001","phone":"138...","email":"","subject":"语文"},
-                          "confidence":{"name":0.99,"employeeNo":0.95,"phone":0.72,"email":1.0,"subject":0.9}}],
+                 "rows":[{"values":%s,
+                          "confidence":%s}],
                  "explanation":"一到三句话说明你如何完成映射，以及哪些地方不确定。"}
                 confidence 取 0 到 1 之间的小数，表示该单元格的把握程度；不确定就留空值并给低置信度。
                 绝不编造原始数据中不存在的信息。最多返回 %d 行。
                 """
-                .formatted(target.code(), fields, MAX_ROWS);
-    }
-
-    static String tablePrompt(
-            ImportTarget target, List<String> headers, List<Map<String, String>> rows, ObjectMapper objectMapper) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("target", target.code());
-        payload.put("headers", headers);
-        payload.put("rows", truncateRows(rows));
-        return "请解析下面的表格数据：\n" + json(payload, objectMapper);
+                .formatted(target.code(), fields, valuesExample(target), confidenceExample(target), MAX_ROWS);
     }
 
     static String textPrompt(ImportTarget target, String text) {
-        return "目标对象：" + target.code() + "\n请解析下面的文本，把人名、学科、电话、邮箱、工号等信息抽取成教师名单：\n"
+        return "目标对象：" + target.code()
+                + "\n请解析下面的文本，按目标字段抽取数据：" + fieldHint(target) + "。\n"
                 + truncate(text, 200_000);
     }
 
     static String imagePrompt(ImportTarget target) {
         return "目标对象：" + target.code()
-                + "\n请识别图片中的教师名单（可能是纸质表格、截图或手写表），抽取姓名、工号、电话、邮箱、学科，"
-                + "并按系统 JSON 结构返回。看不清的单元格留空并给低置信度。";
+                + "\n请识别图片中的表格或名单（可能是纸质表格、截图或手写表），按目标字段抽取数据："
+                + fieldHint(target) + "。看不清的单元格留空并给低置信度。";
+    }
+
+    /**
+     * Sends the sheet as a raw grid. The AI has to find the header and the layout
+     * itself: title rows, merged cells and extra columns are all still present.
+     */
+    static String gridPrompt(
+            ImportTarget target, String sheetName, List<List<String>> grid, ObjectMapper objectMapper) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("target", target.code());
+        payload.put("sheetName", sheetName == null ? "" : sheetName);
+        payload.put("grid", truncateGrid(grid));
+        String shape = target.kind() == ImportTarget.Kind.GRID
+                ? "每一行代表一节课，按目标字段逐行输出。"
+                : "每一行代表一个对象，按目标字段逐行输出。";
+        return "下面是工作表「" + (sheetName == null ? "" : sheetName) + "」的原始网格（二维数组）：\n"
+                + "前几行可能是标题、说明或表头，合并单元格已经展开到每个被覆盖的单元格，列的顺序和数量都不固定。\n"
+                + "请先识别表格结构，再按目标字段输出。" + shape + "\n"
+                + "目标字段：" + fieldHint(target) + "\n"
+                + "请解析下面的表格数据：\n" + json(payload, objectMapper);
     }
 
     static String continuePrompt(
@@ -75,14 +88,56 @@ final class AiImportPrompts {
                 + "用户确认的行：\n" + json(payload, objectMapper);
     }
 
-    private static List<Map<String, String>> truncateRows(List<Map<String, String>> rows) {
-        return rows.stream()
+    private static String valuesExample(ImportTarget target) {
+        StringBuilder example = new StringBuilder("{");
+        for (ImportTarget.Field field : target.fields()) {
+            if (example.length() > 1) {
+                example.append(",");
+            }
+            example.append("\"").append(field.field()).append("\":\"").append(field.label()).append("\"");
+        }
+        return example.append("}").toString();
+    }
+
+    private static String confidenceExample(ImportTarget target) {
+        StringBuilder example = new StringBuilder("{");
+        for (ImportTarget.Field field : target.fields()) {
+            if (example.length() > 1) {
+                example.append(",");
+            }
+            example.append("\"")
+                    .append(field.field())
+                    .append("\":")
+                    .append(field.required() ? "0.99" : "0.9");
+        }
+        return example.append("}").toString();
+    }
+
+    private static String fieldHint(ImportTarget target) {
+        StringBuilder hint = new StringBuilder();
+        for (ImportTarget.Field field : target.fields()) {
+            if (hint.length() > 0) {
+                hint.append("、");
+            }
+            hint.append(field.field())
+                    .append("（")
+                    .append(field.label())
+                    .append(field.required() ? "，必填" : "，可空")
+                    .append("）");
+        }
+        return hint.toString();
+    }
+
+    private static List<List<String>> truncateGrid(List<List<String>> grid) {
+        if (grid == null) {
+            return List.of();
+        }
+        return grid.stream()
                 .limit(MAX_ROWS)
-                .map(row -> {
-                    Map<String, String> copy = new LinkedHashMap<>();
-                    row.forEach((key, value) -> copy.put(key, truncate(value, MAX_CELL)));
-                    return copy;
-                })
+                .map(row -> row.stream()
+                        .limit(MAX_COLUMNS)
+                        .map(cell -> truncate(cell, MAX_CELL))
+                        .toList())
                 .toList();
     }
 

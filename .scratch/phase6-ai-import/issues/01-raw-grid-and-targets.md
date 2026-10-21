@@ -4,13 +4,13 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `ExcelTableReader.readGrid`（合并单元格、公式、多工作表、空表）
-- [ ] 网格上限：超过 500 行或 60 列返回可读错误，提示拆分
-- [ ] `ImportTarget.TIMETABLE` + `kind`（ENTITY/GRID）
-- [ ] `AiImportPrompts.gridPrompt` + 目标字段注入；text/image 提示词去教师硬编码
-- [ ] `AiImportService.startExcel` 自动识别路径改用 `readGrid`
-- [ ] `paiban.ai.timeout-seconds` 默认 120；超时类失败最多 2 次
-- [ ] `ExcelTableReaderTest`、`AiImportPromptsTest`
-- [ ] 教师导入回归测试
+- [x] `ExcelTableReader.readGrid`（合并单元格、公式、多工作表、空表）
+- [x] 网格上限：超过 500 行或 60 列返回可读错误，提示拆分
+- [x] `ImportTarget.TIMETABLE` + `kind`（ENTITY/GRID）
+- [x] `AiImportPrompts.gridPrompt` + 目标字段注入；text/image 提示词去教师硬编码
+- [x] `AiImportService.startExcel` 自动识别路径改用 `readGrid`
+- [x] `paiban.ai.timeout-seconds` 默认 120；超时类失败最多 2 次
+- [x] `ExcelTableReaderTest`、`AiImportPromptsTest`
+- [x] 教师导入回归测试
