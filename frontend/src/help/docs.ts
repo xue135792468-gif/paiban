@@ -38,6 +38,11 @@ const META: Record<HelpSlug, { title: string; summary: string; group: HelpGroupT
     summary: '约束配置、提交排课、草稿微调与发布',
     group: '功能模块',
   },
+  'manual-adjust': {
+    title: '手工调课',
+    summary: '草稿上的同班换位、跨班换人与撤销',
+    group: '功能模块',
+  },
   substitution: {
     title: '调代',
     summary: '调代申请、审批与通知',

@@ -19,9 +19,11 @@ import com.paiban.scheduling.domain.DraftLessonRepository;
 import com.paiban.scheduling.domain.TimetableDraft;
 import com.paiban.scheduling.domain.TimetableDraftRepository;
 import com.paiban.scheduling.solver.ConstraintSettings;
+import com.paiban.scheduling.web.SchedulingDtos.LessonOverride;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -73,6 +75,11 @@ public class DraftValidator {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * Single-lesson special case of {@link #validateMoves}. Period and room are
+     * assigned unconditionally, including nulls, so the existing endpoint keeps its
+     * exact behaviour.
+     */
     @Transactional(readOnly = true)
     public ValidationResult validateMove(Long draftId, Long lessonId, Long periodId, Long roomId) {
         Snapshot snapshot = snapshot(draftId);
@@ -82,31 +89,172 @@ public class DraftValidator {
                 .orElseThrow(() -> ApiException.notFound("课节不存在: " + lessonId));
         moved.periodId = periodId;
         moved.roomId = roomId;
+        return resultOf(checkAffected(snapshot, Set.of(moved.id)));
+    }
 
-        List<Conflict> conflicts = new ArrayList<>();
-        checkLesson(moved, snapshot, conflicts);
-        for (L other : snapshot.lessons) {
-            if (!other.id.equals(moved.id)) {
-                checkPair(moved, other, snapshot, conflicts);
-            }
-        }
-        checkGroups(snapshot, conflicts, moved.id);
-        return new ValidationResult(conflicts.isEmpty(), conflicts.size(), conflicts);
+    @Transactional(readOnly = true)
+    public ValidationResult validateMoves(Long draftId, List<LessonOverride> overrides) {
+        Snapshot snapshot = snapshot(draftId);
+        Set<Long> affected = applyOverrides(snapshot, overrides == null ? List.of() : overrides);
+        return resultOf(checkAffected(snapshot, affected));
+    }
+
+    /**
+     * A change that assigns every mutable attribute unconditionally, nulls included.
+     * Unlike {@link LessonOverride}, an explicit null clears the field, which is what
+     * an exact swap (including a room being handed over as null) needs.
+     */
+    public record LessonChange(Long lessonId, Long periodId, Long roomId, Long teacherId) {}
+
+    @Transactional(readOnly = true)
+    public ValidationResult validateChanges(Long draftId, List<LessonChange> changes) {
+        Snapshot snapshot = snapshot(draftId);
+        return resultOf(checkAffected(snapshot, applyChanges(snapshot, changes)));
     }
 
     @Transactional(readOnly = true)
     public ValidationResult validateDraft(Long draftId) {
-        Snapshot snapshot = snapshot(draftId);
-        List<Conflict> conflicts = new ArrayList<>();
-        for (L lesson : snapshot.lessons) {
-            checkLesson(lesson, snapshot, conflicts);
+        return resultOf(checkAffected(snapshot(draftId), null));
+    }
+
+    /**
+     * Evaluates independent override scenarios against one snapshot. Each scenario
+     * starts from a fresh copy of the lessons, so it never sees another scenario's
+     * changes. The snapshot itself (periods, rooms, courses, teachers, classes and
+     * constraint settings) is built once; this is what the drag preview and the swap
+     * candidate list need, where one request asks "what if" for many targets.
+     */
+    @Transactional(readOnly = true)
+    public List<ValidationResult> validateScenarios(Long draftId, List<List<LessonOverride>> scenarios) {
+        Snapshot base = snapshot(draftId);
+        List<ValidationResult> results = new ArrayList<>(scenarios.size());
+        for (List<LessonOverride> scenario : scenarios) {
+            Snapshot copy = base.withFreshLessons();
+            results.add(resultOf(checkAffected(copy, applyOverrides(copy, scenario))));
         }
-        for (int i = 0; i < snapshot.lessons.size(); i++) {
-            for (int j = i + 1; j < snapshot.lessons.size(); j++) {
-                checkPair(snapshot.lessons.get(i), snapshot.lessons.get(j), snapshot, conflicts);
+        return results;
+    }
+
+    /**
+     * Same as {@link #validateScenarios}, but each scenario is an exact change list
+     * (an explicit null clears a field). Swap candidates need this because exchanging
+     * rooms may hand a lesson a null room, which {@link LessonOverride} cannot express.
+     */
+    @Transactional(readOnly = true)
+    public List<ValidationResult> validateChangeScenarios(Long draftId, List<List<LessonChange>> scenarios) {
+        Snapshot base = snapshot(draftId);
+        List<ValidationResult> results = new ArrayList<>(scenarios.size());
+        for (List<LessonChange> scenario : scenarios) {
+            Snapshot copy = base.withFreshLessons();
+            results.add(resultOf(checkAffected(copy, applyChanges(copy, scenario))));
+        }
+        return results;
+    }
+
+    /** Applies exact changes to the in-memory snapshot and returns the affected lesson ids. */
+    private Set<Long> applyChanges(Snapshot snapshot, List<LessonChange> changes) {
+        Map<Long, L> byId = new HashMap<>();
+        snapshot.lessons.forEach(lesson -> byId.put(lesson.id, lesson));
+        Set<Long> affected = new LinkedHashSet<>();
+        for (LessonChange change : changes == null ? List.<LessonChange>of() : changes) {
+            L lesson = byId.get(change.lessonId());
+            if (lesson == null) {
+                throw ApiException.notFound("课节不存在: " + change.lessonId());
+            }
+            lesson.periodId = change.periodId();
+            lesson.roomId = change.roomId();
+            lesson.teacherId = change.teacherId();
+            affected.add(lesson.id);
+        }
+        return affected;
+    }
+
+    /**
+     * Group rules only report when they are enabled and hard, so a draft without any
+     * of them needs no per-day counts. This keeps scenario evaluation cheap for the
+     * default configuration, which only has the pairwise rules.
+     */
+    private boolean groupRulesEnabled(ConstraintSettings settings) {
+        return List.of(
+                        ConstraintType.TEACHER_MAX_PER_DAY,
+                        ConstraintType.CLASS_MAX_PER_DAY,
+                        ConstraintType.COURSE_MAX_PER_DAY,
+                        ConstraintType.EVENING_MAX,
+                        ConstraintType.SPORT_NOT_FIRST_AFTERNOON)
+                .stream()
+                .anyMatch(type -> settings.enabled(type) && settings.hard(type));
+    }
+
+    /** Applies every override to the in-memory snapshot and returns the affected lesson ids. */
+    private Set<Long> applyOverrides(Snapshot snapshot, List<LessonOverride> overrides) {
+        Map<Long, L> byId = new HashMap<>();
+        snapshot.lessons.forEach(lesson -> byId.put(lesson.id, lesson));
+        Set<Long> affected = new LinkedHashSet<>();
+        for (LessonOverride override : overrides) {
+            L lesson = byId.get(override.lessonId());
+            if (lesson == null) {
+                throw ApiException.notFound("课节不存在: " + override.lessonId());
+            }
+            if (override.periodId() != null) {
+                lesson.periodId = override.periodId();
+            }
+            if (override.roomId() != null) {
+                lesson.roomId = override.roomId();
+            }
+            if (override.teacherId() != null) {
+                lesson.teacherId = override.teacherId();
+            }
+            affected.add(lesson.id);
+        }
+        return affected;
+    }
+
+    /**
+     * Shared rule engine. A null set means the whole draft; an empty set means no
+     * lesson changed, so nothing can conflict. For an affected set the pair scan
+     * only visits pairs touching an affected lesson, and each such pair is checked
+     * once with the affected lesson as the subject, so conflicts stay attributed to
+     * the lesson that moved and the quadratic scan is not paid for unaffected pairs.
+     */
+    private List<Conflict> checkAffected(Snapshot s, Set<Long> affectedLessonIds) {
+        boolean wholeDraft = affectedLessonIds == null;
+        List<L> lessons = s.lessons;
+        List<Conflict> out = new ArrayList<>();
+        for (L lesson : lessons) {
+            if (wholeDraft || affectedLessonIds.contains(lesson.id)) {
+                checkLesson(lesson, s, out);
             }
         }
-        checkGroups(snapshot, conflicts, null);
+        if (wholeDraft) {
+            for (int i = 0; i < lessons.size(); i++) {
+                for (int j = i + 1; j < lessons.size(); j++) {
+                    checkPair(lessons.get(i), lessons.get(j), s, out);
+                }
+            }
+        } else {
+            for (int i = 0; i < lessons.size(); i++) {
+                L a = lessons.get(i);
+                if (!affectedLessonIds.contains(a.id)) {
+                    continue;
+                }
+                for (int j = i + 1; j < lessons.size(); j++) {
+                    checkPair(a, lessons.get(j), s, out);
+                }
+                for (int j = 0; j < i; j++) {
+                    L b = lessons.get(j);
+                    if (!affectedLessonIds.contains(b.id)) {
+                        checkPair(a, b, s, out);
+                    }
+                }
+            }
+        }
+        if (groupRulesEnabled(s.settings)) {
+            checkGroups(s, out, wholeDraft ? null : affectedLessonIds);
+        }
+        return out;
+    }
+
+    private ValidationResult resultOf(List<Conflict> conflicts) {
         return new ValidationResult(conflicts.isEmpty(), conflicts.size(), conflicts);
     }
 
@@ -234,7 +382,7 @@ public class DraftValidator {
     }
 
     /** Day-level and slot-level rules that need counts rather than pairs. */
-    private void checkGroups(Snapshot s, List<Conflict> out, Long onlyLessonId) {
+    private void checkGroups(Snapshot s, List<Conflict> out, Set<Long> affectedLessonIds) {
         Map<String, Integer> teacherPerDay = new HashMap<>();
         Map<String, Integer> classPerDay = new HashMap<>();
         Map<String, Integer> coursePerDay = new HashMap<>();
@@ -257,13 +405,13 @@ public class DraftValidator {
             if (period.getSection() == PeriodSection.EVENING) {
                 eveningPerClass.merge(classKey, 1, Integer::sum);
             }
-            if (onlyLessonId != null && onlyLessonId.equals(lesson.id)) {
+            if (affectedLessonIds != null && affectedLessonIds.contains(lesson.id)) {
                 relevantKeys.add(teacherKey);
                 relevantKeys.add(classKey);
                 relevantKeys.add(courseKey);
             }
         }
-        boolean filter = onlyLessonId != null;
+        boolean filter = affectedLessonIds != null;
 
         ConstraintType teacherMax = ConstraintType.TEACHER_MAX_PER_DAY;
         if (s.settings.enabled(teacherMax) && s.settings.hard(teacherMax)) {
@@ -322,7 +470,7 @@ public class DraftValidator {
                 if (lesson.periodId == null) {
                     continue;
                 }
-                if (filter && !onlyLessonId.equals(lesson.id)) {
+                if (filter && !affectedLessonIds.contains(lesson.id)) {
                     continue;
                 }
                 Period period = s.periods.get(lesson.periodId);
@@ -414,7 +562,14 @@ public class DraftValidator {
 
     private record Snapshot(List<L> lessons, Map<Long, Period> periods, Map<Long, Room> rooms,
                             Map<Long, Course> courses, Map<Long, Teacher> teachers,
-                            Map<Long, AdminClass> classes, ConstraintSettings settings) {}
+                            Map<Long, AdminClass> classes, ConstraintSettings settings) {
+
+        /** Same reference data, independent lesson copies, for scenario evaluation. */
+        Snapshot withFreshLessons() {
+            return new Snapshot(lessons.stream().map(L::copy).toList(),
+                    periods, rooms, courses, teachers, classes, settings);
+        }
+    }
 
     private static final class L {
         private Long id;
@@ -436,6 +591,19 @@ public class DraftValidator {
             copy.periodId = lesson.getPeriodId();
             copy.roomId = lesson.getRoomId();
             copy.studentCount = lesson.getStudentCount();
+            return copy;
+        }
+
+        L copy() {
+            L copy = new L();
+            copy.id = id;
+            copy.assignmentId = assignmentId;
+            copy.courseId = courseId;
+            copy.teacherId = teacherId;
+            copy.classId = classId;
+            copy.periodId = periodId;
+            copy.roomId = roomId;
+            copy.studentCount = studentCount;
             return copy;
         }
     }

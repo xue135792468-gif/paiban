@@ -2,6 +2,7 @@ package com.paiban.scheduling.web;
 
 import com.paiban.foundation.web.SemesterDtos.PeriodDto;
 import com.paiban.foundation.web.FoundationDtos.RoomDto;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -35,6 +36,17 @@ public final class SchedulingDtos {
 
     public record ValidateMoveRequest(@NotNull(message = "课节不能为空") Long lessonId,
                                       Long periodId, Long roomId) {}
+
+    /**
+     * One in-memory change to a draft lesson. A null field leaves that attribute
+     * unchanged, which is what teacher-only overrides (cross-class teacher exchange)
+     * need. Duplicate lesson ids merge field by field; later values win.
+     */
+    public record LessonOverride(@NotNull(message = "课节不能为空") Long lessonId,
+                                 Long periodId, Long roomId, Long teacherId) {}
+
+    public record ValidateMovesRequest(@NotNull(message = "覆盖列表不能为空")
+                                       @Valid List<LessonOverride> moves) {}
 
     public record MoveLessonRequest(Long periodId, Long roomId, Boolean force) {}
 

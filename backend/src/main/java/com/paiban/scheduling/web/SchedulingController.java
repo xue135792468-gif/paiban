@@ -11,6 +11,7 @@ import com.paiban.scheduling.web.SchedulingDtos.MoveResult;
 import com.paiban.scheduling.web.SchedulingDtos.RenameDraftRequest;
 import com.paiban.scheduling.web.SchedulingDtos.StartJobRequest;
 import com.paiban.scheduling.web.SchedulingDtos.ValidateMoveRequest;
+import com.paiban.scheduling.web.SchedulingDtos.ValidateMovesRequest;
 import jakarta.validation.Valid;
 import java.security.Principal;
 import java.util.List;
@@ -90,6 +91,14 @@ public class SchedulingController {
     public DraftValidator.ValidationResult validateMove(
             @PathVariable Long id, @Valid @RequestBody ValidateMoveRequest request) {
         return service.validateMove(id, request.lessonId(), request.periodId(), request.roomId());
+    }
+
+    @PostMapping("/timetable-drafts/{id}/validate-moves")
+    @PreAuthorize("hasAnyAuthority('" + Permissions.TIMETABLE_EDIT + "','" + Permissions.SCHEDULING_VIEW + "','"
+            + Permissions.TIMETABLE_PUBLISH + "')")
+    public DraftValidator.ValidationResult validateMoves(
+            @PathVariable Long id, @Valid @RequestBody ValidateMovesRequest request) {
+        return service.validateMoves(id, request.moves());
     }
 
     @PatchMapping("/timetable-drafts/{id}/lessons/{lessonId}")

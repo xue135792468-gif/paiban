@@ -47,8 +47,8 @@ describe('HELP_DOCS', () => {
 
   it('groups documents by feature module and by scenario flow', () => {
     expect(HELP_GROUPS.map((group) => group.title)).toEqual(['功能模块', '场景流程'])
-    expect(HELP_GROUPS[0].docs.map((doc) => doc.slug)).toEqual(HELP_SLUGS.slice(0, 5))
-    expect(HELP_GROUPS[1].docs.map((doc) => doc.slug)).toEqual(HELP_SLUGS.slice(5))
+    expect(HELP_GROUPS[0].docs.map((doc) => doc.slug)).toEqual(HELP_SLUGS.slice(0, 6))
+    expect(HELP_GROUPS[1].docs.map((doc) => doc.slug)).toEqual(HELP_SLUGS.slice(6))
   })
 
   it('links to routes that exist in the router', () => {
