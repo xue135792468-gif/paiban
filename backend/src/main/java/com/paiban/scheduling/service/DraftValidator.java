@@ -99,6 +99,32 @@ public class DraftValidator {
         return resultOf(checkAffected(snapshot, affected));
     }
 
+    /**
+     * A change that assigns every mutable attribute unconditionally, nulls included.
+     * Unlike {@link LessonOverride}, an explicit null clears the field, which is what
+     * an exact swap (including a room being handed over as null) needs.
+     */
+    public record LessonChange(Long lessonId, Long periodId, Long roomId, Long teacherId) {}
+
+    @Transactional(readOnly = true)
+    public ValidationResult validateChanges(Long draftId, List<LessonChange> changes) {
+        Snapshot snapshot = snapshot(draftId);
+        Map<Long, L> byId = new HashMap<>();
+        snapshot.lessons.forEach(lesson -> byId.put(lesson.id, lesson));
+        Set<Long> affected = new LinkedHashSet<>();
+        for (LessonChange change : changes == null ? List.<LessonChange>of() : changes) {
+            L lesson = byId.get(change.lessonId());
+            if (lesson == null) {
+                throw ApiException.notFound("课节不存在: " + change.lessonId());
+            }
+            lesson.periodId = change.periodId();
+            lesson.roomId = change.roomId();
+            lesson.teacherId = change.teacherId();
+            affected.add(lesson.id);
+        }
+        return resultOf(checkAffected(snapshot, affected));
+    }
+
     @Transactional(readOnly = true)
     public ValidationResult validateDraft(Long draftId) {
         return resultOf(checkAffected(snapshot(draftId), null));
