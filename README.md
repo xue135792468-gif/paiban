@@ -52,8 +52,33 @@ cd backend
 SPRING_PROFILES_ACTIVE=postgres ./mvnw spring-boot:run
 ```
 
-或一键：先在 `.env` 设置 `PAIBAN_JWT_SECRET` 与 `PAIBAN_AI_ENCRYPTION_KEY`，再
-`docker compose up --build`，前端在 http://localhost:5173 ，后端在 http://localhost:8080 。
+或一键：先复制 `.env.example` 为 `.env` 并改掉所有占位值，再
+`docker compose up -d --build`，前端在 http://localhost:5173 ，后端在 http://localhost:8080 。
+
+### 生产部署清单
+
+上线前逐项确认：
+
+1. **密钥与数据库密码**：`.env` 里的 `PAIBAN_JWT_SECRET`（至少 32 字符）、
+   `PAIBAN_AI_ENCRYPTION_KEY`、`POSTGRES_PASSWORD` 全部换成强随机值；
+   `openssl rand -hex 32` 可直接生成。跨域访问时再设置
+   `PAIBAN_CORS_ALLOWED_ORIGINS`（同源 nginx 部署不需要）。
+2. **HTTPS 与域名**：飞书 H5 要求 HTTPS。用 Caddy / Traefik / nginx + Let's Encrypt
+   或 Cloudflare Tunnel 在 443 终止 TLS，转发到 `127.0.0.1:5173`。
+3. **端口**：compose 已把 PostgreSQL（`127.0.0.1:5432`）和后端（`127.0.0.1:8080`）限制在本机；
+   防火墙只对公网开放 80/443。
+4. **首次启动**：`docker compose up -d --build`，确认
+   `curl http://127.0.0.1:8080/api/health` 返回 `UP`。
+5. **初始管理员**：若未设置 `PAIBAN_SECURITY_BOOTSTRAP_ADMIN_PASSWORD`，从
+   `docker compose logs backend` 读取一次性生成的密码；登录后立即修改。
+6. **系统设置**：设置中心把「外部访问地址」填成 `https://你的域名`；
+   启用飞书时填写 App ID / App Secret / 验证 Token，并把事件回调地址设为
+   `https://你的域名/api/integrations/feishu/event`。
+7. **备份**：`./scripts/backup.sh` 生成 PostgreSQL 与 uploads 备份，默认保留 14 天；
+   恢复命令见脚本头部注释。建议加到 cron。
+8. **限流**：应用本身没有登录失败锁定，请在反向代理层加登录限流。
+
+> 生产环境不要使用默认的 `admin/admin123`；非 local/test/e2e profile 下应用会拒绝默认 JWT 密钥。
 
 ### 首次 AI 部署向导
 

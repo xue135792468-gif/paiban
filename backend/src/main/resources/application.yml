@@ -33,6 +33,9 @@ paiban:
       natural-language-constraints: false
   scheduling:
     max-solve-seconds: 60
+  cors:
+    # Comma-separated. A same-origin deployment behind the bundled nginx does not need CORS.
+    allowed-origins: ${PAIBAN_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   integration:
     dingtalk:
       enabled: false
