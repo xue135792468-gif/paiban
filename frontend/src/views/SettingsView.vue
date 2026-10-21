@@ -258,6 +258,17 @@
         <el-tag size="small" type="info">即将推出</el-tag>
       </div>
     </el-card>
+
+    <el-card id="wizard-reenter" shadow="never">
+      <template #header><span class="card-title">初始化向导</span></template>
+      <div class="ai-row">
+        <div>
+          <div class="ai-name">重新走一遍初始化步骤</div>
+          <div class="hint">按学期开学的顺序检查学校信息、作息、基础数据、授课任务与约束是否就绪。</div>
+        </div>
+        <el-button plain @click="router.push('/onboarding')">重新进入初始化向导</el-button>
+      </div>
+    </el-card>
   </div>
 </template>
 
