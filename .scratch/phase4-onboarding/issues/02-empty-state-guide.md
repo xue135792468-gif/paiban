@@ -4,14 +4,14 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `EmptyStateGuide` 组件：props 接收 title、description、buttonText、buttonAction、helpLink
-- [ ] 统一样式：图标 + 标题 + 描述 + 按钮 + 链接，居中显示
-- [ ] 覆盖页面：
+- [x] `EmptyStateGuide` 组件：props 接收 title、description、buttonText、buttonAction、helpLink
+- [x] 统一样式：图标 + 标题 + 描述 + 按钮 + 链接，居中显示
+- [x] 覆盖页面：
   - 基础数据：年级/班级/教师/教室/课程列表页
   - 排课：授课任务列表、约束配置、排课任务列表
   - 调代：调代申请列表、审批列表
   - 课表：课表查看页（无发布课表时）
-- [ ] 每个页面的空状态文案与跳转目标配置化
-- [ ] Playwright E2E 测试：验证无数据时显示引导、按钮跳转正确、帮助链接打开
+- [x] 每个页面的空状态文案与跳转目标配置化
+- [x] Playwright E2E 测试：验证无数据时显示引导、按钮跳转正确、帮助链接打开

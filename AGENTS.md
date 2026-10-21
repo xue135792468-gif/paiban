@@ -10,6 +10,8 @@
 - `GLOSSARY.md` — 领域术语：行政班、授课任务、基线、调代
 - `.scratch/phase1-mvp/` — 一期规格、15 张票据与 PR 记录
 - `.scratch/phase2-ai/` — 二期规格、6 张票据、跨票据接口契约
+- `.scratch/phase3-feishu/` — 三期规格、5 张票据、飞书集成契约
+- `.scratch/phase4-onboarding/` — 四期规格、5 张票据、引导与帮助中心契约（`frontend/src/onboarding`、`frontend/src/help`）
 
 ## 后端模块（backend/src/main/java/com/paiban）
 

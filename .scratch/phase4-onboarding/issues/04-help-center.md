@@ -4,22 +4,22 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 前端路由 `/help`，帮助中心首页
-- [ ] Markdown 渲染：引入 marked 或 markdown-it，渲染静态 .md 文件
-- [ ] 文档结构：
+- [x] 前端路由 `/help`，帮助中心首页
+- [x] Markdown 渲染：引入 marked 或 markdown-it，渲染静态 .md 文件
+- [x] 文档结构：
   - 功能模块：基础数据、排课、调代、课表查看、设置
   - 场景流程：新学期开学、日常调代、期末统计
-- [ ] 快速跳转：Markdown 中的链接使用 Vue Router 路由（如 `[创建班级](/foundation/classes)`）
-- [ ] 侧边栏导航：文档目录树，支持折叠展开
-- [ ] 搜索功能：前端全文搜索（简单实现，不引入后端）
-- [ ] 文档内容撰写：
+- [x] 快速跳转：Markdown 中的链接使用 Vue Router 路由（如 `[创建班级](/foundation/classes)`）
+- [x] 侧边栏导航：文档目录树，支持折叠展开
+- [x] 搜索功能：前端全文搜索（简单实现，不引入后端）
+- [x] 文档内容撰写：
   - 基础数据：年级/班级/教师/教室/课程的创建与导入
   - 排课：约束配置、提交排课、草稿编辑、发布
   - 调代：申请、审批、查看通知
   - 课表查看：视角切换、导出
   - 设置：学校类型、AI 供应商、平台切换
   - 场景流程：开学流程（初始化向导）、调代流程、期末统计
-- [ ] 打印样式：帮助文档打印时隐藏导航栏
-- [ ] Playwright E2E 测试：路由、Markdown 渲染、快速跳转、搜索
+- [x] 打印样式：帮助文档打印时隐藏导航栏
+- [x] Playwright E2E 测试：路由、Markdown 渲染、快速跳转、搜索
