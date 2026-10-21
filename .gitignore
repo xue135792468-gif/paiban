@@ -26,6 +26,9 @@ blob-report/
 .nyc_output/
 coverage/
 
+# local backups
+backups/
+
 # editor / os
 .idea/
 .vscode/
