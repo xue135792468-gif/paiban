@@ -22,9 +22,7 @@ async function fireDrag(page: Page, node: ElementHandle, type: string) {
   await page.evaluate(
     ({ element, eventType }) => {
       const dataTransfer = new DataTransfer()
-      element.dispatchEvent(
-        new DragEvent(eventType, { bubbles: true, cancelable: true, dataTransfer }),
-      )
+      element.dispatchEvent(new DragEvent(eventType, { bubbles: true, cancelable: true, dataTransfer }))
     },
     { element: node, eventType: type },
   )
@@ -47,8 +45,15 @@ test('场景 1b：草稿拖拽冲突高亮与移动', async ({ page }) => {
 
   const source = await page.locator('.cell:has(.lesson)').first().locator('.lesson').elementHandle()
   const conflictCell = await page.locator('.cell:has(.lesson)').nth(1).elementHandle()
+  const undoButton = page.getByRole('button', { name: /撤销/ })
+  const waitForReload = () =>
+    page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' && response.url().endsWith(`/api/timetable-drafts/${draftId}`),
+    )
   expect(source).not.toBeNull()
   expect(conflictCell).not.toBeNull()
+  await expect(undoButton).toBeDisabled()
 
   await fireDrag(page, source!, 'dragstart')
   await expect(page.locator('.cell.invalid-target').first()).toBeVisible({ timeout: 20_000 })
@@ -62,8 +67,36 @@ test('场景 1b：草稿拖拽冲突高亮与移动', async ({ page }) => {
   })
   const freeCell = await page.locator('.cell.valid-target:not(:has(.lesson))').first().elementHandle()
   expect(freeCell).not.toBeNull()
+  const firstMoveReload = waitForReload()
   await dropOn(page, freeCell!)
-  await expect(page.getByText('已移动课节')).toBeVisible()
+  await firstMoveReload
+  await expect(undoButton).toBeEnabled()
+
+  const undoReload = waitForReload()
+  await undoButton.click()
+  await undoReload
+  await expect(undoButton).toBeDisabled()
+
+  const sourceAfterUndo = await page.locator('.cell:has(.lesson)').first().locator('.lesson').elementHandle()
+  expect(sourceAfterUndo).not.toBeNull()
+  await fireDrag(page, sourceAfterUndo!, 'dragstart')
+  await expect(page.locator('.cell.valid-target:not(:has(.lesson))').first()).toBeVisible({
+    timeout: 20_000,
+  })
+  const freeCellAfterUndo = await page
+    .locator('.cell.valid-target:not(:has(.lesson))')
+    .first()
+    .elementHandle()
+  expect(freeCellAfterUndo).not.toBeNull()
+  const secondMoveReload = waitForReload()
+  await dropOn(page, freeCellAfterUndo!)
+  await secondMoveReload
+  await expect(undoButton).toBeEnabled()
+
+  const keyboardUndoReload = waitForReload()
+  await page.keyboard.press('Control+z')
+  await expect(undoButton).toBeDisabled()
+  await keyboardUndoReload
 })
 
 test('场景 1：录入数据 → 自动排课 → 发布 → 查看课表', async ({ page }) => {
