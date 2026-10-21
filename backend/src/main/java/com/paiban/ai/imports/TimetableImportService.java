@@ -17,6 +17,7 @@ import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.foundation.domain.TeachingClass;
 import com.paiban.foundation.domain.TeachingClassRepository;
 import com.paiban.foundation.service.SemesterService;
+import com.paiban.foundation.web.SemesterDtos.SemesterDto;
 import com.paiban.scheduling.domain.Assignment;
 import com.paiban.scheduling.domain.AssignmentRepository;
 import com.paiban.scheduling.domain.DraftLesson;
@@ -94,7 +95,82 @@ public class TimetableImportService {
                 ? semesterService.requireCurrent()
                 : semesterService.require(semesterId);
         Long sid = semester.getId();
+        Match match = match(rows, sid);
+        if (!match.errors().isEmpty()) {
+            return new Result(null, 0, List.copyOf(match.errors()), List.of());
+        }
+        List<ResolvedRow> resolved = match.resolved();
+        Map<AssignmentKey, List<ResolvedRow>> groups = new LinkedHashMap<>();
+        for (ResolvedRow row : resolved) {
+            groups.computeIfAbsent(new AssignmentKey(row.adminClass().getId(), row.course().getId()), key -> new ArrayList<>())
+                    .add(row);
+        }
 
+        Map<AssignmentKey, Assignment> assignmentsByKey = new LinkedHashMap<>();
+        List<String> warnings = new ArrayList<>();
+        for (Map.Entry<AssignmentKey, List<ResolvedRow>> entry : groups.entrySet()) {
+            AssignmentKey key = entry.getKey();
+            List<ResolvedRow> group = entry.getValue();
+            TeachingClass teachingClass = teachingClasses.findByAdminClassId(key.adminClassId())
+                    .orElseGet(() -> createTeachingClass(sid, group.get(0).adminClass()));
+            Assignment assignment = upsertAssignment(sid, group, teachingClass, key.courseId());
+            assignmentsByKey.put(key, assignment);
+            warnOnMultipleTeachers(group, warnings);
+        }
+
+        TimetableDraft draft = new TimetableDraft();
+        draft.setSemesterId(sid);
+        draft.setName("导入课表 " + LocalDateTime.now().format(DRAFT_NAME_TIME));
+        draft.setStatus("DRAFT");
+        draft.setScoreHard(0);
+        draft.setScoreSoft(0);
+        draft.setCreatedBy(username);
+        draft.setCreatedAt(Instant.now());
+        TimetableDraft savedDraft = drafts.save(draft);
+
+        List<DraftLesson> lessons = new ArrayList<>();
+        Map<AssignmentKey, Integer> nextIndex = new LinkedHashMap<>();
+        for (ResolvedRow row : resolved) {
+            AssignmentKey key = new AssignmentKey(row.adminClass().getId(), row.course().getId());
+            int index = nextIndex.merge(key, 1, Integer::sum) - 1;
+            DraftLesson lesson = new DraftLesson();
+            lesson.setDraftId(savedDraft.getId());
+            lesson.setAssignmentId(assignmentsByKey.get(key).getId());
+            lesson.setLessonIndex(index);
+            lesson.setCourseId(row.course().getId());
+            lesson.setTeacherId(row.teacher().getId());
+            lesson.setAdminClassId(row.adminClass().getId());
+            lesson.setStudentCount(row.adminClass().getStudentCount());
+            lesson.setPeriodId(row.period().getId());
+            lesson.setRoomId(row.room() == null ? null : row.room().getId());
+            lessons.add(lesson);
+        }
+        draftLessons.saveAll(lessons);
+        return new Result(savedDraft.getId(), lessons.size(), List.of(), List.copyOf(warnings));
+    }
+
+    /**
+     * Matches the rows against foundation data without writing anything. This is the
+     * preview-side half of {@link #importRows}: same name matching, same row errors,
+     * no draft and no task changes.
+     */
+    @Transactional(readOnly = true)
+    public List<RowErrorDto> analyze(List<RowDto> rows, Long semesterId) {
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+        Long sid = semesterId == null
+                ? semesterService.current().map(SemesterDto::id).orElse(null)
+                : semesterService.require(semesterId).getId();
+        if (sid == null) {
+            // Nothing to match against until a current semester exists; commit reports it.
+            return List.of();
+        }
+        return List.copyOf(match(rows, sid).errors());
+    }
+
+    /** Resolves every row to foundation entities; any unmatched name becomes a row error. */
+    private Match match(List<RowDto> rows, Long sid) {
         Map<String, AdminClass> classByName = new LinkedHashMap<>();
         for (AdminClass adminClass : adminClasses.findBySemesterIdOrderByGradeIdAscNameAsc(sid)) {
             classByName.putIfAbsent(normalizeName(adminClass.getName()), adminClass);
@@ -219,58 +295,10 @@ public class TimetableImportService {
                 resolved.add(new ResolvedRow(adminClass, course, teacher, room, period));
             }
         }
-        if (!errors.isEmpty()) {
-            return new Result(null, 0, List.copyOf(errors), List.of());
-        }
-
-        Map<AssignmentKey, List<ResolvedRow>> groups = new LinkedHashMap<>();
-        for (ResolvedRow row : resolved) {
-            groups.computeIfAbsent(new AssignmentKey(row.adminClass().getId(), row.course().getId()), key -> new ArrayList<>())
-                    .add(row);
-        }
-
-        Map<AssignmentKey, Assignment> assignmentsByKey = new LinkedHashMap<>();
-        List<String> warnings = new ArrayList<>();
-        for (Map.Entry<AssignmentKey, List<ResolvedRow>> entry : groups.entrySet()) {
-            AssignmentKey key = entry.getKey();
-            List<ResolvedRow> group = entry.getValue();
-            TeachingClass teachingClass = teachingClasses.findByAdminClassId(key.adminClassId())
-                    .orElseGet(() -> createTeachingClass(sid, group.get(0).adminClass()));
-            Assignment assignment = upsertAssignment(sid, group, teachingClass, key.courseId());
-            assignmentsByKey.put(key, assignment);
-            warnOnMultipleTeachers(group, warnings);
-        }
-
-        TimetableDraft draft = new TimetableDraft();
-        draft.setSemesterId(sid);
-        draft.setName("导入课表 " + LocalDateTime.now().format(DRAFT_NAME_TIME));
-        draft.setStatus("DRAFT");
-        draft.setScoreHard(0);
-        draft.setScoreSoft(0);
-        draft.setCreatedBy(username);
-        draft.setCreatedAt(Instant.now());
-        TimetableDraft savedDraft = drafts.save(draft);
-
-        List<DraftLesson> lessons = new ArrayList<>();
-        Map<AssignmentKey, Integer> nextIndex = new LinkedHashMap<>();
-        for (ResolvedRow row : resolved) {
-            AssignmentKey key = new AssignmentKey(row.adminClass().getId(), row.course().getId());
-            int index = nextIndex.merge(key, 1, Integer::sum) - 1;
-            DraftLesson lesson = new DraftLesson();
-            lesson.setDraftId(savedDraft.getId());
-            lesson.setAssignmentId(assignmentsByKey.get(key).getId());
-            lesson.setLessonIndex(index);
-            lesson.setCourseId(row.course().getId());
-            lesson.setTeacherId(row.teacher().getId());
-            lesson.setAdminClassId(row.adminClass().getId());
-            lesson.setStudentCount(row.adminClass().getStudentCount());
-            lesson.setPeriodId(row.period().getId());
-            lesson.setRoomId(row.room() == null ? null : row.room().getId());
-            lessons.add(lesson);
-        }
-        draftLessons.saveAll(lessons);
-        return new Result(savedDraft.getId(), lessons.size(), List.of(), List.copyOf(warnings));
+        return new Match(errors, resolved);
     }
+
+    private record Match(List<RowErrorDto> errors, List<ResolvedRow> resolved) {}
 
     /**
      * ADR-0022: the draft lesson's teacher is authoritative. When one (class, course)

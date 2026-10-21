@@ -4,11 +4,11 @@
 
 **Blocked by:** 01, 02
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `PreviewDto` 增加 `issues`（行号、字段、原值、候选、是否必须解决）
-- [ ] `GET /lookup`：按类型返回候选（班级限定当前学期；课程/教师/教室全局）
-- [ ] `POST /sessions/{id}/mapping`：应用映射、重新校验、返回预览
-- [ ] 显式创建：`create=true` 时创建缺失实体并映射，默认 false
-- [ ] 权限 `foundation:manage`；课表会话额外 `timetable:edit`
-- [ ] 测试：未匹配 → 映射 → 入库；不存在的 ID 拒绝；创建开关生效
+- [x] `PreviewDto` 增加 `issues`（行号、字段、原值、候选、是否必须解决）
+- [x] `GET /lookup`：按类型返回候选（班级限定当前学期；课程/教师/教室全局）
+- [x] `POST /sessions/{id}/mapping`：应用映射、重新校验、返回预览
+- [x] 显式创建：`create=true` 时创建缺失实体并映射，默认 false
+- [x] 权限 `foundation:manage`；课表会话额外 `timetable:edit`
+- [x] 测试：未匹配 → 映射 → 入库；不存在的 ID 拒绝；创建开关生效
