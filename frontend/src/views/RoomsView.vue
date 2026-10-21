@@ -32,7 +32,7 @@
         v-if="!loading && rooms.length === 0"
         title="还没有教室数据"
         description="教室是排课时的场地资源。点击下方按钮新建教室，或使用右上角「导入」从 Excel 批量导入。"
-        button-text="新建教室"
+        :button-text="auth.hasPermission('foundation:manage') ? '新建教室' : undefined"
         help-slug="foundation"
         help-anchor="rooms"
         @action="openCreate"

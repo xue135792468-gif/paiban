@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { apiCall, apiLogin, newContext } from './helpers'
+import { uiLogin } from './helpers'
 
 /**
  * These tests never rely on what the shared e2e database happens to contain:
@@ -9,26 +9,6 @@ import { apiCall, apiLogin, newContext } from './helpers'
  */
 
 const SEMESTER = { id: 9001, name: 'E2E 空状态学期', current: true }
-
-async function loginAsAdmin(page: Page) {
-  const api = await newContext()
-  try {
-    const token = await apiLogin(api)
-    const user = await apiCall(api, token, 'get', '/auth/me')
-    await page.addInitScript(
-      ([authToken, authUser]) => {
-        localStorage.setItem('paiban_token', authToken)
-        localStorage.setItem('paiban_user', authUser)
-        // Ticket 01's tour would otherwise cover the page; it is not under test here.
-        localStorage.setItem('paiban.tour.seen', '1')
-        localStorage.setItem('paiban.tour.advanced', '1')
-      },
-      [token, JSON.stringify(user)] as const,
-    )
-  } finally {
-    await api.dispose()
-  }
-}
 
 async function stubJson(page: Page, pattern: string, body: unknown) {
   await page.route(pattern, (route) =>
@@ -82,7 +62,7 @@ async function expectGuide(
 }
 
 test('基础数据与授课任务列表为空时显示引导', async ({ page }) => {
-  await loginAsAdmin(page)
+  await uiLogin(page, 'admin', 'admin123')
   await stubSemester(page)
   await stubEmptyFoundation(page)
 
@@ -147,7 +127,7 @@ test('基础数据与授课任务列表为空时显示引导', async ({ page }) 
 })
 
 test('无学期时引导去学期页', async ({ page }) => {
-  await loginAsAdmin(page)
+  await uiLogin(page, 'admin', 'admin123')
   await stubNoSemester(page)
   await stubEmptyFoundation(page)
 
@@ -171,8 +151,43 @@ test('无学期时引导去学期页', async ({ page }) => {
   }
 })
 
+test('排课草稿、排课历史与约束列表为空时显示引导', async ({ page }) => {
+  await uiLogin(page, 'admin', 'admin123')
+  await stubSemester(page)
+  await stubEmptyFoundation(page)
+  await stubJson(page, '**/api/timetable-drafts**', [])
+  await stubJson(page, '**/api/scheduling-jobs**', [])
+  await stubJson(page, '**/api/constraint-types', [])
+  await stubJson(page, '**/api/constraints**', [])
+
+  await page.goto('/admin/scheduling')
+  for (const item of [
+    { title: '还没有课表草稿', href: '/help/scheduling#draft' },
+    { title: '还没有排课历史', href: '/help/scheduling#run' },
+  ]) {
+    const root = page
+      .locator('[data-testid="empty-state-guide"]:visible')
+      .filter({ has: page.getByRole('heading', { name: item.title }) })
+    await expect(root).toHaveCount(1)
+    await expect(root.getByRole('link', { name: '查看帮助文档' })).toHaveAttribute(
+      'href',
+      item.href,
+    )
+  }
+
+  await page.goto('/admin/constraints')
+  const constraints = page
+    .locator('[data-testid="empty-state-guide"]:visible')
+    .filter({ has: page.getByRole('heading', { name: '还没有可配置的约束' }) })
+  await expect(constraints).toHaveCount(1)
+  await expect(constraints.getByRole('link', { name: '查看帮助文档' })).toHaveAttribute(
+    'href',
+    '/help/scheduling#constraints',
+  )
+})
+
 test('调代待审批与调代记录为空时显示引导', async ({ page }) => {
-  await loginAsAdmin(page)
+  await uiLogin(page, 'admin', 'admin123')
   await stubSemester(page)
   await stubJson(page, '**/api/substitution-requests**', [])
   await stubJson(page, '**/api/substitutions**', [])
@@ -180,6 +195,12 @@ test('调代待审批与调代记录为空时显示引导', async ({ page }) => 
   await stubJson(page, '**/api/teachers**', [])
 
   await page.goto('/substitutions')
+
+  // 默认的「我的调代」页签：我的申请为空时也要有引导。
+  await expectGuide(page, {
+    title: '还没有调代申请',
+    href: '/help/substitution#apply',
+  })
 
   await page.getByRole('tab', { name: '待审批' }).click()
   const pending = await expectGuide(page, {
@@ -196,7 +217,7 @@ test('调代待审批与调代记录为空时显示引导', async ({ page }) => 
 })
 
 test('课表无发布数据时引导去自动排课', async ({ page }) => {
-  await loginAsAdmin(page)
+  await uiLogin(page, 'admin', 'admin123')
   await stubNoSemester(page)
   await stubEmptyFoundation(page)
 

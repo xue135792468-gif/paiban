@@ -56,7 +56,14 @@
 
         <el-card shadow="never">
           <template #header><span class="card-title">我的申请</span></template>
-          <el-table v-loading="loadingMine" :data="myRequests" stripe>
+          <EmptyStateGuide
+            v-if="!loadingMine && myRequests.length === 0"
+            title="还没有调代申请"
+            description="请假时在上方选择日期与课节提交申请，审批进度会显示在这里。"
+            help-slug="substitution"
+            help-anchor="apply"
+          />
+          <el-table v-else v-loading="loadingMine" :data="myRequests" stripe>
             <el-table-column prop="effectiveDate" label="日期" width="120" />
             <el-table-column prop="periodLabel" label="节次" width="110" />
             <el-table-column prop="className" label="行政班" min-width="120" />

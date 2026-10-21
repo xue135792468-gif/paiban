@@ -93,7 +93,14 @@
     </el-card>
 
     <el-card v-else v-loading="loading" shadow="never" class="content-card">
-      <el-collapse v-model="activeCategories">
+      <EmptyStateGuide
+        v-if="!loading && groups.length === 0"
+        title="还没有可配置的约束"
+        description="当前学期没有返回任何排课约束。可以查看帮助文档，了解各类约束的作用与配置方式。"
+        help-slug="scheduling"
+        help-anchor="constraints"
+      />
+      <el-collapse v-else v-model="activeCategories">
         <el-collapse-item
           v-for="group in groups"
           :key="group.categoryLabel"

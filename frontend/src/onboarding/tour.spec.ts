@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { TOUR_ADVANCED_KEY, TOUR_SEEN_KEY, hasSeenTour, markTourSeen, resetTour, startTour } from './tour'
+import {
+  TOUR_ADVANCED_KEY,
+  TOUR_SEEN_KEY,
+  hasSeenTour,
+  markTourSeen,
+  resetTour,
+  resetTourDriver,
+  startTour,
+} from './tour'
 
 const driverMock = vi.hoisted(() => {
   const drive = vi.fn()
@@ -61,10 +69,16 @@ describe('tour progress', () => {
 
 describe('startTour', () => {
   beforeEach(() => {
+    // The module-level driver and the mock's return value both survive between
+    // tests, so reset them explicitly to keep every case runnable on its own.
+    resetTourDriver()
     localStorage.clear()
     document.body.innerHTML = ''
     driverMock.factory.mockClear()
     driverMock.drive.mockClear()
+    driverMock.destroy.mockClear()
+    driverMock.isActive.mockClear()
+    driverMock.isActive.mockReturnValue(false)
   })
 
   it('walks the six basic steps through the sidebar entries', () => {
@@ -131,6 +145,29 @@ describe('startTour', () => {
       opts: { driver: { destroy: () => void } },
     ) => void
     onDoneClick(undefined, {}, { driver: { destroy: driverMock.destroy } })
+
+    expect(hasSeenTour('basic')).toBe(true)
+    expect(driverMock.destroy).toHaveBeenCalled()
+  })
+
+  it('adds one visible skip button per popover and lets it end the tour', () => {
+    startTour('basic')
+
+    const onPopoverRender = lastConfig().onPopoverRender as (
+      popover: { wrapper: HTMLElement },
+      opts: { driver: { destroy: () => void } },
+    ) => void
+    const wrapper = document.createElement('div')
+    const render = () => onPopoverRender({ wrapper }, { driver: { destroy: driverMock.destroy } })
+
+    render()
+    render()
+
+    const buttons = wrapper.querySelectorAll<HTMLElement>('[data-testid="tour-skip"]')
+    expect(buttons).toHaveLength(1)
+    expect(buttons[0].textContent).toBe('跳过教程')
+
+    buttons[0].click()
 
     expect(hasSeenTour('basic')).toBe(true)
     expect(driverMock.destroy).toHaveBeenCalled()

@@ -10,15 +10,12 @@ async function skipWizardIfShown(page: Page) {
   if (!new URL(page.url()).pathname.startsWith('/onboarding')) return
   await page.getByRole('button', { name: '跳过向导' }).click()
 
-  // 票据 05 会给跳过加上确认弹窗；有就点确定，没有就直接继续。
+  // 票据 05 的跳过必须经过确认框；弹框缺失就是回归，让用例直接失败。
   const confirm = page.locator('.el-message-box')
-  const appeared = await confirm
-    .waitFor({ state: 'visible', timeout: 2_000 })
-    .then(() => true)
-    .catch(() => false)
-  if (appeared) {
-    await confirm.getByRole('button', { name: /确定|确认/ }).first().click()
-  }
+  await expect(confirm).toBeVisible()
+  await expect(confirm).toContainText('确定跳过初始化向导吗？')
+  await confirm.getByRole('button', { name: '确定' }).click()
+  await expect(confirm).toBeHidden()
   await page.waitForURL((url) => url.pathname === '/')
 }
 
@@ -50,7 +47,7 @@ test('跳过教程后不再自动弹出，设置页可以重新打开', async ({
   await skipWizardIfShown(page)
 
   await expect(popoverTitle(page)).toHaveText('欢迎使用排课系统')
-  await page.getByRole('button', { name: '跳过教程' }).click()
+  await page.getByTestId('tour-skip').click()
   await expect(page.locator('.driver-popover')).toBeHidden()
   // driver.js 在销毁回调里落盘标记；等它写完再刷新，避免与 reload 抢时序。
   await expect
@@ -67,6 +64,6 @@ test('跳过教程后不再自动弹出，设置页可以重新打开', async ({
   await page.getByRole('button', { name: '重新查看新手教程' }).click()
   await expect(popoverTitle(page)).toHaveText('欢迎使用排课系统')
 
-  await page.getByRole('button', { name: '跳过教程' }).click()
+  await page.getByTestId('tour-skip').click()
   await expect(page.locator('.driver-popover')).toBeHidden()
 })

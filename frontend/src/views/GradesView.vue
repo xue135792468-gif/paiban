@@ -63,7 +63,7 @@
         v-else-if="!loading && grades.length === 0"
         title="还没有年级数据"
         description="年级是行政班与授课任务的基础。点击下方按钮新建年级，或使用右上角「导入」从 Excel 批量导入。"
-        button-text="新建年级"
+        :button-text="auth.hasPermission('foundation:manage') ? '新建年级' : undefined"
         help-slug="foundation"
         help-anchor="grades"
         @action="openCreate"

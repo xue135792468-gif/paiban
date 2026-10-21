@@ -44,6 +44,28 @@ test('搜索关键词返回结果并可跳转', async ({ page }) => {
   await expect(page.getByTestId('help-content').getByText('每周节数').first()).toBeVisible()
 })
 
+test('文档之间的 /help 链接也走前端路由，不整页刷新', async ({ page }) => {
+  await uiLogin(page, 'admin', 'admin123')
+  await page.goto('/help/foundation')
+
+  // A full document reload wipes this marker; an in-SPA push keeps it.
+  await page.evaluate(() => {
+    ;(window as unknown as { __spaMarker?: string }).__spaMarker = 'kept'
+  })
+
+  await page
+    .getByTestId('help-content')
+    .getByRole('link', { name: '排课', exact: true })
+    .click()
+
+  await expect(page).toHaveURL(/\/help\/scheduling$/)
+  await expect(page.getByTestId('help-doc-title')).toHaveText('排课')
+  const marker = await page.evaluate(
+    () => (window as unknown as { __spaMarker?: string }).__spaMarker,
+  )
+  expect(marker).toBe('kept')
+})
+
 test('文档内站内链接跳到真实路由', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
   await page.goto('/help/foundation')

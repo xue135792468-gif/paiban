@@ -104,6 +104,42 @@ function isRendered(target: string): boolean {
 /** Only one tour overlay may exist at a time; a new one replaces whatever is running. */
 let activeDriver: ReturnType<typeof driver> | undefined
 
+/** Test seam: forget the module-level driver reference without touching storage or the DOM. */
+export function resetTourDriver(): void {
+  activeDriver = undefined
+}
+
+/** Both "skip" and "done" record the stage and close the overlay the same way. */
+function finishTour(stage: TourStage): NonNullable<Config['onCloseClick']> {
+  return (_element, _step, opts) => {
+    markTourSeen(stage)
+    opts.driver.destroy()
+  }
+}
+
+/** Adds the always-visible "跳过教程" text button the spec asks for (the × icon is not enough). */
+function renderSkipButton(
+  popover: { wrapper: HTMLElement },
+  driverInstance: { destroy: () => void },
+  stage: TourStage,
+) {
+  popover.wrapper.querySelector('[data-testid="tour-skip"]')?.remove()
+
+  const skip = document.createElement('button')
+  skip.type = 'button'
+  skip.dataset.testid = 'tour-skip'
+  skip.textContent = '跳过教程'
+  skip.style.cssText =
+    'display:block;width:100%;margin-top:10px;padding:2px 0;border:none;background:transparent;' +
+    'color:#6b7280;font-size:12px;text-align:center;cursor:pointer;text-decoration:underline;'
+  skip.addEventListener('click', () => {
+    markTourSeen(stage)
+    driverInstance.destroy()
+  })
+
+  popover.wrapper.appendChild(skip)
+}
+
 /** Missing menu entries (permissions, collapsed groups) are dropped instead of failing the whole tour. */
 function buildSteps(stage: TourStage): DriveStep[] {
   const definitions = stage === 'advanced' ? ADVANCED_STEPS : BASIC_STEPS
@@ -136,14 +172,9 @@ export function startTour(stage: TourStage): void {
     skipMissingElement: true,
     // driver.js skips onDestroyed when the tour is closed before its first highlight
     // settles, so the explicit buttons record the stage themselves.
-    onCloseClick: (_element, _step, opts) => {
-      markTourSeen(stage)
-      opts.driver.destroy()
-    },
-    onDoneClick: (_element, _step, opts) => {
-      markTourSeen(stage)
-      opts.driver.destroy()
-    },
+    onCloseClick: finishTour(stage),
+    onDoneClick: finishTour(stage),
+    onPopoverRender: (popover, opts) => renderSkipButton(popover, opts.driver, stage),
     onDestroyed: () => {
       markTourSeen(stage)
       activeDriver = undefined
