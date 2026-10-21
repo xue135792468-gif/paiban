@@ -8,7 +8,16 @@ import java.util.List;
  */
 public class ImportValidationException extends RuntimeException {
 
-    public record RowError(int row, String field, String message) {}
+    /**
+     * One rejected row. {@code candidates} carries the system values the user may
+     * pick instead when the failure was an unmatched name; it is empty otherwise.
+     */
+    public record RowError(int row, String field, String message, List<String> candidates) {
+
+        public RowError(int row, String field, String message) {
+            this(row, field, message, List.of());
+        }
+    }
 
     private final List<RowError> errors;
 

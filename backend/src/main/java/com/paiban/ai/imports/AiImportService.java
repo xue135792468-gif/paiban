@@ -59,6 +59,7 @@ public class AiImportService {
     private final UploadStorage storage;
     private final ObjectMapper objectMapper;
     private final UserService users;
+    private final TimetableImportService timetableImports;
 
     public AiImportService(
             AiGateway gateway,
@@ -68,7 +69,8 @@ public class AiImportService {
             SettingsService settings,
             UploadStorage storage,
             ObjectMapper objectMapper,
-            UserService users) {
+            UserService users,
+            TimetableImportService timetableImports) {
         this.gateway = gateway;
         this.logs = logs;
         this.parser = parser;
@@ -77,6 +79,7 @@ public class AiImportService {
         this.storage = storage;
         this.objectMapper = objectMapper;
         this.users = users;
+        this.timetableImports = timetableImports;
     }
 
     // ---------------------------------------------------------------- channels
@@ -191,16 +194,29 @@ public class AiImportService {
 
     @Transactional
     public CommitResultDto commit(long id, String username) {
+        return commit(id, null, username);
+    }
+
+    /**
+     * Writes the session's working rows into their target. Teacher rows become
+     * teacher records; timetable rows become a DRAFT timetable and return its id.
+     * The optional {@code semesterId} only applies to the timetable target.
+     */
+    @Transactional
+    public CommitResultDto commit(long id, Long semesterId, String username) {
         AiImportLog log = requireSession(id, username);
         requireEditable(log);
         ImportTarget target = targetOf(log);
-        if (target.kind() != ImportTarget.Kind.ENTITY) {
-            throw ApiException.badRequest("导入目标 " + target.code() + " 的入库功能尚未实现");
-        }
         Payload working = readWorkingPayload(log, target);
         List<RowDto> rows = working.rows();
         if (rows.isEmpty()) {
             throw ApiException.badRequest("没有可入库的数据");
+        }
+        if (target.kind() == ImportTarget.Kind.GRID) {
+            if (target != ImportTarget.TIMETABLE) {
+                throw ApiException.badRequest("导入目标 " + target.code() + " 的入库功能尚未实现");
+            }
+            return commitTimetable(log, working, rows, semesterId, username);
         }
         validate(rows);
         List<Teacher> entities = new ArrayList<>();
@@ -220,7 +236,32 @@ public class AiImportService {
         log.setImportedCount(entities.size());
         log.setResultJson(writeJson(Map.of("imported", entities.size(), "rows", rows)));
         touch(log);
-        return new CommitResultDto(entities.size(), List.of());
+        return new CommitResultDto(entities.size(), List.of(), null, List.of());
+    }
+
+    private CommitResultDto commitTimetable(
+            AiImportLog log, Payload working, List<RowDto> rows, Long semesterId, String username) {
+        requireTimetableEdit(username);
+        TimetableImportService.Result result = timetableImports.importRows(rows, semesterId, username);
+        if (!result.errors().isEmpty()) {
+            List<ImportValidationException.RowError> rowErrors = result.errors().stream()
+                    .map(error -> new ImportValidationException.RowError(
+                            error.row(), error.field(), error.message(), error.candidates()))
+                    .toList();
+            throw new ImportValidationException("数据校验失败，请修正后重试", rowErrors);
+        }
+        saveConfirmed(log, working.mappings(), rows, working.explanation(), AiImportLog.COMMITTED);
+        log.setImportedCount(result.imported());
+        log.setResultJson(writeJson(Map.of("draftId", result.draftId(), "lessons", result.imported())));
+        touch(log);
+        return new CommitResultDto(result.imported(), List.of(), result.draftId(), result.warnings());
+    }
+
+    private void requireTimetableEdit(String username) {
+        AppUser user = users.getByUsername(username);
+        if (user == null || !users.hasPermission(user, Permissions.TIMETABLE_EDIT)) {
+            throw ApiException.forbidden("没有权限导入课表");
+        }
     }
 
     public byte[] file(long id, String username) {
