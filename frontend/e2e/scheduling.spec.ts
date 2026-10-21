@@ -98,7 +98,7 @@ test('场景 3：未启用钉钉时系统完整可用', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
 
   await page.goto('/timetable')
-  await expect(page.getByRole('heading', { name: '课表' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '课表', exact: true })).toBeVisible()
 
   await page.goto('/notifications')
   await expect(page.getByRole('heading', { name: '通知中心' })).toBeVisible()
