@@ -31,6 +31,11 @@ public class IdentityDataInitializer {
 
     private static final Map<String, String> PERMISSION_NAMES = new LinkedHashMap<>();
 
+    /** Prefixes that mark a value as an untouched {@code .env.example} placeholder. */
+    private static final String[] PLACEHOLDER_PREFIXES = {
+        "replace-with", "replace_with", "change-me", "changeme", "your-", "your_", "todo"
+    };
+
     static {
         PERMISSION_NAMES.put(Permissions.USER_MANAGE, "用户与角色管理");
         PERMISSION_NAMES.put(Permissions.SCHOOL_MANAGE, "学校信息管理");
@@ -110,22 +115,36 @@ public class IdentityDataInitializer {
             user.setCreatedAt(Instant.now());
             user.getRoles().add(admin);
             userRepository.save(user);
-            if (password.equals("admin123")) {
-                log.info("Bootstrap administrator created: admin / admin123 (local development only)");
-            } else {
-                log.info("Bootstrap administrator created: admin / {}", password);
-            }
+            logBootstrapAccount(password);
+        } else {
+            log.debug("管理员账号已存在，跳过创建（重复启动不会重置密码）");
         }
-        log.info("Identity catalogue ready: {} permissions, roles admin/teacher/head_teacher", permissions.size());
+        log.info("身份目录已就绪：{} 项权限，角色 admin/teacher/head_teacher", permissions.size());
+    }
+
+    /**
+     * Prints the bootstrap credential exactly once, when the account is created. Later starts
+     * never log it again, so a restarted container does not spray the password into the logs.
+     */
+    private void logBootstrapAccount(String password) {
+        if (password.equals("admin123")) {
+            log.info("已创建默认管理员账号：admin / admin123（仅本地开发使用，请登录后立即修改密码）");
+        } else {
+            log.info("已创建默认管理员账号：admin / {}（仅显示一次，请立即记录并登录后修改密码）", password);
+        }
     }
 
     /**
      * Local development keeps admin/admin123. Any other profile requires an explicit password
      * or gets a generated one printed once, so the repository never ships a working credential.
+     *
+     * <p>A placeholder copied from {@code .env.example} (for example
+     * {@code replace-with-a-strong-initial-admin-password}) counts as unset: it is public, so
+     * treating it as configured would publish the administrator password.
      */
-    private String bootstrapPassword(
+    String bootstrapPassword(
             org.springframework.core.env.Environment environment, String configured) {
-        if (configured != null && !configured.isBlank()) {
+        if (!isPlaceholder(configured)) {
             return configured;
         }
         for (String profile : environment.getActiveProfiles()) {
@@ -134,9 +153,22 @@ public class IdentityDataInitializer {
                 return "admin123";
             }
         }
-        String generated = java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16);
-        log.warn("未配置 paiban.security.bootstrap-admin-password，已生成初始管理员密码（仅显示一次）: {}", generated);
-        return generated;
+        // The caller logs the generated password once, right after the account is saved.
+        return java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+    }
+
+    /** True for a blank value or one of the documented {@code .env.example} placeholders. */
+    static boolean isPlaceholder(String value) {
+        if (value == null || value.isBlank()) {
+            return true;
+        }
+        String lower = value.toLowerCase(java.util.Locale.ROOT);
+        for (String prefix : PLACEHOLDER_PREFIXES) {
+            if (lower.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Role upsertRole(RoleRepository roleRepository, String code, String name, Set<Permission> permissions) {

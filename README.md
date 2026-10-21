@@ -2,6 +2,72 @@
 
 面向国内单一中学的排课与调代课系统。后端 Spring Boot 3 + Timefold Solver，前端 Vue 3 + Vite + TypeScript，数据库 PostgreSQL 16（本地演示可用内嵌 H2）。
 
+## 一键启动（推荐给非技术用户）
+
+前提只有一个：安装 Docker Desktop（Windows / macOS）或 Docker Engine（Linux）。
+**宿主机不需要安装 Java、Node 或 Maven**，所有依赖都在容器里构建和运行。
+
+- Windows：双击仓库根目录的 `start.bat`
+- Linux / macOS：在仓库根目录执行 `./start.sh`
+
+脚本会自动完成这些事：检测 Docker 是否安装并运行 → 检查内存与 8080 / 5173 / 5432 端口 →
+生成 `.env` 密钥 → 构建并启动数据库、后端、前端 → 等待后端健康检查通过 →
+打印访问地址和默认账号。
+
+启动成功后：
+
+- 前端地址：http://localhost:5173
+- 后端地址：http://localhost:8080
+- 默认账号：`admin` / `admin123`（首次启动时可用 `--admin-password=` 指定；账号创建后再传该参数不会改密码）
+- 首次使用请访问前端地址，按初始化向导操作
+
+常用参数：
+
+| 参数 | 说明 |
+| --- | --- |
+| `--quiet` / `--no-prompt` | 非交互模式：不打印进度、不暂停，失败时直接返回非零退出码，适合 AI Agent / CI |
+| `--admin-password=密码` | 指定初始管理员密码（默认 `admin123`） |
+| `--timeout=秒数` | 健康检查最长等待时间，默认 60 秒 |
+| `--no-build` | 不重新构建镜像，直接启动已有镜像 |
+| `--env-only` | 只生成/检查 `.env`，不启动服务（排障用） |
+| `--prod` | 使用生产栈 `docker-compose.prod.yml`：nginx 终止 TLS，只发布 80/443 |
+
+### 生产栈一键启动（`--prod`）
+
+```bash
+./start.sh --prod                       # Linux / macOS
+start.bat --prod                        # Windows
+./start.sh --prod --env-only            # 只准备 .env，不碰 Docker / 证书
+```
+
+`--prod` 会：
+
+1. 照常引导 `.env`（占位密钥会被替换；`POSTGRES_PASSWORD` 同样自动补全，因此
+   `${POSTGRES_PASSWORD:?...}` 不会再阻塞启动）；
+2. 若 `deploy/certs/fullchain.pem` / `privkey.pem` 缺失，用本机 `openssl`（没有则用
+   `alpine/openssl` 容器）生成一对 **CN=localhost、365 天**的自签证书，并打印醒目警告；
+3. 用 `docker compose -f docker-compose.prod.yml up -d --build` 启动；
+4. 用 `curl -kfsS https://127.0.0.1/api/health` 等待就绪，最后打印
+   `前端地址: https://localhost`（HTTP 会 301 跳转到 HTTPS）。
+
+> 自签证书**仅供本机测试**。正式上线前必须替换为受信任证书（Let's Encrypt / Caddy / 商业证书），
+> 否则浏览器会告警，飞书等客户端会直接拒绝连接。
+
+退出码：`0` 成功；`1` 启动失败；`2` 环境或前置条件不满足（例如未安装 Docker、Docker 未启动）。
+
+启动失败时：
+
+1. 先看后端日志：`docker compose logs backend`
+2. 再运行自检：`doctor.bat`（Windows）或 `./doctor.sh`（Linux / macOS）
+3. 首次构建需要下载依赖，可能较慢；可以加大等待时间，例如 `--timeout=180`
+
+`.env` 中的密钥只在缺失或仍是占位值时生成，重复运行不会覆盖已有值；`.env` 已加入 `.gitignore`。
+
+> 仓库里的 `启动排课系统.cmd` 是本地开发快捷方式，要求宿主机安装 JDK / Node；日常演示优先用上面的
+> 一键启动。
+
+图文安装教程与常见问题：[docs/installation-guide.md](docs/installation-guide.md)。
+
 ## 功能范围（一期）
 
 - 基础数据：年级、行政班、教师、教室、课程，支持 Excel 批量导入（先预览、后入库）
@@ -55,7 +121,77 @@ SPRING_PROFILES_ACTIVE=postgres ./mvnw spring-boot:run
 或一键：先复制 `.env.example` 为 `.env` 并改掉所有占位值，再
 `docker compose up -d --build`，前端在 http://localhost:5173 ，后端在 http://localhost:8080 。
 
-### 生产部署清单
+compose 会先等 PostgreSQL 通过 `pg_isready` 健康检查再启动后端，前端同样等后端健康后才启动；
+后端健康检查打 `/api/health`，也就是整套服务的就绪信号。`backend/Dockerfile` 留了 60s
+`start-period` 给 Spring Boot 启动，这些配置可用 `scripts/tests/test-docker-config.sh` 静态校验。
+
+### 生产环境部署（docker-compose.prod.yml）
+
+`docker-compose.prod.yml` 是独立的生产栈：PostgreSQL、后端、前端都只在内部网络暴露，
+只有 nginx 发布 80 / 443，TLS 在 nginx 终止，日志写到 `./logs/nginx`。
+`chore/prod-hardening` 已合入主线，本文件与 nginx / 备份脚本即其最终形态，无需再合并分支。
+
+**1. 准备证书**：把 `fullchain.pem` 与 `privkey.pem` 放进 `deploy/certs/`（目录已存在，证书被 gitignore）。
+本地/测试可先自签：
+
+```bash
+mkdir -p deploy/certs
+openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
+  -keyout deploy/certs/privkey.pem \
+  -out deploy/certs/fullchain.pem \
+  -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+```
+
+正式环境用 Let's Encrypt（certbot）签发后把两个文件复制到 `deploy/certs/`，或在前面再加一层
+Caddy / Cloudflare Tunnel 管理证书。证书缺失时 nginx 容器会启动失败，这是预期的快速失败。
+
+**2. 配置 `.env`**：`cp .env.example .env`，然后：
+
+- `POSTGRES_PASSWORD` **必填**：生产 compose 用 `${POSTGRES_PASSWORD:?...}` 快速失败，
+  避免用默认数据库密码上线；可用 `openssl rand -hex 32` 生成。
+  用 `./start.sh --prod` 启动时，占位值会被自动替换成随机密码，因此不会卡在这里。
+- `PAIBAN_JWT_SECRET`、`PAIBAN_AI_ENCRYPTION_KEY` 可以留空：后端 entrypoint 首次启动时
+  自动生成并写入 `./data/app/secrets.env`，重启复用、不会覆盖显式提供的值。
+  `.env.example` 里的 `replace-with...` 占位值同样被视为未设置。
+- `PAIBAN_SECURITY_BOOTSTRAP_ADMIN_PASSWORD` 留空（或仍是 `.env.example` 的占位值）时同样
+  自动生成，首次登录密码见后端日志；占位值不会被当成真实密码。
+- 同源部署（nginx 同时代理前端与 `/api`）不需要设置 `PAIBAN_CORS_ALLOWED_ORIGINS`。
+
+**3. 启动**：
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml ps
+```
+
+**4. 验证健康**（自签证书需要 `-k`）：
+
+```bash
+curl -k https://127.0.0.1/healthz       # ok
+curl -k https://127.0.0.1/api/health    # {"status":"UP",...}
+curl -I http://127.0.0.1/               # 301 跳转到 https
+```
+
+**5. 备份与恢复**（生产 compose 用 `COMPOSE_FILE` 或 `--compose-file` 指定）：
+
+```bash
+COMPOSE_FILE=docker-compose.prod.yml ./scripts/backup.sh
+COMPOSE_FILE=docker-compose.prod.yml ./scripts/restore.sh          # 只打印计划，退出码 2
+COMPOSE_FILE=docker-compose.prod.yml ./scripts/restore.sh --yes    # 真正执行
+```
+
+`restore.sh` 默认选 `backups/` 里最新的 `paiban-*.dump`，校验文件非空后才停止
+backend / frontend，再执行 `pg_restore --clean --if-exists`，并在存在
+`backups/uploads-<stamp>.tar.gz` 时一并恢复上传文件。两个脚本都支持 `--help`。
+定时备份示例（cron，每天 3 点）：
+
+```cron
+0 3 * * * cd /opt/paiban && COMPOSE_FILE=docker-compose.prod.yml ./scripts/backup.sh >> /var/log/paiban-backup.log 2>&1
+```
+
+生产栈的静态校验：`scripts/tests/test-prod-config.sh`（无需 Docker）。
+
+#### 上线前安全检查清单
 
 上线前逐项确认：
 
@@ -63,19 +199,19 @@ SPRING_PROFILES_ACTIVE=postgres ./mvnw spring-boot:run
    `PAIBAN_AI_ENCRYPTION_KEY`、`POSTGRES_PASSWORD` 全部换成强随机值；
    `openssl rand -hex 32` 可直接生成。跨域访问时再设置
    `PAIBAN_CORS_ALLOWED_ORIGINS`（同源 nginx 部署不需要）。
-2. **HTTPS 与域名**：飞书 H5 要求 HTTPS。用 Caddy / Traefik / nginx + Let's Encrypt
-   或 Cloudflare Tunnel 在 443 终止 TLS，转发到 `127.0.0.1:5173`。
-3. **端口**：compose 已把 PostgreSQL（`127.0.0.1:5432`）和后端（`127.0.0.1:8080`）限制在本机；
+2. **HTTPS 与域名**：飞书 H5 要求 HTTPS。生产 compose 已内置 nginx 在 443 终止 TLS；
+   证书放在 `deploy/certs/`，或改用 Caddy / Cloudflare Tunnel 在前置层终止。
+3. **端口**：生产 compose 只发布 80/443；PostgreSQL、后端、前端都只在内部网络，
    防火墙只对公网开放 80/443。
-4. **首次启动**：`docker compose up -d --build`，确认
-   `curl http://127.0.0.1:8080/api/health` 返回 `UP`。
+4. **首次启动**：`docker compose -f docker-compose.prod.yml up -d --build`，确认
+   `curl -k https://127.0.0.1/api/health` 返回 `UP`。
 5. **初始管理员**：若未设置 `PAIBAN_SECURITY_BOOTSTRAP_ADMIN_PASSWORD`，从
-   `docker compose logs backend` 读取一次性生成的密码；登录后立即修改。
+   `docker compose -f docker-compose.prod.yml logs backend` 读取一次性生成的密码；登录后立即修改。
 6. **系统设置**：设置中心把「外部访问地址」填成 `https://你的域名`；
    启用飞书时填写 App ID / App Secret / 验证 Token，并把事件回调地址设为
    `https://你的域名/api/integrations/feishu/event`。
-7. **备份**：`./scripts/backup.sh` 生成 PostgreSQL 与 uploads 备份，默认保留 14 天；
-   恢复命令见脚本头部注释。建议加到 cron。
+7. **备份**：`COMPOSE_FILE=docker-compose.prod.yml ./scripts/backup.sh` 生成 PostgreSQL 与
+   uploads 备份，默认保留 14 天；恢复用 `scripts/restore.sh`。建议加到 cron。
 8. **限流**：应用本身没有登录失败锁定，请在反向代理层加登录限流。
 
 > 生产环境不要使用默认的 `admin/admin123`；非 local/test/e2e profile 下应用会拒绝默认 JWT 密钥。
@@ -95,7 +231,12 @@ SPRING_PROFILES_ACTIVE=postgres ./mvnw spring-boot:run
 ```bash
 scripts/verify.sh          # 后端 verify + 前端 lint/build
 scripts/verify.sh --full   # 追加 Playwright 验收场景
+scripts/verify-deploy.sh   # 部署脚本测试（无需 Docker；CI 的 deploy-scripts job）
 ```
+
+`scripts/verify-deploy.sh` 依次运行 `scripts/tests/test-*.sh`（compose 拓扑、doctor 退出码、
+密钥自愈、一键启动、生产配置与备份脚本），打印每个套件名并在第一个失败处停止；
+本机没有 PowerShell 时自动跳过 PowerShell 相关断言。CI 中由 `deploy-scripts` job 执行。
 
 `scripts/verify.sh` 与 CI（`.github/workflows/ci.yml`）走同一条路径：检测到 Docker 时自动带
 `-Dtestcontainers=true`，CI 里一定带。需要单独跑某一步时：

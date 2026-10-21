@@ -4,15 +4,15 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** done
+**Status:** ready-for-agent
 
-- [x] 梳理所有需要 Tooltip 的字段（复杂/专业/易混淆的字段）
-- [x] 字段清单：
+- [ ] 梳理所有需要 Tooltip 的字段（复杂/专业/易混淆的字段）
+- [ ] 字段清单：
   - 约束配置：权重、硬约束/软约束、参数含义
   - 排课：授课任务、连堂、禁排时段
   - 调代：审批模式、生效日期
   - 课表：基线、叠加视图、调代标记
   - 设置：学校类型、AI 供应商、平台切换
-- [x] 使用 Element Plus `el-tooltip` 组件
-- [x] Tooltip 内容配置化：从配置文件读取，支持后续修改
-- [x] 单元测试：验证 Tooltip 内容正确显示
+- [ ] 使用 Element Plus `el-tooltip` 组件
+- [ ] Tooltip 内容配置化：从配置文件读取，支持后续修改
+- [ ] 单元测试：验证 Tooltip 内容正确显示
