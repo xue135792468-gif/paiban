@@ -14,7 +14,11 @@
         <el-form-item label="学校名称">
           <el-input v-model="form['school.name']" placeholder="用于课表导出与 PDF 页眉" />
         </el-form-item>
-        <el-form-item label="学校类型">
+        <el-form-item>
+          <template #label>
+            学校类型
+            <InfoTooltip field="settings.schoolType" />
+          </template>
           <el-radio-group v-model="form['school.type']">
             <el-radio-button value="junior">初中</el-radio-button>
             <el-radio-button value="senior">高中</el-radio-button>
@@ -38,7 +42,11 @@
     <el-card shadow="never">
       <template #header><span class="card-title">调代与通知</span></template>
       <el-form label-width="110px" class="form">
-        <el-form-item label="审批模式">
+        <el-form-item>
+          <template #label>
+            审批模式
+            <InfoTooltip field="substitution.approvalMode" />
+          </template>
           <el-radio-group v-model="form['substitution.approval-mode']">
             <el-radio-button value="approval">审批模式</el-radio-button>
             <el-radio-button value="direct">直接生效</el-radio-button>
@@ -189,7 +197,12 @@
     </el-card>
 
     <el-card shadow="never">
-      <template #header><span class="card-title">AI 供应商</span></template>
+      <template #header>
+        <span class="card-title">
+          AI 供应商
+          <InfoTooltip field="settings.aiProvider" />
+        </span>
+      </template>
       <div class="ai-row">
         <div>
           <div class="ai-name">AI 供应商与模型管理</div>
@@ -255,6 +268,7 @@ import { useRouter } from 'vue-router'
 import { http } from '@/api/http'
 import { useSettingsStore } from '@/stores/settings'
 import ImPlatformCard from '@/components/ImPlatformCard.vue'
+import InfoTooltip from '@/components/InfoTooltip.vue'
 import { resetTour, startTour } from '@/onboarding/tour'
 
 interface DingTalkConfig {

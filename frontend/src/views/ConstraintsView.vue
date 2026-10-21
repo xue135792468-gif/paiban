@@ -82,7 +82,14 @@
     </div>
 
     <el-card v-if="semesters.length === 0 && !loading" shadow="never">
-      <el-empty description="请先在「学期与作息」中创建学期" />
+      <EmptyStateGuide
+        title="还没有学期"
+        description="约束配置按学期保存。请先在「学期与作息」中创建学期，再回来配置排课规则。"
+        button-text="去创建学期"
+        button-to="/admin/semesters"
+        help-slug="scheduling"
+        help-anchor="constraints"
+      />
     </el-card>
 
     <el-card v-else v-loading="loading" shadow="never" class="content-card">
@@ -122,15 +129,17 @@
                 </div>
 
                 <div class="constraint-controls">
-                  <el-radio-group
-                    v-if="isJunior"
-                    v-model="row.hard"
-                    size="small"
-                    :disabled="!canManage || !row.enabled"
-                  >
-                    <el-radio-button :value="true">必须</el-radio-button>
-                    <el-radio-button :value="false">尽量</el-radio-button>
-                  </el-radio-group>
+                  <template v-if="isJunior">
+                    <el-radio-group
+                      v-model="row.hard"
+                      size="small"
+                      :disabled="!canManage || !row.enabled"
+                    >
+                      <el-radio-button :value="true">必须</el-radio-button>
+                      <el-radio-button :value="false">尽量</el-radio-button>
+                    </el-radio-group>
+                    <InfoTooltip field="constraint.hard" />
+                  </template>
 
                   <template v-else>
                     <el-radio-group
@@ -141,9 +150,13 @@
                       <el-radio-button :value="true">硬约束</el-radio-button>
                       <el-radio-button :value="false">软约束</el-radio-button>
                     </el-radio-group>
+                    <InfoTooltip field="constraint.hard" />
 
                     <div class="weight-box">
-                      <span class="weight-label">权重 {{ row.weight }}</span>
+                      <span class="weight-label">
+                        权重 {{ row.weight }}
+                        <InfoTooltip field="constraint.weight" />
+                      </span>
                       <el-slider
                         v-model="row.weight"
                         :min="0"
@@ -165,6 +178,7 @@
                   <span class="param-label">
                     <span v-if="param.required" class="required-star">*</span>
                     {{ param.label }}：
+                    <InfoTooltip field="constraint.param" />
                   </span>
 
                   <el-select
@@ -267,8 +281,10 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
+import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
+import InfoTooltip from '@/components/InfoTooltip.vue'
 
 interface ParamDef {
   name: string
@@ -821,13 +837,14 @@ h2 {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 200px;
 }
 
 .weight-label {
+  display: inline-flex;
+  align-items: center;
   font-size: 12px;
   color: var(--paiban-muted);
-  width: 58px;
+  white-space: nowrap;
   flex-shrink: 0;
 }
 

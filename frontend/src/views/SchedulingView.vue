@@ -24,7 +24,15 @@
       </div>
     </div>
 
-    <el-empty v-if="!semesterId" description="暂无学期数据，请先创建或选择学期" />
+    <EmptyStateGuide
+      v-if="!semesterId"
+      title="还没有学期"
+      description="排课任务按学期提交。请先在「学期与作息」中创建学期，再回来发起排课。"
+      button-text="去创建学期"
+      button-to="/admin/semesters"
+      help-slug="scheduling"
+      help-anchor="run"
+    />
 
     <div v-else class="content-body">
       <el-alert
@@ -280,6 +288,7 @@ import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
+import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import { useAuthStore } from '@/stores/auth'
 
 interface Semester {

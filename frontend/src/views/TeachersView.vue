@@ -22,7 +22,16 @@
     </div>
 
     <el-card shadow="never">
-      <el-table v-loading="loading" :data="teachers" stripe>
+      <EmptyStateGuide
+        v-if="!loading && teachers.length === 0"
+        title="还没有教师数据"
+        description="教师是授课任务与调代的基础。点击下方按钮新建教师，或使用右上角「导入」从 Excel 批量导入。"
+        button-text="新建教师"
+        help-slug="foundation"
+        help-anchor="teachers"
+        @action="openCreate"
+      />
+      <el-table v-else v-loading="loading" :data="teachers" stripe>
         <el-table-column prop="employeeNo" label="工号" min-width="120">
           <template #default="{ row }">
             <span>{{ row.employeeNo || '—' }}</span>
@@ -148,6 +157,7 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'elem
 import { Plus, Download, Upload } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
+import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ImportDialog from '@/components/ImportDialog.vue'
 
 interface Teacher {
