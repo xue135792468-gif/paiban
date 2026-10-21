@@ -50,9 +50,23 @@
     </div>
 
     <el-card shadow="never">
-      <el-empty
+      <EmptyStateGuide
         v-if="semesters.length === 0 && !loading"
-        description="请先在「学期与作息」中创建学期"
+        title="还没有学期"
+        description="请先在「学期与作息」中创建学期，年级数据按学期维护。"
+        button-text="去创建学期"
+        button-to="/admin/semesters"
+        help-slug="foundation"
+        help-anchor="grades"
+      />
+      <EmptyStateGuide
+        v-else-if="!loading && grades.length === 0"
+        title="还没有年级数据"
+        description="年级是行政班与授课任务的基础。点击下方按钮新建年级，或使用右上角「导入」从 Excel 批量导入。"
+        button-text="新建年级"
+        help-slug="foundation"
+        help-anchor="grades"
+        @action="openCreate"
       />
       <el-table
         v-else
@@ -122,6 +136,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Download, Plus, Upload } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
+import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ImportDialog from '@/components/ImportDialog.vue'
 import { useAuthStore } from '@/stores/auth'
 

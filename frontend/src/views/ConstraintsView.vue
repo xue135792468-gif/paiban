@@ -82,7 +82,14 @@
     </div>
 
     <el-card v-if="semesters.length === 0 && !loading" shadow="never">
-      <el-empty description="请先在「学期与作息」中创建学期" />
+      <EmptyStateGuide
+        title="还没有学期"
+        description="约束配置按学期保存。请先在「学期与作息」中创建学期，再回来配置排课规则。"
+        button-text="去创建学期"
+        button-to="/admin/semesters"
+        help-slug="scheduling"
+        help-anchor="constraints"
+      />
     </el-card>
 
     <el-card v-else v-loading="loading" shadow="never" class="content-card">
@@ -267,6 +274,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
+import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 

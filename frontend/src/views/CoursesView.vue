@@ -22,7 +22,16 @@
     </div>
 
     <el-card shadow="never">
-      <el-table v-loading="loading" :data="courses" stripe>
+      <EmptyStateGuide
+        v-if="!loading && courses.length === 0"
+        title="还没有课程数据"
+        description="课程是授课任务与课表的基础。点击下方按钮新建课程，或使用右上角「导入」从 Excel 批量导入。"
+        button-text="新建课程"
+        help-slug="foundation"
+        help-anchor="courses"
+        @action="openCreate"
+      />
+      <el-table v-else v-loading="loading" :data="courses" stripe>
         <el-table-column prop="name" label="课程名称" min-width="140" />
         <el-table-column prop="subject" label="所属学科" min-width="120">
           <template #default="{ row }">
@@ -152,6 +161,7 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'elem
 import { Plus, Download, Upload } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
+import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ImportDialog from '@/components/ImportDialog.vue'
 
 interface Course {
