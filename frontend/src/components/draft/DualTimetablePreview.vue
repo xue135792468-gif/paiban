@@ -23,6 +23,15 @@
     </div>
 
     <el-alert
+      v-if="candidate.roomSwapRequired"
+      type="info"
+      :closable="false"
+      show-icon
+      class="preview-warnings"
+      title="该换位需要同时交换教室，已自动勾选「同时交换教室」"
+    />
+
+    <el-alert
       v-if="candidate.warnings.length > 0"
       type="warning"
       :closable="false"

@@ -84,6 +84,8 @@ export interface SwapCandidate {
   roomId?: number | null
   roomName?: string
   available: boolean
+  /** True when the exchange only validates if both rooms are exchanged too. */
+  roomSwapRequired?: boolean
   conflicts: DraftConflict[]
   warnings: string[]
 }

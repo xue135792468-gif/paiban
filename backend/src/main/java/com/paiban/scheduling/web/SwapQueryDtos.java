@@ -22,6 +22,8 @@ public final class SwapQueryDtos {
      * One lesson that can be exchanged with the target lesson. {@code conflicts} is
      * empty when {@code available} is true; warnings flag checks that were skipped
      * because the data needed for them is missing (for example a blank teacher subject).
+     * {@code roomSwapRequired} means the exchange is only valid when the two rooms are
+     * exchanged as well, so the client must send {@code swapRooms=true}.
      */
     public record SwapCandidateDto(
             Long lessonId,
@@ -41,6 +43,7 @@ public final class SwapQueryDtos {
             Long roomId,
             String roomName,
             boolean available,
+            boolean roomSwapRequired,
             List<DraftValidator.Conflict> conflicts,
             List<String> warnings) {}
 

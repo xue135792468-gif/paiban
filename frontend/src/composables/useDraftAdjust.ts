@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { http } from '@/api/http'
+import { serverMessage } from '@/api/errors'
 import type {
   DraftConflict,
   DraftLesson,
@@ -51,17 +52,12 @@ export interface UndoOutcome {
 
 /** Moves are undone by moving back; a swap is its own inverse. */
 export type UndoEntry =
-  | { kind: 'move'; lessonId: number; from: { periodId: number; roomId: number | null } }
+  | { kind: 'move'; lessonId: number; from: { periodId: number | null; roomId: number | null } }
   | { kind: 'swap'; lessonId: number; targetLessonId: number; swapRooms: boolean }
 
 type LessonPosition = Pick<DraftLesson, 'id' | 'periodId' | 'roomId'>
 
 const DEFAULT_UNDO_LIMIT = 20
-
-function serverMessage(error: unknown, fallback: string): string {
-  const message = (error as { response?: { data?: { message?: string } } })?.response?.data?.message
-  return message ?? fallback
-}
 
 /**
  * Adjustment state for one draft editor session: the move and swap write calls,
@@ -107,10 +103,10 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
       if (!data.saved) {
         return { saved: false, conflicts: data.conflicts ?? [] }
       }
-      // A lesson dragged out of the unassigned drawer has no period to return
-      // to, and a no-op move has nothing to reverse.
+      // A lesson dragged out of the unassigned drawer has no period to return to;
+      // undo sends periodId null, which the server reads as "back to unassigned".
       const changed = fromPeriodId !== target.periodId || (lesson.roomId ?? null) !== roomId
-      if (fromPeriodId != null && changed) {
+      if (changed) {
         push({
           kind: 'move',
           lessonId: lesson.id,

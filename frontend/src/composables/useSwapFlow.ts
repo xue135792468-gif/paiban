@@ -92,7 +92,9 @@ export function useSwapFlow(options: SwapFlowOptions) {
 
   function selectCandidate(candidate: SwapCandidate) {
     previewCandidate.value = candidate
-    swapRooms.value = false
+    // A candidate that is only valid when both rooms move must pre-select the box,
+    // otherwise confirming it would hit the conflict the server already found.
+    swapRooms.value = candidate.roomSwapRequired === true
     previewVisible.value = true
   }
 

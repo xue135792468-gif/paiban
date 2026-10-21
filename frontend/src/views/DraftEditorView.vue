@@ -39,7 +39,6 @@
         <el-button v-if="canEdit" type="danger" plain @click="removeDraft">删除</el-button>
       </div>
     </div>
-
     <div class="stats">
       <div class="stat">
         <span class="stat-label">硬冲突</span>
@@ -82,7 +81,7 @@
           </el-tag>
           <el-button
             type="primary"
-            :disabled="!canEdit || selectedLesson.periodId == null"
+            :disabled="!draftEditable || selectedLesson.periodId == null"
             @click="openForSelected"
           >
             换课
@@ -101,7 +100,7 @@
           :periods="detail?.periods ?? []"
           :lessons="filteredLessons"
           :courses="courses"
-          :draggable="canEdit && detail?.draft.status !== 'PUBLISHED'"
+          :draggable="draftEditable"
           :dragged-lesson-id="dragged?.id ?? null"
           :targets="dragTargets"
           @drag-start="onDragStart"
@@ -124,7 +123,7 @@
           :key="lesson.id"
           class="drawer-lesson"
           :style="{ background: courseColor(courses, lesson.courseId) }"
-          :draggable="canEdit && detail?.draft.status !== 'PUBLISHED'"
+          :draggable="draftEditable"
           @dragstart="onDragStart(lesson)"
           @dragend="onDragEnd"
         >
@@ -196,6 +195,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, RefreshLeft, Tickets } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
+import { serverMessage } from '@/api/errors'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import DraftGrid from '@/components/draft/DraftGrid.vue'
@@ -252,6 +252,7 @@ const {
 const loading = ref(false)
 type DraftDetail = { draft: Draft; lessons: DraftLesson[]; periods: DraftPeriod[]; rooms: DraftRoom[] }
 const detail = ref<DraftDetail | null>(null)
+const draftEditable = computed(() => canEdit.value && detail.value?.draft.status === 'DRAFT')
 const validation = ref<{ valid: boolean; hardConflicts: number; conflicts: DraftConflict[] } | null>(null)
 const courses = ref<DraftCourse[]>([])
 const viewMode = ref<'class' | 'teacher' | 'room'>('class')
@@ -309,7 +310,7 @@ async function load() {
     if (targetId.value == null) resetTarget()
     clearSelection()
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '加载草稿失败')
+    ElMessage.error(serverMessage(e, '加载草稿失败'))
   } finally {
     loading.value = false
   }
@@ -351,7 +352,7 @@ async function onDropCell(payload: { day: number; periodNo: number; periodId: nu
         item.periodNo === payload.periodNo &&
         item.id !== lesson.id,
     )
-    if (occupied && occupied.classId === lesson.classId && canEdit.value) {
+    if (occupied && occupied.classId === lesson.classId && draftEditable.value) {
       openPanel(lesson, 'INTRA_CLASS')
       onDragEnd()
       return
@@ -448,7 +449,7 @@ async function publishDraft() {
     ElMessage.success(`课表已发布，共 ${data.entryCount} 节课`)
     await load()
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '发布失败')
+    ElMessage.error(serverMessage(e, '发布失败'))
   }
 }
 
@@ -463,7 +464,7 @@ async function removeDraft() {
     ElMessage.success('已删除')
     router.push('/admin/scheduling')
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '删除失败')
+    ElMessage.error(serverMessage(e, '删除失败'))
   }
 }
 
