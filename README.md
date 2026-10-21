@@ -97,6 +97,10 @@ SPRING_PROFILES_ACTIVE=postgres ./mvnw spring-boot:run
 或一键：先复制 `.env.example` 为 `.env` 并改掉所有占位值，再
 `docker compose up -d --build`，前端在 http://localhost:5173 ，后端在 http://localhost:8080 。
 
+compose 会先等 PostgreSQL 通过 `pg_isready` 健康检查再启动后端，前端同样等后端健康后才启动；
+后端健康检查打 `/api/health`，也就是整套服务的就绪信号。`backend/Dockerfile` 留了 60s
+`start-period` 给 Spring Boot 启动，这些配置可用 `scripts/tests/test-docker-config.sh` 静态校验。
+
 ### 生产部署清单
 
 上线前逐项确认：
