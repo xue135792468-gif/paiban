@@ -150,6 +150,303 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void timetablePreviewListsUnmatchedNamesAsIssues() {
+        String admin = adminToken();
+        timetableFixture(admin);
+        Map<String, Object> row = timetableRow();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> values = (Map<String, Object>) row.get("values");
+        values.put("className", "一年级(1)班");
+        fake.response = aiResponse(List.of(row));
+
+        Response preview = as(admin)
+                .body(Map.of("text", "一年级(1)班 周一 第1节 语文 张三 101"))
+                .when().post("/api/ai/import/text?target=timetable");
+
+        preview.then().statusCode(200)
+                .body("issues", hasSize(1))
+                .body("issues[0].row", equalTo(1))
+                .body("issues[0].field", equalTo("className"))
+                .body("issues[0].value", equalTo("一年级(1)班"))
+                .body("issues[0].required", equalTo(true))
+                .body("issues[0].candidates", org.hamcrest.Matchers.hasItem("一年级1班"));
+    }
+
+    @Test
+    void teacherPreviewHasNoMappingIssues() {
+        String admin = adminToken();
+        fake.response = aiResponse(List.of(teacherRow("张三", "语文", "", 0.99)));
+
+        as(admin).body(Map.of("text", "张三老师教语文"))
+                .when().post("/api/ai/import/text")
+                .then().statusCode(200)
+                .body("issues", hasSize(0));
+    }
+
+    @Test
+    void lookupFindsClassesInTheCurrentSemesterAndOtherEntitiesGlobally() {
+        String admin = adminToken();
+        TimetableFixture f = timetableFixture(admin);
+
+        as(admin).when().get("/api/ai/import/lookup?type=class&q=1班")
+                .then().statusCode(200)
+                .body("$", hasSize(1))
+                .body("[0].id", equalTo((int) f.classId()))
+                .body("[0].name", equalTo("一年级1班"))
+                .body("[0].extra", equalTo("一年级"));
+
+        as(admin).when().get("/api/ai/import/lookup?type=course&q=语")
+                .then().statusCode(200)
+                .body("$", hasSize(1))
+                .body("[0].id", equalTo((int) f.courseId()))
+                .body("[0].name", equalTo("语文"))
+                .body("[0].extra", equalTo("语文"));
+
+        as(admin).when().get("/api/ai/import/lookup?type=teacher&q=张")
+                .then().statusCode(200)
+                .body("$", hasSize(1))
+                .body("[0].id", equalTo((int) f.teacherId()))
+                .body("[0].name", equalTo("张三"));
+
+        as(admin).when().get("/api/ai/import/lookup?type=room&q=10")
+                .then().statusCode(200)
+                .body("$", hasSize(1))
+                .body("[0].id", equalTo((int) f.roomId()))
+                .body("[0].name", equalTo("101"));
+    }
+
+    @Test
+    void classLookupIsLimitedToTheRequestedSemester() {
+        String admin = adminToken();
+        long first = TestData.semester(admin);
+        long firstGrade = TestData.grade(admin, first, "一年级");
+        TestData.adminClass(admin, first, firstGrade, "旧学期班");
+        long second = TestData.semester(admin);
+        long secondGrade = TestData.grade(admin, second, "一年级");
+        long currentClass = TestData.adminClass(admin, second, secondGrade, "新学期班");
+
+        as(admin).when().get("/api/ai/import/lookup?type=class&q=学期班")
+                .then().statusCode(200)
+                .body("$", hasSize(1))
+                .body("[0].id", equalTo((int) currentClass))
+                .body("[0].name", equalTo("新学期班"));
+
+        as(admin).when().get("/api/ai/import/lookup?type=class&q=学期班&semesterId=" + first)
+                .then().statusCode(200)
+                .body("$", hasSize(1))
+                .body("[0].name", equalTo("旧学期班"));
+    }
+
+    @Test
+    void lookupReturnsAtMostTwentyNamesSortedByName() {
+        String admin = adminToken();
+        for (int i = 1; i <= 22; i++) {
+            TestData.course(admin, String.format("课程%02d", i));
+        }
+
+        as(admin).when().get("/api/ai/import/lookup?type=course&q=课程")
+                .then().statusCode(200)
+                .body("$", hasSize(20))
+                .body("[0].name", equalTo("课程01"))
+                .body("[19].name", equalTo("课程20"));
+    }
+
+    @Test
+    void unknownLookupTypeIsRejected() {
+        String admin = adminToken();
+
+        as(admin).when().get("/api/ai/import/lookup?type=student&q=x")
+                .then().statusCode(400)
+                .body("message", containsString("不支持的查询类型"));
+    }
+
+    @Test
+    void mappingResolvesUnmatchedNamesAndLetsTheImportCommit() {
+        String admin = adminToken();
+        TimetableFixture f = timetableFixture(admin);
+        Map<String, Object> row = timetableRow();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> values = (Map<String, Object>) row.get("values");
+        values.put("className", "一年级(1)班");
+        fake.response = aiResponse(List.of(row));
+
+        Response preview = as(admin)
+                .body(Map.of("text", "一年级(1)班 周一 第1节 语文 张三 101"))
+                .when().post("/api/ai/import/text?target=timetable");
+        preview.then().statusCode(200).body("issues", hasSize(1));
+        long sessionId = preview.jsonPath().getLong("sessionId");
+
+        as(admin).body(Map.of("mappings", List.of(Map.of(
+                        "field", "className",
+                        "source", "一年级(1)班",
+                        "targetId", f.classId()))))
+                .when().post("/api/ai/import/sessions/" + sessionId + "/mapping")
+                .then().statusCode(200)
+                .body("status", equalTo("EDITED"))
+                .body("issues", hasSize(0))
+                .body("rows[0].values.className", equalTo("一年级1班"))
+                .body("mappings", org.hamcrest.Matchers.hasItem(org.hamcrest.Matchers.allOf(
+                        org.hamcrest.Matchers.hasEntry("source", "一年级(1)班"),
+                        org.hamcrest.Matchers.hasEntry("target", "一年级1班"))));
+
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/commit")
+                .then().statusCode(200)
+                .body("draftId", org.hamcrest.Matchers.notNullValue());
+
+        AiImportLog stored = importLogs.findById(sessionId).orElseThrow();
+        // The AI answer stays untouched; the user's mapping lives in the working copy.
+        assertThat(stored.getPreviewJson()).contains("一年级(1)班").doesNotContain("一年级1班");
+        assertThat(stored.getConfirmedJson()).contains("一年级1班").contains("一年级(1)班");
+    }
+
+    @Test
+    void mappingRejectsAnUnknownTargetId() {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.response = aiResponse(List.of(timetableRow()));
+        long sessionId = timetableSession(admin);
+
+        as(admin).body(Map.of("mappings", List.of(Map.of(
+                        "field", "className",
+                        "source", "一年级1班",
+                        "targetId", 999999))))
+                .when().post("/api/ai/import/sessions/" + sessionId + "/mapping")
+                .then().statusCode(400)
+                .body("message", containsString("找不到班级"));
+    }
+
+    @Test
+    void mappingRejectsATargetOfTheWrongType() {
+        String admin = adminToken();
+        timetableFixture(admin);
+        long courseId = TestData.course(admin, "数学");
+        fake.response = aiResponse(List.of(timetableRow()));
+        long sessionId = timetableSession(admin);
+
+        as(admin).body(Map.of("mappings", List.of(Map.of(
+                        "field", "className",
+                        "source", "一年级1班",
+                        "targetId", courseId))))
+                .when().post("/api/ai/import/sessions/" + sessionId + "/mapping")
+                .then().statusCode(400)
+                .body("message", containsString("找不到班级"));
+    }
+
+    @Test
+    void teacherSessionsDoNotSupportNameMapping() {
+        String admin = adminToken();
+        fake.response = aiResponse(List.of(teacherRow("张三", "语文", "", 0.99)));
+        Response preview = as(admin).body(Map.of("text", "张三老师教语文"))
+                .when().post("/api/ai/import/text");
+        long sessionId = preview.jsonPath().getLong("sessionId");
+
+        as(admin).body(Map.of("mappings", List.of(Map.of(
+                        "field", "className", "source", "x", "targetId", 1))))
+                .when().post("/api/ai/import/sessions/" + sessionId + "/mapping")
+                .then().statusCode(400)
+                .body("message", containsString("不支持名称映射"));
+    }
+
+    @Test
+    void createsAreOptInAndOnlyRunWhenExplicitlyRequested() {
+        String admin = adminToken();
+        TimetableFixture f = timetableFixture(admin);
+        Map<String, Object> row = timetableRow();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> values = (Map<String, Object>) row.get("values");
+        values.put("courseName", "道法法治");
+        fake.response = aiResponse(List.of(row));
+
+        Response preview = as(admin)
+                .body(Map.of("text", "一年级1班 周一 第1节 道法法治 张三 101"))
+                .when().post("/api/ai/import/text?target=timetable");
+        preview.then().statusCode(200)
+                .body("issues", hasSize(1))
+                .body("issues[0].field", equalTo("courseName"))
+                .body("issues[0].value", equalTo("道法法治"));
+        long sessionId = preview.jsonPath().getLong("sessionId");
+
+        as(admin).body(Map.of("mappings", List.of(Map.of(
+                        "field", "className", "source", "一年级1班", "targetId", f.classId()))))
+                .when().post("/api/ai/import/sessions/" + sessionId + "/mapping")
+                .then().statusCode(200)
+                .body("issues", hasSize(1))
+                .body("issues[0].field", equalTo("courseName"));
+
+        assertThat(courseNames(admin)).doesNotContain("道法法治").doesNotContain("道德与法治");
+
+        as(admin).body(Map.of("creates", List.of(Map.of(
+                        "field", "courseName", "source", "道法法治", "name", "道德与法治"))))
+                .when().post("/api/ai/import/sessions/" + sessionId + "/mapping")
+                .then().statusCode(200)
+                .body("issues", hasSize(0))
+                .body("rows[0].values.courseName", equalTo("道德与法治"));
+
+        assertThat(courseNames(admin)).contains("道德与法治");
+
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/commit")
+                .then().statusCode(200)
+                .body("draftId", org.hamcrest.Matchers.notNullValue());
+    }
+
+    @Test
+    void creatingAClassRequiresAGradeId() {
+        String admin = adminToken();
+        TimetableFixture f = timetableFixture(admin);
+        Map<String, Object> row = timetableRow();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> values = (Map<String, Object>) row.get("values");
+        values.put("className", "八（1）");
+        fake.response = aiResponse(List.of(row));
+        long sessionId = timetableSession(admin);
+
+        as(admin).body(Map.of("creates", List.of(Map.of(
+                        "field", "className", "source", "八（1）", "name", "八年级1班"))))
+                .when().post("/api/ai/import/sessions/" + sessionId + "/mapping")
+                .then().statusCode(400)
+                .body("message", containsString("年级"));
+
+        as(admin).body(Map.of("creates", List.of(Map.of(
+                        "field", "className", "source", "八（1）", "name", "八年级1班",
+                        "gradeId", f.gradeId()))))
+                .when().post("/api/ai/import/sessions/" + sessionId + "/mapping")
+                .then().statusCode(200)
+                .body("issues", hasSize(0))
+                .body("rows[0].values.className", equalTo("八年级1班"));
+
+        assertThat(as(admin).when().get("/api/classes?semesterId=" + f.semesterId())
+                .then().statusCode(200).extract().jsonPath().getList("name"))
+                .contains("八年级1班");
+    }
+
+    @Test
+    void mappingRequiresTimetableEditBeyondFoundationManage() {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.response = aiResponse(List.of(timetableRow()));
+
+        Role role = new Role("foundation_only_map_" + TestData.suffix(), "仅基础数据");
+        role.setPermissions(Set.of(
+                permissionRepository.findByCode(Permissions.FOUNDATION_MANAGE).orElseThrow()));
+        roleRepository.save(role);
+        String username = "imp_" + TestData.suffix();
+        createUser(admin, username, "import123", role.getCode());
+        String importer = login(username, "import123");
+
+        Response preview = as(importer)
+                .body(Map.of("text", "一年级1班 周一 第1节 语文 张三 101"))
+                .when().post("/api/ai/import/text?target=timetable");
+        preview.then().statusCode(200);
+        long sessionId = preview.jsonPath().getLong("sessionId");
+
+        as(importer).body(Map.of("mappings", List.of(Map.of(
+                        "field", "className", "source", "一年级1班", "targetId", 1))))
+                .when().post("/api/ai/import/sessions/" + sessionId + "/mapping")
+                .then().statusCode(403)
+                .body("message", containsString("没有权限"));
+    }
+
+    @Test
     void timetableCommitCreatesADraftAndRecordsItsId() {
         String admin = adminToken();
         TimetableFixture fixture = timetableFixture(admin);
@@ -387,7 +684,7 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
 
     // ------------------------------------------------------------------ helpers
 
-    private record TimetableFixture(long semesterId, long classId, long courseId, long teacherId, long roomId) {}
+    private record TimetableFixture(long semesterId, long gradeId, long classId, long courseId, long teacherId, long roomId) {}
 
     private TimetableFixture timetableFixture(String token) {
         long semesterId = TestData.semester(token);
@@ -399,7 +696,20 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         long courseId = TestData.course(token, "语文");
         long teacherId = TestData.teacher(token, "张三");
         long roomId = TestData.room(token, "101");
-        return new TimetableFixture(semesterId, classId, courseId, teacherId, roomId);
+        return new TimetableFixture(semesterId, gradeId, classId, courseId, teacherId, roomId);
+    }
+
+    private List<String> courseNames(String token) {
+        return as(token).when().get("/api/courses")
+                .then().statusCode(200).extract().jsonPath().getList("name");
+    }
+
+    private long timetableSession(String token) {
+        Response preview = as(token)
+                .body(Map.of("text", "一年级1班 周一 第1节 语文 张三 101"))
+                .when().post("/api/ai/import/text?target=timetable");
+        preview.then().statusCode(200);
+        return preview.jsonPath().getLong("sessionId");
     }
 
     private Response upload(String token, String path, String name, byte[] bytes, String contentType) {

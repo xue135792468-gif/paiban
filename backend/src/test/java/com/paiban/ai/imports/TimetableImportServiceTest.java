@@ -172,6 +172,38 @@ class TimetableImportServiceTest extends ApiIntegrationTest {
     }
 
     @Test
+    void analyzeReportsUnmatchedNamesWithoutPersistingAnything() {
+        fixture();
+
+        List<ImportDtos.RowErrorDto> errors = service.analyze(
+                List.of(
+                        row("一年级1班", "周一", "第1节", "语文", "张三", "101"),
+                        row("不存在班", "周一", "第1节", "语文", "张三", "101")),
+                null);
+
+        assertThat(errors).hasSize(1);
+        assertThat(errors.get(0).row()).isEqualTo(2);
+        assertThat(errors.get(0).field()).isEqualTo("className");
+        assertThat(errors.get(0).message()).contains("不存在班");
+        assertThat(errors.get(0).candidates()).contains("一年级1班");
+        assertThat(drafts.count()).isZero();
+        assertThat(assignments.count()).isZero();
+    }
+
+    @Test
+    void analyzeAcceptsFullyMatchedRowsAndWritesNothing() {
+        fixture();
+
+        List<ImportDtos.RowErrorDto> errors = service.analyze(
+                List.of(row("一年级1班", "周一", "第1节", "语文", "张三", "101")), null);
+
+        assertThat(errors).isEmpty();
+        assertThat(drafts.count()).isZero();
+        assertThat(draftLessons.count()).isZero();
+        assertThat(assignments.count()).isZero();
+    }
+
+    @Test
     void normalizesWeekdayAndPeriodVariantsAndTrimsNames() {
         Fixture f = fixture();
         long firstPeriod = periodId(f.semesterId(), 1, 1);

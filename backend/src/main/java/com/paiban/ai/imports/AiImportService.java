@@ -11,7 +11,11 @@ import com.paiban.ai.AiResult;
 import com.paiban.ai.AiTaskType;
 import com.paiban.ai.imports.ImportDtos.ColumnDto;
 import com.paiban.ai.imports.ImportDtos.CommitResultDto;
+import com.paiban.ai.imports.ImportDtos.CreateItem;
+import com.paiban.ai.imports.ImportDtos.IssueDto;
 import com.paiban.ai.imports.ImportDtos.MappingDto;
+import com.paiban.ai.imports.ImportDtos.MappingItem;
+import com.paiban.ai.imports.ImportDtos.MappingRequest;
 import com.paiban.ai.imports.ImportDtos.PreviewDto;
 import com.paiban.ai.imports.ImportDtos.RowDto;
 import com.paiban.ai.imports.ImportDtos.RowErrorDto;
@@ -60,6 +64,7 @@ public class AiImportService {
     private final ObjectMapper objectMapper;
     private final UserService users;
     private final TimetableImportService timetableImports;
+    private final ImportMappingService nameMappings;
 
     public AiImportService(
             AiGateway gateway,
@@ -70,7 +75,8 @@ public class AiImportService {
             UploadStorage storage,
             ObjectMapper objectMapper,
             UserService users,
-            TimetableImportService timetableImports) {
+            TimetableImportService timetableImports,
+            ImportMappingService nameMappings) {
         this.gateway = gateway;
         this.logs = logs;
         this.parser = parser;
@@ -80,6 +86,7 @@ public class AiImportService {
         this.objectMapper = objectMapper;
         this.users = users;
         this.timetableImports = timetableImports;
+        this.nameMappings = nameMappings;
     }
 
     // ---------------------------------------------------------------- channels
@@ -158,6 +165,39 @@ public class AiImportService {
         List<RowDto> normalized = normalize(rows, threshold(), target);
         Payload existing = readPreviewPayload(log, target);
         saveConfirmed(log, existing.mappings(), normalized, existing.explanation(), AiImportLog.EDITED);
+        return preview(log);
+    }
+
+    /**
+     * Applies the user's name mappings to the working rows, records them for
+     * traceability, and returns the preview with the issues recalculated. The raw AI
+     * answer is never rewritten.
+     */
+    @Transactional
+    public PreviewDto applyMapping(long id, MappingRequest request, String username) {
+        AiImportLog log = requireSession(id, username);
+        requireEditable(log);
+        ImportTarget target = targetOf(log);
+        if (target != ImportTarget.TIMETABLE) {
+            throw ApiException.badRequest("该导入目标不支持名称映射");
+        }
+        requireTimetableEdit(username);
+        Payload working = readWorkingPayload(log, target);
+        if (working.rows().isEmpty()) {
+            throw ApiException.badRequest("没有可映射的数据");
+        }
+        List<MappingItem> items = request == null || request.mappings() == null
+                ? List.of()
+                : request.mappings();
+        List<CreateItem> creates = request == null || request.creates() == null
+                ? List.of()
+                : request.creates();
+        if (items.isEmpty() && creates.isEmpty()) {
+            throw ApiException.badRequest("请提供映射或创建项");
+        }
+        List<MappingDto> merged = new ArrayList<>(working.mappings());
+        merged.addAll(nameMappings.apply(working.rows(), items, creates));
+        saveConfirmed(log, merged, working.rows(), working.explanation(), AiImportLog.EDITED);
         return preview(log);
     }
 
@@ -442,7 +482,32 @@ public class AiImportService {
                 payload.mappings(),
                 payload.explanation(),
                 threshold(),
-                log.getStatus());
+                log.getStatus(),
+                issues(target, payload.rows()));
+    }
+
+    /**
+     * Unmatched names in a timetable preview. The same matching the commit runs, but
+     * read-only, so the user can resolve every issue before anything is written.
+     */
+    private List<IssueDto> issues(ImportTarget target, List<RowDto> rows) {
+        if (target != ImportTarget.TIMETABLE || rows.isEmpty()) {
+            return List.of();
+        }
+        List<String> requiredFields = target.fields().stream()
+                .filter(field -> field.required())
+                .map(field -> field.field())
+                .toList();
+        List<IssueDto> issues = new ArrayList<>();
+        for (RowErrorDto error : timetableImports.analyze(rows, null)) {
+            String value = error.row() >= 1 && error.row() <= rows.size()
+                    ? value(rows.get(error.row() - 1), error.field())
+                    : "";
+            issues.add(new IssueDto(
+                    error.row(), error.field(), value, error.candidates(),
+                    requiredFields.contains(error.field())));
+        }
+        return List.copyOf(issues);
     }
 
     private record Payload(List<MappingDto> mappings, List<RowDto> rows, String explanation) {}
