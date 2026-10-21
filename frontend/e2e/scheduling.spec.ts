@@ -58,8 +58,9 @@ test('场景 1b：草稿拖拽冲突高亮与移动', async ({ page }) => {
   await fireDrag(page, source!, 'dragstart')
   await expect(page.locator('.cell.invalid-target').first()).toBeVisible({ timeout: 20_000 })
   await dropOn(page, conflictCell!)
-  await expect(page.getByText('冲突原因')).toBeVisible()
-  await page.getByRole('button', { name: '关闭' }).click()
+  await expect(page.getByText('换课候选')).toBeVisible()
+  await page.locator('.el-drawer__close-btn').click()
+  await expect(page.getByText('换课候选')).toBeHidden()
 
   await fireDrag(page, source!, 'dragstart')
   await expect(page.locator('.cell.valid-target:not(:has(.lesson))').first()).toBeVisible({

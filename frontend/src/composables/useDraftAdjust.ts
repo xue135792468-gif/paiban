@@ -1,12 +1,19 @@
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { http } from '@/api/http'
-import type { DraftConflict, DraftLesson, MoveTargetState } from '@/components/draft/types'
+import type {
+  DraftConflict,
+  DraftLesson,
+  MoveTargetState,
+  SwapCandidatesResponse,
+  SwapResult,
+} from '@/components/draft/types'
 
 /** Minimal HTTP surface the composable needs, so tests can supply a fake. */
 export interface DraftAdjustClient {
-  get(url: string): Promise<{ data: any }>
+  get(url: string, config?: { params?: Record<string, unknown> }): Promise<{ data: any }>
   patch(url: string, body: unknown): Promise<{ data: any }>
+  post(url: string, body: unknown): Promise<{ data: any }>
 }
 
 export interface DraftAdjustNotify {
@@ -28,16 +35,24 @@ export interface MoveOutcome {
   error?: string
 }
 
+export interface SwapOutcome {
+  saved: boolean
+  type?: SwapResult['type']
+  conflicts: DraftConflict[]
+  warnings: string[]
+  error?: string
+}
+
 export interface UndoOutcome {
   undone: boolean
   conflicts?: DraftConflict[]
   error?: string
 }
 
-interface UndoEntry {
-  lessonId: number
-  from: { periodId: number; roomId: number | null }
-}
+/** Moves are undone by moving back; a swap is its own inverse. */
+export type UndoEntry =
+  | { kind: 'move'; lessonId: number; from: { periodId: number; roomId: number | null } }
+  | { kind: 'swap'; lessonId: number; targetLessonId: number; swapRooms: boolean }
 
 type LessonPosition = Pick<DraftLesson, 'id' | 'periodId' | 'roomId'>
 
@@ -49,8 +64,8 @@ function serverMessage(error: unknown, fallback: string): string {
 }
 
 /**
- * Adjustment state for one draft editor session: the move write call, the
- * in-session undo stack and the shared error wording. A browser refresh drops
+ * Adjustment state for one draft editor session: the move and swap write calls,
+ * the in-session undo stack and the shared error wording. A browser refresh drops
  * the stack, which the spec accepts as a known limit.
  */
 export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}) {
@@ -74,6 +89,10 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
     return `/timetable-drafts/${draftId}/lessons/${lessonId}`
   }
 
+  function swapUrl() {
+    return `/timetable-drafts/${draftId}/swap`
+  }
+
   async function move(
     lesson: LessonPosition,
     target: { periodId: number; roomId?: number | null },
@@ -93,6 +112,7 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
       const changed = fromPeriodId !== target.periodId || (lesson.roomId ?? null) !== roomId
       if (fromPeriodId != null && changed) {
         push({
+          kind: 'move',
           lessonId: lesson.id,
           from: { periodId: fromPeriodId, roomId: lesson.roomId ?? null },
         })
@@ -103,6 +123,36 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
       const message = serverMessage(error, '移动失败')
       notify.error(message)
       return { saved: false, conflicts: [], error: message }
+    }
+  }
+
+  async function swap(
+    lesson: Pick<DraftLesson, 'id'>,
+    candidate: { lessonId: number },
+    swapRooms = false,
+  ): Promise<SwapOutcome> {
+    try {
+      const { data } = await client.post(swapUrl(), {
+        lessonId: lesson.id,
+        targetLessonId: candidate.lessonId,
+        swapRooms,
+      })
+      const warnings: string[] = data.warnings ?? []
+      if (!data.saved) {
+        return { saved: false, type: data.type, conflicts: data.conflicts ?? [], warnings }
+      }
+      push({
+        kind: 'swap',
+        lessonId: lesson.id,
+        targetLessonId: candidate.lessonId,
+        swapRooms,
+      })
+      notify.success('已换课')
+      return { saved: true, type: data.type, conflicts: [], warnings }
+    } catch (error) {
+      const message = serverMessage(error, '换课失败')
+      notify.error(message)
+      return { saved: false, conflicts: [], warnings: [], error: message }
     }
   }
 
@@ -117,13 +167,26 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
     }
     undoing.value = true
     try {
-      const { data } = await client.patch(lessonUrl(entry.lessonId), {
-        periodId: entry.from.periodId,
-        roomId: entry.from.roomId,
-      })
-      if (!data.saved) {
-        notify.error('撤销失败：课表可能已被其他调整修改，请刷新后重试')
-        return { undone: false, conflicts: data.conflicts ?? [] }
+      if (entry.kind === 'move') {
+        const { data } = await client.patch(lessonUrl(entry.lessonId), {
+          periodId: entry.from.periodId,
+          roomId: entry.from.roomId,
+        })
+        if (!data.saved) {
+          notify.error('撤销失败：课表可能已被其他调整修改，请刷新后重试')
+          return { undone: false, conflicts: data.conflicts ?? [] }
+        }
+      } else {
+        // Swapping the same pair again restores both lessons.
+        const { data } = await client.post(swapUrl(), {
+          lessonId: entry.lessonId,
+          targetLessonId: entry.targetLessonId,
+          swapRooms: entry.swapRooms,
+        })
+        if (!data.saved) {
+          notify.error('撤销失败：课表可能已被其他调整修改，请刷新后重试')
+          return { undone: false, conflicts: data.conflicts ?? [] }
+        }
       }
       undoStack.value.pop()
       notify.success('已撤销上一步调整')
@@ -155,9 +218,40 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
     }
   }
 
+  async function loadSwapCandidates(
+    lessonId: number,
+    includeUnavailable = false,
+  ): Promise<SwapCandidatesResponse | null> {
+    try {
+      const { data } = await client.get(
+        `/timetable-drafts/${draftId}/lessons/${lessonId}/swap-candidates`,
+        { params: { type: 'ALL', includeUnavailable } },
+      )
+      return {
+        lessonId: data.lessonId,
+        intraClass: data.intraClass ?? [],
+        crossClass: data.crossClass ?? [],
+      }
+    } catch (error) {
+      notify.error(serverMessage(error, '获取换课候选失败'))
+      return null
+    }
+  }
+
   function clear() {
     undoStack.value = []
   }
 
-  return { undoStack, undoCount, canUndo, undoing, move, undo, loadMoveTargets, clear }
+  return {
+    undoStack,
+    undoCount,
+    canUndo,
+    undoing,
+    move,
+    swap,
+    undo,
+    loadMoveTargets,
+    loadSwapCandidates,
+    clear,
+  }
 }
