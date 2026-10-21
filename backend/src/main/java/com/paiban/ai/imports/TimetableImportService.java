@@ -52,6 +52,16 @@ public class TimetableImportService {
     /** Outcome of one import: either a new draft, or the row errors that blocked it. */
     public record Result(Long draftId, int imported, List<RowErrorDto> errors, List<String> warnings) {}
 
+    /**
+     * Preview-side counts. {@code lessons} and {@code groups} cover only rows that
+     * matched foundation data; {@code newAssignments}/{@code updatedAssignments} split
+     * those groups by whether a teaching task already exists.
+     */
+    public record Summary(int lessons, int groups, int newAssignments, int updatedAssignments) {}
+
+    /** Read-only analysis of a preview: what blocks it, and what it would write. */
+    public record Analysis(List<RowErrorDto> errors, Summary summary) {}
+
     private final SemesterService semesterService;
     private final AdminClassRepository adminClasses;
     private final TeachingClassRepository teachingClasses;
@@ -156,17 +166,64 @@ public class TimetableImportService {
      */
     @Transactional(readOnly = true)
     public List<RowErrorDto> analyze(List<RowDto> rows, Long semesterId) {
+        return inspect(rows, semesterId).errors();
+    }
+
+    /**
+     * The preview analysis: the row errors {@link #analyze} reports plus the lesson and
+     * teaching-task counts the grid shows before anything is written.
+     */
+    @Transactional(readOnly = true)
+    public Analysis inspect(List<RowDto> rows, Long semesterId) {
         if (rows == null || rows.isEmpty()) {
-            return List.of();
+            return new Analysis(List.of(), new Summary(0, 0, 0, 0));
         }
         Long sid = semesterId == null
                 ? semesterService.current().map(SemesterDto::id).orElse(null)
                 : semesterService.require(semesterId).getId();
         if (sid == null) {
             // Nothing to match against until a current semester exists; commit reports it.
-            return List.of();
+            // The grid can still count what the preview would write by name.
+            int groups = distinctNamePairs(rows);
+            return new Analysis(List.of(), new Summary(rows.size(), groups, groups, 0));
         }
-        return List.copyOf(match(rows, sid).errors());
+        Match match = match(rows, sid);
+        Map<AssignmentKey, List<ResolvedRow>> groups = new LinkedHashMap<>();
+        for (ResolvedRow row : match.resolved()) {
+            groups.computeIfAbsent(new AssignmentKey(row.adminClass().getId(), row.course().getId()),
+                            key -> new ArrayList<>())
+                    .add(row);
+        }
+        int updated = 0;
+        if (!groups.isEmpty()) {
+            Map<Long, Long> teachingClassByAdminClass = new LinkedHashMap<>();
+            for (TeachingClass teachingClass : teachingClasses.findBySemesterId(sid)) {
+                teachingClassByAdminClass.putIfAbsent(
+                        teachingClass.getAdminClassId(), teachingClass.getId());
+            }
+            java.util.Set<String> existing = new java.util.HashSet<>();
+            for (Assignment assignment : assignments.findBySemesterId(sid)) {
+                existing.add(assignment.getTeachingClassId() + "|" + assignment.getCourseId());
+            }
+            for (AssignmentKey key : groups.keySet()) {
+                Long teachingClassId = teachingClassByAdminClass.get(key.adminClassId());
+                if (teachingClassId != null && existing.contains(teachingClassId + "|" + key.courseId())) {
+                    updated++;
+                }
+            }
+        }
+        int total = groups.size();
+        return new Analysis(
+                List.copyOf(match.errors()),
+                new Summary(match.resolved().size(), total, total - updated, updated));
+    }
+
+    private static int distinctNamePairs(List<RowDto> rows) {
+        java.util.Set<String> pairs = new java.util.LinkedHashSet<>();
+        for (RowDto row : rows) {
+            pairs.add(normalizeName(value(row, "className")) + "|" + normalizeName(value(row, "courseName")));
+        }
+        return pairs.size();
     }
 
     /** Resolves every row to foundation entities; any unmatched name becomes a row error. */

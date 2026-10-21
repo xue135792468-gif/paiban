@@ -28,7 +28,8 @@ public final class ImportDtos {
             String explanation,
             double threshold,
             String status,
-            List<IssueDto> issues) {}
+            List<IssueDto> issues,
+            TimetableSummaryDto summary) {}
 
     public record TextImportRequest(@NotBlank(message = "请粘贴需要解析的文本") @Size(max = 200000) String text) {}
 
@@ -36,6 +37,14 @@ public final class ImportDtos {
 
     /** Optional commit options; the timetable target defaults to the current semester. */
     public record CommitRequest(Long semesterId) {}
+
+    /**
+     * What a timetable import would write: the lessons in the preview, the
+     * (class, course) groups they form, and how many of those groups would create a
+     * new teaching task versus update an existing one.
+     */
+    public record TimetableSummaryDto(
+            int lessons, int groups, int newAssignments, int updatedAssignments) {}
 
     /** A row that could not be imported, with the system values the user may pick instead. */
     public record RowErrorDto(int row, String field, String message, List<String> candidates) {}

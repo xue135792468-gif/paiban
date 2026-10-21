@@ -180,7 +180,35 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         as(admin).body(Map.of("text", "张三老师教语文"))
                 .when().post("/api/ai/import/text")
                 .then().statusCode(200)
-                .body("issues", hasSize(0));
+                .body("issues", hasSize(0))
+                .body("summary", org.hamcrest.Matchers.nullValue());
+    }
+
+    @Test
+    void timetablePreviewSummarizesNewAndUpdatedAssignments() {
+        String admin = adminToken();
+        TimetableFixture f = timetableFixture(admin);
+        TestData.teacher(admin, "李四");
+        TestData.course(admin, "数学");
+        as(admin).body(Map.of(
+                        "classId", f.classId(),
+                        "courseId", f.courseId(),
+                        "teacherId", f.teacherId(),
+                        "weeklyLessons", 2))
+                .when().post("/api/assignments")
+                .then().statusCode(200);
+        fake.response = aiResponse(List.of(
+                timetableRow(),
+                timetableRow("数学", "周一", "第2节", "李四")));
+
+        as(admin).body(Map.of("text", "一年级1班 周一 第1节 语文 张三 101"))
+                .when().post("/api/ai/import/text?target=timetable")
+                .then().statusCode(200)
+                .body("issues", hasSize(0))
+                .body("summary.lessons", equalTo(2))
+                .body("summary.groups", equalTo(2))
+                .body("summary.newAssignments", equalTo(1))
+                .body("summary.updatedAssignments", equalTo(1));
     }
 
     @Test
@@ -759,12 +787,16 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
     }
 
     private Map<String, Object> timetableRow() {
+        return timetableRow("语文", "周一", "1", "张三");
+    }
+
+    private Map<String, Object> timetableRow(String course, String day, String period, String teacher) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("className", "一年级1班");
-        values.put("dayOfWeek", "周一");
-        values.put("periodNo", "1");
-        values.put("courseName", "语文");
-        values.put("teacherName", "张三");
+        values.put("dayOfWeek", day);
+        values.put("periodNo", period);
+        values.put("courseName", course);
+        values.put("teacherName", teacher);
         values.put("roomName", "101");
         Map<String, Object> confidence = new LinkedHashMap<>();
         values.keySet().forEach(field -> confidence.put(field, 0.99));

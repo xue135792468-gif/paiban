@@ -19,6 +19,7 @@ import com.paiban.ai.imports.ImportDtos.MappingRequest;
 import com.paiban.ai.imports.ImportDtos.PreviewDto;
 import com.paiban.ai.imports.ImportDtos.RowDto;
 import com.paiban.ai.imports.ImportDtos.RowErrorDto;
+import com.paiban.ai.imports.ImportDtos.TimetableSummaryDto;
 import com.paiban.common.excel.ExcelTableReader;
 import com.paiban.common.settings.SettingsService;
 import com.paiban.common.web.ApiException;
@@ -474,6 +475,7 @@ public class AiImportService {
     private PreviewDto preview(AiImportLog log) {
         ImportTarget target = targetOf(log);
         Payload payload = readWorkingPayload(log, target);
+        TimetableImportService.Analysis analysis = analysis(target, payload.rows());
         return new PreviewDto(
                 log.getId(),
                 log.getTargetType(),
@@ -483,23 +485,40 @@ public class AiImportService {
                 payload.explanation(),
                 threshold(),
                 log.getStatus(),
-                issues(target, payload.rows()));
+                issues(analysis, payload.rows()),
+                summary(analysis));
+    }
+
+    private TimetableImportService.Analysis analysis(ImportTarget target, List<RowDto> rows) {
+        if (target != ImportTarget.TIMETABLE || rows.isEmpty()) {
+            return null;
+        }
+        return timetableImports.inspect(rows, null);
+    }
+
+    private TimetableSummaryDto summary(TimetableImportService.Analysis analysis) {
+        if (analysis == null) {
+            return null;
+        }
+        TimetableImportService.Summary summary = analysis.summary();
+        return new TimetableSummaryDto(
+                summary.lessons(), summary.groups(), summary.newAssignments(), summary.updatedAssignments());
     }
 
     /**
      * Unmatched names in a timetable preview. The same matching the commit runs, but
      * read-only, so the user can resolve every issue before anything is written.
      */
-    private List<IssueDto> issues(ImportTarget target, List<RowDto> rows) {
-        if (target != ImportTarget.TIMETABLE || rows.isEmpty()) {
+    private List<IssueDto> issues(TimetableImportService.Analysis analysis, List<RowDto> rows) {
+        if (analysis == null) {
             return List.of();
         }
-        List<String> requiredFields = target.fields().stream()
+        List<String> requiredFields = ImportTarget.TIMETABLE.fields().stream()
                 .filter(field -> field.required())
                 .map(field -> field.field())
                 .toList();
         List<IssueDto> issues = new ArrayList<>();
-        for (RowErrorDto error : timetableImports.analyze(rows, null)) {
+        for (RowErrorDto error : analysis.errors()) {
             String value = error.row() >= 1 && error.row() <= rows.size()
                     ? value(rows.get(error.row() - 1), error.field())
                     : "";

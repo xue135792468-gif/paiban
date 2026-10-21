@@ -10,8 +10,8 @@
     <template v-for="row in periodRows" :key="`row-${row.periodNo}`">
       <div class="row-head">
         <div class="row-title">第{{ row.periodNo }}节</div>
-        <div class="row-time">{{ row.time }}</div>
-        <div class="row-section">{{ sectionLabel(row.section) }}</div>
+        <div v-if="row.time" class="row-time">{{ row.time }}</div>
+        <div v-if="sectionLabel(row.section)" class="row-section">{{ sectionLabel(row.section) }}</div>
       </div>
       <div
         v-for="day in days"
@@ -23,24 +23,28 @@
         @drop.prevent="onDrop(day, row.periodNo)"
         @click="emit('cell-click', { day, periodNo: row.periodNo })"
       >
-        <div
-          v-if="lessonAt(day, row.periodNo)"
-          class="lesson"
-          :class="{
-            dragging: draggedLessonId === lessonAt(day, row.periodNo)?.id,
-            highlight: highlightedIds.has(lessonAt(day, row.periodNo)!.id),
-          }"
-          :style="{ background: courseColor(courses, lessonAt(day, row.periodNo)!.courseId) }"
-          :draggable="draggable"
-          @dragstart="emit('drag-start', lessonAt(day, row.periodNo)!)"
-          @dragend="emit('drag-end')"
-        >
-          <div class="lesson-course">{{ lessonAt(day, row.periodNo)!.courseName }}</div>
-          <div class="lesson-meta">
-            {{ lessonAt(day, row.periodNo)!.teacherName }}
-            <span v-if="lessonRoom(day, row.periodNo)">{{ lessonRoom(day, row.periodNo) }}</span>
+        <template v-if="lessonsAt(day, row.periodNo).length">
+          <div
+            v-for="lesson in lessonsAt(day, row.periodNo)"
+            :key="lesson.id"
+            class="lesson"
+            :class="{
+              dragging: draggedLessonId === lesson.id,
+              highlight: highlightedIds.has(lesson.id),
+              conflict: conflictIds.has(lesson.id),
+            }"
+            :style="{ background: courseColor(courses, lesson.courseId) }"
+            :draggable="draggable"
+            @dragstart="emit('drag-start', lesson)"
+            @dragend="emit('drag-end')"
+          >
+            <div class="lesson-course">{{ lesson.courseName }}</div>
+            <div class="lesson-meta">
+              {{ lesson.teacherName }}
+              <span v-if="lesson.roomName"> · {{ lesson.roomName }}</span>
+            </div>
           </div>
-        </div>
+        </template>
         <div v-else class="empty-cell">—</div>
       </div>
     </template>
@@ -63,6 +67,8 @@ const props = defineProps<{
   targets?: Record<number, MoveTargetState> | null
   /** Lessons the preview wants to call out, for example the two affected cells. */
   highlightLessonIds?: number[]
+  /** Lessons that must be flagged as a hard conflict, for example duplicate import rows. */
+  conflictLessonIds?: number[]
   /** Narrower columns for the side-by-side preview. */
   compact?: boolean
 }>()
@@ -84,13 +90,17 @@ const columnWidth = computed(() => (props.compact ? 110 : 150))
 
 const highlightedIds = computed(() => new Set(props.highlightLessonIds ?? []))
 
+const conflictIds = computed(() => new Set(props.conflictLessonIds ?? []))
+
 const periodRows = computed(() => {
   const map = new Map<number, { periodNo: number; time: string; section: string }>()
   props.periods.forEach((period) => {
     if (!map.has(period.periodNo)) {
+      const start = period.startTime?.slice(0, 5) ?? ''
+      const end = period.endTime?.slice(0, 5) ?? ''
       map.set(period.periodNo, {
         periodNo: period.periodNo,
-        time: `${period.startTime.slice(0, 5)}-${period.endTime.slice(0, 5)}`,
+        time: start && end ? `${start}-${end}` : '',
         section: period.section,
       })
     }
@@ -107,10 +117,11 @@ const periodIdByCell = computed(() => {
 })
 
 const lessonsByCell = computed(() => {
-  const map: Record<string, DraftLesson> = {}
+  const map: Record<string, DraftLesson[]> = {}
   props.lessons.forEach((lesson) => {
     if (lesson.dayOfWeek != null && lesson.periodNo != null) {
-      map[`${lesson.dayOfWeek}-${lesson.periodNo}`] = lesson
+      const key = `${lesson.dayOfWeek}-${lesson.periodNo}`
+      ;(map[key] ??= []).push(lesson)
     }
   })
   return map
@@ -126,13 +137,8 @@ function sectionLabel(section: string) {
   return sectionLabels[section] ?? ''
 }
 
-function lessonAt(day: number, periodNo: number) {
-  return lessonsByCell.value[`${day}-${periodNo}`]
-}
-
-function lessonRoom(day: number, periodNo: number) {
-  const room = lessonAt(day, periodNo)?.roomName
-  return room ? ` · ${room}` : ''
+function lessonsAt(day: number, periodNo: number) {
+  return lessonsByCell.value[`${day}-${periodNo}`] ?? []
 }
 
 function cellClass(day: number, periodNo: number) {
@@ -202,6 +208,8 @@ function onDrop(day: number, periodNo: number) {
   padding: 4px;
   transition: background 0.12s ease;
   display: flex;
+  flex-direction: column;
+  gap: 4px;
   align-items: stretch;
 }
 .cell.valid-target {
@@ -237,6 +245,11 @@ function onDrop(day: number, periodNo: number) {
   outline: 2px solid #409eff;
   outline-offset: -2px;
   box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.25);
+}
+.lesson.conflict {
+  outline: 2px solid #eb5757;
+  outline-offset: -2px;
+  box-shadow: 0 0 0 2px rgba(235, 87, 87, 0.25);
 }
 .lesson-course {
   font-weight: 600;
