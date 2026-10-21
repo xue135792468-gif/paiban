@@ -4,12 +4,12 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `frontend/e2e/swap.spec.ts`：同班换位后两张课表正确
-- [ ] `frontend/e2e/swap.spec.ts`：跨班换人后班级课表节次/课程不变、教师变化
-- [ ] `frontend/e2e/swap.spec.ts`：撤销后逐格回到操作前
-- [ ] `frontend/e2e/swap.spec.ts`：硬冲突被拒绝且提示可读
+- [x] `frontend/e2e/swap.spec.ts`：同班换位后两张课表正确
+- [x] `frontend/e2e/swap.spec.ts`：跨班换人后班级课表节次/课程不变、教师变化
+- [x] `frontend/e2e/swap.spec.ts`：撤销后逐格回到操作前
+- [x] `frontend/e2e/swap.spec.ts`：硬冲突被拒绝且提示可读
 - [x] `GLOSSARY.md` 增加四个术语（规格阶段已完成）
-- [ ] 帮助中心「手工调课」文档 + 搜索索引
-- [ ] `README.md` 功能清单补一句手工调课
+- [x] 帮助中心「手工调课」文档 + 搜索索引
+- [x] `README.md` 功能清单补一句手工调课
