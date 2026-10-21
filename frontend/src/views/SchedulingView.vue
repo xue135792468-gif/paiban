@@ -24,7 +24,15 @@
       </div>
     </div>
 
-    <el-empty v-if="!semesterId" description="暂无学期数据，请先创建或选择学期" />
+    <EmptyStateGuide
+      v-if="!semesterId"
+      title="还没有学期"
+      description="排课任务按学期提交。请先在「学期与作息」中创建学期，再回来发起排课。"
+      button-text="去创建学期"
+      button-to="/admin/semesters"
+      help-slug="scheduling"
+      help-anchor="run"
+    />
 
     <div v-else class="content-body">
       <el-alert
@@ -167,7 +175,14 @@
           </div>
         </template>
 
-        <el-table v-loading="draftsLoading" :data="drafts" style="width: 100%">
+        <EmptyStateGuide
+          v-if="!draftsLoading && drafts.length === 0"
+          title="还没有课表草稿"
+          description="提交一次排课任务后，生成的课表会出现在这里，可以打开编辑器手工微调。"
+          help-slug="scheduling"
+          help-anchor="draft"
+        />
+        <el-table v-else v-loading="draftsLoading" :data="drafts" style="width: 100%">
           <el-table-column prop="name" label="名称" min-width="180" />
           <el-table-column label="状态" width="110">
             <template #default="{ row }">
@@ -221,7 +236,14 @@
           </div>
         </template>
 
-        <el-table v-loading="jobsLoading" :data="jobs" style="width: 100%">
+        <EmptyStateGuide
+          v-if="!jobsLoading && jobs.length === 0"
+          title="还没有排课历史"
+          description="每次提交的排课任务都会记录在这里，包括状态、得分与耗时。"
+          help-slug="scheduling"
+          help-anchor="run"
+        />
+        <el-table v-else v-loading="jobsLoading" :data="jobs" style="width: 100%">
           <el-table-column label="创建时间" min-width="170">
             <template #default="{ row }">
               {{ formatDateTime(row.createdAt) }}
@@ -280,6 +302,7 @@ import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
+import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import { useAuthStore } from '@/stores/auth'
 
 interface Semester {

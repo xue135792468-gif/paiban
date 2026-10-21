@@ -28,6 +28,9 @@ echo "==> backend: ./mvnw ${MVN_ARGS[*]}"
 echo "==> frontend: lint + build"
 (cd frontend && npm run lint && npm run build)
 
+echo "==> frontend: unit tests"
+(cd frontend && npm run test:unit)
+
 if [[ $FULL -eq 1 ]]; then
   echo "==> e2e: Playwright（自动拉起后端与前端）"
   (cd frontend && npx playwright install chromium && npm run test:e2e)

@@ -14,7 +14,11 @@
         <el-form-item label="学校名称">
           <el-input v-model="form['school.name']" placeholder="用于课表导出与 PDF 页眉" />
         </el-form-item>
-        <el-form-item label="学校类型">
+        <el-form-item>
+          <template #label>
+            学校类型
+            <InfoTooltip field="settings.schoolType" />
+          </template>
           <el-radio-group v-model="form['school.type']">
             <el-radio-button value="junior">初中</el-radio-button>
             <el-radio-button value="senior">高中</el-radio-button>
@@ -38,7 +42,11 @@
     <el-card shadow="never">
       <template #header><span class="card-title">调代与通知</span></template>
       <el-form label-width="110px" class="form">
-        <el-form-item label="审批模式">
+        <el-form-item>
+          <template #label>
+            审批模式
+            <InfoTooltip field="substitution.approvalMode" />
+          </template>
           <el-radio-group v-model="form['substitution.approval-mode']">
             <el-radio-button value="approval">审批模式</el-radio-button>
             <el-radio-button value="direct">直接生效</el-radio-button>
@@ -189,7 +197,12 @@
     </el-card>
 
     <el-card shadow="never">
-      <template #header><span class="card-title">AI 供应商</span></template>
+      <template #header>
+        <span class="card-title">
+          AI 供应商
+          <InfoTooltip field="settings.aiProvider" />
+        </span>
+      </template>
       <div class="ai-row">
         <div>
           <div class="ai-name">AI 供应商与模型管理</div>
@@ -215,6 +228,17 @@
       </div>
     </el-card>
 
+    <el-card id="tour-reopen" shadow="never">
+      <template #header><span class="card-title">新手教程</span></template>
+      <div class="ai-row">
+        <div>
+          <div class="ai-name">重新查看新手教程</div>
+          <div class="hint">重新播放首次登录时的界面引导，介绍基础数据、排课、调代与课表入口。</div>
+        </div>
+        <el-button plain @click="reopenTour">重新查看新手教程</el-button>
+      </div>
+    </el-card>
+
     <el-card v-if="aiEnabled" shadow="never">
       <template #header><span class="card-title">AI 特性</span></template>
       <div class="ai-row">
@@ -234,6 +258,17 @@
         <el-tag size="small" type="info">即将推出</el-tag>
       </div>
     </el-card>
+
+    <el-card id="wizard-reenter" shadow="never">
+      <template #header><span class="card-title">初始化向导</span></template>
+      <div class="ai-row">
+        <div>
+          <div class="ai-name">重新走一遍初始化步骤</div>
+          <div class="hint">按学期开学的顺序检查学校信息、作息、基础数据、授课任务与约束是否就绪。</div>
+        </div>
+        <el-button plain @click="router.push('/onboarding')">重新进入初始化向导</el-button>
+      </div>
+    </el-card>
   </div>
 </template>
 
@@ -244,6 +279,8 @@ import { useRouter } from 'vue-router'
 import { http } from '@/api/http'
 import { useSettingsStore } from '@/stores/settings'
 import ImPlatformCard from '@/components/ImPlatformCard.vue'
+import InfoTooltip from '@/components/InfoTooltip.vue'
+import { resetTour, startTour } from '@/onboarding/tour'
 
 interface DingTalkConfig {
   enabled: boolean
@@ -321,6 +358,11 @@ const confidenceThreshold = computed(() => Number(form['ai.import.confidence-thr
 
 function setConfidenceThreshold(value: number | undefined) {
   form['ai.import.confidence-threshold'] = String(value ?? 0.8)
+}
+
+function reopenTour() {
+  resetTour()
+  startTour('basic')
 }
 
 // ADR-0003: AI entry points are hidden entirely while every feature is off.

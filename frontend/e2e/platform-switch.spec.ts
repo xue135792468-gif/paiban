@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { APIRequestContext } from '@playwright/test'
-import { apiCall, apiLogin, newContext } from './helpers'
+import { apiCall, apiLogin, newContext, uiLogin } from './helpers'
 
 /**
  * Ticket 05 验收：教师自助绑定 + 钉钉切换到飞书后数据保留。
@@ -110,11 +110,7 @@ test('钉钉切换到飞书并保留数据', async ({ page }) => {
   expect(dingtalkStatus.activePlatform).toBe('dingtalk')
 
   // 管理员从设置页一键切换到飞书。
-  await page.goto('/login')
-  await page.getByPlaceholder('请输入用户名').fill('admin')
-  await page.getByPlaceholder('请输入密码').fill('admin123')
-  await page.getByRole('button', { name: '登录' }).click()
-  await page.waitForURL((url) => !url.pathname.startsWith('/login'))
+  await uiLogin(page, 'admin', 'admin123')
 
   await page.goto('/admin/settings')
   const card = page.getByTestId('im-platform-card')
