@@ -21,3 +21,7 @@ paiban:
     dingtalk:
       enabled: false
       fake: true
+    feishu:
+      enabled: true
+      fake: true
+      sync-on-startup: false

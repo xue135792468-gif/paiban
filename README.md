@@ -52,8 +52,33 @@ cd backend
 SPRING_PROFILES_ACTIVE=postgres ./mvnw spring-boot:run
 ```
 
-或一键：先在 `.env` 设置 `PAIBAN_JWT_SECRET` 与 `PAIBAN_AI_ENCRYPTION_KEY`，再
-`docker compose up --build`，前端在 http://localhost:5173 ，后端在 http://localhost:8080 。
+或一键：先复制 `.env.example` 为 `.env` 并改掉所有占位值，再
+`docker compose up -d --build`，前端在 http://localhost:5173 ，后端在 http://localhost:8080 。
+
+### 生产部署清单
+
+上线前逐项确认：
+
+1. **密钥与数据库密码**：`.env` 里的 `PAIBAN_JWT_SECRET`（至少 32 字符）、
+   `PAIBAN_AI_ENCRYPTION_KEY`、`POSTGRES_PASSWORD` 全部换成强随机值；
+   `openssl rand -hex 32` 可直接生成。跨域访问时再设置
+   `PAIBAN_CORS_ALLOWED_ORIGINS`（同源 nginx 部署不需要）。
+2. **HTTPS 与域名**：飞书 H5 要求 HTTPS。用 Caddy / Traefik / nginx + Let's Encrypt
+   或 Cloudflare Tunnel 在 443 终止 TLS，转发到 `127.0.0.1:5173`。
+3. **端口**：compose 已把 PostgreSQL（`127.0.0.1:5432`）和后端（`127.0.0.1:8080`）限制在本机；
+   防火墙只对公网开放 80/443。
+4. **首次启动**：`docker compose up -d --build`，确认
+   `curl http://127.0.0.1:8080/api/health` 返回 `UP`。
+5. **初始管理员**：若未设置 `PAIBAN_SECURITY_BOOTSTRAP_ADMIN_PASSWORD`，从
+   `docker compose logs backend` 读取一次性生成的密码；登录后立即修改。
+6. **系统设置**：设置中心把「外部访问地址」填成 `https://你的域名`；
+   启用飞书时填写 App ID / App Secret / 验证 Token，并把事件回调地址设为
+   `https://你的域名/api/integrations/feishu/event`。
+7. **备份**：`./scripts/backup.sh` 生成 PostgreSQL 与 uploads 备份，默认保留 14 天；
+   恢复命令见脚本头部注释。建议加到 cron。
+8. **限流**：应用本身没有登录失败锁定，请在反向代理层加登录限流。
+
+> 生产环境不要使用默认的 `admin/admin123`；非 local/test/e2e profile 下应用会拒绝默认 JWT 密钥。
 
 ### 首次 AI 部署向导
 
@@ -87,6 +112,23 @@ E2E 需要 JDK 21。Playwright 配置会优先使用仓库内的 `.tools/jdk-*`�
 > 说明：规格要求集成测试使用 Testcontainers + 真实 PostgreSQL。`PostgresContainerIT` 已按此实现，
 > 但只在检测到 Docker 时执行：`./mvnw verify -Dtestcontainers=true`。默认执行环境没有 Docker，
 > 因此常规测试使用 H2 的 PostgreSQL 兼容模式；所有迁移脚本保持两库通用。
+
+### 手动验收（飞书沙箱）
+
+飞书沙箱验收依赖真实租户与 H5 容器，CI 不执行；发版前在测试企业内逐项确认：
+
+1. **启动同步**：飞书启用且为当前平台时，启动日志出现「启动时飞书组织同步完成」，教师按
+   `feishuUserId` → `feishuOpenId` → 工号导入/更新；把 App Secret 改错后重启，只记录告警与
+   `FEISHU_SYNC` 失败审计，应用仍能启动。
+2. **免登与绑定**：从飞书工作台打开 H5 应用应自动免登；未绑定时跳转 `/bind`，用「姓名 + 工号/手机号」
+   完成绑定后进入首页。已绑定其他教师/其他飞书账号时提示 409 文案。
+3. **平台切换**：设置页「IM 平台」从钉钉切到飞书，确认弹窗文案、切换后教师/班级/课表数据仍在，
+   `PLATFORM_SWITCH` 审计包含 from → to，目标平台目录同步被触发。
+4. **调代卡片**：审批通过后，原教师/代课教师飞书收到交互卡片（标题、正文、「查看详情」按钮）；
+   断开网络或教师未绑定时降级为系统内通知，`notification_log.platform` 分别记为 `feishu` / `system`。
+5. **事件回调**：`challenge` 原样返回；错误 `X-Feishu-Token` 返回 403；加密事件返回 400；
+   `contact.user.created_v3` / `updated_v3` / `deleted_v3` 分别新增、更新、停用教师（不删除）。
+
 
 ### 性能基准（ADR-0017）
 
@@ -123,6 +165,39 @@ cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test
 - **钉钉集成**：`AuthProvider` / `OrgDataProvider` / `NotificationChannel` 三组接口均有本地与钉钉实现；
   钉钉 Stream 增量事件通过 `POST /api/integrations/dingtalk/event` 接收（生产可接官方 Stream SDK 转发）。
   关闭集成后系统完整可用，通知自动降级为系统内消息。
+- **飞书集成**：与钉钉同一组接口的飞书实现；设置中心「飞书集成」卡片可配置 App ID / App Secret /
+  验证 Token 与同步策略（`feishu` 飞书为准、`local` 本地为准），并手动触发全量同步
+  （`POST /api/integrations/feishu/sync`）与查看 `FEISHU_SYNC` 同步日志。
+  飞书启用且为当前平台时，应用启动后会执行一次全量同步（`paiban.integration.feishu.sync-on-startup`，
+  默认 `true`；test / e2e profile 关闭）。拉取失败只写 `FEISHU_SYNC` 失败审计并告警，不会把
+  「拉取失败」误判为「全员离职」，也不阻塞启动。
+  飞书增量事件通过 `POST /api/integrations/feishu/event` 接收，校验头为 `X-Feishu-Token`
+  （值为设置中心的「验证 Token」）；同时兼容 v2.0 事件信封与扁平 v1 格式。
+  未启用或 Token 不匹配时分别返回 400 / 403，未知事件类型按 200 忽略。
+  飞书开放平台以 HTTP 200 + 非零 `code` 表示业务失败，客户端会按失败处理并记录数字错误码，
+  通讯录拉取失败时抛出结构化失败而不是返回空列表。
+- **飞书通知**：调代等通知以飞书交互卡片发送（Markdown 正文 +「查看详情」按钮，按模板着色）；
+  飞书不可达或教师未绑定飞书账号时自动降级为系统内通知。通知记录用 `platform` 标记来源
+  （`feishu` / `dingtalk` / `system`）。复用现有通知接口，不新增端点。
+  升级到本版本时，V19 迁移按 `channel` 回填历史 `notification_log.platform`
+  （`dingtalk` → `dingtalk`，`local`/`system` → `system`，其余取 `channel` 原值）。
+- **IM 平台切换**：设置中心「IM 平台」卡片用单选按钮选择「不启用 / 钉钉 / 飞书」，
+  **当前平台只能通过 `PUT /api/integrations/platform` 修改**；`PUT /api/settings` 不再接受
+  `integration.active-platform`（返回 400）。切换时停用原平台、启用新平台，
+  触发新平台的组织目录同步，并写入 `PLATFORM_SWITCH` 审计（含 from → to）。
+  设置写入与审计在同一事务内提交，目录同步（网络调用）在事务外执行。
+  切换只改平台开关，不触碰教师、班级、课程、课表与调代数据；历史通知记录按 `platform` 保留来源。
+  未配置凭证（钉钉 AppKey/AppSecret 或飞书 App ID/App Secret）时切换返回 400。
+  通知渠道只在当前平台生效：`FeishuNotificationChannel` 要求飞书已启用且为当前平台，
+  `DingTalkNotificationChannel` 同理；免登与组织同步仍各自按启用开关判断。
+  `integration.active-platform` 为空时按「钉钉优先、其次飞书、否则不启用」派生，兼容一期部署。
+- **飞书自助绑定**：飞书免登找不到本地账号时返回 `binding_required` 与 10 分钟有效的 `bindToken`，
+  前端跳转 `/bind?token=...`；教师填写姓名并至少提供工号或手机号，两者都填时必须指向同一教师，
+  姓名需与档案完全一致。绑定成功写入 `teacher.feishu_user_id` / `feishu_open_id`、审计 `FEISHU_BIND`
+  并签发本地账号会话。飞书账号已绑定其他教师、教师已绑定其他飞书账号、或教师尚未开通系统账号时
+  返回 409，由教务管理员在「教师管理」中手动修正。
+- **教师平台绑定**：教师列表显示「平台绑定」标签（钉钉 / 飞书 / 两者 / 未绑定）；新建或编辑教师时
+  可直接填写钉钉 UserID、飞书 UserID 与飞书 OpenID，留空表示清除该绑定。
 - **测试替身**：`paiban.integration.dingtalk.fake=true`（e2e/test profile）启用确定性的假钉钉客户端。
 
 ## 已知限制
@@ -130,6 +205,15 @@ cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test
 - **钉钉 Stream 长连接**：一期未内嵌官方 Stream SDK。增量事件通过
   `POST /api/integrations/dingtalk/event`（需 `X-DingTalk-Token`，值为设置中心的“事件令牌”）接收，
   生产环境可用官方 SDK 将事件转发到该端点；全量同步走 `POST /api/integrations/dingtalk/sync`。
+- **飞书 Stream 长连接**：本仓库未内嵌官方飞书 Stream SDK，也不自行维护 WebSocket 长连接。
+  增量事件由 `POST /api/integrations/feishu/event` 接收（需 `X-Feishu-Token`，值为设置中心的“验证 Token”），
+  生产环境可用官方 Stream SDK 订阅 `contact.user.created_v3` / `updated_v3` / `deleted_v3`
+  并转发到该端点；事件加密须在飞书开放平台关闭，否则接口返回 400。
+  全量同步走 `POST /api/integrations/feishu/sync`；删除事件只把教师标记为停用，不删除本地记录。
+- **自助绑定范围**：仅飞书提供 `/bind` 自助绑定（姓名 + 工号/手机号）；钉钉没有自助绑定页面，
+  绑定关系由管理员在「教师管理」的编辑弹窗中填写/修正。
+- **前端测试**：仓库没有前端单元测试 runner；飞书环境检测（`window.tt`）、免登与自助绑定流程
+  由 Playwright 验收场景覆盖（`frontend/e2e/feishu-login.spec.ts`、`platform-switch.spec.ts`）。
 - **PDF 导出**：用 OpenPDF `PdfPTable` 直接绘制，而不是 HTMLWorker；CJK 字体从系统字体或
   `paiban.export.pdf-font-path` 加载，Docker 镜像已内置 `fonts-noto-cjk`。
 - **约束设置快照**：`ConstraintSettingsHolder` 为进程级静态变量，因此一期固定为单任务串行求解
@@ -161,10 +245,26 @@ docs/adr/  架构决策记录
 | `paiban.substitution.approval-mode` | 调代审批模式：`approval` / `direct` |
 | `paiban.notification.scope` | 通知范围：`minimal` / `with-grade-leader` / `with-admin` |
 | `paiban.integration.dingtalk.enabled` | 钉钉集成开关 |
+| `paiban.integration.feishu.sync-on-startup` | 启动时是否全量拉取飞书通讯录，默认 `true`（仅当飞书启用且为当前平台；test/e2e 为 `false`） |
+| `integration.active-platform`（只读） | 当前 IM 平台：`none` / `dingtalk` / `feishu`；只能通过 `PUT /api/integrations/platform` 修改，为空时按启用开关派生（钉钉优先） |
 | `paiban.ai.encryption-key` | AI 供应商 API Key 的 AES-256 加密密钥（环境变量 `PAIBAN_AI_ENCRYPTION_KEY`） |
 | `paiban.ai.features.*` | AI 特性开关；二期已提供供应商管理、数据导入、调代推荐与操作历史 |
 | `school.type`（设置中心） | `junior` / `senior`，默认 `junior`，仅影响 UI 显示 |
 | `ai.import.confidence-threshold`（设置中心） | AI 导入低置信度阈值，默认 `0.8` |
+
+### 飞书应用创建与配置
+
+1. **创建应用**：飞书开放平台 → 开发者后台 → 创建「企业自建应用」，在「凭证与基础信息」获取 App ID / App Secret。
+2. **H5 微应用主页**：「添加应用能力」启用「网页应用」，桌面端/移动端主页地址填 `https://<你的域名>/login`
+   （与系统前端同源，浏览器访问仍走账号密码登录）。
+3. **免登权限**：「权限管理」申请用户基本信息与 user id 读取权限（如 `contact:user.base:readonly`、
+   `contact:user.employee_id:readonly`），创建版本并发布，由企业管理员审核通过。
+4. **安全设置**：「安全设置 → 重定向 URL」填 `https://<你的域名>/login`；若启用组织事件，
+   在「事件与回调」把请求地址指向 `https://<你的域名>/api/integrations/feishu/event` 并填写 Verification Token。
+5. **启用集成**：设置中心 →「飞书集成」填入 App ID / App Secret 并启用，再到「IM 平台」选择飞书并切换。
+   教师从飞书工作台点击应用图标即免登；尚未绑定飞书身份时自动进入 `/bind` 页面，
+   填写姓名与工号（或手机号）完成自助绑定。若提示「未找到您的信息」，请联系教务管理员核对档案，
+   或在「教师管理」中直接填写飞书 UserID / OpenID。
 
 > 生产环境必须设置 `PAIBAN_JWT_SECRET`（至少 32 字符）。在非 `local`/`test`/`e2e` profile 下，
 > 若仍使用仓库内置的默认密钥，应用会拒绝启动。

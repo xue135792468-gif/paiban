@@ -40,6 +40,12 @@ public class Teacher {
     @Column(name = "dingtalk_user_id", length = 100)
     private String dingtalkUserId;
 
+    @Column(name = "feishu_user_id", length = 100)
+    private String feishuUserId;
+
+    @Column(name = "feishu_open_id", length = 100)
+    private String feishuOpenId;
+
     @Column(nullable = false)
     private boolean active = true;
 

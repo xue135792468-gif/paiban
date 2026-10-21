@@ -113,11 +113,38 @@ public class FoundationService {
                         throw ApiException.conflict("工号已存在: " + request.employeeNo());
                     });
         }
+        // The database has unique indexes on the Feishu ids; check first so an
+        // administrator editing bindings gets a 409 instead of a 500.
+        if (request.feishuUserId() != null && !request.feishuUserId().isBlank()) {
+            teachers.findByFeishuUserId(request.feishuUserId())
+                    .filter(existing -> !existing.getId().equals(teacher.getId()))
+                    .ifPresent(existing -> {
+                        throw ApiException.conflict("飞书 UserID 已被其他教师绑定");
+                    });
+        }
+        if (request.feishuOpenId() != null && !request.feishuOpenId().isBlank()) {
+            teachers.findByFeishuOpenId(request.feishuOpenId())
+                    .filter(existing -> !existing.getId().equals(teacher.getId()))
+                    .ifPresent(existing -> {
+                        throw ApiException.conflict("飞书 OpenID 已被其他教师绑定");
+                    });
+        }
         teacher.setName(request.name());
         teacher.setEmployeeNo(blankToNull(request.employeeNo()));
         teacher.setPhone(blankToNull(request.phone()));
         teacher.setEmail(blankToNull(request.email()));
         teacher.setSubject(blankToNull(request.subject()));
+        // Binding ids are optional on update: an omitted value leaves the existing binding
+        // intact (the teacher edit dialog does not always carry them), a blank clears it.
+        if (request.dingtalkUserId() != null) {
+            teacher.setDingtalkUserId(blankToNull(request.dingtalkUserId()));
+        }
+        if (request.feishuUserId() != null) {
+            teacher.setFeishuUserId(blankToNull(request.feishuUserId()));
+        }
+        if (request.feishuOpenId() != null) {
+            teacher.setFeishuOpenId(blankToNull(request.feishuOpenId()));
+        }
         if (request.active() != null) {
             teacher.setActive(request.active());
         }
@@ -432,7 +459,18 @@ public class FoundationService {
     private TeacherDto toDto(Teacher teacher) {
         return new TeacherDto(
                 teacher.getId(), teacher.getName(), teacher.getEmployeeNo(), teacher.getPhone(),
-                teacher.getEmail(), teacher.getSubject(), teacher.isActive());
+                teacher.getEmail(), teacher.getSubject(), teacher.isActive(),
+                teacher.getDingtalkUserId(), teacher.getFeishuUserId(), teacher.getFeishuOpenId(),
+                bindingStatus(teacher));
+    }
+
+    private static String bindingStatus(Teacher teacher) {
+        boolean dingtalk = teacher.getDingtalkUserId() != null;
+        boolean feishu = teacher.getFeishuUserId() != null || teacher.getFeishuOpenId() != null;
+        if (dingtalk && feishu) {
+            return "both";
+        }
+        return dingtalk ? "dingtalk" : feishu ? "feishu" : "none";
     }
 
     private RoomDto toDto(Room room) {

@@ -33,6 +33,9 @@ paiban:
       natural-language-constraints: false
   scheduling:
     max-solve-seconds: 60
+  cors:
+    # Comma-separated. A same-origin deployment behind the bundled nginx does not need CORS.
+    allowed-origins: ${PAIBAN_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   integration:
     dingtalk:
       enabled: false
@@ -41,6 +44,15 @@ paiban:
       agent-id: ""
       sync-strategy: dingtalk
       fake: false
+    feishu:
+      enabled: false
+      app-id: ""
+      app-secret: ""
+      verification-token: ""
+      encrypt-key: ""
+      sync-strategy: feishu
+      fake: false
+      sync-on-startup: true
   export:
     school-logo-path: ""
     pdf-font-path: ""
@@ -116,3 +128,7 @@ paiban:
     dingtalk:
       enabled: false
       fake: true
+    feishu:
+      enabled: false
+      fake: true
+      sync-on-startup: false

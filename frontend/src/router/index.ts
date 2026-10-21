@@ -11,9 +11,29 @@ const router = createRouter({
       meta: { public: true },
     },
     {
+      // Reached from the Feishu H5 container with a short-lived bind token.
+      path: '/bind',
+      name: 'feishu-bind',
+      component: () => import('@/views/FeishuBindView.vue'),
+      meta: { public: true },
+    },
+    {
       path: '/403',
       name: 'forbidden',
       component: () => import('@/views/ForbiddenView.vue'),
+    },
+    {
+      // Top-level so print styles can drop the shell chrome; HelpView owns its own nav.
+      path: '/help',
+      name: 'help',
+      component: () => import('@/views/HelpView.vue'),
+      meta: { title: '帮助中心' },
+    },
+    {
+      path: '/help/:slug',
+      name: 'help-doc',
+      component: () => import('@/views/HelpView.vue'),
+      meta: { title: '帮助中心' },
     },
     {
       path: '/',

@@ -56,7 +56,14 @@
 
         <el-card shadow="never">
           <template #header><span class="card-title">我的申请</span></template>
-          <el-table v-loading="loadingMine" :data="myRequests" stripe>
+          <EmptyStateGuide
+            v-if="!loadingMine && myRequests.length === 0"
+            title="还没有调代申请"
+            description="请假时在上方选择日期与课节提交申请，审批进度会显示在这里。"
+            help-slug="substitution"
+            help-anchor="apply"
+          />
+          <el-table v-else v-loading="loadingMine" :data="myRequests" stripe>
             <el-table-column prop="effectiveDate" label="日期" width="120" />
             <el-table-column prop="periodLabel" label="节次" width="110" />
             <el-table-column prop="className" label="行政班" min-width="120" />
@@ -81,7 +88,12 @@
 
       <el-tab-pane v-if="canApprove" label="待审批" name="pending">
         <el-card shadow="never">
-          <el-table v-loading="loadingPending" :data="pendingRequests" stripe>
+          <el-table
+            v-if="loadingPending || pendingRequests.length > 0"
+            v-loading="loadingPending"
+            :data="pendingRequests"
+            stripe
+          >
             <el-table-column prop="originalTeacherName" label="申请人" width="110" />
             <el-table-column prop="effectiveDate" label="日期" width="120" />
             <el-table-column prop="periodLabel" label="节次" width="110" />
@@ -98,7 +110,13 @@
               </template>
             </el-table-column>
           </el-table>
-          <el-empty v-if="!loadingPending && pendingRequests.length === 0" description="没有待审批的申请" />
+          <EmptyStateGuide
+            v-else
+            title="没有待审批的申请"
+            description="新的调代申请会出现在这里。审批通过后，课表会自动标注「代」。"
+            help-slug="substitution"
+            help-anchor="approve"
+          />
         </el-card>
       </el-tab-pane>
 
@@ -127,8 +145,18 @@
           </div>
         </el-card>
         <el-card shadow="never">
-          <el-table v-loading="loadingRecords" :data="records" stripe>
-            <el-table-column prop="effectiveDate" label="生效日期" width="120" />
+          <el-table
+            v-if="loadingRecords || records.length > 0"
+            v-loading="loadingRecords"
+            :data="records"
+            stripe
+          >
+            <el-table-column prop="effectiveDate" width="120">
+              <template #header>
+                生效日期
+                <InfoTooltip field="substitution.effectiveDate" />
+              </template>
+            </el-table-column>
             <el-table-column prop="className" label="行政班" min-width="120" />
             <el-table-column prop="courseName" label="课程" width="100" />
             <el-table-column prop="originalTeacherName" label="原教师" width="110" />
@@ -140,7 +168,13 @@
               </template>
             </el-table-column>
           </el-table>
-          <el-empty v-if="!loadingRecords && records.length === 0" description="暂无调代记录" />
+          <EmptyStateGuide
+            v-else
+            title="还没有调代记录"
+            description="调代申请审批通过并生效后，会在这里留下记录，方便期末统计与追溯。"
+            help-slug="substitution"
+            help-anchor="apply"
+          />
         </el-card>
       </el-tab-pane>
     </el-tabs>
@@ -220,7 +254,9 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
+import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import { useAuthStore } from '@/stores/auth'
+import InfoTooltip from '@/components/InfoTooltip.vue'
 
 interface Teacher {
   id: number

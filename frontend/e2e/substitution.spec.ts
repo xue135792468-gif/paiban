@@ -1,13 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
-import { classEntries, newContext, seedSchool, solveAndPublish } from './helpers'
-
-async function uiLogin(page: Page, username: string, password: string) {
-  await page.goto('/login')
-  await page.getByPlaceholder('请输入用户名').fill(username)
-  await page.getByPlaceholder('请输入密码').fill(password)
-  await page.getByRole('button', { name: '登录' }).click()
-  await page.waitForURL((url) => !url.pathname.startsWith('/login'))
-}
+import { expect, test } from '@playwright/test'
+import { classEntries, newContext, seedSchool, solveAndPublish, uiLogin } from './helpers'
 
 function dateForWeekday(dayOfWeek: number) {
   const date = new Date('2025-09-01T00:00:00')

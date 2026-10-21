@@ -9,6 +9,7 @@
               ? '按行政班、教师或教室查看课表。调代生效的课节会标注「代」。'
               : '按行政班、教师、教室或全校查看课表。调代生效的课节会标注「代」。'
           }}
+          <InfoTooltip field="timetable.substitutionMark" />
         </p>
       </div>
       <div class="actions">
@@ -40,6 +41,7 @@
           <el-radio-button value="latest">最新</el-radio-button>
           <el-radio-button value="baseline">原始</el-radio-button>
         </el-radio-group>
+        <InfoTooltip field="timetable.view" />
         <el-dropdown v-if="canExport" @command="exportFile">
           <el-button>
             <el-icon><Download /></el-icon>
@@ -65,7 +67,15 @@
     />
 
     <el-card v-loading="loading" shadow="never">
-      <el-empty v-if="!hasData" description="暂无课表数据" />
+      <EmptyStateGuide
+        v-if="!hasData"
+        title="暂无课表数据"
+        :description="emptyDescription"
+        :button-text="showSchedulingGuide ? '去自动排课' : undefined"
+        :button-to="showSchedulingGuide ? '/admin/scheduling' : undefined"
+        help-slug="timetable"
+        help-anchor="views"
+      />
 
       <template v-else-if="mode === 'school'">
         <el-table-v2
@@ -120,8 +130,10 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
+import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
+import InfoTooltip from '@/components/InfoTooltip.vue'
 
 interface Entry {
   id: number
@@ -220,6 +232,19 @@ const targets = computed(() => {
 })
 
 const hasData = computed(() => (mode.value === 'school' ? schoolGroups.value.length > 0 : entries.value.length > 0))
+
+// Without a published timetable the empty grid is a dead end, so point the
+// reader at the place that produces one (scheduling). Teachers cannot run
+// scheduling, hence the permission check rather than a bare route push.
+const showSchedulingGuide = computed(
+  () => !published.value && auth.hasPermission('scheduling:run'),
+)
+
+const emptyDescription = computed(() =>
+  !published.value
+    ? '当前学期还没有发布课表。请先在「自动排课」中生成并发布课表；如基础数据尚未录入，可从初始化向导开始。'
+    : '当前查看对象在所选日期没有课节，试试切换查看对象或日期。',
+)
 
 const schoolGroups = computed(() => {
   const map = new Map<number, { classId: number; className: string; cells: Record<string, Entry> }>()

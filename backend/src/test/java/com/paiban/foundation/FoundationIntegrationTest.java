@@ -53,6 +53,30 @@ class FoundationIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void teacherFeishuBindingsCannotBeDuplicated() {
+        String token = adminToken();
+        String suffix = TestData.suffix();
+        long first = TestData.teacher(token, "张老师" + suffix);
+        long second = TestData.teacher(token, "李老师" + suffix);
+
+        as(token).body(Map.of("name", "张老师" + suffix, "feishuUserId", "fs-dup-" + suffix))
+                .when().put("/api/teachers/" + first)
+                .then().statusCode(200);
+
+        // Another teacher claiming the same UserID is a 409, not the unique-index 500.
+        as(token).body(Map.of("name", "李老师" + suffix, "feishuUserId", "fs-dup-" + suffix))
+                .when().put("/api/teachers/" + second)
+                .then().statusCode(409);
+
+        as(token).body(Map.of("name", "张老师" + suffix, "feishuOpenId", "ou-dup-" + suffix))
+                .when().put("/api/teachers/" + first)
+                .then().statusCode(200);
+        as(token).body(Map.of("name", "李老师" + suffix, "feishuOpenId", "ou-dup-" + suffix))
+                .when().put("/api/teachers/" + second)
+                .then().statusCode(409);
+    }
+
+    @Test
     void creatingAdminClassAlsoCreatesTeachingClass() {
         String token = adminToken();
         long semesterId = TestData.semester(token);

@@ -40,6 +40,9 @@ public class NotificationLog {
     @Column(name = "error_message", length = 1000)
     private String errorMessage;
 
+    @Column(length = 20)
+    private String platform;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 }

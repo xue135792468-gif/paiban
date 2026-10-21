@@ -22,7 +22,16 @@
     </div>
 
     <el-card shadow="never">
-      <el-table v-loading="loading" :data="teachers" stripe>
+      <EmptyStateGuide
+        v-if="!loading && teachers.length === 0"
+        title="还没有教师数据"
+        description="教师是授课任务与调代的基础。点击下方按钮新建教师，或使用右上角「导入」从 Excel 批量导入。"
+        :button-text="auth.hasPermission('foundation:manage') ? '新建教师' : undefined"
+        help-slug="foundation"
+        help-anchor="teachers"
+        @action="openCreate"
+      />
+      <el-table v-else v-loading="loading" :data="teachers" stripe>
         <el-table-column prop="employeeNo" label="工号" min-width="120">
           <template #default="{ row }">
             <span>{{ row.employeeNo || '—' }}</span>
@@ -42,6 +51,28 @@
         <el-table-column prop="email" label="电子邮箱" min-width="180">
           <template #default="{ row }">
             <span>{{ row.email || '—' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="平台绑定" min-width="150">
+          <template #default="{ row }">
+            <div class="binding-tags">
+              <el-tag
+                v-if="row.bindingStatus === 'dingtalk' || row.bindingStatus === 'both'"
+                size="small"
+              >
+                钉钉
+              </el-tag>
+              <el-tag
+                v-if="row.bindingStatus === 'feishu' || row.bindingStatus === 'both'"
+                size="small"
+                type="success"
+              >
+                飞书
+              </el-tag>
+              <el-tag v-if="!row.bindingStatus || row.bindingStatus === 'none'" size="small" type="info">
+                未绑定
+              </el-tag>
+            </div>
           </template>
         </el-table-column>
         <el-table-column prop="active" label="状态" width="100">
@@ -87,6 +118,16 @@
         <el-form-item label="电子邮箱" prop="email">
           <el-input v-model="form.email" placeholder="请输入电子邮箱（选填）" />
         </el-form-item>
+        <el-divider content-position="left">平台绑定</el-divider>
+        <el-form-item label="钉钉 UserID">
+          <el-input v-model="form.dingtalkUserId" placeholder="留空表示清除绑定" />
+        </el-form-item>
+        <el-form-item label="飞书 UserID">
+          <el-input v-model="form.feishuUserId" placeholder="留空表示清除绑定" />
+        </el-form-item>
+        <el-form-item label="飞书 OpenID">
+          <el-input v-model="form.feishuOpenId" placeholder="留空表示清除绑定" />
+        </el-form-item>
         <el-form-item label="状态" prop="active">
           <el-switch
             v-model="form.active"
@@ -116,6 +157,7 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'elem
 import { Plus, Download, Upload } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
+import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ImportDialog from '@/components/ImportDialog.vue'
 
 interface Teacher {
@@ -126,6 +168,10 @@ interface Teacher {
   email?: string | null
   subject?: string | null
   active: boolean
+  dingtalkUserId?: string | null
+  feishuUserId?: string | null
+  feishuOpenId?: string | null
+  bindingStatus?: 'both' | 'dingtalk' | 'feishu' | 'none'
 }
 
 const auth = useAuthStore()
@@ -145,6 +191,9 @@ const defaultForm = {
   email: '',
   subject: '',
   active: true,
+  dingtalkUserId: '',
+  feishuUserId: '',
+  feishuOpenId: '',
 }
 
 const form = reactive({ ...defaultForm })
@@ -181,6 +230,9 @@ function openEdit(row: Teacher) {
     email: row.email ?? '',
     subject: row.subject ?? '',
     active: row.active ?? true,
+    dingtalkUserId: row.dingtalkUserId ?? '',
+    feishuUserId: row.feishuUserId ?? '',
+    feishuOpenId: row.feishuOpenId ?? '',
   })
   dialogVisible.value = true
   formRef.value?.clearValidate()
@@ -198,6 +250,10 @@ async function submit() {
       email: form.email.trim() || null,
       subject: form.subject.trim() || null,
       active: form.active,
+      // Empty string clears a binding; the backend treats an omitted field as unchanged.
+      dingtalkUserId: form.dingtalkUserId.trim(),
+      feishuUserId: form.feishuUserId.trim(),
+      feishuOpenId: form.feishuOpenId.trim(),
     }
     if (editingId.value) {
       await http.put(`/teachers/${editingId.value}`, payload)
@@ -269,6 +325,11 @@ onMounted(load)
 </script>
 
 <style scoped>
+.binding-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
 .toolbar {
   display: flex;
   align-items: flex-start;

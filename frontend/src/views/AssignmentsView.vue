@@ -120,9 +120,23 @@
         </template>
       </div>
 
-      <el-empty
+      <EmptyStateGuide
         v-if="semesters.length === 0 && !loading"
-        description="请先在「学期与作息」中创建学期"
+        title="还没有学期"
+        description="请先在「学期与作息」中创建学期，授课任务按学期维护。"
+        button-text="去创建学期"
+        button-to="/admin/semesters"
+        help-slug="scheduling"
+        help-anchor="assignments"
+      />
+      <EmptyStateGuide
+        v-else-if="!loading && assignments.length === 0"
+        title="还没有授课任务"
+        description="授课任务 = 行政班 + 课程 + 每周节数 + 任课教师，是智能排课的核心输入。"
+        :button-text="canManage ? '新建授课任务' : undefined"
+        help-slug="scheduling"
+        help-anchor="assignments"
+        @action="openCreate"
       />
       <el-table
         v-else
@@ -215,7 +229,11 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="每周节数" prop="weeklyLessons">
+        <el-form-item prop="weeklyLessons">
+          <template #label>
+            每周节数
+            <InfoTooltip field="assignment.weeklyLessons" />
+          </template>
           <el-input-number
             v-model="form.weeklyLessons"
             :min="1"
@@ -249,7 +267,9 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Download, Plus, Upload } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
+import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ImportDialog from '@/components/ImportDialog.vue'
+import InfoTooltip from '@/components/InfoTooltip.vue'
 import { useAuthStore } from '@/stores/auth'
 
 interface Semester {

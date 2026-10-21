@@ -2,6 +2,7 @@ package com.paiban.common.config;
 
 import com.paiban.identity.security.JwtAuthenticationFilter;
 import com.paiban.identity.security.RestAuthenticationEntryPoint;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -19,12 +20,24 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.Arrays;
 import java.util.List;
 
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
+
+    private final List<String> allowedOrigins;
+
+    public SecurityConfig(
+            @Value("${paiban.cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173}")
+            String allowedOrigins) {
+        this.allowedOrigins = Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty())
+                .toList();
+    }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -39,7 +52,8 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(List.of("*"));
+        configuration.setAllowedOriginPatterns(
+                allowedOrigins.isEmpty() ? List.of("http://localhost:5173") : allowedOrigins);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setExposedHeaders(List.of("Content-Disposition"));
@@ -64,11 +78,15 @@ public class SecurityConfig {
                                 "/api/auth/login",
                                 "/api/auth/dingtalk",
                                 "/api/auth/dingtalk/config",
+                                "/api/auth/feishu",
+                                "/api/auth/feishu/config",
+                                "/api/auth/feishu/bind",
                                 "/api/health",
                                 "/actuator/**")
                         .permitAll()
                         .requestMatchers("/uploads/**").permitAll()
                         .requestMatchers("/api/integrations/dingtalk/event").permitAll()
+                        .requestMatchers("/api/integrations/feishu/event").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

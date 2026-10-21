@@ -6,9 +6,14 @@ RUN ./mvnw -B -DskipTests package || mvn -B -DskipTests package
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends fonts-noto-cjk \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends fonts-noto-cjk curl gosu \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 paiban \
+    && useradd --uid 10001 --gid paiban --create-home --shell /bin/bash paiban
 COPY --from=build /build/target/*.jar app.jar
-RUN mkdir -p /app/uploads /app/data
+COPY entrypoint.sh /app/entrypoint.sh
+RUN mkdir -p /app/uploads /app/data \
+    && chmod +x /app/entrypoint.sh \
+    && chown -R paiban:paiban /app
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+ENTRYPOINT ["/app/entrypoint.sh"]
