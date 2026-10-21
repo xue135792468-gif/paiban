@@ -154,7 +154,7 @@
             "
           />
         </el-form-item>
-        <el-form-item label="同步策略">
+        <el-form-item v-if="!isJunior" label="同步策略">
           <el-select v-model="feishu.syncStrategy" style="width: 220px">
             <el-option label="飞书为准（覆盖本地）" value="feishu" />
             <el-option label="本地为准（只补空字段）" value="local" />
