@@ -7,7 +7,8 @@
 #   ./doctor.sh --quiet    同 --json（本工具无进度输出）
 #   ./doctor.sh --help     显示帮助
 #
-# 退出码：0=健康，1=警告，2=严重。
+# 退出码：0=健康，1=警告（内存/迁移），2=严重（Docker/数据库/磁盘）。
+# 端口占用只作为信息输出，不影响退出码：本系统正常运行时它们本来就被自己占用。
 set -uo pipefail
 
 export LC_ALL=C
@@ -24,7 +25,8 @@ usage() {
   --quiet   同 --json（本工具不打印进度信息）
   --help    显示本帮助
 
-退出码：0=健康，1=有警告，2=存在严重问题
+退出码：0=健康，1=有警告（内存/迁移），2=存在严重问题
+端口占用仅为信息项，不影响退出码。
 EOF
 }
 
@@ -212,12 +214,13 @@ case "$os_name" in
 esac
 
 # --- 退出码 ---------------------------------------------------------------
+# 端口占用只是信息：本系统正常运行时 8080/5173/5432 本来就被自己占着。
+# 2 = 严重（Docker/数据库/磁盘）；1 = 警告（内存/迁移）；0 = 健康。
 
 exit_code=0
 if [[ $docker_installed -eq 0 || $docker_running -eq 0 || $db_reachable -eq 0 || $disk_sufficient -eq 0 ]]; then
   exit_code=2
-elif [[ "$port_8080" == "occupied" || "$port_5173" == "occupied" || "$port_5432" == "occupied" ]] ||
-  [[ $mem_sufficient -eq 0 || $db_migrated -eq 0 ]]; then
+elif [[ $mem_sufficient -eq 0 || $db_migrated -eq 0 ]]; then
   exit_code=1
 fi
 
@@ -256,6 +259,7 @@ fi
 ok() { printf '%s✅%s %s\n' "$C_GREEN" "$C_RESET" "$1"; }
 warn() { printf '%s⚠️%s %s\n' "$C_YELLOW" "$C_RESET" "$1"; }
 bad() { printf '%s❌%s %s\n' "$C_RED" "$C_RESET" "$1"; }
+info() { printf 'ℹ️ %s\n' "$1"; }
 
 echo "=== 排课系统自检 (doctor) ==="
 
@@ -274,7 +278,7 @@ else
   [[ "$port_8080" == "occupied" ]] && detail+="8080（后端） "
   [[ "$port_5173" == "occupied" ]] && detail+="5173（前端） "
   [[ "$port_5432" == "occupied" ]] && detail+="5432（数据库） "
-  warn "端口：${detail}已被占用；如非本系统进程，请先释放"
+  info "端口：${detail}已被占用（若为本系统容器则正常；否则请先释放，不影响退出码）"
 fi
 
 if [[ $mem_sufficient -eq 1 ]]; then

@@ -175,6 +175,55 @@ else
   pass "human mode has no ANSI escapes when stdout is not a TTY"
 fi
 
+echo "== exit-code contract (static) =="
+# A healthy running stack occupies 8080/5173/5432, so port occupancy must never
+# influence the exit code. Extract the exit-code blocks and prove they only
+# reference docker/database/disk (2) and memory/migrations (1).
+sh_exit_block="$(awk '/^# --- 退出码/{flag=1;next}/^# --- 输出/{flag=0}flag' scripts/doctor.sh)"
+if [[ -z "$sh_exit_block" ]]; then
+  fail "scripts/doctor.sh has a recognizable exit-code block"
+else
+  if printf '%s' "$sh_exit_block" | grep -Eq 'port_8080|port_5173|port_5432|ports'; then
+    fail "doctor.sh exit code ignores port occupancy"
+  else
+    pass "doctor.sh exit code ignores port occupancy"
+  fi
+  if printf '%s' "$sh_exit_block" | grep -q 'db_reachable' &&
+    printf '%s' "$sh_exit_block" | grep -q 'disk_sufficient'; then
+    pass "doctor.sh exit 2 covers database/disk"
+  else
+    fail "doctor.sh exit 2 covers database/disk"
+  fi
+  if printf '%s' "$sh_exit_block" | grep -q 'mem_sufficient' &&
+    printf '%s' "$sh_exit_block" | grep -q 'db_migrated'; then
+    pass "doctor.sh exit 1 covers memory/migrations"
+  else
+    fail "doctor.sh exit 1 covers memory/migrations"
+  fi
+fi
+
+ps_exit_block="$(awk '/^# --- 退出码/{flag=1;next}/^# --- 输出/{flag=0}flag' scripts/doctor.ps1)"
+if [[ -z "$ps_exit_block" ]]; then
+  fail "scripts/doctor.ps1 has a recognizable exit-code block"
+else
+  if printf '%s' "$ps_exit_block" | grep -Eq '\$port8080|\$port5173|\$port5432'; then
+    fail "doctor.ps1 exit code ignores port occupancy"
+  else
+    pass "doctor.ps1 exit code ignores port occupancy"
+  fi
+fi
+
+if grep -q '若为本系统容器则正常' scripts/doctor.sh; then
+  pass "doctor.sh labels occupied ports as informational"
+else
+  fail "doctor.sh labels occupied ports as informational"
+fi
+if grep -q '若为本系统容器则正常' scripts/doctor.ps1; then
+  pass "doctor.ps1 labels occupied ports as informational"
+else
+  fail "doctor.ps1 labels occupied ports as informational"
+fi
+
 echo "== docker-less host assertions =="
 if command -v docker >/dev/null 2>&1; then
   echo "skip - docker is installed on this host; absence assertions do not apply"

@@ -61,12 +61,14 @@ function Initialize-PaibanEnv {
 
     $envFile = Join-Path $Root '.env'
     $exampleFile = Join-Path $Root '.env.example'
+    $created = $false
 
     if (-not (Test-Path $envFile)) {
         if (-not (Test-Path $exampleFile)) {
             throw "缺少 .env.example：$exampleFile"
         }
         Copy-Item -Path $exampleFile -Destination $envFile
+        $created = $true
         if (-not $Quiet) { Write-Host '[信息] 未找到 .env，已从 .env.example 创建。' }
     }
 
@@ -117,6 +119,7 @@ function Initialize-PaibanEnv {
     return @{
         File          = $envFile
         AdminPassword = $effectiveAdmin
+        Created       = $created
         Generated     = $generated
     }
 }

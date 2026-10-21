@@ -325,6 +325,49 @@ if [ -f "$RESTORE_SH" ]; then
     fail "restore.sh honours COMPOSE_FILE"
   fi
 
+  # --- shared compose helper ------------------------------------------------
+  COMPOSE_LIB="$ROOT_DIR/scripts/lib/compose.sh"
+  if [ -f "$COMPOSE_LIB" ] && bash -n "$COMPOSE_LIB"; then
+    pass "scripts/lib/compose.sh exists and parses"
+  else
+    fail "scripts/lib/compose.sh exists and parses"
+  fi
+  if [ -f "$COMPOSE_LIB" ] && grep -q 'paiban_compose' "$COMPOSE_LIB"; then
+    pass "scripts/lib/compose.sh defines paiban_compose"
+  else
+    fail "scripts/lib/compose.sh defines paiban_compose"
+  fi
+  for file in "$BACKUP_SH" "$RESTORE_SH"; do
+    rel="${file#"$ROOT_DIR"/}"
+    if grep -q 'lib/compose.sh' "$file"; then
+      pass "$rel sources lib/compose.sh"
+    else
+      fail "$rel sources lib/compose.sh"
+    fi
+  done
+
+  # --- backup durability ----------------------------------------------------
+  if grep -q 'mktemp' "$BACKUP_SH" && grep -Eq '^\s*mv .*\$tmp' "$BACKUP_SH"; then
+    pass "backup.sh dumps to a temp file and moves it only on success"
+  else
+    fail "backup.sh dumps to a temp file and moves it only on success"
+  fi
+  if grep -Eq '>\s*"\$BACKUP_DIR/paiban-' "$BACKUP_SH"; then
+    fail "backup.sh never writes the dump directly to its final name"
+  else
+    pass "backup.sh never writes the dump directly to its final name"
+  fi
+  if grep -q 'BACKUP_DIR="\${BACKUP_DIR:-\$ROOT/backups}"' "$BACKUP_SH"; then
+    pass "backup.sh defaults BACKUP_DIR to <repo>/backups"
+  else
+    fail "backup.sh defaults BACKUP_DIR to <repo>/backups"
+  fi
+  find_line="$(grep 'mtime' "$BACKUP_SH" | grep 'find ' || true)"
+  case "$find_line" in
+    *"paiban-*.dump"*uploads-*.tar.gz*) pass "backup.sh retention only targets paiban-*.dump and uploads-*.tar.gz" ;;
+    *) fail "backup.sh retention only targets paiban-*.dump and uploads-*.tar.gz" ;;
+  esac
+
   # A failing docker stub records every invocation, so "marker absent" proves the
   # dry run and the missing-dump guard never reach Docker.
   TMP="$(mktemp -d)"
@@ -376,7 +419,16 @@ fi
 echo
 echo "== 4. chore/prod-hardening ancestry =="
 
-if (cd "$ROOT_DIR" && git merge-base --is-ancestor chore/prod-hardening HEAD) 2>/dev/null; then
+HARDENING_REF=""
+if git -C "$ROOT_DIR" rev-parse --verify --quiet refs/heads/chore/prod-hardening >/dev/null; then
+  HARDENING_REF="chore/prod-hardening"
+elif git -C "$ROOT_DIR" rev-parse --verify --quiet refs/remotes/origin/chore/prod-hardening >/dev/null; then
+  HARDENING_REF="origin/chore/prod-hardening"
+fi
+
+if [ -z "$HARDENING_REF" ]; then
+  echo "SKIP  chore/prod-hardening ancestry (branch not present in this clone)"
+elif git -C "$ROOT_DIR" merge-base --is-ancestor "$HARDENING_REF" HEAD; then
   pass "chore/prod-hardening is an ancestor of HEAD (already merged)"
 else
   fail "chore/prod-hardening is an ancestor of HEAD (already merged)"

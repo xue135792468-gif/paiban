@@ -31,6 +31,11 @@ public class IdentityDataInitializer {
 
     private static final Map<String, String> PERMISSION_NAMES = new LinkedHashMap<>();
 
+    /** Prefixes that mark a value as an untouched {@code .env.example} placeholder. */
+    private static final String[] PLACEHOLDER_PREFIXES = {
+        "replace-with", "replace_with", "change-me", "changeme", "your-", "your_", "todo"
+    };
+
     static {
         PERMISSION_NAMES.put(Permissions.USER_MANAGE, "用户与角色管理");
         PERMISSION_NAMES.put(Permissions.SCHOOL_MANAGE, "学校信息管理");
@@ -114,7 +119,7 @@ public class IdentityDataInitializer {
         } else {
             log.debug("管理员账号已存在，跳过创建（重复启动不会重置密码）");
         }
-        log.info("Identity catalogue ready: {} permissions, roles admin/teacher/head_teacher", permissions.size());
+        log.info("身份目录已就绪：{} 项权限，角色 admin/teacher/head_teacher", permissions.size());
     }
 
     /**
@@ -132,10 +137,14 @@ public class IdentityDataInitializer {
     /**
      * Local development keeps admin/admin123. Any other profile requires an explicit password
      * or gets a generated one printed once, so the repository never ships a working credential.
+     *
+     * <p>A placeholder copied from {@code .env.example} (for example
+     * {@code replace-with-a-strong-initial-admin-password}) counts as unset: it is public, so
+     * treating it as configured would publish the administrator password.
      */
-    private String bootstrapPassword(
+    String bootstrapPassword(
             org.springframework.core.env.Environment environment, String configured) {
-        if (configured != null && !configured.isBlank()) {
+        if (!isPlaceholder(configured)) {
             return configured;
         }
         for (String profile : environment.getActiveProfiles()) {
@@ -146,6 +155,20 @@ public class IdentityDataInitializer {
         }
         // The caller logs the generated password once, right after the account is saved.
         return java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+    }
+
+    /** True for a blank value or one of the documented {@code .env.example} placeholders. */
+    static boolean isPlaceholder(String value) {
+        if (value == null || value.isBlank()) {
+            return true;
+        }
+        String lower = value.toLowerCase(java.util.Locale.ROOT);
+        for (String prefix : PLACEHOLDER_PREFIXES) {
+            if (lower.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Role upsertRole(RoleRepository roleRepository, String code, String name, Set<Permission> permissions) {

@@ -36,6 +36,8 @@ public class JwtService {
         if (!devProfile
                 && (secret.contains(DEV_MARKER)
                 || secret.contains("change-me")
+                || secret.contains("replace-with")
+                || secret.contains("replace_with")
                 || secret.length() < 32)) {
             throw new IllegalStateException(
                     "JWT 密钥不安全。非本地环境必须设置 PAIBAN_JWT_SECRET（至少 32 个字符，且不能使用示例值）。");
