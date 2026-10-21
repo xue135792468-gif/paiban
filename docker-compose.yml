@@ -33,8 +33,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-paiban}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-paiban}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-paiban}
-      PAIBAN_JWT_SECRET: ${PAIBAN_JWT_SECRET:?请先设置 PAIBAN_JWT_SECRET（至少 32 个字符）}
-      PAIBAN_AI_ENCRYPTION_KEY: ${PAIBAN_AI_ENCRYPTION_KEY:?请先设置 PAIBAN_AI_ENCRYPTION_KEY}
+      PAIBAN_JWT_SECRET: ${PAIBAN_JWT_SECRET:-}
+      PAIBAN_AI_ENCRYPTION_KEY: ${PAIBAN_AI_ENCRYPTION_KEY:-}
       PAIBAN_SECURITY_BOOTSTRAP_ADMIN_PASSWORD: ${PAIBAN_SECURITY_BOOTSTRAP_ADMIN_PASSWORD:-}
       PAIBAN_CORS_ALLOWED_ORIGINS: ${PAIBAN_CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
       TZ: ${TZ:-Asia/Shanghai}
@@ -47,6 +47,8 @@ services:
         condition: service_healthy
     volumes:
       - ./data/uploads:/app/uploads
+      # Generated secrets live here and survive container recreation.
+      - ./data/app:/app/data
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/health"]
       interval: 15s

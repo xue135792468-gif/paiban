@@ -1,0 +1,5 @@
+# Shell scripts must keep LF line endings: they run inside the Linux container and on
+# Linux/macOS hosts. A Windows checkout with core.autocrlf=true would otherwise put a
+# CRLF after the shebang and the image would fail with
+# "exec /app/entrypoint.sh: no such file or directory".
+*.sh text eol=lf
