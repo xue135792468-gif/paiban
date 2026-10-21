@@ -44,6 +44,8 @@
 > 仓库里的 `启动排课系统.cmd` 是本地开发快捷方式，要求宿主机安装 JDK / Node；日常演示优先用上面的
 > 一键启动。
 
+图文安装教程与常见问题：[docs/installation-guide.md](docs/installation-guide.md)。
+
 ## 功能范围（一期）
 
 - 基础数据：年级、行政班、教师、教室、课程，支持 Excel 批量导入（先预览、后入库）
