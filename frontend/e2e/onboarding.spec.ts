@@ -1,14 +1,8 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
+import { uiLogin } from './helpers'
 
 // Depends on an empty e2e database. Specs that call seedSchool run later
 // (zz-junior-mode.spec.ts), so this file sees the "first login" condition.
-async function uiLogin(page: Page, username: string, password: string) {
-  await page.goto('/login')
-  await page.getByPlaceholder('请输入用户名').fill(username)
-  await page.getByPlaceholder('请输入密码').fill(password)
-  await page.getByRole('button', { name: '登录' }).click()
-  await page.waitForURL((url) => !url.pathname.startsWith('/login'))
-}
 
 test('首次登录进入初始化向导并可跳过', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')

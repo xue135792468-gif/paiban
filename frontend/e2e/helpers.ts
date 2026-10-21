@@ -1,6 +1,31 @@
-import { APIRequestContext, request } from '@playwright/test'
+import { request, type APIRequestContext, type Page } from '@playwright/test'
 
 export const API = 'http://127.0.0.1:8080/api'
+
+const TOUR_KEYS = ['paiban.tour.seen', 'paiban.tour.advanced']
+
+/**
+ * Logs in through the real login form. By default both tour flags are written
+ * before the app boots, so existing specs are never covered by the new-user
+ * tour; specs that assert the tour itself pass `{ tour: true }`.
+ */
+export async function uiLogin(
+  page: Page,
+  username: string,
+  password: string,
+  options: { tour?: boolean } = {},
+): Promise<void> {
+  if (!options.tour) {
+    await page.addInitScript((keys: string[]) => {
+      for (const key of keys) localStorage.setItem(key, '1')
+    }, TOUR_KEYS)
+  }
+  await page.goto('/login')
+  await page.getByPlaceholder('请输入用户名').fill(username)
+  await page.getByPlaceholder('请输入密码').fill(password)
+  await page.getByRole('button', { name: '登录' }).click()
+  await page.waitForURL((url) => !url.pathname.startsWith('/login'))
+}
 
 export async function apiLogin(
   context: APIRequestContext,
