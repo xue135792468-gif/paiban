@@ -104,6 +104,75 @@ public class DraftValidator {
         return resultOf(checkAffected(snapshot(draftId), null));
     }
 
+    /**
+     * Evaluates independent override scenarios against one snapshot. Each scenario
+     * starts from a fresh copy of the lessons, so it never sees another scenario's
+     * changes. The snapshot itself (periods, rooms, courses, teachers, classes and
+     * constraint settings) is built once; this is what the drag preview and the swap
+     * candidate list need, where one request asks "what if" for many targets.
+     */
+    @Transactional(readOnly = true)
+    public List<ValidationResult> validateScenarios(Long draftId, List<List<LessonOverride>> scenarios) {
+        Snapshot base = snapshot(draftId);
+        List<ValidationResult> results = new ArrayList<>(scenarios.size());
+        for (List<LessonOverride> scenario : scenarios) {
+            Snapshot copy = base.withFreshLessons();
+            results.add(resultOf(checkScenariosAffected(copy, applyOverrides(copy, scenario))));
+        }
+        return results;
+    }
+
+    /**
+     * The same rules as {@link #checkAffected}, but the pair scan only visits pairs
+     * that involve an affected lesson. {@code checkAffected} scans every pair because
+     * it also serves whole-draft validation; scenario evaluation repeats that scan for
+     * every target, so the quadratic part must not be paid per scenario.
+     */
+    private List<Conflict> checkScenariosAffected(Snapshot s, Set<Long> affectedLessonIds) {
+        List<Conflict> out = new ArrayList<>();
+        List<L> lessons = s.lessons;
+        for (L lesson : lessons) {
+            if (affectedLessonIds.contains(lesson.id)) {
+                checkLesson(lesson, s, out);
+            }
+        }
+        for (int i = 0; i < lessons.size(); i++) {
+            L a = lessons.get(i);
+            if (!affectedLessonIds.contains(a.id)) {
+                continue;
+            }
+            for (int j = i + 1; j < lessons.size(); j++) {
+                checkPair(a, lessons.get(j), s, out);
+            }
+            for (int j = 0; j < i; j++) {
+                L b = lessons.get(j);
+                if (!affectedLessonIds.contains(b.id)) {
+                    checkPair(a, b, s, out);
+                }
+            }
+        }
+        if (groupRulesEnabled(s.settings)) {
+            checkGroups(s, out, affectedLessonIds);
+        }
+        return out;
+    }
+
+    /**
+     * Group rules only report when they are enabled and hard, so a draft without any
+     * of them needs no per-day counts. This keeps scenario evaluation cheap for the
+     * default configuration, which only has the pairwise rules.
+     */
+    private boolean groupRulesEnabled(ConstraintSettings settings) {
+        return List.of(
+                        ConstraintType.TEACHER_MAX_PER_DAY,
+                        ConstraintType.CLASS_MAX_PER_DAY,
+                        ConstraintType.COURSE_MAX_PER_DAY,
+                        ConstraintType.EVENING_MAX,
+                        ConstraintType.SPORT_NOT_FIRST_AFTERNOON)
+                .stream()
+                .anyMatch(type -> settings.enabled(type) && settings.hard(type));
+    }
+
     /** Applies every override to the in-memory snapshot and returns the affected lesson ids. */
     private Set<Long> applyOverrides(Snapshot snapshot, List<LessonOverride> overrides) {
         Map<Long, L> byId = new HashMap<>();
@@ -469,7 +538,14 @@ public class DraftValidator {
 
     private record Snapshot(List<L> lessons, Map<Long, Period> periods, Map<Long, Room> rooms,
                             Map<Long, Course> courses, Map<Long, Teacher> teachers,
-                            Map<Long, AdminClass> classes, ConstraintSettings settings) {}
+                            Map<Long, AdminClass> classes, ConstraintSettings settings) {
+
+        /** Same reference data, independent lesson copies, for scenario evaluation. */
+        Snapshot withFreshLessons() {
+            return new Snapshot(lessons.stream().map(L::copy).toList(),
+                    periods, rooms, courses, teachers, classes, settings);
+        }
+    }
 
     private static final class L {
         private Long id;
@@ -491,6 +567,19 @@ public class DraftValidator {
             copy.periodId = lesson.getPeriodId();
             copy.roomId = lesson.getRoomId();
             copy.studentCount = lesson.getStudentCount();
+            return copy;
+        }
+
+        L copy() {
+            L copy = new L();
+            copy.id = id;
+            copy.assignmentId = assignmentId;
+            copy.courseId = courseId;
+            copy.teacherId = teacherId;
+            copy.classId = classId;
+            copy.periodId = periodId;
+            copy.roomId = roomId;
+            copy.studentCount = studentCount;
             return copy;
         }
     }
