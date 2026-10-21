@@ -2,46 +2,84 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: paiban-postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: paiban
-      POSTGRES_USER: paiban
-      POSTGRES_PASSWORD: paiban
-      TZ: Asia/Shanghai
+      POSTGRES_DB: ${POSTGRES_DB:-paiban}
+      POSTGRES_USER: ${POSTGRES_USER:-paiban}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-paiban}
+      TZ: ${TZ:-Asia/Shanghai}
     ports:
-      - "5432:5432"
+      # Host-only: the backend reaches Postgres over the compose network.
+      - "127.0.0.1:5432:5432"
     volumes:
       - paiban-pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U paiban -d paiban"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-paiban} -d ${POSTGRES_DB:-paiban}"]
       interval: 5s
       timeout: 3s
       retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   backend:
     build:
       context: ./backend
+    restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: postgres
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/paiban
-      SPRING_DATASOURCE_USERNAME: paiban
-      SPRING_DATASOURCE_PASSWORD: paiban
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-paiban}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-paiban}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-paiban}
       PAIBAN_JWT_SECRET: ${PAIBAN_JWT_SECRET:?请先设置 PAIBAN_JWT_SECRET（至少 32 个字符）}
       PAIBAN_AI_ENCRYPTION_KEY: ${PAIBAN_AI_ENCRYPTION_KEY:?请先设置 PAIBAN_AI_ENCRYPTION_KEY}
+      PAIBAN_SECURITY_BOOTSTRAP_ADMIN_PASSWORD: ${PAIBAN_SECURITY_BOOTSTRAP_ADMIN_PASSWORD:-}
+      PAIBAN_CORS_ALLOWED_ORIGINS: ${PAIBAN_CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      TZ: ${TZ:-Asia/Shanghai}
+      JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=75.0}
     ports:
-      - "8080:8080"
+      # Host-only: the bundled nginx proxies /api to backend:8080.
+      - "127.0.0.1:8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
       - ./data/uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   frontend:
     build:
       context: ./frontend
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
     ports:
       - "5173:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   paiban-pgdata:
