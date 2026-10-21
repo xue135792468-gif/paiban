@@ -6,6 +6,7 @@
 export const HELP_SLUGS = [
   'foundation',
   'scheduling',
+  'manual-adjust',
   'substitution',
   'timetable',
   'settings',
