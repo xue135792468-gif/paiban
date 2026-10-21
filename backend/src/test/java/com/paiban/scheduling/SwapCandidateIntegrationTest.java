@@ -1,6 +1,7 @@
 package com.paiban.scheduling;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.equalTo;
 
 import com.paiban.foundation.domain.AdminClass;
 import com.paiban.foundation.domain.AdminClassRepository;
@@ -136,12 +137,17 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
     }
 
     private long place(World world, long classId, String course, String teacher, int periodIndex, String room) {
+        return place(world, classId, world.course(course), world.teacher(teacher), periodIndex, room);
+    }
+
+    private long place(
+            World world, long classId, long courseId, long teacherId, int periodIndex, String room) {
         DraftLesson lesson = new DraftLesson();
         lesson.setDraftId(world.draftId());
         lesson.setAssignmentId(0L);
         lesson.setLessonIndex(1);
-        lesson.setCourseId(world.course(course));
-        lesson.setTeacherId(world.teacher(teacher));
+        lesson.setCourseId(courseId);
+        lesson.setTeacherId(teacherId);
         lesson.setAdminClassId(classId);
         lesson.setStudentCount(45);
         lesson.setPeriodId(world.period(periodIndex));
@@ -181,8 +187,81 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
         assertThat(candidate.get("periodLabel")).isEqualTo("周1第2节");
         assertThat(candidate.get("roomName")).isEqualTo("教室2");
         assertThat(candidate.get("available")).isEqualTo(true);
+        assertThat(candidate.get("roomSwapRequired")).isEqualTo(false);
         assertThat((List<?>) candidate.get("conflicts")).isEmpty();
         assertThat(response.jsonPath().getList("crossClass")).isEmpty();
+    }
+
+    @Test
+    void intraClassCandidateRequiresRoomExchangeWhenKeepingRoomsConflicts() {
+        String token = adminToken();
+        World world = world(token);
+        long target = place(world, world.classA(), "语文", "张老师", 0, "教室1");
+        long candidate = place(world, world.classA(), "数学", "李老师", 1, "教室2");
+        // Occupies 教室1 at the candidate's period, so keeping rooms blocks the swap.
+        place(world, world.classB(), "语文阅读", "王老师", 1, "教室1");
+
+        Response response = candidates(token, world, target);
+
+        List<Map<String, Object>> intra = response.jsonPath().getList("intraClass");
+        assertThat(intra).hasSize(1);
+        Map<String, Object> row = intra.get(0);
+        assertThat(((Number) row.get("lessonId")).longValue()).isEqualTo(candidate);
+        assertThat(row.get("available")).isEqualTo(true);
+        assertThat(row.get("roomSwapRequired")).isEqualTo(true);
+        assertThat((List<?>) row.get("conflicts")).isEmpty();
+
+        as(token).body(Map.of(
+                        "lessonId", target,
+                        "targetLessonId", candidate,
+                        "swapRooms", true))
+                .when().post("/api/timetable-drafts/" + world.draftId() + "/swap")
+                .then().statusCode(200)
+                .body("saved", equalTo(true))
+                .body("type", equalTo("INTRA_CLASS"));
+
+        assertThat(draftLessons.findById(target).orElseThrow().getPeriodId())
+                .isEqualTo(world.period(1));
+        assertThat(draftLessons.findById(target).orElseThrow().getRoomId())
+                .isEqualTo(world.room("教室2"));
+        assertThat(draftLessons.findById(candidate).orElseThrow().getPeriodId())
+                .isEqualTo(world.period(0));
+        assertThat(draftLessons.findById(candidate).orElseThrow().getRoomId())
+                .isEqualTo(world.room("教室1"));
+    }
+
+    @Test
+    void crossClassCandidatesSkipTheSameTeacher() {
+        String token = adminToken();
+        World world = world(token);
+        long target = place(world, world.classA(), "语文", "张老师", 0, "教室1");
+        place(world, world.classB(), "语文", "张老师", 2, "教室2");
+
+        Response response = candidates(token, world, target, true);
+
+        assertThat(response.jsonPath().getList("crossClass")).isEmpty();
+    }
+
+    @Test
+    void crossClassCandidateSubjectComparisonIgnoresCaseAndSpaces() {
+        String token = adminToken();
+        World world = world(token);
+        long physicsUpper = course(token, "物理A", "Physics");
+        long physicsLower = course(token, "物理B", "physics");
+        long teacherUpper = teacher(token, "周老师", "PHYSICS");
+        long teacherLower = teacher(token, "吴老师", " physics ");
+        long target = place(world, world.classA(), physicsUpper, teacherUpper, 0, "教室1");
+        long candidate = place(world, world.classB(), physicsLower, teacherLower, 2, "教室2");
+
+        Response response = candidates(token, world, target);
+
+        List<Map<String, Object>> cross = response.jsonPath().getList("crossClass");
+        assertThat(cross).hasSize(1);
+        Map<String, Object> row = cross.get(0);
+        assertThat(((Number) row.get("lessonId")).longValue()).isEqualTo(candidate);
+        assertThat(row.get("available")).isEqualTo(true);
+        assertThat((List<?>) row.get("conflicts")).isEmpty();
+        assertThat((List<?>) row.get("warnings")).isEmpty();
     }
 
     @Test

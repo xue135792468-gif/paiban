@@ -17,6 +17,7 @@ import com.paiban.scheduling.domain.DraftLesson;
 import com.paiban.scheduling.domain.DraftLessonRepository;
 import com.paiban.scheduling.domain.TimetableDraft;
 import com.paiban.scheduling.domain.TimetableDraftRepository;
+import com.paiban.scheduling.service.DraftValidator.LessonChange;
 import com.paiban.scheduling.web.SchedulingDtos.LessonOverride;
 import com.paiban.scheduling.web.SwapQueryDtos.MoveTargetDto;
 import com.paiban.scheduling.web.SwapQueryDtos.MoveTargetsResponse;
@@ -28,6 +29,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,6 +40,9 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class SwapCandidateService {
+
+    /** Panel narrowing filters; a null field means that dimension is not filtered. */
+    public record CandidateFilters(Long courseId, Long gradeId, Long classId, Long teacherId) {}
 
     private final TimetableDraftRepository drafts;
     private final DraftLessonRepository draftLessons;
@@ -71,13 +76,15 @@ public class SwapCandidateService {
     }
 
     /**
-     * Candidate lesson plus the overrides that describe the exchange. Intra-class
-     * swaps move both periods; cross-class exchanges move both teachers.
+     * Candidate lesson plus the exact changes that describe the exchange. An
+     * intra-class candidate carries a second scenario that also exchanges rooms;
+     * cross-class exchanges move both teachers only.
      */
     private record PendingCandidate(
             DraftLesson lesson,
             boolean intraClass,
-            List<LessonOverride> overrides,
+            List<LessonChange> changes,
+            List<LessonChange> roomSwapChanges,
             List<DraftValidator.Conflict> extraConflicts,
             List<String> warnings) {}
 
@@ -86,10 +93,7 @@ public class SwapCandidateService {
             Long draftId,
             Long lessonId,
             SwapType type,
-            Long courseId,
-            Long gradeId,
-            Long classId,
-            Long teacherId,
+            CandidateFilters filters,
             boolean includeUnavailable) {
         TimetableDraft draft = drafts.findById(draftId)
                 .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
@@ -118,31 +122,60 @@ public class SwapCandidateService {
         grades.findBySemesterIdOrderBySortOrderAscNameAsc(draft.getSemesterId())
                 .forEach(grade -> gradeById.put(grade.getId(), grade));
 
+        CandidateFilters activeFilters = filters == null
+                ? new CandidateFilters(null, null, null, null)
+                : filters;
         SwapType requested = type == null ? SwapType.ALL : type;
         List<PendingCandidate> pending = new ArrayList<>();
         if (requested != SwapType.CROSS_CLASS) {
-            collectIntraClass(target, lessons, classById, courseId, gradeId, classId, teacherId, pending);
+            collectIntraClass(target, lessons, classById, activeFilters, pending);
         }
         if (requested != SwapType.INTRA_CLASS) {
             collectCrossClass(target, lessons, courseById, teacherById, classById,
-                    courseId, gradeId, classId, teacherId, pending);
+                    activeFilters, pending);
         }
 
-        List<DraftValidator.ValidationResult> results = validator.validateScenarios(
-                draftId, pending.stream().map(PendingCandidate::overrides).toList());
+        List<List<LessonChange>> scenarios = new ArrayList<>(pending.size());
+        for (PendingCandidate candidate : pending) {
+            scenarios.add(candidate.changes());
+            if (candidate.roomSwapChanges() != null) {
+                scenarios.add(candidate.roomSwapChanges());
+            }
+        }
+        List<DraftValidator.ValidationResult> results =
+                validator.validateChangeScenarios(draftId, scenarios);
 
         List<SwapCandidateDto> intra = new ArrayList<>();
         List<SwapCandidateDto> cross = new ArrayList<>();
-        for (int index = 0; index < pending.size(); index++) {
-            PendingCandidate candidate = pending.get(index);
-            List<DraftValidator.Conflict> conflicts = new ArrayList<>(results.get(index).conflicts());
-            conflicts.addAll(candidate.extraConflicts());
-            boolean available = conflicts.isEmpty();
+        int scenarioIndex = 0;
+        for (PendingCandidate candidate : pending) {
+            DraftValidator.ValidationResult unchangedRooms = results.get(scenarioIndex++);
+            DraftValidator.ValidationResult exchangedRooms = candidate.roomSwapChanges() == null
+                    ? null
+                    : results.get(scenarioIndex++);
+            boolean available;
+            boolean roomSwapRequired = false;
+            List<DraftValidator.Conflict> conflicts;
+            List<DraftValidator.Conflict> unchangedConflicts = new ArrayList<>(unchangedRooms.conflicts());
+            unchangedConflicts.addAll(candidate.extraConflicts());
+            if (unchangedConflicts.isEmpty()) {
+                available = true;
+                conflicts = List.of();
+            } else if (exchangedRooms != null && exchangedRooms.valid()) {
+                // Keeping the rooms blocks the exchange but swapping them does not.
+                available = true;
+                conflicts = List.of();
+                roomSwapRequired = true;
+            } else {
+                available = false;
+                conflicts = unchangedConflicts;
+            }
             if (!available && !includeUnavailable) {
                 continue;
             }
             SwapCandidateDto dto = toDto(candidate.lesson(), periodById, roomById, courseById,
-                    teacherById, classById, gradeById, available, conflicts, candidate.warnings());
+                    teacherById, classById, gradeById, available, roomSwapRequired,
+                    conflicts, candidate.warnings());
             (candidate.intraClass() ? intra : cross).add(dto);
         }
         intra.sort(candidateOrder());
@@ -154,22 +187,27 @@ public class SwapCandidateService {
             DraftLesson target,
             List<DraftLesson> lessons,
             Map<Long, AdminClass> classById,
-            Long courseId,
-            Long gradeId,
-            Long classId,
-            Long teacherId,
+            CandidateFilters filters,
             List<PendingCandidate> pending) {
         for (DraftLesson candidate : lessons) {
             if (candidate.getId().equals(target.getId())
                     || !candidate.getAdminClassId().equals(target.getAdminClassId())
                     || candidate.getPeriodId() == null
-                    || excluded(candidate, courseId, gradeId, classId, teacherId, classById)) {
+                    || excluded(candidate, filters, classById)) {
                 continue;
             }
-            pending.add(new PendingCandidate(candidate, true, List.of(
-                    new LessonOverride(target.getId(), candidate.getPeriodId(), null, null),
-                    new LessonOverride(candidate.getId(), target.getPeriodId(), null, null)),
-                    List.of(), List.of()));
+            List<LessonChange> keepRooms = List.of(
+                    new LessonChange(target.getId(), candidate.getPeriodId(),
+                            target.getRoomId(), target.getTeacherId()),
+                    new LessonChange(candidate.getId(), target.getPeriodId(),
+                            candidate.getRoomId(), candidate.getTeacherId()));
+            List<LessonChange> exchangeRooms = List.of(
+                    new LessonChange(target.getId(), candidate.getPeriodId(),
+                            candidate.getRoomId(), target.getTeacherId()),
+                    new LessonChange(candidate.getId(), target.getPeriodId(),
+                            target.getRoomId(), candidate.getTeacherId()));
+            pending.add(new PendingCandidate(
+                    candidate, true, keepRooms, exchangeRooms, List.of(), List.of()));
         }
     }
 
@@ -179,10 +217,7 @@ public class SwapCandidateService {
             Map<Long, Course> courseById,
             Map<Long, Teacher> teacherById,
             Map<Long, AdminClass> classById,
-            Long courseId,
-            Long gradeId,
-            Long classId,
-            Long teacherId,
+            CandidateFilters filters,
             List<PendingCandidate> pending) {
         Course targetCourse = courseById.get(target.getCourseId());
         Teacher targetTeacher = teacherById.get(target.getTeacherId());
@@ -191,25 +226,37 @@ public class SwapCandidateService {
             if (candidate.getId().equals(target.getId())
                     || candidate.getAdminClassId().equals(target.getAdminClassId())
                     || candidate.getPeriodId() == null
-                    || !sameSubject(subjectOf(targetCourse), subjectOf(candidateCourse))
-                    || excluded(candidate, courseId, gradeId, classId, teacherId, classById)) {
+                    || Objects.equals(candidate.getTeacherId(), target.getTeacherId())
+                    || excluded(candidate, filters, classById)) {
+                continue;
+            }
+            SubjectMatch.Result courseMatch =
+                    SubjectMatch.of(subjectOf(targetCourse), subjectOf(candidateCourse));
+            if (courseMatch == SubjectMatch.Result.MISMATCH) {
                 continue;
             }
             Teacher candidateTeacher = teacherById.get(candidate.getTeacherId());
             List<DraftValidator.Conflict> extraConflicts = new ArrayList<>();
             List<String> warnings = new ArrayList<>();
+            if (courseMatch == SubjectMatch.Result.UNKNOWN) {
+                addWarning(warnings, "课程「" + courseName(targetCourse) + "」与「"
+                        + courseName(candidateCourse) + "」的科目未维护，已跳过科目一致性校验");
+            }
             checkSubjectMatch(extraConflicts, warnings, targetTeacher, candidateCourse, candidate.getId());
             checkSubjectMatch(extraConflicts, warnings, candidateTeacher, targetCourse, target.getId());
             pending.add(new PendingCandidate(candidate, false, List.of(
-                    new LessonOverride(target.getId(), null, null, candidate.getTeacherId()),
-                    new LessonOverride(candidate.getId(), null, null, target.getTeacherId())),
-                    extraConflicts, warnings));
+                    new LessonChange(target.getId(), target.getPeriodId(),
+                            target.getRoomId(), candidate.getTeacherId()),
+                    new LessonChange(candidate.getId(), candidate.getPeriodId(),
+                            candidate.getRoomId(), target.getTeacherId())),
+                    null, extraConflicts, warnings));
         }
     }
 
     /**
      * A cross-class exchange is only sound when both teachers can teach the course
-     * they receive. Blank data skips the check and is surfaced as a warning.
+     * they receive. Blank data skips the check and is surfaced as a warning; this is
+     * the same {@link SubjectMatch} rule the write endpoint applies.
      */
     private void checkSubjectMatch(
             List<DraftValidator.Conflict> conflicts,
@@ -220,21 +267,19 @@ public class SwapCandidateService {
         if (teacher == null || course == null) {
             return;
         }
-        String teacherSubject = teacher.getSubject();
-        String courseSubject = course.getSubject();
-        if (teacherSubject == null || teacherSubject.isBlank()) {
-            addWarning(warnings, "「" + teacher.getName() + "」未配置教师学科，已跳过学科校验");
+        SubjectMatch.Result result = SubjectMatch.of(teacher.getSubject(), course.getSubject());
+        if (result == SubjectMatch.Result.UNKNOWN) {
+            addWarning(warnings, SubjectMatch.normalize(teacher.getSubject()) == null
+                    ? "「" + teacher.getName() + "」未配置教师学科，已跳过学科校验"
+                    : "课程「" + course.getName() + "」未配置科目，已跳过学科校验");
             return;
         }
-        if (courseSubject == null || courseSubject.isBlank()) {
-            addWarning(warnings, "课程「" + course.getName() + "」未配置科目，已跳过学科校验");
-            return;
-        }
-        if (!teacherSubject.trim().equalsIgnoreCase(courseSubject.trim())) {
+        if (result == SubjectMatch.Result.MISMATCH) {
             conflicts.add(new DraftValidator.Conflict(
                     "TEACHER_SUBJECT_MISMATCH",
-                    teacher.getName() + " 的学科「" + teacherSubject + "」与课程「" + course.getName()
-                            + "」的科目「" + courseSubject + "」不一致",
+                    teacher.getName() + " 的学科「" + SubjectMatch.display(teacher.getSubject())
+                            + "」与课程「" + course.getName() + "」的科目「"
+                            + SubjectMatch.display(course.getSubject()) + "」不一致",
                     lessonId));
         }
     }
@@ -247,15 +292,12 @@ public class SwapCandidateService {
 
     private boolean excluded(
             DraftLesson candidate,
-            Long courseId,
-            Long gradeId,
-            Long classId,
-            Long teacherId,
+            CandidateFilters filters,
             Map<Long, AdminClass> classById) {
-        return (courseId != null && !courseId.equals(candidate.getCourseId()))
-                || (gradeId != null && !gradeId.equals(gradeIdOf(candidate, classById)))
-                || (classId != null && !classId.equals(candidate.getAdminClassId()))
-                || (teacherId != null && !teacherId.equals(candidate.getTeacherId()));
+        return (filters.courseId() != null && !filters.courseId().equals(candidate.getCourseId()))
+                || (filters.gradeId() != null && !filters.gradeId().equals(gradeIdOf(candidate, classById)))
+                || (filters.classId() != null && !filters.classId().equals(candidate.getAdminClassId()))
+                || (filters.teacherId() != null && !filters.teacherId().equals(candidate.getTeacherId()));
     }
 
     private Comparator<SwapCandidateDto> candidateOrder() {
@@ -269,11 +311,12 @@ public class SwapCandidateService {
         return course == null ? null : course.getSubject();
     }
 
-    private boolean sameSubject(String left, String right) {
-        if (left == null || right == null) {
-            return left == null && right == null;
-        }
-        return left.trim().equalsIgnoreCase(right.trim());
+    private String courseName(Course course) {
+        return course == null ? "课程" : course.getName();
+    }
+
+    private String periodLabel(Period period) {
+        return "周" + period.getDayOfWeek() + "第" + period.getPeriodNo() + "节";
     }
 
     private SwapCandidateDto toDto(
@@ -285,6 +328,7 @@ public class SwapCandidateService {
             Map<Long, AdminClass> classById,
             Map<Long, Grade> gradeById,
             boolean available,
+            boolean roomSwapRequired,
             List<DraftValidator.Conflict> conflicts,
             List<String> warnings) {
         Period period = periodById.get(candidate.getPeriodId());
@@ -307,10 +351,11 @@ public class SwapCandidateService {
                 candidate.getPeriodId(),
                 period == null ? null : period.getDayOfWeek(),
                 period == null ? null : period.getPeriodNo(),
-                period == null ? null : "周" + period.getDayOfWeek() + "第" + period.getPeriodNo() + "节",
+                period == null ? null : periodLabel(period),
                 candidate.getRoomId(),
                 room == null ? null : room.getName(),
                 available,
+                roomSwapRequired,
                 conflicts,
                 warnings);
     }
@@ -349,7 +394,7 @@ public class SwapCandidateService {
                     period.getId(),
                     period.getDayOfWeek(),
                     period.getPeriodNo(),
-                    "周" + period.getDayOfWeek() + "第" + period.getPeriodNo() + "节",
+                    periodLabel(period),
                     period.getSection().name(),
                     result.valid(),
                     result.hardConflicts(),

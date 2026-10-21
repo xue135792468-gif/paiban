@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
-import { apiCall, apiLogin, newContext, uiLogin } from './helpers'
+import { API, apiCall, apiLogin, newContext, uiLogin } from './helpers'
 
 /**
  * Manual swap coverage. The seed is deliberately separate from `seedSchool`:
@@ -420,3 +420,33 @@ test('场景 2c：不同科目的跨班换课被服务端拒绝且原因可读',
   expect(mathBAfter?.teacherId).toBe(mathB.teacherId)
   expect(mathBAfter?.periodId).toBe(mathB.periodId)
 })
+
+test('场景 2d：已发布课表的换课入口不可用', async ({ page }) => {
+  const api = await newContext()
+  const seed = await seedSwapSchool(api)
+  const draftId = await solveDraft(api, seed.semesterId)
+  const detail = await draftDetail(api, draftId)
+  const layout = gridLayout(detail)
+  const math = lessonOf(detail, seed.classAId, seed.mathAId)
+
+  const token = await apiLogin(api)
+  await apiCall(api, token, 'post', `/timetable-drafts/${draftId}/publish`)
+
+  await openDraft(page, draftId)
+  await expect(page.locator('.toolbar .el-tag').first()).toContainText('已发布')
+  await selectClass(page, seed.classAName)
+
+  const cells = page.locator('.grid-card .cell')
+  await cellAt(cells, layout, math.dayOfWeek!, math.periodNo!).click()
+  await expect(page.locator('.controls .el-tag')).toContainText(math.courseName)
+  await expect(page.getByRole('button', { name: '换课', exact: true })).toBeDisabled()
+
+  const chinese = lessonOf(detail, seed.classAId, seed.chineseAId)
+  const swapResponse = await api.post(`${API}/timetable-drafts/${draftId}/swap`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { lessonId: math.id, targetLessonId: chinese.id, swapRooms: false },
+  })
+  expect(swapResponse.status()).toBe(400)
+  expect((await swapResponse.json()).message).toContain('课表已发布')
+})
+

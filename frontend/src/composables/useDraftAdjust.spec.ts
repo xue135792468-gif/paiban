@@ -3,7 +3,7 @@ import { useDraftAdjust, type DraftAdjustClient } from './useDraftAdjust'
 
 interface PatchCall {
   url: string
-  body: { periodId: number; roomId: number | null }
+  body: { periodId: number | null; roomId: number | null }
 }
 
 interface PostCall {
@@ -155,12 +155,20 @@ describe('useDraftAdjust', () => {
     expect(targets[200]).toEqual({ available: false, conflicts: [conflict] })
   })
 
-  it('cannot undo a lesson that came from the unassigned drawer', async () => {
-    const { client } = fakeClient()
+  it('undoes a lesson dragged in from the unassigned drawer by clearing its period', async () => {
+    const { client, calls } = fakeClient()
     const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
 
     await adjust.move({ id: 11, periodId: null, roomId: null }, { periodId: 200 })
+    expect(adjust.undoCount.value).toBe(1)
 
+    const outcome = await adjust.undo()
+
+    expect(outcome.undone).toBe(true)
+    expect(calls).toEqual([
+      { url: '/timetable-drafts/7/lessons/11', body: { periodId: 200, roomId: null } },
+      { url: '/timetable-drafts/7/lessons/11', body: { periodId: null, roomId: null } },
+    ])
     expect(adjust.canUndo.value).toBe(false)
   })
 

@@ -109,20 +109,7 @@ public class DraftValidator {
     @Transactional(readOnly = true)
     public ValidationResult validateChanges(Long draftId, List<LessonChange> changes) {
         Snapshot snapshot = snapshot(draftId);
-        Map<Long, L> byId = new HashMap<>();
-        snapshot.lessons.forEach(lesson -> byId.put(lesson.id, lesson));
-        Set<Long> affected = new LinkedHashSet<>();
-        for (LessonChange change : changes == null ? List.<LessonChange>of() : changes) {
-            L lesson = byId.get(change.lessonId());
-            if (lesson == null) {
-                throw ApiException.notFound("课节不存在: " + change.lessonId());
-            }
-            lesson.periodId = change.periodId();
-            lesson.roomId = change.roomId();
-            lesson.teacherId = change.teacherId();
-            affected.add(lesson.id);
-        }
-        return resultOf(checkAffected(snapshot, affected));
+        return resultOf(checkAffected(snapshot, applyChanges(snapshot, changes)));
     }
 
     @Transactional(readOnly = true)
@@ -143,44 +130,43 @@ public class DraftValidator {
         List<ValidationResult> results = new ArrayList<>(scenarios.size());
         for (List<LessonOverride> scenario : scenarios) {
             Snapshot copy = base.withFreshLessons();
-            results.add(resultOf(checkScenariosAffected(copy, applyOverrides(copy, scenario))));
+            results.add(resultOf(checkAffected(copy, applyOverrides(copy, scenario))));
         }
         return results;
     }
 
     /**
-     * The same rules as {@link #checkAffected}, but the pair scan only visits pairs
-     * that involve an affected lesson. {@code checkAffected} scans every pair because
-     * it also serves whole-draft validation; scenario evaluation repeats that scan for
-     * every target, so the quadratic part must not be paid per scenario.
+     * Same as {@link #validateScenarios}, but each scenario is an exact change list
+     * (an explicit null clears a field). Swap candidates need this because exchanging
+     * rooms may hand a lesson a null room, which {@link LessonOverride} cannot express.
      */
-    private List<Conflict> checkScenariosAffected(Snapshot s, Set<Long> affectedLessonIds) {
-        List<Conflict> out = new ArrayList<>();
-        List<L> lessons = s.lessons;
-        for (L lesson : lessons) {
-            if (affectedLessonIds.contains(lesson.id)) {
-                checkLesson(lesson, s, out);
-            }
+    @Transactional(readOnly = true)
+    public List<ValidationResult> validateChangeScenarios(Long draftId, List<List<LessonChange>> scenarios) {
+        Snapshot base = snapshot(draftId);
+        List<ValidationResult> results = new ArrayList<>(scenarios.size());
+        for (List<LessonChange> scenario : scenarios) {
+            Snapshot copy = base.withFreshLessons();
+            results.add(resultOf(checkAffected(copy, applyChanges(copy, scenario))));
         }
-        for (int i = 0; i < lessons.size(); i++) {
-            L a = lessons.get(i);
-            if (!affectedLessonIds.contains(a.id)) {
-                continue;
+        return results;
+    }
+
+    /** Applies exact changes to the in-memory snapshot and returns the affected lesson ids. */
+    private Set<Long> applyChanges(Snapshot snapshot, List<LessonChange> changes) {
+        Map<Long, L> byId = new HashMap<>();
+        snapshot.lessons.forEach(lesson -> byId.put(lesson.id, lesson));
+        Set<Long> affected = new LinkedHashSet<>();
+        for (LessonChange change : changes == null ? List.<LessonChange>of() : changes) {
+            L lesson = byId.get(change.lessonId());
+            if (lesson == null) {
+                throw ApiException.notFound("课节不存在: " + change.lessonId());
             }
-            for (int j = i + 1; j < lessons.size(); j++) {
-                checkPair(a, lessons.get(j), s, out);
-            }
-            for (int j = 0; j < i; j++) {
-                L b = lessons.get(j);
-                if (!affectedLessonIds.contains(b.id)) {
-                    checkPair(a, b, s, out);
-                }
-            }
+            lesson.periodId = change.periodId();
+            lesson.roomId = change.roomId();
+            lesson.teacherId = change.teacherId();
+            affected.add(lesson.id);
         }
-        if (groupRulesEnabled(s.settings)) {
-            checkGroups(s, out, affectedLessonIds);
-        }
-        return out;
+        return affected;
     }
 
     /**
@@ -225,34 +211,46 @@ public class DraftValidator {
 
     /**
      * Shared rule engine. A null set means the whole draft; an empty set means no
-     * lesson changed, so nothing can conflict. Only pairs touching an affected lesson
-     * are checked, and a pair is checked once with the affected lesson as the subject.
+     * lesson changed, so nothing can conflict. For an affected set the pair scan
+     * only visits pairs touching an affected lesson, and each such pair is checked
+     * once with the affected lesson as the subject, so conflicts stay attributed to
+     * the lesson that moved and the quadratic scan is not paid for unaffected pairs.
      */
     private List<Conflict> checkAffected(Snapshot s, Set<Long> affectedLessonIds) {
         boolean wholeDraft = affectedLessonIds == null;
+        List<L> lessons = s.lessons;
         List<Conflict> out = new ArrayList<>();
-        for (L lesson : s.lessons) {
+        for (L lesson : lessons) {
             if (wholeDraft || affectedLessonIds.contains(lesson.id)) {
                 checkLesson(lesson, s, out);
             }
         }
-        for (int i = 0; i < s.lessons.size(); i++) {
-            for (int j = i + 1; j < s.lessons.size(); j++) {
-                L a = s.lessons.get(i);
-                L b = s.lessons.get(j);
-                boolean aAffected = wholeDraft || affectedLessonIds.contains(a.id);
-                boolean bAffected = wholeDraft || affectedLessonIds.contains(b.id);
-                if (!aAffected && !bAffected) {
+        if (wholeDraft) {
+            for (int i = 0; i < lessons.size(); i++) {
+                for (int j = i + 1; j < lessons.size(); j++) {
+                    checkPair(lessons.get(i), lessons.get(j), s, out);
+                }
+            }
+        } else {
+            for (int i = 0; i < lessons.size(); i++) {
+                L a = lessons.get(i);
+                if (!affectedLessonIds.contains(a.id)) {
                     continue;
                 }
-                if (aAffected) {
-                    checkPair(a, b, s, out);
-                } else {
-                    checkPair(b, a, s, out);
+                for (int j = i + 1; j < lessons.size(); j++) {
+                    checkPair(a, lessons.get(j), s, out);
+                }
+                for (int j = 0; j < i; j++) {
+                    L b = lessons.get(j);
+                    if (!affectedLessonIds.contains(b.id)) {
+                        checkPair(a, b, s, out);
+                    }
                 }
             }
         }
-        checkGroups(s, out, wholeDraft ? null : affectedLessonIds);
+        if (groupRulesEnabled(s.settings)) {
+            checkGroups(s, out, wholeDraft ? null : affectedLessonIds);
+        }
         return out;
     }
 

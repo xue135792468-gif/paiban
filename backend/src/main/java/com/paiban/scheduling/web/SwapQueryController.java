@@ -39,7 +39,11 @@ public class SwapQueryController {
             @RequestParam(required = false) Long teacherId,
             @RequestParam(defaultValue = "false") boolean includeUnavailable) {
         return service.swapCandidates(
-                id, lessonId, type, courseId, gradeId, classId, teacherId, includeUnavailable);
+                id,
+                lessonId,
+                type,
+                new SwapCandidateService.CandidateFilters(courseId, gradeId, classId, teacherId),
+                includeUnavailable);
     }
 
     @GetMapping("/{id}/lessons/{lessonId}/move-targets")

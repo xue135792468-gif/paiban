@@ -13,7 +13,6 @@ import com.paiban.scheduling.service.DraftValidator.Conflict;
 import com.paiban.scheduling.web.SwapDtos.SwapResult;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,14 +51,21 @@ public class SwapService {
     public SwapResult swap(Long draftId, Long lessonId, Long targetLessonId, boolean swapRooms) {
         TimetableDraft draft = drafts.findById(draftId)
                 .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
+        requireEditable(draft);
         DraftLesson source = requireLesson(draftId, lessonId);
         DraftLesson target = requireLesson(draftId, targetLessonId);
         if (source.getId().equals(target.getId())) {
             throw ApiException.badRequest("不能与同一节课换课");
         }
+        if (source.getPeriodId() == null || target.getPeriodId() == null) {
+            throw ApiException.badRequest("未排课的课节不能参与换课");
+        }
         String type = Objects.equals(source.getAdminClassId(), target.getAdminClassId())
                 ? INTRA_CLASS
                 : CROSS_CLASS;
+        if (CROSS_CLASS.equals(type) && Objects.equals(source.getTeacherId(), target.getTeacherId())) {
+            throw ApiException.badRequest("两位教师相同，无需换课");
+        }
 
         Long sourcePeriod = source.getPeriodId();
         Long targetPeriod = target.getPeriodId();
@@ -112,6 +118,8 @@ public class SwapService {
      * Cross-class exchanges must keep both courses on the same subject. Teacher
      * subject is checked against the course the teacher would take over; when
      * either side has no subject on file the check is skipped with a warning.
+     * The same {@link SubjectMatch} rule feeds the candidate panel, so a candidate
+     * it lists as available is not rejected here (and vice versa).
      */
     private void checkCrossClassSubjects(
             DraftLesson source,
@@ -120,13 +128,18 @@ public class SwapService {
             List<String> warnings) {
         Course sourceCourse = requireCourse(source.getCourseId());
         Course targetCourse = requireCourse(target.getCourseId());
-        if (!Objects.equals(normalize(sourceCourse.getSubject()), normalize(targetCourse.getSubject()))) {
+        SubjectMatch.Result courseMatch =
+                SubjectMatch.of(sourceCourse.getSubject(), targetCourse.getSubject());
+        if (courseMatch == SubjectMatch.Result.MISMATCH) {
             conflicts.add(new Conflict("SUBJECT_MISMATCH",
                     "跨班换人要求两门课程同科目：" + sourceCourse.getName() + " 是「"
-                            + displaySubject(sourceCourse.getSubject()) + "」，"
+                            + SubjectMatch.display(sourceCourse.getSubject()) + "」，"
                             + targetCourse.getName() + " 是「"
-                            + displaySubject(targetCourse.getSubject()) + "」",
+                            + SubjectMatch.display(targetCourse.getSubject()) + "」",
                     source.getId()));
+        } else if (courseMatch == SubjectMatch.Result.UNKNOWN) {
+            warnings.add("课程「" + sourceCourse.getName() + "」与「" + targetCourse.getName()
+                    + "」的科目未维护，未校验两门课程的科目一致性");
         }
         checkTeacherSubject(
                 requireTeacher(source.getTeacherId()), targetCourse, source.getId(), conflicts, warnings);
@@ -140,20 +153,34 @@ public class SwapService {
             Long lessonId,
             List<Conflict> conflicts,
             List<String> warnings) {
-        String teacherSubject = normalize(teacher.getSubject());
-        String courseSubject = normalize(course.getSubject());
-        if (teacherSubject == null || courseSubject == null) {
+        SubjectMatch.Result result = SubjectMatch.of(teacher.getSubject(), course.getSubject());
+        if (result == SubjectMatch.Result.UNKNOWN) {
             warnings.add(teacher.getName() + " 的学科未维护，未校验与课程「"
                     + course.getName() + "」的学科一致性");
             return;
         }
-        if (!teacherSubject.equals(courseSubject)) {
+        if (result == SubjectMatch.Result.MISMATCH) {
             conflicts.add(new Conflict("TEACHER_SUBJECT_MISMATCH",
-                    teacher.getName() + " 的学科「" + teacher.getSubject().trim()
+                    teacher.getName() + " 的学科「" + SubjectMatch.display(teacher.getSubject())
                             + "」与课程「" + course.getName() + "」的学科「"
-                            + course.getSubject().trim() + "」不一致",
+                            + SubjectMatch.display(course.getSubject()) + "」不一致",
                     lessonId));
         }
+    }
+
+    /** Only an editable draft can be changed by hand; published ones go through substitution. */
+    private void requireEditable(TimetableDraft draft) {
+        String status = draft.getStatus();
+        if ("DRAFT".equals(status)) {
+            return;
+        }
+        if ("PUBLISHED".equals(status)) {
+            throw ApiException.badRequest("课表已发布，发布后请走调代流程");
+        }
+        if ("ARCHIVED".equals(status)) {
+            throw ApiException.badRequest("课表已归档，不能再换课");
+        }
+        throw ApiException.badRequest("当前课表状态不允许换课");
     }
 
     private Course requireCourse(Long courseId) {
@@ -164,14 +191,6 @@ public class SwapService {
     private Teacher requireTeacher(Long teacherId) {
         return teachers.findById(teacherId)
                 .orElseThrow(() -> ApiException.badRequest("教师不存在: " + teacherId));
-    }
-
-    private String normalize(String subject) {
-        return subject == null || subject.isBlank() ? null : subject.trim().toLowerCase(Locale.ROOT);
-    }
-
-    private String displaySubject(String subject) {
-        return subject == null || subject.isBlank() ? "未设置" : subject.trim();
     }
 
     private DraftLesson requireLesson(Long draftId, Long lessonId) {

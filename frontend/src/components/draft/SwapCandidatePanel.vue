@@ -53,6 +53,14 @@
             <span class="course">{{ candidate.courseName }}</span>
             <span class="period">{{ candidate.periodLabel }}</span>
             <el-tag v-if="!candidate.available" size="small" type="danger" effect="plain">不可用</el-tag>
+            <el-tag
+              v-if="candidate.roomSwapRequired"
+              size="small"
+              type="warning"
+              effect="plain"
+            >
+              需要同时交换教室
+            </el-tag>
           </div>
           <div class="candidate-meta">
             {{ candidate.teacherName }} · {{ candidate.className }}
@@ -85,6 +93,14 @@
             <span class="course">{{ candidate.courseName }}</span>
             <span class="period">{{ candidate.periodLabel }}</span>
             <el-tag v-if="!candidate.available" size="small" type="danger" effect="plain">不可用</el-tag>
+            <el-tag
+              v-if="candidate.roomSwapRequired"
+              size="small"
+              type="warning"
+              effect="plain"
+            >
+              需要同时交换教室
+            </el-tag>
           </div>
           <div class="candidate-meta">
             {{ candidate.teacherName }} · {{ candidate.className }}

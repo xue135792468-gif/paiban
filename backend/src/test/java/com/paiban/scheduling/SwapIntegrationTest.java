@@ -1,6 +1,7 @@
 package com.paiban.scheduling;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 
@@ -317,7 +318,102 @@ class SwapIntegrationTest extends ApiIntegrationTest {
         assertThat(draftLessons.findById(targetId).orElseThrow().getRoomId()).isEqualTo(base.roomA());
     }
 
+    @Test
+    void publishedDraftRejectsSwapAndPointsAtTheSubstitutionFlow() {
+        String token = adminToken();
+        Base base = base(token, "语文", "语文");
+        long sourceId = lesson(base, base.courseA(), base.teacherA(), base.classA(),
+                base.period1(), base.roomA());
+        long targetId = lesson(base, base.courseB(), base.teacherB(), base.classA(),
+                base.period2(), base.roomB());
+        as(token).when().post("/api/timetable-drafts/" + base.draftId() + "/publish")
+                .then().statusCode(200);
+
+        as(token).body(Map.of("lessonId", sourceId, "targetLessonId", targetId))
+                .when().post("/api/timetable-drafts/" + base.draftId() + "/swap")
+                .then().statusCode(400)
+                .body("message", containsString("课表已发布"));
+
+        assertThat(draftLessons.findById(sourceId).orElseThrow().getPeriodId())
+                .isEqualTo(base.period1());
+        assertThat(draftLessons.findById(targetId).orElseThrow().getPeriodId())
+                .isEqualTo(base.period2());
+    }
+
+    @Test
+    void unassignedLessonCannotParticipateInASwap() {
+        String token = adminToken();
+        Base base = base(token, "语文", "语文");
+        long sourceId = lesson(base, base.courseA(), base.teacherA(), base.classA(),
+                base.period1(), base.roomA());
+        long unassignedId = unassignedLesson(base, base.courseB(), base.teacherB(), base.classA());
+
+        as(token).body(Map.of("lessonId", sourceId, "targetLessonId", unassignedId))
+                .when().post("/api/timetable-drafts/" + base.draftId() + "/swap")
+                .then().statusCode(400)
+                .body("message", containsString("未排课的课节不能参与换课"));
+
+        as(token).body(Map.of("lessonId", unassignedId, "targetLessonId", sourceId))
+                .when().post("/api/timetable-drafts/" + base.draftId() + "/swap")
+                .then().statusCode(400)
+                .body("message", containsString("未排课的课节不能参与换课"));
+
+        assertThat(draftLessons.findById(sourceId).orElseThrow().getPeriodId())
+                .isEqualTo(base.period1());
+        assertThat(draftLessons.findById(unassignedId).orElseThrow().getPeriodId()).isNull();
+    }
+
+    @Test
+    void crossClassSwapRejectsTheSameTeacher() {
+        String token = adminToken();
+        Base base = base(token, "语文", "语文");
+        long sourceId = lesson(base, base.courseA(), base.teacherA(), base.classA(),
+                base.period1(), base.roomA());
+        long targetId = lesson(base, base.courseB(), base.teacherA(), base.classB(),
+                base.period2(), base.roomB());
+
+        as(token).body(Map.of("lessonId", sourceId, "targetLessonId", targetId))
+                .when().post("/api/timetable-drafts/" + base.draftId() + "/swap")
+                .then().statusCode(400)
+                .body("message", containsString("两位教师相同"));
+
+        assertThat(draftLessons.findById(sourceId).orElseThrow().getTeacherId())
+                .isEqualTo(base.teacherA());
+        assertThat(draftLessons.findById(targetId).orElseThrow().getTeacherId())
+                .isEqualTo(base.teacherA());
+    }
+
+    @Test
+    void subjectComparisonIgnoresCaseAndSurroundingSpaces() {
+        String token = adminToken();
+        Base base = base(token, "Math", "Math", "math", "MATH");
+        long sourceId = lesson(base, base.courseA(), base.teacherA(), base.classA(),
+                base.period1(), base.roomA());
+        long targetId = lesson(base, base.courseB(), base.teacherB(), base.classB(),
+                base.period2(), base.roomB());
+
+        as(token).body(Map.of("lessonId", sourceId, "targetLessonId", targetId))
+                .when().post("/api/timetable-drafts/" + base.draftId() + "/swap")
+                .then().statusCode(200)
+                .body("saved", equalTo(true))
+                .body("warnings", hasSize(0));
+
+        assertThat(draftLessons.findById(sourceId).orElseThrow().getTeacherId())
+                .isEqualTo(base.teacherB());
+        assertThat(draftLessons.findById(targetId).orElseThrow().getTeacherId())
+                .isEqualTo(base.teacherA());
+    }
+
     private Base base(String token, String courseBSubject, String teacherBSubject) {
+        return base(token, "语文", courseBSubject, "语文", teacherBSubject);
+    }
+
+    private Base base(
+            String token,
+            String courseASubject,
+            String courseBSubject,
+            String teacherASubject,
+            String teacherBSubject) {
         String suffix = TestData.suffix();
         long semesterId = TestData.semester(token);
         Response periodResponse = as(token)
@@ -330,9 +426,9 @@ class SwapIntegrationTest extends ApiIntegrationTest {
         long gradeId = TestData.grade(token, semesterId, "高一" + suffix);
         long classA = TestData.adminClass(token, semesterId, gradeId, "一班" + suffix);
         long classB = TestData.adminClass(token, semesterId, gradeId, "二班" + suffix);
-        long courseA = course(token, "语文" + suffix, "语文");
+        long courseA = course(token, "语文" + suffix, courseASubject);
         long courseB = course(token, "阅读" + suffix, courseBSubject);
-        long teacherA = teacher(token, "张老师" + suffix, "语文");
+        long teacherA = teacher(token, "张老师" + suffix, teacherASubject);
         long teacherB = teacher(token, "李老师" + suffix, teacherBSubject);
         long roomA = TestData.room(token, "教室A" + suffix);
         long roomB = TestData.room(token, "教室B" + suffix);
@@ -360,6 +456,18 @@ class SwapIntegrationTest extends ApiIntegrationTest {
         lesson.setStudentCount(45);
         lesson.setPeriodId(periodId);
         lesson.setRoomId(roomId);
+        return draftLessons.save(lesson).getId();
+    }
+
+    private long unassignedLesson(Base base, long courseId, long teacherId, long classId) {
+        DraftLesson lesson = new DraftLesson();
+        lesson.setDraftId(base.draftId());
+        lesson.setAssignmentId(1L);
+        lesson.setLessonIndex(1);
+        lesson.setCourseId(courseId);
+        lesson.setTeacherId(teacherId);
+        lesson.setAdminClassId(classId);
+        lesson.setStudentCount(45);
         return draftLessons.save(lesson).getId();
     }
 
