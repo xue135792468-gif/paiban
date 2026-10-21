@@ -114,6 +114,40 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void timetableTargetKeepsItsOwnFieldsAndSendsTheRawGrid() throws Exception {
+        String admin = adminToken();
+        fake.response = aiResponse(List.of(timetableRow()));
+
+        Response preview = upload(
+                admin, "/api/ai/import/excel?target=timetable", "一年级课表.xlsx", timetableExcelBytes(), XLSX);
+
+        preview.then().statusCode(200)
+                .body("targetType", equalTo("timetable"))
+                .body("columns", hasSize(6))
+                .body("columns[0].field", equalTo("className"))
+                .body("rows", hasSize(1))
+                .body("rows[0].values.className", equalTo("一年级1班"))
+                .body("rows[0].values.dayOfWeek", equalTo("周一"))
+                .body("rows[0].values.periodNo", equalTo("1"))
+                .body("rows[0].values.courseName", equalTo("语文"))
+                .body("rows[0].values.teacherName", equalTo("张三"))
+                .body("rows[0].values.roomName", equalTo("101"));
+
+        String prompt = fake.lastRequest.messages().get(1).content();
+        assertThat(prompt).contains("2026 春季课表").contains("原始网格").contains("每一行代表一节课");
+    }
+
+    @Test
+    void unknownTargetIsRejectedWithABadRequest() {
+        String admin = adminToken();
+
+        as(admin).body(Map.of("text", "张老师教语文"))
+                .when().post("/api/ai/import/text?target=students")
+                .then().statusCode(400)
+                .body("message", containsString("不支持的导入目标"));
+    }
+
+    @Test
     void pastedTextIsParsedAndCommitted() {
         String admin = adminToken();
         fake.response = aiResponse(List.of(
@@ -273,6 +307,42 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
             workbook.write(out);
             return out.toByteArray();
         }
+    }
+
+    private byte[] timetableExcelBytes() throws Exception {
+        try (XSSFWorkbook workbook = new XSSFWorkbook();
+                ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("一年级课表");
+            Row title = sheet.createRow(0);
+            title.createCell(0).setCellValue("2026 春季课表");
+            sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(0, 0, 0, 2));
+            Row header = sheet.createRow(1);
+            header.createCell(0).setCellValue("班级");
+            header.createCell(1).setCellValue("星期一");
+            header.createCell(2).setCellValue("星期二");
+            Row row = sheet.createRow(2);
+            row.createCell(0).setCellValue("一年级1班");
+            row.createCell(1).setCellValue("语文");
+            row.createCell(2).setCellValue("数学");
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private Map<String, Object> timetableRow() {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("className", "一年级1班");
+        values.put("dayOfWeek", "周一");
+        values.put("periodNo", "1");
+        values.put("courseName", "语文");
+        values.put("teacherName", "张三");
+        values.put("roomName", "101");
+        Map<String, Object> confidence = new LinkedHashMap<>();
+        values.keySet().forEach(field -> confidence.put(field, 0.99));
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("values", values);
+        row.put("confidence", confidence);
+        return row;
     }
 
     private byte[] pngBytes() throws Exception {

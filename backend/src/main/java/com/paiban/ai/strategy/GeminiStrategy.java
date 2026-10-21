@@ -35,7 +35,7 @@ public class GeminiStrategy implements AiStrategy {
     private final HttpClient httpClient;
     private final Duration timeout;
 
-    public GeminiStrategy(ObjectMapper objectMapper, @Value("${paiban.ai.timeout-seconds:30}") long timeoutSeconds) {
+    public GeminiStrategy(ObjectMapper objectMapper, @Value("${paiban.ai.timeout-seconds:120}") long timeoutSeconds) {
         this.objectMapper = objectMapper;
         this.timeout = Duration.ofSeconds(timeoutSeconds);
         this.httpClient = HttpClient.newBuilder()

@@ -4,6 +4,7 @@ import com.paiban.ai.imports.ImportDtos.CommitResultDto;
 import com.paiban.ai.imports.ImportDtos.PreviewDto;
 import com.paiban.ai.imports.ImportDtos.RowsUpdateRequest;
 import com.paiban.ai.imports.ImportDtos.TextImportRequest;
+import com.paiban.common.web.ApiException;
 import com.paiban.identity.domain.Permissions;
 import jakarta.validation.Valid;
 import java.net.URLEncoder;
@@ -35,18 +36,35 @@ public class AiImportController {
     }
 
     @PostMapping(value = "/excel", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public PreviewDto excel(@RequestParam("file") MultipartFile file, Principal principal) {
-        return service.startExcel(file, principal.getName());
+    public PreviewDto excel(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "target", required = false, defaultValue = "teacher") String target,
+            Principal principal) {
+        return service.startExcel(file, principal.getName(), targetOf(target));
     }
 
     @PostMapping("/text")
-    public PreviewDto text(@Valid @RequestBody TextImportRequest request, Principal principal) {
-        return service.startText(request.text(), principal.getName());
+    public PreviewDto text(
+            @Valid @RequestBody TextImportRequest request,
+            @RequestParam(value = "target", required = false, defaultValue = "teacher") String target,
+            Principal principal) {
+        return service.startText(request.text(), principal.getName(), targetOf(target));
     }
 
     @PostMapping(value = "/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public PreviewDto image(@RequestParam("file") MultipartFile file, Principal principal) {
-        return service.startImage(file, principal.getName());
+    public PreviewDto image(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "target", required = false, defaultValue = "teacher") String target,
+            Principal principal) {
+        return service.startImage(file, principal.getName(), targetOf(target));
+    }
+
+    private ImportTarget targetOf(String code) {
+        try {
+            return ImportTarget.fromCode(code);
+        } catch (IllegalArgumentException ex) {
+            throw ApiException.badRequest(ex.getMessage());
+        }
     }
 
     @GetMapping("/sessions/{id}")
