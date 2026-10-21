@@ -240,6 +240,49 @@ class SchedulingIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void validateMovesAppliesTheWholeBatchBeforeChecking() {
+        String token = adminToken();
+        Fixture fixture = prepare(token, TestData.suffix(), 1, 3, 2);
+        long jobId = as(token).queryParam("semesterId", fixture.semesterId())
+                .body(Map.of("maxSeconds", 5))
+                .when().post("/api/scheduling-jobs")
+                .then().statusCode(200).extract().jsonPath().getLong("id");
+        Map<String, Object> job = awaitJob(token, jobId, 60);
+        assertThat(job.get("status")).isEqualTo("COMPLETED");
+        long draftId = ((Number) job.get("draftId")).longValue();
+
+        List<Map<String, Object>> lessons = as(token).when().get("/api/timetable-drafts/" + draftId)
+                .then().statusCode(200).extract().jsonPath().getList("lessons");
+        Map<String, Object> first = lessons.get(0);
+        Map<String, Object> second = lessons.get(1);
+        long firstId = ((Number) first.get("id")).longValue();
+        long firstPeriod = ((Number) first.get("periodId")).longValue();
+        long secondId = ((Number) second.get("id")).longValue();
+        long secondPeriod = ((Number) second.get("periodId")).longValue();
+
+        Response single = as(token).body(Map.of("moves", List.of(
+                        Map.of("lessonId", firstId, "periodId", secondPeriod))))
+                .when().post("/api/timetable-drafts/" + draftId + "/validate-moves")
+                .then().statusCode(200)
+                .extract().response();
+        assertThat(single.jsonPath().getBoolean("valid")).isFalse();
+        List<Map<String, Object>> conflicts = single.jsonPath().getList("conflicts");
+        assertThat(conflicts).anySatisfy(conflict -> {
+            assertThat(conflict.get("type")).isEqualTo("CLASS_CONFLICT");
+            assertThat(((Number) conflict.get("lessonId")).longValue()).isEqualTo(firstId);
+        });
+
+        as(token).body(Map.of("moves", List.of(
+                        Map.of("lessonId", firstId, "periodId", secondPeriod),
+                        Map.of("lessonId", secondId, "periodId", firstPeriod))))
+                .when().post("/api/timetable-drafts/" + draftId + "/validate-moves")
+                .then().statusCode(200)
+                .body("valid", equalTo(true))
+                .body("hardConflicts", equalTo(0))
+                .body("conflicts", hasSize(0));
+    }
+
+    @Test
     void movingLessonToConflictIsRejectedUnlessForced() {
         String token = adminToken();
         Fixture fixture = prepare(token, TestData.suffix(), 2, 3, 2);

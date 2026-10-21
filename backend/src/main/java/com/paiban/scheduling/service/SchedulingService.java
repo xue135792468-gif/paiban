@@ -35,6 +35,7 @@ import com.paiban.scheduling.web.SchedulingDtos.DraftDetailDto;
 import com.paiban.scheduling.web.SchedulingDtos.DraftDto;
 import com.paiban.scheduling.web.SchedulingDtos.DraftLessonDto;
 import com.paiban.scheduling.web.SchedulingDtos.JobDto;
+import com.paiban.scheduling.web.SchedulingDtos.LessonOverride;
 import com.paiban.scheduling.web.SchedulingDtos.MoveResult;
 import com.paiban.scheduling.web.SchedulingDtos.StartJobRequest;
 import java.time.Duration;
@@ -412,6 +413,11 @@ public class SchedulingService {
     @Transactional(readOnly = true)
     public DraftValidator.ValidationResult validateMove(Long draftId, Long lessonId, Long periodId, Long roomId) {
         return validator.validateMove(draftId, lessonId, periodId, roomId);
+    }
+
+    @Transactional(readOnly = true)
+    public DraftValidator.ValidationResult validateMoves(Long draftId, List<LessonOverride> moves) {
+        return validator.validateMoves(draftId, moves);
     }
 
     @Transactional(readOnly = true)

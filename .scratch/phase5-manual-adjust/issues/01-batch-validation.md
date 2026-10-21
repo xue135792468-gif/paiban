@@ -4,13 +4,13 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 新增 `LessonOverride` DTO（`scheduling/web/SchedulingDtos.java`）
-- [ ] `DraftValidator` 抽出 `applyOverrides(snapshot, overrides)` 与 `checkAffected(snapshot, affectedLessonIds)`
-- [ ] `validateMove`、`validateDraft` 改为复用同一套规则，消除重复实现
-- [ ] 新增 `POST /timetable-drafts/{id}/validate-moves`（权限 `timetable:edit` / `scheduling:view` / `timetable:publish`）
-- [ ] `validate-move` 改为单条特例，响应结构与现有前端兼容
-- [ ] `DraftValidatorTest`：批量覆盖、冲突归属、空覆盖、重复 lessonId
-- [ ] `SchedulingIntegrationTest` 增加批量校验用例
-- [ ] 确认 ADR-0017 的 `PerformanceBenchmarkIT` 仍达标
+- [x] 新增 `LessonOverride` DTO（`scheduling/web/SchedulingDtos.java`）
+- [x] `DraftValidator` 抽出 `applyOverrides(snapshot, overrides)` 与 `checkAffected(snapshot, affectedLessonIds)`
+- [x] `validateMove`、`validateDraft` 改为复用同一套规则，消除重复实现
+- [x] 新增 `POST /timetable-drafts/{id}/validate-moves`（权限 `timetable:edit` / `scheduling:view` / `timetable:publish`）
+- [x] `validate-move` 改为单条特例，响应结构与现有前端兼容
+- [x] `DraftValidatorTest`：批量覆盖、冲突归属、空覆盖、重复 lessonId
+- [x] `SchedulingIntegrationTest` 增加批量校验用例
+- [x] 确认 ADR-0017 的 `PerformanceBenchmarkIT` 仍达标
