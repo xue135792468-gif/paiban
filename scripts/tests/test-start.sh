@@ -124,6 +124,48 @@ paiban_ensure_env "$ENVDIR2" 'CustomPass1' 1
 assert_eq '--admin-password overrides the bootstrap password' 'CustomPass1' \
   "$(paiban_env_get "$ENVDIR2/.env" PAIBAN_SECURITY_BOOTSTRAP_ADMIN_PASSWORD)"
 
+# ------------------------------------------- first-run detection for output
+echo '== 3b. first-run detection =='
+FRESHDIR="$TMP/env-fresh"
+mkdir -p "$FRESHDIR"
+cp "$ROOT/.env.example" "$FRESHDIR/.env.example"
+paiban_ensure_env "$FRESHDIR" '' 1
+assert_eq 'a newly created .env reports PAIBAN_ENV_CREATED=1' '1' "${PAIBAN_ENV_CREATED:-unset}"
+paiban_ensure_env "$FRESHDIR" '' 1
+assert_eq 'an existing .env reports PAIBAN_ENV_CREATED=0' '0' "${PAIBAN_ENV_CREATED:-unset}"
+
+if grep -q 'PAIBAN_ENV_CREATED' "$ROOT/scripts/start.sh"; then
+  pass 'start.sh branches on PAIBAN_ENV_CREATED'
+else
+  fail 'start.sh branches on PAIBAN_ENV_CREATED'
+fi
+if grep -q '密码为首次启动时设置的密码' "$ROOT/scripts/start.sh"; then
+  pass 'start.sh prints the non-first-run password message'
+else
+  fail 'start.sh prints the non-first-run password message'
+fi
+if grep -q '只在首次创建' "$ROOT/scripts/start.sh"; then
+  pass 'start.sh warns that --admin-password only applies on first creation'
+else
+  fail 'start.sh warns that --admin-password only applies on first creation'
+fi
+
+if grep -q 'Created' "$ROOT/scripts/lib/env.ps1"; then
+  pass 'env.ps1 returns the created flag'
+else
+  fail 'env.ps1 returns the created flag'
+fi
+if grep -q '密码为首次启动时设置的密码' "$ROOT/scripts/start.ps1"; then
+  pass 'start.ps1 prints the non-first-run password message'
+else
+  fail 'start.ps1 prints the non-first-run password message'
+fi
+if grep -q '只在首次创建' "$ROOT/scripts/start.ps1"; then
+  pass 'start.ps1 warns that --admin-password only applies on first creation'
+else
+  fail 'start.ps1 warns that --admin-password only applies on first creation'
+fi
+
 # ------------------------------------------------------------- PowerShell
 echo '== 4. PowerShell scripts =='
 PS_SCRIPTS=("$ROOT/scripts/start.ps1" "$ROOT/scripts/lib/env.ps1")
@@ -176,6 +218,56 @@ PS1
 else
   skip 'powershell not found, skipping PowerShell checks'
 fi
+
+# ------------------------------------------------------------ --prod mode
+echo '== 5. --prod one-click mode =='
+
+if grep -q -- '--prod' "$ROOT/scripts/start.sh" && grep -q 'docker-compose.prod.yml' "$ROOT/scripts/start.sh"; then
+  pass 'start.sh documents and uses --prod / docker-compose.prod.yml'
+else
+  fail 'start.sh documents and uses --prod / docker-compose.prod.yml'
+fi
+if grep -q -- '--prod' "$ROOT/scripts/start.ps1" && grep -q 'docker-compose.prod.yml' "$ROOT/scripts/start.ps1"; then
+  pass 'start.ps1 documents and uses --prod / docker-compose.prod.yml'
+else
+  fail 'start.ps1 documents and uses --prod / docker-compose.prod.yml'
+fi
+if grep -q 'https://127.0.0.1/api/health' "$ROOT/scripts/start.sh"; then
+  pass 'start.sh waits for readiness over https in --prod'
+else
+  fail 'start.sh waits for readiness over https in --prod'
+fi
+if grep -q '自签证书' "$ROOT/scripts/start.sh" && grep -q '自签证书' "$ROOT/scripts/start.ps1"; then
+  pass 'both start scripts warn about self-signed certificates'
+else
+  fail 'both start scripts warn about self-signed certificates'
+fi
+if grep -q 'https://localhost' "$ROOT/scripts/start.sh" && grep -q 'https://localhost' "$ROOT/scripts/start.ps1"; then
+  pass 'both start scripts print the https frontend address in --prod'
+else
+  fail 'both start scripts print the https frontend address in --prod'
+fi
+
+PRODROOT="$TMP/prod-root"
+mkdir -p "$PRODROOT"
+cp -R "$ROOT/scripts" "$PRODROOT/scripts"
+cp "$ROOT/start.sh" "$PRODROOT/start.sh"
+cp "$ROOT/.env.example" "$PRODROOT/.env.example"
+OUT="$(cd "$PRODROOT" && bash ./start.sh --prod --env-only --quiet 2>&1)"
+RC=$?
+assert_eq '--prod --env-only exits 0 without Docker or certificates' 0 "$RC"
+if [ -f "$PRODROOT/.env" ]; then
+  pass '--prod --env-only prepares .env'
+else
+  fail '--prod --env-only prepares .env'
+fi
+if [ -d "$PRODROOT/deploy/certs" ]; then
+  fail '--prod --env-only does not touch deploy/certs'
+else
+  pass '--prod --env-only does not touch deploy/certs'
+fi
+assert_eq '--prod --env-only leaves no replace-with placeholders' '0' \
+  "$(grep -c 'replace-with' "$PRODROOT/.env" || true)"
 
 # ---------------------------------------------------------------- summary
 printf '\n%d passed, %d failed, %d skipped\n' "$PASS" "$FAIL" "$SKIP"

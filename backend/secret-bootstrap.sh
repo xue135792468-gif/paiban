@@ -5,10 +5,15 @@
 # 也可以直接执行，用于测试或手工排查。
 #
 # 规则（两个密钥一致处理）：
-#   1. 环境变量非空 -> 原样保留，绝不覆盖运维显式提供的值；
-#   2. 否则读取 $PAIBAN_DATA_DIR/secrets.env（KEY=VALUE）；
+#   1. 环境变量非空且不是占位值 -> 原样保留，绝不覆盖运维显式提供的值；
+#   2. 否则读取 $PAIBAN_DATA_DIR/secrets.env（KEY=VALUE），占位值同样视为缺失；
 #   3. 仍然缺失 -> 生成 64 位十六进制随机串，追加写入 secrets.env（chmod 600）；
 #   4. 日志只打印前 4 位 + ****，绝不打印完整密钥。
+#
+# 占位值指 .env.example 里的 replace-with... 一类前缀（见 _paiban_is_placeholder）。
+# 把 .env.example 直接复制成 .env 时这些值非空，若不识别就会带着公开的示例密钥上线。
+#
+# 初始管理员密码不归本脚本管：它由 Java 侧的 IdentityDataInitializer 处理。
 #
 # 幂等：第二次启动复用 secrets.env 里的值，不会再生成新密钥。
 #
@@ -68,6 +73,21 @@ _paiban_mask() {
   printf '%s****' "${_paiban_prefix:-?}"
 }
 
+# 0 = 不可用（空值或占位值），1 = 可用。占位值大小写不敏感，按前缀判断。
+_paiban_is_placeholder() {
+  _paiban_ph_value="${1:-}"
+  if [ -z "$_paiban_ph_value" ]; then
+    return 0
+  fi
+  _paiban_ph_lower="$(printf '%s' "$_paiban_ph_value" | tr '[:upper:]' '[:lower:]')"
+  case "$_paiban_ph_lower" in
+    replace-with* | replace_with* | change-me* | changeme* | your-* | your_* | todo*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 _paiban_fail() {
   printf '[初始化][错误] %s\n' "$1" >&2
   exit 1
@@ -87,18 +107,29 @@ _paiban_resolve_secret() {
   fi
 
   if [ -n "$_paiban_value" ]; then
-    printf '[初始化] 使用环境变量提供的 %s（前缀 %s）\n' \
-      "$_paiban_label" "$(_paiban_mask "$_paiban_value")"
-    export "$_paiban_key=$_paiban_value"
-    return 0
+    if _paiban_is_placeholder "$_paiban_value"; then
+      printf '[初始化] 忽略环境变量 %s 的占位值，改用安全密钥\n' "$_paiban_key"
+      _paiban_value=''
+    else
+      printf '[初始化] 使用环境变量提供的 %s（前缀 %s）\n' \
+        "$_paiban_label" "$(_paiban_mask "$_paiban_value")"
+      export "$_paiban_key=$_paiban_value"
+      return 0
+    fi
   fi
 
   _paiban_value="$(_paiban_secret_get "$_paiban_key")"
   if [ -n "$_paiban_value" ]; then
-    printf '[初始化] 已复用 %s 中的 %s（前缀 %s）\n' \
-      "$PAIBAN_SECRETS_FILE" "$_paiban_label" "$(_paiban_mask "$_paiban_value")"
-    export "$_paiban_key=$_paiban_value"
-    return 0
+    if _paiban_is_placeholder "$_paiban_value"; then
+      printf '[初始化] 忽略 %s 中 %s 的占位值，重新生成\n' \
+        "$PAIBAN_SECRETS_FILE" "$_paiban_key"
+      _paiban_value=''
+    else
+      printf '[初始化] 已复用 %s 中的 %s（前缀 %s）\n' \
+        "$PAIBAN_SECRETS_FILE" "$_paiban_label" "$(_paiban_mask "$_paiban_value")"
+      export "$_paiban_key=$_paiban_value"
+      return 0
+    fi
   fi
 
   if ! _paiban_value="$(_paiban_hex64)"; then
@@ -128,4 +159,5 @@ if [ "$_paiban_bootstrap_restore_errexit" = "1" ]; then
   set -e
 fi
 
-unset _paiban_key _paiban_label _paiban_value _paiban_hex _paiban_prefix
+unset _paiban_key _paiban_label _paiban_value _paiban_hex _paiban_prefix \
+  _paiban_ph_value _paiban_ph_lower

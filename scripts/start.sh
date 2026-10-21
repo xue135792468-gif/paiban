@@ -13,7 +13,10 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 QUIET=0
 NO_BUILD=0
 ENV_ONLY=0
+PROD=0
+PROD_COMPOSE_FILE="docker-compose.prod.yml"
 ADMIN_PASSWORD=""
+ADMIN_PASSWORD_GIVEN=0
 TIMEOUT=60
 
 info() { [ "$QUIET" = "1" ] || printf '%s\n' "$*"; }
@@ -31,6 +34,7 @@ usage() {
   --timeout=SECONDS          等待后端就绪的最长秒数（默认 60）
   --no-build                 不重新构建镜像，直接启动已有镜像
   --env-only                 只生成/检查 .env，不启动服务
+  --prod                     使用生产栈（docker-compose.prod.yml，nginx 终止 TLS）
   -h, --help                 显示本帮助
 
 退出码: 0 成功, 1 启动失败, 2 环境或前置条件不满足
@@ -38,8 +42,12 @@ EOF
 }
 
 show_failure_hint() {
+  local compose_hint=''
+  if [ "$PROD" = "1" ]; then
+    compose_hint=" -f $PROD_COMPOSE_FILE"
+  fi
   printf '\n排查建议：\n' >&2
-  printf '  1. 查看后端日志：docker compose logs backend\n' >&2
+  printf '  1. 查看后端日志：docker compose%s logs backend\n' "$compose_hint" >&2
   printf '  2. 运行自检：doctor.bat（Windows）或 ./doctor.sh（Linux/macOS）\n' >&2
   printf '  3. 首次构建较慢时可加大等待时间：--timeout=180\n' >&2
 }
@@ -77,16 +85,31 @@ port_owner() {
 }
 
 health_ok() {
+  local url
+  if [ "$PROD" = "1" ]; then
+    # 生产栈只发布 nginx 的 443；自签证书需要跳过校验。
+    url="https://127.0.0.1/api/health"
+  else
+    url="http://127.0.0.1:8080/api/health"
+  fi
   local body
   if command -v curl >/dev/null 2>&1; then
-    body="$(curl -fsS --max-time 2 http://127.0.0.1:8080/api/health 2>/dev/null)" || return 1
+    if [ "$PROD" = "1" ]; then
+      body="$(curl -kfsS --max-time 2 "$url" 2>/dev/null)" || return 1
+    else
+      body="$(curl -fsS --max-time 2 "$url" 2>/dev/null)" || return 1
+    fi
     case "$body" in
       *'"UP"'*) return 0 ;;
       *) return 1 ;;
     esac
   fi
   if command -v wget >/dev/null 2>&1; then
-    body="$(wget -q -O - --timeout=2 http://127.0.0.1:8080/api/health 2>/dev/null)" || return 1
+    if [ "$PROD" = "1" ]; then
+      body="$(wget --no-check-certificate -q -O - --timeout=2 "$url" 2>/dev/null)" || return 1
+    else
+      body="$(wget -q -O - --timeout=2 "$url" 2>/dev/null)" || return 1
+    fi
     case "$body" in
       *'"UP"'*) return 0 ;;
       *) return 1 ;;
@@ -110,6 +133,67 @@ wait_health() {
   done
 }
 
+# 生产栈用 nginx 在 443 终止 TLS；没有证书时生成一对自签证书，仅够本机验证。
+ensure_prod_certs() {
+  local certs_dir="$ROOT/deploy/certs"
+  local cert="$certs_dir/fullchain.pem"
+  local key="$certs_dir/privkey.pem"
+  local generated=0
+  local subj='/CN=localhost'
+  local mount
+
+  # Git Bash rewrites a leading "/CN=..." into a Windows path; "//CN=..." survives
+  # and is reduced back to "/CN=..." before openssl sees it.
+  case "$(uname -s 2>/dev/null || echo unknown)" in
+    MINGW* | MSYS* | CYGWIN*) subj='//CN=localhost' ;;
+  esac
+
+  if [ -f "$cert" ] && [ -f "$key" ]; then
+    return 0
+  fi
+
+  mkdir -p "$certs_dir"
+  warn '未找到 deploy/certs/fullchain.pem 或 privkey.pem，正在生成自签证书（仅用于测试）。'
+
+  if command -v openssl >/dev/null 2>&1; then
+    if openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
+        -keyout "$key" -out "$cert" -subj "$subj" \
+        -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1' >/dev/null 2>&1; then
+      generated=1
+    elif openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
+        -keyout "$key" -out "$cert" -subj "$subj" >/dev/null 2>&1; then
+      generated=1
+    fi
+  fi
+
+  if [ "$generated" != "1" ]; then
+    # A failed openssl attempt can leave a half-written pair behind.
+    rm -f "$key" "$cert"
+    mount="$certs_dir:/certs"
+    if command -v cygpath >/dev/null 2>&1; then
+      mount="$(cygpath -w "$certs_dir"):/certs"
+    fi
+    if ! MSYS_NO_PATHCONV=1 docker run --rm -v "$mount" alpine/openssl req -x509 -nodes \
+        -newkey rsa:2048 -days 365 \
+        -keyout /certs/privkey.pem -out /certs/fullchain.pem \
+        -subj "$subj" \
+        -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1'; then
+      err '生成自签证书失败。请把 fullchain.pem 与 privkey.pem 放到 deploy/certs/ 后重试。'
+      exit 2
+    fi
+    generated=1
+  fi
+
+  if [ "$generated" = "1" ]; then
+    printf '\n' >&2
+    printf '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n' >&2
+    printf '!! 警告：已生成自签证书，仅用于本机测试！\n' >&2
+    printf '!! 正式使用前必须替换为受信任证书（Let'"'"'s Encrypt / Caddy / 商业证书）。\n' >&2
+    printf '!! 浏览器会提示不受信任；飞书等客户端会直接拒绝该证书。\n' >&2
+    printf '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\n' >&2
+  fi
+}
+
 # --------------------------------------------------------------- 参数解析
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -122,6 +206,9 @@ while [ $# -gt 0 ]; do
     --env-only)
       ENV_ONLY=1
       ;;
+    --prod)
+      PROD=1
+      ;;
     -h | --help)
       usage
       exit 0
@@ -132,6 +219,7 @@ while [ $# -gt 0 ]; do
         err '--admin-password 不能为空'
         exit 2
       fi
+      ADMIN_PASSWORD_GIVEN=1
       ;;
     --timeout=*)
       TIMEOUT="${1#*=}"
@@ -197,7 +285,12 @@ if [ -n "$MEM_BYTES" ] && [ "$MEM_BYTES" -lt 2147483648 ]; then
   warn "可用内存约 $((MEM_BYTES / 1024 / 1024)) MB，低于建议的 2 GB，构建和排课可能较慢。"
 fi
 
-for spec in '8080:后端服务' '5173:前端页面' '5432:PostgreSQL 数据库'; do
+if [ "$PROD" = "1" ]; then
+  PORT_SPECS=('80:HTTP（自动跳转 HTTPS）' '443:HTTPS')
+else
+  PORT_SPECS=('8080:后端服务' '5173:前端页面' '5432:PostgreSQL 数据库')
+fi
+for spec in "${PORT_SPECS[@]}"; do
   PORT="${spec%%:*}"
   NAME="${spec#*:}"
   if port_in_use "$PORT"; then
@@ -219,6 +312,11 @@ ADMIN_PASSWORD="$PAIBAN_EFFECTIVE_ADMIN_PASSWORD"
 
 # ------------------------------------------------------------ 4. compose
 info '[4/5] 构建并启动容器（首次可能需要几分钟）...'
+COMPOSE_FILES=()
+if [ "$PROD" = "1" ]; then
+  ensure_prod_certs
+  COMPOSE_FILES=(-f "$PROD_COMPOSE_FILE")
+fi
 COMPOSE_ARGS=(up -d)
 if [ "$NO_BUILD" != "1" ]; then
   COMPOSE_ARGS+=(--build)
@@ -227,7 +325,7 @@ fi
 COMPOSE_LOG="$ROOT/.tools/logs/start-compose.log"
 if [ "$QUIET" = "1" ]; then
   mkdir -p "$ROOT/.tools/logs"
-  if ! (cd "$ROOT" && "${COMPOSE[@]}" "${COMPOSE_ARGS[@]}") >"$COMPOSE_LOG" 2>&1; then
+  if ! (cd "$ROOT" && "${COMPOSE[@]}" "${COMPOSE_FILES[@]}" "${COMPOSE_ARGS[@]}") >"$COMPOSE_LOG" 2>&1; then
     err '容器启动失败（构建或启动阶段出错）。'
     printf '最近日志：\n' >&2
     tail -n 40 "$COMPOSE_LOG" >&2 || true
@@ -235,7 +333,7 @@ if [ "$QUIET" = "1" ]; then
     exit 1
   fi
 else
-  if ! (cd "$ROOT" && "${COMPOSE[@]}" "${COMPOSE_ARGS[@]}"); then
+  if ! (cd "$ROOT" && "${COMPOSE[@]}" "${COMPOSE_FILES[@]}" "${COMPOSE_ARGS[@]}"); then
     err '容器启动失败（构建或启动阶段出错）。'
     show_failure_hint
     exit 1
@@ -253,9 +351,26 @@ fi
 
 # ------------------------------------------------------------ 完成
 printf '\n[完成] 排课系统已启动\n'
-printf '  前端地址: http://localhost:5173\n'
-printf '  后端地址: http://localhost:8080\n'
-printf '  默认账号: admin / %s\n' "$ADMIN_PASSWORD"
+if [ "$PROD" = "1" ]; then
+  printf '  前端地址: https://localhost\n'
+  printf '  健康检查: https://localhost/api/health\n'
+  printf '  （HTTP 会自动跳转到 HTTPS；自签证书需在浏览器中确认一次）\n'
+else
+  printf '  前端地址: http://localhost:5173\n'
+  printf '  后端地址: http://localhost:8080\n'
+fi
+if [ "$PAIBAN_ENV_CREATED" = "1" ]; then
+  printf '  默认账号: admin / %s\n' "$ADMIN_PASSWORD"
+else
+  printf '  默认账号: admin（密码为首次启动时设置的密码；未修改过则为 admin123）\n'
+  if [ "$ADMIN_PASSWORD_GIVEN" = "1" ]; then
+    warn '--admin-password 只在首次创建 admin 账号时生效；本次没有修改已有账号的密码。'
+  fi
+fi
 printf '\n首次使用请访问前端地址，按初始化向导操作。\n'
-printf '停止服务: docker compose down\n'
+if [ "$PROD" = "1" ]; then
+  printf '停止服务: docker compose -f %s down\n' "$PROD_COMPOSE_FILE"
+else
+  printf '停止服务: docker compose down\n'
+fi
 exit 0

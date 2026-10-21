@@ -4,7 +4,8 @@
 #   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/doctor.ps1 [--json|--quiet] [--help]
 #   或直接运行仓库根目录的 doctor.bat
 #
-# 退出码：0=健康，1=警告，2=严重。
+# 退出码：0=健康，1=警告（内存/迁移），2=严重（Docker/数据库/磁盘）。
+# 端口占用只作为信息输出，不影响退出码：本系统正常运行时它们本来就被自己占用。
 
 $ErrorActionPreference = 'Continue'
 
@@ -24,7 +25,8 @@ function Show-Usage {
   --quiet   同 --json（本工具不打印进度信息）
   --help    显示本帮助
 
-退出码：0=健康，1=有警告，2=存在严重问题
+退出码：0=健康，1=有警告（内存/迁移），2=存在严重问题
+端口占用仅为信息项，不影响退出码。
 '@
 }
 
@@ -257,12 +259,13 @@ if ($driveRoot -match '^[Ee]:') { $eDriveFreeGb = $freeGb }
 $diskSufficient = ($null -ne $freeGb -and $freeGb -ge 1)
 
 # --- 退出码 ---------------------------------------------------------------
+# 端口占用只是信息：本系统正常运行时 8080/5173/5432 本来就被自己占着。
+# 2 = 严重（Docker/数据库/磁盘）；1 = 警告（内存/迁移）；0 = 健康。
 
 $exitCode = 0
 if (-not $dockerInstalled -or -not $dockerRunning -or -not $dbReachable -or -not $diskSufficient) {
     $exitCode = 2
-} elseif ($port8080 -eq 'occupied' -or $port5173 -eq 'occupied' -or $port5432 -eq 'occupied' -or
-          -not $memSufficient -or -not $dbMigrated) {
+} elseif (-not $memSufficient -or -not $dbMigrated) {
     $exitCode = 1
 }
 
@@ -315,6 +318,9 @@ function Write-Warn([string]$Message) {
 function Write-Bad([string]$Message) {
     if ($useColor) { Write-Host "❌ $Message" -ForegroundColor Red } else { Write-Host "❌ $Message" }
 }
+function Write-Info([string]$Message) {
+    Write-Host "ℹ️ $Message"
+}
 
 Write-Host "=== 排课系统自检 (doctor) ==="
 
@@ -333,7 +339,7 @@ if ($port8080 -eq 'free' -and $port5173 -eq 'free' -and $port5432 -eq 'free') {
     if ($port8080 -eq 'occupied') { $detail += '8080（后端） ' }
     if ($port5173 -eq 'occupied') { $detail += '5173（前端） ' }
     if ($port5432 -eq 'occupied') { $detail += '5432（数据库） ' }
-    Write-Warn "端口：$detail已被占用；如非本系统进程，请先释放"
+    Write-Info "端口：$detail已被占用（若为本系统容器则正常；否则请先释放，不影响退出码）"
 }
 
 if ($memSufficient) {

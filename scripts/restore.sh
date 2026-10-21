@@ -24,6 +24,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/compose.sh
+. "$ROOT_DIR/scripts/lib/compose.sh"
+
 BACKUP_DIR="${BACKUP_DIR:-$ROOT_DIR/backups}"
 DATA_DIR="${DATA_DIR:-$ROOT_DIR/data}"
 DB_NAME="${POSTGRES_DB:-paiban}"
@@ -93,14 +96,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-compose() {
-  if [[ -n "$COMPOSE_FILE" ]]; then
-    docker compose -f "$COMPOSE_FILE" "$@"
-  else
-    docker compose "$@"
-  fi
-}
-
 if [[ -z "$DUMP" ]]; then
   DUMP="$(ls -1t "$BACKUP_DIR"/paiban-*.dump 2>/dev/null | head -n 1 || true)"
 fi
@@ -160,10 +155,10 @@ step "Using compose file: $compose_label"
 step "Restoring dump: $DUMP"
 
 step "Stopping backend and frontend"
-compose stop backend frontend
+paiban_compose stop backend frontend
 
 step "Restoring database $DB_NAME (pg_restore --clean --if-exists)"
-compose exec -T postgres pg_restore -U "$DB_USER" -d "$DB_NAME" --clean --if-exists < "$DUMP"
+paiban_compose exec -T postgres pg_restore -U "$DB_USER" -d "$DB_NAME" --clean --if-exists < "$DUMP"
 
 if [[ -n "$UPLOADS" && -f "$UPLOADS" ]]; then
   step "Restoring uploads from $UPLOADS"
@@ -174,6 +169,6 @@ else
 fi
 
 step "Starting backend and frontend"
-compose up -d backend frontend
+paiban_compose up -d backend frontend
 
 step "Restore complete. Check health with: docker compose ... ps"

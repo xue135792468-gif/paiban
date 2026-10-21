@@ -276,6 +276,75 @@ assert_contains 'sourced script exports PAIBAN_AI_ENCRYPTION_KEY' "$SOURCED" \
   "ai=$(secret_get "$DATA5/secrets.env" PAIBAN_AI_ENCRYPTION_KEY)"
 assert_contains 'sourced script restores the caller errexit setting' "$SOURCED" 'errexit=on'
 
+# ---------------------------- 7. placeholder env values are never used
+echo '== 7. placeholder env values are treated as missing =='
+DATA6="$TMP/data6"
+PH_JWT='replace-with-at-least-32-random-characters'
+PH_AI='change-me-0123456789abcdef0123456789'
+OUT7="$(run_bootstrap "$DATA6" PAIBAN_JWT_SECRET="$PH_JWT" PAIBAN_AI_ENCRYPTION_KEY="$PH_AI")"
+RC7=$?
+assert_eq 'placeholder env values still exit 0' 0 "$RC7"
+JWT7="$(secret_get "$DATA6/secrets.env" PAIBAN_JWT_SECRET)"
+AI7="$(secret_get "$DATA6/secrets.env" PAIBAN_AI_ENCRYPTION_KEY)"
+assert_match 'placeholder JWT env is replaced by a generated secret' "$JWT7" '^[0-9a-f]{64}$'
+assert_match 'placeholder AI env is replaced by a generated key' "$AI7" '^[0-9a-f]{64}$'
+if [ "$JWT7" != "$PH_JWT" ] && [ "$AI7" != "$PH_AI" ]; then
+  pass 'placeholder values are not reused as secrets'
+else
+  fail 'placeholder values are not reused as secrets' "jwt=[$JWT7] ai=[$AI7]"
+fi
+assert_contains 'ignored placeholder names the JWT key' "$OUT7" 'PAIBAN_JWT_SECRET'
+assert_contains 'ignored placeholder names the AI key' "$OUT7" 'PAIBAN_AI_ENCRYPTION_KEY'
+assert_contains 'ignored placeholder is logged as a placeholder' "$OUT7" '占位'
+assert_not_contains 'placeholder JWT value is never echoed' "$OUT7" "$PH_JWT"
+assert_not_contains 'placeholder AI value is never echoed' "$OUT7" "$PH_AI"
+
+# Every documented placeholder prefix (case-insensitive) must be ignored.
+PH_INDEX=0
+for placeholder in \
+  'replace-with-x' \
+  'replace_with_x' \
+  'change-me-x' \
+  'changeme-x' \
+  'your-secret' \
+  'your_secret' \
+  'TODO-set-this' \
+  'REPLACE-WITH-X'; do
+  PH_INDEX=$((PH_INDEX + 1))
+  PH_DIR="$TMP/ph-$PH_INDEX"
+  run_bootstrap "$PH_DIR" PAIBAN_JWT_SECRET="$placeholder" > /dev/null 2>&1
+  assert_match "placeholder prefix [$placeholder] is ignored" \
+    "$(secret_get "$PH_DIR/secrets.env" PAIBAN_JWT_SECRET)" '^[0-9a-f]{64}$'
+done
+
+# ------------------------- 8. placeholder in secrets.env is healed
+echo '== 8. placeholder value in secrets.env is regenerated =='
+DATA7="$TMP/data7"
+mkdir -p "$DATA7"
+printf 'PAIBAN_JWT_SECRET=%s\n' "$PH_JWT" > "$DATA7/secrets.env"
+OUT8="$(run_bootstrap "$DATA7")"
+RC8=$?
+assert_eq 'placeholder in secrets.env still exits 0' 0 "$RC8"
+assert_match 'placeholder in secrets.env is replaced' \
+  "$(secret_get "$DATA7/secrets.env" PAIBAN_JWT_SECRET)" '^[0-9a-f]{64}$'
+assert_contains 'placeholder in secrets.env is reported' "$OUT8" '占位'
+assert_not_contains 'placeholder from secrets.env is never echoed' "$OUT8" "$PH_JWT"
+
+# ------------------- 9. the admin password is not this script's job
+echo '== 9. admin password is left to the Java bootstrap =='
+DATA8="$TMP/data8"
+PH_ADMIN='replace-with-a-strong-initial-admin-password'
+SOURCED_ADMIN="$(env -u PAIBAN_JWT_SECRET -u PAIBAN_AI_ENCRYPTION_KEY \
+  PAIBAN_DATA_DIR="$DATA8" PAIBAN_SECURITY_BOOTSTRAP_ADMIN_PASSWORD="$PH_ADMIN" \
+  sh -c '. "$1"; printf "admin=%s\n" "$PAIBAN_SECURITY_BOOTSTRAP_ADMIN_PASSWORD"' \
+  _ "$SCRIPT" 2>&1)"
+assert_contains 'admin password env is left untouched by secret-bootstrap.sh' \
+  "$SOURCED_ADMIN" "admin=$PH_ADMIN"
+assert_eq 'admin password is never written to secrets.env' '' \
+  "$(secret_get "$DATA8/secrets.env" PAIBAN_SECURITY_BOOTSTRAP_ADMIN_PASSWORD)"
+assert_not_contains 'admin password never appears in secrets.env' \
+  "$(cat "$DATA8/secrets.env" 2>/dev/null)" "$PH_ADMIN"
+
 # ---------------------------------------------------------------- summary
 printf '\n%d passed, %d failed, %d skipped\n' "$PASS" "$FAIL" "$SKIP"
 if [ "$FAIL" -ne 0 ]; then

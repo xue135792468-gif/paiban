@@ -8,7 +8,8 @@
 #
 # 对外函数：
 #   paiban_ensure_env <repo_root> [admin_password] [quiet]
-#     成功后设置 PAIBAN_ENV_FILE 与 PAIBAN_EFFECTIVE_ADMIN_PASSWORD。
+#     成功后设置 PAIBAN_ENV_FILE、PAIBAN_EFFECTIVE_ADMIN_PASSWORD 与
+#     PAIBAN_ENV_CREATED（1 = 本次新建了 .env，0 = .env 原本就存在）。
 #   paiban_env_get <file> <key>
 #   paiban_env_set <file> <key> <value>
 #   paiban_is_placeholder <value>
@@ -109,6 +110,7 @@ paiban_ensure_env() {
   local current_admin effective_admin
 
   PAIBAN_ENV_QUIET="$quiet"
+  PAIBAN_ENV_CREATED=0
 
   if [ ! -f "$env_file" ]; then
     if [ ! -f "$example_file" ]; then
@@ -116,6 +118,7 @@ paiban_ensure_env() {
       return 1
     fi
     cp "$example_file" "$env_file"
+    PAIBAN_ENV_CREATED=1
     _paiban_env_note '[信息] 未找到 .env，已从 .env.example 创建。'
   fi
 

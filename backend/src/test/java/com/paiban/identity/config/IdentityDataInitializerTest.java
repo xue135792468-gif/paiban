@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.mock.env.MockEnvironment;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
@@ -103,6 +104,52 @@ class IdentityDataInitializerTest {
         assertThat(roleCodes(after)).isEqualTo(roleCodes);
         assertThat(roleRepository.findByCode("admin").orElseThrow().getPermissions())
                 .hasSize(adminPermissionCount);
+    }
+
+    @Test
+    void placeholderConfiguredPasswordNeverBecomesTheAdminPassword() {
+        MockEnvironment production = new MockEnvironment();
+        production.setActiveProfiles("postgres");
+
+        String password = new IdentityDataInitializer().bootstrapPassword(
+                production, "replace-with-a-strong-initial-admin-password");
+
+        assertThat(password)
+                .as("a placeholder copied from .env.example must not become a real credential")
+                .isNotEqualTo("replace-with-a-strong-initial-admin-password")
+                .matches("[0-9a-f]{16}");
+    }
+
+    @Test
+    void placeholderAdminPasswordFallsBackToAdmin123InDevelopmentProfiles() {
+        MockEnvironment local = new MockEnvironment();
+        local.setActiveProfiles("local");
+
+        assertThat(new IdentityDataInitializer().bootstrapPassword(local, "replace-with-a-strong-password"))
+                .isEqualTo("admin123");
+    }
+
+    @Test
+    void realConfiguredPasswordIsKept() {
+        MockEnvironment production = new MockEnvironment();
+        production.setActiveProfiles("postgres");
+
+        assertThat(new IdentityDataInitializer().bootstrapPassword(production, "Chosen-Pass-2026"))
+                .isEqualTo("Chosen-Pass-2026");
+    }
+
+    @Test
+    void placeholderDetectionCoversEveryDocumentedPrefix() {
+        assertThat(IdentityDataInitializer.isPlaceholder("replace-with-x")).isTrue();
+        assertThat(IdentityDataInitializer.isPlaceholder("replace_with_x")).isTrue();
+        assertThat(IdentityDataInitializer.isPlaceholder("CHANGE-ME-x")).isTrue();
+        assertThat(IdentityDataInitializer.isPlaceholder("changeme-x")).isTrue();
+        assertThat(IdentityDataInitializer.isPlaceholder("your-password")).isTrue();
+        assertThat(IdentityDataInitializer.isPlaceholder("your_password")).isTrue();
+        assertThat(IdentityDataInitializer.isPlaceholder("TODO-set-this")).isTrue();
+        assertThat(IdentityDataInitializer.isPlaceholder("")).isTrue();
+        assertThat(IdentityDataInitializer.isPlaceholder(null)).isTrue();
+        assertThat(IdentityDataInitializer.isPlaceholder("Chosen-Pass-2026")).isFalse();
     }
 
     private Set<String> roleCodes(AppUser user) {

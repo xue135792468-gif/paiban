@@ -18,7 +18,7 @@
 
 - 前端地址：http://localhost:5173
 - 后端地址：http://localhost:8080
-- 默认账号：`admin` / `admin123`
+- 默认账号：`admin` / `admin123`（首次启动时可用 `--admin-password=` 指定；账号创建后再传该参数不会改密码）
 - 首次使用请访问前端地址，按初始化向导操作
 
 常用参数：
@@ -30,6 +30,28 @@
 | `--timeout=秒数` | 健康检查最长等待时间，默认 60 秒 |
 | `--no-build` | 不重新构建镜像，直接启动已有镜像 |
 | `--env-only` | 只生成/检查 `.env`，不启动服务（排障用） |
+| `--prod` | 使用生产栈 `docker-compose.prod.yml`：nginx 终止 TLS，只发布 80/443 |
+
+### 生产栈一键启动（`--prod`）
+
+```bash
+./start.sh --prod                       # Linux / macOS
+start.bat --prod                        # Windows
+./start.sh --prod --env-only            # 只准备 .env，不碰 Docker / 证书
+```
+
+`--prod` 会：
+
+1. 照常引导 `.env`（占位密钥会被替换；`POSTGRES_PASSWORD` 同样自动补全，因此
+   `${POSTGRES_PASSWORD:?...}` 不会再阻塞启动）；
+2. 若 `deploy/certs/fullchain.pem` / `privkey.pem` 缺失，用本机 `openssl`（没有则用
+   `alpine/openssl` 容器）生成一对 **CN=localhost、365 天**的自签证书，并打印醒目警告；
+3. 用 `docker compose -f docker-compose.prod.yml up -d --build` 启动；
+4. 用 `curl -kfsS https://127.0.0.1/api/health` 等待就绪，最后打印
+   `前端地址: https://localhost`（HTTP 会 301 跳转到 HTTPS）。
+
+> 自签证书**仅供本机测试**。正式上线前必须替换为受信任证书（Let's Encrypt / Caddy / 商业证书），
+> 否则浏览器会告警，飞书等客户端会直接拒绝连接。
 
 退出码：`0` 成功；`1` 启动失败；`2` 环境或前置条件不满足（例如未安装 Docker、Docker 未启动）。
 
@@ -127,9 +149,12 @@ Caddy / Cloudflare Tunnel 管理证书。证书缺失时 nginx 容器会启动�
 
 - `POSTGRES_PASSWORD` **必填**：生产 compose 用 `${POSTGRES_PASSWORD:?...}` 快速失败，
   避免用默认数据库密码上线；可用 `openssl rand -hex 32` 生成。
+  用 `./start.sh --prod` 启动时，占位值会被自动替换成随机密码，因此不会卡在这里。
 - `PAIBAN_JWT_SECRET`、`PAIBAN_AI_ENCRYPTION_KEY` 可以留空：后端 entrypoint 首次启动时
   自动生成并写入 `./data/app/secrets.env`，重启复用、不会覆盖显式提供的值。
-- `PAIBAN_SECURITY_BOOTSTRAP_ADMIN_PASSWORD` 留空时同样自动生成，首次登录密码见后端日志。
+  `.env.example` 里的 `replace-with...` 占位值同样被视为未设置。
+- `PAIBAN_SECURITY_BOOTSTRAP_ADMIN_PASSWORD` 留空（或仍是 `.env.example` 的占位值）时同样
+  自动生成，首次登录密码见后端日志；占位值不会被当成真实密码。
 - 同源部署（nginx 同时代理前端与 `/api`）不需要设置 `PAIBAN_CORS_ALLOWED_ORIGINS`。
 
 **3. 启动**：
@@ -206,7 +231,12 @@ backend / frontend，再执行 `pg_restore --clean --if-exists`，并在存在
 ```bash
 scripts/verify.sh          # 后端 verify + 前端 lint/build
 scripts/verify.sh --full   # 追加 Playwright 验收场景
+scripts/verify-deploy.sh   # 部署脚本测试（无需 Docker；CI 的 deploy-scripts job）
 ```
+
+`scripts/verify-deploy.sh` 依次运行 `scripts/tests/test-*.sh`（compose 拓扑、doctor 退出码、
+密钥自愈、一键启动、生产配置与备份脚本），打印每个套件名并在第一个失败处停止；
+本机没有 PowerShell 时自动跳过 PowerShell 相关断言。CI 中由 `deploy-scripts` job 执行。
 
 `scripts/verify.sh` 与 CI（`.github/workflows/ci.yml`）走同一条路径：检测到 Docker 时自动带
 `-Dtestcontainers=true`，CI 里一定带。需要单独跑某一步时：
