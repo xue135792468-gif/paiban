@@ -93,10 +93,11 @@ Status: ready-for-agent
 1. **统一「课节覆盖」模型**：`LessonOverride(lessonId, periodId, roomId, teacherId)`。批量校验先把全部覆盖应用到内存快照，再校验受影响的课节、它们与其他课节的成对冲突、以及分组统计。
 2. `POST /api/timetable-drafts/{id}/validate-moves`，请求 `{ moves: LessonOverride[] }`，响应沿用 `ValidationResult`。现有 `validate-move` 改为它的单条特例，行为不变。
 3. `GET /api/timetable-drafts/{id}/lessons/{lessonId}/swap-candidates`，参数 `type`（`ALL|INTRA_CLASS|CROSS_CLASS`）、`courseId`、`gradeId`、`classId`、`teacherId`、`includeUnavailable`。返回候选课节、对方教师、对方班级/年级、节次、可用性与冲突原因。
-4. `POST /api/timetable-drafts/{id}/swap`，请求 `{ lessonId, targetLessonId, swapRooms }`。类型由服务端按两个课节的班级关系推导，不信任客户端。`@Transactional` 内双写；任一硬冲突则整体不落库。
-5. `DraftValidator` 重构：抽出 `applyOverrides(snapshot, overrides)` 与 `checkAffected(snapshot, affectedLessonIds)`，`validateMove`、`validateMoves`、`validateDraft` 共用同一套规则，消除三套实现漂移。
-6. 权限复用 `timetable:edit`，不新增权限点。访问他人记录时仍按 `CODING_STANDARDS.md` 的最小权限原则。
-7. `scoreHard` 保持现有语义：本次操作的硬冲突数取负。
+4. `GET /api/timetable-drafts/{id}/lessons/{lessonId}/move-targets`，返回该课节移到每个目标节次的独立校验结果（教室保持不变）。拖拽预览用它，一次请求替代原来的 40 个 `validate-move`。与 `validate-moves` 的区别：后者是「多个移动同时生效」，前者是「同一课节分别尝试每个目标」。
+5. `POST /api/timetable-drafts/{id}/swap`，请求 `{ lessonId, targetLessonId, swapRooms }`。类型由服务端按两个课节的班级关系推导，不信任客户端。`@Transactional` 内双写；任一硬冲突则整体不落库。
+6. `DraftValidator` 重构：抽出 `applyOverrides(snapshot, overrides)` 与 `checkAffected(snapshot, affectedLessonIds)`，`validateMove`、`validateMoves`、`validateDraft` 共用同一套规则，消除三套实现漂移。
+7. 权限复用 `timetable:edit`，不新增权限点。访问他人记录时仍按 `CODING_STANDARDS.md` 的最小权限原则。
+8. `scoreHard` 保持现有语义：本次操作的硬冲突数取负。
 
 ### 数据语义
 
