@@ -76,7 +76,7 @@ Status: ready-for-agent
 5. `TimetableImportService`：
    - 逐行解析班级/课程/教师/节次，按名称精确匹配（trim、忽略大小写）。
    - 未匹配 → 返回 `RowErrorDto`（1 基行号 + 字段 + 原因 + 候选），整批不落库。
-   - 已匹配 → 按 `(class, course)` 查找或创建 `Assignment`（`weeklyLessons` 取该组合的课节数；教师以导入行为准，遵循 ADR-0022）；创建 `TimetableDraft`（`DRAFT`）+ `DraftLesson`（`assignmentId` 非空，`lessonIndex` 递增）。
+   - 已匹配 → 按 `(class, course)` 查找或创建 `Assignment`（`weeklyLessons` 取该组合的课节数；教师以导入行为准，遵循 ADR-0022）；已存在的任务会被更新（教师、周课时），预览必须显示将创建/更新多少条任务；创建 `TimetableDraft`（`DRAFT`）+ `DraftLesson`（`assignmentId` 非空，`lessonIndex` 递增）。
    - 整个入库一个事务；成功后返回草稿 ID。
 6. 超时与重试：`paiban.ai.timeout-seconds` 默认 120；超时类失败最多 2 次尝试（当前 3 次）。前端 AI 导入请求单独放宽到 300 秒，其余请求保持 30 秒。
 7. 图片导入：本期不做。目标卡片标注「需配置支持视觉的模型」；当前模型 `visionCapable=false` 时禁用图片入口并说明原因。
