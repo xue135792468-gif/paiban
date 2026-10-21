@@ -110,13 +110,23 @@ public class IdentityDataInitializer {
             user.setCreatedAt(Instant.now());
             user.getRoles().add(admin);
             userRepository.save(user);
-            if (password.equals("admin123")) {
-                log.info("Bootstrap administrator created: admin / admin123 (local development only)");
-            } else {
-                log.info("Bootstrap administrator created: admin / {}", password);
-            }
+            logBootstrapAccount(password);
+        } else {
+            log.debug("管理员账号已存在，跳过创建（重复启动不会重置密码）");
         }
         log.info("Identity catalogue ready: {} permissions, roles admin/teacher/head_teacher", permissions.size());
+    }
+
+    /**
+     * Prints the bootstrap credential exactly once, when the account is created. Later starts
+     * never log it again, so a restarted container does not spray the password into the logs.
+     */
+    private void logBootstrapAccount(String password) {
+        if (password.equals("admin123")) {
+            log.info("已创建默认管理员账号：admin / admin123（仅本地开发使用，请登录后立即修改密码）");
+        } else {
+            log.info("已创建默认管理员账号：admin / {}（仅显示一次，请立即记录并登录后修改密码）", password);
+        }
     }
 
     /**
@@ -134,9 +144,8 @@ public class IdentityDataInitializer {
                 return "admin123";
             }
         }
-        String generated = java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16);
-        log.warn("未配置 paiban.security.bootstrap-admin-password，已生成初始管理员密码（仅显示一次）: {}", generated);
-        return generated;
+        // The caller logs the generated password once, right after the account is saved.
+        return java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16);
     }
 
     private Role upsertRole(RoleRepository roleRepository, String code, String name, Set<Permission> permissions) {
