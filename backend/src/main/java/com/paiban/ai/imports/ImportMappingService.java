@@ -18,6 +18,7 @@ import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.foundation.service.SemesterService;
 import com.paiban.foundation.web.SemesterDtos.SemesterDto;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,6 +26,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * System entities an import can map a name onto, plus the lookup the mapping step
@@ -58,10 +60,10 @@ public class ImportMappingService {
     }
 
     /** Candidates of one type, filtered by name substring, sorted by name, capped at 20. */
-    public List<LookupDto> lookup(String type, String query, Long semesterId) {
+    public List<LookupDto> lookup(String type, String query) {
         String q = query == null ? "" : query.trim();
         return switch (lookupType(type)) {
-            case "class" -> lookupClasses(q, semesterId);
+            case "class" -> lookupClasses(q);
             case "course" -> limit(courses.findAllByOrderByNameAsc(), Course::getName,
                     course -> new LookupDto(course.getId(), course.getName(), course.getSubject()), q);
             case "teacher" -> limit(teachers.findAllByOrderByNameAsc(), Teacher::getName,
@@ -80,10 +82,9 @@ public class ImportMappingService {
         };
     }
 
-    private List<LookupDto> lookupClasses(String query, Long semesterId) {
-        Long sid = semesterId == null
-                ? semesters.current().map(SemesterDto::id).orElse(null)
-                : semesters.require(semesterId).getId();
+    /** Classes always belong to the current semester; there is no other preview scope. */
+    private List<LookupDto> lookupClasses(String query) {
+        Long sid = semesters.current().map(SemesterDto::id).orElse(null);
         if (sid == null) {
             return List.of();
         }
@@ -111,55 +112,82 @@ public class ImportMappingService {
     /**
      * Rewrites the source values in {@code rows} to the canonical names of the chosen
      * (or explicitly created) entities. Returns the mappings to record on the session
-     * for traceability. Creation is opt-in: nothing is created unless it is listed.
+     * for traceability. Every mapping and creation is validated before the first write,
+     * so a bad item cannot leave half-created entities behind. Creation is opt-in:
+     * nothing is created unless it is listed.
      */
+    @Transactional
     public List<MappingDto> apply(
             List<RowDto> rows, List<MappingItem> items, List<CreateItem> creates) {
         Long currentSemesterId = semesters.current().map(SemesterDto::id).orElse(null);
-        List<Rewrite> rewrites = new java.util.ArrayList<>();
-        List<MappingDto> applied = new java.util.ArrayList<>();
+        List<CreatePlan> createPlans = new ArrayList<>();
         for (CreateItem create : creates) {
-            applied.add(create(create, rewrites, currentSemesterId));
+            createPlans.add(validateCreate(create, currentSemesterId));
         }
+        List<MappingPlan> mappingPlans = new ArrayList<>();
         for (MappingItem item : items) {
-            String field = item.field() == null ? "" : item.field().trim();
-            MappingKind kind = kindOf(field);
-            String source = required(item.source(), "原值不能为空");
-            String canonical = canonicalName(kind, item.targetId(), currentSemesterId);
-            rewrites.add(new Rewrite(field, source, canonical));
-            applied.add(new MappingDto(source, canonical, "用户映射（" + field + "）"));
+            mappingPlans.add(validateMapping(item, currentSemesterId));
+        }
+
+        List<Rewrite> rewrites = new ArrayList<>();
+        List<MappingDto> applied = new ArrayList<>();
+        for (CreatePlan plan : createPlans) {
+            String canonical = createEntity(plan);
+            rewrites.add(new Rewrite(plan.field(), plan.source(), canonical));
+            applied.add(new MappingDto(
+                    plan.source(), canonical, "用户创建（" + labelOf(plan.field()) + "）"));
+        }
+        for (MappingPlan plan : mappingPlans) {
+            rewrites.add(new Rewrite(plan.field(), plan.source(), plan.canonical()));
+            applied.add(new MappingDto(
+                    plan.source(), plan.canonical(), "用户映射（" + labelOf(plan.field()) + "）"));
         }
         rewrite(rows, rewrites);
         return applied;
     }
 
-    private MappingDto create(CreateItem item, List<Rewrite> rewrites, Long currentSemesterId) {
+    private CreatePlan validateCreate(CreateItem item, Long currentSemesterId) {
         String field = item.field() == null ? "" : item.field().trim();
         MappingKind kind = kindOf(field);
         String source = required(item.source(), "原值不能为空");
         String name = item.name() == null || item.name().isBlank() ? source : item.name().trim();
-        String canonical = switch (kind) {
-            case CLASS -> createClass(name, item.gradeId(), currentSemesterId);
-            case COURSE -> createCourse(name);
-            case TEACHER -> createTeacher(name);
-            case ROOM -> createRoom(name);
+        if (kind == MappingKind.CLASS) {
+            if (item.gradeId() == null) {
+                throw ApiException.badRequest("创建班级必须指定年级（gradeId）");
+            }
+            if (currentSemesterId == null) {
+                throw ApiException.badRequest("尚未设置当前学期，无法创建班级");
+            }
+            Grade grade = grades.findById(item.gradeId())
+                    .orElseThrow(() -> ApiException.badRequest("找不到年级: " + item.gradeId()));
+            if (!currentSemesterId.equals(grade.getSemesterId())) {
+                throw ApiException.badRequest("年级不属于当前学期: " + grade.getName());
+            }
+        }
+        return new CreatePlan(field, source, name, item.gradeId(), kind, currentSemesterId);
+    }
+
+    private MappingPlan validateMapping(MappingItem item, Long currentSemesterId) {
+        String field = item.field() == null ? "" : item.field().trim();
+        MappingKind kind = kindOf(field);
+        String source = required(item.source(), "原值不能为空");
+        return new MappingPlan(field, source, canonicalName(kind, item.targetId(), currentSemesterId));
+    }
+
+    private String createEntity(CreatePlan plan) {
+        return switch (plan.kind()) {
+            case CLASS -> createClass(plan.name(), plan.gradeId(), plan.currentSemesterId());
+            case COURSE -> createCourse(plan.name());
+            case TEACHER -> createTeacher(plan.name());
+            case ROOM -> createRoom(plan.name());
         };
-        rewrites.add(new Rewrite(field, source, canonical));
-        return new MappingDto(source, canonical, "用户创建（" + field + "）");
+    }
+
+    private String labelOf(String field) {
+        return ImportTarget.TIMETABLE.labelOf(field);
     }
 
     private String createClass(String name, Long gradeId, Long currentSemesterId) {
-        if (gradeId == null) {
-            throw ApiException.badRequest("创建班级必须指定年级（gradeId）");
-        }
-        if (currentSemesterId == null) {
-            throw ApiException.badRequest("尚未设置当前学期，无法创建班级");
-        }
-        Grade grade = grades.findById(gradeId)
-                .orElseThrow(() -> ApiException.badRequest("找不到年级: " + gradeId));
-        if (!currentSemesterId.equals(grade.getSemesterId())) {
-            throw ApiException.badRequest("年级不属于当前学期: " + grade.getName());
-        }
         for (AdminClass existing : adminClasses.findBySemesterIdOrderByGradeIdAscNameAsc(currentSemesterId)) {
             if (normalizeName(existing.getName()).equals(normalizeName(name))) {
                 return existing.getName();
@@ -268,6 +296,11 @@ public class ImportMappingService {
     }
 
     private record Rewrite(String field, String source, String target) {}
+
+    private record CreatePlan(
+            String field, String source, String name, Long gradeId, MappingKind kind, Long currentSemesterId) {}
+
+    private record MappingPlan(String field, String source, String canonical) {}
 
     static String normalizeName(String value) {
         if (value == null) {

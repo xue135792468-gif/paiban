@@ -102,6 +102,16 @@ class AiImportPromptsTest {
     }
 
     @Test
+    void systemPromptOffersAnOptionalSuggestedTarget() {
+        String prompt = AiImportPrompts.system(ImportTarget.TEACHER);
+
+        assertThat(prompt)
+                .contains("\"suggestedTarget\":\"teacher|timetable\"")
+                .contains("只能填 teacher 或 timetable")
+                .contains("不确定就留空");
+    }
+
+    @Test
     void gridPromptStopsAtFiveHundredRows() {
         List<List<String>> grid = new ArrayList<>();
         for (int r = 1; r <= 505; r++) {
@@ -123,5 +133,26 @@ class AiImportPromptsTest {
         String prompt = AiImportPrompts.gridPrompt(ImportTarget.TEACHER, "宽表", List.of(row), objectMapper);
 
         assertThat(prompt).contains("C60").doesNotContain("C61");
+    }
+
+    @Test
+    void gridPromptSerializesTheMaximumGridQuickly() {
+        List<List<String>> grid = new ArrayList<>();
+        for (int r = 0; r < 500; r++) {
+            List<String> row = new ArrayList<>();
+            for (int c = 0; c < 60; c++) {
+                row.add("R" + r + "C" + c);
+            }
+            grid.add(row);
+        }
+
+        long started = System.nanoTime();
+        String prompt = AiImportPrompts.gridPrompt(ImportTarget.TIMETABLE, "大表", grid, objectMapper);
+        long elapsedMillis = (System.nanoTime() - started) / 1_000_000;
+
+        assertThat(prompt).contains("R0C0").contains("R499C59");
+        // Generous budget: the point is that a maximum-size sheet is serialized at all,
+        // not that a build machine's timing is pinned.
+        assertThat(elapsedMillis).isLessThan(5_000L);
     }
 }

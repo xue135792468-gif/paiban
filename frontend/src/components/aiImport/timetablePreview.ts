@@ -14,11 +14,15 @@ export interface PreviewIssue {
   value: string
   candidates: string[]
   required: boolean
+  /** Set on page-level blockers (row 0), e.g. a missing current semester. */
+  message?: string
 }
 
 /** Counts the backend derives for a timetable preview. */
 export interface TimetableSummary {
   lessons: number
+  /** Preview rows that could not be matched to foundation data. */
+  unresolved: number
   groups: number
   newAssignments: number
   updatedAssignments: number
@@ -28,6 +32,8 @@ export interface TimetableSummary {
 export interface ImportPreview {
   sessionId: number
   targetType: string
+  /** What the AI thinks the data looks like; shown as a hint, never applied silently. */
+  suggestedTarget?: string | null
   columns: { field: string; label: string; required: boolean }[]
   rows: PreviewRow[]
   mappings: { source: string; target: string; note: string }[]
@@ -290,6 +296,8 @@ export interface MappingGroup {
 export function mappingGroups(issues: PreviewIssue[]): MappingGroup[] {
   const groups = new Map<string, MappingGroup>()
   for (const issue of issues) {
+    // Row 0 is a page-level blocker (e.g. no current semester), not a name to map.
+    if (issue.row === 0) continue
     const key = `${issue.field}\u0000${issue.value}`
     let group = groups.get(key)
     if (!group) {

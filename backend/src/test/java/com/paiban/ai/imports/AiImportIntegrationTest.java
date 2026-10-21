@@ -25,6 +25,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -181,6 +182,7 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
                 .when().post("/api/ai/import/text")
                 .then().statusCode(200)
                 .body("issues", hasSize(0))
+                .body("suggestedTarget", org.hamcrest.Matchers.nullValue())
                 .body("summary", org.hamcrest.Matchers.nullValue());
     }
 
@@ -206,6 +208,7 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(200)
                 .body("issues", hasSize(0))
                 .body("summary.lessons", equalTo(2))
+                .body("summary.unresolved", equalTo(0))
                 .body("summary.groups", equalTo(2))
                 .body("summary.newAssignments", equalTo(1))
                 .body("summary.updatedAssignments", equalTo(1));
@@ -244,7 +247,7 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void classLookupIsLimitedToTheRequestedSemester() {
+    void classLookupUsesOnlyTheCurrentSemester() {
         String admin = adminToken();
         long first = TestData.semester(admin);
         long firstGrade = TestData.grade(admin, first, "一年级");
@@ -258,11 +261,6 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
                 .body("$", hasSize(1))
                 .body("[0].id", equalTo((int) currentClass))
                 .body("[0].name", equalTo("新学期班"));
-
-        as(admin).when().get("/api/ai/import/lookup?type=class&q=学期班&semesterId=" + first)
-                .then().statusCode(200)
-                .body("$", hasSize(1))
-                .body("[0].name", equalTo("旧学期班"));
     }
 
     @Test
@@ -315,7 +313,8 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
                 .body("rows[0].values.className", equalTo("一年级1班"))
                 .body("mappings", org.hamcrest.Matchers.hasItem(org.hamcrest.Matchers.allOf(
                         org.hamcrest.Matchers.hasEntry("source", "一年级(1)班"),
-                        org.hamcrest.Matchers.hasEntry("target", "一年级1班"))));
+                        org.hamcrest.Matchers.hasEntry("target", "一年级1班"),
+                        org.hamcrest.Matchers.hasEntry("note", "用户映射（班级）"))));
 
         as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/commit")
                 .then().statusCode(200)
@@ -475,10 +474,9 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void timetableCommitCreatesADraftAndRecordsItsId() {
+    void timetableCommitCreatesADraftInTheCurrentSemesterAndRecordsItsId() {
         String admin = adminToken();
         TimetableFixture fixture = timetableFixture(admin);
-        TestData.semester(admin);
         fake.response = aiResponse(List.of(timetableRow()));
 
         Response preview = as(admin)
@@ -487,8 +485,7 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         preview.then().statusCode(200);
         long sessionId = preview.jsonPath().getLong("sessionId");
 
-        Response commit = as(admin).body(Map.of("semesterId", fixture.semesterId()))
-                .when().post("/api/ai/import/sessions/" + sessionId + "/commit");
+        Response commit = as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/commit");
         commit.then().statusCode(200)
                 .body("imported", equalTo(1))
                 .body("draftId", org.hamcrest.Matchers.notNullValue())
@@ -574,6 +571,139 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
                 .when().post("/api/ai/import/text?target=students")
                 .then().statusCode(400)
                 .body("message", containsString("不支持的导入目标"));
+    }
+
+    @Test
+    void previewReportsTheTargetTheAiSuggestsWithoutSwitching() {
+        String admin = adminToken();
+        fake.response = aiResponse(List.of(teacherRow("张三", "语文", "", 0.99)), "timetable");
+
+        as(admin).body(Map.of("text", "一年级1班 周一 第1节 语文 张三"))
+                .when().post("/api/ai/import/text")
+                .then().statusCode(200)
+                .body("targetType", equalTo("teacher"))
+                .body("suggestedTarget", equalTo("timetable"));
+    }
+
+    @Test
+    void timetablePreviewCountsEveryRowAndTheUnresolvedOnes() {
+        String admin = adminToken();
+        timetableFixture(admin);
+        Map<String, Object> unmatched = timetableRow();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> values = (Map<String, Object>) unmatched.get("values");
+        values.put("className", "不存在的班级");
+        fake.response = aiResponse(List.of(
+                timetableRow(), timetableRow(), timetableRow(), unmatched));
+
+        as(admin).body(Map.of("text", "一年级1班 周一 第1节 语文 张三 101"))
+                .when().post("/api/ai/import/text?target=timetable")
+                .then().statusCode(200)
+                .body("issues", hasSize(1))
+                .body("issues[0].row", equalTo(4))
+                .body("summary.lessons", equalTo(4))
+                .body("summary.unresolved", equalTo(1))
+                .body("summary.groups", equalTo(1))
+                .body("summary.newAssignments", equalTo(1));
+    }
+
+    @Test
+    void previewWithoutACurrentSemesterBlocksTheImportAndCommitExplainsWhy() {
+        String admin = adminToken();
+        fake.response = aiResponse(List.of(timetableRow()));
+
+        Response preview = as(admin)
+                .body(Map.of("text", "一年级1班 周一 第1节 语文 张三 101"))
+                .when().post("/api/ai/import/text?target=timetable");
+        preview.then().statusCode(200)
+                .body("issues", hasSize(1))
+                .body("issues[0].row", equalTo(0))
+                .body("issues[0].field", equalTo("semester"))
+                .body("issues[0].message", containsString("请先设置当前学期"))
+                .body("summary.lessons", equalTo(1))
+                .body("summary.unresolved", equalTo(1));
+        long sessionId = preview.jsonPath().getLong("sessionId");
+
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/commit")
+                .then().statusCode(400)
+                .body("message", containsString("尚未设置当前学期"));
+    }
+
+    @Test
+    void aStoredTargetThatNoLongerExistsIsABadRequestNotAServerError() {
+        String admin = adminToken();
+        AiImportLog log = new AiImportLog();
+        log.setImportType("text");
+        log.setTargetType("students");
+        log.setUsername("admin");
+        log.setStatus(AiImportLog.PREVIEW);
+        log.setRowCount(0);
+        log.setImportedCount(0);
+        log.setPreviewJson("{\"mappings\":[],\"rows\":[{\"values\":{\"name\":\"张三\"}}]}");
+        log.setCreatedAt(Instant.now());
+        log.setUpdatedAt(Instant.now());
+        AiImportLog saved = importLogs.save(log);
+
+        as(admin).when().get("/api/ai/import/sessions/" + saved.getId())
+                .then().statusCode(400)
+                .body("message", containsString("导入目标类型无效"));
+    }
+
+    @Test
+    void imageImportRejectsNonTeacherTargets() throws Exception {
+        String admin = adminToken();
+
+        upload(admin, "/api/ai/import/image?target=timetable", "课表照片.png", pngBytes(), "image/png")
+                .then().statusCode(400)
+                .body("message", containsString("图片导入暂只支持教师"));
+        assertThat(fake.calls).isZero();
+    }
+
+    @Test
+    void anEmptyMappingRequestOnlyRevalidatesThePreview() {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.response = aiResponse(List.of(timetableRow()));
+        long sessionId = timetableSession(admin);
+
+        as(admin).body(Map.of())
+                .when().post("/api/ai/import/sessions/" + sessionId + "/mapping")
+                .then().statusCode(200)
+                .body("issues", hasSize(0))
+                .body("status", equalTo("EDITED"));
+    }
+
+    @Test
+    void aRejectedCreateDoesNotLeaveEarlierCreatesBehind() {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.response = aiResponse(List.of(timetableRow()));
+        long sessionId = timetableSession(admin);
+
+        as(admin).body(Map.of("creates", List.of(
+                        Map.of("field", "courseName", "source", "道法法治", "name", "道德与法治"),
+                        Map.of("field", "className", "source", "八（1）", "name", "八年级1班"))))
+                .when().post("/api/ai/import/sessions/" + sessionId + "/mapping")
+                .then().statusCode(400)
+                .body("message", containsString("年级"));
+
+        // The class creation was invalid, so the valid course creation before it must
+        // not have been written either.
+        assertThat(courseNames(admin)).doesNotContain("道德与法治");
+    }
+
+    @Test
+    void csvTitleRowBeforeTheHeaderReachesTheAi() {
+        String admin = adminToken();
+        fake.response = aiResponse(List.of(teacherRow("赵六", "化学", "13800000004", 0.95)));
+        String csv = "2026 教师名单\n姓名,学科,电话\n赵六,化学,13800000004\n";
+
+        Response preview = upload(
+                admin, "/api/ai/import/excel", "教师.csv", csv.getBytes(StandardCharsets.UTF_8), "text/csv");
+        preview.then().statusCode(200).body("rows", hasSize(1));
+        assertThat(fake.lastRequest.messages().get(1).content())
+                .contains("[\"2026 教师名单\"]")
+                .contains("[\"姓名\",\"学科\",\"电话\"]");
     }
 
     @Test
@@ -842,14 +972,22 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
     }
 
     private String aiResponse(List<Map<String, Object>> rows) {
+        return aiResponse(rows, null);
+    }
+
+    private String aiResponse(List<Map<String, Object>> rows, String suggestedTarget) {
         try {
-            return new ObjectMapper().writeValueAsString(Map.of(
-                    "mappings", List.of(Map.of(
-                            "source", "老师姓名",
-                            "target", "name",
-                            "note", "原始「老师姓名」列 → 系统 name 字段")),
-                    "rows", rows,
-                    "explanation", "根据表头识别姓名与学科，按中国人民常见的教师名单格式完成映射。"));
+            Map<String, Object> body = new LinkedHashMap<>();
+            if (suggestedTarget != null) {
+                body.put("suggestedTarget", suggestedTarget);
+            }
+            body.put("mappings", List.of(Map.of(
+                    "source", "老师姓名",
+                    "target", "name",
+                    "note", "原始「老师姓名」列 → 系统 name 字段")));
+            body.put("rows", rows);
+            body.put("explanation", "根据表头识别姓名与学科，按中国人民常见的教师名单格式完成映射。");
+            return new ObjectMapper().writeValueAsString(body);
         } catch (Exception ex) {
             throw new IllegalStateException(ex);
         }

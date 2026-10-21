@@ -32,14 +32,23 @@ final class AiImportPrompts {
                 字段：
                 %s
                 只输出一个 JSON 对象，不要 Markdown 代码块，不要额外解释。结构必须是：
-                {"mappings":[{"source":"原始列或片段","target":"系统字段名","note":"映射说明"}],
+                {"suggestedTarget":"teacher|timetable",
+                 "mappings":[{"source":"原始列或片段","target":"系统字段名","note":"映射说明"}],
                  "rows":[{"values":%s,
                           "confidence":%s}],
                  "explanation":"一到三句话说明你如何完成映射，以及哪些地方不确定。"}
+                suggestedTarget 表示你判断这份数据更像哪种导入目标，只能填 teacher 或 timetable；
+                当前请求的目标是 %s，只有在你认为明显更合适时才填写不同的值，不确定就留空。
                 confidence 取 0 到 1 之间的小数，表示该单元格的把握程度；不确定就留空值并给低置信度。
                 绝不编造原始数据中不存在的信息。最多返回 %d 行。
                 """
-                .formatted(target.code(), fields, valuesExample(target), confidenceExample(target), MAX_ROWS);
+                .formatted(
+                        target.code(),
+                        fields,
+                        valuesExample(target),
+                        confidenceExample(target),
+                        target.code(),
+                        MAX_ROWS);
     }
 
     static String textPrompt(ImportTarget target, String text) {

@@ -128,7 +128,7 @@ test('课表导入：网格预览、班级切换、未匹配映射、生成草�
   // Preview: read-only grid for the first class, one row per lesson.
   const summary = page.getByTestId('timetable-summary')
   await expect(summary).toBeVisible({ timeout: 60_000 })
-  await expect(summary).toContainText('共 3 节课')
+  await expect(summary).toContainText('共 4 节，1 节待映射')
 
   const lessons = page.locator('.timetable-preview .grid .lesson')
   await expect(lessons).toHaveCount(3)
@@ -156,7 +156,7 @@ test('课表导入：网格预览、班级切换、未匹配映射、生成草�
   await page.getByTestId('resolve-courseName').click()
   await pickDropdownOption(page, seed.courseOne)
   await expect(page.getByTestId('mapping-clear')).toBeVisible()
-  await expect(summary).toContainText('共 4 节课')
+  await expect(summary).toContainText('共 4 节，0 节待映射')
   // The selected class keeps three lessons; the unmatched one now shows the mapped course.
   await expect(lessons).toHaveCount(3)
   await expect(page.locator('.timetable-preview .lesson').filter({ hasText: seed.courseOne })).toHaveCount(2)

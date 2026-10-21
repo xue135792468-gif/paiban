@@ -6,9 +6,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Small RFC-4180-ish CSV reader for the import pipeline. Handles quoted fields,
@@ -17,31 +15,22 @@ import java.util.Map;
  */
 public final class CsvTableReader {
 
-    public record Table(List<String> headers, List<Map<String, String>> rows) {}
-
     private CsvTableReader() {}
 
-    public static Table read(byte[] bytes) {
+    /**
+     * The CSV as a raw grid: every record, header row included, no column clipping.
+     * The AI is the one deciding which row is a title, a header or data, so the first
+     * row must not be consumed as a fixed header.
+     */
+    public static List<List<String>> readGrid(byte[] bytes) {
         String text = decode(bytes);
-        char delimiter = detectDelimiter(text);
-        List<List<String>> records = parse(text, delimiter);
+        List<List<String>> records = parse(text, detectDelimiter(text));
         if (records.isEmpty()) {
             throw new IllegalArgumentException("CSV 中没有可解析的数据");
         }
-        List<String> headers = records.get(0).stream().map(String::trim).toList();
-        List<Map<String, String>> rows = new ArrayList<>();
-        for (int r = 1; r < records.size(); r++) {
-            List<String> cells = records.get(r);
-            if (cells.stream().allMatch(String::isBlank)) {
-                continue;
-            }
-            Map<String, String> values = new LinkedHashMap<>();
-            for (int c = 0; c < headers.size(); c++) {
-                values.put(headers.get(c), c < cells.size() ? cells.get(c).trim() : "");
-            }
-            rows.add(values);
-        }
-        return new Table(headers, rows);
+        return records.stream()
+                .map(record -> record.stream().map(String::trim).toList())
+                .toList();
     }
 
     static String decode(byte[] bytes) {

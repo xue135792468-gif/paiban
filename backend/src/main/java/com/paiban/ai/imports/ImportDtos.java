@@ -22,6 +22,8 @@ public final class ImportDtos {
     public record PreviewDto(
             Long sessionId,
             String targetType,
+            /** What the AI thinks the data looks like, when it differs from the request. */
+            String suggestedTarget,
             List<ColumnDto> columns,
             List<RowDto> rows,
             List<MappingDto> mappings,
@@ -35,25 +37,25 @@ public final class ImportDtos {
 
     public record RowsUpdateRequest(@NotNull(message = "rows 不能为空") List<RowDto> rows) {}
 
-    /** Optional commit options; the timetable target defaults to the current semester. */
-    public record CommitRequest(Long semesterId) {}
-
     /**
-     * What a timetable import would write: the lessons in the preview, the
-     * (class, course) groups they form, and how many of those groups would create a
-     * new teaching task versus update an existing one.
+     * What a timetable import would write: every preview row is a lesson (matched or
+     * not), {@code unresolved} counts the rows that could not be matched, and the
+     * (class, course) groups are counted only over the matched rows.
      */
     public record TimetableSummaryDto(
-            int lessons, int groups, int newAssignments, int updatedAssignments) {}
+            int lessons, int unresolved, int groups, int newAssignments, int updatedAssignments) {}
 
     /** A row that could not be imported, with the system values the user may pick instead. */
     public record RowErrorDto(int row, String field, String message, List<String> candidates) {}
 
     /**
      * One unmatched value in a preview. {@code required} is true when the target field
-     * itself is required, i.e. the value cannot simply be cleared to move on.
+     * itself is required, i.e. the value cannot simply be cleared to move on. A
+     * {@code row} of 0 is a page-level blocker (nothing to map) and carries its reason
+     * in {@code message}.
      */
-    public record IssueDto(int row, String field, String value, List<String> candidates, boolean required) {}
+    public record IssueDto(
+            int row, String field, String value, List<String> candidates, boolean required, String message) {}
 
     /** One system entity offered as a mapping target. {@code extra} is display context. */
     public record LookupDto(Long id, String name, String extra) {}
