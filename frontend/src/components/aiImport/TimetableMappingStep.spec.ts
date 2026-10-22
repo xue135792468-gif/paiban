@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import ElementPlus, { ElMessage } from 'element-plus'
+import ElementPlus, { ElMessage, ElMessageBox } from 'element-plus'
 import TimetableMappingStep from './TimetableMappingStep.vue'
 import type { PreviewIssue, PreviewRow } from './timetablePreview'
 
@@ -113,7 +113,10 @@ describe('课表映射步骤', () => {
     const wrapper = await mountStep([issue()])
     httpMock.post.mockResolvedValue(previewResponse([]))
 
-    wrapper.findComponent({ name: 'ElCheckbox' }).vm.$emit('update:modelValue', true)
+    wrapper
+      .findAllComponents({ name: 'ElCheckbox' })
+      .find((component) => component.text().includes('系统中没有，创建'))!
+      .vm.$emit('update:modelValue', true)
     await flushPromises()
 
     await wrapper.findAll('button').find((button) => button.text() === '确认创建')!.trigger('click')
@@ -154,5 +157,98 @@ describe('课表映射步骤', () => {
     expect(url).toBe('/ai/import/sessions/9/rows')
     expect(body.rows[0].values.periodNo).toBe('第2节')
     expect(body.rows[1].values.periodNo).toBe('第3节')
+  })
+
+  it('全选后批量创建，一次提交所有所选记录', async () => {
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never)
+    const wrapper = await mountStep([
+      issue({ field: 'className', value: '一年级(1)班' }),
+      issue({ field: 'courseName', value: '道法法治', row: 2 }),
+    ])
+    httpMock.post.mockResolvedValue(previewResponse([]))
+
+    wrapper.findComponent({ name: 'ElTable' }).vm.$emit('selection-change', [
+      {
+        key: 'className|一年级(1)班',
+        field: 'className',
+        label: '班级',
+        value: '一年级(1)班',
+        rows: [1],
+        candidates: [],
+        required: true,
+        kind: 'entity',
+      },
+      {
+        key: 'courseName|道法法治',
+        field: 'courseName',
+        label: '课程',
+        value: '道法法治',
+        rows: [2],
+        candidates: [],
+        required: true,
+        kind: 'entity',
+      },
+    ])
+    await flushPromises()
+
+    const grade = wrapper
+      .findAllComponents({ name: 'ElSelect' })
+      .find((component) => component.props('placeholder') === '批量创建班级的年级')
+    grade!.vm.$emit('update:modelValue', 5)
+    await flushPromises()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('批量创建所选'))!
+      .trigger('click')
+    await flushPromises()
+
+    expect(httpMock.post).toHaveBeenCalledWith('/ai/import/sessions/9/mapping', {
+      mappings: [],
+      creates: [
+        { field: 'className', source: '一年级(1)班', name: '一年级(1)班', gradeId: 5 },
+        { field: 'courseName', source: '道法法治', name: '道法法治' },
+      ],
+    })
+  })
+
+  it('批量创建班级缺年级时阻止提交', async () => {
+    const warning = vi.spyOn(ElMessage, 'warning')
+    const wrapper = await mountStep([issue({ field: 'className' })])
+
+    wrapper.findComponent({ name: 'ElTable' }).vm.$emit('selection-change', [
+      {
+        key: 'className|一年级(1)班',
+        field: 'className',
+        label: '班级',
+        value: '一年级(1)班',
+        rows: [1],
+        candidates: [],
+        required: true,
+        kind: 'entity',
+      },
+    ])
+    await flushPromises()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('批量创建所选'))!
+      .trigger('click')
+    await flushPromises()
+
+    expect(warning).toHaveBeenCalledWith('批量创建班级需要先选择年级')
+    expect(httpMock.post).not.toHaveBeenCalled()
+    warning.mockRestore()
+  })
+
+  it('节次组不能勾选批量创建', async () => {
+    const wrapper = await mountStep([
+      issue({ field: 'periodNo', value: '第九节', candidates: ['第1节'] }),
+    ])
+    const selectionColumn = wrapper.findAllComponents({ name: 'ElTableColumn' })[0]
+    const selectable = selectionColumn.props('selectable') as (row: { kind: string }) => boolean
+
+    expect(selectable({ kind: 'slot' })).toBe(false)
+    expect(selectable({ kind: 'entity' })).toBe(true)
   })
 })

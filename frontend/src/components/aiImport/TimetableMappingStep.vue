@@ -7,7 +7,38 @@
       </div>
     </template>
 
-    <el-table :data="groups" size="small" border row-key="key">
+    <div class="batch-bar">
+      <span class="hint">已选 {{ selected.length }} 项</span>
+      <el-button size="small" :disabled="!selected.length" @click="clearSelection">清空选择</el-button>
+      <el-button
+        size="small"
+        type="primary"
+        :disabled="!selectedCreatable.length"
+        :loading="busy === 'batch'"
+        @click="batchCreate"
+      >
+        批量创建所选（{{ selectedCreatable.length }}）
+      </el-button>
+      <el-select
+        v-if="selectedNeedsGrade"
+        v-model="batchGradeId"
+        size="small"
+        placeholder="批量创建班级的年级"
+        class="grade-select"
+      >
+        <el-option v-for="grade in grades" :key="grade.id" :label="grade.name" :value="grade.id" />
+      </el-select>
+    </div>
+
+    <el-table
+      ref="tableRef"
+      :data="groups"
+      size="small"
+      border
+      row-key="key"
+      @selection-change="onSelectionChange"
+    >
+      <el-table-column type="selection" width="42" :selectable="isSelectable" />
       <el-table-column label="行号" width="100">
         <template #default="{ row }">{{ row.rows.join('、') }}</template>
       </el-table-column>
@@ -107,7 +138,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
 import {
@@ -141,6 +172,13 @@ interface GradeOption {
 
 const groups = computed(() => mappingGroups(props.issues))
 const busy = ref('')
+const tableRef = ref()
+const selected = ref<MappingGroup[]>([])
+const batchGradeId = ref<number | undefined>(undefined)
+const selectedCreatable = computed(() => selected.value.filter((group) => group.kind === 'entity'))
+const selectedNeedsGrade = computed(() =>
+  selectedCreatable.value.some((group) => createRequiresGrade(group.field)),
+)
 const grades = ref<GradeOption[]>([])
 const lookupOptions = reactive<Record<string, string[]>>({})
 const createEnabled = reactive<Record<string, boolean>>({})
@@ -193,6 +231,59 @@ async function post(body: {
     { mappings: body.mappings ?? [], creates: body.creates ?? [] },
   )
   emit('updated', data)
+}
+
+function isSelectable(row: MappingGroup): boolean {
+  return row.kind === 'entity'
+}
+
+function onSelectionChange(rows: MappingGroup[]) {
+  selected.value = rows
+}
+
+function clearSelection() {
+  tableRef.value?.clearSelection()
+  selected.value = []
+}
+
+async function batchCreate() {
+  const targets = selectedCreatable.value
+  if (!targets.length) return
+  if (targets.some((group) => createRequiresGrade(group.field)) && !batchGradeId.value) {
+    ElMessage.warning('批量创建班级需要先选择年级')
+    return
+  }
+  const counts = new Map<string, number>()
+  for (const group of targets) {
+    counts.set(group.label, (counts.get(group.label) ?? 0) + 1)
+  }
+  const summary = [...counts.entries()].map(([label, count]) => `${label} ${count} 项`).join('、')
+  try {
+    await ElMessageBox.confirm(
+      `将创建 ${targets.length} 条记录：${summary}。确认继续？`,
+      '批量创建',
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  busy.value = 'batch'
+  try {
+    const creates = targets.map((group) => {
+      const gradeId = createRequiresGrade(group.field) ? batchGradeId.value : undefined
+      return gradeId === undefined
+        ? { field: group.field, source: group.value, name: group.value }
+        : { field: group.field, source: group.value, name: group.value, gradeId }
+    })
+    await post({ creates })
+    clearSelection()
+    batchGradeId.value = undefined
+    ElMessage.success(`已创建并映射 ${targets.length} 项`)
+  } catch (error) {
+    ElMessage.error(serverMessage(error, '批量创建失败，请重试'))
+  } finally {
+    busy.value = ''
+  }
 }
 
 async function mapToEntity(group: MappingGroup, name: string) {
@@ -265,6 +356,14 @@ async function fixSlot(group: MappingGroup, value: string) {
 
 .card-title {
   font-weight: 600;
+}
+
+.batch-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 
 .resolve {
