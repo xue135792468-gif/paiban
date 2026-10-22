@@ -35,7 +35,7 @@ echo "==> frontend: SFC size"
 bash scripts/check-sfc-size.sh
 
 if [[ $FULL -eq 1 ]]; then
-  echo "==> e2e: Playwright（隔离端口 18080/15173，不复用本地 dev 服务）"
+  echo "==> e2e: Playwright（隔离端口 28080/25173，不复用本地 dev 服务）"
   export PAIBAN_E2E_ISOLATED=1
   if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
     # mvnw.cmd (spawned by Playwright) does not understand MSYS /e/ paths.

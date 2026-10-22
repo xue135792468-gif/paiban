@@ -5,8 +5,8 @@ import { defineConfig, devices } from '@playwright/test'
 // PAIBAN_E2E_ISOLATED=1 keeps the suite off 8080/5173 so a running dev server
 // can never be reused (and silently tested) instead of this checkout.
 const isolated = process.env.PAIBAN_E2E_ISOLATED === '1'
-const backendPort = isolated ? 18080 : 8080
-const frontendPort = isolated ? 15173 : 5173
+const backendPort = isolated ? Number(process.env.PAIBAN_E2E_BACKEND_PORT || 28080) : 8080
+const frontendPort = isolated ? Number(process.env.PAIBAN_E2E_FRONTEND_PORT || 25173) : 5173
 const backendUrl = `http://127.0.0.1:${backendPort}`
 const frontendUrl = `http://127.0.0.1:${frontendPort}`
 
