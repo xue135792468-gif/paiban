@@ -51,6 +51,7 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { http } from '@/api/http'
 import { useLoginLanding } from '@/composables/useLoginLanding'
+import { serverMessage } from '@/api/errors'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -92,7 +93,7 @@ async function submit() {
     ElMessage.success('绑定成功')
     await landAfterLogin()
   } catch (e: any) {
-    error.value = e?.response?.data?.message ?? '绑定失败，请联系教务管理员'
+    error.value = serverMessage(e, '绑定失败，请联系教务管理员')
   } finally {
     loading.value = false
   }

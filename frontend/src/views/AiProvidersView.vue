@@ -312,6 +312,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
+import { serverMessage } from '@/api/errors'
 
 interface AiModel {
   id: number
@@ -489,7 +490,7 @@ const modelOptions = computed<ModelOption[]>(() =>
 )
 
 function errorMessage(error: any, fallback: string) {
-  return error?.response?.data?.message ?? fallback
+  return serverMessage(error, fallback)
 }
 
 async function load() {

@@ -99,6 +99,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
+import { serverMessage } from '@/api/errors'
 
 interface Semester {
   id: number
@@ -145,7 +146,7 @@ async function confirmCopy() {
     copyVisible.value = false
     await load()
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '复制失败')
+    ElMessage.error(serverMessage(e, '复制失败'))
   } finally {
     copying.value = false
   }
@@ -200,7 +201,7 @@ async function submit() {
     dialogVisible.value = false
     await load()
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '保存失败')
+    ElMessage.error(serverMessage(e, '保存失败'))
   } finally {
     saving.value = false
   }
@@ -212,7 +213,7 @@ async function setCurrent(row: Semester) {
     ElMessage.success(`已将「${row.name}」设为当前学期`)
     await load()
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '操作失败')
+    ElMessage.error(serverMessage(e, '操作失败'))
   }
 }
 
@@ -227,7 +228,7 @@ async function remove(row: Semester) {
     ElMessage.success('已删除')
     await load()
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '删除失败')
+    ElMessage.error(serverMessage(e, '删除失败'))
   }
 }
 

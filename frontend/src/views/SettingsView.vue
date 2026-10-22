@@ -281,6 +281,7 @@ import { useSettingsStore } from '@/stores/settings'
 import ImPlatformCard from '@/components/ImPlatformCard.vue'
 import InfoTooltip from '@/components/InfoTooltip.vue'
 import { resetTour, startTour } from '@/onboarding/tour'
+import { serverMessage } from '@/api/errors'
 
 interface DingTalkConfig {
   enabled: boolean
@@ -458,7 +459,7 @@ async function saveSettings() {
     }
     ElMessage.success('设置已保存并立即生效')
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '保存失败')
+    ElMessage.error(serverMessage(e, '保存失败'))
   } finally {
     saving.value = false
   }
@@ -480,7 +481,7 @@ async function saveDingtalk() {
     dingtalk.appSecret = ''
     ElMessage.success('钉钉配置已保存')
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '保存失败')
+    ElMessage.error(serverMessage(e, '保存失败'))
   } finally {
     savingDingtalk.value = false
   }
@@ -494,7 +495,7 @@ async function sync() {
     ElMessage.success(data.message)
     await loadLogs()
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '同步失败')
+    ElMessage.error(serverMessage(e, '同步失败'))
   } finally {
     syncing.value = false
   }
@@ -516,7 +517,7 @@ async function saveFeishu() {
     feishu.verificationToken = ''
     ElMessage.success('飞书配置已保存')
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '保存失败')
+    ElMessage.error(serverMessage(e, '保存失败'))
   } finally {
     savingFeishu.value = false
   }
@@ -530,7 +531,7 @@ async function syncFeishu() {
     ElMessage.success(data.message)
     await loadFeishuLogs()
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '同步失败')
+    ElMessage.error(serverMessage(e, '同步失败'))
   } finally {
     syncingFeishu.value = false
   }
@@ -548,7 +549,7 @@ async function uploadLogo(upload: UploadFile) {
     })
     ElMessage.success('Logo 已上传')
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '上传失败')
+    ElMessage.error(serverMessage(e, '上传失败'))
   } finally {
     uploading.value = false
   }

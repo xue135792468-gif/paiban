@@ -292,6 +292,7 @@ import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import InfoTooltip from '@/components/InfoTooltip.vue'
+import { serverMessage } from '@/api/errors'
 
 interface ParamDef {
   name: string
@@ -456,7 +457,7 @@ async function loadSemesters() {
     }
     semesterId.value = targetId
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '加载学期失败')
+    ElMessage.error(serverMessage(e, '加载学期失败'))
   }
 }
 
@@ -469,7 +470,7 @@ async function loadTeachersAndCourses() {
     teachers.value = teacherRes.data ?? []
     courses.value = courseRes.data ?? []
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '加载教师或课程数据失败')
+    ElMessage.error(serverMessage(e, '加载教师或课程数据失败'))
   }
 }
 
@@ -512,7 +513,7 @@ async function loadConstraints() {
       activeCategories.value = Array.from(new Set(rows.value.map((r) => r.categoryLabel)))
     }
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '加载约束配置失败')
+    ElMessage.error(serverMessage(e, '加载约束配置失败'))
   } finally {
     loading.value = false
   }
@@ -567,7 +568,7 @@ async function save() {
     ElMessage.success('约束配置已保存')
     await loadConstraints()
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '保存约束配置失败')
+    ElMessage.error(serverMessage(e, '保存约束配置失败'))
   } finally {
     saving.value = false
   }
@@ -578,7 +579,7 @@ async function loadTemplates() {
     const { data } = await http.get<TemplateItem[]>('/constraint-templates')
     templates.value = data ?? []
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '加载约束模板失败')
+    ElMessage.error(serverMessage(e, '加载约束模板失败'))
   }
 }
 
@@ -604,7 +605,7 @@ async function saveAsTemplate() {
     await loadTemplates()
   } catch (e: any) {
     if (e !== 'cancel') {
-      ElMessage.error(e?.response?.data?.message ?? '保存模板失败')
+      ElMessage.error(serverMessage(e, '保存模板失败'))
     }
   }
 }
@@ -642,7 +643,7 @@ async function applyTemplate() {
     ElMessage.success('模板已应用')
     await loadConstraints()
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '应用模板失败')
+    ElMessage.error(serverMessage(e, '应用模板失败'))
   } finally {
     applyingTemplate.value = false
   }
@@ -672,7 +673,7 @@ async function deleteTemplate() {
     selectedTemplate.value = null
     await loadTemplates()
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '删除模板失败')
+    ElMessage.error(serverMessage(e, '删除模板失败'))
   } finally {
     deletingTemplate.value = false
   }

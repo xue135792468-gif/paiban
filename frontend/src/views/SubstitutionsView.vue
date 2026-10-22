@@ -257,6 +257,7 @@ import { http } from '@/api/http'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import { useAuthStore } from '@/stores/auth'
 import InfoTooltip from '@/components/InfoTooltip.vue'
+import { serverMessage } from '@/api/errors'
 
 interface Teacher {
   id: number
@@ -454,7 +455,7 @@ async function submit() {
     form.expectedSubstituteTeacherId = null
     await Promise.all([loadMine(), loadEntries()])
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '提交失败')
+    ElMessage.error(serverMessage(e, '提交失败'))
   } finally {
     submitting.value = false
   }
@@ -555,7 +556,7 @@ async function requestRecommendations() {
       ElMessage.warning('AI 没有返回可用的代课教师，请手动选择')
     }
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? 'AI 推荐失败，请稍后重试或手动选择代课教师')
+    ElMessage.error(serverMessage(e, 'AI 推荐失败，请稍后重试或手动选择代课教师'))
   } finally {
     recommending.value = false
   }
@@ -580,7 +581,7 @@ async function approve() {
     approveVisible.value = false
     await Promise.all([loadPending(), loadRecords()])
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '审批失败')
+    ElMessage.error(serverMessage(e, '审批失败'))
   } finally {
     approving.value = false
   }

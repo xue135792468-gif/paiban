@@ -18,6 +18,20 @@ export default tseslint.config(
     },
   },
   {
+    files: ['src/**/*.{ts,vue}'],
+    ignores: ['src/api/errors.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "MemberExpression[object.property.name='data'][property.name='message']",
+          message:
+            '使用 serverMessage(error, fallback)（src/api/errors.ts），不要直接读 response.data.message。',
+        },
+      ],
+    },
+  },
+  {
     languageOptions: {
       globals: { ...globals.browser, ...globals.node },
     },

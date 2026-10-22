@@ -133,6 +133,7 @@ import { computed, ref } from 'vue'
 import { ElMessage, type UploadFile } from 'element-plus'
 import { Download, UploadFilled } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
+import { serverMessage } from '@/api/errors'
 
 interface ImportError {
   row: number
@@ -219,7 +220,7 @@ async function doPreview() {
     report.value = data
     step.value = 1
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '校验失败')
+    ElMessage.error(serverMessage(e, '校验失败'))
   } finally {
     previewing.value = false
   }
@@ -238,7 +239,7 @@ async function doCommit() {
       ElMessage.success(`成功导入 ${data.importedRows} 行`)
     }
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '导入失败')
+    ElMessage.error(serverMessage(e, '导入失败'))
   } finally {
     committing.value = false
   }

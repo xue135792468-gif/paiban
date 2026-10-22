@@ -159,6 +159,7 @@ import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ImportDialog from '@/components/ImportDialog.vue'
+import { serverMessage } from '@/api/errors'
 
 interface Teacher {
   id: number
@@ -208,7 +209,7 @@ async function load() {
     const { data } = await http.get('/teachers')
     teachers.value = data
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message || '加载教师列表失败')
+    ElMessage.error(serverMessage(e, '加载教师列表失败'))
   } finally {
     loading.value = false
   }
@@ -265,7 +266,7 @@ async function submit() {
     dialogVisible.value = false
     await load()
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message || '保存失败')
+    ElMessage.error(serverMessage(e, '保存失败'))
   } finally {
     saving.value = false
   }
@@ -283,7 +284,7 @@ async function remove(row: Teacher) {
     await load()
   } catch (e: any) {
     if (e !== 'cancel') {
-      ElMessage.error(e?.response?.data?.message || '删除失败')
+      ElMessage.error(serverMessage(e, '删除失败'))
     }
   }
 }
@@ -312,8 +313,8 @@ async function handleExport() {
       } catch {
         // ignore
       }
-    } else if (e?.response?.data?.message) {
-      message = e.response.data.message
+    } else {
+      message = serverMessage(e, message)
     }
     ElMessage.error(message)
   } finally {

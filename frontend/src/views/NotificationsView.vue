@@ -53,6 +53,7 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { http } from '@/api/http'
+import { serverMessage } from '@/api/errors'
 
 interface NotificationItem {
   id: number
@@ -87,7 +88,7 @@ async function load() {
     total.value = pageRes.data.total
     unread.value = unreadRes.data.count
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '加载通知失败')
+    ElMessage.error(serverMessage(e, '加载通知失败'))
   } finally {
     loading.value = false
   }

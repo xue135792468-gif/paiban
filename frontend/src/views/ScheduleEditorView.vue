@@ -86,6 +86,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Plus } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
+import { serverMessage } from '@/api/errors'
 
 interface Semester {
   id: number
@@ -205,7 +206,7 @@ async function generateDefault() {
     ElMessage.success('已生成默认作息')
     await load()
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '生成失败')
+    ElMessage.error(serverMessage(e, '生成失败'))
   } finally {
     generating.value = false
   }
@@ -233,7 +234,7 @@ async function save() {
     ElMessage.success('作息表已保存')
     await load()
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '保存失败')
+    ElMessage.error(serverMessage(e, '保存失败'))
   } finally {
     saving.value = false
   }

@@ -305,6 +305,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import { useAuthStore } from '@/stores/auth'
+import { serverMessage } from '@/api/errors'
 
 interface Semester {
   id: number
@@ -483,7 +484,7 @@ async function loadSemesters() {
     }
     semesterId.value = targetId
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '加载学期失败')
+    ElMessage.error(serverMessage(e, '加载学期失败'))
   }
 }
 
@@ -499,7 +500,7 @@ async function loadDrafts() {
     })
     drafts.value = data ?? []
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '加载课表草稿失败')
+    ElMessage.error(serverMessage(e, '加载课表草稿失败'))
   } finally {
     draftsLoading.value = false
   }
@@ -517,7 +518,7 @@ async function loadHistory() {
     })
     jobs.value = data ?? []
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '加载排课历史失败')
+    ElMessage.error(serverMessage(e, '加载排课历史失败'))
   } finally {
     jobsLoading.value = false
   }
@@ -599,7 +600,7 @@ async function handleStartJob() {
       startPolling(data.id)
     }
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '提交排课任务失败')
+    ElMessage.error(serverMessage(e, '提交排课任务失败'))
   } finally {
     submitting.value = false
   }
@@ -622,7 +623,7 @@ async function handleCancelJob(jobId: number) {
     await Promise.all([loadDrafts(), loadHistory()])
   } catch (e: any) {
     if (e !== 'cancel' && e !== 'close') {
-      ElMessage.error(e?.response?.data?.message ?? '取消排课任务失败')
+      ElMessage.error(serverMessage(e, '取消排课任务失败'))
     }
   } finally {
     cancelling.value = false
@@ -650,7 +651,7 @@ async function handleRenameDraft(row: DraftItem) {
     await loadDrafts()
   } catch (e: any) {
     if (e !== 'cancel' && e !== 'close') {
-      ElMessage.error(e?.response?.data?.message ?? '重命名失败')
+      ElMessage.error(serverMessage(e, '重命名失败'))
     }
   }
 }
@@ -678,7 +679,7 @@ async function handleDeleteDraft(row: DraftItem) {
     await loadDrafts()
   } catch (e: any) {
     if (e !== 'cancel' && e !== 'close') {
-      ElMessage.error(e?.response?.data?.message ?? '删除失败')
+      ElMessage.error(serverMessage(e, '删除失败'))
     }
   }
 }

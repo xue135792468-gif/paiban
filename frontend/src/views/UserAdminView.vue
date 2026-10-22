@@ -133,6 +133,7 @@ import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import ImportDialog from '@/components/ImportDialog.vue'
 import { http } from '@/api/http'
+import { serverMessage } from '@/api/errors'
 
 interface UserRow {
   id: number
@@ -235,7 +236,7 @@ async function submitCreate() {
     createVisible.value = false
     await load()
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '创建失败')
+    ElMessage.error(serverMessage(e, '创建失败'))
   } finally {
     saving.value = false
   }
@@ -266,7 +267,7 @@ async function submitEdit() {
     editVisible.value = false
     await load()
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '保存失败')
+    ElMessage.error(serverMessage(e, '保存失败'))
   } finally {
     saving.value = false
   }
@@ -289,7 +290,7 @@ async function submitReset() {
     ElMessage.success('密码已重置')
     resetVisible.value = false
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '重置失败')
+    ElMessage.error(serverMessage(e, '重置失败'))
   } finally {
     saving.value = false
   }

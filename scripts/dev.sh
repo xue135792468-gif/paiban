@@ -3,6 +3,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+mkdir -p logs
+
 if command -v docker >/dev/null 2>&1; then
   echo "[1/3] 启动 PostgreSQL ..."
   docker compose up -d postgres
@@ -10,12 +12,12 @@ else
   echo "[1/3] 未检测到 docker，跳过 PostgreSQL（后端使用内嵌 H2）"
 fi
 
-echo "[2/3] 启动后端 http://localhost:8080 ..."
-(cd backend && ./mvnw -q spring-boot:run) &
+echo "[2/3] 启动后端 http://localhost:8080（日志 logs/backend.log）..."
+(cd backend && ./mvnw -q spring-boot:run) > logs/backend.log 2>&1 &
 BACKEND_PID=$!
 
-echo "[3/3] 启动前端 http://localhost:5173 ..."
-(cd frontend && npm install --no-audit --no-fund && npm run dev -- --host 127.0.0.1) &
+echo "[3/3] 启动前端 http://localhost:5173（日志 logs/frontend.log）..."
+(cd frontend && npm install --no-audit --no-fund && npm run dev -- --host 127.0.0.1) > logs/frontend.log 2>&1 &
 FRONTEND_PID=$!
 
 trap 'kill $BACKEND_PID $FRONTEND_PID 2>/dev/null || true' EXIT INT TERM

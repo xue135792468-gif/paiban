@@ -60,6 +60,7 @@ import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
 import InfoTooltip from '@/components/InfoTooltip.vue'
+import { serverMessage } from '@/api/errors'
 
 interface PlatformStatus {
   activePlatform: string
@@ -132,7 +133,7 @@ async function confirmSwitch() {
     ElMessage.success(`已切换到${label(data.activePlatform)}`)
     emit('switched', data)
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '切换失败')
+    ElMessage.error(serverMessage(e, '切换失败'))
   } finally {
     switching.value = false
   }

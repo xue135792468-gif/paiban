@@ -50,6 +50,7 @@ import { useAuthStore } from '@/stores/auth'
 import { http } from '@/api/http'
 import { isFeishuEnv, requestFeishuAuthCode } from '@/api/feishu'
 import { useLoginLanding } from '@/composables/useLoginLanding'
+import { serverMessage } from '@/api/errors'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -164,7 +165,7 @@ async function submit() {
     await auth.login(form.username, form.password)
     await landAfterLogin()
   } catch (e: any) {
-    error.value = e?.response?.data?.message ?? '登录失败，请稍后重试'
+    error.value = serverMessage(e, '登录失败，请稍后重试')
   } finally {
     loading.value = false
   }

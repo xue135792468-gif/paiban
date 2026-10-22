@@ -134,6 +134,7 @@ import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import InfoTooltip from '@/components/InfoTooltip.vue'
+import { serverMessage } from '@/api/errors'
 
 interface Entry {
   id: number
@@ -348,7 +349,7 @@ async function load() {
       entries.value = []
     }
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '加载课表失败')
+    ElMessage.error(serverMessage(e, '加载课表失败'))
     entries.value = []
   } finally {
     loading.value = false

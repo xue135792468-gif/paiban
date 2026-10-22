@@ -1,0 +1,8 @@
+# Existing SFCs over the 600-line limit. They may shrink, never grow.
+# Remove a line once the file is <= 600 lines.
+frontend/src/views/AiProvidersView.vue 1073
+frontend/src/views/AssignmentsView.vue 612
+frontend/src/views/ConstraintsView.vue 885
+frontend/src/views/SchedulingView.vue 843
+frontend/src/views/SettingsView.vue 635
+frontend/src/views/SubstitutionsView.vue 720

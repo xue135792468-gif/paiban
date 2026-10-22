@@ -78,6 +78,11 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run build
+      - name: Unit tests
+        working-directory: frontend
+        run: npm run test:unit
+      - name: SFC size
+        run: bash scripts/check-sfc-size.sh
 
   deploy-scripts:
     runs-on: ubuntu-latest

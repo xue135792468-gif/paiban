@@ -208,6 +208,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { http } from '@/api/http'
+import { serverMessage } from '@/api/errors'
 
 interface HistoryRow {
   type: 'import' | 'call'
@@ -341,7 +342,7 @@ async function load() {
     rows.value = data.items ?? []
     total.value = data.total ?? 0
   } catch (error) {
-    ElMessage.error(messageOf(error))
+    ElMessage.error(serverMessage(error, '操作失败，请稍后重试'))
   } finally {
     loading.value = false
   }
@@ -392,7 +393,7 @@ async function openDetail(row: HistoryRow) {
       callTab.value = 'request'
     }
   } catch (error) {
-    ElMessage.error(messageOf(error))
+    ElMessage.error(serverMessage(error, '操作失败，请稍后重试'))
   } finally {
     detailLoading.value = false
   }
@@ -416,7 +417,7 @@ async function downloadFile() {
     })
     downloadBlob(data as Blob, importDetail.value.fileName)
   } catch (error) {
-    ElMessage.error(messageOf(error))
+    ElMessage.error(serverMessage(error, '操作失败，请稍后重试'))
   } finally {
     downloading.value = false
   }
@@ -431,7 +432,7 @@ async function exportHistory(format: 'xlsx' | 'pdf') {
     })
     downloadBlob(data as Blob, `ai-history.${format}`)
   } catch (error) {
-    ElMessage.error(messageOf(error))
+    ElMessage.error(serverMessage(error, '操作失败，请稍后重试'))
   } finally {
     exporting.value = ''
   }
@@ -495,10 +496,6 @@ function formatTime(value?: string) {
   return date.toLocaleString('zh-CN', { hour12: false })
 }
 
-function messageOf(error: unknown) {
-  const response = (error as { response?: { data?: { message?: string } } }).response
-  return response?.data?.message ?? '操作失败，请稍后重试'
-}
 </script>
 
 <style scoped>

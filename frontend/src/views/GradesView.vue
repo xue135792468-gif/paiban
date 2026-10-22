@@ -139,6 +139,7 @@ import { http } from '@/api/http'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ImportDialog from '@/components/ImportDialog.vue'
 import { useAuthStore } from '@/stores/auth'
+import { serverMessage } from '@/api/errors'
 
 interface Semester {
   id: number
@@ -203,7 +204,7 @@ async function loadSemesters() {
     }
     semesterId.value = targetId
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '加载学期失败')
+    ElMessage.error(serverMessage(e, '加载学期失败'))
   }
 }
 
@@ -219,7 +220,7 @@ async function loadGrades() {
     })
     grades.value = data ?? []
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '加载年级失败')
+    ElMessage.error(serverMessage(e, '加载年级失败'))
   } finally {
     loading.value = false
   }
@@ -275,7 +276,7 @@ async function submitForm() {
     dialogVisible.value = false
     await loadGrades()
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '保存失败')
+    ElMessage.error(serverMessage(e, '保存失败'))
   } finally {
     saving.value = false
   }
@@ -297,7 +298,7 @@ async function handleDelete(row: GradeItem) {
     await loadGrades()
   } catch (e: any) {
     if (e !== 'cancel' && e !== 'close') {
-      ElMessage.error(e?.response?.data?.message ?? '删除失败')
+      ElMessage.error(serverMessage(e, '删除失败'))
     }
   }
 }
@@ -321,7 +322,7 @@ async function handleExport() {
     URL.revokeObjectURL(url)
     ElMessage.success('导出成功')
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message ?? '导出失败')
+    ElMessage.error(serverMessage(e, '导出失败'))
   } finally {
     exporting.value = false
   }
