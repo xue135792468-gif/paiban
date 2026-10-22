@@ -151,6 +151,44 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void aLargeTimetableIsParsedOneClassPerCallAndMerged() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.responder = request -> aiResponse(List.of(
+                timetableRow("语文", "周一", String.valueOf(fake.calls), "张三")));
+
+        Response preview = upload(
+                admin, "/api/ai/import/excel?target=timetable", "一年级课表.xlsx",
+                timetableExcelBytes(4), XLSX);
+
+        preview.then().statusCode(200)
+                .body("targetType", equalTo("timetable"))
+                .body("rows", hasSize(4));
+        assertThat(fake.calls).isEqualTo(4);
+        assertThat(fake.lastRequest.messages().get(1).content())
+                .contains("rowsToParse")
+                .contains("headerContext");
+    }
+
+    @Test
+    void mergedPeriodHeaderIsContextNotTheFirstDataChunk() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.responder = request -> aiResponse(List.of(
+                timetableRow("语文", "周一", String.valueOf(fake.calls), "张三")));
+
+        Response preview = upload(
+                admin, "/api/ai/import/excel?target=timetable", "年级课表.xlsx",
+                timetableExcelWithPeriodRow(4), XLSX);
+
+        preview.then().statusCode(200).body("rows", hasSize(4));
+        assertThat(fake.calls).isEqualTo(4);
+        assertThat(fake.userMessages.get(0))
+                .contains("\"rowsToParse\":[[\"八（1）\"")
+                .contains("\"headerContext\"");
+    }
+
+    @Test
     void timetablePreviewListsUnmatchedNamesAsIssues() {
         String admin = adminToken();
         timetableFixture(admin);
@@ -916,6 +954,55 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         }
     }
 
+    private byte[] timetableExcelBytes(int dataRows) throws Exception {
+        try (XSSFWorkbook workbook = new XSSFWorkbook();
+                ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("一年级课表");
+            Row title = sheet.createRow(0);
+            title.createCell(0).setCellValue("2026 春季课表");
+            Row header = sheet.createRow(1);
+            header.createCell(0).setCellValue("班级");
+            header.createCell(1).setCellValue("星期一");
+            header.createCell(2).setCellValue("星期二");
+            for (int i = 0; i < dataRows; i++) {
+                Row row = sheet.createRow(2 + i);
+                row.createCell(0).setCellValue("一年级" + (i + 1) + "班");
+                row.createCell(1).setCellValue("语文");
+                row.createCell(2).setCellValue("数学");
+            }
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private byte[] timetableExcelWithPeriodRow(int dataRows) throws Exception {
+        try (XSSFWorkbook workbook = new XSSFWorkbook();
+                ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("年级课表");
+            Row title = sheet.createRow(0);
+            title.createCell(0).setCellValue("2026 春季课表");
+            sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(0, 0, 0, 2));
+            Row header = sheet.createRow(1);
+            header.createCell(0).setCellValue("班级");
+            header.createCell(1).setCellValue("星期一");
+            header.createCell(2).setCellValue("星期二");
+            // The real workbook merges A2:A3, so the period row's first cell reads "班级".
+            sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(1, 2, 0, 0));
+            Row periods = sheet.createRow(2);
+            periods.createCell(0).setCellValue("");
+            periods.createCell(1).setCellValue("一");
+            periods.createCell(2).setCellValue("二");
+            for (int i = 0; i < dataRows; i++) {
+                Row row = sheet.createRow(3 + i);
+                row.createCell(0).setCellValue("八（" + (i + 1) + "）");
+                row.createCell(1).setCellValue("语文");
+                row.createCell(2).setCellValue("数学");
+            }
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
     private Map<String, Object> timetableRow() {
         return timetableRow("语文", "周一", "1", "张三");
     }
@@ -1007,6 +1094,8 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
 
         volatile boolean available = true;
         volatile String response = "{\"mappings\":[],\"rows\":[],\"explanation\":\"\"}";
+        volatile java.util.function.Function<AiRequest, String> responder;
+        volatile List<String> userMessages = new ArrayList<>();
         volatile AiRequest lastRequest;
         volatile int calls;
 
@@ -1014,6 +1103,8 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
             available = true;
             lastRequest = null;
             calls = 0;
+            responder = null;
+            userMessages.clear();
             response = "{\"mappings\":[],\"rows\":[],\"explanation\":\"\"}";
         }
 
@@ -1040,10 +1131,12 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         private AiResult answer(AiRequest request) {
             calls++;
             lastRequest = request;
+            userMessages.add(request.messages().size() > 1 ? request.messages().get(1).content() : "");
+            String payload = responder == null ? response : responder.apply(request);
             return new AiResult(
-                    true, response, null, null,
+                    true, payload, null, null,
                     1L, "fake", 2L, "fake-model",
-                    10, 20, 5L, response);
+                    10, 20, 5L, payload);
         }
     }
 }

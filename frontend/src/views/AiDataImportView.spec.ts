@@ -494,7 +494,7 @@ describe('映射步骤与入库可用性', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-testid="parse-progress"]').text()).toContain(
-      'AI 正在解析，大表可能需要 1–2 分钟',
+      'AI 正在解析，大表会按班分批，可能需要几分钟',
     )
 
     finish(timetablePreview())

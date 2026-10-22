@@ -141,6 +141,12 @@ public class GeminiStrategy implements AiStrategy {
                 String message = blocked == null ? "AI 响应缺少候选结果" : "AI 拒绝生成内容: " + blocked;
                 return AiStrategyOutcome.failure("PROVIDER_ERROR", message, status);
             }
+            if ("MAX_TOKENS".equals(candidates.get(0).path("finishReason").asText(""))) {
+                return AiStrategyOutcome.failure(
+                        "TRUNCATED",
+                        "AI 输出被截断（MAX_TOKENS），请增大模型输出上限或减少单次行数",
+                        status);
+            }
             StringBuilder text = new StringBuilder();
             for (JsonNode part : candidates.get(0).path("content").path("parts")) {
                 String value = part.path("text").asText(null);

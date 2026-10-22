@@ -83,6 +83,33 @@ final class AiImportPrompts {
                 + "请解析下面的表格数据：\n" + json(payload, objectMapper);
     }
 
+    /**
+     * One slice of a large grid: the header context stays the same, only a few data
+     * rows are asked for. A full grade timetable is too many output tokens for one
+     * response, so the caller sends it one row at a time.
+     */
+    static String chunkPrompt(
+            ImportTarget target,
+            String sheetName,
+            List<List<String>> headerRows,
+            List<List<String>> rowsToParse,
+            int index,
+            int total,
+            ObjectMapper objectMapper) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("target", target.code());
+        payload.put("sheetName", sheetName == null ? "" : sheetName);
+        payload.put("chunk", (index + 1) + "/" + total);
+        payload.put("headerContext", truncateGrid(headerRows));
+        payload.put("rowsToParse", truncateGrid(rowsToParse));
+        return "下面是工作表「" + (sheetName == null ? "" : sheetName) + "」的一部分（第 "
+                + (index + 1) + "/" + total + " 批）。\n"
+                + "headerContext 是表头/标题上下文，只用来理解列的含义，不要输出其中的内容；\n"
+                + "rowsToParse 是本次要解析的行，只输出这些行里的数据，每行一节课，不要重复其他行。\n"
+                + "目标字段：" + fieldHint(target) + "\n"
+                + "请解析下面的表格数据：\n" + json(payload, objectMapper);
+    }
+
     static String continuePrompt(
             ImportTarget target,
             String originalPrompt,

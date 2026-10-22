@@ -136,6 +136,26 @@ class AiImportPromptsTest {
     }
 
     @Test
+    void chunkPromptKeepsTheHeaderContextAndAsksOnlyForTheChunkRows() {
+        String prompt = AiImportPrompts.chunkPrompt(
+                ImportTarget.TIMETABLE,
+                "一年级课表",
+                List.of(List.of("2026 春季课表"), List.of("班级", "星期一")),
+                List.of(List.of("一年级1班", "语文")),
+                0,
+                14,
+                objectMapper);
+
+        assertThat(prompt)
+                .contains("\"chunk\":\"1/14\"")
+                .contains("\"headerContext\"")
+                .contains("\"rowsToParse\"")
+                .contains("不要输出其中的内容")
+                .contains("每行一节课")
+                .contains("一年级1班");
+    }
+
+    @Test
     void gridPromptSerializesTheMaximumGridQuickly() {
         List<List<String>> grid = new ArrayList<>();
         for (int r = 0; r < 500; r++) {

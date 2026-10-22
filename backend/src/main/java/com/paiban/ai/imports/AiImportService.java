@@ -52,7 +52,11 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class AiImportService {
 
-    private static final int MAX_ROWS = 500;
+    private static final int MAX_ROWS = 2000;
+    private static final int DATA_IMPORT_MAX_TOKENS = 8192;
+    private static final int TIMETABLE_HEADER_ROWS = 2;
+    private static final int TIMETABLE_CHUNK_ROWS = 1;
+    private static final int TIMETABLE_CHUNK_THRESHOLD = 3;
     private static final Pattern PHONE = Pattern.compile("^[0-9+\\-\\s()]{5,30}$");
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
@@ -103,6 +107,10 @@ public class AiImportService {
         AiImportLog log = newLog("excel", stored, username, effective);
         try {
             GridData grid = readGrid(stored.path());
+            if (effective == ImportTarget.TIMETABLE
+                    && dataRowCount(grid.rows()) > TIMETABLE_CHUNK_THRESHOLD) {
+                return runTimetableChunks(log, grid, effective);
+            }
             String prompt = AiImportPrompts.gridPrompt(effective, grid.sheetName(), grid.rows(), objectMapper);
             return runPreview(log, bundle(prompt, List.of(), effective), null, effective);
         } catch (RuntimeException ex) {
@@ -333,25 +341,177 @@ public class AiImportService {
     }
 
     private AiImportParser.Parsed callAi(PromptBundle bundle, AiImportLog log, ImportTarget target) {
+        AiCall call = callAiWithRaw(bundle, log, target);
+        log.setAiRawResponse(call.rawResponse());
+        return call.parsed();
+    }
+
+    /**
+     * A full grade timetable is hundreds of lessons: one response cannot hold that
+     * many output tokens. Keep the header rows as context and ask for one data row
+     * at a time, then merge and de-duplicate. A row that looks like the period-number
+     * strip is skipped, so both two-row and three-row headers work.
+     */
+    private PreviewDto runTimetableChunks(AiImportLog log, GridData grid, ImportTarget target) {
+        List<List<String>> rows = grid.rows();
+        int headerCount = headerCount(rows);
+        List<List<String>> headers = rows.subList(0, headerCount);
+        List<List<String>> data = new ArrayList<>();
+        for (List<String> row : rows.subList(headerCount, rows.size())) {
+            if (row.stream().anyMatch(cell -> cell != null && !cell.isBlank())) {
+                data.add(row);
+            }
+        }
+        if (data.isEmpty()) {
+            throw ApiException.badRequest("表格里没有可解析的数据行");
+        }
+        int chunkCount = (data.size() + TIMETABLE_CHUNK_ROWS - 1) / TIMETABLE_CHUNK_ROWS;
+        List<RowDto> mergedRows = new ArrayList<>();
+        List<MappingDto> mergedMappings = new ArrayList<>();
+        Set<String> rowKeys = new HashSet<>();
+        Set<String> mappingKeys = new HashSet<>();
+        List<String> rawResponses = new ArrayList<>();
+        String explanation = "";
+        String suggestedTarget = null;
+        for (int start = 0; start < data.size(); start += TIMETABLE_CHUNK_ROWS) {
+            List<List<String>> chunk =
+                    data.subList(start, Math.min(start + TIMETABLE_CHUNK_ROWS, data.size()));
+            int index = start / TIMETABLE_CHUNK_ROWS;
+            String prompt = AiImportPrompts.chunkPrompt(
+                    target, grid.sheetName(), headers, chunk, index, chunkCount, objectMapper);
+            AiCall call;
+            try {
+                call = callAiWithRaw(bundle(prompt, List.of(), target), log, target);
+            } catch (RuntimeException ex) {
+                String label = chunkLabel(chunk);
+                throw ApiException.badRequest("第 " + (index + 1) + "/" + chunkCount
+                        + " 批" + (label.isBlank() ? "" : "（" + label + "）")
+                        + "解析失败：" + ex.getMessage());
+            }
+            for (RowDto row : call.parsed().rows()) {
+                if (rowKeys.add(rowKey(row))) {
+                    mergedRows.add(row);
+                }
+            }
+            for (MappingDto mapping : call.parsed().mappings()) {
+                if (mappingKeys.add(mapping.source() + "→" + mapping.target())) {
+                    mergedMappings.add(mapping);
+                }
+            }
+            if (explanation.isBlank()) {
+                explanation = call.parsed().explanation();
+            }
+            if (suggestedTarget == null) {
+                suggestedTarget = call.parsed().suggestedTarget();
+            }
+            if (call.rawResponse() != null && !call.rawResponse().isBlank()) {
+                rawResponses.add(call.rawResponse());
+            }
+        }
+        log.setAiRawResponse(writeJson(rawResponses));
+        savePreview(log, mergedMappings, mergedRows,
+                explanation.isBlank() ? "分 " + chunkCount + " 批解析" : explanation,
+                suggestedTarget, AiImportLog.PREVIEW);
+        log.setConfirmedJson(null);
+        log.setResultJson(null);
+        touch(log);
+        return preview(log);
+    }
+
+    private int dataRowCount(List<List<String>> rows) {
+        int header = headerCount(rows);
+        int count = 0;
+        for (int i = header; i < rows.size(); i++) {
+            if (rows.get(i).stream().anyMatch(cell -> cell != null && !cell.isBlank())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * A timetable usually has a title, a day header and a period-number strip. The
+     * strip is the reliable anchor: it starts with an empty cell and every other
+     * cell is a numeral. Without it, fall back to two header rows.
+     */
+    private int headerCount(List<List<String>> rows) {
+        int periodRow = findPeriodRow(rows);
+        if (periodRow >= 0) {
+            return periodRow + 1;
+        }
+        return Math.min(TIMETABLE_HEADER_ROWS, Math.max(1, rows.size() - 1));
+    }
+
+    private int findPeriodRow(List<List<String>> rows) {
+        for (int i = 0; i < Math.min(rows.size(), 6); i++) {
+            if (isPeriodRow(rows.get(i))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private boolean isPeriodRow(List<String> row) {
+        if (row == null || row.size() < 2) {
+            return false;
+        }
+        // The first cell is often a merged "班级" label, so it is not a reliable
+        // signal; the period labels themselves are.
+        int labels = 0;
+        for (int i = 1; i < row.size(); i++) {
+            String cell = row.get(i);
+            if (cell == null || cell.isBlank()) {
+                continue;
+            }
+            if (!cell.trim().matches("[一二三四五六七八九十0-9]+")) {
+                return false;
+            }
+            labels++;
+        }
+        return labels >= 2;
+    }
+
+    private String rowKey(RowDto row) {
+        return String.join("\u0001",
+                value(row, "className"), value(row, "dayOfWeek"), value(row, "periodNo"),
+                value(row, "courseName"), value(row, "teacherName"), value(row, "roomName"));
+    }
+
+    private String chunkLabel(List<List<String>> chunk) {
+        if (chunk.isEmpty()) {
+            return "";
+        }
+        String first = chunk.get(0).stream()
+                .filter(cell -> cell != null && !cell.isBlank())
+                .findFirst()
+                .orElse("");
+        return first.length() <= 30 ? first : first.substring(0, 30);
+    }
+
+    private AiCall callAiWithRaw(PromptBundle bundle, AiImportLog log, ImportTarget target) {
         AiRequest request = new AiRequest(
-                AiTaskType.DATA_IMPORT, bundle.messages(), bundle.images(), AiOptions.asJson());
+                AiTaskType.DATA_IMPORT, bundle.messages(), bundle.images(),
+                new AiOptions(null, DATA_IMPORT_MAX_TOKENS, true));
         AiResult result = bundle.images().isEmpty() ? gateway.chat(request) : gateway.chatWithVision(request);
-        log.setAiRawResponse(result.rawResponse());
         if (!result.success()) {
+            log.setAiRawResponse(result.rawResponse());
             log.setAiExplanation("AI 调用失败：" + (result.errorMessage() == null ? "未知错误" : result.errorMessage()));
             log.setStatus(AiImportLog.FAILED);
             touch(log);
             throw ApiException.badRequest("AI 解析失败：" + (result.errorMessage() == null ? "请检查 AI 供应商配置" : result.errorMessage()));
         }
         try {
-            return parser.parse(result.content(), target, threshold());
+            return new AiCall(parser.parse(result.content(), target, threshold()), result.rawResponse());
         } catch (IllegalArgumentException ex) {
+            log.setAiRawResponse(result.rawResponse());
             log.setAiExplanation(ex.getMessage());
             log.setStatus(AiImportLog.FAILED);
             touch(log);
             throw ApiException.badRequest(ex.getMessage());
         }
     }
+
+    private record AiCall(AiImportParser.Parsed parsed, String rawResponse) {}
 
     private PromptBundle bundleFor(AiImportLog log, ImportTarget target) {
         String type = log.getImportType();

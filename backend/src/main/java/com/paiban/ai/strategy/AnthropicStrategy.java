@@ -144,6 +144,13 @@ public class AnthropicStrategy implements AiStrategy {
         }
         try {
             JsonNode root = objectMapper.readTree(body);
+            String stopReason = root.path("stop_reason").asText("");
+            if ("max_tokens".equals(stopReason)) {
+                return AiStrategyOutcome.failure(
+                        "TRUNCATED",
+                        "AI 输出被截断（max_tokens），请增大模型输出上限或减少单次行数",
+                        status);
+            }
             JsonNode content = root.path("content");
             if (!content.isArray() || content.isEmpty()) {
                 String type = root.path("error").path("type").asText(null);

@@ -93,6 +93,17 @@ class AnthropicStrategyTest {
         assertThat(outcome.errorMessage()).contains("invalid x-api-key");
     }
 
+    @Test
+    void interpretRejectsATruncatedResponse() {
+        AiStrategyOutcome outcome = strategy.interpret(
+                200,
+                "{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"rows\\\":[\"}],\"stop_reason\":\"max_tokens\"}");
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.errorCode()).isEqualTo("TRUNCATED");
+        assertThat(outcome.errorMessage()).contains("max_tokens");
+    }
+
     private AiInvocation invocation(AiRequest request) {
         return new AiInvocation(provider("anthropic"), "sk-ant-test", model(), request);
     }

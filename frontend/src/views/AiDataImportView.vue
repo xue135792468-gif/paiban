@@ -99,7 +99,7 @@
       <el-alert
         v-if="parsing"
         data-testid="parse-progress"
-        title="AI 正在解析，大表可能需要 1–2 分钟"
+        title="AI 正在解析，大表会按班分批，可能需要几分钟"
         type="info"
         show-icon
         :closable="false"

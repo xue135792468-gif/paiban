@@ -134,6 +134,21 @@ public class OpenAiCompatibleStrategy implements AiStrategy {
         try {
             JsonNode root = objectMapper.readTree(body);
             JsonNode choices = root.path("choices");
+            if (choices.isArray() && !choices.isEmpty()) {
+                String finishReason = choices.get(0).path("finish_reason").asText("");
+                if ("tool_calls".equals(finishReason) || "function_call".equals(finishReason)) {
+                    return AiStrategyOutcome.failure(
+                            "TOOL_CALL",
+                            "模型返回了工具调用而不是数据，请换用支持 JSON 输出的模型",
+                            status);
+                }
+                if ("length".equals(finishReason)) {
+                    return AiStrategyOutcome.failure(
+                            "TRUNCATED",
+                            "AI 输出被截断（length），请增大模型输出上限或减少单次行数",
+                            status);
+                }
+            }
             String content = null;
             if (choices.isArray() && !choices.isEmpty()) {
                 content = choices.get(0).path("message").path("content").asText(null);

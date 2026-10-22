@@ -1,10 +1,10 @@
 import axios from 'axios'
 
 /**
- * AI parsing can take 1–2 minutes for a large sheet. Only AI import requests opt
- * into this; every other request keeps the 30 second default.
+ * AI parsing can take several minutes: a large timetable is split into one call per
+ * class. Only AI import requests opt into this; every other request keeps 30 seconds.
  */
-export const AI_IMPORT_TIMEOUT_MS = 300000
+export const AI_IMPORT_TIMEOUT_MS = 900000
 
 export const http = axios.create({
   baseURL: '/api',
