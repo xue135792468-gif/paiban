@@ -141,6 +141,13 @@ export function useImportSession() {
   const isParsing = computed(() => preview.value?.status === 'PARSING')
   /** Some batches parsed, some did not: the page shows the split and locks the import. */
   const isPartial = computed(() => preview.value?.status === 'PARTIAL')
+  const retrying = ref(false)
+  /**
+   * True from 「重试失败批次」 until the poll that settles that round. It is what turns a
+   * PARSING → PREVIEW/PARTIAL transition into a message about the retry rather than the
+   * original parse.
+   */
+  const retryRound = ref(false)
   const polling = ref(false)
   let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -200,6 +207,19 @@ export function useImportSession() {
     importedCount.value = null
     rememberStatus(data.sessionId, data.status)
     syncPolling(data)
+    settleRetryRound(data)
+  }
+
+  /** The retry round ended: say what came of it, once. */
+  function settleRetryRound(data: ImportPreview) {
+    if (!retryRound.value || data.status === 'PARSING') return
+    retryRound.value = false
+    const failed = data.failedBatches?.length ?? 0
+    if (failed > 0) {
+      ElMessage.warning(`重试后还有 ${failed} 个班没解析出来，可以再试一次或放弃导入`)
+    } else {
+      ElMessage.success(`重试成功，已解析全部 ${data.rows.length} 节课`)
+    }
   }
 
   function storeLastSession(record: LastSession | null) {
@@ -391,6 +411,8 @@ export function useImportSession() {
     const current = preview.value
     if (!current) return
     stopping.value = true
+    // A stop during a retry has its own message; don't also report a retry outcome.
+    retryRound.value = false
     try {
       const { data } = await http.post<ImportPreview>(
         `/ai/import/sessions/${current.sessionId}/stop`,
@@ -406,9 +428,35 @@ export function useImportSession() {
     }
   }
 
+  /**
+   * Re-runs the classes a partial parse could not read. The server answers at once with
+   * this round's PARSING state and does the work in the background, so the page polls
+   * just like for the first parse; only the failed batches are sent to the AI again.
+   */
+  async function retryFailed() {
+    const current = preview.value
+    if (!current) return
+    retrying.value = true
+    try {
+      const { data } = await http.post<ImportPreview>(
+        `/ai/import/sessions/${current.sessionId}/retry`,
+      )
+      retryRound.value = true
+      // A PARSING preview starts the poll loop that reports the round's outcome.
+      setPreview(data)
+      const failed = current.failedBatches?.length ?? 0
+      ElMessage.info(`正在重试 ${failed} 个班，已解析的班不会重复调用 AI`)
+    } catch (error) {
+      ElMessage.error(serverMessage(error, '重试失败批次失败，请稍后重试'))
+    } finally {
+      retrying.value = false
+    }
+  }
+
   /** Clears the preview half only; the URL marker survives so a refresh can retry. */
   function resetState() {
     stopPolling()
+    retryRound.value = false
     preview.value = null
     editing.value = false
     commitErrors.value = []
@@ -431,6 +479,7 @@ export function useImportSession() {
     continuing,
     reparsing,
     stopping,
+    retrying,
     commitErrors,
     importedCount,
     lastSession,
@@ -455,6 +504,7 @@ export function useImportSession() {
     continueWithAi,
     reparse,
     stopParsing,
+    retryFailed,
     stopPolling,
     clear,
   }

@@ -15,6 +15,21 @@
       title="确认入库已暂停：这次导入还缺部分班级的课。请先重试失败批次或放弃导入。"
     />
 
+    <div class="retry-actions">
+      <el-button
+        type="primary"
+        data-testid="partial-retry"
+        :loading="retrying"
+        :disabled="!failedBatches.length"
+        @click="emit('retry')"
+      >
+        重试失败批次
+      </el-button>
+      <span data-testid="partial-retry-hint" class="muted">
+        只会重新解析失败的 {{ failedBatches.length }} 个班，已经解析好的不会重复调用 AI
+      </span>
+    </div>
+
     <section data-testid="partial-success" class="section">
       <div class="section-head">
         <span class="section-title">已解析 {{ rows.length }} 节课</span>
@@ -73,7 +88,11 @@ const props = defineProps<{
   rows: PreviewRow[]
   failedBatches: FailedBatch[]
   progress?: ImportProgress | null
+  /** True while the retry request is in flight, so the button cannot fire twice. */
+  retrying?: boolean
 }>()
+
+const emit = defineEmits<{ retry: [] }>()
 
 /** A timetable batch is one class, so finished batches count the classes on screen. */
 const batchCount = computed(() => props.progress?.completed ?? props.rows.length)
@@ -118,6 +137,13 @@ const columns = computed(() => {
 .summary-title {
   font-weight: 600;
   color: #374151;
+}
+
+.retry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
 }
 
 .section {
