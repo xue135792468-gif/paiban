@@ -77,6 +77,11 @@ function readLastSession(): LastSession | null {
     if (typeof parsed?.id !== 'number' || !parsed.fileName || !parsed.status || !parsed.savedAt) {
       return null
     }
+    // An abandoned session can never be resumed, so it is not a "last import" to offer.
+    if (parsed.status === 'ABANDONED') {
+      localStorage.removeItem(LAST_SESSION_KEY)
+      return null
+    }
     return {
       id: parsed.id,
       fileName: parsed.fileName,
@@ -102,6 +107,7 @@ export function useImportSession() {
   const continuing = ref(false)
   const reparsing = ref(false)
   const stopping = ref(false)
+  const abandoning = ref(false)
   const commitErrors = ref<RowError[]>([])
   /** Null until this page commits: a restored COMMITTED session has no known count. */
   const importedCount = ref<number | null>(null)
@@ -453,6 +459,39 @@ export function useImportSession() {
     }
   }
 
+  /**
+   * Gives up on an unfinished import. The server keeps the record for the history but
+   * writes nothing, so the page drops the preview, the URL marker and the stored
+   * "last import": there is nothing left to continue.
+   */
+  async function abandon(): Promise<boolean> {
+    const current = preview.value
+    if (!current) return false
+    try {
+      await ElMessageBox.confirm(
+        '放弃后本次导入会直接作废：已解析的内容不会写入任何数据。确定放弃？',
+        '放弃导入',
+        { type: 'warning', confirmButtonText: '放弃导入', cancelButtonText: '继续解析' },
+      )
+    } catch {
+      return false
+    }
+    abandoning.value = true
+    try {
+      await http.post(`/ai/import/sessions/${current.sessionId}/abandon`)
+      resetState()
+      dropSessionFromUrl()
+      forgetSession(current.sessionId)
+      ElMessage.info('已放弃本次导入，未写入任何数据')
+      return true
+    } catch (error) {
+      ElMessage.error(serverMessage(error, '放弃导入失败，请稍后重试'))
+      return false
+    } finally {
+      abandoning.value = false
+    }
+  }
+
   /** Clears the preview half only; the URL marker survives so a refresh can retry. */
   function resetState() {
     stopPolling()
@@ -480,6 +519,7 @@ export function useImportSession() {
     reparsing,
     stopping,
     retrying,
+    abandoning,
     commitErrors,
     importedCount,
     lastSession,
@@ -505,6 +545,7 @@ export function useImportSession() {
     reparse,
     stopParsing,
     retryFailed,
+    abandon,
     stopPolling,
     clear,
   }

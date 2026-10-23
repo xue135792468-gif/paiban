@@ -7,6 +7,16 @@ import AiDataImportView from './AiDataImportView.vue'
 const httpMock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() }))
 vi.mock('@/api/http', () => ({ http: httpMock, AI_IMPORT_TIMEOUT_MS: 300000 }))
 
+/** The abandon flow asks before it throws the import away; the answer is the test's. */
+const confirmMock = vi.hoisted(() => vi.fn())
+vi.mock('element-plus', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>()
+  return {
+    ...actual,
+    ElMessageBox: { ...(actual.ElMessageBox as Record<string, unknown>), confirm: confirmMock },
+  }
+})
+
 function aiStatus(visionCapable = true) {
   return {
     data: { configured: true, tasks: { data_import: { configured: true, visionCapable } } },
@@ -1001,6 +1011,123 @@ function parsingPreview(overrides: Record<string, unknown> = {}) {
 function sessionCalls(): number {
   return httpMock.get.mock.calls.filter(([url]) => url === '/ai/import/sessions/9').length
 }
+
+function abandonedPreview(overrides: Record<string, unknown> = {}) {
+  return {
+    data: {
+      ...timetablePreview().data,
+      status: 'ABANDONED',
+      progress: { total: 4, completed: 1, failed: 0, currentBatch: null },
+      failedBatches: [],
+      ...overrides,
+    },
+  }
+}
+
+describe('放弃导入', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    confirmMock.mockResolvedValue('confirm')
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('解析中提供放弃入口，确认后清空预览、URL 与上次导入记录', async () => {
+    vi.useFakeTimers()
+    const info = vi.spyOn(ElMessage, 'info')
+    const { wrapper, router } = await mountImport('/admin/ai-import?target=timetable')
+    httpMock.post.mockImplementation((url: string) => {
+      if (url === '/ai/import/excel') return Promise.resolve(parsingPreview())
+      if (url === '/ai/import/sessions/9/abandon') return Promise.resolve(abandonedPreview())
+      return Promise.resolve({ data: {} })
+    })
+
+    chooseFile(wrapper, 0, 'grade-1.xlsx')
+    await flushPromises()
+    await button(wrapper, '开始解析').trigger('click')
+    await flushPromises()
+
+    expect(confirmMock).not.toHaveBeenCalled()
+    await wrapper.get('[data-testid="abandon-import"]').trigger('click')
+    await flushPromises()
+
+    expect(confirmMock).toHaveBeenCalledWith(
+      expect.stringContaining('不会写入任何数据'),
+      '放弃导入',
+      expect.anything(),
+    )
+    expect(httpMock.post).toHaveBeenCalledWith('/ai/import/sessions/9/abandon')
+    expect(info).toHaveBeenCalledWith(expect.stringContaining('已放弃'))
+    expect(wrapper.find('[data-testid="import-progress"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="target-card"]').exists()).toBe(true)
+    expect(router.currentRoute.value.query.session).toBeUndefined()
+    expect(localStorage.getItem('paiban.aiImport.lastSession')).toBeNull()
+
+    // The poll timer is gone with the session: nothing keeps calling the server.
+    const settled = sessionCalls()
+    await vi.advanceTimersByTimeAsync(6000)
+    await flushPromises()
+    expect(sessionCalls()).toBe(settled)
+    info.mockRestore()
+  })
+
+  it('部分结果提供放弃入口，确认后回到上传表单', async () => {
+    const info = vi.spyOn(ElMessage, 'info')
+    const { wrapper, router } = await mountImport('/admin/ai-import?target=timetable')
+    await showTimetable(wrapper, partialPreview())
+    httpMock.post.mockResolvedValue(abandonedPreview())
+
+    expect(wrapper.get('[data-testid="partial-result-panel"]').text()).toContain('放弃导入')
+    await wrapper.get('[data-testid="abandon-import"]').trigger('click')
+    await flushPromises()
+
+    expect(httpMock.post).toHaveBeenCalledWith('/ai/import/sessions/9/abandon')
+    expect(info).toHaveBeenCalledWith(expect.stringContaining('已放弃'))
+    expect(wrapper.find('[data-testid="partial-result-panel"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="target-card"]').exists()).toBe(true)
+    expect(router.currentRoute.value.query.session).toBeUndefined()
+    expect(localStorage.getItem('paiban.aiImport.lastSession')).toBeNull()
+    info.mockRestore()
+  })
+
+  it('确认框被取消时什么都不做', async () => {
+    confirmMock.mockRejectedValue('cancel')
+    const { wrapper, router } = await mountImport('/admin/ai-import?target=timetable')
+    await showTimetable(wrapper, partialPreview())
+
+    await wrapper.get('[data-testid="abandon-import"]').trigger('click')
+    await flushPromises()
+
+    expect(httpMock.post).not.toHaveBeenCalledWith('/ai/import/sessions/9/abandon')
+    expect(wrapper.find('[data-testid="partial-result-panel"]').exists()).toBe(true)
+    expect(router.currentRoute.value.query.session).toBe('9')
+  })
+
+  it('恢复入口不再把已放弃会话当作可继续的导入', async () => {
+    const error = vi.spyOn(ElMessage, 'error')
+    seedLastSession({ status: 'ABANDONED' })
+    const { wrapper, router } = await mountImport('/admin/ai-import?session=9', true, (url) =>
+      url === '/ai/import/sessions/9' ? Promise.resolve(abandonedPreview()) : null,
+    )
+
+    expect(wrapper.find('[data-testid="target-card"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="preview-target"]').exists()).toBe(false)
+    expect(router.currentRoute.value.query.session).toBeUndefined()
+    expect(localStorage.getItem('paiban.aiImport.lastSession')).toBeNull()
+    expect(error).toHaveBeenCalled()
+    error.mockRestore()
+  })
+
+  it('空页面不展示已放弃的上次导入', async () => {
+    seedLastSession({ status: 'ABANDONED' })
+    const { wrapper } = await mountImport()
+
+    expect(wrapper.find('[data-testid="last-session-card"]').exists()).toBe(false)
+    expect(localStorage.getItem('paiban.aiImport.lastSession')).toBeNull()
+  })
+})
 
 describe('大表后台解析与进度', () => {
   beforeEach(() => {

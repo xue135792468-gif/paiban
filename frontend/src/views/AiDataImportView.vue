@@ -21,7 +21,7 @@
     />
 
     <LastImportCard
-      v-if="!preview && lastSession"
+      v-if="!preview && lastSession && lastSession.status !== 'ABANDONED'"
       :session="lastSession"
       :loading="restoring"
       @continue="continueLastSession"
@@ -63,7 +63,9 @@
         v-if="isParsing"
         :progress="preview.progress"
         :stopping="stopping"
+        :abandoning="abandoning"
         @stop="stopParsing"
+        @abandon="abandonImport"
       />
 
       <el-card v-if="!isParsing" shadow="never">
@@ -87,6 +89,8 @@
           :progress="preview.progress"
           :retrying="retrying"
           @retry="retryFailed"
+          :abandoning="abandoning"
+          @abandon="abandonImport"
         />
 
         <el-table
@@ -289,6 +293,7 @@ const {
   reparsing,
   stopping,
   retrying,
+  abandoning,
   commitErrors,
   importedCount,
   lastSession,
@@ -309,6 +314,7 @@ const {
   reparse,
   stopParsing,
   retryFailed,
+  abandon,
   clear,
 } = useImportSession()
 const restoring = ref(false)
@@ -446,6 +452,15 @@ function switchToSuggestedTarget() {
 
 function reset() {
   clear()
+  selectedFile.value = null
+  imageFile.value = null
+  text.value = ''
+}
+
+/** Abandoning drops the import entirely, so the file inputs are cleared too. */
+async function abandonImport() {
+  const done = await abandon()
+  if (!done) return
   selectedFile.value = null
   imageFile.value = null
   text.value = ''
