@@ -50,9 +50,6 @@ public final class ImportDtos {
 
     public record RowsUpdateRequest(@NotNull(message = "rows 不能为空") List<RowDto> rows) {}
 
-    /** Optional note kept with an abandoned session; the server fills in a default. */
-    public record AbandonRequest(String reason) {}
-
     /**
      * What a timetable import would write: every preview row is a lesson (matched or
      * not), {@code unresolved} counts the rows that could not be matched, and the

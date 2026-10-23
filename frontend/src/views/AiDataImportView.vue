@@ -21,7 +21,7 @@
     />
 
     <LastImportCard
-      v-if="!preview && lastSession && lastSession.status !== 'ABANDONED'"
+      v-if="!preview && lastSession && !isAbandoned(lastSession.status)"
       :session="lastSession"
       :loading="restoring"
       @continue="continueLastSession"
@@ -110,7 +110,7 @@
           >
             <template #default="{ row }">
               <el-input
-                v-if="editing && preview.status !== 'COMMITTED'"
+                v-if="editing && !isCommittedPreview"
                 v-model="row.values[column.field]"
                 size="small"
               />
@@ -140,7 +140,7 @@
       </el-card>
 
       <el-alert
-        v-if="preview.status === 'FAILED'"
+        v-if="isFailedPreview"
         data-testid="failed-reason"
         type="error"
         show-icon
@@ -167,7 +167,7 @@
       />
 
       <el-alert
-        v-if="preview.status === 'COMMITTED'"
+        v-if="isCommittedPreview"
         type="success"
         show-icon
         :closable="false"
@@ -215,7 +215,7 @@
         </div>
       </el-alert>
 
-      <div v-if="preview.status !== 'FAILED' && !isParsing" class="footer-actions">
+      <div v-if="!isFailedPreview && !isParsing" class="footer-actions">
         <template v-if="isTimetable">
           <el-button
             type="primary"
@@ -227,7 +227,7 @@
           </el-button>
           <el-button
             :loading="reparsing"
-            :disabled="preview.status === 'COMMITTED' || isPartial"
+            :disabled="isCommittedPreview || isPartial"
             @click="reparse"
           >
             打回重析
@@ -237,13 +237,13 @@
           <el-button
             type="primary"
             :loading="committing"
-            :disabled="preview.status === 'COMMITTED'"
+            :disabled="isCommittedPreview"
             @click="commit"
           >
             全部接受并入库
           </el-button>
-          <el-button :disabled="preview.status === 'COMMITTED'" @click="editing = true">手动微调</el-button>
-          <el-button :loading="reparsing" :disabled="preview.status === 'COMMITTED'" @click="reparse">
+          <el-button :disabled="isCommittedPreview" @click="editing = true">手动微调</el-button>
+          <el-button :loading="reparsing" :disabled="isCommittedPreview" @click="reparse">
             打回重析
           </el-button>
         </template>
@@ -273,6 +273,7 @@ import TimetablePreviewGrid from '@/components/aiImport/TimetablePreviewGrid.vue
 import { useImportSession } from '@/components/aiImport/useImportSession'
 import { type ImportPreview, type PreviewRow } from '@/components/aiImport/timetablePreview'
 import { preselectedTarget, targetTitle } from '@/components/aiImport/importTargets'
+import { isAbandoned, isEditable } from '@/components/aiImport/importStatus'
 
 const router = useRouter()
 const route = useRoute()
@@ -300,6 +301,8 @@ const {
   isTimetable,
   isParsing,
   isPartial,
+  isCommittedPreview,
+  isFailedPreview,
   previewIssues,
   commitDisabled,
   commitLabel,
@@ -334,7 +337,7 @@ const suggestedTarget = computed(() => {
 const showMappingStep = computed(
   () =>
     isTimetable.value &&
-    (preview.value?.status === 'PREVIEW' || preview.value?.status === 'EDITED') &&
+    isEditable(preview.value?.status) &&
     (mappableIssues.value.length > 0 || blockingIssues.value.length === 0),
 )
 

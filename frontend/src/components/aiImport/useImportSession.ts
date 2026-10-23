@@ -5,6 +5,17 @@ import { AI_IMPORT_TIMEOUT_MS, http } from '@/api/http'
 import { aiParseErrorMessage, serverMessage } from '@/api/errors'
 import { canCommit, remainingIssueCount, type ImportPreview } from './timetablePreview'
 import { targetTitle } from './importTargets'
+import {
+  isAbandoned,
+  isCommitted,
+  isFailed,
+  isLocked,
+  isParsing as statusIsParsing,
+  isPartial as statusIsPartial,
+  isRestorable,
+  statusTagType,
+  statusText,
+} from './importStatus'
 
 export interface RowError {
   row: number
@@ -29,44 +40,10 @@ export interface LastSession {
 
 export type RestoreOutcome = 'restored' | 'failed' | 'unusable'
 
-const STATUS_LABELS: Record<string, string> = {
-  PARSING: '解析中',
-  PREVIEW: '待确认',
-  EDITED: '已微调',
-  COMMITTED: '已入库',
-  FAILED: '解析失败',
-  PARTIAL: '部分结果',
-  ABANDONED: '已放弃',
-}
-
-/** Statuses a restored session can render; anything else is not worth showing. */
-const RESTORABLE_STATUSES = new Set([
-  'PARSING',
-  'PREVIEW',
-  'EDITED',
-  'COMMITTED',
-  'FAILED',
-  'PARTIAL',
-])
-
-/** Statuses that must not accept an edit or a commit. */
-const LOCKED_STATUSES = new Set(['PARSING', 'PARTIAL', 'ABANDONED'])
-
 /** How often a PARSING session is re-read while the batches are being parsed. */
 const POLL_INTERVAL_MS = 2000
 
 const LAST_SESSION_KEY = 'paiban.aiImport.lastSession'
-
-export function statusText(status: string): string {
-  return STATUS_LABELS[status] ?? status
-}
-
-export function statusTagType(status: string): 'success' | 'danger' | 'info' | 'warning' {
-  if (status === 'COMMITTED') return 'success'
-  if (status === 'FAILED') return 'danger'
-  if (status === 'PARSING' || status === 'PARTIAL') return 'warning'
-  return 'info'
-}
 
 /** A corrupted or half-written record is treated as absent, never as a crash. */
 function readLastSession(): LastSession | null {
@@ -78,7 +55,7 @@ function readLastSession(): LastSession | null {
       return null
     }
     // An abandoned session can never be resumed, so it is not a "last import" to offer.
-    if (parsed.status === 'ABANDONED') {
+    if (isAbandoned(parsed.status)) {
       localStorage.removeItem(LAST_SESSION_KEY)
       return null
     }
@@ -120,17 +97,18 @@ export function useImportSession() {
   const commitDisabled = computed(
     () =>
       !preview.value ||
-      preview.value.status === 'COMMITTED' ||
-      preview.value.status === 'FAILED' ||
-      LOCKED_STATUSES.has(preview.value.status) ||
+      isCommitted(preview.value.status) ||
+      isFailed(preview.value.status) ||
+      isLocked(preview.value.status) ||
       (isTimetable.value && !allIssuesResolved.value),
   )
   const commitLabel = computed(() => {
-    if (preview.value?.status === 'COMMITTED') return '已入库'
-    if (preview.value?.status === 'FAILED') return '解析失败'
-    if (preview.value?.status === 'PARSING') return '解析中…'
-    if (preview.value?.status === 'PARTIAL') return '先重试或放弃'
-    if (preview.value?.status === 'ABANDONED') return '已放弃'
+    const status = preview.value?.status
+    if (isCommitted(status)) return '已入库'
+    if (isFailed(status)) return '解析失败'
+    if (statusIsParsing(status)) return '解析中…'
+    if (statusIsPartial(status)) return '先重试或放弃'
+    if (isAbandoned(status)) return '已放弃'
     if (isTimetable.value && !allIssuesResolved.value) {
       return `确认入库（还有 ${remainingIssues.value} 项未解决）`
     }
@@ -144,9 +122,11 @@ export function useImportSession() {
     if (!preview.value) return 'info'
     return statusTagType(preview.value.status)
   })
-  const isParsing = computed(() => preview.value?.status === 'PARSING')
+  const isParsing = computed(() => statusIsParsing(preview.value?.status))
   /** Some batches parsed, some did not: the page shows the split and locks the import. */
-  const isPartial = computed(() => preview.value?.status === 'PARTIAL')
+  const isPartial = computed(() => statusIsPartial(preview.value?.status))
+  const isCommittedPreview = computed(() => isCommitted(preview.value?.status))
+  const isFailedPreview = computed(() => isFailed(preview.value?.status))
   const retrying = ref(false)
   /**
    * True from 「重试失败批次」 until the poll that settles that round. It is what turns a
@@ -199,7 +179,7 @@ export function useImportSession() {
   }
 
   function syncPolling(data: ImportPreview) {
-    if (data.status === 'PARSING') {
+    if (statusIsParsing(data.status)) {
       startPolling(data.sessionId)
     } else {
       stopPolling()
@@ -218,7 +198,7 @@ export function useImportSession() {
 
   /** The retry round ended: say what came of it, once. */
   function settleRetryRound(data: ImportPreview) {
-    if (!retryRound.value || data.status === 'PARSING') return
+    if (!retryRound.value || statusIsParsing(data.status)) return
     retryRound.value = false
     const failed = data.failedBatches?.length ?? 0
     if (failed > 0) {
@@ -281,7 +261,7 @@ export function useImportSession() {
     const id = encodeURIComponent(String(sessionId).trim())
     try {
       const { data } = await http.get<ImportPreview>(`/ai/import/sessions/${id}`)
-      if (!data || !RESTORABLE_STATUSES.has(data.status)) {
+      if (!data || !isRestorable(data.status)) {
         if (data) forgetSession(data.sessionId)
         clear()
         ElMessage.error('该导入会话已不可用，请重新上传文件')
@@ -428,7 +408,7 @@ export function useImportSession() {
       setPreview(data)
       const completed = data.progress?.completed ?? 0
       const total = data.progress?.total ?? 0
-      if (data.status === 'FAILED') {
+      if (isFailed(data.status)) {
         ElMessage.warning(data.explanation || '已停止解析，没有任何已完成的批次')
       } else {
         ElMessage.success(`已停止解析，保留已完成 ${completed}/${total} 批`)
@@ -532,6 +512,8 @@ export function useImportSession() {
     isTimetable,
     isParsing,
     isPartial,
+    isCommittedPreview,
+    isFailedPreview,
     polling,
     previewIssues,
     remainingIssues,

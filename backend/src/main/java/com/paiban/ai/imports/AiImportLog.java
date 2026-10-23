@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.time.Instant;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -111,4 +112,13 @@ public class AiImportLog {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt = Instant.now();
+
+    /**
+     * Optimistic lock. The background parser and a stop/abandon request can hold the same
+     * row at the same time; without this the last writer wins and an abandoned session
+     * could be written back to {@code PARSING} by a batch that was still in flight.
+     */
+    @Version
+    @Column(nullable = false)
+    private Long version;
 }

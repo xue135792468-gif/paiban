@@ -24,7 +24,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { statusTagType, statusText, type LastSession } from './useImportSession'
+import type { LastSession } from './useImportSession'
+import { statusTagType, statusText } from './importStatus'
 
 const props = defineProps<{ session: LastSession; loading: boolean }>()
 

@@ -41,12 +41,14 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.task.TaskExecutor;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -67,11 +69,13 @@ public class AiImportService {
     private static final int TIMETABLE_HEADER_ROWS = 2;
     private static final int TIMETABLE_CHUNK_ROWS = 1;
     private static final int TIMETABLE_CHUNK_THRESHOLD = 3;
-    private static final String BATCH_PENDING = "PENDING";
-    private static final String BATCH_DONE = "DONE";
-    private static final String BATCH_FAILED = "FAILED";
+    /** What a parse says when the import pool would not take the job (queue full). */
+    private static final String QUEUE_REFUSED = "系统繁忙，解析任务排队失败，请稍后重试";
+    private static final String LOST_VERSION = "导入状态已被后台更新，请刷新后重试";
     /** What a stop that caught a parse before its first finished batch leaves behind. */
     private static final String STOPPED_WITH_NOTHING = "已停止解析，没有任何已完成的批次";
+    /** The only reason an abandoned session carries; the request has no body to supply one. */
+    private static final String ABANDON_REASON = "用户放弃导入";
     private static final Pattern PHONE = Pattern.compile("^[0-9+\\-\\s()]{5,30}$");
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
@@ -87,6 +91,8 @@ public class AiImportService {
     private final ImportMappingService nameMappings;
     private final TaskExecutor importExecutor;
     private final TransactionTemplate transactionTemplate;
+    /** Reads and writes {@code batches_json}; the one place batches are folded together. */
+    private final BatchStore batchStore;
     /**
      * Live stop requests, keyed by session. In memory on purpose: a stop only matters to
      * the background thread of this process; a restart is covered by the startup recovery.
@@ -118,6 +124,7 @@ public class AiImportService {
         this.nameMappings = nameMappings;
         this.importExecutor = importExecutor;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.batchStore = new BatchStore(objectMapper);
     }
 
     // ---------------------------------------------------------------- channels
@@ -253,6 +260,8 @@ public class AiImportService {
                         new AiMessage("user", continuePrompt)),
                 original.images(),
                 original.originalPrompt());
+        // The continuation answers for the whole table, so no batch plan survives it.
+        resetBatchProgress(log);
         AiImportParser.Parsed parsed = callAi(bundle, log, target);
         List<RowDto> merged = merge(current, parsed.rows(), target);
         savePreview(log, parsed.mappings(), parsed.rows(), parsed.explanation(),
@@ -278,6 +287,14 @@ public class AiImportService {
             throw ApiException.conflict("这次导入只解析了一部分班级，请先重试失败批次或放弃导入");
         }
         ImportTarget target = targetOf(log);
+        if (target == ImportTarget.TIMETABLE && log.getFilePath() != null) {
+            GridData grid = readGrid(log.getFilePath());
+            if (dataRowCount(grid.rows()) > TIMETABLE_CHUNK_THRESHOLD) {
+                // A large table is a batch plan: re-parsing it in one call would bring back
+                // the truncated answer the batch plan exists to avoid.
+                return startBatchedParse(log, grid, target);
+            }
+        }
         PromptBundle bundle = bundleFor(log, target);
         return runPreview(log, bundle, bundle.originalPrompt(), target);
     }
@@ -368,48 +385,52 @@ public class AiImportService {
             throw ApiException.conflict("当前导入不在解析中，无法停止");
         }
         stopFlags.computeIfAbsent(id, key -> new AtomicBoolean()).set(true);
-        transactionTemplate.executeWithoutResult(status -> {
-            // The background thread may have finished the last batch in the meantime;
-            // re-read so a natural finish is never overwritten with a "stopped" preview.
-            AiImportLog current = logs.findById(id).orElse(null);
-            if (current == null || !AiImportLog.PARSING.equals(current.getStatus())) {
-                return;
-            }
-            List<BatchState> batches = readBatches(current.getBatchesJson());
-            int planned = batches.size();
-            batches.removeIf(batch -> BATCH_PENDING.equals(batch.status));
-            int dropped = planned - batches.size();
-            Merged merged = mergeBatches(batches);
-            boolean anyDone = batches.stream().anyMatch(BatchState::done);
-            int failures = (int) batches.stream().filter(BatchState::failed).count();
-            int total = current.getTotalBatches() > 0 ? current.getTotalBatches() : batches.size();
-            current.setBatchesJson(writeBatches(batches));
-            current.setCompletedBatches((int) batches.stream().filter(BatchState::done).count());
-            current.setCurrentBatch(null);
-            if (!anyDone) {
-                // No finished batch means no preview: the rows would be empty while the page
-                // still offered them for import.
-                current.setPreviewJson(null);
-                current.setAiExplanation(STOPPED_WITH_NOTHING);
-                current.setRowCount(0);
-                current.setStatus(AiImportLog.FAILED);
-                current.setUpdatedAt(Instant.now());
-                logs.save(current);
-                return;
-            }
-            String explanation = withFailures(
-                    withFailures(merged.explanation(), stoppedNote(dropped)),
-                    failureSummary(batches, total));
-            current.setPreviewJson(payloadJson(
-                    merged.mappings(), merged.rows(), explanation, merged.suggestedTarget()));
-            current.setAiExplanation(explanation);
-            current.setRowCount(merged.rows().size());
-            current.setStatus(failures > 0 ? AiImportLog.PARTIAL : AiImportLog.PREVIEW);
-            current.setUpdatedAt(Instant.now());
-            logs.save(current);
-        });
+        writeTransaction(() -> stopParse(id));
         return preview(logs.findById(id)
                 .orElseThrow(() -> ApiException.notFound("导入会话不存在: " + id)));
+    }
+
+    /** The stop itself; a lost version race is retried by {@link #writeTransaction}. */
+    private void stopParse(long id) {
+        // The background thread may have finished the last batch in the meantime; re-read
+        // so a natural finish is never overwritten with a "stopped" preview.
+        AiImportLog current = logs.findById(id).orElse(null);
+        if (current == null || !AiImportLog.PARSING.equals(current.getStatus())) {
+            // Answering 200 here would claim a stop that did not happen.
+            throw ApiException.conflict("解析已结束，无法停止");
+        }
+        List<BatchStore.State> plan = batchStore.read(current.getBatchesJson());
+        int planned = plan.size();
+        plan.removeIf(batch -> BatchStore.PENDING.equals(batch.status));
+        int dropped = planned - plan.size();
+        BatchStore.Merged merged = batchStore.merge(plan);
+        boolean anyDone = plan.stream().anyMatch(BatchStore.State::done);
+        int failures = batchStore.failedCount(plan);
+        int total = current.getTotalBatches() > 0 ? current.getTotalBatches() : plan.size();
+        current.setBatchesJson(batchStore.write(plan));
+        current.setCompletedBatches(batchStore.doneCount(plan));
+        current.setCurrentBatch(null);
+        if (!anyDone) {
+            // No finished batch means no preview: the rows would be empty while the page
+            // still offered them for import.
+            current.setPreviewJson(null);
+            current.setAiExplanation(STOPPED_WITH_NOTHING);
+            current.setRowCount(0);
+            current.setStatus(AiImportLog.FAILED);
+            current.setUpdatedAt(Instant.now());
+            logs.save(current);
+            return;
+        }
+        String explanation = withFailures(
+                withFailures(merged.explanation(), stoppedNote(dropped)),
+                batchStore.failureSummary(plan, total));
+        current.setPreviewJson(batchStore.payloadJson(
+                merged.mappings(), merged.rows(), explanation, merged.suggestedTarget()));
+        current.setAiExplanation(explanation);
+        current.setRowCount(merged.rows().size());
+        current.setStatus(failures > 0 ? AiImportLog.PARTIAL : AiImportLog.PREVIEW);
+        current.setUpdatedAt(Instant.now());
+        logs.save(current);
     }
 
     /**
@@ -428,11 +449,12 @@ public class AiImportService {
                     ? "解析还没完成，请等进度走完再重试失败批次"
                     : "当前导入没有可重试失败批次，只有“部分结果”的导入才能重试");
         }
-        List<BatchState> stored = readBatches(log.getBatchesJson());
-        List<BatchWork> failed = new ArrayList<>();
-        for (BatchState batch : stored) {
+        List<BatchStore.State> stored = batchStore.read(log.getBatchesJson());
+        List<BatchStore.Work> failed = new ArrayList<>();
+        for (BatchStore.State batch : stored) {
             if (batch.failed()) {
-                failed.add(new BatchWork(batch.index, batch.label, List.copyOf(batch.sourceRows)));
+                failed.add(new BatchStore.Work(
+                        batch.index, batch.label, List.copyOf(batch.sourceRows)));
             }
         }
         if (failed.isEmpty()) {
@@ -441,11 +463,19 @@ public class AiImportService {
         ImportTarget target = targetOf(log);
         int total = log.getTotalBatches() > 0 ? log.getTotalBatches() : stored.size();
         BatchContext context = retryContext(log, total);
-        log.setStatus(AiImportLog.PARSING);
-        log.setCurrentBatch(null);
-        touch(log);
-        PreviewDto accepted = preview(log);
-        dispatchBatches(log.getId(), target, context, failed);
+        writeTransaction(() -> {
+            AiImportLog current = logs.findById(id).orElse(null);
+            if (current == null || !AiImportLog.PARTIAL.equals(current.getStatus())) {
+                throw ApiException.conflict("导入状态已变化，请刷新后重试");
+            }
+            current.setStatus(AiImportLog.PARSING);
+            current.setCurrentBatch(null);
+            current.setUpdatedAt(Instant.now());
+            logs.save(current);
+        });
+        PreviewDto accepted = preview(logs.findById(id)
+                .orElseThrow(() -> ApiException.notFound("导入会话不存在: " + id)));
+        dispatchBatches(log.getId(), target, context, failed, AiImportLog.PARTIAL);
         return accepted;
     }
 
@@ -474,7 +504,7 @@ public class AiImportService {
      * the history: what was parsed stays on the row for audit, but the session never
      * moves forward again and nothing is written to the business tables.
      */
-    public PreviewDto abandon(long id, String username, String reason) {
+    public PreviewDto abandon(long id, String username) {
         AiImportLog log = requireSession(id, username);
         requireAbandonable(log);
         AtomicBoolean stop = stopFlags.get(id);
@@ -483,7 +513,7 @@ public class AiImportService {
             // already removed it and needs no stop.
             stop.set(true);
         }
-        transactionTemplate.executeWithoutResult(status -> {
+        writeTransaction(() -> {
             AiImportLog current = logs.findById(id).orElse(null);
             if (current == null) {
                 return;
@@ -493,7 +523,7 @@ public class AiImportService {
             requireAbandonable(current);
             current.setStatus(AiImportLog.ABANDONED);
             current.setCurrentBatch(null);
-            current.setAiExplanation(abandonReason(reason));
+            current.setAiExplanation(ABANDON_REASON);
             current.setUpdatedAt(Instant.now());
             logs.save(current);
         });
@@ -506,12 +536,6 @@ public class AiImportService {
             return;
         }
         throw ApiException.conflict("只有解析中或部分结果的导入可以放弃");
-    }
-
-    /** The user's own note when they gave one, otherwise a plain default for the history. */
-    private String abandonReason(String reason) {
-        String note = reason == null ? "" : reason.trim();
-        return note.isEmpty() ? "用户放弃导入" : "用户放弃导入：" + note;
     }
 
     public byte[] file(long id, String username) {
@@ -527,6 +551,9 @@ public class AiImportService {
 
     private PreviewDto runPreview(
             AiImportLog log, PromptBundle bundle, String originalPrompt, ImportTarget target) {
+        // A one-shot parse answers for the whole table, so a batch plan from an earlier
+        // pass is stale: leaving it would keep showing "已完成 3/4 批" over every row.
+        resetBatchProgress(log);
         AiImportParser.Parsed parsed = callAi(bundle, log, target);
         savePreview(log, parsed.mappings(), parsed.rows(), parsed.explanation(),
                 parsed.suggestedTarget(), AiImportLog.PREVIEW);
@@ -565,40 +592,70 @@ public class AiImportService {
         if (data.isEmpty()) {
             throw ApiException.badRequest("表格里没有可解析的数据行");
         }
-        List<BatchWork> batches = new ArrayList<>();
+        List<BatchStore.Work> batches = new ArrayList<>();
         for (int start = 0; start < data.size(); start += TIMETABLE_CHUNK_ROWS) {
             List<List<String>> chunk =
                     data.subList(start, Math.min(start + TIMETABLE_CHUNK_ROWS, data.size()));
-            batches.add(new BatchWork(
+            batches.add(new BatchStore.Work(
                     batches.size() + 1, chunkLabel(chunk), List.copyOf(chunk)));
         }
-        List<BatchState> planned = new ArrayList<>();
-        for (BatchWork batch : batches) {
-            planned.add(BatchState.pending(batch));
+        List<BatchStore.State> planned = new ArrayList<>();
+        for (BatchStore.Work batch : batches) {
+            planned.add(BatchStore.State.pending(batch));
         }
+        // A fresh plan replaces whatever an earlier pass left on the row, including the
+        // audit of that pass: this round accumulates its own answers.
         log.setStatus(AiImportLog.PARSING);
         log.setTotalBatches(batches.size());
         log.setCompletedBatches(0);
         log.setCurrentBatch(null);
         log.setRowCount(0);
         log.setPreviewJson(null);
-        log.setBatchesJson(writeBatches(planned));
+        log.setConfirmedJson(null);
+        log.setResultJson(null);
+        log.setAiRawResponse(null);
+        log.setBatchesJson(batchStore.write(planned));
         touch(log);
         // The response must describe the state at dispatch time, not wherever the
         // background thread has got to by the time it is serialised.
         PreviewDto accepted = preview(log);
         long sessionId = log.getId();
         BatchContext context = new BatchContext(grid.sheetName(), List.copyOf(headers), batches.size());
-        dispatchBatches(sessionId, target, context, batches);
+        dispatchBatches(sessionId, target, context, batches, AiImportLog.FAILED);
         return accepted;
     }
 
-    /** Starts a serial batch run on the import executor, with its own stop flag. */
+    /**
+     * Starts a serial batch run on the import executor, with its own stop flag. A pool
+     * that refuses the job (queue full, shutting down) would leave the session claiming
+     * to parse with nobody working on it, so it is settled to {@code refusedStatus} at
+     * once and the caller is told.
+     */
     private void dispatchBatches(
-            long sessionId, ImportTarget target, BatchContext context, List<BatchWork> batches) {
+            long sessionId,
+            ImportTarget target,
+            BatchContext context,
+            List<BatchStore.Work> batches,
+            String refusedStatus) {
         AtomicBoolean stopped = new AtomicBoolean();
         stopFlags.put(sessionId, stopped);
-        importExecutor.execute(() -> runBatches(sessionId, target, context, batches, stopped));
+        try {
+            importExecutor.execute(() -> runBatches(sessionId, target, context, batches, stopped));
+        } catch (RejectedExecutionException ex) {
+            stopFlags.remove(sessionId, stopped);
+            writeTransaction(() -> {
+                AiImportLog log = logs.findById(sessionId).orElse(null);
+                if (log == null || !AiImportLog.PARSING.equals(log.getStatus())) {
+                    return;
+                }
+                log.setStatus(refusedStatus);
+                log.setCurrentBatch(null);
+                log.setAiExplanation(QUEUE_REFUSED);
+                log.setUpdatedAt(Instant.now());
+                logs.save(log);
+            });
+            throw ApiException.conflict(QUEUE_REFUSED);
+        }
     }
 
     /**
@@ -611,11 +668,11 @@ public class AiImportService {
             long sessionId,
             ImportTarget target,
             BatchContext context,
-            List<BatchWork> batches,
+            List<BatchStore.Work> plan,
             AtomicBoolean stopped) {
         try {
-            for (int i = 0; i < batches.size(); i++) {
-                BatchWork work = batches.get(i);
+            for (int i = 0; i < plan.size(); i++) {
+                BatchStore.Work work = plan.get(i);
                 if (stopped.get() || !ownsRun(sessionId, stopped)) {
                     return;
                 }
@@ -623,7 +680,7 @@ public class AiImportService {
                 if (stopped.get() || !ownsRun(sessionId, stopped)) {
                     return;
                 }
-                BatchOutcome outcome;
+                BatchStore.Outcome outcome;
                 String rawResponse = null;
                 try {
                     String prompt = AiImportPrompts.chunkPrompt(
@@ -631,13 +688,13 @@ public class AiImportService {
                             work.index() - 1, context.totalBatches(), objectMapper);
                     AiCall call = callAiForBatch(prompt, target);
                     rawResponse = call.rawResponse();
-                    outcome = BatchOutcome.parsed(call.parsed());
+                    outcome = BatchStore.Outcome.parsed(call.parsed());
                 } catch (RuntimeException ex) {
-                    outcome = BatchOutcome.failed(
+                    outcome = BatchStore.Outcome.failed(
                             ex.getMessage() == null ? "未知错误" : ex.getMessage());
                 }
                 persistBatch(sessionId, work, context.totalBatches(), outcome, rawResponse,
-                        batches.size() - 1 - i, stopped);
+                        plan.size() - 1 - i, stopped);
             }
         } finally {
             stopFlags.remove(sessionId, stopped);
@@ -670,8 +727,8 @@ public class AiImportService {
     }
 
     /** Marks which class is in flight, so a poll can say "正在解析 八（2）". */
-    private void beginBatch(long sessionId, BatchWork work, AtomicBoolean stopped) {
-        transactionTemplate.executeWithoutResult(status -> logs.findById(sessionId).ifPresent(log -> {
+    private void beginBatch(long sessionId, BatchStore.Work work, AtomicBoolean stopped) {
+        writeQuietly(() -> logs.findById(sessionId).ifPresent(log -> {
             if (!AiImportLog.PARSING.equals(log.getStatus()) || !ownsRun(sessionId, stopped)) {
                 return;
             }
@@ -691,36 +748,40 @@ public class AiImportService {
      */
     private void persistBatch(
             long sessionId,
-            BatchWork work,
+            BatchStore.Work work,
             int totalBatches,
-            BatchOutcome outcome,
+            BatchStore.Outcome outcome,
             String rawResponse,
             int remaining,
             AtomicBoolean stopped) {
-        transactionTemplate.executeWithoutResult(status -> {
+        // A lost version race is re-read and reconsidered: by then the session may have
+        // left PARSING, which the retry handles like any other late batch.
+        writeQuietly(() -> {
             AiImportLog log = logs.findById(sessionId).orElse(null);
             if (log == null || !ownsRun(sessionId, stopped)) {
                 return;
             }
             if (!AiImportLog.PARSING.equals(log.getStatus())) {
-                // Stopped (or recovered) while this batch was in flight: the session already
-                // has its final preview, so a late result must not be written back.
+                // Stopped (or abandoned, or recovered) while this batch was in flight: the
+                // session already has its final preview, so the result must not be folded
+                // in - but the AI call really happened and its answer stays in the audit.
+                recordLateAnswer(log, rawResponse);
                 return;
             }
-            List<BatchState> batches = readBatches(log.getBatchesJson());
-            replaceBatch(batches, work, outcome, rawResponse);
-            Merged merged = mergeBatches(batches);
-            int completed = (int) batches.stream().filter(BatchState::done).count();
-            int failures = (int) batches.stream().filter(BatchState::failed).count();
-            String explanation = withFailures(merged.explanation(), failureSummary(batches, totalBatches));
-            log.setBatchesJson(writeBatches(batches));
-            log.setCompletedBatches(completed);
+            List<BatchStore.State> plan = batchStore.read(log.getBatchesJson());
+            batchStore.replace(plan, work, outcome, rawResponse);
+            BatchStore.Merged merged = batchStore.merge(plan);
+            int failures = batchStore.failedCount(plan);
+            String explanation =
+                    withFailures(merged.explanation(), batchStore.failureSummary(plan, totalBatches));
+            log.setBatchesJson(batchStore.write(plan));
+            log.setCompletedBatches(batchStore.doneCount(plan));
             log.setCurrentBatch(null);
-            log.setPreviewJson(payloadJson(
+            log.setPreviewJson(batchStore.payloadJson(
                     merged.mappings(), merged.rows(), explanation, merged.suggestedTarget()));
             log.setAiExplanation(explanation);
             log.setRowCount(merged.rows().size());
-            List<String> rawAnswers = rawAnswers(batches);
+            List<String> rawAnswers = batchStore.rawAnswers(plan);
             if (!rawAnswers.isEmpty()) {
                 log.setAiRawResponse(writeJson(rawAnswers));
             }
@@ -733,22 +794,35 @@ public class AiImportService {
         });
     }
 
-    /** Every failed batch named the way a user reads it, oldest first. */
-    private String failureSummary(List<BatchState> batches, int totalBatches) {
-        List<String> parts = new ArrayList<>();
-        for (BatchState batch : batches) {
-            if (batch.failed()) {
-                parts.add(batchFailureText(batch, totalBatches));
-            }
+    /**
+     * A batch that lands after the session settled still cost a real AI call, so its answer
+     * goes into the audit column. Everything else stays exactly as the stop/abandon left
+     * it: the batch list, the preview, the counters and the status.
+     */
+    private void recordLateAnswer(AiImportLog log, String rawResponse) {
+        if (rawResponse == null || rawResponse.isBlank()) {
+            return;
         }
-        return String.join("；", parts);
+        log.setAiRawResponse(appendRawAnswer(log.getAiRawResponse(), rawResponse));
+        log.setUpdatedAt(Instant.now());
+        logs.save(log);
     }
 
-    /** {@code 第 2/14 批（八（1））解析失败：<原因>} */
-    private String batchFailureText(BatchState batch, int totalBatches) {
-        String label = batch.label == null || batch.label.isBlank() ? "" : "（" + batch.label + "）";
-        String reason = batch.reason == null || batch.reason.isBlank() ? "未知错误" : batch.reason;
-        return "第 " + batch.index + "/" + totalBatches + " 批" + label + "解析失败：" + reason;
+    /** Adds one answer to the {@code ai_raw_response} array without touching the others. */
+    private String appendRawAnswer(String stored, String rawResponse) {
+        List<String> answers = new ArrayList<>();
+        if (stored != null && !stored.isBlank()) {
+            try {
+                answers.addAll(objectMapper.readValue(
+                        stored, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {}));
+            } catch (Exception ex) {
+                answers.add(stored);
+            }
+        }
+        if (!answers.contains(rawResponse)) {
+            answers.add(rawResponse);
+        }
+        return writeJson(answers);
     }
 
     /**
@@ -768,157 +842,6 @@ public class AiImportService {
         return base.isBlank() ? failureSummary : base + " " + failureSummary;
     }
 
-    /** Merges every {@code DONE} batch into one de-duplicated preview payload. */
-    private Merged mergeBatches(List<BatchState> batches) {
-        List<RowDto> rows = new ArrayList<>();
-        List<MappingDto> mappings = new ArrayList<>();
-        Set<String> rowKeys = new HashSet<>();
-        Set<String> mappingKeys = new HashSet<>();
-        String explanation = "";
-        String suggestedTarget = null;
-        for (BatchState batch : batches) {
-            if (!batch.done()) {
-                continue;
-            }
-            for (RowDto row : batch.rows) {
-                if (rowKeys.add(rowKey(row))) {
-                    rows.add(row);
-                }
-            }
-            for (MappingDto mapping : batch.mappings) {
-                if (mappingKeys.add(mapping.source() + "→" + mapping.target())) {
-                    mappings.add(mapping);
-                }
-            }
-            if (explanation.isBlank() && batch.explanation != null) {
-                explanation = batch.explanation;
-            }
-            if (suggestedTarget == null && batch.suggestedTarget != null
-                    && !batch.suggestedTarget.isBlank()) {
-                suggestedTarget = batch.suggestedTarget;
-            }
-        }
-        if (explanation.isBlank() && !batches.isEmpty()) {
-            explanation = "分 " + batches.size() + " 批解析";
-        }
-        return new Merged(mappings, rows, explanation, suggestedTarget);
-    }
-
-    private void replaceBatch(
-            List<BatchState> batches, BatchWork work, BatchOutcome outcome, String rawResponse) {
-        BatchState target = null;
-        for (BatchState batch : batches) {
-            if (batch.index == work.index()) {
-                target = batch;
-                break;
-            }
-        }
-        if (target == null) {
-            target = BatchState.pending(work);
-            batches.add(target);
-        }
-        target.status = outcome.failed() == null ? BATCH_DONE : BATCH_FAILED;
-        target.reason = outcome.failed();
-        target.rows = outcome.parsed() == null ? List.of() : outcome.parsed().rows();
-        target.mappings = outcome.parsed() == null ? List.of() : outcome.parsed().mappings();
-        target.explanation = outcome.parsed() == null ? null : outcome.parsed().explanation();
-        target.suggestedTarget = outcome.parsed() == null ? null : outcome.parsed().suggestedTarget();
-        target.rawResponse = rawResponse;
-    }
-
-    /**
-     * What the AI answered for this session, one entry per batch that got an answer, in the
-     * file's batch order. The per-batch answers are stored in {@code batches_json} and this
-     * column is rebuilt from them: a retry therefore adds its answer instead of replacing
-     * the audit trail of the first pass.
-     */
-    private List<String> rawAnswers(List<BatchState> batches) {
-        return batches.stream()
-                .filter(batch -> batch.rawResponse != null && !batch.rawResponse.isBlank())
-                .sorted(java.util.Comparator.comparingInt(batch -> batch.index))
-                .map(batch -> batch.rawResponse)
-                .toList();
-    }
-
-    /**
-     * The batch column is a reader for a later retry (it carries the source rows) and the
-     * audit of what the AI answered for that batch ({@code rawResponse}), so it keeps its
-     * documented shape: index, label, status, reason and the parsed result.
-     */
-    private String writeBatches(List<BatchState> batches) {
-        List<Map<String, Object>> payload = new ArrayList<>();
-        for (BatchState batch : batches) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("index", batch.index);
-            item.put("label", batch.label == null ? "" : batch.label);
-            item.put("status", batch.status);
-            if (batch.reason != null) {
-                item.put("reason", batch.reason);
-            }
-            item.put("sourceRows", batch.sourceRows);
-            if (!batch.rows.isEmpty()) {
-                item.put("rows", batch.rows);
-            }
-            if (!batch.mappings.isEmpty()) {
-                item.put("mappings", batch.mappings);
-            }
-            if (batch.explanation != null) {
-                item.put("explanation", batch.explanation);
-            }
-            if (batch.rawResponse != null && !batch.rawResponse.isBlank()) {
-                item.put("rawResponse", batch.rawResponse);
-            }
-            payload.add(item);
-        }
-        return writeJson(payload);
-    }
-
-    private List<BatchState> readBatches(String json) {
-        List<BatchState> batches = new ArrayList<>();
-        if (json == null || json.isBlank()) {
-            return batches;
-        }
-        try {
-            JsonNode root = objectMapper.readTree(json);
-            if (!root.isArray()) {
-                return batches;
-            }
-            for (JsonNode node : root) {
-                BatchState batch = new BatchState();
-                batch.index = node.path("index").asInt();
-                batch.label = node.path("label").asText("");
-                batch.status = node.path("status").asText(BATCH_PENDING);
-                batch.reason = node.hasNonNull("reason") ? node.get("reason").asText("") : null;
-                for (JsonNode row : node.path("sourceRows")) {
-                    List<String> cells = new ArrayList<>();
-                    for (JsonNode cell : row) {
-                        cells.add(cell.isNull() ? "" : cell.asText(""));
-                    }
-                    batch.sourceRows.add(cells);
-                }
-                for (JsonNode row : node.path("rows")) {
-                    batch.rows.add(objectMapper.convertValue(row, RowDto.class));
-                }
-                for (JsonNode mapping : node.path("mappings")) {
-                    batch.mappings.add(new MappingDto(
-                            mapping.path("source").asText(""),
-                            mapping.path("target").asText(""),
-                            mapping.path("note").asText("")));
-                }
-                batch.suggestedTarget =
-                        node.hasNonNull("suggestedTarget") ? node.get("suggestedTarget").asText("") : null;
-                batch.explanation =
-                        node.hasNonNull("explanation") ? node.get("explanation").asText("") : null;
-                batch.rawResponse =
-                        node.hasNonNull("rawResponse") ? node.get("rawResponse").asText("") : null;
-                batches.add(batch);
-            }
-        } catch (Exception ex) {
-            throw new IllegalStateException("读取导入批次记录失败", ex);
-        }
-        return batches;
-    }
-
     /**
      * A restart leaves rows in PARSING that nothing is working on any more. The batches
      * that never ran are recorded as failures, so a session with finished batches comes
@@ -933,25 +856,25 @@ public class AiImportService {
                 if (log == null || !AiImportLog.PARSING.equals(log.getStatus())) {
                     return;
                 }
-                List<BatchState> batches = readBatches(log.getBatchesJson());
-                for (BatchState batch : batches) {
-                    if (BATCH_PENDING.equals(batch.status)) {
-                        batch.status = BATCH_FAILED;
+                List<BatchStore.State> plan = batchStore.read(log.getBatchesJson());
+                for (BatchStore.State batch : plan) {
+                    if (BatchStore.PENDING.equals(batch.status)) {
+                        batch.status = BatchStore.FAILED;
                         batch.reason = "服务重启中断了这一批，请重试";
                     }
                 }
-                Merged merged = mergeBatches(batches);
-                int completed = (int) batches.stream().filter(BatchState::done).count();
-                int failures = (int) batches.stream().filter(BatchState::failed).count();
-                int total = log.getTotalBatches() > 0 ? log.getTotalBatches() : batches.size();
-                log.setBatchesJson(writeBatches(batches));
+                BatchStore.Merged merged = batchStore.merge(plan);
+                int completed = batchStore.doneCount(plan);
+                int failures = batchStore.failedCount(plan);
+                int total = log.getTotalBatches() > 0 ? log.getTotalBatches() : plan.size();
+                log.setBatchesJson(batchStore.write(plan));
                 log.setCompletedBatches(completed);
                 log.setCurrentBatch(null);
                 if (completed > 0) {
                     String explanation =
-                            withFailures(merged.explanation(), failureSummary(batches, total));
+                            withFailures(merged.explanation(), batchStore.failureSummary(plan, total));
                     log.setStatus(failures > 0 ? AiImportLog.PARTIAL : AiImportLog.PREVIEW);
-                    log.setPreviewJson(payloadJson(
+                    log.setPreviewJson(batchStore.payloadJson(
                             merged.mappings(), merged.rows(), explanation, merged.suggestedTarget()));
                     log.setAiExplanation(explanation);
                     log.setRowCount(merged.rows().size());
@@ -965,62 +888,12 @@ public class AiImportService {
         }
     }
 
-    /** One planned batch: the grid rows it covers and its 1-based position. */
-    private record BatchWork(int index, String label, List<List<String>> sourceRows) {}
-
     /**
      * What every prompt of one batch run needs besides the batch's own rows: the sheet's
      * header context, and how many batches the file was planned as. A retry reuses the
      * original plan so its prompt still says "第 2/4 批".
      */
     private record BatchContext(String sheetName, List<List<String>> headers, int totalBatches) {}
-
-    /** One batch's persisted state, read back from and written to {@code batches_json}. */
-    private static final class BatchState {
-        int index;
-        String label;
-        String status;
-        String reason;
-        List<List<String>> sourceRows = new ArrayList<>();
-        List<RowDto> rows = new ArrayList<>();
-        List<MappingDto> mappings = new ArrayList<>();
-        String suggestedTarget;
-        String explanation;
-        /** This batch's own AI answer, so a retry cannot overwrite the first pass's audit. */
-        String rawResponse;
-
-        static BatchState pending(BatchWork work) {
-            BatchState batch = new BatchState();
-            batch.index = work.index();
-            batch.label = work.label();
-            batch.status = BATCH_PENDING;
-            batch.sourceRows = new ArrayList<>(work.sourceRows());
-            return batch;
-        }
-
-        boolean done() {
-            return BATCH_DONE.equals(status);
-        }
-
-        boolean failed() {
-            return BATCH_FAILED.equals(status);
-        }
-    }
-
-    /** What one batch produced: a parsed answer, or the reason it could not parse. */
-    private record BatchOutcome(AiImportParser.Parsed parsed, String failed) {
-
-        static BatchOutcome parsed(AiImportParser.Parsed parsed) {
-            return new BatchOutcome(parsed, null);
-        }
-
-        static BatchOutcome failed(String reason) {
-            return new BatchOutcome(null, reason);
-        }
-    }
-
-    private record Merged(
-            List<MappingDto> mappings, List<RowDto> rows, String explanation, String suggestedTarget) {}
 
 
     private int dataRowCount(List<List<String>> rows) {
@@ -1074,12 +947,6 @@ public class AiImportService {
             labels++;
         }
         return labels >= 2;
-    }
-
-    private String rowKey(RowDto row) {
-        return String.join("\u0001",
-                value(row, "className"), value(row, "dayOfWeek"), value(row, "periodNo"),
-                value(row, "courseName"), value(row, "teacherName"), value(row, "roomName"));
     }
 
     private String chunkLabel(List<List<String>> chunk) {
@@ -1185,7 +1052,7 @@ public class AiImportService {
             String explanation,
             String suggestedTarget,
             String status) {
-        log.setPreviewJson(payloadJson(mappings, rows, explanation, suggestedTarget));
+        log.setPreviewJson(batchStore.payloadJson(mappings, rows, explanation, suggestedTarget));
         log.setAiExplanation(explanation);
         log.setStatus(status);
         log.setRowCount(rows.size());
@@ -1200,20 +1067,10 @@ public class AiImportService {
             String explanation,
             String suggestedTarget,
             String status) {
-        log.setConfirmedJson(payloadJson(mappings, rows, explanation, suggestedTarget));
+        log.setConfirmedJson(batchStore.payloadJson(mappings, rows, explanation, suggestedTarget));
         log.setStatus(status);
         log.setRowCount(rows.size());
         touch(log);
-    }
-
-    private String payloadJson(
-            List<MappingDto> mappings, List<RowDto> rows, String explanation, String suggestedTarget) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("suggestedTarget", suggestedTarget == null ? "" : suggestedTarget);
-        payload.put("mappings", mappings);
-        payload.put("rows", rows);
-        payload.put("explanation", explanation == null ? "" : explanation);
-        return writeJson(payload);
     }
 
     private Payload readWorkingPayload(AiImportLog log, ImportTarget target) {
@@ -1257,7 +1114,7 @@ public class AiImportService {
     private PreviewDto preview(AiImportLog log) {
         ImportTarget target = targetOf(log);
         Payload payload = readWorkingPayload(log, target);
-        List<BatchState> batches = readBatches(log.getBatchesJson());
+        List<BatchStore.State> plan = batchStore.read(log.getBatchesJson());
         boolean parsing = AiImportLog.PARSING.equals(log.getStatus());
         // While batches are still arriving the preview is a moving target: skip the
         // (query-heavy) matching so polling every two seconds stays cheap. An abandoned
@@ -1277,28 +1134,26 @@ public class AiImportService {
                 log.getStatus(),
                 issues(analysis, payload.rows()),
                 summary(analysis),
-                progress(log, batches),
-                failedBatches(log, batches));
+                progress(log, plan),
+                failedBatches(log, plan));
     }
 
     /** Null for sessions that were never batched (small tables, text, images). */
-    private ImportProgressDto progress(AiImportLog log, List<BatchState> batches) {
+    private ImportProgressDto progress(AiImportLog log, List<BatchStore.State> plan) {
         if (log.getTotalBatches() <= 0) {
             return null;
         }
-        int failed = (int) batches.stream()
-                .filter(batch -> BATCH_FAILED.equals(batch.status))
-                .count();
         return new ImportProgressDto(
-                log.getTotalBatches(), log.getCompletedBatches(), failed, log.getCurrentBatch());
+                log.getTotalBatches(), log.getCompletedBatches(), batchStore.failedCount(plan),
+                log.getCurrentBatch());
     }
 
-    private List<FailedBatchDto> failedBatches(AiImportLog log, List<BatchState> batches) {
-        int total = log.getTotalBatches() > 0 ? log.getTotalBatches() : batches.size();
-        return batches.stream()
-                .filter(BatchState::failed)
+    private List<FailedBatchDto> failedBatches(AiImportLog log, List<BatchStore.State> plan) {
+        int total = log.getTotalBatches() > 0 ? log.getTotalBatches() : plan.size();
+        return plan.stream()
+                .filter(BatchStore.State::failed)
                 .map(batch -> new FailedBatchDto(
-                        batch.index, batch.label, batchFailureText(batch, total)))
+                        batch.index, batch.label, batchStore.batchFailureText(batch, total)))
                 .toList();
     }
 
@@ -1385,15 +1240,77 @@ public class AiImportService {
         }
     }
 
+    /**
+     * Records a parse that never produced a preview. The row is re-read first: the failure
+     * may already have been settled by another writer (the batch dispatcher fails the
+     * session itself when the queue refuses the job), and a stale copy must not be written
+     * back over it.
+     */
     private void markFailed(AiImportLog log, String message) {
-        log.setStatus(AiImportLog.FAILED);
-        log.setAiExplanation(message);
-        touch(log);
+        writeQuietly(() -> logs.findById(log.getId()).ifPresent(current -> {
+            current.setStatus(AiImportLog.FAILED);
+            current.setAiExplanation(message);
+            current.setUpdatedAt(Instant.now());
+            logs.save(current);
+        }));
     }
 
     private void touch(AiImportLog log) {
         log.setUpdatedAt(Instant.now());
-        logs.save(log);
+        try {
+            // A session is saved more than once per request (preview, then the user copy),
+            // and each save merges a detached copy: the version has to travel with it.
+            log.setVersion(logs.save(log).getVersion());
+        } catch (OptimisticLockingFailureException ex) {
+            throw ApiException.conflict(LOST_VERSION);
+        }
+    }
+
+    /**
+     * A whole-table parse leaves no batch plan behind: whatever an earlier pass wrote is
+     * stale the moment every row comes back in one answer.
+     */
+    private void resetBatchProgress(AiImportLog log) {
+        log.setTotalBatches(0);
+        log.setCompletedBatches(0);
+        log.setCurrentBatch(null);
+        log.setBatchesJson(null);
+        log.setAiRawResponse(null);
+    }
+
+    /**
+     * Runs one short write transaction. A stop or abandon that lost the row to the
+     * background thread reads it again and retries once; a second loss is reported as a
+     * conflict instead of pretending the write happened.
+     */
+    private void writeTransaction(Runnable body) {
+        try {
+            transactionTemplate.executeWithoutResult(status -> body.run());
+        } catch (OptimisticLockingFailureException ex) {
+            try {
+                transactionTemplate.executeWithoutResult(status -> body.run());
+            } catch (OptimisticLockingFailureException again) {
+                throw ApiException.conflict(LOST_VERSION);
+            }
+        }
+    }
+
+    /**
+     * Runs one short write transaction for the background parser. Losing the race is not
+     * an error there: the retry re-reads the row and the batch's own guard decides whether
+     * the result still belongs to it.
+     */
+    private void writeQuietly(Runnable body) {
+        try {
+            transactionTemplate.executeWithoutResult(status -> body.run());
+        } catch (OptimisticLockingFailureException ex) {
+            try {
+                transactionTemplate.executeWithoutResult(status -> body.run());
+            } catch (OptimisticLockingFailureException again) {
+                // Give up on this one write: the next batch or the startup recovery settles
+                // the row, and a parse must never fail because two writers raced.
+            }
+        }
     }
 
     private AiImportLog requireSession(long id, String username) {
