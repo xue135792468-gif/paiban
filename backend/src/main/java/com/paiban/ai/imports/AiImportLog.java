@@ -26,6 +26,8 @@ public class AiImportLog {
     public static final String EDITED = "EDITED";
     public static final String COMMITTED = "COMMITTED";
     public static final String FAILED = "FAILED";
+    /** A large upload is being parsed in the background; the page polls for progress. */
+    public static final String PARSING = "PARSING";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -78,6 +80,21 @@ public class AiImportLog {
 
     @Column(name = "imported_count", nullable = false)
     private int importedCount;
+
+    /** 0 when the session was parsed in one call (small tables, text, images). */
+    @Column(name = "total_batches", nullable = false)
+    private int totalBatches;
+
+    @Column(name = "completed_batches", nullable = false)
+    private int completedBatches;
+
+    /** Label (usually the class name) of the batch being parsed; null when idle. */
+    @Column(name = "current_batch", length = 180)
+    private String currentBatch;
+
+    /** One entry per batch: its status, source rows and parsed result. */
+    @Column(name = "batches_json", columnDefinition = "TEXT")
+    private String batchesJson;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
