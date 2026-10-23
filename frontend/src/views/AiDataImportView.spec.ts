@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import AiDataImportView from './AiDataImportView.vue'
 
@@ -28,9 +28,18 @@ function makeRouter(): Router {
 async function mountImport(
   path = '/admin/ai-import',
   visionCapable = true,
+  getOverride?: (url: string) => Promise<unknown> | null,
 ): Promise<{ wrapper: VueWrapper; router: Router }> {
   httpMock.get.mockImplementation((url: string) => {
+    const override = getOverride?.(url)
+    if (override) return override
     if (url === '/ai/status') return Promise.resolve(aiStatus(visionCapable))
+    const session = url.match(/^\/ai\/import\/sessions\/(\d+)$/)
+    if (session) {
+      return Promise.resolve({
+        data: { ...timetablePreview().data, sessionId: Number(session[1]) },
+      })
+    }
     return Promise.resolve({ data: [] })
   })
   const router = makeRouter()
@@ -68,11 +77,14 @@ function button(wrapper: VueWrapper, label: string) {
   return found
 }
 
+beforeEach(() => {
+  localStorage.clear()
+})
+
 describe('AI 导入目标卡片', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
-
   it('展示教师、课表两个可用目标和四个即将支持的目标', async () => {
     const { wrapper } = await mountImport()
 
@@ -534,3 +546,181 @@ describe('没有当前学期时的阻塞提示', () => {
     expect(wrapper.find('[data-testid="mapping-clear"]').exists()).toBe(false)
   })
 })
+
+describe('会话恢复', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('挂载时按 ?session 恢复预览，并把会话留在 URL 里', async () => {
+    const { wrapper, router } = await mountImport('/admin/ai-import?target=timetable&session=9')
+
+    expect(httpMock.get).toHaveBeenCalledWith('/ai/import/sessions/9')
+    expect(wrapper.find('[data-testid="target-card"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="preview-target"]').text()).toContain('课表')
+    expect(wrapper.get('[data-testid="timetable-summary"]').text()).toContain('共 2 节')
+    expect(router.currentRoute.value.query.session).toBe('9')
+  })
+
+  it('恢复失败时给出可读错误、回到上传表单，并清掉 URL 与会话记录', async () => {
+    const error = vi.spyOn(ElMessage, 'error')
+    seedLastSession()
+    const { wrapper, router } = await mountImport('/admin/ai-import?session=9', true, (url) =>
+      url === '/ai/import/sessions/9'
+        ? Promise.reject({ response: { status: 404 } })
+        : null,
+    )
+
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('已不存在'))
+    expect(wrapper.find('[data-testid="target-card"]').exists()).toBe(true)
+    expect(button(wrapper, '开始解析').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="last-session-card"]').exists()).toBe(false)
+    expect(router.currentRoute.value.query.session).toBeUndefined()
+    expect(localStorage.getItem('paiban.aiImport.lastSession')).toBeNull()
+    error.mockRestore()
+  })
+
+  it('解析成功后把 session 与 target 写进 URL，并记住上次导入', async () => {
+    const { wrapper, router } = await mountImport('/admin/ai-import')
+    httpMock.post.mockResolvedValue(timetablePreview())
+
+    chooseFile(wrapper, 0, 'grade-1.xlsx')
+    await flushPromises()
+    await button(wrapper, '开始解析').trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.query.session).toBe('9')
+    expect(router.currentRoute.value.query.target).toBe('teacher')
+    const stored = JSON.parse(localStorage.getItem('paiban.aiImport.lastSession') ?? '{}')
+    expect(stored).toMatchObject({ id: 9, fileName: 'grade-1.xlsx', status: 'PREVIEW' })
+    expect(typeof stored.savedAt).toBe('string')
+  })
+
+  it('粘贴文本导入时，上次导入显示为粘贴文本', async () => {
+    const { wrapper } = await mountImport()
+    httpMock.post.mockResolvedValue(preview('teacher'))
+
+    const textTab = wrapper.findAll('.el-tabs__item').find((tab) => tab.text() === '粘贴文本')
+    if (!textTab) throw new Error('text tab not found')
+    await textTab.trigger('click')
+    await wrapper.get('textarea').setValue('张老师 语文 13800000001')
+    await button(wrapper, '开始解析').trigger('click')
+    await flushPromises()
+
+    expect(readStoredStatus()).toBe('PREVIEW')
+    const stored = JSON.parse(localStorage.getItem('paiban.aiImport.lastSession') ?? '{}')
+    expect(stored.fileName).toBe('粘贴文本')
+  })
+
+  it('空页面显示上次导入卡片，点继续恢复该会话', async () => {
+    seedLastSession({ savedAt: '2026-10-23T10:00:00' })
+    const { wrapper, router } = await mountImport()
+
+    const card = wrapper.get('[data-testid="last-session-card"]')
+    expect(card.text()).toContain('grade-1.xlsx')
+    expect(card.text()).toContain('待确认')
+    expect(card.text()).toContain('2026-10-23 10:00')
+
+    await wrapper.get('[data-testid="continue-last-session"]').trigger('click')
+    await flushPromises()
+
+    expect(httpMock.get).toHaveBeenCalledWith('/ai/import/sessions/9')
+    expect(wrapper.find('[data-testid="last-session-card"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="preview-target"]').text()).toContain('课表')
+    expect(router.currentRoute.value.query.session).toBe('9')
+  })
+
+  it('恢复已入库会话时显示已入库，不编造入库条数', async () => {
+    seedLastSession()
+    const { wrapper } = await mountImport('/admin/ai-import?session=9', true, (url) =>
+      url === '/ai/import/sessions/9'
+        ? Promise.resolve({ data: { ...timetablePreview().data, status: 'COMMITTED' } })
+        : null,
+    )
+
+    expect(wrapper.get('.head-actions').text()).toContain('已入库')
+    const alert = wrapper.get('.result-alert')
+    expect(alert.text()).toContain('该导入已入库')
+    expect(alert.text()).not.toContain('0 条')
+    const stored = JSON.parse(localStorage.getItem('paiban.aiImport.lastSession') ?? '{}')
+    expect(stored.status).toBe('COMMITTED')
+  })
+
+  it('恢复失败会话时显示失败原因并收起入库操作', async () => {
+    const { wrapper } = await mountImport('/admin/ai-import?session=9', true, (url) =>
+      url === '/ai/import/sessions/9'
+        ? Promise.resolve({
+            data: {
+              ...timetablePreview().data,
+              status: 'FAILED',
+              explanation: '模型返回的表格为空，请检查文件内容',
+            },
+          })
+        : null,
+    )
+
+    expect(wrapper.get('[data-testid="failed-reason"]').text()).toContain(
+      '模型返回的表格为空',
+    )
+    expect(wrapper.get('.head-actions').text()).toContain('解析失败')
+    expect(wrapper.find('.footer-actions').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="mapping-step"]').exists()).toBe(false)
+  })
+
+  it('未知状态回退到空的新导入页，并移除 URL 会话', async () => {
+    const error = vi.spyOn(ElMessage, 'error')
+    seedLastSession({ status: 'QUEUED' })
+    const { wrapper, router } = await mountImport('/admin/ai-import?session=9', true, (url) =>
+      url === '/ai/import/sessions/9'
+        ? Promise.resolve({ data: { ...timetablePreview().data, status: 'QUEUED' } })
+        : null,
+    )
+
+    expect(wrapper.find('[data-testid="target-card"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="preview-target"]').exists()).toBe(false)
+    expect(router.currentRoute.value.query.session).toBeUndefined()
+    expect(localStorage.getItem('paiban.aiImport.lastSession')).toBeNull()
+    expect(error).toHaveBeenCalled()
+    error.mockRestore()
+  })
+
+  it('重新导入会移除 URL 里的 session', async () => {
+    const { wrapper, router } = await mountImport('/admin/ai-import?session=9')
+
+    await button(wrapper, '重新导入').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="target-card"]').exists()).toBe(true)
+    expect(router.currentRoute.value.query.session).toBeUndefined()
+  })
+
+  it('入库后把上次导入的状态更新为已入库', async () => {
+    const { wrapper } = await mountImport('/admin/ai-import?target=timetable')
+    await showTimetable(wrapper)
+    expect(readStoredStatus()).toBe('PREVIEW')
+
+    httpMock.post.mockResolvedValue({
+      data: { imported: 2, errors: [], warnings: [], draftId: 42 },
+    })
+    await commitButton(wrapper).trigger('click')
+    await flushPromises()
+
+    expect(readStoredStatus()).toBe('COMMITTED')
+  })
+})
+
+function readStoredStatus(): string | undefined {
+  return JSON.parse(localStorage.getItem('paiban.aiImport.lastSession') ?? '{}').status
+}
+
+function seedLastSession(overrides: Record<string, unknown> = {}) {
+  const record = {
+    id: 9,
+    fileName: 'grade-1.xlsx',
+    status: 'PREVIEW',
+    savedAt: '2026-10-23T10:00:00',
+    ...overrides,
+  }
+  localStorage.setItem('paiban.aiImport.lastSession', JSON.stringify(record))
+  return record
+}

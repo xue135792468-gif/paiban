@@ -20,92 +20,29 @@
       class="notice"
     />
 
-    <el-card v-if="!preview" shadow="never">
-      <template #header><span class="card-title">选择导入目标</span></template>
-      <ImportTargetPicker
-        :targets="IMPORT_TARGETS"
-        :selected="selectedTarget"
-        @select="onSelectTarget"
-      />
-    </el-card>
+    <LastImportCard
+      v-if="!preview && lastSession"
+      :session="lastSession"
+      :loading="restoring"
+      @continue="continueLastSession"
+    />
 
-    <el-card v-if="!preview" shadow="never">
-      <el-tabs v-model="inputMode">
-        <el-tab-pane label="Excel / CSV" name="excel">
-          <el-upload
-            drag
-            :auto-upload="false"
-            :show-file-list="false"
-            accept=".xlsx,.xls,.csv"
-            :on-change="onExcelChange"
-          >
-            <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-            <div class="el-upload__text">把文件拖到这里，或<em>点击选择</em></div>
-            <template #tip>
-              <div class="el-upload__tip">{{ currentTarget.excelHint }}</div>
-            </template>
-          </el-upload>
-          <div v-if="selectedFile" class="file-hint">已选择：{{ selectedFile.name }}</div>
-        </el-tab-pane>
-
-        <el-tab-pane label="粘贴文本" name="text">
-          <el-input
-            v-model="text"
-            type="textarea"
-            :rows="9"
-            :placeholder="currentTarget.textPlaceholder"
-          />
-          <div class="hint">可以直接从微信聊天记录、通知里复制粘贴。</div>
-        </el-tab-pane>
-
-        <el-tab-pane label="上传图片" name="image" :disabled="!visionCapable || selectedTarget !== 'teacher'">
-          <template #label>
-            <span data-testid="image-tab">上传图片</span>
-          </template>
-          <el-upload
-            drag
-            :auto-upload="false"
-            :show-file-list="false"
-            accept="image/png,image/jpeg,image/webp"
-            :on-change="onImageChange"
-          >
-            <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-            <div class="el-upload__text">上传课表或名单照片，或<em>点击选择</em></div>
-            <template #tip>
-              <div class="el-upload__tip">需要所选模型支持视觉（vision_capable）。</div>
-            </template>
-          </el-upload>
-          <div v-if="imageFile" class="file-hint">已选择：{{ imageFile.name }}</div>
-        </el-tab-pane>
-      </el-tabs>
-
-      <el-alert
-        v-if="configured && !visionCapable"
-        data-testid="vision-warning"
-        title="当前模型不支持图片，请在设置中换用视觉模型"
-        type="warning"
-        show-icon
-        :closable="false"
-        class="vision-warning"
-      />
-
-      <div class="parse-actions">
-        <el-button type="primary" :loading="parsing" :disabled="!configured || !canParse" @click="parse">
-          开始解析
-        </el-button>
-        <span class="hint">AI 只生成预览，点击「入库」才会写入数据。</span>
-      </div>
-
-      <el-alert
-        v-if="parsing"
-        data-testid="parse-progress"
-        title="AI 正在解析，大表会按班分批，可能需要几分钟"
-        type="info"
-        show-icon
-        :closable="false"
-        class="parse-progress"
-      />
-    </el-card>
+    <ImportSourcePanel
+      v-if="!preview"
+      v-model:input-mode="inputMode"
+      v-model:text="text"
+      :configured="configured"
+      :vision-capable="visionCapable"
+      :selected-target="selectedTarget"
+      :can-parse="canParse"
+      :parsing="parsing"
+      :selected-file-name="selectedFile?.name ?? ''"
+      :image-file-name="imageFile?.name ?? ''"
+      @select-target="onSelectTarget"
+      @excel-change="onExcelChange"
+      @image-change="onImageChange"
+      @parse="parse"
+    />
 
     <template v-else>
       <el-alert
@@ -183,6 +120,15 @@
       </el-card>
 
       <el-alert
+        v-if="preview.status === 'FAILED'"
+        data-testid="failed-reason"
+        type="error"
+        show-icon
+        :closable="false"
+        :title="preview.explanation || 'AI 解析失败，请调整文件后重新上传'"
+      />
+
+      <el-alert
         v-for="issue in blockingIssues"
         :key="issue.field + '-' + issue.message"
         data-testid="blocking-issue"
@@ -208,7 +154,10 @@
         class="result-alert"
       >
         <template #title>
-          已成功入库 {{ importedCount }} 条{{ targetTitle(preview.targetType) }}数据
+          <template v-if="importedCount !== null">
+            已成功入库 {{ importedCount }} 条{{ targetTitle(preview.targetType) }}数据
+          </template>
+          <template v-else>该导入已入库</template>
         </template>
         <div class="result-actions">
           <el-button
@@ -246,7 +195,7 @@
         </div>
       </el-alert>
 
-      <div class="footer-actions">
+      <div v-if="preview.status !== 'FAILED'" class="footer-actions">
         <template v-if="isTimetable">
           <el-button
             type="primary"
@@ -289,20 +238,15 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type UploadFile } from 'element-plus'
-import { UploadFilled } from '@element-plus/icons-vue'
 import { AI_IMPORT_TIMEOUT_MS, http } from '@/api/http'
 import { aiParseErrorMessage } from '@/api/errors'
-import ImportTargetPicker from '@/components/aiImport/ImportTargetPicker.vue'
+import ImportSourcePanel from '@/components/aiImport/ImportSourcePanel.vue'
+import LastImportCard from '@/components/aiImport/LastImportCard.vue'
 import TimetableMappingStep from '@/components/aiImport/TimetableMappingStep.vue'
 import TimetablePreviewGrid from '@/components/aiImport/TimetablePreviewGrid.vue'
 import { useImportSession } from '@/components/aiImport/useImportSession'
 import { type ImportPreview, type PreviewRow } from '@/components/aiImport/timetablePreview'
-import {
-  IMPORT_TARGETS,
-  preselectedTarget,
-  targetCard,
-  targetTitle,
-} from '@/components/aiImport/importTargets'
+import { preselectedTarget, targetTitle } from '@/components/aiImport/importTargets'
 
 const router = useRouter()
 const route = useRoute()
@@ -323,6 +267,7 @@ const {
   reparsing,
   commitErrors,
   importedCount,
+  lastSession,
   isTimetable,
   previewIssues,
   commitDisabled,
@@ -330,13 +275,16 @@ const {
   statusLabel,
   statusType,
   setPreview,
+  rememberSession,
+  restore,
+  dropSessionFromUrl,
   commit,
   continueWithAi,
   reparse,
   clear,
 } = useImportSession()
+const restoring = ref(false)
 
-const currentTarget = computed(() => targetCard(selectedTarget.value) ?? IMPORT_TARGETS[0])
 const mappableIssues = computed(() => previewIssues.value.filter((issue) => issue.row > 0))
 const blockingIssues = computed(() => previewIssues.value.filter((issue) => issue.row === 0))
 const suggestedTarget = computed(() => {
@@ -347,6 +295,7 @@ const showMappingStep = computed(
   () =>
     isTimetable.value &&
     preview.value?.status !== 'COMMITTED' &&
+    preview.value?.status !== 'FAILED' &&
     (mappableIssues.value.length > 0 || blockingIssues.value.length === 0),
 )
 
@@ -365,6 +314,10 @@ watch(selectedTarget, (target) => {
 })
 
 onMounted(async () => {
+  const session = route.query.session
+  if (typeof session === 'string' && session) {
+    await restoreFrom(session)
+  }
   try {
     const { data } = await http.get('/ai/status')
     configured.value = Boolean(data?.tasks?.data_import?.configured)
@@ -373,6 +326,24 @@ onMounted(async () => {
     configured.value = false
   }
 })
+
+/** Restores a session and lines the target picker up with what was restored. */
+async function restoreFrom(sessionId: string) {
+  restoring.value = true
+  try {
+    const outcome = await restore(sessionId)
+    if (outcome === 'restored' && preview.value) {
+      selectedTarget.value = preselectedTarget(preview.value.targetType)
+    }
+  } finally {
+    restoring.value = false
+  }
+}
+
+async function continueLastSession() {
+  if (!lastSession.value) return
+  await restoreFrom(String(lastSession.value.id))
+}
 
 function onSelectTarget(code: string) {
   selectedTarget.value = code
@@ -391,6 +362,7 @@ function onImageChange(file: UploadFile) {
 
 async function parse() {
   if (!configured.value) return
+  dropSessionFromUrl()
   parsing.value = true
   commitErrors.value = []
   const config = { params: { target: selectedTarget.value }, timeout: AI_IMPORT_TIMEOUT_MS }
@@ -409,11 +381,26 @@ async function parse() {
     }
     setPreview(response.data)
     editing.value = false
+    rememberSession(response.data, uploadedFileName())
+    await router.replace({
+      query: {
+        ...route.query,
+        session: String(response.data.sessionId),
+        target: selectedTarget.value,
+      },
+    })
   } catch (error) {
     ElMessage.error(aiParseErrorMessage(error))
   } finally {
     parsing.value = false
   }
+}
+
+/** The label the 「上次导入」 card shows for this parse. */
+function uploadedFileName(): string {
+  if (inputMode.value === 'excel') return selectedFile.value?.name ?? ''
+  if (inputMode.value === 'image') return imageFile.value?.name ?? ''
+  return '粘贴文本'
 }
 
 /** Switches the target the AI suggested, keeping the chosen file for a re-parse. */
@@ -470,32 +457,6 @@ function fieldLabel(field: string) {
 
 .notice {
   margin-bottom: 4px;
-}
-
-.file-hint {
-  margin-top: 8px;
-  color: #4b5563;
-  font-size: 13px;
-}
-
-.hint {
-  color: #6b7280;
-  font-size: 12px;
-}
-
-.parse-actions {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-top: 16px;
-}
-
-.parse-progress {
-  margin-top: 12px;
-}
-
-.vision-warning {
-  margin-top: 8px;
 }
 
 .suggested-target {
