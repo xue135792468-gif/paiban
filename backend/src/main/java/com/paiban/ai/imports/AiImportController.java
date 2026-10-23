@@ -1,5 +1,6 @@
 package com.paiban.ai.imports;
 
+import com.paiban.ai.imports.ImportDtos.AbandonRequest;
 import com.paiban.ai.imports.ImportDtos.CommitResultDto;
 import com.paiban.ai.imports.ImportDtos.LookupDto;
 import com.paiban.ai.imports.ImportDtos.MappingRequest;
@@ -115,6 +116,15 @@ public class AiImportController {
     @PostMapping("/sessions/{id}/retry")
     public PreviewDto retry(@PathVariable Long id, Principal principal) {
         return service.retry(id, principal.getName());
+    }
+
+    /** Abandons an unfinished parse; only a {@code PARSING} or {@code PARTIAL} session accepts it. */
+    @PostMapping("/sessions/{id}/abandon")
+    public PreviewDto abandon(
+            @PathVariable Long id,
+            @RequestBody(required = false) AbandonRequest request,
+            Principal principal) {
+        return service.abandon(id, principal.getName(), request == null ? null : request.reason());
     }
 
     @PostMapping("/sessions/{id}/reparse")

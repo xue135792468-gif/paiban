@@ -262,6 +262,9 @@ public class AiImportService {
 
     public PreviewDto reparse(long id, String username) {
         AiImportLog log = requireSession(id, username);
+        if (AiImportLog.ABANDONED.equals(log.getStatus())) {
+            throw ApiException.conflict("该导入已放弃，不能再重新解析");
+        }
         if (AiImportLog.COMMITTED.equals(log.getStatus())) {
             throw ApiException.conflict("已入库的导入不能再重新解析");
         }
@@ -442,6 +445,52 @@ public class AiImportService {
             // Upload gone or unreadable: keep going with the rows already recorded.
         }
         return new BatchContext("", List.of(), total);
+    }
+
+    /**
+     * Gives up on a session that is still parsing or only partly parsed. The stop flag
+     * ends the background run (no further AI call goes out), and the record is kept for
+     * the history: what was parsed stays on the row for audit, but the session never
+     * moves forward again and nothing is written to the business tables.
+     */
+    public PreviewDto abandon(long id, String username, String reason) {
+        AiImportLog log = requireSession(id, username);
+        requireAbandonable(log);
+        AtomicBoolean stop = stopFlags.get(id);
+        if (stop != null) {
+            // Only an in-memory flag exists for a run of this process; a finished run has
+            // already removed it and needs no stop.
+            stop.set(true);
+        }
+        transactionTemplate.executeWithoutResult(status -> {
+            AiImportLog current = logs.findById(id).orElse(null);
+            if (current == null) {
+                return;
+            }
+            // The background thread may have finished while we were stopping it; a
+            // session that already reached a final state cannot be abandoned.
+            requireAbandonable(current);
+            current.setStatus(AiImportLog.ABANDONED);
+            current.setCurrentBatch(null);
+            current.setAiExplanation(abandonReason(reason));
+            current.setUpdatedAt(Instant.now());
+            logs.save(current);
+        });
+        return preview(logs.findById(id)
+                .orElseThrow(() -> ApiException.notFound("导入会话不存在: " + id)));
+    }
+
+    private void requireAbandonable(AiImportLog log) {
+        if (AiImportLog.PARSING.equals(log.getStatus()) || AiImportLog.PARTIAL.equals(log.getStatus())) {
+            return;
+        }
+        throw ApiException.conflict("只有解析中或部分结果的导入可以放弃");
+    }
+
+    /** The user's own note when they gave one, otherwise a plain default for the history. */
+    private String abandonReason(String reason) {
+        String note = reason == null ? "" : reason.trim();
+        return note.isEmpty() ? "用户放弃导入" : "用户放弃导入：" + note;
     }
 
     public byte[] file(long id, String username) {
@@ -1159,9 +1208,11 @@ public class AiImportService {
         List<BatchState> batches = readBatches(log.getBatchesJson());
         boolean parsing = AiImportLog.PARSING.equals(log.getStatus());
         // While batches are still arriving the preview is a moving target: skip the
-        // (query-heavy) matching so polling every two seconds stays cheap.
+        // (query-heavy) matching so polling every two seconds stays cheap. An abandoned
+        // session is a closed record, so its rows are not analysed either.
+        boolean dormant = parsing || AiImportLog.ABANDONED.equals(log.getStatus());
         TimetableImportService.Analysis analysis =
-                parsing ? null : analysis(target, payload.rows());
+                dormant ? null : analysis(target, payload.rows());
         return new PreviewDto(
                 log.getId(),
                 log.getTargetType(),
@@ -1205,7 +1256,9 @@ public class AiImportService {
      */
     private String explanation(AiImportLog log, Payload payload) {
         String stored = payload.explanation() == null ? "" : payload.explanation();
-        if (!stored.isBlank() || !AiImportLog.FAILED.equals(log.getStatus())) {
+        boolean closed = AiImportLog.FAILED.equals(log.getStatus())
+                || AiImportLog.ABANDONED.equals(log.getStatus());
+        if (!stored.isBlank() || !closed) {
             return stored;
         }
         return log.getAiExplanation() == null ? stored : log.getAiExplanation();
@@ -1302,6 +1355,9 @@ public class AiImportService {
     }
 
     private void requireEditable(AiImportLog log) {
+        if (AiImportLog.ABANDONED.equals(log.getStatus())) {
+            throw ApiException.conflict("该导入已放弃，不能再修改或入库");
+        }
         if (AiImportLog.PARSING.equals(log.getStatus())) {
             throw ApiException.conflict("解析还没完成，请等进度走完再操作");
         }
