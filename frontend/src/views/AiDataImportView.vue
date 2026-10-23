@@ -59,7 +59,9 @@
         </template>
       </el-alert>
 
-      <el-card shadow="never">
+      <ImportProgressPanel v-if="isParsing" :progress="preview.progress" />
+
+      <el-card v-if="!isParsing" shadow="never">
         <template #header>
           <div class="card-head">
             <span class="card-title">解析预览（{{ preview.rows.length }} 行）</span>
@@ -172,7 +174,7 @@
         </div>
       </el-alert>
 
-      <el-card shadow="never" class="explain-card">
+      <el-card v-if="!isParsing" shadow="never" class="explain-card">
         <template #header><span class="card-title">AI 说明</span></template>
         <p class="explanation">{{ preview.explanation || 'AI 未提供额外说明。' }}</p>
         <el-table :data="preview.mappings" size="small" border>
@@ -195,7 +197,7 @@
         </div>
       </el-alert>
 
-      <div v-if="preview.status !== 'FAILED'" class="footer-actions">
+      <div v-if="preview.status !== 'FAILED' && !isParsing" class="footer-actions">
         <template v-if="isTimetable">
           <el-button
             type="primary"
@@ -241,6 +243,7 @@ import { ElMessage, type UploadFile } from 'element-plus'
 import { AI_IMPORT_TIMEOUT_MS, http } from '@/api/http'
 import { aiParseErrorMessage } from '@/api/errors'
 import ImportSourcePanel from '@/components/aiImport/ImportSourcePanel.vue'
+import ImportProgressPanel from '@/components/aiImport/ImportProgressPanel.vue'
 import LastImportCard from '@/components/aiImport/LastImportCard.vue'
 import TimetableMappingStep from '@/components/aiImport/TimetableMappingStep.vue'
 import TimetablePreviewGrid from '@/components/aiImport/TimetablePreviewGrid.vue'
@@ -269,6 +272,7 @@ const {
   importedCount,
   lastSession,
   isTimetable,
+  isParsing,
   previewIssues,
   commitDisabled,
   commitLabel,
@@ -294,8 +298,7 @@ const suggestedTarget = computed(() => {
 const showMappingStep = computed(
   () =>
     isTimetable.value &&
-    preview.value?.status !== 'COMMITTED' &&
-    preview.value?.status !== 'FAILED' &&
+    (preview.value?.status === 'PREVIEW' || preview.value?.status === 'EDITED') &&
     (mappableIssues.value.length > 0 || blockingIssues.value.length === 0),
 )
 

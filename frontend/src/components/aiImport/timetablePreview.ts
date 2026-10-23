@@ -46,6 +46,25 @@ export interface ImportPreview {
   status: string
   issues?: PreviewIssue[]
   summary?: TimetableSummary | null
+  /** Present only for sessions parsed in background batches. */
+  progress?: ImportProgress | null
+  /** Batches the AI could not parse; empty unless the parse is partial. */
+  failedBatches?: FailedBatch[]
+}
+
+/** How far a background parse has got; `currentBatch` is the class in flight. */
+export interface ImportProgress {
+  total: number
+  completed: number
+  failed: number
+  currentBatch?: string | null
+}
+
+/** One batch that failed, named so the user knows which class to retry. */
+export interface FailedBatch {
+  index: number
+  label: string
+  reason: string
 }
 
 /** One system entity offered by the mapping lookup. */

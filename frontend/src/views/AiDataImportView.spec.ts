@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import ElementPlus, { ElMessage } from 'element-plus'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
@@ -753,3 +753,108 @@ function seedLastSession(overrides: Record<string, unknown> = {}) {
   localStorage.setItem('paiban.aiImport.lastSession', JSON.stringify(record))
   return record
 }
+
+function parsingPreview(overrides: Record<string, unknown> = {}) {
+  return {
+    data: {
+      ...timetablePreview().data,
+      status: 'PARSING',
+      rows: [],
+      issues: [],
+      summary: null,
+      progress: { total: 4, completed: 1, failed: 0, currentBatch: '一年级2班' },
+      failedBatches: [],
+      ...overrides,
+    },
+  }
+}
+
+function sessionCalls(): number {
+  return httpMock.get.mock.calls.filter(([url]) => url === '/ai/import/sessions/9').length
+}
+
+describe('大表后台解析与进度', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('上传后先显示解析进度，轮询到完成后自动进入预览', async () => {
+    vi.useFakeTimers()
+    const { wrapper } = await mountImport('/admin/ai-import?target=timetable')
+    httpMock.post.mockResolvedValue(parsingPreview())
+
+    chooseFile(wrapper, 0, 'grade-1.xlsx')
+    await flushPromises()
+    await button(wrapper, '开始解析').trigger('click')
+    await flushPromises()
+
+    const panel = wrapper.get('[data-testid="import-progress"]')
+    expect(panel.text()).toContain('已完成 1/4 批')
+    expect(panel.text()).toContain('一年级2班')
+    expect(wrapper.find('[data-testid="timetable-summary"]').exists()).toBe(false)
+    expect(
+      wrapper.findAll('button').some((candidate) => candidate.text().includes('确认入库')),
+    ).toBe(false)
+
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/ai/status') return Promise.resolve(aiStatus())
+      if (url === '/ai/import/sessions/9') return Promise.resolve(timetablePreview())
+      return Promise.resolve({ data: [] })
+    })
+    await vi.advanceTimersByTimeAsync(2000)
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="import-progress"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="timetable-summary"]').text()).toContain('共 2 节')
+    expect(wrapper.get('.head-actions').text()).toContain('待确认')
+  })
+
+  it('解析完成后停止轮询', async () => {
+    vi.useFakeTimers()
+    const { wrapper } = await mountImport('/admin/ai-import?target=timetable')
+    httpMock.post.mockResolvedValue(parsingPreview())
+
+    chooseFile(wrapper, 0, 'grade-1.xlsx')
+    await flushPromises()
+    await button(wrapper, '开始解析').trigger('click')
+    await flushPromises()
+
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/ai/status') return Promise.resolve(aiStatus())
+      if (url === '/ai/import/sessions/9') return Promise.resolve(timetablePreview())
+      return Promise.resolve({ data: [] })
+    })
+    await vi.advanceTimersByTimeAsync(2000)
+    await flushPromises()
+    const settled = sessionCalls()
+
+    await vi.advanceTimersByTimeAsync(10000)
+    await flushPromises()
+
+    expect(sessionCalls()).toBe(settled)
+  })
+
+  it('用 ?session 恢复时若仍在解析则继续轮询到预览', async () => {
+    vi.useFakeTimers()
+    let polls = 0
+    const { wrapper } = await mountImport('/admin/ai-import?session=9', true, (url) => {
+      if (url !== '/ai/import/sessions/9') return null
+      polls += 1
+      return Promise.resolve(polls === 1 ? parsingPreview() : timetablePreview())
+    })
+
+    expect(wrapper.find('[data-testid="import-progress"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="import-progress"]').text()).toContain('解析中')
+
+    await vi.advanceTimersByTimeAsync(2000)
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="import-progress"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="timetable-summary"]').text()).toContain('共 2 节')
+    expect(polls).toBe(2)
+  })
+})
