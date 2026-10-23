@@ -63,6 +63,9 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
     @Autowired
     private PermissionRepository permissionRepository;
 
+    @Autowired
+    private AiImportService importService;
+
     @BeforeEach
     void resetFake() {
         fake.reset();
@@ -157,13 +160,15 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         fake.responder = request -> aiResponse(List.of(
                 timetableRow("语文", "周一", String.valueOf(fake.calls), "张三")));
 
-        Response preview = upload(
+        Response upload = upload(
                 admin, "/api/ai/import/excel?target=timetable", "一年级课表.xlsx",
                 timetableExcelBytes(4), XLSX);
+        upload.then().statusCode(200).body("targetType", equalTo("timetable"));
+        io.restassured.path.json.JsonPath done = awaitSession(admin, upload.jsonPath().getLong("sessionId"));
 
-        preview.then().statusCode(200)
-                .body("targetType", equalTo("timetable"))
-                .body("rows", hasSize(4));
+        // Four data rows: one AI call each, merged and de-duplicated for the preview.
+        assertThat(done.getString("status")).isEqualTo("PREVIEW");
+        assertThat(done.getList("rows")).hasSize(4);
         assertThat(fake.calls).isEqualTo(4);
         assertThat(fake.lastRequest.messages().get(1).content())
                 .contains("rowsToParse")
@@ -177,15 +182,196 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         fake.responder = request -> aiResponse(List.of(
                 timetableRow("语文", "周一", String.valueOf(fake.calls), "张三")));
 
-        Response preview = upload(
+        Response upload = upload(
                 admin, "/api/ai/import/excel?target=timetable", "年级课表.xlsx",
                 timetableExcelWithPeriodRow(4), XLSX);
+        io.restassured.path.json.JsonPath done = awaitSession(admin, upload.jsonPath().getLong("sessionId"));
 
-        preview.then().statusCode(200).body("rows", hasSize(4));
+        assertThat(done.getList("rows")).hasSize(4);
         assertThat(fake.calls).isEqualTo(4);
         assertThat(fake.userMessages.get(0))
                 .contains("\"rowsToParse\":[[\"八（1）\"")
                 .contains("\"headerContext\"");
+    }
+
+    // ------------------------------------------------ background parsing (ticket 01)
+
+    @Test
+    void aLargeTimetableReturnsParsingAtOnceAndBecomesPreviewWhenTheBatchesFinish() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.latencyMs = 150;
+        fake.responder = request -> aiResponse(List.of(
+                timetableRow("语文", "周一", String.valueOf(fake.calls), "张三")));
+
+        Response upload = upload(
+                admin, "/api/ai/import/excel?target=timetable", "一年级课表.xlsx",
+                timetableExcelBytes(4), XLSX);
+
+        // The upload returns before the AI is done, with the batch plan already visible.
+        upload.then().statusCode(200)
+                .body("sessionId", org.hamcrest.Matchers.notNullValue())
+                .body("status", equalTo("PARSING"))
+                .body("progress.total", equalTo(4))
+                .body("progress.completed", equalTo(0))
+                .body("progress.failed", equalTo(0))
+                .body("rows", hasSize(0));
+        long sessionId = upload.jsonPath().getLong("sessionId");
+        assertThat(fake.calls).isLessThan(4);
+
+        io.restassured.path.json.JsonPath done = awaitSession(admin, sessionId);
+
+        assertThat(done.getString("status")).isEqualTo("PREVIEW");
+        assertThat(done.getList("rows")).hasSize(4);
+        assertThat(done.getMap("progress"))
+                .containsEntry("total", 4)
+                .containsEntry("completed", 4)
+                .containsEntry("failed", 0);
+        assertThat((Object) done.get("progress.currentBatch")).isNull();
+        assertThat(done.getList("failedBatches")).isEmpty();
+        assertThat(fake.calls).isEqualTo(4);
+    }
+
+    @Test
+    void everyFinishedBatchIsPersistedBeforeTheSessionCompletes() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.latencyMs = 250;
+        fake.responder = request -> aiResponse(List.of(
+                timetableRow("语文", "周一", String.valueOf(fake.calls), "张三")));
+
+        Response upload = upload(
+                admin, "/api/ai/import/excel?target=timetable", "一年级课表.xlsx",
+                timetableExcelBytes(4), XLSX);
+        long sessionId = upload.jsonPath().getLong("sessionId");
+
+        AiImportLog midway = null;
+        for (int i = 0; i < 200; i++) {
+            AiImportLog current = importLogs.findById(sessionId).orElseThrow();
+            if (AiImportLog.PARSING.equals(current.getStatus()) && current.getCompletedBatches() >= 1) {
+                midway = current;
+                break;
+            }
+            if (!AiImportLog.PARSING.equals(current.getStatus())) {
+                break;
+            }
+            Thread.sleep(50);
+        }
+
+        // A batch that already succeeded is on disk while the rest is still parsing.
+        assertThat(midway).as("a finished batch visible while the session is still PARSING").isNotNull();
+        assertThat(midway.getTotalBatches()).isEqualTo(4);
+        assertThat(midway.getCompletedBatches()).isLessThan(midway.getTotalBatches());
+        assertThat(midway.getBatchesJson()).contains("\"status\":\"DONE\"").contains("sourceRows");
+        assertThat(midway.getPreviewJson()).contains("一年级1班");
+        assertThat(midway.getRowCount()).isEqualTo(midway.getCompletedBatches());
+
+        io.restassured.path.json.JsonPath done = awaitSession(admin, sessionId);
+        assertThat(done.getString("status")).isEqualTo("PREVIEW");
+        assertThat(done.getList("rows")).hasSize(4);
+        AiImportLog stored = importLogs.findById(sessionId).orElseThrow();
+        assertThat(stored.getCompletedBatches()).isEqualTo(4);
+        assertThat(stored.getCurrentBatch()).isNull();
+        assertThat(stored.getBatchesJson()).contains("\"status\":\"DONE\"").doesNotContain("\"PENDING\"");
+    }
+
+    @Test
+    void aSmallTimetableStillReturnsItsPreviewInOneSynchronousCall() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.response = aiResponse(List.of(
+                timetableRow("语文", "周一", "1", "张三"),
+                timetableRow("语文", "周一", "2", "张三"),
+                timetableRow("语文", "周一", "3", "张三")));
+
+        Response preview = upload(
+                admin, "/api/ai/import/excel?target=timetable", "一年级课表.xlsx",
+                timetableExcelBytes(3), XLSX);
+
+        preview.then().statusCode(200)
+                .body("status", equalTo("PREVIEW"))
+                .body("rows", hasSize(3))
+                .body("progress", org.hamcrest.Matchers.nullValue());
+        assertThat(fake.calls).isEqualTo(1);
+        AiImportLog stored = importLogs.findById(preview.jsonPath().getLong("sessionId")).orElseThrow();
+        assertThat(stored.getTotalBatches()).isZero();
+    }
+
+    @Test
+    void aSessionThatIsStillParsingCannotBeEditedOrCommitted() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.latencyMs = 300;
+        fake.responder = request -> aiResponse(List.of(
+                timetableRow("语文", "周一", String.valueOf(fake.calls), "张三")));
+
+        Response upload = upload(
+                admin, "/api/ai/import/excel?target=timetable", "一年级课表.xlsx",
+                timetableExcelBytes(4), XLSX);
+        long sessionId = upload.jsonPath().getLong("sessionId");
+
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/commit")
+                .then().statusCode(409)
+                .body("message", containsString("解析"));
+        as(admin).body(Map.of("rows", List.of(timetableRow())))
+                .when().put("/api/ai/import/sessions/" + sessionId + "/rows")
+                .then().statusCode(409);
+
+        // Let the background run settle so the next test starts from a quiet executor.
+        assertThat(awaitSession(admin, sessionId).getString("status")).isEqualTo("PREVIEW");
+    }
+
+    @Test
+    void anInterruptedParsingSessionIsRecoveredOnStartup() {
+        String admin = adminToken();
+        AiImportLog halfDone = new AiImportLog();
+        halfDone.setImportType("excel");
+        halfDone.setTargetType("timetable");
+        halfDone.setUsername("admin");
+        halfDone.setStatus(AiImportLog.PARSING);
+        halfDone.setRowCount(1);
+        halfDone.setImportedCount(0);
+        halfDone.setTotalBatches(2);
+        halfDone.setCompletedBatches(1);
+        halfDone.setBatchesJson("[{\"index\":1,\"label\":\"一年级1班\",\"status\":\"DONE\","
+                + "\"sourceRows\":[[\"一年级1班\",\"语文\"]],"
+                + "\"rows\":[{\"values\":{\"className\":\"一年级1班\"},\"confidence\":{},\"lowConfidence\":[]}],"
+                + "\"mappings\":[],\"explanation\":\"第一批\"},"
+                + "{\"index\":2,\"label\":\"一年级2班\",\"status\":\"PENDING\","
+                + "\"sourceRows\":[[\"一年级2班\",\"数学\"]]}]");
+        halfDone.setCreatedAt(Instant.now());
+        halfDone.setUpdatedAt(Instant.now());
+        long resumedId = importLogs.save(halfDone).getId();
+
+        AiImportLog nothingDone = new AiImportLog();
+        nothingDone.setImportType("excel");
+        nothingDone.setTargetType("timetable");
+        nothingDone.setUsername("admin");
+        nothingDone.setStatus(AiImportLog.PARSING);
+        nothingDone.setRowCount(0);
+        nothingDone.setImportedCount(0);
+        nothingDone.setTotalBatches(2);
+        nothingDone.setCompletedBatches(0);
+        nothingDone.setCreatedAt(Instant.now());
+        nothingDone.setUpdatedAt(Instant.now());
+        long failedId = importLogs.save(nothingDone).getId();
+
+        importService.recoverInterruptedSessions();
+
+        AiImportLog resumed = importLogs.findById(resumedId).orElseThrow();
+        assertThat(resumed.getStatus()).isEqualTo(AiImportLog.PREVIEW);
+        assertThat(resumed.getCurrentBatch()).isNull();
+        assertThat(resumed.getPreviewJson()).contains("一年级1班");
+
+        AiImportLog failed = importLogs.findById(failedId).orElseThrow();
+        assertThat(failed.getStatus()).isEqualTo(AiImportLog.FAILED);
+        assertThat(failed.getAiExplanation()).contains("重启");
+
+        // The recovered session is usable again: it shows up through the polling endpoint.
+        as(admin).when().get("/api/ai/import/sessions/" + resumedId)
+                .then().statusCode(200)
+                .body("status", equalTo("PREVIEW"))
+                .body("rows", hasSize(1));
     }
 
     @Test
@@ -1172,6 +1358,20 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
                 .when().post(path);
     }
 
+    /** No Awaitility in this project: poll the session endpoint until it leaves PARSING. */
+    private io.restassured.path.json.JsonPath awaitSession(String token, long sessionId) throws Exception {
+        for (int i = 0; i < 300; i++) {
+            Response response = as(token).when().get("/api/ai/import/sessions/" + sessionId);
+            response.then().statusCode(200);
+            io.restassured.path.json.JsonPath json = response.jsonPath();
+            if (!AiImportLog.PARSING.equals(json.getString("status"))) {
+                return json;
+            }
+            Thread.sleep(100);
+        }
+        throw new AssertionError("导入会话 " + sessionId + " 一直在解析中");
+    }
+
     private byte[] excelBytes(int count) throws Exception {
         try (XSSFWorkbook workbook = new XSSFWorkbook();
                 ByteArrayOutputStream out = new ByteArrayOutputStream()) {
@@ -1352,9 +1552,11 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         volatile boolean available = true;
         volatile String response = "{\"mappings\":[],\"rows\":[],\"explanation\":\"\"}";
         volatile java.util.function.Function<AiRequest, String> responder;
-        volatile List<String> userMessages = new ArrayList<>();
+        volatile List<String> userMessages = java.util.Collections.synchronizedList(new ArrayList<>());
         volatile AiRequest lastRequest;
         volatile int calls;
+        /** Lets a test keep the background parser in PARSING long enough to observe it. */
+        volatile long latencyMs;
 
         void reset() {
             available = true;
@@ -1363,6 +1565,7 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
             responder = null;
             userMessages.clear();
             response = "{\"mappings\":[],\"rows\":[],\"explanation\":\"\"}";
+            latencyMs = 0;
         }
 
         @Override
@@ -1389,6 +1592,13 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
             calls++;
             lastRequest = request;
             userMessages.add(request.messages().size() > 1 ? request.messages().get(1).content() : "");
+            if (latencyMs > 0) {
+                try {
+                    Thread.sleep(latencyMs);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                }
+            }
             String payload = responder == null ? response : responder.apply(request);
             return new AiResult(
                     true, payload, null, null,

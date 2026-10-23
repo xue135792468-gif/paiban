@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { AI_IMPORT_TIMEOUT_MS, http } from '@/api/http'
@@ -30,14 +30,30 @@ export interface LastSession {
 export type RestoreOutcome = 'restored' | 'failed' | 'unusable'
 
 const STATUS_LABELS: Record<string, string> = {
+  PARSING: '解析中',
   PREVIEW: '待确认',
   EDITED: '已微调',
   COMMITTED: '已入库',
   FAILED: '解析失败',
+  PARTIAL: '部分结果',
+  ABANDONED: '已放弃',
 }
 
 /** Statuses a restored session can render; anything else is not worth showing. */
-const RESTORABLE_STATUSES = new Set(['PREVIEW', 'EDITED', 'COMMITTED', 'FAILED'])
+const RESTORABLE_STATUSES = new Set([
+  'PARSING',
+  'PREVIEW',
+  'EDITED',
+  'COMMITTED',
+  'FAILED',
+  'PARTIAL',
+])
+
+/** Statuses that must not accept an edit or a commit. */
+const LOCKED_STATUSES = new Set(['PARSING', 'PARTIAL', 'ABANDONED'])
+
+/** How often a PARSING session is re-read while the batches are being parsed. */
+const POLL_INTERVAL_MS = 2000
 
 const LAST_SESSION_KEY = 'paiban.aiImport.lastSession'
 
@@ -45,9 +61,10 @@ export function statusText(status: string): string {
   return STATUS_LABELS[status] ?? status
 }
 
-export function statusTagType(status: string): 'success' | 'danger' | 'info' {
+export function statusTagType(status: string): 'success' | 'danger' | 'info' | 'warning' {
   if (status === 'COMMITTED') return 'success'
   if (status === 'FAILED') return 'danger'
+  if (status === 'PARSING' || status === 'PARTIAL') return 'warning'
   return 'info'
 }
 
@@ -98,11 +115,15 @@ export function useImportSession() {
       !preview.value ||
       preview.value.status === 'COMMITTED' ||
       preview.value.status === 'FAILED' ||
+      LOCKED_STATUSES.has(preview.value.status) ||
       (isTimetable.value && !allIssuesResolved.value),
   )
   const commitLabel = computed(() => {
     if (preview.value?.status === 'COMMITTED') return '已入库'
     if (preview.value?.status === 'FAILED') return '解析失败'
+    if (preview.value?.status === 'PARSING') return '解析中…'
+    if (preview.value?.status === 'PARTIAL') return '先重试或放弃'
+    if (preview.value?.status === 'ABANDONED') return '已放弃'
     if (isTimetable.value && !allIssuesResolved.value) {
       return `确认入库（还有 ${remainingIssues.value} 项未解决）`
     }
@@ -116,6 +137,58 @@ export function useImportSession() {
     if (!preview.value) return 'info'
     return statusTagType(preview.value.status)
   })
+  const isParsing = computed(() => preview.value?.status === 'PARSING')
+  const polling = ref(false)
+  let pollTimer: ReturnType<typeof setInterval> | null = null
+
+  /**
+   * A PARSING session is filled in batch by batch on the server, so the page re-reads
+   * it every couple of seconds and stops as soon as the status moves on.
+   */
+  function stopPolling() {
+    if (pollTimer !== null) {
+      clearInterval(pollTimer)
+      pollTimer = null
+    }
+    polling.value = false
+  }
+
+  function startPolling(sessionId: number) {
+    stopPolling()
+    polling.value = true
+    pollTimer = setInterval(() => {
+      void pollProgress(sessionId)
+    }, POLL_INTERVAL_MS)
+  }
+
+  async function pollProgress(sessionId: number) {
+    try {
+      const { data } = await http.get<ImportPreview>(`/ai/import/sessions/${sessionId}`)
+      if (data && preview.value?.sessionId === data.sessionId) {
+        // setPreview re-evaluates the polling state: PREVIEW ends the loop.
+        setPreview(data)
+      }
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response?.status
+      if (status === 404 || status === 403) {
+        stopPolling()
+        ElMessage.error(
+          status === 404
+            ? '该导入会话已不存在，请重新上传文件'
+            : '没有权限查看该导入会话，请重新上传文件',
+        )
+      }
+      // Any other failure is a blip: the next tick tries again.
+    }
+  }
+
+  function syncPolling(data: ImportPreview) {
+    if (data.status === 'PARSING') {
+      startPolling(data.sessionId)
+    } else {
+      stopPolling()
+    }
+  }
 
   /** Shows a freshly parsed or server-updated preview and drops stale row errors. */
   function setPreview(data: ImportPreview) {
@@ -123,6 +196,7 @@ export function useImportSession() {
     commitErrors.value = []
     importedCount.value = null
     rememberStatus(data.sessionId, data.status)
+    syncPolling(data)
   }
 
   function storeLastSession(record: LastSession | null) {
@@ -308,6 +382,7 @@ export function useImportSession() {
 
   /** Clears the preview half only; the URL marker survives so a refresh can retry. */
   function resetState() {
+    stopPolling()
     preview.value = null
     editing.value = false
     commitErrors.value = []
@@ -320,6 +395,9 @@ export function useImportSession() {
     dropSessionFromUrl()
   }
 
+  // Leaving the page must not leave a timer behind calling the API.
+  onUnmounted(stopPolling)
+
   return {
     preview,
     editing,
@@ -330,6 +408,8 @@ export function useImportSession() {
     importedCount,
     lastSession,
     isTimetable,
+    isParsing,
+    polling,
     previewIssues,
     remainingIssues,
     allIssuesResolved,
@@ -346,6 +426,7 @@ export function useImportSession() {
     commit,
     continueWithAi,
     reparse,
+    stopPolling,
     clear,
   }
 }
