@@ -77,6 +77,19 @@
         </li>
       </ul>
     </section>
+
+    <div class="actions">
+      <el-button
+        data-testid="abandon-import"
+        type="danger"
+        plain
+        :loading="abandoning"
+        @click="emit('abandon')"
+      >
+        放弃导入
+      </el-button>
+      <span class="muted">已解析的班级不会入库，放弃后不写入任何数据</span>
+    </div>
   </div>
 </template>
 
@@ -90,9 +103,10 @@ const props = defineProps<{
   progress?: ImportProgress | null
   /** True while the retry request is in flight, so the button cannot fire twice. */
   retrying?: boolean
+  abandoning?: boolean
 }>()
 
-const emit = defineEmits<{ retry: [] }>()
+const emit = defineEmits<{ retry: []; abandon: [] }>()
 
 /** A timetable batch is one class, so finished batches count the classes on screen. */
 const batchCount = computed(() => props.progress?.completed ?? props.rows.length)
@@ -192,5 +206,13 @@ const columns = computed(() => {
 
 .failed-reason {
   color: #b91c1c;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #e5e7eb;
 }
 </style>

@@ -33,6 +33,11 @@ public class AiImportLog {
      * but the import is locked until the failed classes are retried or abandoned.
      */
     public static final String PARTIAL = "PARTIAL";
+    /**
+     * The user gave up on an unfinished import. The row stays as an audit record of what
+     * was parsed, but nothing is written and the session can never move forward again.
+     */
+    public static final String ABANDONED = "ABANDONED";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

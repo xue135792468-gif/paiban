@@ -6,6 +6,16 @@
         <div class="head-side">
           <el-tag size="small" type="warning" effect="plain">解析中</el-tag>
           <el-button
+            data-testid="abandon-import"
+            size="small"
+            type="danger"
+            link
+            :loading="abandoning"
+            @click="emit('abandon')"
+          >
+            放弃导入
+          </el-button>
+          <el-button
             data-testid="stop-parsing"
             size="small"
             type="danger"
@@ -36,6 +46,7 @@
     <p class="hint">
       解析在服务器后台进行，可以先去忙别的；页面会自动刷新，全部完成后直接进入预览。
       现在离开再回来，用「上次导入」可以接着看进度。停止解析会保留已完成的批次，剩下的可以之后重新解析。
+      放弃导入会丢掉这次导入，不写入任何数据。
     </p>
   </el-card>
 </template>
@@ -44,8 +55,12 @@
 import { computed } from 'vue'
 import type { ImportProgress } from './timetablePreview'
 
-const props = defineProps<{ progress?: ImportProgress | null; stopping?: boolean }>()
-const emit = defineEmits<{ stop: [] }>()
+const props = defineProps<{
+  progress?: ImportProgress | null
+  stopping?: boolean
+  abandoning?: boolean
+}>()
+const emit = defineEmits<{ stop: []; abandon: [] }>()
 
 const total = computed(() => props.progress?.total ?? 0)
 const completed = computed(() => props.progress?.completed ?? 0)

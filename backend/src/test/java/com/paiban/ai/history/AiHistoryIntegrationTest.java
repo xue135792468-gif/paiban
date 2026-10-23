@@ -1,6 +1,7 @@
 package com.paiban.ai.history;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
@@ -128,6 +129,25 @@ class AiHistoryIntegrationTest extends ApiIntegrationTest {
                 .body("preview.rows[0].values.name", equalTo("张三"))
                 .body("confirmed.rows[0].values.name", equalTo("张三"))
                 .body("result.imported", equalTo(2));
+    }
+
+    @Test
+    void anAbandonedImportIsKeptInHistoryButIsNotASuccess() {
+        long id = importLog("grade-1.xlsx", AiImportLog.ABANDONED, 3, 0, Instant.now());
+
+        // The record survives, says it was abandoned, and never counts as a success:
+        // nothing was written, so a green tick would be a lie.
+        as(adminToken()).queryParam("type", "import")
+                .when().get("/api/ai/history")
+                .then().statusCode(200)
+                .body("items[0].refId", equalTo((int) id))
+                .body("items[0].summary", containsString("已放弃"))
+                .body("items[0].success", equalTo(false));
+
+        as(adminToken()).when().get("/api/ai/history/imports/" + id)
+                .then().statusCode(200)
+                .body("status", equalTo("ABANDONED"))
+                .body("importedCount", equalTo(0));
     }
 
     @Test
