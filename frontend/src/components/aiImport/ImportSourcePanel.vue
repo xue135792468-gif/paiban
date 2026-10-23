@@ -1,7 +1,11 @@
 <template>
   <el-card shadow="never">
     <template #header><span class="card-title">选择导入目标</span></template>
-    <ImportTargetPicker :targets="IMPORT_TARGETS" :selected="selectedTarget" @select="emitSelect" />
+    <ImportTargetPicker
+      :targets="IMPORT_TARGETS"
+      :selected="selectedTarget"
+      @select="(code: string) => emit('select-target', code)"
+    />
   </el-card>
 
   <el-card shadow="never">
@@ -115,10 +119,6 @@ const emit = defineEmits<{
 }>()
 
 const currentTarget = computed(() => targetCard(props.selectedTarget) ?? IMPORT_TARGETS[0])
-
-function emitSelect(code: string) {
-  emit('select-target', code)
-}
 </script>
 
 <style scoped>

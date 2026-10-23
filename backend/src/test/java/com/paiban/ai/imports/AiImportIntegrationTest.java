@@ -257,6 +257,34 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void aRestoredSessionShowsTheEditedStatusAndTheEditedRows() {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.response = aiResponse(List.of(timetableRow()));
+
+        Response preview = as(admin)
+                .body(Map.of("text", "一年级1班 周一 第1节 语文 张三 101"))
+                .when().post("/api/ai/import/text?target=timetable");
+        preview.then().statusCode(200).body("status", equalTo("PREVIEW"));
+        long sessionId = preview.jsonPath().getLong("sessionId");
+
+        List<Map<String, Object>> rows = preview.jsonPath().getList("rows");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> values = (Map<String, Object>) rows.get(0).get("values");
+        values.put("roomName", "202");
+        as(admin).body(Map.of("rows", rows))
+                .when().put("/api/ai/import/sessions/" + sessionId + "/rows")
+                .then().statusCode(200)
+                .body("status", equalTo("EDITED"));
+
+        // The restore entry point must report the edit, so the page can resume it.
+        as(admin).when().get("/api/ai/import/sessions/" + sessionId)
+                .then().statusCode(200)
+                .body("status", equalTo("EDITED"))
+                .body("rows[0].values.roomName", equalTo("202"));
+    }
+
+    @Test
     void teacherPreviewHasNoMappingIssues() {
         String admin = adminToken();
         fake.response = aiResponse(List.of(teacherRow("张三", "语文", "", 0.99)));
