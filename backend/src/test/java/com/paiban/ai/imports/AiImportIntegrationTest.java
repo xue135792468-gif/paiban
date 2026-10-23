@@ -321,6 +321,122 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         assertThat(awaitSession(admin, sessionId).getString("status")).isEqualTo("PREVIEW");
     }
 
+    // ------------------------------------------------- partial results (ticket 03)
+
+    /** Parses every batch, except the ones whose 1-based call number is listed. */
+    private java.util.function.Function<AiRequest, String> failOnBatch(int... failingCalls) {
+        java.util.Set<Integer> failing = new java.util.HashSet<>();
+        for (int call : failingCalls) {
+            failing.add(call);
+        }
+        java.util.concurrent.atomic.AtomicInteger seen = new java.util.concurrent.atomic.AtomicInteger();
+        return request -> {
+            int call = seen.incrementAndGet();
+            if (failing.contains(call)) {
+                throw new IllegalStateException("模型返回为空");
+            }
+            return aiResponse(List.of(timetableRow("语文", "周一", String.valueOf(call), "张三")));
+        };
+    }
+
+    @Test
+    void aFailedBatchKeepsTheBatchesThatParsedAndLeavesTheSessionPartial() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.responder = failOnBatch(2);
+
+        Response upload = upload(admin, "/api/ai/import/excel?target=timetable",
+                "一年级课表.xlsx", timetableExcelBytes(4), XLSX);
+        long sessionId = upload.jsonPath().getLong("sessionId");
+
+        io.restassured.path.json.JsonPath partial = awaitSession(admin, sessionId);
+
+        assertThat(partial.getString("status")).isEqualTo("PARTIAL");
+        // Three of the four classes parsed: their lessons survive, the failed one has none.
+        assertThat(partial.getList("rows")).hasSize(3);
+        assertThat(partial.getMap("progress"))
+                .containsEntry("total", 4)
+                .containsEntry("completed", 3)
+                .containsEntry("failed", 1);
+        assertThat(partial.getList("failedBatches")).hasSize(1);
+        assertThat(partial.getInt("failedBatches[0].index")).isEqualTo(2);
+        assertThat(partial.getString("failedBatches[0].label")).isEqualTo("一年级2班");
+        assertThat(partial.getString("failedBatches[0].reason"))
+                .contains("第 2/4 批")
+                .contains("一年级2班")
+                .contains("解析失败")
+                .contains("模型返回为空");
+        // A failure in the middle must not stop the remaining batches.
+        assertThat(fake.calls).isEqualTo(4);
+
+        AiImportLog stored = importLogs.findById(sessionId).orElseThrow();
+        assertThat(stored.getStatus()).isEqualTo(AiImportLog.PARTIAL);
+        assertThat(stored.getCompletedBatches()).isEqualTo(3);
+        assertThat(stored.getRowCount()).isEqualTo(3);
+        assertThat(stored.getBatchesJson()).contains("\"status\":\"FAILED\"").contains("模型返回为空");
+    }
+
+    @Test
+    void everyFailedBatchIsCollectedInThePartialResult() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.responder = failOnBatch(1, 3);
+
+        Response upload = upload(admin, "/api/ai/import/excel?target=timetable",
+                "一年级课表.xlsx", timetableExcelBytes(4), XLSX);
+        long sessionId = upload.jsonPath().getLong("sessionId");
+
+        io.restassured.path.json.JsonPath partial = awaitSession(admin, sessionId);
+
+        assertThat(partial.getString("status")).isEqualTo("PARTIAL");
+        assertThat(partial.getList("rows")).hasSize(2);
+        assertThat(partial.getMap("progress"))
+                .containsEntry("total", 4)
+                .containsEntry("completed", 2)
+                .containsEntry("failed", 2);
+        assertThat(partial.getList("failedBatches")).hasSize(2);
+        assertThat(partial.getInt("failedBatches[0].index")).isEqualTo(1);
+        assertThat(partial.getString("failedBatches[0].label")).isEqualTo("一年级1班");
+        assertThat(partial.getInt("failedBatches[1].index")).isEqualTo(3);
+        assertThat(partial.getString("failedBatches[1].label")).isEqualTo("一年级3班");
+        assertThat(partial.getString("failedBatches[1].reason")).contains("第 3/4 批");
+        assertThat(fake.calls).isEqualTo(4);
+    }
+
+    @Test
+    void aPartialSessionCannotBeCommittedOrEdited() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.responder = failOnBatch(2);
+
+        Response upload = upload(admin, "/api/ai/import/excel?target=timetable",
+                "一年级课表.xlsx", timetableExcelBytes(4), XLSX);
+        long sessionId = upload.jsonPath().getLong("sessionId");
+        assertThat(awaitSession(admin, sessionId).getString("status")).isEqualTo("PARTIAL");
+
+        String sessions = "/api/ai/import/sessions/" + sessionId;
+        as(admin).when().post(sessions + "/commit")
+                .then().statusCode(409)
+                .body("message", containsString("请先重试失败批次或放弃导入"));
+        as(admin).body(Map.of("rows", List.of(timetableRow())))
+                .when().put(sessions + "/rows")
+                .then().statusCode(409)
+                .body("message", containsString("请先重试失败批次或放弃导入"));
+        as(admin).body(Map.of())
+                .when().post(sessions + "/mapping")
+                .then().statusCode(409);
+        as(admin).when().post(sessions + "/continue")
+                .then().statusCode(409);
+        as(admin).when().post(sessions + "/reparse")
+                .then().statusCode(409);
+
+        // Reading a partial session stays open: the page polls and restores it.
+        as(admin).when().get(sessions)
+                .then().statusCode(200)
+                .body("status", equalTo("PARTIAL"))
+                .body("rows", hasSize(3));
+    }
+
     @Test
     void anInterruptedParsingSessionIsRecoveredOnStartup() {
         String admin = adminToken();
@@ -359,7 +475,9 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         importService.recoverInterruptedSessions();
 
         AiImportLog resumed = importLogs.findById(resumedId).orElseThrow();
-        assertThat(resumed.getStatus()).isEqualTo(AiImportLog.PREVIEW);
+        // The class that never ran is a failed batch now: the session is partial, not a
+        // complete preview that could be published with a class missing.
+        assertThat(resumed.getStatus()).isEqualTo(AiImportLog.PARTIAL);
         assertThat(resumed.getCurrentBatch()).isNull();
         assertThat(resumed.getPreviewJson()).contains("一年级1班");
 
@@ -370,8 +488,10 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         // The recovered session is usable again: it shows up through the polling endpoint.
         as(admin).when().get("/api/ai/import/sessions/" + resumedId)
                 .then().statusCode(200)
-                .body("status", equalTo("PREVIEW"))
-                .body("rows", hasSize(1));
+                .body("status", equalTo("PARTIAL"))
+                .body("rows", hasSize(1))
+                .body("failedBatches[0].label", equalTo("一年级2班"))
+                .body("failedBatches[0].reason", containsString("重启"));
     }
 
     @Test
