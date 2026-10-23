@@ -1,6 +1,8 @@
 # 排课系统八期规格：导入后台任务与部分结果
 
-Status: draft（七期完成后再拆票）
+Status: ready-for-agent
+
+票据：`issues/01-background-parsing.md` … `issues/06-e2e-docs.md`（依赖关系见各票 Blocked by）。
 
 ---
 
