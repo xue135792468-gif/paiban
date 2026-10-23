@@ -28,6 +28,11 @@ public class AiImportLog {
     public static final String FAILED = "FAILED";
     /** A large upload is being parsed in the background; the page polls for progress. */
     public static final String PARSING = "PARSING";
+    /**
+     * Some batches parsed and some did not: the finished ones are kept and previewable,
+     * but the import is locked until the failed classes are retried or abandoned.
+     */
+    public static final String PARTIAL = "PARTIAL";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
