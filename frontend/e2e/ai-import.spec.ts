@@ -34,6 +34,13 @@ let stubBaseUrl = ''
 let providerId: number | null = null
 let timetablePayload: Record<string, unknown> = {}
 let teacherPayload: Record<string, unknown> = {}
+/**
+ * Behaviour of the stub for batched (`第 N/M 批`) prompts: artificial latency leaves a
+ * window to observe PARSING, and a listed chunk answers 400 to produce a partial result.
+ */
+let batchControl: { latencyMs: number; failChunks: number[] } = { latencyMs: 0, failChunks: [] }
+/** One payload per batch, indexed by batch number minus one. */
+let batchPayloads: Record<string, unknown>[] = []
 
 test.beforeAll(async () => {
   api = await request.newContext()
@@ -311,6 +318,142 @@ test('八（1）推断为八年级并随班级创建', async ({ page }) => {
   expect(created?.studentCount).toBe(45)
 })
 
+// ------------------------------------------- 八期：后台解析 / 停止 / 部分结果 / 放弃
+
+test('大课表后台解析：显示批次进度，全部完成自动进入预览', async ({ page }) => {
+  await withBatchControl({ latencyMs: 400 }, async () => {
+    batchPayloads = batchPayloadsFor(batchedSheet())
+    await startBatchedImport(page)
+
+    // The upload answers at once with a PARSING session; the page shows which batch
+    // of how many has landed instead of a spinner on the parse button.
+    const progress = page.getByTestId('import-progress')
+    await expect(progress).toBeVisible()
+    await expect(progress).toContainText('解析中')
+    await expect(page.getByTestId('progress-count')).toHaveText(/已完成 \d+\/4 批/)
+    await expect(page.getByTestId('stop-parsing')).toBeVisible()
+
+    // No refresh, no extra click: the last batch turns the session into a plain preview.
+    const summary = page.getByTestId('timetable-summary')
+    await expect(summary).toBeVisible({ timeout: 30_000 })
+    await expect(summary).toContainText('共 4 节')
+    await expect(page.getByTestId('import-progress')).toHaveCount(0)
+    // The grid shows one class at a time; each class holds two of the four lessons.
+    await expect(page.locator('.timetable-preview .grid .lesson')).toHaveCount(2)
+    await expect(page).toHaveURL(/session=\d+/)
+  })
+})
+
+test('解析中停止：已完成批次保留，可以直接继续入库', async ({ page }) => {
+  await withBatchControl({ latencyMs: 1200 }, async () => {
+    batchPayloads = batchPayloadsFor(batchedSheet())
+    await startBatchedImport(page)
+
+    // Stop after the first batch has landed, so there is something to keep.
+    await expect(page.getByTestId('progress-count')).toHaveText(/已完成 [1-3]\/4 批/, {
+      timeout: 30_000,
+    })
+    await page.getByTestId('stop-parsing').click()
+    await expect(page.locator('.el-message--success')).toContainText('已停止解析，保留已完成')
+
+    // What parsed is a normal preview: it can be committed without re-parsing.
+    const summary = page.getByTestId('timetable-summary')
+    await expect(summary).toBeVisible({ timeout: 20_000 })
+    const kept = Number((await summary.innerText()).match(/共\s*(\d+)\s*节/)?.[1])
+    expect(kept).toBeGreaterThan(0)
+    expect(kept).toBeLessThan(4)
+
+    const commit = page.locator('.footer-actions').getByRole('button', { name: /确认入库/ })
+    await expect(commit).toBeEnabled()
+    await commit.click()
+    await page.waitForURL(/\/admin\/drafts\/\d+/)
+
+    const draftId = Number(page.url().match(/\/admin\/drafts\/(\d+)/)?.[1])
+    const detail = await apiCall(api, await apiLogin(api), 'get', `/timetable-drafts/${draftId}`)
+    expect(detail.lessons).toHaveLength(kept)
+  })
+})
+
+test('单批失败进入部分结果，重试后得到完整预览并入库', async ({ page }) => {
+  await withBatchControl({ failChunks: [2] }, async () => {
+    batchPayloads = batchPayloadsFor(batchedSheet())
+    await startBatchedImport(page)
+
+    // One batch failed: the classes that did parse stay on screen and the commit is held.
+    const panel = page.getByTestId('partial-result-panel')
+    await expect(panel).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId('partial-summary')).toContainText('已解析 3/4 批')
+    await expect(page.getByTestId('partial-success')).toContainText('已解析 3 节课')
+
+    const failed = page.getByTestId('partial-failed')
+    // Batch 2 is the second data row, and its class is what the panel names.
+    await expect(failed).toContainText(batchedSheet()[3][0])
+    await expect(failed).toContainText('解析失败')
+    await expect(failed).toContainText('第 2/4 批')
+
+    const commit = page.locator('.footer-actions').getByRole('button', { name: /先重试或放弃/ })
+    await expect(commit).toBeDisabled()
+
+    // The provider recovers; retrying re-runs only the failed class.
+    batchControl.failChunks = []
+    await page.getByTestId('partial-retry').click()
+    await expect(page.locator('.el-message--success')).toContainText('重试成功', {
+      timeout: 60_000,
+    })
+
+    const summary = page.getByTestId('timetable-summary')
+    await expect(summary).toBeVisible()
+    await expect(summary).toContainText('共 4 节')
+    await expect(page.getByTestId('partial-result-panel')).toHaveCount(0)
+
+    await page.locator('.footer-actions').getByRole('button', { name: /确认入库/ }).click()
+    await page.waitForURL(/\/admin\/drafts\/\d+/)
+
+    const draftId = Number(page.url().match(/\/admin\/drafts\/(\d+)/)?.[1])
+    const detail = await apiCall(api, await apiLogin(api), 'get', `/timetable-drafts/${draftId}`)
+    expect(detail.lessons).toHaveLength(4)
+  })
+})
+
+test('放弃导入：不生成草稿，?session= 恢复入口不再继续该会话', async ({ page }) => {
+  await withBatchControl({ latencyMs: 1500 }, async () => {
+    batchPayloads = batchPayloadsFor(batchedSheet())
+    const token = await apiLogin(api)
+    const draftsBefore = (await apiCall(api, token, 'get', '/timetable-drafts')).length
+
+    await startBatchedImport(page)
+    const sessionId = Number(page.url().match(/session=(\d+)/)?.[1])
+    const started = await apiCall(api, token, 'get', `/ai/import/sessions/${sessionId}`)
+    expect(started.status).toBe('PARSING')
+
+    await page.getByTestId('abandon-import').click()
+    const confirm = page.locator('.el-message-box')
+    await expect(confirm).toContainText('放弃后本次导入会直接作废')
+    await confirm.getByRole('button', { name: '放弃导入' }).click()
+
+    await expect(page.locator('.el-message--info')).toContainText('已放弃本次导入，未写入任何数据')
+
+    // Back to an empty import page: no preview, no session in the URL, nothing to continue.
+    await expect(page.getByTestId('target-card')).toHaveCount(6)
+    await expect(page.getByTestId('timetable-summary')).toHaveCount(0)
+    await expect(page).not.toHaveURL(/session=/)
+    await expect(page.getByTestId('last-session-card')).toHaveCount(0)
+    expect(await page.evaluate(() => localStorage.getItem('paiban.aiImport.lastSession'))).toBeNull()
+
+    // Server side: the session is closed and the business tables were never touched.
+    const abandoned = await apiCall(api, token, 'get', `/ai/import/sessions/${sessionId}`)
+    expect(abandoned.status).toBe('ABANDONED')
+    const draftsAfter = await apiCall(api, token, 'get', '/timetable-drafts')
+    expect(draftsAfter.length).toBe(draftsBefore)
+
+    // A bookmarked `?session=` must not resurrect it either.
+    await page.goto(`/admin/ai-import?session=${sessionId}`)
+    await expect(page.locator('.el-message--error')).toContainText('该导入会话已不可用')
+    await expect(page.getByTestId('target-card')).toHaveCount(6)
+    await expect(page).not.toHaveURL(/session=/)
+  })
+})
+
 // --------------------------------------------------------------------- fixtures
 
 /** Logs in, opens the import page and selects the timetable target. */
@@ -338,6 +481,64 @@ async function startTimetableImport(
   await expect(page.getByTestId('timetable-summary')).toBeVisible({ timeout: 60_000 })
 }
 
+/**
+ * The backend parses a timetable row by row once it has more than three data rows
+ * (two rows of title/header are skipped first), so this sheet is four batches. Every
+ * row maps onto seeded classes, courses and teachers, which keeps the commit gate out
+ * of the way of the progress assertions.
+ */
+function batchedSheet(): string[][] {
+  return [
+    ['高一年级课程表', '', '', '', '', ''],
+    ['班级', '星期', '节次', '课程', '教师', '教室'],
+    [seed.classOne, '周一', '第1节', seed.courseOne, seed.teacherOne, seed.room],
+    [seed.classTwo, '周一', '第1节', seed.courseTwo, seed.teacherTwo, seed.room],
+    [seed.classOne, '周一', '第2节', seed.courseTwo, seed.teacherTwo, seed.room],
+    [seed.classTwo, '周一', '第2节', seed.courseOne, seed.teacherOne, seed.room],
+  ]
+}
+
+/** One lesson per batch, the way a real provider answers a `第 N/M 批` prompt. */
+function batchPayloadsFor(sheet: string[][]): Record<string, unknown>[] {
+  const header = sheet[1]
+  const data = sheet.slice(2)
+  return data.map((row, index) => ({
+    mappings: [
+      {
+        source: header.join(' / '),
+        target: 'className / dayOfWeek / periodNo / courseName / teacherName / roomName',
+        note: '表头与列顺序已识别',
+      },
+    ],
+    rows: [
+      {
+        values: {
+          className: row[0],
+          dayOfWeek: row[1],
+          periodNo: row[2],
+          courseName: row[3],
+          teacherName: row[4],
+          roomName: row[5],
+        },
+      },
+    ],
+    explanation: `第 ${index + 1}/${data.length} 批（${row[0]}）已识别。`,
+  }))
+}
+
+/** Uploads the batched sheet and waits for the PARSING session with its progress panel. */
+async function startBatchedImport(page: Page): Promise<void> {
+  await openTimetableImport(page)
+  await uploadExcel(
+    page,
+    'timetable-batched.xlsx',
+    buildXlsx(batchedSheet(), { sheetName: '高一年级课表' }),
+  )
+  await page.getByRole('button', { name: '开始解析' }).click()
+  await expect(page.getByTestId('import-progress')).toBeVisible({ timeout: 30_000 })
+  await expect(page).toHaveURL(/session=\d+/)
+}
+
 /** Swaps the stub's timetable answer for one test, restoring it even on failure. */
 async function withTimetablePayload<T>(
   payload: Record<string, unknown>,
@@ -349,6 +550,20 @@ async function withTimetablePayload<T>(
     return await run()
   } finally {
     timetablePayload = previous
+  }
+}
+
+/** Sets the batch stub's behaviour for one test and always restores the defaults. */
+async function withBatchControl<T>(
+  control: { latencyMs?: number; failChunks?: number[] },
+  run: () => Promise<T>,
+): Promise<T> {
+  batchControl = { latencyMs: 0, failChunks: [], ...control }
+  try {
+    return await run()
+  } finally {
+    batchControl = { latencyMs: 0, failChunks: [] }
+    batchPayloads = []
   }
 }
 
@@ -545,26 +760,53 @@ async function startStub(
       )
       .join('\n')
     const isTimetable = prompt.includes('目标对象：timetable') || prompt.includes('"target":"timetable"')
+    // A chunked parse asks one batch at a time; those prompts say which one it is.
+    const batch = /"chunk":"(\d+)\/(\d+)"/.exec(prompt)
+    if (batch) {
+      const index = Number(batch[1])
+      if (batchControl.latencyMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, batchControl.latencyMs))
+      }
+      if (batchControl.failChunks.includes(index)) {
+        // 4xx is not retried by the gateway, so the failure is the batch's own.
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(
+          JSON.stringify({ error: { message: `stub 无法解析第 ${index} 批`, type: 'invalid_request_error' } }),
+        )
+        return
+      }
+      sendCompletion(res, body, JSON.stringify(batchPayloads[index - 1] ?? timetablePayload))
+      return
+    }
     const content = JSON.stringify(isTimetable ? timetable() : teacher())
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(
-      JSON.stringify({
-        id: 'stub-chat-completion',
-        object: 'chat.completion',
-        model: body.model ?? 'stub-model',
-        choices: [
-          {
-            index: 0,
-            message: { role: 'assistant', content },
-            finish_reason: 'stop',
-          },
-        ],
-        usage: { prompt_tokens: 12, completion_tokens: 34, total_tokens: 46 },
-      }),
-    )
+    sendCompletion(res, body, content)
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   return server
+}
+
+/** Writes one OpenAI-compatible chat completion carrying `content`. */
+function sendCompletion(
+  res: http.ServerResponse,
+  request: { model?: string },
+  content: string,
+): void {
+  res.writeHead(200, { 'Content-Type': 'application/json' })
+  res.end(
+    JSON.stringify({
+      id: 'stub-chat-completion',
+      object: 'chat.completion',
+      model: request.model ?? 'stub-model',
+      choices: [
+        {
+          index: 0,
+          message: { role: 'assistant', content },
+          finish_reason: 'stop',
+        },
+      ],
+      usage: { prompt_tokens: 12, completion_tokens: 34, total_tokens: 46 },
+    }),
+  )
 }
 
 async function readBody(req: http.IncomingMessage): Promise<string> {
