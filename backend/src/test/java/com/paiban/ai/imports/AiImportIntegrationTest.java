@@ -208,7 +208,52 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
                 .body("issues[0].field", equalTo("className"))
                 .body("issues[0].value", equalTo("一年级(1)班"))
                 .body("issues[0].required", equalTo(true))
-                .body("issues[0].candidates", org.hamcrest.Matchers.hasItem("一年级1班"));
+                .body("issues[0].candidates", org.hamcrest.Matchers.hasItem("一年级1班"))
+                .body("issues[0].inferredGrade", equalTo("一年级"))
+                .body("issues[0].gradeCandidates", org.hamcrest.Matchers.hasItem("一年级"));
+    }
+
+    @Test
+    void anUnmatchedClassKeepsTheInferredGradeWhenTheSemesterHasNoSuchGrade() {
+        String admin = adminToken();
+        timetableFixture(admin);
+        Map<String, Object> row = timetableRow();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> values = (Map<String, Object>) row.get("values");
+        values.put("className", "八（1）");
+        fake.response = aiResponse(List.of(row));
+
+        Response preview = as(admin)
+                .body(Map.of("text", "八（1） 周一 第1节 语文 张三 101"))
+                .when().post("/api/ai/import/text?target=timetable");
+
+        preview.then().statusCode(200)
+                .body("issues", hasSize(1))
+                .body("issues[0].field", equalTo("className"))
+                .body("issues[0].inferredGrade", equalTo("八年级"))
+                .body("issues[0].gradeCandidates", org.hamcrest.Matchers.hasItem("一年级"))
+                .body("issues[0].gradeCandidates", org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.hasItem("八年级")));
+    }
+
+    @Test
+    void aFailedSessionsPreviewCarriesTheReasonItFailed() {
+        String admin = adminToken();
+        fake.response = "这不是 JSON";
+
+        as(admin).body(Map.of("text", "一年级1班 周一 第1节 语文 张三 101"))
+                .when().post("/api/ai/import/text?target=timetable")
+                .then().statusCode(400);
+
+        AiImportLog failed = importLogs.findAll().stream()
+                .filter(log -> AiImportLog.FAILED.equals(log.getStatus()))
+                .max(java.util.Comparator.comparing(AiImportLog::getId))
+                .orElseThrow();
+
+        as(admin).when().get("/api/ai/import/sessions/" + failed.getId())
+                .then().statusCode(200)
+                .body("status", equalTo("FAILED"))
+                .body("explanation", containsString("JSON"));
     }
 
     @Test
