@@ -388,6 +388,62 @@ public class AiImportService {
                 .orElseThrow(() -> ApiException.notFound("导入会话不存在: " + id)));
     }
 
+    /**
+     * Retries the batches a partial parse could not read. Only the failed classes go back
+     * to the AI - their source rows are replayed from {@code batches_json} - so a class
+     * that already parsed is never asked again, and the merged preview cannot duplicate
+     * it. The work runs in the background like the first pass: the page is answered with
+     * the {@code PARSING} state of this round and polls from there. The batch plan
+     * ({@code total_batches}) keeps the original figure, so the counters keep reading
+     * "已完成 3/4 批" instead of restarting at zero.
+     */
+    public PreviewDto retry(long id, String username) {
+        AiImportLog log = requireSession(id, username);
+        if (!AiImportLog.PARTIAL.equals(log.getStatus())) {
+            throw ApiException.conflict(AiImportLog.PARSING.equals(log.getStatus())
+                    ? "解析还没完成，请等进度走完再重试失败批次"
+                    : "当前导入没有可重试失败批次，只有“部分结果”的导入才能重试");
+        }
+        List<BatchState> stored = readBatches(log.getBatchesJson());
+        List<BatchWork> failed = new ArrayList<>();
+        for (BatchState batch : stored) {
+            if (batch.failed()) {
+                failed.add(new BatchWork(batch.index, batch.label, List.copyOf(batch.sourceRows)));
+            }
+        }
+        if (failed.isEmpty()) {
+            throw ApiException.conflict("这次导入没有失败的批次，不需要重试");
+        }
+        ImportTarget target = targetOf(log);
+        int total = log.getTotalBatches() > 0 ? log.getTotalBatches() : stored.size();
+        BatchContext context = retryContext(log, total);
+        log.setStatus(AiImportLog.PARSING);
+        log.setCurrentBatch(null);
+        touch(log);
+        PreviewDto accepted = preview(log);
+        dispatchBatches(log.getId(), target, context, failed);
+        return accepted;
+    }
+
+    /**
+     * The header context a retry needs, taken from the stored upload when it is still
+     * there. The rows to parse come from {@code batches_json}, so losing the file only
+     * costs the header context; a partial import must stay retryable.
+     */
+    private BatchContext retryContext(AiImportLog log, int total) {
+        try {
+            if (log.getFilePath() != null) {
+                GridData grid = readGrid(log.getFilePath());
+                int headers = Math.min(headerCount(grid.rows()), grid.rows().size());
+                return new BatchContext(
+                        grid.sheetName(), List.copyOf(grid.rows().subList(0, headers)), total);
+            }
+        } catch (RuntimeException ex) {
+            // Upload gone or unreadable: keep going with the rows already recorded.
+        }
+        return new BatchContext("", List.of(), total);
+    }
+
     public byte[] file(long id, String username) {
         AiImportLog log = requireSession(id, username);
         return storage.read(log.getFilePath());
@@ -462,39 +518,47 @@ public class AiImportService {
         // background thread has got to by the time it is serialised.
         PreviewDto accepted = preview(log);
         long sessionId = log.getId();
-        stopFlags.put(sessionId, new AtomicBoolean());
-        importExecutor.execute(
-                () -> runBatches(sessionId, target, grid.sheetName(), headers, batches));
+        BatchContext context = new BatchContext(grid.sheetName(), List.copyOf(headers), batches.size());
+        dispatchBatches(sessionId, target, context, batches);
         return accepted;
+    }
+
+    /** Starts a serial batch run on the import executor, with its own stop flag. */
+    private void dispatchBatches(
+            long sessionId, ImportTarget target, BatchContext context, List<BatchWork> batches) {
+        AtomicBoolean stopped = new AtomicBoolean();
+        stopFlags.put(sessionId, stopped);
+        importExecutor.execute(() -> runBatches(sessionId, target, context, batches, stopped));
     }
 
     /**
      * Serial background parse: one AI call per batch, each result written before the next.
      * A batch that fails is recorded and the run continues: the classes that did parse are
      * worth keeping, so the session ends {@code PARTIAL} instead of throwing them away.
+     * A retry runs the same way, but its list holds only the batches that failed.
      */
     private void runBatches(
             long sessionId,
             ImportTarget target,
-            String sheetName,
-            List<List<String>> headers,
-            List<BatchWork> batches) {
+            BatchContext context,
+            List<BatchWork> batches,
+            AtomicBoolean stopped) {
         List<String> rawResponses = new ArrayList<>();
-        AtomicBoolean stopped = stopFlags.computeIfAbsent(sessionId, key -> new AtomicBoolean());
         try {
-            for (BatchWork work : batches) {
-                if (stopped.get()) {
+            for (int i = 0; i < batches.size(); i++) {
+                BatchWork work = batches.get(i);
+                if (stopped.get() || !ownsRun(sessionId, stopped)) {
                     return;
                 }
-                beginBatch(sessionId, work);
-                if (stopped.get()) {
+                beginBatch(sessionId, work, stopped);
+                if (stopped.get() || !ownsRun(sessionId, stopped)) {
                     return;
                 }
                 BatchOutcome outcome;
                 try {
                     String prompt = AiImportPrompts.chunkPrompt(
-                            target, sheetName, headers, work.sourceRows(),
-                            work.index() - 1, batches.size(), objectMapper);
+                            target, context.sheetName(), context.headers(), work.sourceRows(),
+                            work.index() - 1, context.totalBatches(), objectMapper);
                     AiCall call = callAiForBatch(prompt, target);
                     if (call.rawResponse() != null && !call.rawResponse().isBlank()) {
                         rawResponses.add(call.rawResponse());
@@ -504,11 +568,21 @@ public class AiImportService {
                     outcome = BatchOutcome.failed(
                             ex.getMessage() == null ? "未知错误" : ex.getMessage());
                 }
-                persistBatch(sessionId, work, batches.size(), outcome, rawResponses);
+                persistBatch(sessionId, work, context.totalBatches(), outcome, rawResponses,
+                        batches.size() - 1 - i, stopped);
             }
         } finally {
-            stopFlags.remove(sessionId);
+            stopFlags.remove(sessionId, stopped);
         }
+    }
+
+    /**
+     * Whether this thread still owns the session's run. A retry replaces the stop flag, so
+     * a batch that was in flight when the previous run was stopped or superseded cannot
+     * write its late result into the new round.
+     */
+    private boolean ownsRun(long sessionId, AtomicBoolean stopped) {
+        return stopFlags.get(sessionId) == stopped;
     }
 
     /** One batch's AI call. A failure belongs to this batch, not to the whole session yet. */
@@ -528,9 +602,9 @@ public class AiImportService {
     }
 
     /** Marks which class is in flight, so a poll can say "正在解析 八（2）". */
-    private void beginBatch(long sessionId, BatchWork work) {
+    private void beginBatch(long sessionId, BatchWork work, AtomicBoolean stopped) {
         transactionTemplate.executeWithoutResult(status -> logs.findById(sessionId).ifPresent(log -> {
-            if (!AiImportLog.PARSING.equals(log.getStatus())) {
+            if (!AiImportLog.PARSING.equals(log.getStatus()) || !ownsRun(sessionId, stopped)) {
                 return;
             }
             log.setCurrentBatch(work.label());
@@ -542,18 +616,22 @@ public class AiImportService {
     /**
      * Writes one finished batch and everything derived from it in a single short
      * transaction: the batch entry, the counters, and the preview merged from the
-     * batches that are already {@code DONE}. The status only leaves {@code PARSING}
-     * once every batch has been attempted.
+     * batches that are already {@code DONE}. {@code remaining} is how many batches of
+     * this run are still to come, so the status only leaves {@code PARSING} once the
+     * last one of the run has been attempted (one batch for a retry, all of them for
+     * a first parse).
      */
     private void persistBatch(
             long sessionId,
             BatchWork work,
             int totalBatches,
             BatchOutcome outcome,
-            List<String> rawResponses) {
+            List<String> rawResponses,
+            int remaining,
+            AtomicBoolean stopped) {
         transactionTemplate.executeWithoutResult(status -> {
             AiImportLog log = logs.findById(sessionId).orElse(null);
-            if (log == null) {
+            if (log == null || !ownsRun(sessionId, stopped)) {
                 return;
             }
             if (!AiImportLog.PARSING.equals(log.getStatus())) {
@@ -577,7 +655,7 @@ public class AiImportService {
             if (!rawResponses.isEmpty()) {
                 log.setAiRawResponse(writeJson(List.copyOf(rawResponses)));
             }
-            boolean finished = completed + failures >= totalBatches;
+            boolean finished = remaining <= 0;
             log.setStatus(!finished
                     ? AiImportLog.PARSING
                     : failures > 0 ? AiImportLog.PARTIAL : AiImportLog.PREVIEW);
@@ -790,6 +868,13 @@ public class AiImportService {
 
     /** One planned batch: the grid rows it covers and its 1-based position. */
     private record BatchWork(int index, String label, List<List<String>> sourceRows) {}
+
+    /**
+     * What every prompt of one batch run needs besides the batch's own rows: the sheet's
+     * header context, and how many batches the file was planned as. A retry reuses the
+     * original plan so its prompt still says "第 2/4 批".
+     */
+    private record BatchContext(String sheetName, List<List<String>> headers, int totalBatches) {}
 
     /** One batch's persisted state, read back from and written to {@code batches_json}. */
     private static final class BatchState {

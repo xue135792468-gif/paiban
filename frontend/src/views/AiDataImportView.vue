@@ -85,6 +85,8 @@
           :rows="preview.rows"
           :failed-batches="preview.failedBatches ?? []"
           :progress="preview.progress"
+          :retrying="retrying"
+          @retry="retryFailed"
         />
 
         <el-table
@@ -286,6 +288,7 @@ const {
   continuing,
   reparsing,
   stopping,
+  retrying,
   commitErrors,
   importedCount,
   lastSession,
@@ -305,6 +308,7 @@ const {
   continueWithAi,
   reparse,
   stopParsing,
+  retryFailed,
   clear,
 } = useImportSession()
 const restoring = ref(false)

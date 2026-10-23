@@ -27,9 +27,10 @@ function mountPanel(
   rows: PreviewRow[],
   failedBatches: FailedBatch[],
   progress: ImportProgress | null = null,
+  retrying = false,
 ) {
   return mount(PartialResultPanel, {
-    props: { rows, failedBatches, progress },
+    props: { rows, failedBatches, progress, retrying },
     global: { plugins: [ElementPlus] },
   })
 }
@@ -94,5 +95,31 @@ describe('部分结果面板', () => {
     expect(success).toContain('已解析 1 节课')
     expect(wrapper.get('[data-testid="partial-failed"]').text()).toContain('一年级2班')
     expect(wrapper.get('[data-testid="partial-hint"]').text()).toContain('请先重试失败批次或放弃导入')
+  })
+
+  it('提供重试失败批次的入口，点下去把重试交给页面', async () => {
+    const wrapper = mountPanel(
+      [lessonRow('一年级1班', '1', '语文')],
+      [failedBatch(2, '一年级2班', '第 2/4 批（一年级2班）解析失败：模型返回为空')],
+      { total: 4, completed: 3, failed: 1, currentBatch: null },
+    )
+
+    const retry = wrapper.get('[data-testid="partial-retry"]')
+    expect(retry.text()).toContain('重试失败批次')
+    expect(wrapper.get('[data-testid="partial-retry-hint"]').text()).toContain('1 个班')
+
+    await retry.trigger('click')
+    expect(wrapper.emitted('retry')).toHaveLength(1)
+  })
+
+  it('重试请求发出后按钮进入加载，避免重复点', () => {
+    const wrapper = mountPanel(
+      [lessonRow('一年级1班', '1', '语文')],
+      [failedBatch(2, '一年级2班', '第 2/4 批（一年级2班）解析失败：模型返回为空')],
+      { total: 4, completed: 3, failed: 1, currentBatch: null },
+      true,
+    )
+
+    expect(wrapper.get('[data-testid="partial-retry"]').classes()).toContain('is-loading')
   })
 })

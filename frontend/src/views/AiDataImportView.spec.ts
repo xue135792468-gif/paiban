@@ -869,6 +869,108 @@ describe('部分结果（PARTIAL）', () => {
   })
 })
 
+describe('重试失败批次', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** The retry answers PARSING with this round in flight: 3 batches done, 1 to go. */
+  function retryInFlight() {
+    return parsingPreview({
+      rows: [],
+      progress: { total: 4, completed: 3, failed: 1, currentBatch: '一年级2班' },
+      failedBatches: [
+        { index: 2, label: '一年级2班', reason: '第 2/4 批（一年级2班）解析失败：模型返回为空' },
+      ],
+    })
+  }
+
+  it('点击重试后显示本轮进度，轮询到预览后提示重试成功', async () => {
+    vi.useFakeTimers()
+    const success = vi.spyOn(ElMessage, 'success')
+    const { wrapper } = await mountImport('/admin/ai-import?target=timetable')
+    await showTimetable(wrapper, partialPreview())
+
+    httpMock.post.mockResolvedValue(retryInFlight())
+    await wrapper.get('[data-testid="partial-retry"]').trigger('click')
+    await flushPromises()
+
+    expect(httpMock.post).toHaveBeenCalledWith('/ai/import/sessions/9/retry')
+    const progress = wrapper.get('[data-testid="import-progress"]')
+    expect(progress.text()).toContain('已完成 3/4 批')
+    expect(progress.text()).toContain('一年级2班')
+
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/ai/status') return Promise.resolve(aiStatus())
+      if (url === '/ai/import/sessions/9') return Promise.resolve(timetablePreview())
+      return Promise.resolve({ data: [] })
+    })
+    await vi.advanceTimersByTimeAsync(2000)
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="import-progress"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="timetable-summary"]').text()).toContain('共 2 节')
+    expect(success).toHaveBeenCalledWith('重试成功，已解析全部 2 节课')
+    success.mockRestore()
+  })
+
+  it('重试仍然失败时回到部分结果面板，并提示还剩几个班', async () => {
+    vi.useFakeTimers()
+    const warning = vi.spyOn(ElMessage, 'warning')
+    const { wrapper } = await mountImport('/admin/ai-import?target=timetable')
+    await showTimetable(wrapper, partialPreview())
+
+    httpMock.post.mockResolvedValue(retryInFlight())
+    await wrapper.get('[data-testid="partial-retry"]').trigger('click')
+    await flushPromises()
+
+    const stillFailing = partialPreview({
+      progress: { total: 4, completed: 3, failed: 1, currentBatch: null },
+      failedBatches: [
+        {
+          index: 2,
+          label: '一年级2班',
+          reason: '第 2/4 批（一年级2班）解析失败：重试时服务超时',
+        },
+      ],
+    })
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/ai/status') return Promise.resolve(aiStatus())
+      if (url === '/ai/import/sessions/9') return Promise.resolve(stillFailing)
+      return Promise.resolve({ data: [] })
+    })
+    await vi.advanceTimersByTimeAsync(2000)
+    await flushPromises()
+
+    const panel = wrapper.get('[data-testid="partial-result-panel"]')
+    expect(panel.text()).toContain('重试时服务超时')
+    expect(panel.text()).not.toContain('模型返回为空')
+    expect(warning).toHaveBeenCalledWith('重试后还有 1 个班没解析出来，可以再试一次或放弃导入')
+    warning.mockRestore()
+  })
+
+  it('重试被拒绝时展示后端原因并留在部分结果', async () => {
+    const error = vi.spyOn(ElMessage, 'error')
+    const { wrapper } = await mountImport('/admin/ai-import?target=timetable')
+    await showTimetable(wrapper, partialPreview())
+
+    httpMock.post.mockRejectedValue({
+      response: { status: 409, data: { message: '当前导入没有可重试失败批次' } },
+    })
+    await wrapper.get('[data-testid="partial-retry"]').trigger('click')
+    await flushPromises()
+
+    expect(error).toHaveBeenCalledWith('当前导入没有可重试失败批次')
+    expect(wrapper.find('[data-testid="partial-result-panel"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="import-progress"]').exists()).toBe(false)
+    error.mockRestore()
+  })
+})
+
 function seedLastSession(overrides: Record<string, unknown> = {}) {
   const record = {
     id: 9,
