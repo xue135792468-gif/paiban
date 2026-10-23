@@ -59,7 +59,12 @@
         </template>
       </el-alert>
 
-      <ImportProgressPanel v-if="isParsing" :progress="preview.progress" />
+      <ImportProgressPanel
+        v-if="isParsing"
+        :progress="preview.progress"
+        :stopping="stopping"
+        @stop="stopParsing"
+      />
 
       <el-card v-if="!isParsing" shadow="never">
         <template #header>
@@ -268,6 +273,7 @@ const {
   committing,
   continuing,
   reparsing,
+  stopping,
   commitErrors,
   importedCount,
   lastSession,
@@ -285,6 +291,7 @@ const {
   commit,
   continueWithAi,
   reparse,
+  stopParsing,
   clear,
 } = useImportSession()
 const restoring = ref(false)

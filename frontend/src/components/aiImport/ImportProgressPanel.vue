@@ -3,7 +3,19 @@
     <template #header>
       <div class="head">
         <span class="card-title">正在后台解析</span>
-        <el-tag size="small" type="warning" effect="plain">解析中</el-tag>
+        <div class="head-side">
+          <el-tag size="small" type="warning" effect="plain">解析中</el-tag>
+          <el-button
+            data-testid="stop-parsing"
+            size="small"
+            type="danger"
+            plain
+            :loading="stopping"
+            @click="emit('stop')"
+          >
+            停止解析
+          </el-button>
+        </div>
       </div>
     </template>
 
@@ -23,7 +35,7 @@
 
     <p class="hint">
       解析在服务器后台进行，可以先去忙别的；页面会自动刷新，全部完成后直接进入预览。
-      现在离开再回来，用「上次导入」可以接着看进度。
+      现在离开再回来，用「上次导入」可以接着看进度。停止解析会保留已完成的批次，剩下的可以之后重新解析。
     </p>
   </el-card>
 </template>
@@ -32,7 +44,8 @@
 import { computed } from 'vue'
 import type { ImportProgress } from './timetablePreview'
 
-const props = defineProps<{ progress?: ImportProgress | null }>()
+const props = defineProps<{ progress?: ImportProgress | null; stopping?: boolean }>()
+const emit = defineEmits<{ stop: [] }>()
 
 const total = computed(() => props.progress?.total ?? 0)
 const completed = computed(() => props.progress?.completed ?? 0)
@@ -50,6 +63,12 @@ const percentage = computed(() =>
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.head-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .card-title {

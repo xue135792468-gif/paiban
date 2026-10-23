@@ -40,6 +40,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -83,6 +85,11 @@ public class AiImportService {
     private final ImportMappingService nameMappings;
     private final TaskExecutor importExecutor;
     private final TransactionTemplate transactionTemplate;
+    /**
+     * Live stop requests, keyed by session. In memory on purpose: a stop only matters to
+     * the background thread of this process; a restart is covered by the startup recovery.
+     */
+    private final ConcurrentHashMap<Long, AtomicBoolean> stopFlags = new ConcurrentHashMap<>();
 
     public AiImportService(
             AiGateway gateway,
@@ -335,6 +342,43 @@ public class AiImportService {
         }
     }
 
+    /**
+     * Stops a background parse. The finished batches stay as the session's preview; the
+     * batches that were not parsed yet are dropped, while {@code total_batches} keeps the
+     * original plan so the page can still say "已完成 5/14". Stopping an already finished
+     * session is the caller's mistake, not a silent success.
+     */
+    public PreviewDto stop(long id, String username) {
+        AiImportLog log = requireSession(id, username);
+        if (!AiImportLog.PARSING.equals(log.getStatus())) {
+            throw ApiException.conflict("当前导入不在解析中，无法停止");
+        }
+        stopFlags.computeIfAbsent(id, key -> new AtomicBoolean()).set(true);
+        transactionTemplate.executeWithoutResult(status -> {
+            // The background thread may have finished the last batch in the meantime;
+            // re-read so a natural finish is never overwritten with a "stopped" preview.
+            AiImportLog current = logs.findById(id).orElse(null);
+            if (current == null || !AiImportLog.PARSING.equals(current.getStatus())) {
+                return;
+            }
+            List<BatchState> batches = readBatches(current.getBatchesJson());
+            batches.removeIf(batch -> !batch.done());
+            Merged merged = mergeBatches(batches);
+            current.setBatchesJson(writeBatches(batches));
+            current.setCompletedBatches((int) batches.stream().filter(BatchState::done).count());
+            current.setCurrentBatch(null);
+            current.setPreviewJson(payloadJson(
+                    merged.mappings(), merged.rows(), merged.explanation(), merged.suggestedTarget()));
+            current.setAiExplanation(merged.explanation());
+            current.setRowCount(merged.rows().size());
+            current.setStatus(AiImportLog.PREVIEW);
+            current.setUpdatedAt(Instant.now());
+            logs.save(current);
+        });
+        return preview(logs.findById(id)
+                .orElseThrow(() -> ApiException.notFound("导入会话不存在: " + id)));
+    }
+
     public byte[] file(long id, String username) {
         AiImportLog log = requireSession(id, username);
         return storage.read(log.getFilePath());
@@ -409,6 +453,7 @@ public class AiImportService {
         // background thread has got to by the time it is serialised.
         PreviewDto accepted = preview(log);
         long sessionId = log.getId();
+        stopFlags.put(sessionId, new AtomicBoolean());
         importExecutor.execute(
                 () -> runBatches(sessionId, target, grid.sheetName(), headers, batches));
         return accepted;
@@ -422,28 +467,39 @@ public class AiImportService {
             List<List<String>> headers,
             List<BatchWork> batches) {
         List<String> rawResponses = new ArrayList<>();
-        for (BatchWork work : batches) {
-            beginBatch(sessionId, work);
-            BatchOutcome outcome;
-            try {
-                String prompt = AiImportPrompts.chunkPrompt(
-                        target, sheetName, headers, work.sourceRows(),
-                        work.index() - 1, batches.size(), objectMapper);
-                AiCall call = callAiForBatch(prompt, target);
-                if (call.rawResponse() != null && !call.rawResponse().isBlank()) {
-                    rawResponses.add(call.rawResponse());
+        AtomicBoolean stopped = stopFlags.computeIfAbsent(sessionId, key -> new AtomicBoolean());
+        try {
+            for (BatchWork work : batches) {
+                if (stopped.get()) {
+                    return;
                 }
-                outcome = BatchOutcome.parsed(call.parsed());
-            } catch (RuntimeException ex) {
-                outcome = BatchOutcome.failed(
-                        ex.getMessage() == null ? "未知错误" : ex.getMessage());
+                beginBatch(sessionId, work);
+                if (stopped.get()) {
+                    return;
+                }
+                BatchOutcome outcome;
+                try {
+                    String prompt = AiImportPrompts.chunkPrompt(
+                            target, sheetName, headers, work.sourceRows(),
+                            work.index() - 1, batches.size(), objectMapper);
+                    AiCall call = callAiForBatch(prompt, target);
+                    if (call.rawResponse() != null && !call.rawResponse().isBlank()) {
+                        rawResponses.add(call.rawResponse());
+                    }
+                    outcome = BatchOutcome.parsed(call.parsed());
+                } catch (RuntimeException ex) {
+                    outcome = BatchOutcome.failed(
+                            ex.getMessage() == null ? "未知错误" : ex.getMessage());
+                }
+                persistBatch(sessionId, work, batches.size(), outcome, rawResponses);
+                if (outcome.failed() != null) {
+                    // One bad batch fails the session for now; partial results and retry are
+                    // the next ticket's business. What already succeeded stays on disk.
+                    return;
+                }
             }
-            persistBatch(sessionId, work, batches.size(), outcome, rawResponses);
-            if (outcome.failed() != null) {
-                // One bad batch fails the session for now; partial results and retry are
-                // the next ticket's business. What already succeeded stays on disk.
-                return;
-            }
+        } finally {
+            stopFlags.remove(sessionId);
         }
     }
 
@@ -466,6 +522,9 @@ public class AiImportService {
     /** Marks which class is in flight, so a poll can say "正在解析 八（2）". */
     private void beginBatch(long sessionId, BatchWork work) {
         transactionTemplate.executeWithoutResult(status -> logs.findById(sessionId).ifPresent(log -> {
+            if (!AiImportLog.PARSING.equals(log.getStatus())) {
+                return;
+            }
             log.setCurrentBatch(work.label());
             log.setUpdatedAt(Instant.now());
             logs.save(log);
@@ -486,6 +545,11 @@ public class AiImportService {
         transactionTemplate.executeWithoutResult(status -> {
             AiImportLog log = logs.findById(sessionId).orElse(null);
             if (log == null) {
+                return;
+            }
+            if (!AiImportLog.PARSING.equals(log.getStatus())) {
+                // Stopped (or recovered) while this batch was in flight: the session already
+                // has its final preview, so a late result must not be written back.
                 return;
             }
             List<BatchState> batches = readBatches(log.getBatchesJson());
