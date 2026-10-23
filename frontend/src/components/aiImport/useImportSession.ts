@@ -412,6 +412,8 @@ export function useImportSession() {
   /**
    * Stops a background parse. The server keeps the batches that already finished and
    * turns the session into a normal preview; the returned preview ends the polling.
+   * A stop that came before the first finished batch has no preview to show, so the
+   * server answers {@code FAILED} and the message says so instead of "kept 0/4".
    */
   async function stopParsing() {
     const current = preview.value
@@ -426,7 +428,11 @@ export function useImportSession() {
       setPreview(data)
       const completed = data.progress?.completed ?? 0
       const total = data.progress?.total ?? 0
-      ElMessage.success(`已停止解析，保留已完成 ${completed}/${total} 批`)
+      if (data.status === 'FAILED') {
+        ElMessage.warning(data.explanation || '已停止解析，没有任何已完成的批次')
+      } else {
+        ElMessage.success(`已停止解析，保留已完成 ${completed}/${total} 批`)
+      }
     } catch (error) {
       ElMessage.error(serverMessage(error, '停止解析失败，请稍后重试'))
     } finally {

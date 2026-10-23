@@ -532,6 +532,14 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
                 timetableExcelBytes(4), XLSX);
         long sessionId = upload.jsonPath().getLong("sessionId");
 
+        // Let one batch finish, so the first stop leaves a preview rather than a failure.
+        for (int i = 0; i < 200; i++) {
+            if (importLogs.findById(sessionId).orElseThrow().getCompletedBatches() >= 1) {
+                break;
+            }
+            Thread.sleep(50);
+        }
+
         as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/stop")
                 .then().statusCode(200).body("status", equalTo("PREVIEW"));
         as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/stop")
@@ -558,6 +566,96 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
                 .post("/api/ai/import/sessions/" + preview.jsonPath().getLong("sessionId") + "/stop")
                 .then().statusCode(409)
                 .body("message", containsString("不在解析中"));
+    }
+
+    @Test
+    void stoppingBeforeTheFirstBatchFinishesNeverPretendsToHaveAPreview() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        // Slow enough that the stop lands while the very first batch is still in flight.
+        fake.latencyMs = 400;
+        fake.responder = request -> aiResponse(List.of(
+                timetableRow("语文", "周一", String.valueOf(fake.calls), "张三")));
+
+        Response upload = upload(
+                admin, "/api/ai/import/excel?target=timetable", "一年级课表.xlsx",
+                timetableExcelBytes(4), XLSX);
+        upload.then().statusCode(200).body("status", equalTo("PARSING"));
+        long sessionId = upload.jsonPath().getLong("sessionId");
+
+        Response stopped = as(admin).when()
+                .post("/api/ai/import/sessions/" + sessionId + "/stop");
+
+        // Nothing parsed means nothing to preview: an empty "preview (0 rows)" that could
+        // still be committed would be a lie.
+        stopped.then().statusCode(200)
+                .body("status", equalTo("FAILED"))
+                .body("explanation", equalTo("已停止解析，没有任何已完成的批次"))
+                .body("rows", hasSize(0))
+                .body("progress.total", equalTo(4))
+                .body("progress.completed", equalTo(0))
+                .body("failedBatches", hasSize(0));
+
+        // The in-flight batch may still be answered; its result must not resurrect the run.
+        Thread.sleep(700);
+        int settledCalls = fake.calls;
+        Thread.sleep(700);
+        assertThat(fake.calls).as("no AI call after the stop").isEqualTo(settledCalls);
+
+        AiImportLog stored = importLogs.findById(sessionId).orElseThrow();
+        assertThat(stored.getStatus()).isEqualTo(AiImportLog.FAILED);
+        assertThat(stored.getCompletedBatches()).isZero();
+        assertThat(stored.getBatchesJson()).doesNotContain("PENDING");
+        assertThat(stored.getPreviewJson()).isNull();
+
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/commit")
+                .then().statusCode(409);
+    }
+
+    @Test
+    void aStoppedParseSaysHowManyBatchesWereLeftUnparsed() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.latencyMs = 250;
+        fake.responder = request -> aiResponse(List.of(
+                timetableRow("语文", "周一", String.valueOf(fake.calls), "张三")));
+
+        Response upload = upload(
+                admin, "/api/ai/import/excel?target=timetable", "一年级课表.xlsx",
+                timetableExcelBytes(4), XLSX);
+        long sessionId = upload.jsonPath().getLong("sessionId");
+
+        for (int i = 0; i < 200; i++) {
+            if (importLogs.findById(sessionId).orElseThrow().getCompletedBatches() >= 1) {
+                break;
+            }
+            Thread.sleep(50);
+        }
+
+        Response stopped = as(admin).when()
+                .post("/api/ai/import/sessions/" + sessionId + "/stop");
+        stopped.then().statusCode(200).body("status", equalTo("PREVIEW"));
+
+        io.restassured.path.json.JsonPath stoppedJson = stopped.jsonPath();
+        int kept = stoppedJson.getInt("progress.completed");
+        int dropped = 4 - kept;
+        assertThat(kept).isBetween(1, 3);
+
+        // The page must say what happened to the batches that were thrown away, and the
+        // counters must only report batches that really exist in the record.
+        assertThat(stoppedJson.getString("explanation"))
+                .contains("已停止解析，剩余 " + dropped + " 批未解析");
+        assertThat(stoppedJson.getMap("progress"))
+                .containsEntry("total", 4)
+                .containsEntry("completed", kept)
+                .containsEntry("failed", 0);
+        assertThat(stoppedJson.getList("failedBatches")).isEmpty();
+        assertThat(stoppedJson.getList("rows")).hasSize(kept);
+
+        AiImportLog stored = importLogs.findById(sessionId).orElseThrow();
+        assertThat(stored.getCompletedBatches()).isEqualTo(kept);
+        assertThat(stored.getBatchesJson()).doesNotContain("PENDING");
+        assertThat(stored.getBatchesJson().split("\"index\"", -1)).hasSize(kept + 1);
     }
 
     @Test
@@ -888,6 +986,45 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         assertThat(done.getList("rows")).hasSize(4);
         assertThat(fake.calls).isEqualTo(6);
         assertThat(retried.get()).isEqualTo(2);
+    }
+
+    @Test
+    void aRetryKeepsTheRawAnswerOfTheBatchesThatAlreadyParsed() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        // Batch 2 fails, so batches 1, 3 and 4 leave an answer in the audit column.
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        fake.responder = request -> {
+            int call = calls.incrementAndGet();
+            if (call == 2) {
+                throw new IllegalStateException("模型返回为空");
+            }
+            return markedAiResponse("FIRST-" + call);
+        };
+
+        Response upload = upload(admin, "/api/ai/import/excel?target=timetable",
+                "一年级课表.xlsx", timetableExcelBytes(4), XLSX);
+        long sessionId = upload.jsonPath().getLong("sessionId");
+        assertThat(awaitSession(admin, sessionId).getString("status")).isEqualTo("PARTIAL");
+
+        List<String> firstRound =
+                rawAnswers(importLogs.findById(sessionId).orElseThrow().getAiRawResponse());
+        assertThat(firstRound).hasSize(3);
+        assertThat(String.join("\n", firstRound))
+                .contains("FIRST-1").contains("FIRST-3").contains("FIRST-4");
+
+        fake.responder = request -> markedAiResponse("SECOND-1");
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/retry")
+                .then().statusCode(200);
+        assertThat(awaitSession(admin, sessionId).getString("status")).isEqualTo("PREVIEW");
+
+        // The audit column is what the AI really answered: a retry adds its own answer and
+        // must not erase the answers of the batches that parsed on the first pass.
+        List<String> afterRetry =
+                rawAnswers(importLogs.findById(sessionId).orElseThrow().getAiRawResponse());
+        assertThat(afterRetry).hasSize(4);
+        assertThat(afterRetry.stream().filter(raw -> raw.contains("FIRST-"))).hasSize(3);
+        assertThat(afterRetry.stream().filter(raw -> raw.contains("SECOND-1"))).hasSize(1);
     }
 
     @Test
@@ -2145,6 +2282,24 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
 
     private String aiResponse(List<Map<String, Object>> rows) {
         return aiResponse(rows, null);
+    }
+
+    /** A raw AI answer carrying a marker, so a test can tell two rounds apart in the audit. */
+    private String markedAiResponse(String marker) {
+        try {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("mappings", List.of());
+            body.put("rows", List.of(timetableRow("语文", "周一", "1", "张三")));
+            body.put("explanation", marker);
+            return new ObjectMapper().writeValueAsString(body);
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    /** The stored {@code ai_raw_response} is a JSON array of the raw answers, in plan order. */
+    private List<String> rawAnswers(String json) throws Exception {
+        return new ObjectMapper().readValue(json, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
     }
 
     private String aiResponse(List<Map<String, Object>> rows, String suggestedTarget) {
