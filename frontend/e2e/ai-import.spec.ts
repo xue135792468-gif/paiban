@@ -215,7 +215,139 @@ test('解析失败给出可操作提示，而不是通用「操作失败」', as
   await expect(error).not.toContainText('操作失败，请稍后重试')
 })
 
+test('课表解析后切页再回来，预览仍在', async ({ page }) => {
+  await startTimetableImport(page, timetableSheet(seed), { merges: ['A1:F1'] })
+  const summary = page.getByTestId('timetable-summary')
+  await expect(summary).toContainText('共 4 节，1 节待映射')
+  await expect(page).toHaveURL(/session=\d+/)
+
+  await page.goto('/admin/scheduling')
+  await page.goBack()
+
+  await expect(summary).toBeVisible()
+  await expect(summary).toContainText('共 4 节，1 节待映射')
+  await expect(page.locator('.timetable-preview .grid .lesson')).toHaveCount(3)
+  // The restored page keeps the session in the URL, so another refresh still works.
+  await expect(page).toHaveURL(/session=\d+/)
+})
+
+test('F5 刷新后预览仍在', async ({ page }) => {
+  await startTimetableImport(page, timetableSheet(seed), { merges: ['A1:F1'] })
+  await expect(page.getByTestId('timetable-summary')).toBeVisible()
+  await expect(page).toHaveURL(/session=\d+/)
+
+  await page.reload()
+
+  const summary = page.getByTestId('timetable-summary')
+  await expect(summary).toContainText('共 4 节，1 节待映射')
+  await expect(page.locator('.timetable-preview .grid .lesson')).toHaveCount(3)
+  await expect(page).toHaveURL(/session=\d+/)
+})
+
+test('空页面显示上次导入入口并可继续', async ({ page }) => {
+  await startTimetableImport(page, timetableSheet(seed), { merges: ['A1:F1'] })
+
+  // A full page load without the session query: only localStorage knows the session.
+  await page.goto('/admin/ai-import')
+
+  const card = page.getByTestId('last-session-card')
+  await expect(card).toBeVisible()
+  await expect(card).toContainText('timetable.xlsx')
+  await expect(card).toContainText('待确认')
+
+  await page.getByTestId('continue-last-session').click()
+
+  await expect(page.getByTestId('timetable-summary')).toContainText('共 4 节')
+  await expect(page).toHaveURL(/session=\d+/)
+})
+
+test('八（1）推断为八年级并随班级创建', async ({ page }) => {
+  const newClass = `八（1）-${seed.suffix}`
+  const sheet = [
+    ['班级', '星期', '节次', '课程', '教师', '教室'],
+    [seed.classOne, '周一', '第1节', seed.courseOne, seed.teacherOne, seed.room],
+    [newClass, '周一', '第2节', seed.courseTwo, seed.teacherTwo, seed.room],
+  ]
+
+  await withTimetablePayload(inferredGradePreview(seed, newClass), async () => {
+    await startTimetableImport(page, sheet)
+
+    const mapping = page.getByTestId('mapping-step')
+    await expect(mapping).toContainText(newClass)
+    const gradeHint = mapping.getByTestId('grade-hint')
+    await expect(gradeHint).toContainText('八年级')
+    await expect(gradeHint).toContainText('新建')
+
+    // Select the unmatched class only: its grade and class are created on confirm.
+    await mapping
+      .locator('.el-table__body tr')
+      .first()
+      .locator('td.el-table-column--selection .el-checkbox')
+      .click()
+    await expect(mapping.getByTestId('batch-student-count').locator('input')).toHaveValue('45')
+
+    await page.getByRole('button', { name: /批量创建所选/ }).click()
+    const confirm = page.locator('.el-message-box')
+    await expect(confirm).toContainText('批量创建')
+    await confirm.getByRole('button', { name: '确定' }).click()
+
+    await expect(page.getByTestId('mapping-clear')).toBeVisible()
+    await page.locator('.footer-actions').getByRole('button', { name: /确认入库/ }).click()
+    await page.waitForURL(/\/admin\/drafts\/\d+/)
+  })
+
+  const token = await apiLogin(api)
+  const grades = await apiCall(api, token, 'get', `/grades?semesterId=${seed.semesterId}`)
+  expect((grades as Array<{ name: string }>).map((grade) => grade.name)).toContain('八年级')
+
+  const classes = await apiCall(api, token, 'get', `/classes?semesterId=${seed.semesterId}`)
+  const created = (classes as Array<{ name: string; gradeName: string; studentCount: number }>).find(
+    (adminClass) => adminClass.name === newClass,
+  )
+  expect(created?.gradeName).toBe('八年级')
+  expect(created?.studentCount).toBe(45)
+})
+
 // --------------------------------------------------------------------- fixtures
+
+/** Logs in, opens the import page and selects the timetable target. */
+async function openTimetableImport(page: Page): Promise<void> {
+  await uiLogin(page, 'admin', 'admin123')
+  await page.goto('/admin/ai-import')
+  await expect(page.getByText('AI 已就绪')).toBeVisible()
+  await page.locator('[data-target=timetable]').click()
+  await expect(page.locator('[data-target=timetable]')).toContainText('已选择')
+}
+
+/** Runs the timetable happy path up to the parsed preview. */
+async function startTimetableImport(
+  page: Page,
+  rows: string[][],
+  options: { merges?: string[] } = {},
+): Promise<void> {
+  await openTimetableImport(page)
+  await uploadExcel(
+    page,
+    'timetable.xlsx',
+    buildXlsx(rows, { sheetName: '高一年级课表', merges: options.merges }),
+  )
+  await page.getByRole('button', { name: '开始解析' }).click()
+  await expect(page.getByTestId('timetable-summary')).toBeVisible({ timeout: 60_000 })
+}
+
+/** Swaps the stub's timetable answer for one test, restoring it even on failure. */
+async function withTimetablePayload<T>(
+  payload: Record<string, unknown>,
+  run: () => Promise<T>,
+): Promise<T> {
+  const previous = timetablePayload
+  timetablePayload = payload
+  try {
+    return await run()
+  } finally {
+    timetablePayload = previous
+  }
+}
 
 async function seedImportSchool(context: APIRequestContext): Promise<ImportSeed> {
   const token = await apiLogin(context)
@@ -342,6 +474,28 @@ function timetablePreview(seedData: ImportSeed): Record<string, unknown> {
       { values: values(seedData.classTwo, '周一', '第1节', seedData.courseTwo, seedData.teacherTwo) },
     ],
     explanation: '识别为高一年级课表，一行一节课。',
+  }
+}
+
+/** Two rows: a seeded class plus one whose name only implies its grade. */
+function inferredGradePreview(seedData: ImportSeed, newClass: string): Record<string, unknown> {
+  const values = (className: string, periodNo: string, courseName: string, teacherName: string) => ({
+    className,
+    dayOfWeek: '周一',
+    periodNo,
+    courseName,
+    teacherName,
+    roomName: seedData.room,
+  })
+  return {
+    mappings: [
+      { source: '班级 / 星期 / 节次', target: 'className / dayOfWeek / periodNo', note: '表头与列顺序已识别' },
+    ],
+    rows: [
+      { values: values(seedData.classOne, '第1节', seedData.courseOne, seedData.teacherOne) },
+      { values: values(newClass, '第2节', seedData.courseTwo, seedData.teacherTwo) },
+    ],
+    explanation: '识别为班级课表，一行一节课。',
   }
 }
 

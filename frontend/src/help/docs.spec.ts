@@ -107,6 +107,11 @@ describe('searchDocs', () => {
     expect(searchDocs('映射步骤').map((result) => result.doc.slug)).toContain('ai-import')
   })
 
+  it('indexes the import restore and grade inference guidance', () => {
+    expect(searchDocs('切页或刷新后继续').map((result) => result.doc.slug)).toContain('ai-import')
+    expect(searchDocs('年级推断').map((result) => result.doc.slug)).toContain('ai-import')
+  })
+
   it('matches body text and returns a snippet around the hit', () => {
     const results = searchDocs('每周节数')
     const assignmentHit = results.find((result) => result.doc.slug === 'scheduling')
