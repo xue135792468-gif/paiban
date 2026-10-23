@@ -71,7 +71,8 @@
       </div>
       <ul class="failed-list">
         <li v-for="batch in failedBatches" :key="batch.index" class="failed-item">
-          <el-tag size="small" type="danger" effect="plain">第 {{ batch.index }} 批</el-tag>
+          <!-- `reason` already reads 「第 2/4 批（一年级2班）解析失败：…」; a second batch
+               number in front of it would look like a different batch. -->
           <span class="failed-label">{{ batch.label || '未知班级' }}</span>
           <span class="failed-reason">{{ batch.reason }}</span>
         </li>

@@ -112,6 +112,22 @@ describe('部分结果面板', () => {
     expect(wrapper.emitted('retry')).toHaveLength(1)
   })
 
+  it('失败批次只展示一次批次序号，不在原因前面重复拼一遍', () => {
+    const wrapper = mountPanel(
+      [lessonRow('一年级1班', '1', '语文')],
+      [failedBatch(2, '一年级2班', '第 2/4 批（一年级2班）解析失败：模型返回为空')],
+      { total: 4, completed: 3, failed: 1, currentBatch: null },
+    )
+
+    const text = wrapper.get('[data-testid="partial-failed"]').text()
+    expect(text).toContain('一年级2班')
+    expect(text).toContain('模型返回为空')
+    // The reason the server sends already names the batch; a 「第 2 批」 tag in front of it
+    // would read as a second, different batch number.
+    expect(text).not.toContain('第 2 批')
+    expect(text.split('第 2/4 批').length - 1).toBe(1)
+  })
+
   it('重试请求发出后按钮进入加载，避免重复点', () => {
     const wrapper = mountPanel(
       [lessonRow('一年级1班', '1', '语文')],
