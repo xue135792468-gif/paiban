@@ -19,6 +19,15 @@ public final class ImportDtos {
 
     public record MappingDto(String source, String target, String note) {}
 
+    /**
+     * How far a background parse has got. {@code failed} counts batches that errored,
+     * {@code currentBatch} is the class being parsed right now (null when idle).
+     */
+    public record ImportProgressDto(int total, int completed, int failed, String currentBatch) {}
+
+    /** A batch the AI could not parse, kept so the page can name the class to retry. */
+    public record FailedBatchDto(int index, String label, String reason) {}
+
     public record PreviewDto(
             Long sessionId,
             String targetType,
@@ -31,7 +40,11 @@ public final class ImportDtos {
             double threshold,
             String status,
             List<IssueDto> issues,
-            TimetableSummaryDto summary) {}
+            TimetableSummaryDto summary,
+            /** Null unless the session was (or is being) parsed in batches. */
+            ImportProgressDto progress,
+            /** Batches that failed; empty unless the parse is partial (or was stopped). */
+            List<FailedBatchDto> failedBatches) {}
 
     public record TextImportRequest(@NotBlank(message = "请粘贴需要解析的文本") @Size(max = 200000) String text) {}
 

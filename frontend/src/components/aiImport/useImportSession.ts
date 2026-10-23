@@ -1,10 +1,21 @@
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { AI_IMPORT_TIMEOUT_MS, http } from '@/api/http'
 import { aiParseErrorMessage, serverMessage } from '@/api/errors'
 import { canCommit, remainingIssueCount, type ImportPreview } from './timetablePreview'
 import { targetTitle } from './importTargets'
+import {
+  isAbandoned,
+  isCommitted,
+  isFailed,
+  isLocked,
+  isParsing as statusIsParsing,
+  isPartial as statusIsPartial,
+  isRestorable,
+  statusTagType,
+  statusText,
+} from './importStatus'
 
 export interface RowError {
   row: number
@@ -29,27 +40,10 @@ export interface LastSession {
 
 export type RestoreOutcome = 'restored' | 'failed' | 'unusable'
 
-const STATUS_LABELS: Record<string, string> = {
-  PREVIEW: '待确认',
-  EDITED: '已微调',
-  COMMITTED: '已入库',
-  FAILED: '解析失败',
-}
-
-/** Statuses a restored session can render; anything else is not worth showing. */
-const RESTORABLE_STATUSES = new Set(['PREVIEW', 'EDITED', 'COMMITTED', 'FAILED'])
+/** How often a PARSING session is re-read while the batches are being parsed. */
+const POLL_INTERVAL_MS = 2000
 
 const LAST_SESSION_KEY = 'paiban.aiImport.lastSession'
-
-export function statusText(status: string): string {
-  return STATUS_LABELS[status] ?? status
-}
-
-export function statusTagType(status: string): 'success' | 'danger' | 'info' {
-  if (status === 'COMMITTED') return 'success'
-  if (status === 'FAILED') return 'danger'
-  return 'info'
-}
 
 /** A corrupted or half-written record is treated as absent, never as a crash. */
 function readLastSession(): LastSession | null {
@@ -58,6 +52,11 @@ function readLastSession(): LastSession | null {
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<LastSession> | null
     if (typeof parsed?.id !== 'number' || !parsed.fileName || !parsed.status || !parsed.savedAt) {
+      return null
+    }
+    // An abandoned session can never be resumed, so it is not a "last import" to offer.
+    if (isAbandoned(parsed.status)) {
+      localStorage.removeItem(LAST_SESSION_KEY)
       return null
     }
     return {
@@ -84,6 +83,8 @@ export function useImportSession() {
   const committing = ref(false)
   const continuing = ref(false)
   const reparsing = ref(false)
+  const stopping = ref(false)
+  const abandoning = ref(false)
   const commitErrors = ref<RowError[]>([])
   /** Null until this page commits: a restored COMMITTED session has no known count. */
   const importedCount = ref<number | null>(null)
@@ -96,13 +97,18 @@ export function useImportSession() {
   const commitDisabled = computed(
     () =>
       !preview.value ||
-      preview.value.status === 'COMMITTED' ||
-      preview.value.status === 'FAILED' ||
+      isCommitted(preview.value.status) ||
+      isFailed(preview.value.status) ||
+      isLocked(preview.value.status) ||
       (isTimetable.value && !allIssuesResolved.value),
   )
   const commitLabel = computed(() => {
-    if (preview.value?.status === 'COMMITTED') return '已入库'
-    if (preview.value?.status === 'FAILED') return '解析失败'
+    const status = preview.value?.status
+    if (isCommitted(status)) return '已入库'
+    if (isFailed(status)) return '解析失败'
+    if (statusIsParsing(status)) return '解析中…'
+    if (statusIsPartial(status)) return '先重试或放弃'
+    if (isAbandoned(status)) return '已放弃'
     if (isTimetable.value && !allIssuesResolved.value) {
       return `确认入库（还有 ${remainingIssues.value} 项未解决）`
     }
@@ -116,6 +122,69 @@ export function useImportSession() {
     if (!preview.value) return 'info'
     return statusTagType(preview.value.status)
   })
+  const isParsing = computed(() => statusIsParsing(preview.value?.status))
+  /** Some batches parsed, some did not: the page shows the split and locks the import. */
+  const isPartial = computed(() => statusIsPartial(preview.value?.status))
+  const isCommittedPreview = computed(() => isCommitted(preview.value?.status))
+  const isFailedPreview = computed(() => isFailed(preview.value?.status))
+  const retrying = ref(false)
+  /**
+   * True from 「重试失败批次」 until the poll that settles that round. It is what turns a
+   * PARSING → PREVIEW/PARTIAL transition into a message about the retry rather than the
+   * original parse.
+   */
+  const retryRound = ref(false)
+  const polling = ref(false)
+  let pollTimer: ReturnType<typeof setInterval> | null = null
+
+  /**
+   * A PARSING session is filled in batch by batch on the server, so the page re-reads
+   * it every couple of seconds and stops as soon as the status moves on.
+   */
+  function stopPolling() {
+    if (pollTimer !== null) {
+      clearInterval(pollTimer)
+      pollTimer = null
+    }
+    polling.value = false
+  }
+
+  function startPolling(sessionId: number) {
+    stopPolling()
+    polling.value = true
+    pollTimer = setInterval(() => {
+      void pollProgress(sessionId)
+    }, POLL_INTERVAL_MS)
+  }
+
+  async function pollProgress(sessionId: number) {
+    try {
+      const { data } = await http.get<ImportPreview>(`/ai/import/sessions/${sessionId}`)
+      if (data && preview.value?.sessionId === data.sessionId) {
+        // setPreview re-evaluates the polling state: PREVIEW ends the loop.
+        setPreview(data)
+      }
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response?.status
+      if (status === 404 || status === 403) {
+        stopPolling()
+        ElMessage.error(
+          status === 404
+            ? '该导入会话已不存在，请重新上传文件'
+            : '没有权限查看该导入会话，请重新上传文件',
+        )
+      }
+      // Any other failure is a blip: the next tick tries again.
+    }
+  }
+
+  function syncPolling(data: ImportPreview) {
+    if (statusIsParsing(data.status)) {
+      startPolling(data.sessionId)
+    } else {
+      stopPolling()
+    }
+  }
 
   /** Shows a freshly parsed or server-updated preview and drops stale row errors. */
   function setPreview(data: ImportPreview) {
@@ -123,6 +192,20 @@ export function useImportSession() {
     commitErrors.value = []
     importedCount.value = null
     rememberStatus(data.sessionId, data.status)
+    syncPolling(data)
+    settleRetryRound(data)
+  }
+
+  /** The retry round ended: say what came of it, once. */
+  function settleRetryRound(data: ImportPreview) {
+    if (!retryRound.value || statusIsParsing(data.status)) return
+    retryRound.value = false
+    const failed = data.failedBatches?.length ?? 0
+    if (failed > 0) {
+      ElMessage.warning(`重试后还有 ${failed} 个班没解析出来，可以再试一次或放弃导入`)
+    } else {
+      ElMessage.success(`重试成功，已解析全部 ${data.rows.length} 节课`)
+    }
   }
 
   function storeLastSession(record: LastSession | null) {
@@ -178,7 +261,7 @@ export function useImportSession() {
     const id = encodeURIComponent(String(sessionId).trim())
     try {
       const { data } = await http.get<ImportPreview>(`/ai/import/sessions/${id}`)
-      if (!data || !RESTORABLE_STATUSES.has(data.status)) {
+      if (!data || !isRestorable(data.status)) {
         if (data) forgetSession(data.sessionId)
         clear()
         ElMessage.error('该导入会话已不可用，请重新上传文件')
@@ -306,8 +389,99 @@ export function useImportSession() {
     }
   }
 
+  /**
+   * Stops a background parse. The server keeps the batches that already finished and
+   * turns the session into a normal preview; the returned preview ends the polling.
+   * A stop that came before the first finished batch has no preview to show, so the
+   * server answers {@code FAILED} and the message says so instead of "kept 0/4".
+   */
+  async function stopParsing() {
+    const current = preview.value
+    if (!current) return
+    stopping.value = true
+    // A stop during a retry has its own message; don't also report a retry outcome.
+    retryRound.value = false
+    try {
+      const { data } = await http.post<ImportPreview>(
+        `/ai/import/sessions/${current.sessionId}/stop`,
+      )
+      setPreview(data)
+      const completed = data.progress?.completed ?? 0
+      const total = data.progress?.total ?? 0
+      if (isFailed(data.status)) {
+        ElMessage.warning(data.explanation || '已停止解析，没有任何已完成的批次')
+      } else {
+        ElMessage.success(`已停止解析，保留已完成 ${completed}/${total} 批`)
+      }
+    } catch (error) {
+      ElMessage.error(serverMessage(error, '停止解析失败，请稍后重试'))
+    } finally {
+      stopping.value = false
+    }
+  }
+
+  /**
+   * Re-runs the classes a partial parse could not read. The server answers at once with
+   * this round's PARSING state and does the work in the background, so the page polls
+   * just like for the first parse; only the failed batches are sent to the AI again.
+   */
+  async function retryFailed() {
+    const current = preview.value
+    if (!current) return
+    retrying.value = true
+    try {
+      const { data } = await http.post<ImportPreview>(
+        `/ai/import/sessions/${current.sessionId}/retry`,
+      )
+      retryRound.value = true
+      // A PARSING preview starts the poll loop that reports the round's outcome.
+      setPreview(data)
+      const failed = current.failedBatches?.length ?? 0
+      ElMessage.info(`正在重试 ${failed} 个班，已解析的班不会重复调用 AI`)
+    } catch (error) {
+      ElMessage.error(serverMessage(error, '重试失败批次失败，请稍后重试'))
+    } finally {
+      retrying.value = false
+    }
+  }
+
+  /**
+   * Gives up on an unfinished import. The server keeps the record for the history but
+   * writes nothing, so the page drops the preview, the URL marker and the stored
+   * "last import": there is nothing left to continue.
+   */
+  async function abandon(): Promise<boolean> {
+    const current = preview.value
+    if (!current) return false
+    try {
+      await ElMessageBox.confirm(
+        '放弃后本次导入会直接作废：已解析的内容不会写入任何数据。确定放弃？',
+        '放弃导入',
+        { type: 'warning', confirmButtonText: '放弃导入', cancelButtonText: '继续解析' },
+      )
+    } catch {
+      return false
+    }
+    abandoning.value = true
+    try {
+      await http.post(`/ai/import/sessions/${current.sessionId}/abandon`)
+      resetState()
+      dropSessionFromUrl()
+      forgetSession(current.sessionId)
+      ElMessage.info('已放弃本次导入，未写入任何数据')
+      return true
+    } catch (error) {
+      ElMessage.error(serverMessage(error, '放弃导入失败，请稍后重试'))
+      return false
+    } finally {
+      abandoning.value = false
+    }
+  }
+
   /** Clears the preview half only; the URL marker survives so a refresh can retry. */
   function resetState() {
+    stopPolling()
+    retryRound.value = false
     preview.value = null
     editing.value = false
     commitErrors.value = []
@@ -320,16 +494,27 @@ export function useImportSession() {
     dropSessionFromUrl()
   }
 
+  // Leaving the page must not leave a timer behind calling the API.
+  onUnmounted(stopPolling)
+
   return {
     preview,
     editing,
     committing,
     continuing,
     reparsing,
+    stopping,
+    retrying,
+    abandoning,
     commitErrors,
     importedCount,
     lastSession,
     isTimetable,
+    isParsing,
+    isPartial,
+    isCommittedPreview,
+    isFailedPreview,
+    polling,
     previewIssues,
     remainingIssues,
     allIssuesResolved,
@@ -346,6 +531,10 @@ export function useImportSession() {
     commit,
     continueWithAi,
     reparse,
+    stopParsing,
+    retryFailed,
+    abandon,
+    stopPolling,
     clear,
   }
 }

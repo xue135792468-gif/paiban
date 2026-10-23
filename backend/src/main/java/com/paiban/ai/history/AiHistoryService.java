@@ -159,7 +159,7 @@ public class AiHistoryService {
                     log.getUsername(),
                     log.getCreatedAt().toString(),
                     importSummary(log),
-                    !AiImportLog.FAILED.equals(log.getStatus()),
+                    importSucceeded(log),
                     null,
                     null,
                     log.getId(),
@@ -190,9 +190,19 @@ public class AiHistoryService {
         return switch (log.getStatus()) {
             case AiImportLog.COMMITTED -> source + " · 入库 " + log.getImportedCount() + " 条";
             case AiImportLog.FAILED -> source + " · 解析失败";
+            case AiImportLog.ABANDONED -> source + " · 已放弃";
             case AiImportLog.EDITED -> source + " · 已微调 " + log.getRowCount() + " 行";
             default -> source + " · 预览 " + log.getRowCount() + " 行";
         };
+    }
+
+    /**
+     * An abandoned import wrote nothing, so it is not a success: showing a green tick
+     * next to a discarded import would claim data that does not exist.
+     */
+    private boolean importSucceeded(AiImportLog log) {
+        return !AiImportLog.FAILED.equals(log.getStatus())
+                && !AiImportLog.ABANDONED.equals(log.getStatus());
     }
 
     private String callSummary(AiCallLog log) {
