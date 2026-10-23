@@ -500,7 +500,7 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void creatingAClassRequiresAGradeId() {
+    void creatingAClassRequiresAGradeIdOrName() {
         String admin = adminToken();
         TimetableFixture f = timetableFixture(admin);
         Map<String, Object> row = timetableRow();
@@ -527,6 +527,190 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         assertThat(as(admin).when().get("/api/classes?semesterId=" + f.semesterId())
                 .then().statusCode(200).extract().jsonPath().getList("name"))
                 .contains("八年级1班");
+    }
+
+    @Test
+    void aGradeNameCreatesTheMissingGradeAndTheClassWithItsStudentCount() {
+        String admin = adminToken();
+        TimetableFixture f = timetableFixture(admin);
+        Map<String, Object> row = timetableRow();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> values = (Map<String, Object>) row.get("values");
+        values.put("className", "八（1）");
+        fake.response = aiResponse(List.of(row));
+        Response preview = as(admin)
+                .body(Map.of("text", "八（1） 周一 第1节 语文 张三 101"))
+                .when().post("/api/ai/import/text?target=timetable");
+        preview.then().statusCode(200);
+        long sessionId = preview.jsonPath().getLong("sessionId");
+
+        as(admin).body(Map.of("creates", List.of(Map.of(
+                        "field", "className", "source", "八（1）", "name", "八年级1班",
+                        "gradeName", "八年级", "studentCount", 48))))
+                .when().post("/api/ai/import/sessions/" + sessionId + "/mapping")
+                .then().statusCode(200)
+                .body("issues", hasSize(0))
+                .body("rows[0].values.className", equalTo("八年级1班"));
+
+        List<Map<String, Object>> grades = as(admin)
+                .when().get("/api/grades?semesterId=" + f.semesterId())
+                .then().statusCode(200).extract().jsonPath().getList("$");
+        assertThat(grades).hasSize(2);
+        assertThat(grades).anySatisfy(grade -> {
+            assertThat(grade.get("name")).isEqualTo("八年级");
+            assertThat(grade.get("sortOrder")).isEqualTo(2);
+        });
+
+        List<Map<String, Object>> classes = as(admin)
+                .when().get("/api/classes?semesterId=" + f.semesterId())
+                .then().statusCode(200).extract().jsonPath().getList("$");
+        assertThat(classes).anySatisfy(adminClass -> {
+            assertThat(adminClass.get("name")).isEqualTo("八年级1班");
+            assertThat(adminClass.get("gradeName")).isEqualTo("八年级");
+            assertThat(adminClass.get("studentCount")).isEqualTo(48);
+        });
+    }
+
+    @Test
+    void anExistingGradeNameIsMatchedInsteadOfCreatingADuplicate() {
+        String admin = adminToken();
+        TimetableFixture f = timetableFixture(admin);
+        fake.response = aiResponse(List.of(timetableRow()));
+        long sessionId = timetableSession(admin);
+
+        as(admin).body(Map.of("creates", List.of(Map.of(
+                        "field", "className", "source", "一年级(1)班", "name", "一年级2班",
+                        "gradeName", "一年级"))))
+                .when().post("/api/ai/import/sessions/" + sessionId + "/mapping")
+                .then().statusCode(200)
+                .body("issues", hasSize(0));
+
+        assertThat(as(admin).when().get("/api/grades?semesterId=" + f.semesterId())
+                .then().statusCode(200).extract().jsonPath().getList("name"))
+                .containsExactly("一年级");
+
+        List<Map<String, Object>> classes = as(admin)
+                .when().get("/api/classes?semesterId=" + f.semesterId())
+                .then().statusCode(200).extract().jsonPath().getList("$");
+        assertThat(classes).anySatisfy(adminClass -> {
+            assertThat(adminClass.get("name")).isEqualTo("一年级2班");
+            assertThat(adminClass.get("gradeId")).isEqualTo((int) f.gradeId());
+            assertThat(adminClass.get("gradeName")).isEqualTo("一年级");
+        });
+    }
+
+    @Test
+    void oneBatchCanCreateClassesUnderSeveralNewGrades() {
+        String admin = adminToken();
+        TimetableFixture f = timetableFixture(admin);
+        fake.response = aiResponse(List.of(timetableRow()));
+        long sessionId = timetableSession(admin);
+
+        as(admin).body(Map.of("creates", List.of(
+                        Map.of("field", "className", "source", "八（1）", "name", "八年级1班",
+                                "gradeName", "八年级"),
+                        Map.of("field", "className", "source", "八（2）", "name", "八年级2班",
+                                "gradeName", "八年级"),
+                        Map.of("field", "className", "source", "九（1）", "name", "九年级1班",
+                                "gradeName", "九年级"))))
+                .when().post("/api/ai/import/sessions/" + sessionId + "/mapping")
+                .then().statusCode(200)
+                .body("issues", hasSize(0));
+
+        // The two 八年级 creates share one new grade.
+        assertThat(as(admin).when().get("/api/grades?semesterId=" + f.semesterId())
+                .then().statusCode(200).extract().jsonPath().getList("name"))
+                .containsExactlyInAnyOrder("一年级", "八年级", "九年级");
+
+        List<Map<String, Object>> classes = as(admin)
+                .when().get("/api/classes?semesterId=" + f.semesterId())
+                .then().statusCode(200).extract().jsonPath().getList("$");
+        assertThat(classes).hasSize(4);
+        assertThat(classes).anySatisfy(adminClass -> {
+            assertThat(adminClass.get("name")).isEqualTo("八年级2班");
+            assertThat(adminClass.get("gradeName")).isEqualTo("八年级");
+        });
+        assertThat(classes).anySatisfy(adminClass -> {
+            assertThat(adminClass.get("name")).isEqualTo("九年级1班");
+            assertThat(adminClass.get("gradeName")).isEqualTo("九年级");
+        });
+    }
+
+    @Test
+    void aClassCreatedWithoutAStudentCountDefaultsToZeroAndAnExistingClassKeepsItsOwn() {
+        String admin = adminToken();
+        TimetableFixture f = timetableFixture(admin);
+        TestData.adminClass(admin, f.semesterId(), f.gradeId(), "一年级3班");
+        fake.response = aiResponse(List.of(timetableRow()));
+        long sessionId = timetableSession(admin);
+
+        as(admin).body(Map.of("creates", List.of(
+                        Map.of("field", "className", "source", "一年级(2)班", "name", "一年级2班",
+                                "gradeName", "一年级"),
+                        Map.of("field", "className", "source", "一年级(3)班", "name", "一年级3班",
+                                "gradeName", "一年级", "studentCount", 30))))
+                .when().post("/api/ai/import/sessions/" + sessionId + "/mapping")
+                .then().statusCode(200);
+
+        List<Map<String, Object>> classes = as(admin)
+                .when().get("/api/classes?semesterId=" + f.semesterId())
+                .then().statusCode(200).extract().jsonPath().getList("$");
+        assertThat(classes).anySatisfy(adminClass -> {
+            assertThat(adminClass.get("name")).isEqualTo("一年级2班");
+            assertThat(adminClass.get("studentCount")).isEqualTo(0);
+        });
+        assertThat(classes).anySatisfy(adminClass -> {
+            assertThat(adminClass.get("name")).isEqualTo("一年级3班");
+            assertThat(adminClass.get("studentCount")).isEqualTo(45);
+        });
+    }
+
+    @Test
+    void aGradeIdWinsOverAGradeNameWhenBothAreSent() {
+        String admin = adminToken();
+        TimetableFixture f = timetableFixture(admin);
+        fake.response = aiResponse(List.of(timetableRow()));
+        long sessionId = timetableSession(admin);
+
+        as(admin).body(Map.of("creates", List.of(Map.of(
+                        "field", "className", "source", "八（1）", "name", "八年级1班",
+                        "gradeId", f.gradeId(), "gradeName", "八年级", "studentCount", 40))))
+                .when().post("/api/ai/import/sessions/" + sessionId + "/mapping")
+                .then().statusCode(200)
+                .body("issues", hasSize(0));
+
+        assertThat(as(admin).when().get("/api/grades?semesterId=" + f.semesterId())
+                .then().statusCode(200).extract().jsonPath().getList("name"))
+                .containsExactly("一年级");
+
+        List<Map<String, Object>> classes = as(admin)
+                .when().get("/api/classes?semesterId=" + f.semesterId())
+                .then().statusCode(200).extract().jsonPath().getList("$");
+        assertThat(classes).anySatisfy(adminClass -> {
+            assertThat(adminClass.get("name")).isEqualTo("八年级1班");
+            assertThat(adminClass.get("gradeName")).isEqualTo("一年级");
+            assertThat(adminClass.get("studentCount")).isEqualTo(40);
+        });
+    }
+
+    @Test
+    void aClassNameThatExistsUnderAnotherGradeIsRejectedAndLeavesNoNewGrade() {
+        String admin = adminToken();
+        TimetableFixture f = timetableFixture(admin);
+        fake.response = aiResponse(List.of(timetableRow()));
+        long sessionId = timetableSession(admin);
+
+        as(admin).body(Map.of("creates", List.of(Map.of(
+                        "field", "className", "source", "八（1）", "name", "一年级1班",
+                        "gradeName", "八年级"))))
+                .when().post("/api/ai/import/sessions/" + sessionId + "/mapping")
+                .then().statusCode(400)
+                .body("message", containsString("其他年级"));
+
+        // The rejected create also rolls back the grade it would have needed.
+        assertThat(as(admin).when().get("/api/grades?semesterId=" + f.semesterId())
+                .then().statusCode(200).extract().jsonPath().getList("name"))
+                .containsExactly("一年级");
     }
 
     @Test

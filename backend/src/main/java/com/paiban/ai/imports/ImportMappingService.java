@@ -131,8 +131,9 @@ public class ImportMappingService {
 
         List<Rewrite> rewrites = new ArrayList<>();
         List<MappingDto> applied = new ArrayList<>();
+        Map<String, Long> resolvedGrades = new LinkedHashMap<>();
         for (CreatePlan plan : createPlans) {
-            String canonical = createEntity(plan);
+            String canonical = createEntity(plan, resolvedGrades);
             rewrites.add(new Rewrite(plan.field(), plan.source(), canonical));
             applied.add(new MappingDto(
                     plan.source(), canonical, "用户创建（" + labelOf(plan.field()) + "）"));
@@ -151,20 +152,24 @@ public class ImportMappingService {
         MappingKind kind = kindOf(field);
         String source = required(item.source(), "原值不能为空");
         String name = item.name() == null || item.name().isBlank() ? source : item.name().trim();
+        String gradeName = item.gradeName() == null ? "" : item.gradeName().trim();
         if (kind == MappingKind.CLASS) {
-            if (item.gradeId() == null) {
-                throw ApiException.badRequest("创建班级必须指定年级（gradeId）");
-            }
             if (currentSemesterId == null) {
                 throw ApiException.badRequest("尚未设置当前学期，无法创建班级");
             }
-            Grade grade = grades.findById(item.gradeId())
-                    .orElseThrow(() -> ApiException.badRequest("找不到年级: " + item.gradeId()));
-            if (!currentSemesterId.equals(grade.getSemesterId())) {
-                throw ApiException.badRequest("年级不属于当前学期: " + grade.getName());
+            if (item.gradeId() != null) {
+                // Both were sent: the id wins over the name.
+                Grade grade = grades.findById(item.gradeId())
+                        .orElseThrow(() -> ApiException.badRequest("找不到年级: " + item.gradeId()));
+                if (!currentSemesterId.equals(grade.getSemesterId())) {
+                    throw ApiException.badRequest("年级不属于当前学期: " + grade.getName());
+                }
+            } else if (gradeName.isEmpty()) {
+                throw ApiException.badRequest("创建班级必须指定年级（gradeId 或 gradeName）");
             }
         }
-        return new CreatePlan(field, source, name, item.gradeId(), kind, currentSemesterId);
+        return new CreatePlan(
+                field, source, name, item.gradeId(), gradeName, item.studentCount(), kind, currentSemesterId);
     }
 
     private MappingPlan validateMapping(MappingItem item, Long currentSemesterId) {
@@ -174,9 +179,9 @@ public class ImportMappingService {
         return new MappingPlan(field, source, canonicalName(kind, item.targetId(), currentSemesterId));
     }
 
-    private String createEntity(CreatePlan plan) {
+    private String createEntity(CreatePlan plan, Map<String, Long> resolvedGrades) {
         return switch (plan.kind()) {
-            case CLASS -> createClass(plan.name(), plan.gradeId(), plan.currentSemesterId());
+            case CLASS -> createClass(plan, resolvedGrades);
             case COURSE -> createCourse(plan.name());
             case TEACHER -> createTeacher(plan.name());
             case ROOM -> createRoom(plan.name());
@@ -187,17 +192,64 @@ public class ImportMappingService {
         return ImportTarget.TIMETABLE.labelOf(field);
     }
 
-    private String createClass(String name, Long gradeId, Long currentSemesterId) {
-        for (AdminClass existing : adminClasses.findBySemesterIdOrderByGradeIdAscNameAsc(currentSemesterId)) {
-            if (normalizeName(existing.getName()).equals(normalizeName(name))) {
+    private String createClass(CreatePlan plan, Map<String, Long> resolvedGrades) {
+        Long semesterId = plan.currentSemesterId();
+        Long gradeId = resolveGradeId(plan.gradeId(), plan.gradeName(), semesterId, resolvedGrades);
+        String name = plan.name();
+        for (AdminClass existing : adminClasses.findBySemesterIdOrderByGradeIdAscNameAsc(semesterId)) {
+            if (!normalizeName(existing.getName()).equals(normalizeName(name))) {
+                continue;
+            }
+            if (existing.getGradeId().equals(gradeId)) {
                 return existing.getName();
             }
+            // Names are unique per semester (uk_class_semester_name): writing the same
+            // name under another grade is a user error, not a second class.
+            throw ApiException.badRequest("班级名称已存在于其他年级: " + existing.getName());
         }
         AdminClass adminClass = new AdminClass();
-        adminClass.setSemesterId(currentSemesterId);
+        adminClass.setSemesterId(semesterId);
         adminClass.setGradeId(gradeId);
         adminClass.setName(name);
+        adminClass.setStudentCount(plan.studentCount() == null ? 0 : plan.studentCount());
         return adminClasses.save(adminClass).getName();
+    }
+
+    /**
+     * An explicit id wins. Otherwise the name is matched against the semester's grades
+     * (normalized) and created when missing; {@code resolvedGrades} keeps one id per
+     * name so a batch that repeats the same new grade creates it once.
+     */
+    private Long resolveGradeId(
+            Long gradeId, String gradeName, Long semesterId, Map<String, Long> resolvedGrades) {
+        if (gradeId != null) {
+            return gradeId;
+        }
+        String key = normalizeName(gradeName);
+        Long known = resolvedGrades.get(key);
+        if (known != null) {
+            return known;
+        }
+        for (Grade existing : grades.findBySemesterIdOrderBySortOrderAscNameAsc(semesterId)) {
+            if (normalizeName(existing.getName()).equals(key)) {
+                resolvedGrades.put(key, existing.getId());
+                return existing.getId();
+            }
+        }
+        Grade grade = new Grade();
+        grade.setSemesterId(semesterId);
+        grade.setName(gradeName);
+        grade.setSortOrder(nextSortOrder(semesterId));
+        Long created = grades.save(grade).getId();
+        resolvedGrades.put(key, created);
+        return created;
+    }
+
+    private int nextSortOrder(Long semesterId) {
+        return grades.findBySemesterIdOrderBySortOrderAscNameAsc(semesterId).stream()
+                .mapToInt(Grade::getSortOrder)
+                .max()
+                .orElse(0) + 1;
     }
 
     private String createCourse(String name) {
@@ -298,7 +350,8 @@ public class ImportMappingService {
     private record Rewrite(String field, String source, String target) {}
 
     private record CreatePlan(
-            String field, String source, String name, Long gradeId, MappingKind kind, Long currentSemesterId) {}
+            String field, String source, String name, Long gradeId, String gradeName,
+            Integer studentCount, MappingKind kind, Long currentSemesterId) {}
 
     private record MappingPlan(String field, String source, String canonical) {}
 

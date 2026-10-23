@@ -72,7 +72,9 @@ public final class ImportDtos {
     public record CreateItem(@NotBlank(message = "字段不能为空") String field,
                              @NotBlank(message = "原值不能为空") String source,
                              String name,
-                             Long gradeId) {}
+                             Long gradeId,
+                             String gradeName,
+                             Integer studentCount) {}
 
     public record MappingRequest(List<MappingItem> mappings, List<CreateItem> creates) {}
 
