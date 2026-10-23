@@ -157,7 +157,9 @@ Caddy / Cloudflare Tunnel 管理证书。证书缺失时 nginx 容器会启动�
   `.env.example` 里的 `replace-with...` 占位值同样被视为未设置。
 - `PAIBAN_SECURITY_BOOTSTRAP_ADMIN_PASSWORD` 留空（或仍是 `.env.example` 的占位值）时同样
   自动生成，首次登录密码见后端日志；占位值不会被当成真实密码。
-- 同源部署（nginx 同时代理前端与 `/api`）不需要设置 `PAIBAN_CORS_ALLOWED_ORIGINS`。
+- 同源部署（nginx 同时代理前端与 `/api`）也要把公网地址写进 `PAIBAN_CORS_ALLOWED_ORIGINS`：
+  浏览器对 POST 请求会带 `Origin`，留空会被后端拒绝并返回 `403 Invalid CORS request`。
+  多个地址用逗号分隔；只写 scheme + host（不要带末尾斜杠）。
 
 **3. 启动**：
 
