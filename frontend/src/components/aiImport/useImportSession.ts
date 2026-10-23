@@ -101,6 +101,7 @@ export function useImportSession() {
   const committing = ref(false)
   const continuing = ref(false)
   const reparsing = ref(false)
+  const stopping = ref(false)
   const commitErrors = ref<RowError[]>([])
   /** Null until this page commits: a restored COMMITTED session has no known count. */
   const importedCount = ref<number | null>(null)
@@ -380,6 +381,29 @@ export function useImportSession() {
     }
   }
 
+  /**
+   * Stops a background parse. The server keeps the batches that already finished and
+   * turns the session into a normal preview; the returned preview ends the polling.
+   */
+  async function stopParsing() {
+    const current = preview.value
+    if (!current) return
+    stopping.value = true
+    try {
+      const { data } = await http.post<ImportPreview>(
+        `/ai/import/sessions/${current.sessionId}/stop`,
+      )
+      setPreview(data)
+      const completed = data.progress?.completed ?? 0
+      const total = data.progress?.total ?? 0
+      ElMessage.success(`已停止解析，保留已完成 ${completed}/${total} 批`)
+    } catch (error) {
+      ElMessage.error(serverMessage(error, '停止解析失败，请稍后重试'))
+    } finally {
+      stopping.value = false
+    }
+  }
+
   /** Clears the preview half only; the URL marker survives so a refresh can retry. */
   function resetState() {
     stopPolling()
@@ -404,6 +428,7 @@ export function useImportSession() {
     committing,
     continuing,
     reparsing,
+    stopping,
     commitErrors,
     importedCount,
     lastSession,
@@ -426,6 +451,7 @@ export function useImportSession() {
     commit,
     continueWithAi,
     reparse,
+    stopParsing,
     stopPolling,
     clear,
   }
