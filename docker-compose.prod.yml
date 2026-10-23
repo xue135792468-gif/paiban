@@ -68,7 +68,7 @@ services:
     networks:
       - paiban-internal
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/health"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -87,7 +87,7 @@ services:
     networks:
       - paiban-internal
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost/"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -109,7 +109,7 @@ services:
     networks:
       - paiban-internal
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost/healthz"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
       interval: 15s
       timeout: 5s
       retries: 5
