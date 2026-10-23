@@ -10,6 +10,8 @@ import com.paiban.ai.AiGateway;
 import com.paiban.ai.AiRequest;
 import com.paiban.ai.AiResult;
 import com.paiban.ai.AiTaskType;
+import com.paiban.foundation.domain.AdminClassRepository;
+import com.paiban.foundation.domain.GradeRepository;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.identity.domain.PermissionRepository;
 import com.paiban.identity.domain.Permissions;
@@ -77,6 +79,12 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
 
     @Autowired
     private TeacherRepository teachers;
+
+    @Autowired
+    private AdminClassRepository adminClasses;
+
+    @Autowired
+    private GradeRepository grades;
 
     @BeforeEach
     void resetFake() {
@@ -609,6 +617,137 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
                 .body("failedBatches[0].reason", containsString("重启"));
     }
 
+    // --------------------------------------------------- abandoning a session (ticket 05)
+
+    @Test
+    void abandoningAParsingSessionStopsTheRunAndWritesNoBusinessData() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.latencyMs = 400;
+        fake.responder = request -> aiResponse(List.of(
+                timetableRow("语文", "周一", String.valueOf(fake.calls), "张三")));
+
+        Response upload = upload(
+                admin, "/api/ai/import/excel?target=timetable", "一年级课表.xlsx",
+                timetableExcelBytes(4), XLSX);
+        long sessionId = upload.jsonPath().getLong("sessionId");
+
+        // Let one batch land: abandoning a cold start would prove nothing.
+        for (int i = 0; i < 200; i++) {
+            if (importLogs.findById(sessionId).orElseThrow().getCompletedBatches() >= 1) {
+                break;
+            }
+            Thread.sleep(50);
+        }
+        assertThat(importLogs.findById(sessionId).orElseThrow().getCompletedBatches())
+                .isGreaterThanOrEqualTo(1);
+
+        Response abandoned = as(admin).when()
+                .post("/api/ai/import/sessions/" + sessionId + "/abandon");
+
+        abandoned.then().statusCode(200)
+                .body("status", equalTo("ABANDONED"))
+                .body("progress.total", equalTo(4));
+        assertThat((Object) abandoned.jsonPath().get("progress.currentBatch")).isNull();
+
+        // The stop flag ends the run: at most the batch already in flight may land.
+        Thread.sleep(900);
+        int settledCalls = fake.calls;
+        Thread.sleep(700);
+        assertThat(fake.calls).as("no AI call after abandoning").isEqualTo(settledCalls);
+        assertThat(settledCalls).isLessThan(4);
+
+        AiImportLog stored = importLogs.findById(sessionId).orElseThrow();
+        assertThat(stored.getStatus()).isEqualTo(AiImportLog.ABANDONED);
+        assertThat(stored.getCurrentBatch()).isNull();
+        assertThat(stored.getAiExplanation()).contains("放弃");
+
+        // The record stays readable for audit, it is just no longer resumable.
+        as(admin).when().get("/api/ai/import/sessions/" + sessionId)
+                .then().statusCode(200).body("status", equalTo("ABANDONED"));
+
+        // Abandoning writes nothing: no draft, no lessons, no class/grade/teacher rows.
+        assertThat(drafts.count()).isZero();
+        assertThat(draftLessons.count()).isZero();
+        assertThat(teachers.count()).isEqualTo(1);
+        assertThat(adminClasses.count()).isEqualTo(1);
+        assertThat(grades.count()).isEqualTo(1);
+    }
+
+    @Test
+    void abandoningAPartialSessionKeepsItForAuditAndBlocksEveryOtherAction()
+            throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.responder = failOnBatch(2);
+
+        Response upload = upload(admin, "/api/ai/import/excel?target=timetable",
+                "一年级课表.xlsx", timetableExcelBytes(4), XLSX);
+        long sessionId = upload.jsonPath().getLong("sessionId");
+        assertThat(awaitSession(admin, sessionId).getString("status")).isEqualTo("PARTIAL");
+
+        String sessions = "/api/ai/import/sessions/" + sessionId;
+        as(admin).body(Map.of("reason", "表头识别错了，换个文件重来"))
+                .when().post(sessions + "/abandon")
+                .then().statusCode(200)
+                .body("status", equalTo("ABANDONED"))
+                .body("failedBatches", hasSize(1));
+
+        AiImportLog stored = importLogs.findById(sessionId).orElseThrow();
+        assertThat(stored.getStatus()).isEqualTo(AiImportLog.ABANDONED);
+        // The user's own reason is what the history shows afterwards.
+        assertThat(stored.getAiExplanation()).contains("表头识别错了");
+        // What did parse is still on record, for audit only.
+        assertThat(stored.getPreviewJson()).contains("一年级1班");
+
+        // Nothing can move an abandoned session forward any more.
+        as(admin).when().post(sessions + "/commit")
+                .then().statusCode(409)
+                .body("message", containsString("已放弃"));
+        as(admin).body(Map.of("rows", List.of(timetableRow())))
+                .when().put(sessions + "/rows")
+                .then().statusCode(409);
+        as(admin).body(Map.of())
+                .when().post(sessions + "/mapping")
+                .then().statusCode(409);
+        as(admin).when().post(sessions + "/continue").then().statusCode(409);
+        as(admin).when().post(sessions + "/reparse").then().statusCode(409);
+        as(admin).when().post(sessions + "/stop").then().statusCode(409);
+        as(admin).when().post(sessions + "/abandon").then().statusCode(409);
+
+        assertThat(drafts.count()).isZero();
+        assertThat(draftLessons.count()).isZero();
+        assertThat(teachers.count()).isEqualTo(1);
+        assertThat(adminClasses.count()).isEqualTo(1);
+        assertThat(grades.count()).isEqualTo(1);
+    }
+
+    @Test
+    void abandoningASessionThatIsNotParsingOrPartialIsAConflict() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.response = aiResponse(List.of(
+                timetableRow("语文", "周一", "1", "张三"),
+                timetableRow("语文", "周一", "2", "张三"),
+                timetableRow("语文", "周一", "3", "张三")));
+
+        // Three data rows parse synchronously into a plain preview.
+        Response preview = upload(admin, "/api/ai/import/excel?target=timetable",
+                "一年级课表.xlsx", timetableExcelBytes(3), XLSX);
+        preview.then().statusCode(200).body("status", equalTo("PREVIEW"));
+        long sessionId = preview.jsonPath().getLong("sessionId");
+
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/abandon")
+                .then().statusCode(409)
+                .body("message", containsString("解析中"));
+
+        // A committed import is history too, not something to abandon.
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/commit")
+                .then().statusCode(200);
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/abandon")
+                .then().statusCode(409);
+    }
+
     // ------------------------------------------------ retrying failed batches (ticket 04)
 
     /**
@@ -861,132 +1000,6 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
                 .contains("一年级2班");
         assertThat(importLogs.findById(sessionId).orElseThrow().getBatchesJson())
                 .doesNotContain("FAILED");
-    }
-
-    // --------------------------------------------------- abandoning a session (ticket 05)
-
-    @Test
-    void abandoningAParsingSessionStopsTheRunAndWritesNoBusinessData() throws Exception {
-        String admin = adminToken();
-        timetableFixture(admin);
-        fake.latencyMs = 400;
-        fake.responder = request -> aiResponse(List.of(
-                timetableRow("语文", "周一", String.valueOf(fake.calls), "张三")));
-
-        Response upload = upload(
-                admin, "/api/ai/import/excel?target=timetable", "一年级课表.xlsx",
-                timetableExcelBytes(4), XLSX);
-        long sessionId = upload.jsonPath().getLong("sessionId");
-
-        // Let one batch land: abandoning a cold start would prove nothing.
-        for (int i = 0; i < 200; i++) {
-            if (importLogs.findById(sessionId).orElseThrow().getCompletedBatches() >= 1) {
-                break;
-            }
-            Thread.sleep(50);
-        }
-        assertThat(importLogs.findById(sessionId).orElseThrow().getCompletedBatches())
-                .isGreaterThanOrEqualTo(1);
-
-        Response abandoned = as(admin).when()
-                .post("/api/ai/import/sessions/" + sessionId + "/abandon");
-
-        abandoned.then().statusCode(200)
-                .body("status", equalTo("ABANDONED"))
-                .body("progress.total", equalTo(4));
-        assertThat((Object) abandoned.jsonPath().get("progress.currentBatch")).isNull();
-
-        // The stop flag ends the run: at most the batch already in flight may land.
-        Thread.sleep(900);
-        int settledCalls = fake.calls;
-        Thread.sleep(700);
-        assertThat(fake.calls).as("no AI call after abandoning").isEqualTo(settledCalls);
-        assertThat(settledCalls).isLessThan(4);
-
-        AiImportLog stored = importLogs.findById(sessionId).orElseThrow();
-        assertThat(stored.getStatus()).isEqualTo(AiImportLog.ABANDONED);
-        assertThat(stored.getCurrentBatch()).isNull();
-        assertThat(stored.getAiExplanation()).contains("放弃");
-
-        // The record stays readable for audit, it is just no longer resumable.
-        as(admin).when().get("/api/ai/import/sessions/" + sessionId)
-                .then().statusCode(200).body("status", equalTo("ABANDONED"));
-
-        // Abandoning writes nothing: no draft, no lessons, the foundation data untouched.
-        assertThat(drafts.count()).isZero();
-        assertThat(draftLessons.count()).isZero();
-        assertThat(teachers.count()).isEqualTo(1);
-    }
-
-    @Test
-    void abandoningAPartialSessionKeepsItForAuditAndBlocksEveryOtherAction()
-            throws Exception {
-        String admin = adminToken();
-        timetableFixture(admin);
-        fake.responder = failOnBatch(2);
-
-        Response upload = upload(admin, "/api/ai/import/excel?target=timetable",
-                "一年级课表.xlsx", timetableExcelBytes(4), XLSX);
-        long sessionId = upload.jsonPath().getLong("sessionId");
-        assertThat(awaitSession(admin, sessionId).getString("status")).isEqualTo("PARTIAL");
-
-        String sessions = "/api/ai/import/sessions/" + sessionId;
-        as(admin).body(Map.of("reason", "表头识别错了，换个文件重来"))
-                .when().post(sessions + "/abandon")
-                .then().statusCode(200)
-                .body("status", equalTo("ABANDONED"))
-                .body("failedBatches", hasSize(1));
-
-        AiImportLog stored = importLogs.findById(sessionId).orElseThrow();
-        assertThat(stored.getStatus()).isEqualTo(AiImportLog.ABANDONED);
-        // The user's own reason is what the history shows afterwards.
-        assertThat(stored.getAiExplanation()).contains("表头识别错了");
-        // What did parse is still on record, for audit only.
-        assertThat(stored.getPreviewJson()).contains("一年级1班");
-
-        // Nothing can move an abandoned session forward any more.
-        as(admin).when().post(sessions + "/commit")
-                .then().statusCode(409)
-                .body("message", containsString("已放弃"));
-        as(admin).body(Map.of("rows", List.of(timetableRow())))
-                .when().put(sessions + "/rows")
-                .then().statusCode(409);
-        as(admin).body(Map.of())
-                .when().post(sessions + "/mapping")
-                .then().statusCode(409);
-        as(admin).when().post(sessions + "/continue").then().statusCode(409);
-        as(admin).when().post(sessions + "/reparse").then().statusCode(409);
-        as(admin).when().post(sessions + "/stop").then().statusCode(409);
-        as(admin).when().post(sessions + "/abandon").then().statusCode(409);
-
-        assertThat(drafts.count()).isZero();
-        assertThat(draftLessons.count()).isZero();
-    }
-
-    @Test
-    void abandoningASessionThatIsNotParsingOrPartialIsAConflict() throws Exception {
-        String admin = adminToken();
-        timetableFixture(admin);
-        fake.response = aiResponse(List.of(
-                timetableRow("语文", "周一", "1", "张三"),
-                timetableRow("语文", "周一", "2", "张三"),
-                timetableRow("语文", "周一", "3", "张三")));
-
-        // Three data rows parse synchronously into a plain preview.
-        Response preview = upload(admin, "/api/ai/import/excel?target=timetable",
-                "一年级课表.xlsx", timetableExcelBytes(3), XLSX);
-        preview.then().statusCode(200).body("status", equalTo("PREVIEW"));
-        long sessionId = preview.jsonPath().getLong("sessionId");
-
-        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/abandon")
-                .then().statusCode(409)
-                .body("message", containsString("解析中"));
-
-        // A committed import is history too, not something to abandon.
-        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/commit")
-                .then().statusCode(200);
-        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/abandon")
-                .then().statusCode(409);
     }
 
     @Test
