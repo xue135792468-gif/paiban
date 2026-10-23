@@ -4,11 +4,11 @@
 
 **Blocked by:** 01, 02
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 班级问题按 `inferredGrade` 分组展示（新建/已有）
-- [ ] 批量创建按组提交 `gradeName`/`gradeId`
-- [ ] 班级人数输入，默认 45
-- [ ] 推断失败时要求手动选年级
-- [ ] 去掉全局单一 `batchGradeId`
-- [ ] 单测：分组、跨年级批量、人数、缺年级阻止
+- [x] 班级问题按 `inferredGrade` 分组展示（新建/已有）
+- [x] 批量创建按组提交 `gradeName`/`gradeId`
+- [x] 班级人数输入，默认 45
+- [x] 推断失败时要求手动选年级
+- [x] 去掉全局单一 `batchGradeId`
+- [x] 单测：分组、跨年级批量、人数、缺年级阻止

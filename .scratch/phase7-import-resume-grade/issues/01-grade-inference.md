@@ -4,11 +4,11 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `GradeInference`：前缀 token、纯数字补「年级」、初/高原样、无法识别为空
-- [ ] 用 `normalizeName` 匹配当前学期已有年级
-- [ ] `IssueDto` 增加 `inferredGrade`、`gradeCandidates`
-- [ ] `TimetableImportService.inspect` 填充两个字段
-- [ ] `GradeInferenceTest`：八（1）、八年级1班、高一1班、7年级(2)、初一3班、无法识别
-- [ ] 集成测试：预览的班级 issue 带出推断年级与候选
+- [x] `GradeInference`：前缀 token、纯数字补「年级」、初/高原样、无法识别为空
+- [x] 用 `normalizeName` 匹配当前学期已有年级
+- [x] `IssueDto` 增加 `inferredGrade`、`gradeCandidates`
+- [x] `TimetableImportService.inspect` 填充两个字段
+- [x] `GradeInferenceTest`：八（1）、八年级1班、高一1班、7年级(2)、初一3班、无法识别
+- [x] 集成测试：预览的班级 issue 带出推断年级与候选
