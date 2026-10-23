@@ -20,114 +20,29 @@
       class="notice"
     />
 
-    <el-card v-if="!preview && lastSession" data-testid="last-session-card" shadow="never">
-      <template #header><span class="card-title">上次导入</span></template>
-      <div class="last-session">
-        <div class="last-session-line">
-          <span class="last-session-name">{{ lastSession.fileName }}</span>
-          <el-tag size="small" :type="statusTagType(lastSession.status)" effect="plain">
-            {{ statusText(lastSession.status) }}
-          </el-tag>
-        </div>
-        <div class="hint">{{ lastSessionTime }}</div>
-      </div>
-      <el-button
-        type="primary"
-        link
-        data-testid="continue-last-session"
-        :loading="restoring"
-        @click="continueLastSession"
-      >
-        继续
-      </el-button>
-    </el-card>
+    <LastImportCard
+      v-if="!preview && lastSession"
+      :session="lastSession"
+      :loading="restoring"
+      @continue="continueLastSession"
+    />
 
-    <el-card v-if="!preview" shadow="never">
-      <template #header><span class="card-title">选择导入目标</span></template>
-      <ImportTargetPicker
-        :targets="IMPORT_TARGETS"
-        :selected="selectedTarget"
-        @select="onSelectTarget"
-      />
-    </el-card>
-
-    <el-card v-if="!preview" shadow="never">
-      <el-tabs v-model="inputMode">
-        <el-tab-pane label="Excel / CSV" name="excel">
-          <el-upload
-            drag
-            :auto-upload="false"
-            :show-file-list="false"
-            accept=".xlsx,.xls,.csv"
-            :on-change="onExcelChange"
-          >
-            <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-            <div class="el-upload__text">把文件拖到这里，或<em>点击选择</em></div>
-            <template #tip>
-              <div class="el-upload__tip">{{ currentTarget.excelHint }}</div>
-            </template>
-          </el-upload>
-          <div v-if="selectedFile" class="file-hint">已选择：{{ selectedFile.name }}</div>
-        </el-tab-pane>
-
-        <el-tab-pane label="粘贴文本" name="text">
-          <el-input
-            v-model="text"
-            type="textarea"
-            :rows="9"
-            :placeholder="currentTarget.textPlaceholder"
-          />
-          <div class="hint">可以直接从微信聊天记录、通知里复制粘贴。</div>
-        </el-tab-pane>
-
-        <el-tab-pane label="上传图片" name="image" :disabled="!visionCapable || selectedTarget !== 'teacher'">
-          <template #label>
-            <span data-testid="image-tab">上传图片</span>
-          </template>
-          <el-upload
-            drag
-            :auto-upload="false"
-            :show-file-list="false"
-            accept="image/png,image/jpeg,image/webp"
-            :on-change="onImageChange"
-          >
-            <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-            <div class="el-upload__text">上传课表或名单照片，或<em>点击选择</em></div>
-            <template #tip>
-              <div class="el-upload__tip">需要所选模型支持视觉（vision_capable）。</div>
-            </template>
-          </el-upload>
-          <div v-if="imageFile" class="file-hint">已选择：{{ imageFile.name }}</div>
-        </el-tab-pane>
-      </el-tabs>
-
-      <el-alert
-        v-if="configured && !visionCapable"
-        data-testid="vision-warning"
-        title="当前模型不支持图片，请在设置中换用视觉模型"
-        type="warning"
-        show-icon
-        :closable="false"
-        class="vision-warning"
-      />
-
-      <div class="parse-actions">
-        <el-button type="primary" :loading="parsing" :disabled="!configured || !canParse" @click="parse">
-          开始解析
-        </el-button>
-        <span class="hint">AI 只生成预览，点击「入库」才会写入数据。</span>
-      </div>
-
-      <el-alert
-        v-if="parsing"
-        data-testid="parse-progress"
-        title="AI 正在解析，大表会按班分批，可能需要几分钟"
-        type="info"
-        show-icon
-        :closable="false"
-        class="parse-progress"
-      />
-    </el-card>
+    <ImportSourcePanel
+      v-if="!preview"
+      v-model:input-mode="inputMode"
+      v-model:text="text"
+      :configured="configured"
+      :vision-capable="visionCapable"
+      :selected-target="selectedTarget"
+      :can-parse="canParse"
+      :parsing="parsing"
+      :selected-file-name="selectedFile?.name ?? ''"
+      :image-file-name="imageFile?.name ?? ''"
+      @select-target="onSelectTarget"
+      @excel-change="onExcelChange"
+      @image-change="onImageChange"
+      @parse="parse"
+    />
 
     <template v-else>
       <el-alert
@@ -323,20 +238,15 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type UploadFile } from 'element-plus'
-import { UploadFilled } from '@element-plus/icons-vue'
 import { AI_IMPORT_TIMEOUT_MS, http } from '@/api/http'
 import { aiParseErrorMessage } from '@/api/errors'
-import ImportTargetPicker from '@/components/aiImport/ImportTargetPicker.vue'
+import ImportSourcePanel from '@/components/aiImport/ImportSourcePanel.vue'
+import LastImportCard from '@/components/aiImport/LastImportCard.vue'
 import TimetableMappingStep from '@/components/aiImport/TimetableMappingStep.vue'
 import TimetablePreviewGrid from '@/components/aiImport/TimetablePreviewGrid.vue'
-import { useImportSession, statusTagType, statusText } from '@/components/aiImport/useImportSession'
+import { useImportSession } from '@/components/aiImport/useImportSession'
 import { type ImportPreview, type PreviewRow } from '@/components/aiImport/timetablePreview'
-import {
-  IMPORT_TARGETS,
-  preselectedTarget,
-  targetCard,
-  targetTitle,
-} from '@/components/aiImport/importTargets'
+import { preselectedTarget, targetTitle } from '@/components/aiImport/importTargets'
 
 const router = useRouter()
 const route = useRoute()
@@ -375,7 +285,6 @@ const {
 } = useImportSession()
 const restoring = ref(false)
 
-const currentTarget = computed(() => targetCard(selectedTarget.value) ?? IMPORT_TARGETS[0])
 const mappableIssues = computed(() => previewIssues.value.filter((issue) => issue.row > 0))
 const blockingIssues = computed(() => previewIssues.value.filter((issue) => issue.row === 0))
 const suggestedTarget = computed(() => {
@@ -389,8 +298,6 @@ const showMappingStep = computed(
     preview.value?.status !== 'FAILED' &&
     (mappableIssues.value.length > 0 || blockingIssues.value.length === 0),
 )
-
-const lastSessionTime = computed(() => formatLocalTime(lastSession.value?.savedAt ?? ''))
 
 const canParse = computed(() => {
   if (inputMode.value === 'excel') return selectedFile.value !== null
@@ -436,13 +343,6 @@ async function restoreFrom(sessionId: string) {
 async function continueLastSession() {
   if (!lastSession.value) return
   await restoreFrom(String(lastSession.value.id))
-}
-
-function formatLocalTime(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  const pad = (number: number) => String(number).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
 function onSelectTarget(code: string) {
@@ -559,32 +459,6 @@ function fieldLabel(field: string) {
   margin-bottom: 4px;
 }
 
-.file-hint {
-  margin-top: 8px;
-  color: #4b5563;
-  font-size: 13px;
-}
-
-.hint {
-  color: #6b7280;
-  font-size: 12px;
-}
-
-.parse-actions {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-top: 16px;
-}
-
-.parse-progress {
-  margin-top: 12px;
-}
-
-.vision-warning {
-  margin-top: 8px;
-}
-
 .suggested-target {
   margin-bottom: 4px;
 }
@@ -653,21 +527,5 @@ function fieldLabel(field: string) {
 .footer-actions {
   display: flex;
   gap: 12px;
-}
-
-.last-session {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.last-session-line {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.last-session-name {
-  font-weight: 600;
 }
 </style>
