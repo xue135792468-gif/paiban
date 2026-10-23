@@ -88,8 +88,8 @@
           :failed-batches="preview.failedBatches ?? []"
           :progress="preview.progress"
           :retrying="retrying"
-          @retry="retryFailed"
           :abandoning="abandoning"
+          @retry="retryFailed"
           @abandon="abandonImport"
         />
 
