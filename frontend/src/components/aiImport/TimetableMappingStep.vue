@@ -19,15 +19,18 @@
       >
         批量创建所选（{{ selectedCreatable.length }}）
       </el-button>
-      <el-select
-        v-if="selectedNeedsGrade"
-        v-model="batchGradeId"
-        size="small"
-        placeholder="批量创建班级的年级"
-        class="grade-select"
-      >
-        <el-option v-for="grade in grades" :key="grade.id" :label="grade.name" :value="grade.id" />
-      </el-select>
+      <template v-if="selectedHasClasses">
+        <span class="hint">班级人数</span>
+        <el-input-number
+          v-model="batchStudentCount"
+          size="small"
+          :min="0"
+          :step="1"
+          step-strictly
+          controls-position="right"
+          data-testid="batch-student-count"
+        />
+      </template>
     </div>
 
     <el-table
@@ -44,6 +47,36 @@
       </el-table-column>
       <el-table-column prop="label" label="字段" width="80" />
       <el-table-column prop="value" label="原值" min-width="140" />
+      <el-table-column label="年级" min-width="150">
+        <template #default="{ row }">
+          <template v-if="row.field === 'className'">
+            <el-tag
+              v-if="row.inferredGrade"
+              size="small"
+              :type="gradeStatusOf(row) === 'existing' ? 'success' : 'warning'"
+              data-testid="grade-hint"
+            >
+              {{ row.inferredGrade }} {{ gradeStatusOf(row) === 'existing' ? '已有' : '新建' }}
+            </el-tag>
+            <el-select
+              v-else
+              v-model="manualGrades[row.key]"
+              size="small"
+              placeholder="选择年级"
+              class="grade-select"
+              data-testid="manual-grade"
+            >
+              <el-option
+                v-for="grade in grades"
+                :key="grade.id"
+                :label="grade.name"
+                :value="grade.id"
+              />
+            </el-select>
+          </template>
+          <span v-else class="hint">—</span>
+        </template>
+      </el-table-column>
       <el-table-column label="处理" min-width="420">
         <template #default="{ row }">
           <div v-if="row.kind === 'entity'" class="resolve">
@@ -78,20 +111,20 @@
                   placeholder="新记录名称"
                   @update:model-value="(value: string) => setCreateName(row, value)"
                 />
-                <el-select
-                  v-if="createRequiresGrade(row.field)"
-                  v-model="createGrades[row.key]"
-                  size="small"
-                  placeholder="选择年级"
-                  class="grade-select"
-                >
-                  <el-option
-                    v-for="grade in grades"
-                    :key="grade.id"
-                    :label="grade.name"
-                    :value="grade.id"
+                <template v-if="createRequiresGrade(row.field)">
+                  <span class="hint">人数</span>
+                  <el-input-number
+                    :model-value="studentCountOf(row.key)"
+                    size="small"
+                    :min="0"
+                    :step="1"
+                    step-strictly
+                    controls-position="right"
+                    class="student-count"
+                    data-testid="student-count"
+                    @update:model-value="(value: number | null | undefined) => setStudentCount(row.key, value)"
                   />
-                </el-select>
+                </template>
                 <el-button
                   size="small"
                   type="primary"
@@ -144,8 +177,10 @@ import { serverMessage } from '@/api/errors'
 import {
   applySlotValue,
   createRequiresGrade,
+  gradeStatusOf,
   lookupType,
   mappingGroups,
+  normalizeGradeName,
   type CreateItemPayload,
   type ImportPreview,
   type LookupItem,
@@ -174,16 +209,18 @@ const groups = computed(() => mappingGroups(props.issues))
 const busy = ref('')
 const tableRef = ref()
 const selected = ref<MappingGroup[]>([])
-const batchGradeId = ref<number | undefined>(undefined)
+const DEFAULT_STUDENT_COUNT = 45
+const batchStudentCount = ref(DEFAULT_STUDENT_COUNT)
 const selectedCreatable = computed(() => selected.value.filter((group) => group.kind === 'entity'))
-const selectedNeedsGrade = computed(() =>
+const selectedHasClasses = computed(() =>
   selectedCreatable.value.some((group) => createRequiresGrade(group.field)),
 )
 const grades = ref<GradeOption[]>([])
 const lookupOptions = reactive<Record<string, string[]>>({})
 const createEnabled = reactive<Record<string, boolean>>({})
 const createNames = reactive<Record<string, string>>({})
-const createGrades = reactive<Record<string, number | undefined>>({})
+const createStudentCounts = reactive<Record<string, number>>({})
+const manualGrades = reactive<Record<string, number | undefined>>({})
 
 onMounted(async () => {
   try {
@@ -222,6 +259,42 @@ function setCreateName(group: MappingGroup, value: string) {
   createNames[group.key] = value
 }
 
+function studentCountOf(key: string): number {
+  return createStudentCounts[key] ?? DEFAULT_STUDENT_COUNT
+}
+
+function setStudentCount(key: string, value: number | null | undefined) {
+  createStudentCounts[key] = value ?? 0
+}
+
+/**
+ * The grade to create a class under: an existing semester grade is sent by id, an
+ * inferred-but-missing grade by name (the backend creates it), and a class with no
+ * inference needs the user's manual pick. Null means the class cannot be created yet.
+ */
+function classGrade(group: MappingGroup): { gradeId?: number; gradeName?: string } | null {
+  if (gradeStatusOf(group) === 'existing') {
+    const match = grades.value.find(
+      (grade) => normalizeGradeName(grade.name) === normalizeGradeName(group.inferredGrade),
+    )
+    if (match) return { gradeId: match.id }
+  }
+  if (group.inferredGrade) return { gradeName: group.inferredGrade }
+  const manual = manualGrades[group.key]
+  return manual ? { gradeId: manual } : null
+}
+
+function createItem(
+  group: MappingGroup,
+  name: string,
+  studentCount: number,
+): CreateItemPayload | null {
+  const payload: CreateItemPayload = { field: group.field, source: group.value, name }
+  if (!createRequiresGrade(group.field)) return payload
+  const grade = classGrade(group)
+  return grade ? { ...payload, ...grade, studentCount } : null
+}
+
 async function post(body: {
   mappings?: MappingItemPayload[]
   creates?: CreateItemPayload[]
@@ -249,8 +322,9 @@ function clearSelection() {
 async function batchCreate() {
   const targets = selectedCreatable.value
   if (!targets.length) return
-  if (targets.some((group) => createRequiresGrade(group.field)) && !batchGradeId.value) {
-    ElMessage.warning('批量创建班级需要先选择年级')
+  const creates = targets.map((group) => createItem(group, group.value, batchStudentCount.value))
+  if (creates.some((item) => item === null)) {
+    ElMessage.warning('有班级推断不出年级，请先选择年级')
     return
   }
   const counts = new Map<string, number>()
@@ -269,15 +343,9 @@ async function batchCreate() {
   }
   busy.value = 'batch'
   try {
-    const creates = targets.map((group) => {
-      const gradeId = createRequiresGrade(group.field) ? batchGradeId.value : undefined
-      return gradeId === undefined
-        ? { field: group.field, source: group.value, name: group.value }
-        : { field: group.field, source: group.value, name: group.value, gradeId }
-    })
-    await post({ creates })
+    await post({ creates: creates as CreateItemPayload[] })
     clearSelection()
-    batchGradeId.value = undefined
+    batchStudentCount.value = DEFAULT_STUDENT_COUNT
     ElMessage.success(`已创建并映射 ${targets.length} 项`)
   } catch (error) {
     ElMessage.error(serverMessage(error, '批量创建失败，请重试'))
@@ -310,14 +378,14 @@ async function mapToEntity(group: MappingGroup, name: string) {
 
 async function create(group: MappingGroup) {
   const name = (createNames[group.key] ?? group.value).trim() || group.value
-  const gradeId = createRequiresGrade(group.field) ? createGrades[group.key] : undefined
-  if (createRequiresGrade(group.field) && !gradeId) {
+  const item = createItem(group, name, studentCountOf(group.key))
+  if (!item) {
     ElMessage.warning('创建班级需要先选择年级')
     return
   }
   busy.value = group.key
   try {
-    await post({ creates: [{ field: group.field, source: group.value, name, gradeId }] })
+    await post({ creates: [item] })
     createEnabled[group.key] = false
     ElMessage.success(`已创建并映射：${name}`)
   } catch (error) {
@@ -389,6 +457,10 @@ async function fixSlot(group: MappingGroup, value: string) {
 
 .grade-select {
   width: 140px;
+}
+
+.student-count {
+  width: 110px;
 }
 
 .hint {
