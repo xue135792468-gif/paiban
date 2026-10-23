@@ -105,6 +105,12 @@ public class AiImportController {
         return service.continueWithAi(id, principal.getName());
     }
 
+    /** Stops a background parse; only a {@code PARSING} session accepts it. */
+    @PostMapping("/sessions/{id}/stop")
+    public PreviewDto stop(@PathVariable Long id, Principal principal) {
+        return service.stop(id, principal.getName());
+    }
+
     @PostMapping("/sessions/{id}/reparse")
     public PreviewDto reparse(@PathVariable Long id, Principal principal) {
         return service.reparse(id, principal.getName());

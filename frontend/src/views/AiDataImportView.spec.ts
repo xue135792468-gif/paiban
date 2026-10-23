@@ -738,6 +738,79 @@ describe('会话恢复', () => {
   })
 })
 
+describe('停止解析', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  function stoppedPreview() {
+    return timetablePreview({
+      status: 'PREVIEW',
+      progress: { total: 4, completed: 1, failed: 0, currentBatch: null },
+    })
+  }
+
+  it('解析中提供停止按钮，停止后提示保留的批次并进入预览', async () => {
+    vi.useFakeTimers()
+    const success = vi.spyOn(ElMessage, 'success')
+    const { wrapper } = await mountImport('/admin/ai-import?target=timetable')
+    httpMock.post.mockImplementation((url: string) => {
+      if (url === '/ai/import/excel') return Promise.resolve(parsingPreview())
+      if (url === '/ai/import/sessions/9/stop') return Promise.resolve(stoppedPreview())
+      return Promise.resolve({ data: {} })
+    })
+
+    chooseFile(wrapper, 0, 'grade-1.xlsx')
+    await flushPromises()
+    await button(wrapper, '开始解析').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="import-progress"]').text()).toContain('停止解析')
+    await wrapper.get('[data-testid="stop-parsing"]').trigger('click')
+    await flushPromises()
+
+    expect(httpMock.post).toHaveBeenCalledWith('/ai/import/sessions/9/stop')
+    expect(success).toHaveBeenCalledWith('已停止解析，保留已完成 1/4 批')
+    expect(wrapper.find('[data-testid="import-progress"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="timetable-summary"]').text()).toContain('共 2 节')
+    expect(wrapper.get('.head-actions').text()).toContain('待确认')
+
+    const settled = sessionCalls()
+    await vi.advanceTimersByTimeAsync(6000)
+    await flushPromises()
+    expect(sessionCalls()).toBe(settled)
+    success.mockRestore()
+  })
+
+  it('停止被拒绝时展示后端原因并继续轮询', async () => {
+    vi.useFakeTimers()
+    const error = vi.spyOn(ElMessage, 'error')
+    const { wrapper } = await mountImport('/admin/ai-import?target=timetable')
+    httpMock.post.mockImplementation((url: string) => {
+      if (url === '/ai/import/excel') return Promise.resolve(parsingPreview())
+      if (url === '/ai/import/sessions/9/stop') {
+        return Promise.reject({ response: { status: 409, data: { message: '当前导入不在解析中，无法停止' } } })
+      }
+      return Promise.resolve({ data: {} })
+    })
+
+    chooseFile(wrapper, 0, 'grade-1.xlsx')
+    await flushPromises()
+    await button(wrapper, '开始解析').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="stop-parsing"]').trigger('click')
+    await flushPromises()
+
+    expect(error).toHaveBeenCalledWith('当前导入不在解析中，无法停止')
+    expect(wrapper.find('[data-testid="import-progress"]').exists()).toBe(true)
+    error.mockRestore()
+  })
+})
+
 function readStoredStatus(): string | undefined {
   return JSON.parse(localStorage.getItem('paiban.aiImport.lastSession') ?? '{}').status
 }
