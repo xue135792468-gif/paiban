@@ -392,7 +392,7 @@ function commitButton(wrapper: VueWrapper) {
 function mappingSelect(wrapper: VueWrapper) {
   const found = wrapper
     .findAllComponents({ name: 'ElSelect' })
-    .find((component) => component.element.closest('[data-testid="mapping-step"]'))
+    .find((component) => component.attributes('data-testid') === 'resolve-className')
   if (!found) throw new Error('mapping select not found')
   return found
 }

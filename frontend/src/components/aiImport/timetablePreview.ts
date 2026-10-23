@@ -16,6 +16,10 @@ export interface PreviewIssue {
   required: boolean
   /** Set on page-level blockers (row 0), e.g. a missing current semester. */
   message?: string
+  /** Grade inferred from a class name; null/absent when the name carries no grade. */
+  inferredGrade?: string | null
+  /** The current semester's grade names, so the UI can say 新建 vs 已有. */
+  gradeCandidates?: string[]
 }
 
 /** Counts the backend derives for a timetable preview. */
@@ -62,6 +66,8 @@ export interface CreateItemPayload {
   source: string
   name: string
   gradeId?: number
+  gradeName?: string
+  studentCount?: number
 }
 
 export type LookupType = 'class' | 'course' | 'teacher' | 'room'
@@ -100,6 +106,26 @@ export function lookupType(field: string): LookupType | null {
 /** Creating a class needs a grade; the other entities do not. */
 export function createRequiresGrade(field: string): boolean {
   return field === 'className'
+}
+
+/** Mirrors the backend's grade-name match: NFKC, no whitespace, case-insensitive. */
+export function normalizeGradeName(value: string | null | undefined): string {
+  return (value ?? '').normalize('NFKC').replace(/\s+/g, '').toLowerCase()
+}
+
+export type GradeStatus = 'existing' | 'new' | 'unknown'
+
+/**
+ * Whether a class group's inferred grade already exists this semester. Unknown means
+ * nothing was inferred, so the user has to pick a grade before the class can be created.
+ */
+export function gradeStatusOf(group: Pick<MappingGroup, 'inferredGrade' | 'gradeCandidates'>): GradeStatus {
+  const inferred = text(group.inferredGrade)
+  if (!inferred) return 'unknown'
+  const normalized = normalizeGradeName(inferred)
+  return group.gradeCandidates.some((name) => normalizeGradeName(name) === normalized)
+    ? 'existing'
+    : 'new'
 }
 
 export function parseDay(value: string): number | null {
@@ -290,6 +316,10 @@ export interface MappingGroup {
   candidates: string[]
   required: boolean
   kind: 'entity' | 'slot'
+  /** Grade inferred from the class name; null for non-class groups or no inference. */
+  inferredGrade: string | null
+  /** Current semester grade names, de-duplicated across the group's rows. */
+  gradeCandidates: string[]
 }
 
 /** Collapses issues so the same unmatched value is resolved once, not once per row. */
@@ -310,15 +340,25 @@ export function mappingGroups(issues: PreviewIssue[]): MappingGroup[] {
         candidates: [],
         required: issue.required,
         kind: lookupType(issue.field) ? 'entity' : 'slot',
+        inferredGrade: text(issue.inferredGrade) || null,
+        gradeCandidates: [],
       }
       groups.set(key, group)
     }
     if (!group.rows.includes(issue.row)) {
       group.rows.push(issue.row)
     }
+    if (!group.inferredGrade && text(issue.inferredGrade)) {
+      group.inferredGrade = text(issue.inferredGrade)
+    }
     for (const candidate of issue.candidates ?? []) {
       if (!group.candidates.includes(candidate)) {
         group.candidates.push(candidate)
+      }
+    }
+    for (const candidate of issue.gradeCandidates ?? []) {
+      if (!group.gradeCandidates.includes(candidate)) {
+        group.gradeCandidates.push(candidate)
       }
     }
   }
