@@ -69,7 +69,7 @@
       <el-card v-if="!isParsing" shadow="never">
         <template #header>
           <div class="card-head">
-            <span class="card-title">解析预览（{{ preview.rows.length }} 行）</span>
+            <span class="card-title">{{ previewTitle }}</span>
             <div class="head-actions">
               <el-tag size="small" type="info" effect="plain" data-testid="preview-target">
                 目标：{{ targetTitle(preview.targetType) }}
@@ -80,8 +80,15 @@
           </div>
         </template>
 
+        <PartialResultPanel
+          v-if="isPartial"
+          :rows="preview.rows"
+          :failed-batches="preview.failedBatches ?? []"
+          :progress="preview.progress"
+        />
+
         <el-table
-          v-if="!isTimetable"
+          v-else-if="!isTimetable"
           data-testid="preview-rows-table"
           :data="preview.rows"
           border
@@ -120,7 +127,7 @@
           :summary="preview.summary"
         />
 
-        <div v-if="!isTimetable" class="legend">
+        <div v-if="!isTimetable && !isPartial" class="legend">
           <span class="swatch" /> 浅黄表示 AI 置信度低于
           {{ Math.round(preview.threshold * 100) }}%，建议重点核对
         </div>
@@ -212,7 +219,11 @@
           >
             {{ commitLabel }}
           </el-button>
-          <el-button :loading="reparsing" :disabled="preview.status === 'COMMITTED'" @click="reparse">
+          <el-button
+            :loading="reparsing"
+            :disabled="preview.status === 'COMMITTED' || isPartial"
+            @click="reparse"
+          >
             打回重析
           </el-button>
         </template>
@@ -250,6 +261,7 @@ import { aiParseErrorMessage } from '@/api/errors'
 import ImportSourcePanel from '@/components/aiImport/ImportSourcePanel.vue'
 import ImportProgressPanel from '@/components/aiImport/ImportProgressPanel.vue'
 import LastImportCard from '@/components/aiImport/LastImportCard.vue'
+import PartialResultPanel from '@/components/aiImport/PartialResultPanel.vue'
 import TimetableMappingStep from '@/components/aiImport/TimetableMappingStep.vue'
 import TimetablePreviewGrid from '@/components/aiImport/TimetablePreviewGrid.vue'
 import { useImportSession } from '@/components/aiImport/useImportSession'
@@ -279,6 +291,7 @@ const {
   lastSession,
   isTimetable,
   isParsing,
+  isPartial,
   previewIssues,
   commitDisabled,
   commitLabel,
@@ -298,6 +311,12 @@ const restoring = ref(false)
 
 const mappableIssues = computed(() => previewIssues.value.filter((issue) => issue.row > 0))
 const blockingIssues = computed(() => previewIssues.value.filter((issue) => issue.row === 0))
+/** A partial parse shows the classes it did read, not a preview of a complete timetable. */
+const previewTitle = computed(() =>
+  isPartial.value
+    ? `部分结果（已解析 ${preview.value?.rows.length ?? 0} 节课）`
+    : `解析预览（${preview.value?.rows.length ?? 0} 行）`,
+)
 const suggestedTarget = computed(() => {
   const suggested = preview.value?.suggestedTarget
   return suggested && suggested !== preview.value?.targetType ? suggested : ''

@@ -815,6 +815,60 @@ function readStoredStatus(): string | undefined {
   return JSON.parse(localStorage.getItem('paiban.aiImport.lastSession') ?? '{}').status
 }
 
+function partialPreview(overrides: Record<string, unknown> = {}) {
+  return {
+    data: {
+      ...timetablePreview().data,
+      status: 'PARTIAL',
+      progress: { total: 4, completed: 2, failed: 2, currentBatch: null },
+      failedBatches: [
+        { index: 2, label: '一年级2班', reason: '第 2/4 批（一年级2班）解析失败：模型返回为空' },
+        { index: 4, label: '一年级4班', reason: '第 4/4 批（一年级4班）解析失败：超时' },
+      ],
+      ...overrides,
+    },
+  }
+}
+
+describe('部分结果（PARTIAL）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('用部分结果面板替换预览网格，禁用入库并提示先重试或放弃', async () => {
+    const { wrapper } = await mountImport('/admin/ai-import?target=timetable')
+    await showTimetable(wrapper, partialPreview())
+
+    const panel = wrapper.get('[data-testid="partial-result-panel"]')
+    expect(panel.text()).toContain('一年级2班')
+    expect(panel.text()).toContain('一年级4班')
+    expect(panel.text()).toContain('模型返回为空')
+    expect(wrapper.get('[data-testid="partial-hint"]').text()).toContain(
+      '请先重试失败批次或放弃导入',
+    )
+    expect(wrapper.get('.head-actions').text()).toContain('部分结果')
+    expect(wrapper.find('[data-testid="timetable-summary"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="mapping-step"]').exists()).toBe(false)
+
+    const commit = button(wrapper, '先重试或放弃')
+    expect((commit.element as HTMLButtonElement).disabled).toBe(true)
+    const reparse = button(wrapper, '打回重析')
+    expect((reparse.element as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('用 ?session 恢复 PARTIAL 会话时正常渲染，不当作未知状态', async () => {
+    seedLastSession({ status: 'PARTIAL' })
+    const { wrapper, router } = await mountImport('/admin/ai-import?session=9', true, (url) =>
+      url === '/ai/import/sessions/9' ? Promise.resolve(partialPreview()) : null,
+    )
+
+    expect(wrapper.get('.head-actions').text()).toContain('部分结果')
+    expect(wrapper.find('[data-testid="partial-result-panel"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="target-card"]').exists()).toBe(false)
+    expect(router.currentRoute.value.query.session).toBe('9')
+  })
+})
+
 function seedLastSession(overrides: Record<string, unknown> = {}) {
   const record = {
     id: 9,
