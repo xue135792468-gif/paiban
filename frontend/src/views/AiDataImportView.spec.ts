@@ -796,6 +796,43 @@ describe('停止解析', () => {
     success.mockRestore()
   })
 
+  it('第一批都没解析完就停止时说明没有任何已完成批次，不给出可入库的预览', async () => {
+    vi.useFakeTimers()
+    const warning = vi.spyOn(ElMessage, 'warning')
+    const success = vi.spyOn(ElMessage, 'success')
+    const { wrapper } = await mountImport('/admin/ai-import?target=timetable')
+    httpMock.post.mockImplementation((url: string) => {
+      if (url === '/ai/import/excel') return Promise.resolve(parsingPreview())
+      if (url === '/ai/import/sessions/9/stop') {
+        return Promise.resolve({
+          data: {
+            ...timetablePreview({ progress: { total: 4, completed: 0, failed: 0, currentBatch: null } }).data,
+            status: 'FAILED',
+            rows: [],
+            explanation: '已停止解析，没有任何已完成的批次',
+          },
+        })
+      }
+      return Promise.resolve({ data: {} })
+    })
+
+    chooseFile(wrapper, 0, 'grade-1.xlsx')
+    await flushPromises()
+    await button(wrapper, '开始解析').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="stop-parsing"]').trigger('click')
+    await flushPromises()
+
+    expect(warning).toHaveBeenCalledWith('已停止解析，没有任何已完成的批次')
+    expect(success).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="failed-reason"]').text()).toContain(
+      '已停止解析，没有任何已完成的批次',
+    )
+    expect(wrapper.find('.footer-actions').exists()).toBe(false)
+    warning.mockRestore()
+    success.mockRestore()
+  })
+
   it('停止被拒绝时展示后端原因并继续轮询', async () => {
     vi.useFakeTimers()
     const error = vi.spyOn(ElMessage, 'error')
