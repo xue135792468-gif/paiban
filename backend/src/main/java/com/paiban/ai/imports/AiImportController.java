@@ -111,6 +111,12 @@ public class AiImportController {
         return service.stop(id, principal.getName());
     }
 
+    /** Re-runs the failed batches of a partial parse; only a {@code PARTIAL} session accepts it. */
+    @PostMapping("/sessions/{id}/retry")
+    public PreviewDto retry(@PathVariable Long id, Principal principal) {
+        return service.retry(id, principal.getName());
+    }
+
     @PostMapping("/sessions/{id}/reparse")
     public PreviewDto reparse(@PathVariable Long id, Principal principal) {
         return service.reparse(id, principal.getName());

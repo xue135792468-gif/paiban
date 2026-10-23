@@ -597,6 +597,260 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
                 .body("failedBatches[0].reason", containsString("重启"));
     }
 
+    // ------------------------------------------------ retrying failed batches (ticket 04)
+
+    /**
+     * The retry answer is a lesson the timetable does not have yet, so a merge mistake
+     * (a re-parsed successful batch) would show up as an extra or a missing row.
+     */
+    private Map<String, Object> retriedTimetableRow(String className, String period) {
+        Map<String, Object> row = timetableRow("数学", "周二", period, "李四");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> values = (Map<String, Object>) row.get("values");
+        values.put("className", className);
+        return row;
+    }
+
+    @Test
+    void retryingOnlyTheFailedBatchMergesItBackIntoAFullPreview() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.responder = failOnBatch(2);
+
+        Response upload = upload(admin, "/api/ai/import/excel?target=timetable",
+                "一年级课表.xlsx", timetableExcelBytes(4), XLSX);
+        long sessionId = upload.jsonPath().getLong("sessionId");
+        assertThat(awaitSession(admin, sessionId).getString("status")).isEqualTo("PARTIAL");
+        assertThat(fake.calls).isEqualTo(4);
+
+        // The retry returns immediately, describing the round it just dispatched: the
+        // original plan (4 batches), the 3 that already parsed, and the 1 being retried.
+        fake.responder = request -> aiResponse(List.of(retriedTimetableRow("一年级2班", "9")));
+        String sessions = "/api/ai/import/sessions/" + sessionId;
+        as(admin).when().post(sessions + "/retry")
+                .then().statusCode(200)
+                .body("status", equalTo("PARSING"))
+                .body("progress.total", equalTo(4))
+                .body("progress.completed", equalTo(3))
+                .body("progress.failed", equalTo(1))
+                .body("progress.currentBatch", org.hamcrest.Matchers.nullValue())
+                .body("rows", hasSize(3));
+
+        io.restassured.path.json.JsonPath done = awaitSession(admin, sessionId);
+
+        assertThat(done.getString("status")).isEqualTo("PREVIEW");
+        assertThat(done.getList("rows")).hasSize(4);
+        assertThat(done.getMap("progress"))
+                .containsEntry("total", 4)
+                .containsEntry("completed", 4)
+                .containsEntry("failed", 0);
+        assertThat(done.getList("failedBatches")).isEmpty();
+        // One new AI call only: the three batches that already parsed are not re-asked.
+        assertThat(fake.calls).isEqualTo(5);
+
+        AiImportLog stored = importLogs.findById(sessionId).orElseThrow();
+        assertThat(stored.getStatus()).isEqualTo(AiImportLog.PREVIEW);
+        assertThat(stored.getCompletedBatches()).isEqualTo(4);
+        assertThat(stored.getRowCount()).isEqualTo(4);
+        assertThat(stored.getCurrentBatch()).isNull();
+        assertThat(stored.getBatchesJson()).doesNotContain("FAILED");
+        // The retried batch's own result is in the merged preview, not a duplicate.
+        assertThat(stored.getPreviewJson()).contains("一年级2班").doesNotContain("解析失败");
+    }
+
+    @Test
+    void aRetryThatFailsAgainStaysPartialAndReplacesTheFailureReason() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.responder = failOnBatch(2);
+
+        Response upload = upload(admin, "/api/ai/import/excel?target=timetable",
+                "一年级课表.xlsx", timetableExcelBytes(4), XLSX);
+        long sessionId = upload.jsonPath().getLong("sessionId");
+        io.restassured.path.json.JsonPath first =
+                awaitSession(admin, sessionId);
+        assertThat(first.getString("failedBatches[0].reason")).contains("模型返回为空");
+        int afterFirstRound = fake.calls;
+
+        fake.responder = request -> {
+            throw new IllegalStateException("重试时服务超时");
+        };
+        String sessions = "/api/ai/import/sessions/" + sessionId;
+        as(admin).when().post(sessions + "/retry").then().statusCode(200)
+                .body("status", equalTo("PARSING"));
+
+        io.restassured.path.json.JsonPath again = awaitSession(admin, sessionId);
+
+        assertThat(again.getString("status")).isEqualTo("PARTIAL");
+        assertThat(again.getList("rows")).hasSize(3);
+        assertThat(again.getMap("progress"))
+                .containsEntry("total", 4)
+                .containsEntry("completed", 3)
+                .containsEntry("failed", 1);
+        assertThat(again.getList("failedBatches")).hasSize(1);
+        assertThat(again.getInt("failedBatches[0].index")).isEqualTo(2);
+        assertThat(again.getString("failedBatches[0].label")).isEqualTo("一年级2班");
+        // The old reason is gone: this round's answer is what the page must show.
+        assertThat(again.getString("failedBatches[0].reason"))
+                .contains("重试时服务超时")
+                .doesNotContain("模型返回为空");
+        assertThat(again.getString("explanation")).doesNotContain("模型返回为空");
+        assertThat(fake.calls).isEqualTo(afterFirstRound + 1);
+
+        AiImportLog stored = importLogs.findById(sessionId).orElseThrow();
+        assertThat(stored.getStatus()).isEqualTo(AiImportLog.PARTIAL);
+        assertThat(stored.getCompletedBatches()).isEqualTo(3);
+        assertThat(stored.getBatchesJson())
+                .contains("重试时服务超时")
+                .doesNotContain("模型返回为空");
+
+        // Still retryable: a partial session keeps offering the failed classes.
+        fake.responder = request -> aiResponse(List.of(retriedTimetableRow("一年级2班", "9")));
+        as(admin).when().post(sessions + "/retry").then().statusCode(200);
+        assertThat(awaitSession(admin, sessionId).getString("status")).isEqualTo("PREVIEW");
+    }
+
+    @Test
+    void aRetryCallsTheAiOncePerFailedBatchAndNoMore() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.responder = failOnBatch(1, 3);
+
+        Response upload = upload(admin, "/api/ai/import/excel?target=timetable",
+                "一年级课表.xlsx", timetableExcelBytes(4), XLSX);
+        long sessionId = upload.jsonPath().getLong("sessionId");
+        io.restassured.path.json.JsonPath partial = awaitSession(admin, sessionId);
+        assertThat(partial.getString("status")).isEqualTo("PARTIAL");
+        assertThat(partial.getList("rows")).hasSize(2);
+        assertThat(fake.calls).isEqualTo(4);
+
+        // Two failed batches, two retry calls: the two successes are never re-asked.
+        java.util.concurrent.atomic.AtomicInteger retried =
+                new java.util.concurrent.atomic.AtomicInteger();
+        fake.responder = request -> aiResponse(List.of(
+                timetableRow("英语", "周三", String.valueOf(7 + retried.incrementAndGet()), "王五")));
+
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/retry").then().statusCode(200);
+        io.restassured.path.json.JsonPath done = awaitSession(admin, sessionId);
+
+        assertThat(done.getString("status")).isEqualTo("PREVIEW");
+        assertThat(done.getList("rows")).hasSize(4);
+        assertThat(fake.calls).isEqualTo(6);
+        assertThat(retried.get()).isEqualTo(2);
+    }
+
+    @Test
+    void retryingASessionThatIsNotPartialIsAConflict() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.response = aiResponse(List.of(
+                timetableRow("语文", "周一", "1", "张三"),
+                timetableRow("语文", "周一", "2", "张三"),
+                timetableRow("语文", "周一", "3", "张三")));
+
+        Response preview = upload(admin, "/api/ai/import/excel?target=timetable",
+                "一年级课表.xlsx", timetableExcelBytes(3), XLSX);
+        preview.then().statusCode(200).body("status", equalTo("PREVIEW"));
+        long sessionId = preview.jsonPath().getLong("sessionId");
+
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/retry")
+                .then().statusCode(409)
+                .body("message", containsString("重试失败批次"));
+        assertThat(fake.calls).isEqualTo(1);
+        assertThat(importLogs.findById(sessionId).orElseThrow().getStatus())
+                .isEqualTo(AiImportLog.PREVIEW);
+    }
+
+    @Test
+    void aRetryCanBeStoppedAndLeavesTheFailedBatchRetryable() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.responder = failOnBatch(2);
+
+        Response upload = upload(admin, "/api/ai/import/excel?target=timetable",
+                "一年级课表.xlsx", timetableExcelBytes(4), XLSX);
+        long sessionId = upload.jsonPath().getLong("sessionId");
+        assertThat(awaitSession(admin, sessionId).getString("status")).isEqualTo("PARTIAL");
+        int callsBefore = fake.calls;
+
+        fake.latencyMs = 500;
+        fake.responder = request -> aiResponse(List.of(retriedTimetableRow("一年级2班", "9")));
+        String sessions = "/api/ai/import/sessions/" + sessionId;
+        as(admin).when().post(sessions + "/retry").then().statusCode(200)
+                .body("status", equalTo("PARSING"));
+
+        // Stopping mid-retry goes back to the pre-retry state: the class is still failed,
+        // so the page can offer the retry again.
+        as(admin).when().post(sessions + "/stop")
+                .then().statusCode(200)
+                .body("status", equalTo("PARTIAL"))
+                .body("progress.completed", equalTo(3))
+                .body("failedBatches", hasSize(1))
+                .body("failedBatches[0].label", equalTo("一年级2班"));
+
+        Thread.sleep(900);
+        assertThat(fake.calls).as("no further AI call after the stop").isEqualTo(callsBefore + 1);
+        assertThat(importLogs.findById(sessionId).orElseThrow().getStatus())
+                .isEqualTo(AiImportLog.PARTIAL);
+
+        fake.latencyMs = 0;
+        as(admin).when().post(sessions + "/retry").then().statusCode(200);
+        assertThat(awaitSession(admin, sessionId).getString("status")).isEqualTo("PREVIEW");
+    }
+
+    @Test
+    void aRecoveredFailedBatchCanBeRetriedWithoutTheOriginalUpload() throws Exception {
+        String admin = adminToken();
+        // A session that was left PARTIAL by the startup recovery (ticket 02): the upload
+        // may be long gone, but the stored source rows are enough to ask the AI again.
+        AiImportLog log = new AiImportLog();
+        log.setImportType("excel");
+        log.setTargetType("timetable");
+        log.setUsername("admin");
+        log.setStatus(AiImportLog.PARTIAL);
+        log.setRowCount(1);
+        log.setImportedCount(0);
+        log.setTotalBatches(2);
+        log.setCompletedBatches(1);
+        log.setPreviewJson("{\"mappings\":[],\"rows\":[{\"values\":{\"className\":\"一年级1班\","
+                + "\"dayOfWeek\":\"周一\",\"periodNo\":\"1\",\"courseName\":\"语文\","
+                + "\"teacherName\":\"张三\",\"roomName\":\"101\"},\"confidence\":{},\"lowConfidence\":[]}],"
+                + "\"explanation\":\"第一批\"}");
+        log.setBatchesJson("[{\"index\":1,\"label\":\"一年级1班\",\"status\":\"DONE\","
+                + "\"sourceRows\":[[\"一年级1班\",\"语文\"]],"
+                + "\"rows\":[{\"values\":{\"className\":\"一年级1班\",\"dayOfWeek\":\"周一\","
+                + "\"periodNo\":\"1\",\"courseName\":\"语文\",\"teacherName\":\"张三\","
+                + "\"roomName\":\"101\"},\"confidence\":{},\"lowConfidence\":[]}],"
+                + "\"mappings\":[],\"explanation\":\"第一批\"},"
+                + "{\"index\":2,\"label\":\"一年级2班\",\"status\":\"FAILED\","
+                + "\"reason\":\"服务重启中断了这一批，请重试\","
+                + "\"sourceRows\":[[\"一年级2班\",\"语文\"]]}]");
+        log.setCreatedAt(Instant.now());
+        log.setUpdatedAt(Instant.now());
+        long sessionId = importLogs.save(log).getId();
+
+        fake.responder = request -> aiResponse(List.of(retriedTimetableRow("一年级2班", "9")));
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/retry")
+                .then().statusCode(200)
+                .body("status", equalTo("PARSING"));
+
+        io.restassured.path.json.JsonPath done = awaitSession(admin, sessionId);
+
+        assertThat(done.getString("status")).isEqualTo("PREVIEW");
+        assertThat(done.getList("rows")).hasSize(2);
+        assertThat(done.getMap("progress"))
+                .containsEntry("total", 2)
+                .containsEntry("completed", 2)
+                .containsEntry("failed", 0);
+        assertThat(fake.calls).isEqualTo(1);
+        // The prompt is rebuilt from the stored source rows, not from a re-read upload.
+        assertThat(fake.lastRequest.messages().get(1).content())
+                .contains("rowsToParse")
+                .contains("一年级2班");
+        assertThat(importLogs.findById(sessionId).orElseThrow().getBatchesJson())
+                .doesNotContain("FAILED");
+    }
+
     @Test
     void timetablePreviewListsUnmatchedNamesAsIssues() {
         String admin = adminToken();
