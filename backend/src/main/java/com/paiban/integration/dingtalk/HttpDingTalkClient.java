@@ -1,6 +1,7 @@
 package com.paiban.integration.dingtalk;
 
 import com.paiban.common.settings.SettingsService;
+import com.paiban.integration.domain.DingDepartment;
 import com.paiban.integration.domain.DingUser;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,6 +15,9 @@ import org.springframework.web.client.RestClient;
 /**
  * Real DingTalk open-platform client. Requires a reachable DingTalk tenant and
  * valid credentials; when integration is disabled the callers never invoke it.
+ *
+ * <p>{@code user/list} only returns the users directly under one department, so
+ * the directory loader drives this client department by department.
  */
 @Component
 @ConditionalOnProperty(name = "paiban.integration.dingtalk.fake", havingValue = "false", matchIfMissing = true)
@@ -25,6 +29,9 @@ public class HttpDingTalkClient implements DingTalkClient {
 
     private final SettingsService settings;
     private final RestClient restClient = RestClient.create();
+    private volatile String cachedToken;
+    private volatile String cachedCredentials;
+    private volatile long tokenExpiresAt;
 
     public HttpDingTalkClient(SettingsService settings) {
         this.settings = settings;
@@ -46,43 +53,63 @@ public class HttpDingTalkClient implements DingTalkClient {
     }
 
     @Override
-    public List<DingUser> listUsers() {
-        List<DingUser> users = new ArrayList<>();
-        long cursor = 0;
-        while (true) {
-            Map<?, ?> response = restClient.post()
-                    .uri(OAPI + "/topapi/v2/user/list?access_token=" + accessToken())
-                    .body(Map.of("dept_id", 1, "cursor", cursor, "size", 100))
-                    .retrieve()
-                    .body(Map.class);
-            if (response == null) {
-                break;
-            }
-            Object result = response.get("result");
-            if (!(result instanceof Map<?, ?> resultMap)) {
-                break;
-            }
-            Object list = resultMap.get("list");
-            if (list instanceof List<?> items) {
-                for (Object item : items) {
-                    if (item instanceof Map<?, ?> user) {
-                        users.add(new DingUser(
-                                string(user.get("userid")),
-                                string(user.get("name")),
-                                string(user.get("mobile")),
-                                string(user.get("email")),
-                                string(user.get("job_number"))));
-                    }
+    public List<DingDepartment> listSubDepartments(long departmentId) {
+        Map<?, ?> response = restClient.post()
+                .uri(OAPI + "/topapi/v2/department/listsub?access_token=" + accessToken())
+                .body(Map.of("dept_id", departmentId))
+                .retrieve()
+                .body(Map.class);
+        DingTalkApiException.check(response, "列出子部门 (dept_id=" + departmentId + ")");
+        List<DingDepartment> departments = new ArrayList<>();
+        Object result = response == null ? null : response.get("result");
+        if (result instanceof List<?> items) {
+            for (Object item : items) {
+                if (item instanceof Map<?, ?> department && department.get("dept_id") instanceof Number id) {
+                    Object parent = department.get("parent_id");
+                    departments.add(new DingDepartment(
+                            id.longValue(),
+                            string(department.get("name")),
+                            parent instanceof Number parentId ? parentId.longValue() : null));
                 }
             }
-            Object hasMore = resultMap.get("has_more");
-            if (!Boolean.TRUE.equals(hasMore)) {
-                break;
-            }
-            Object next = resultMap.get("next_cursor");
-            cursor = next instanceof Number number ? number.longValue() : cursor + 100;
         }
-        return users;
+        return departments;
+    }
+
+    @Override
+    public DingUserPage listUsers(long departmentId, long cursor, int size) {
+        Map<?, ?> response = restClient.post()
+                .uri(OAPI + "/topapi/v2/user/list?access_token=" + accessToken())
+                .body(Map.of("dept_id", departmentId, "cursor", cursor, "size", size))
+                .retrieve()
+                .body(Map.class);
+        DingTalkApiException.check(response, "拉取钉钉部门用户 (dept_id=" + departmentId + ")");
+        Object result = response == null ? null : response.get("result");
+        if (!(result instanceof Map<?, ?> resultMap)) {
+            return DingUserPage.last(List.of());
+        }
+        List<DingUser> users = new ArrayList<>();
+        Object list = resultMap.get("list");
+        if (list instanceof List<?> items) {
+            for (Object item : items) {
+                if (item instanceof Map<?, ?> user) {
+                    users.add(new DingUser(
+                            string(user.get("userid")),
+                            string(user.get("name")),
+                            string(user.get("mobile")),
+                            // user/list does not return email; field customisation is backlog.
+                            null,
+                            string(user.get("job_number")),
+                            isActive(user.get("active")),
+                            List.of()));
+                }
+            }
+        }
+        boolean hasMore = Boolean.TRUE.equals(resultMap.get("has_more"));
+        long nextCursor = resultMap.get("next_cursor") instanceof Number next
+                ? next.longValue()
+                : cursor + size;
+        return new DingUserPage(users, hasMore, nextCursor);
     }
 
     @Override
@@ -112,7 +139,16 @@ public class HttpDingTalkClient implements DingTalkClient {
         }
     }
 
-    private String accessToken() {
+    /**
+     * The recursive directory walk calls this once per department and page; DingTalk
+     * tokens live for two hours, so cache one instead of asking on every request.
+     */
+    private synchronized String accessToken() {
+        String credentials = settings.dingtalkAppKey() + ":" + settings.dingtalkAppSecret();
+        long now = System.currentTimeMillis();
+        if (cachedToken != null && credentials.equals(cachedCredentials) && now < tokenExpiresAt) {
+            return cachedToken;
+        }
         Map<?, ?> response = restClient.post()
                 .uri(API + "/v1.0/oauth2/accessToken")
                 .body(Map.of("appKey", settings.dingtalkAppKey(), "appSecret", settings.dingtalkAppSecret()))
@@ -122,7 +158,17 @@ public class HttpDingTalkClient implements DingTalkClient {
         if (token == null) {
             throw new IllegalStateException("无法获取钉钉 access token");
         }
-        return token.toString();
+        long expiresInSeconds = response.get("expireIn") instanceof Number seconds ? seconds.longValue() : 7200;
+        cachedToken = token.toString();
+        cachedCredentials = credentials;
+        // Refresh a minute early so a long sync never races the expiry.
+        tokenExpiresAt = now + Math.max(60, expiresInSeconds - 60) * 1000;
+        return cachedToken;
+    }
+
+    private boolean isActive(Object value) {
+        // An absent flag means the tenant did not mark the account inactive.
+        return !(value instanceof Boolean active) || active;
     }
 
     private String string(Object value) {

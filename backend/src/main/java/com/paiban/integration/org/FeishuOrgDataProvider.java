@@ -56,7 +56,7 @@ public class FeishuOrgDataProvider implements OrgDataProvider {
     @Override
     public OrgSyncResult sync() {
         if (!settings.feishuEnabled()) {
-            return new OrgSyncResult(0, 0, 0, "飞书集成未启用");
+            return OrgSyncResult.failed("飞书集成未启用");
         }
         List<FeishuUser> remote;
         try {
@@ -68,11 +68,11 @@ public class FeishuOrgDataProvider implements OrgDataProvider {
             // Never let a failed fetch look like an empty directory: that would deactivate everyone.
             transactionTemplate.executeWithoutResult(status ->
                     foundation.audit("system", "FEISHU_SYNC", "teacher", message, 0, 0));
-            return new OrgSyncResult(0, 0, 0, message);
+            return OrgSyncResult.failed(message);
         }
         boolean feishuWins = SettingsService.PLATFORM_FEISHU.equalsIgnoreCase(settings.feishuSyncStrategy());
         OrgSyncResult result = transactionTemplate.execute(status -> applyDirectory(remote, feishuWins));
-        return result == null ? new OrgSyncResult(0, 0, 0, "同步未执行") : result;
+        return result == null ? OrgSyncResult.failed("同步未执行") : result;
     }
 
     /** Applies a fetched directory inside the caller's transaction. */
@@ -149,7 +149,7 @@ public class FeishuOrgDataProvider implements OrgDataProvider {
         }
         String message = "同步完成：新增 " + created + "，更新 " + updated + "，停用 " + deactivated;
         foundation.audit("system", "FEISHU_SYNC", "teacher", message, created + updated, 0);
-        return new OrgSyncResult(created, updated, deactivated, message);
+        return OrgSyncResult.ok(created, updated, deactivated, message);
     }
 
     /**

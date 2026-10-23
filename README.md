@@ -310,6 +310,13 @@ cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test
 - **钉钉集成**：`AuthProvider` / `OrgDataProvider` / `NotificationChannel` 三组接口均有本地与钉钉实现；
   钉钉 Stream 增量事件通过 `POST /api/integrations/dingtalk/event` 接收（生产可接官方 Stream SDK 转发）。
   关闭集成后系统完整可用，通知自动降级为系统内消息。
+- **钉钉通讯录递归同步**：从根部门开始递归遍历部门树（`department/listsub`），逐部门分页拉取
+  （`user/list`，`cursor` 翻到底），跨部门按 `userid` 去重。负 id 部门（含 `-7` 家校通讯录）直接跳过。
+  导入范围完全由钉钉侧的通讯录权限与应用可见范围决定，程序没有部门白名单或 `sync-dept-id` 配置。
+  部门名含「离职」或钉钉返回 `active=false` 的用户落库为停用，不进入排课候选；本轮未出现的教师
+  不会被自动停用。匹配顺序为 `dingtalk_user_id` → 工号 → 手机。成功文案带
+  「扫描 N 个部门 / M 人 / 耗时 X ms」，失败文案透传 `errcode` / `sub_code`
+  （IP 白名单拒绝会提示检查服务器出口 IPv4）。
 - **飞书集成**：与钉钉同一组接口的飞书实现；设置中心「飞书集成」卡片可配置 App ID / App Secret /
   验证 Token 与同步策略（`feishu` 飞书为准、`local` 本地为准），并手动触发全量同步
   （`POST /api/integrations/feishu/sync`）与查看 `FEISHU_SYNC` 同步日志。

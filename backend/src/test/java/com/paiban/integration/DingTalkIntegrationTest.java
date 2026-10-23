@@ -1,21 +1,36 @@
 package com.paiban.integration;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.notNullValue;
 
+import com.paiban.integration.dingtalk.DingTalkApiException;
+import com.paiban.integration.dingtalk.FakeDingTalkClient;
+import com.paiban.integration.domain.DingUser;
 import com.paiban.support.ApiIntegrationTest;
 import io.restassured.response.Response;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 class DingTalkIntegrationTest extends ApiIntegrationTest {
+
+    @Autowired
+    private FakeDingTalkClient fakeDingTalk;
+
+    /** The fake client is a shared bean; every test starts from the same two teachers. */
+    @BeforeEach
+    void resetFakeDirectory() {
+        fakeDingTalk.resetToDefault();
+    }
 
     private void configure(String token, boolean enabled) {
         as(token).body(Map.of(
@@ -149,9 +164,158 @@ class DingTalkIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void syncWalksNestedDepartmentsAndDeduplicatesAcrossBranches() {
+        String token = adminToken();
+        configure(token, true);
+        fakeDingTalk.clearDirectory()
+                .addDepartment(2, "全校教职工", 1)
+                .addDepartment(3, "高一年级", 2)
+                .addDepartment(4, "高二年级", 2)
+                .addDepartment(5, "食堂", 1)
+                .addDepartment(-7, "家校通讯录", 1);
+        fakeDingTalk.addUser(3, new DingUser("dd-101", "王老师", "13800000101", null, "EMP101"));
+        // The same person sits in two branches: import once, keep both departments.
+        fakeDingTalk.addUser(4, new DingUser("dd-101", "王老师", "13800000101", null, "EMP101"));
+        fakeDingTalk.addUser(5, new DingUser("dd-201", "厨师甲", null, null, null));
+        fakeDingTalk.addUser(-7, new DingUser("dd-301", "家长甲", null, null, null));
+
+        as(token).when().post("/api/integrations/dingtalk/sync")
+                .then().statusCode(200)
+                .body("success", equalTo(true))
+                .body("created", equalTo(2))
+                .body("departmentsScanned", equalTo(5))
+                .body("usersScanned", equalTo(2))
+                .body("message", org.hamcrest.Matchers.containsString("扫描 5 个部门 / 2 人"));
+
+        List<String> names = teacherNames(token);
+        assertThat(names).containsExactlyInAnyOrder("王老师", "厨师甲");
+        assertThat(names).doesNotContain("家长甲");
+        assertThat(fakeDingTalk.userListCalls(-7)).isZero();
+    }
+
+    @Test
+    void syncMatchesAnExistingTeacherByEmployeeNumberInsteadOfCreatingADuplicate() {
+        String token = adminToken();
+        configure(token, true);
+        as(token).body(Map.of("name", "旧名字", "employeeNo", "EMP101"))
+                .when().post("/api/teachers").then().statusCode(200);
+        fakeDingTalk.clearDirectory().addDepartment(2, "全校教职工", 1);
+        fakeDingTalk.addUser(2, new DingUser("dd-101", "王老师", "13800000101", null, "EMP101"));
+
+        as(token).when().post("/api/integrations/dingtalk/sync")
+                .then().statusCode(200)
+                .body("created", equalTo(0))
+                .body("updated", equalTo(1));
+
+        List<Map<String, Object>> teachers = teachers(token);
+        assertThat(teachers).hasSize(1);
+        assertThat(teachers.get(0).get("name")).isEqualTo("王老师");
+        assertThat(teachers.get(0).get("dingtalkUserId")).isEqualTo("dd-101");
+    }
+
+    @Test
+    void syncMatchesAnExistingTeacherByPhoneWhenThereIsNoEmployeeNumber() {
+        String token = adminToken();
+        configure(token, true);
+        as(token).body(Map.of("name", "手机老师", "phone", "13900000111"))
+                .when().post("/api/teachers").then().statusCode(200);
+        fakeDingTalk.clearDirectory().addDepartment(2, "全校教职工", 1);
+        fakeDingTalk.addUser(2, new DingUser("dd-102", "手机老师", "13900000111", null, null));
+
+        as(token).when().post("/api/integrations/dingtalk/sync")
+                .then().statusCode(200)
+                .body("created", equalTo(0))
+                .body("updated", equalTo(1));
+
+        assertThat(teachers(token)).hasSize(1);
+    }
+
+    @Test
+    void syncImportsLeaversFromALeaverDepartmentAsInactive() {
+        String token = adminToken();
+        configure(token, true);
+        fakeDingTalk.clearDirectory().addDepartment(2, "离职人员", 1);
+        fakeDingTalk.addUser(2, new DingUser("dd-900", "离职老师", null, null, "EMP900"));
+
+        as(token).when().post("/api/integrations/dingtalk/sync")
+                .then().statusCode(200)
+                .body("created", equalTo(1))
+                .body("deactivated", equalTo(1));
+
+        List<Map<String, Object>> teachers = teachers(token);
+        assertThat(teachers).hasSize(1);
+        assertThat(teachers.get(0).get("active")).isEqualTo(false);
+    }
+
+    @Test
+    void syncImportsUsersDingTalkMarksInactiveAsInactive() {
+        String token = adminToken();
+        configure(token, true);
+        fakeDingTalk.clearDirectory();
+        fakeDingTalk.addUser(1, new DingUser("dd-800", "停用老师", null, null, "EMP800", false, List.of()));
+
+        as(token).when().post("/api/integrations/dingtalk/sync")
+                .then().statusCode(200)
+                .body("deactivated", equalTo(1));
+
+        assertThat(teachers(token).get(0).get("active")).isEqualTo(false);
+    }
+
+    @Test
+    void syncDoesNotDeactivateTeachersMissingFromTheRun() {
+        String token = adminToken();
+        configure(token, true);
+        as(token).body(Map.of("name", "手工老师", "dingtalkUserId", "dd-999"))
+                .when().post("/api/teachers").then().statusCode(200);
+
+        as(token).when().post("/api/integrations/dingtalk/sync").then().statusCode(200);
+
+        Map<String, Object> manual = teachers(token).stream()
+                .filter(teacher -> "手工老师".equals(teacher.get("name")))
+                .findFirst().orElseThrow();
+        assertThat(manual.get("active")).isEqualTo(true);
+    }
+
+    @Test
+    void syncReportsScanCountersInTheAuditLog() {
+        String token = adminToken();
+        configure(token, true);
+
+        as(token).when().post("/api/integrations/dingtalk/sync").then().statusCode(200);
+
+        as(token).when().get("/api/integrations/dingtalk/logs")
+                .then().statusCode(200)
+                .body("detail", hasItem(org.hamcrest.Matchers.containsString("扫描 1 个部门 / 2 人")));
+    }
+
+    @Test
+    void syncFailureCarriesTheDingTalkSubCode() {
+        String token = adminToken();
+        configure(token, true);
+        fakeDingTalk.clearDirectory().failUserList(
+                1, new DingTalkApiException("拉取部门用户", 88, 60020, "ip not in whitelist"));
+
+        as(token).when().post("/api/integrations/dingtalk/sync")
+                .then().statusCode(200)
+                .body("success", equalTo(false))
+                .body("message", org.hamcrest.Matchers.containsString("sub_code=60020"))
+                .body("message", org.hamcrest.Matchers.containsString("IP 白名单"));
+        assertThat(teachers(token)).isEmpty();
+    }
+
+    @Test
     void syncStrategyMustBeValid() {
         as(adminToken()).body(Map.of("syncStrategy", "unknown"))
                 .when().put("/api/integrations/dingtalk/config")
                 .then().statusCode(400);
+    }
+
+    private List<String> teacherNames(String token) {
+        return teachers(token).stream().map(teacher -> (String) teacher.get("name")).toList();
+    }
+
+    private List<Map<String, Object>> teachers(String token) {
+        return as(token).when().get("/api/teachers")
+                .then().statusCode(200).extract().jsonPath().getList("$");
     }
 }
