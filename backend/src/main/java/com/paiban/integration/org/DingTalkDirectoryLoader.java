@@ -36,16 +36,16 @@ public class DingTalkDirectoryLoader {
 
     public DingTalkDirectory load() {
         Map<Long, DingDepartment> scanned = new LinkedHashMap<>();
+        Map<Long, DingDepartment> skipped = new LinkedHashMap<>();
         Map<String, DingUser> merged = new LinkedHashMap<>();
         Deque<DingDepartment> pending = new ArrayDeque<>();
         pending.push(new DingDepartment(ROOT_DEPARTMENT_ID, "根部门", null));
 
-        int skipped = 0;
         int failed = 0;
         while (!pending.isEmpty()) {
             DingDepartment department = pending.pop();
             if (department.isSpecial()) {
-                skipped++;
+                skipped.put(department.id(), department);
                 continue;
             }
             if (scanned.containsKey(department.id())) {
@@ -68,7 +68,7 @@ public class DingTalkDirectoryLoader {
             for (int i = children.size() - 1; i >= 0; i--) {
                 DingDepartment child = children.get(i);
                 if (child.isSpecial()) {
-                    skipped++;
+                    skipped.put(child.id(), child);
                 } else {
                     pending.push(child);
                 }
@@ -83,7 +83,11 @@ public class DingTalkDirectoryLoader {
                 failed++;
             }
         }
-        return new DingTalkDirectory(new ArrayList<>(merged.values()), new ArrayList<>(scanned.values()), skipped, failed);
+        return new DingTalkDirectory(
+                new ArrayList<>(merged.values()),
+                new ArrayList<>(scanned.values()),
+                new ArrayList<>(skipped.values()),
+                failed);
     }
 
     private void loadUsers(DingDepartment department, Map<String, DingUser> merged) {

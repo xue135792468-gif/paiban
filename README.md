@@ -317,6 +317,13 @@ cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test
   不会被自动停用。匹配顺序为 `dingtalk_user_id` → 工号 → 手机。成功文案带
   「扫描 N 个部门 / M 人 / 耗时 X ms」，失败文案透传 `errcode` / `sub_code`
   （IP 白名单拒绝会提示检查服务器出口 IPv4）。
+- **钉钉同步预演与确认**：设置页「预演同步」调用 `POST /api/integrations/dingtalk/sync/preview`
+  （严格只读，不写 `teacher` / `audit_log`），返回新增/补齐/疑似同名/跳过四类结果与按部门分组的明细。
+  可按部门或单人排除；疑似同名必须选择「合并到同名教师 / 作为新教师导入 / 本次跳过」，缺省跳过，
+  绝不自动合并。命中的教师只补空字段，本地非空值不覆盖，冲突在明细中标出。
+  `POST /api/integrations/dingtalk/sync/confirm` 确认写库并记 `DINGTALK_SYNC` 审计；
+  `POST /api/integrations/dingtalk/sync` 保留为「安全默认」的一键同步。
+  钉钉的 `sync-strategy` 设置不再影响合并语义（字段保留仅为兼容旧配置）。
 - **飞书集成**：与钉钉同一组接口的飞书实现；设置中心「飞书集成」卡片可配置 App ID / App Secret /
   验证 Token 与同步策略（`feishu` 飞书为准、`local` 本地为准），并手动触发全量同步
   （`POST /api/integrations/feishu/sync`）与查看 `FEISHU_SYNC` 同步日志。
@@ -356,7 +363,8 @@ cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test
 
 - **钉钉 Stream 长连接**：一期未内嵌官方 Stream SDK。增量事件通过
   `POST /api/integrations/dingtalk/event`（需 `X-DingTalk-Token`，值为设置中心的“事件令牌”）接收，
-  生产环境可用官方 SDK 将事件转发到该端点；全量同步走 `POST /api/integrations/dingtalk/sync`。
+  生产环境可用官方 SDK 将事件转发到该端点；全量同步走 `POST /api/integrations/dingtalk/sync`
+  （设置页走「预演 → 确认」两步，见上文）。
 - **飞书 Stream 长连接**：本仓库未内嵌官方飞书 Stream SDK，也不自行维护 WebSocket 长连接。
   增量事件由 `POST /api/integrations/feishu/event` 接收（需 `X-Feishu-Token`，值为设置中心的“验证 Token”），
   生产环境可用官方 Stream SDK 订阅 `contact.user.created_v3` / `updated_v3` / `deleted_v3`

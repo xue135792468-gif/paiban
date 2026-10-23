@@ -11,13 +11,19 @@ import com.paiban.integration.auth.AuthCredentials;
 import com.paiban.integration.auth.DingTalkAuthProvider;
 import com.paiban.integration.domain.DingUser;
 import com.paiban.integration.org.DingTalkOrgDataProvider;
+import com.paiban.integration.org.DingTalkSyncDecisions;
 import com.paiban.integration.org.OrgSyncResult;
+import com.paiban.integration.web.DingTalkSyncDtos.ConfirmRequest;
+import com.paiban.integration.web.DingTalkSyncDtos.SyncPreviewDto;
+import com.paiban.integration.web.DingTalkSyncDtos.SuspectedDecisionDto;
 import com.paiban.integration.web.IntegrationDtos.DingTalkConfigDto;
 import com.paiban.integration.web.IntegrationDtos.DingTalkEventRequest;
 import com.paiban.integration.web.IntegrationDtos.DingTalkLoginRequest;
 import com.paiban.integration.web.IntegrationDtos.UpdateDingTalkConfigRequest;
 import jakarta.validation.Valid;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -101,6 +107,50 @@ public class IntegrationController {
     @PreAuthorize("hasAuthority('" + Permissions.INTEGRATION_MANAGE + "')")
     public OrgSyncResult sync() {
         return orgProvider.sync();
+    }
+
+    /**
+     * Strictly read-only classification of the readable directory. Nothing is
+     * written here, not even an audit row.
+     */
+    @PostMapping("/integrations/dingtalk/sync/preview")
+    @PreAuthorize("hasAuthority('" + Permissions.INTEGRATION_MANAGE + "')")
+    public SyncPreviewDto preview(@RequestBody(required = false) ConfirmRequest request) {
+        return DingTalkSyncDtos.from(orgProvider.preview(decisions(request)));
+    }
+
+    /** Writes the selected scope; re-plans the directory so preview and write agree. */
+    @PostMapping("/integrations/dingtalk/sync/confirm")
+    @PreAuthorize("hasAuthority('" + Permissions.INTEGRATION_MANAGE + "')")
+    public OrgSyncResult confirm(@RequestBody(required = false) ConfirmRequest request) {
+        return orgProvider.confirm(decisions(request));
+    }
+
+    private DingTalkSyncDecisions decisions(ConfirmRequest request) {
+        if (request == null) {
+            return DingTalkSyncDecisions.none();
+        }
+        List<DingTalkSyncDecisions.Decision> suspected = new ArrayList<>();
+        if (request.suspectedDecisions() != null) {
+            for (SuspectedDecisionDto dto : request.suspectedDecisions()) {
+                if (dto == null || dto.userId() == null) {
+                    continue;
+                }
+                DingTalkSyncDecisions.Action action;
+                try {
+                    action = DingTalkSyncDecisions.Action.valueOf(
+                            dto.action() == null ? "" : dto.action().trim().toUpperCase(Locale.ROOT));
+                } catch (IllegalArgumentException ex) {
+                    throw ApiException.badRequest("疑似同名处理只能是 MERGE / CREATE / SKIP");
+                }
+                if (action == DingTalkSyncDecisions.Action.MERGE && dto.teacherId() == null) {
+                    throw ApiException.badRequest("合并疑似同名用户时必须指定 teacherId");
+                }
+                suspected.add(new DingTalkSyncDecisions.Decision(dto.userId(), action, dto.teacherId()));
+            }
+        }
+        return DingTalkSyncDecisions.of(
+                request.excludedDepartments(), request.excludedUserIds(), suspected);
     }
 
     @GetMapping("/integrations/dingtalk/logs")

@@ -7,18 +7,20 @@ import java.util.List;
 /**
  * The full directory the application is allowed to read, already de-duplicated by
  * DingTalk user id. {@code departments} contains every non-special department that
- * was scanned; {@code skippedDepartments} counts negative ids that were skipped and
- * {@code failedDepartments} counts departments the tenant refused to list.
+ * was scanned; {@code skipped} lists the negative ids that were not (for example
+ * {@code -7}, the 家校通讯录) and {@code failedDepartments} counts departments the
+ * tenant refused to list.
  */
 public record DingTalkDirectory(
         List<DingUser> users,
         List<DingDepartment> departments,
-        int skippedDepartments,
+        List<DingDepartment> skipped,
         int failedDepartments) {
 
     public DingTalkDirectory {
         users = users == null ? List.of() : List.copyOf(users);
         departments = departments == null ? List.of() : List.copyOf(departments);
+        skipped = skipped == null ? List.of() : List.copyOf(skipped);
     }
 
     public int departmentsScanned() {
@@ -27,5 +29,9 @@ public record DingTalkDirectory(
 
     public int usersScanned() {
         return users.size();
+    }
+
+    public int skippedDepartments() {
+        return skipped.size();
     }
 }

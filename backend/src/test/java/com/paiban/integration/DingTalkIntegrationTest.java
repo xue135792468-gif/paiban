@@ -209,7 +209,8 @@ class DingTalkIntegrationTest extends ApiIntegrationTest {
 
         List<Map<String, Object>> teachers = teachers(token);
         assertThat(teachers).hasSize(1);
-        assertThat(teachers.get(0).get("name")).isEqualTo("王老师");
+        // A non-empty local name is never overwritten; the preview flags it instead.
+        assertThat(teachers.get(0).get("name")).isEqualTo("旧名字");
         assertThat(teachers.get(0).get("dingtalkUserId")).isEqualTo("dd-101");
     }
 
@@ -308,6 +309,258 @@ class DingTalkIntegrationTest extends ApiIntegrationTest {
         as(adminToken()).body(Map.of("syncStrategy", "unknown"))
                 .when().put("/api/integrations/dingtalk/config")
                 .then().statusCode(400);
+    }
+
+    @Test
+    void previewIsReadOnlyAndClassifiesEveryUser() {
+        String token = adminToken();
+        configure(token, true);
+        // MERGE: matched by employee number, phone is missing locally.
+        long mergeTarget = createTeacher(token, "王老师", "EMP101", null, null);
+        // SUSPECTED: same name, no matching key.
+        createTeacher(token, "李四", null, null, null);
+        // SKIP: already identical, including the binding.
+        createTeacher(token, "赵六", "EMP104", "13900000104", "dd-104");
+        fakeDingTalk.clearDirectory().addDepartment(2, "全校教职工", 1);
+        fakeDingTalk.addUser(2, new DingUser("dd-101", "王老师", "13800000101", null, "EMP101"));
+        fakeDingTalk.addUser(2, new DingUser("dd-102", "李四", "13800000102", null, "EMP102"));
+        fakeDingTalk.addUser(2, new DingUser("dd-103", "张三", "13800000103", null, "EMP103"));
+        fakeDingTalk.addUser(2, new DingUser("dd-104", "赵六", "13900000104", null, "EMP104"));
+
+        Map<String, Object> preview = preview(token, null);
+
+        assertThat(preview.get("success")).isEqualTo(true);
+        Map<String, Object> summary = summary(preview);
+        assertThat(number(summary.get("create"))).isEqualTo(1);
+        assertThat(number(summary.get("merge"))).isEqualTo(1);
+        assertThat(number(summary.get("suspected"))).isEqualTo(1);
+        assertThat(number(summary.get("skip"))).isEqualTo(1);
+        assertThat(previewItems(preview)).extracting(item -> item.get("category"))
+                .containsExactlyInAnyOrder("CREATE", "MERGE", "SUSPECTED", "SKIP");
+
+        // Strictly read-only: no teacher row and no audit row.
+        assertThat(teachers(token)).hasSize(3);
+        as(token).when().get("/api/integrations/dingtalk/logs")
+                .then().statusCode(200)
+                .body("$", org.hamcrest.Matchers.hasSize(0));
+        assertThat(mergeTarget).isPositive();
+    }
+
+    @Test
+    void confirmWritesCreatesAndMergesButLeavesSuspectedUsersUntouchedByDefault() {
+        String token = adminToken();
+        configure(token, true);
+        long mergeTarget = createTeacher(token, "王老师", "EMP101", null);
+        createTeacher(token, "李四", null, null);
+        fakeDingTalk.clearDirectory().addDepartment(2, "全校教职工", 1);
+        fakeDingTalk.addUser(2, new DingUser("dd-101", "王老师", "13800000101", null, "EMP101"));
+        fakeDingTalk.addUser(2, new DingUser("dd-102", "李四", "13800000102", null, "EMP102"));
+        fakeDingTalk.addUser(2, new DingUser("dd-103", "张三", "13800000103", null, "EMP103"));
+
+        as(token).when().post("/api/integrations/dingtalk/sync/confirm")
+                .then().statusCode(200)
+                .body("success", equalTo(true))
+                .body("created", equalTo(1))
+                .body("updated", equalTo(1))
+                .body("skipped", equalTo(1));
+
+        List<Map<String, Object>> after = teachers(token);
+        assertThat(after).hasSize(3);
+        assertThat(after).filteredOn(teacher -> "李四".equals(teacher.get("name"))).hasSize(1);
+        assertThat(after).extracting(teacher -> teacher.get("name")).contains("张三");
+        Map<String, Object> merged = byId(after, mergeTarget);
+        assertThat(merged.get("phone")).isEqualTo("13800000101");
+        assertThat(merged.get("dingtalkUserId")).isEqualTo("dd-101");
+    }
+
+    @Test
+    void confirmMergesASuspectedUserWhenTheAdminConfirmsTheCandidate() {
+        String token = adminToken();
+        configure(token, true);
+        long existing = createTeacher(token, "李四", null, null);
+        fakeDingTalk.clearDirectory().addDepartment(2, "全校教职工", 1);
+        fakeDingTalk.addUser(2, new DingUser("dd-102", "李四", "13800000102", null, "EMP102"));
+
+        as(token).body(Map.of("suspectedDecisions", List.of(
+                        Map.of("userId", "dd-102", "action", "MERGE", "teacherId", existing))))
+                .when().post("/api/integrations/dingtalk/sync/confirm")
+                .then().statusCode(200)
+                .body("created", equalTo(0))
+                .body("updated", equalTo(1));
+
+        List<Map<String, Object>> after = teachers(token);
+        assertThat(after).hasSize(1);
+        Map<String, Object> teacher = after.get(0);
+        assertThat(teacher.get("employeeNo")).isEqualTo("EMP102");
+        assertThat(teacher.get("phone")).isEqualTo("13800000102");
+        assertThat(teacher.get("dingtalkUserId")).isEqualTo("dd-102");
+    }
+
+    @Test
+    void confirmCreatesASuspectedUserAsNewWhenTheAdminSaysTheyAreDifferentPeople() {
+        String token = adminToken();
+        configure(token, true);
+        createTeacher(token, "李四", null, null);
+        fakeDingTalk.clearDirectory().addDepartment(2, "全校教职工", 1);
+        fakeDingTalk.addUser(2, new DingUser("dd-102", "李四", "13800000102", null, "EMP102"));
+
+        as(token).body(Map.of("suspectedDecisions", List.of(
+                        Map.of("userId", "dd-102", "action", "CREATE"))))
+                .when().post("/api/integrations/dingtalk/sync/confirm")
+                .then().statusCode(200)
+                .body("created", equalTo(1));
+
+        assertThat(teachers(token)).hasSize(2);
+    }
+
+    @Test
+    void confirmHonoursDepartmentAndUserExclusions() {
+        String token = adminToken();
+        configure(token, true);
+        fakeDingTalk.clearDirectory()
+                .addDepartment(2, "全校教职工", 1)
+                .addDepartment(3, "食堂", 1);
+        fakeDingTalk.addUser(2, new DingUser("dd-101", "王老师", null, null, "EMP101"));
+        fakeDingTalk.addUser(3, new DingUser("dd-201", "厨师甲", null, null, "EMP201"));
+        fakeDingTalk.addUser(3, new DingUser("dd-202", "厨师乙", null, null, "EMP202"));
+
+        as(token).body(Map.of(
+                        "excludedDepartments", List.of("食堂"),
+                        "excludedUserIds", List.of("dd-101")))
+                .when().post("/api/integrations/dingtalk/sync/confirm")
+                .then().statusCode(200)
+                .body("created", equalTo(0));
+
+        assertThat(teachers(token)).isEmpty();
+    }
+
+    @Test
+    void confirmIsIdempotent() {
+        String token = adminToken();
+        configure(token, true);
+        createTeacher(token, "王老师", "EMP101", null);
+        fakeDingTalk.clearDirectory().addDepartment(2, "全校教职工", 1);
+        fakeDingTalk.addUser(2, new DingUser("dd-101", "王老师", "13800000101", null, "EMP101"));
+        fakeDingTalk.addUser(2, new DingUser("dd-103", "张三", "13800000103", null, "EMP103"));
+
+        as(token).when().post("/api/integrations/dingtalk/sync/confirm")
+                .then().statusCode(200)
+                .body("created", equalTo(1))
+                .body("updated", equalTo(1));
+
+        as(token).when().post("/api/integrations/dingtalk/sync/confirm")
+                .then().statusCode(200)
+                .body("created", equalTo(0))
+                .body("updated", equalTo(0));
+
+        assertThat(teachers(token)).hasSize(2);
+    }
+
+    @Test
+    void confirmRejectsAnUnknownMergeTargetAndAnUnknownAction() {
+        String token = adminToken();
+        configure(token, true);
+        createTeacher(token, "李四", null, null);
+        fakeDingTalk.clearDirectory().addDepartment(2, "全校教职工", 1);
+        fakeDingTalk.addUser(2, new DingUser("dd-102", "李四", "13800000102", null, "EMP102"));
+
+        as(token).body(Map.of("suspectedDecisions", List.of(
+                        Map.of("userId", "dd-102", "action", "MERGE", "teacherId", 99999))))
+                .when().post("/api/integrations/dingtalk/sync/confirm")
+                .then().statusCode(400);
+        as(token).body(Map.of("suspectedDecisions", List.of(
+                        Map.of("userId", "dd-102", "action", "BOGUS"))))
+                .when().post("/api/integrations/dingtalk/sync/confirm")
+                .then().statusCode(400);
+    }
+
+    @Test
+    void fortySevenExcelTeachersAreShownAsSuspectedAndNeverDuplicated() {
+        String token = adminToken();
+        configure(token, true);
+        fakeDingTalk.clearDirectory().addDepartment(2, "全校教职工", 1);
+        List<Map<String, Object>> mergeDecisions = new java.util.ArrayList<>();
+        for (int i = 1; i <= 47; i++) {
+            String name = "存量老师" + i;
+            long id = createTeacher(token, name, null, null);
+            fakeDingTalk.addUser(2, new DingUser("dd-" + i, name, "1380000" + String.format("%04d", i), null,
+                    "EMP" + String.format("%04d", i)));
+            mergeDecisions.add(Map.of("userId", "dd-" + i, "action", "MERGE", "teacherId", id));
+        }
+
+        Map<String, Object> preview = preview(token, null);
+        assertThat(number(summary(preview).get("suspected"))).isEqualTo(47);
+        assertThat(number(summary(preview).get("create"))).isZero();
+        assertThat(teachers(token)).hasSize(47);
+
+        // Confirming without decisions must not create 47 duplicates.
+        as(token).when().post("/api/integrations/dingtalk/sync/confirm")
+                .then().statusCode(200)
+                .body("created", equalTo(0));
+        assertThat(teachers(token)).hasSize(47);
+
+        // Explicit merges keep the roster at 47 and bind every DingTalk account.
+        as(token).body(Map.of("suspectedDecisions", mergeDecisions))
+                .when().post("/api/integrations/dingtalk/sync/confirm")
+                .then().statusCode(200)
+                .body("created", equalTo(0))
+                .body("updated", equalTo(47));
+        List<Map<String, Object>> after = teachers(token);
+        assertThat(after).hasSize(47);
+        assertThat(after).allSatisfy(teacher -> assertThat(teacher.get("dingtalkUserId")).isNotNull());
+    }
+
+    private long createTeacher(String token, String name, String employeeNo, String phone) {
+        return createTeacher(token, name, employeeNo, phone, null);
+    }
+
+    private long createTeacher(String token, String name, String employeeNo, String phone, String dingtalkUserId) {
+        Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("name", name);
+        if (employeeNo != null) {
+            payload.put("employeeNo", employeeNo);
+        }
+        if (phone != null) {
+            payload.put("phone", phone);
+        }
+        if (dingtalkUserId != null) {
+            payload.put("dingtalkUserId", dingtalkUserId);
+        }
+        return as(token).body(payload).when().post("/api/teachers")
+                .then().statusCode(200).extract().jsonPath().getLong("id");
+    }
+
+    private Map<String, Object> preview(String token, Object body) {
+        var request = as(token);
+        if (body != null) {
+            request = request.body(body);
+        }
+        return request.when().post("/api/integrations/dingtalk/sync/preview")
+                .then().statusCode(200).extract().jsonPath().getMap("$");
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> previewItems(Map<String, Object> preview) {
+        List<Map<String, Object>> items = new java.util.ArrayList<>();
+        for (Map<String, Object> group : (List<Map<String, Object>>) preview.get("departments")) {
+            items.addAll((List<Map<String, Object>>) group.get("items"));
+        }
+        return items;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> summary(Map<String, Object> preview) {
+        return (Map<String, Object>) preview.get("summary");
+    }
+
+    private int number(Object value) {
+        return ((Number) value).intValue();
+    }
+
+    private Map<String, Object> byId(List<Map<String, Object>> teachers, long id) {
+        return teachers.stream()
+                .filter(teacher -> ((Number) teacher.get("id")).longValue() == id)
+                .findFirst().orElseThrow();
     }
 
     private List<String> teacherNames(String token) {
