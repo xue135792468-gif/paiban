@@ -52,10 +52,13 @@ public final class ImportDtos {
      * One unmatched value in a preview. {@code required} is true when the target field
      * itself is required, i.e. the value cannot simply be cleared to move on. A
      * {@code row} of 0 is a page-level blocker (nothing to map) and carries its reason
-     * in {@code message}.
+     * in {@code message}. {@code inferredGrade} is null unless this is a class issue
+     * whose name carries a grade; {@code gradeCandidates} lists the current semester's
+     * grades (empty for non-class issues).
      */
     public record IssueDto(
-            int row, String field, String value, List<String> candidates, boolean required, String message) {}
+            int row, String field, String value, List<String> candidates, boolean required, String message,
+            String inferredGrade, List<String> gradeCandidates) {}
 
     /** One system entity offered as a mapping target. {@code extra} is display context. */
     public record LookupDto(Long id, String name, String extra) {}
@@ -69,7 +72,9 @@ public final class ImportDtos {
     public record CreateItem(@NotBlank(message = "字段不能为空") String field,
                              @NotBlank(message = "原值不能为空") String source,
                              String name,
-                             Long gradeId) {}
+                             Long gradeId,
+                             String gradeName,
+                             Integer studentCount) {}
 
     public record MappingRequest(List<MappingItem> mappings, List<CreateItem> creates) {}
 

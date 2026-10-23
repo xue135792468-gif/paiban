@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { AI_IMPORT_TIMEOUT_MS, http } from '@/api/http'
 import { aiParseErrorMessage, serverMessage } from '@/api/errors'
@@ -19,11 +19,56 @@ export interface CommitResult {
   draftId?: number | null
 }
 
+/** Where the last import came from, kept so an empty page can offer to continue it. */
+export interface LastSession {
+  id: number
+  fileName: string
+  status: string
+  savedAt: string
+}
+
+export type RestoreOutcome = 'restored' | 'failed' | 'unusable'
+
 const STATUS_LABELS: Record<string, string> = {
   PREVIEW: '待确认',
   EDITED: '已微调',
   COMMITTED: '已入库',
   FAILED: '解析失败',
+}
+
+/** Statuses a restored session can render; anything else is not worth showing. */
+const RESTORABLE_STATUSES = new Set(['PREVIEW', 'EDITED', 'COMMITTED', 'FAILED'])
+
+const LAST_SESSION_KEY = 'paiban.aiImport.lastSession'
+
+export function statusText(status: string): string {
+  return STATUS_LABELS[status] ?? status
+}
+
+export function statusTagType(status: string): 'success' | 'danger' | 'info' {
+  if (status === 'COMMITTED') return 'success'
+  if (status === 'FAILED') return 'danger'
+  return 'info'
+}
+
+/** A corrupted or half-written record is treated as absent, never as a crash. */
+function readLastSession(): LastSession | null {
+  try {
+    const raw = localStorage.getItem(LAST_SESSION_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<LastSession> | null
+    if (typeof parsed?.id !== 'number' || !parsed.fileName || !parsed.status || !parsed.savedAt) {
+      return null
+    }
+    return {
+      id: parsed.id,
+      fileName: parsed.fileName,
+      status: parsed.status,
+      savedAt: parsed.savedAt,
+    }
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -32,6 +77,7 @@ const STATUS_LABELS: Record<string, string> = {
  * Uploading and parsing stay in the view because they own the file/text inputs.
  */
 export function useImportSession() {
+  const route = useRoute()
   const router = useRouter()
   const preview = ref<ImportPreview | null>(null)
   const editing = ref(false)
@@ -39,7 +85,9 @@ export function useImportSession() {
   const continuing = ref(false)
   const reparsing = ref(false)
   const commitErrors = ref<RowError[]>([])
-  const importedCount = ref(0)
+  /** Null until this page commits: a restored COMMITTED session has no known count. */
+  const importedCount = ref<number | null>(null)
+  const lastSession = ref<LastSession | null>(readLastSession())
 
   const isTimetable = computed(() => preview.value?.targetType === 'timetable')
   const previewIssues = computed(() => preview.value?.issues ?? [])
@@ -49,10 +97,12 @@ export function useImportSession() {
     () =>
       !preview.value ||
       preview.value.status === 'COMMITTED' ||
+      preview.value.status === 'FAILED' ||
       (isTimetable.value && !allIssuesResolved.value),
   )
   const commitLabel = computed(() => {
     if (preview.value?.status === 'COMMITTED') return '已入库'
+    if (preview.value?.status === 'FAILED') return '解析失败'
     if (isTimetable.value && !allIssuesResolved.value) {
       return `确认入库（还有 ${remainingIssues.value} 项未解决）`
     }
@@ -60,19 +110,103 @@ export function useImportSession() {
   })
   const statusLabel = computed(() => {
     if (!preview.value) return ''
-    return STATUS_LABELS[preview.value.status] ?? preview.value.status
+    return statusText(preview.value.status)
   })
   const statusType = computed(() => {
     if (!preview.value) return 'info'
-    if (preview.value.status === 'COMMITTED') return 'success'
-    if (preview.value.status === 'FAILED') return 'danger'
-    return 'info'
+    return statusTagType(preview.value.status)
   })
 
   /** Shows a freshly parsed or server-updated preview and drops stale row errors. */
   function setPreview(data: ImportPreview) {
     preview.value = data
     commitErrors.value = []
+    importedCount.value = null
+    rememberStatus(data.sessionId, data.status)
+  }
+
+  function storeLastSession(record: LastSession | null) {
+    lastSession.value = record
+    if (record) {
+      localStorage.setItem(LAST_SESSION_KEY, JSON.stringify(record))
+    } else {
+      localStorage.removeItem(LAST_SESSION_KEY)
+    }
+  }
+
+  /** Remembers where an import came from so the empty page can offer to continue it. */
+  function rememberSession(data: ImportPreview, fileName?: string) {
+    storeLastSession({
+      id: data.sessionId,
+      fileName: fileName?.trim() || '粘贴文本',
+      status: data.status,
+      savedAt: new Date().toISOString(),
+    })
+  }
+
+  /** Forgets the stored last-import record; with an id, only when it is that session. */
+  function forgetSession(sessionId?: number) {
+    if (sessionId !== undefined && lastSession.value?.id !== sessionId) return
+    storeLastSession(null)
+  }
+
+  /** Keeps the stored record honest when this session changes status. */
+  function rememberStatus(sessionId: number, status: string) {
+    const record = lastSession.value
+    if (!record || record.id !== sessionId) return
+    storeLastSession({ ...record, status })
+  }
+
+  /** The query without `session`; unrelated params such as `target` stay put. */
+  function queryWithoutSession(): LocationQueryRaw {
+    const query: LocationQueryRaw = { ...route.query }
+    delete query.session
+    return query
+  }
+
+  function dropSessionFromUrl() {
+    if (!route.query.session) return
+    void router.replace({ query: queryWithoutSession() })
+  }
+
+  /**
+   * Restores a server-side session into the preview. A session the server no longer
+   * knows, or whose status this page cannot render, falls back to the empty import page.
+   * A transient failure keeps `?session=` so a refresh can retry it.
+   */
+  async function restore(sessionId: number | string): Promise<RestoreOutcome> {
+    const id = encodeURIComponent(String(sessionId).trim())
+    try {
+      const { data } = await http.get<ImportPreview>(`/ai/import/sessions/${id}`)
+      if (!data || !RESTORABLE_STATUSES.has(data.status)) {
+        if (data) forgetSession(data.sessionId)
+        clear()
+        ElMessage.error('该导入会话已不可用，请重新上传文件')
+        return 'unusable'
+      }
+      setPreview(data)
+      editing.value = false
+      void router.replace({
+        query: { ...route.query, session: String(data.sessionId), target: data.targetType },
+      })
+      return 'restored'
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response?.status
+      if (status === 404 || status === 403) {
+        const requested = Number(String(sessionId).trim())
+        if (Number.isFinite(requested)) forgetSession(requested)
+        clear()
+        ElMessage.error(
+          status === 404
+            ? '上次的导入会话已不存在，请重新上传文件'
+            : '没有权限查看该导入会话，请重新上传文件',
+        )
+        return 'failed'
+      }
+      resetState()
+      ElMessage.error(serverMessage(error, '恢复导入预览失败，请重新上传文件'))
+      return 'failed'
+    }
   }
 
   async function saveRows() {
@@ -81,7 +215,7 @@ export function useImportSession() {
       `/ai/import/sessions/${preview.value.sessionId}/rows`,
       { rows: preview.value.rows },
     )
-    preview.value = data
+    setPreview(data)
   }
 
   async function commit() {
@@ -98,6 +232,7 @@ export function useImportSession() {
       )
       importedCount.value = data.imported
       preview.value = { ...current, status: 'COMMITTED' }
+      rememberStatus(current.sessionId, 'COMMITTED')
       if (data.draftId) {
         for (const warning of data.warnings ?? []) {
           ElMessage({ type: 'warning', message: warning, duration: 6000, showClose: true })
@@ -134,7 +269,7 @@ export function useImportSession() {
         undefined,
         { timeout: AI_IMPORT_TIMEOUT_MS },
       )
-      preview.value = data
+      setPreview(data)
       ElMessage.success('AI 已基于你的修正继续解析')
     } catch (error) {
       ElMessage.error(aiParseErrorMessage(error))
@@ -161,9 +296,8 @@ export function useImportSession() {
         undefined,
         { timeout: AI_IMPORT_TIMEOUT_MS },
       )
-      preview.value = data
+      setPreview(data)
       editing.value = false
-      commitErrors.value = []
       ElMessage.success('已重新解析')
     } catch (error) {
       ElMessage.error(aiParseErrorMessage(error))
@@ -172,12 +306,18 @@ export function useImportSession() {
     }
   }
 
-  /** Drops the session; the view also clears its file/text inputs. */
-  function clear() {
+  /** Clears the preview half only; the URL marker survives so a refresh can retry. */
+  function resetState() {
     preview.value = null
     editing.value = false
     commitErrors.value = []
-    importedCount.value = 0
+    importedCount.value = null
+  }
+
+  /** Drops the session and its URL marker; the view also clears its file/text inputs. */
+  function clear() {
+    resetState()
+    dropSessionFromUrl()
   }
 
   return {
@@ -188,6 +328,7 @@ export function useImportSession() {
     reparsing,
     commitErrors,
     importedCount,
+    lastSession,
     isTimetable,
     previewIssues,
     remainingIssues,
@@ -197,6 +338,10 @@ export function useImportSession() {
     statusLabel,
     statusType,
     setPreview,
+    rememberSession,
+    forgetSession,
+    restore,
+    dropSessionFromUrl,
     saveRows,
     commit,
     continueWithAi,

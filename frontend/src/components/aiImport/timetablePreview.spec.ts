@@ -6,8 +6,10 @@ import {
   canCommit,
   createRequiresGrade,
   fieldLabel,
+  gradeStatusOf,
   lookupType,
   mappingGroups,
+  normalizeGradeName,
   remainingIssueCount,
   timetableClasses,
   timetableTeachers,
@@ -117,11 +119,9 @@ describe('课表预览网格映射', () => {
   })
 
   it('未匹配名称所在的行在网格里可标记', () => {
-    const grid = buildTimetableGrid(
-      [timetableRow(), timetableRow({ dayOfWeek: '周二' })],
-      '一年级1班',
-      [issue({ row: 2, field: 'courseName', value: '道法法治' })],
-    )
+    const grid = buildTimetableGrid([timetableRow(), timetableRow({ dayOfWeek: '周二' })], '一年级1班', [
+      issue({ row: 2, field: 'courseName', value: '道法法治' }),
+    ])
 
     expect(grid.issueLessonIds).toEqual([-2])
   })
@@ -204,6 +204,42 @@ describe('映射步骤状态', () => {
     expect(course.candidates).toEqual(['道德与法治', '道法'])
     expect(course.label).toBe('课程')
     expect(course.kind).toBe('entity')
+  })
+
+  it('年级候选跨行去重，年级状态区分已有/新建/未知', () => {
+    const groups = mappingGroups([
+      issue({
+        row: 1,
+        value: '八（1）',
+        inferredGrade: ' 八年级 ',
+        gradeCandidates: ['七年级', '八年级'],
+      }),
+      issue({
+        row: 2,
+        value: '八（2）',
+        inferredGrade: '八年级',
+        gradeCandidates: ['八年级', '七年级'],
+      }),
+      issue({ row: 3, value: '八（3）', gradeCandidates: ['七年级'] }),
+      issue({ row: 4, field: 'courseName', value: '道法法治' }),
+    ])
+
+    const first = groups.find((group) => group.value === '八（1）')!
+    expect(first.inferredGrade).toBe('八年级')
+    expect(first.gradeCandidates).toEqual(['七年级', '八年级'])
+    expect(gradeStatusOf(first)).toBe('existing')
+    expect(normalizeGradeName(' 八 年 级 ')).toBe('八年级')
+
+    const second = groups.find((group) => group.value === '八（2）')!
+    expect(gradeStatusOf(second)).toBe('existing')
+
+    const third = groups.find((group) => group.value === '八（3）')!
+    expect(gradeStatusOf(third)).toBe('unknown')
+
+    const course = groups.find((group) => group.field === 'courseName')!
+    expect(course.inferredGrade).toBeNull()
+    expect(course.gradeCandidates).toEqual([])
+    expect(gradeStatusOf({ inferredGrade: '高一', gradeCandidates: ['七年级'] })).toBe('new')
   })
 
   it('节次问题不是实体映射，而是行编辑', () => {

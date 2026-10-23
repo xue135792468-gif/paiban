@@ -7,6 +7,8 @@ import com.paiban.foundation.domain.AdminClass;
 import com.paiban.foundation.domain.AdminClassRepository;
 import com.paiban.foundation.domain.Course;
 import com.paiban.foundation.domain.CourseRepository;
+import com.paiban.foundation.domain.Grade;
+import com.paiban.foundation.domain.GradeRepository;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
 import com.paiban.foundation.domain.Room;
@@ -60,10 +62,17 @@ public class TimetableImportService {
     public record Summary(int lessons, int unresolved, int groups, int newAssignments, int updatedAssignments) {}
 
     /** Read-only analysis of a preview: what blocks it, and what it would write. */
-    public record Analysis(List<RowErrorDto> errors, Summary summary) {}
+    public record Analysis(List<RowErrorDto> errors, Summary summary, List<GradeHint> gradeHints) {}
+
+    /**
+     * The grade guessed from an unmatched class name, with the semester's grades to choose
+     * from. Preview-only: commit errors stay in {@link RowErrorDto} so they do not grow.
+     */
+    public record GradeHint(int row, String inferredGrade, List<String> gradeCandidates) {}
 
     private final SemesterService semesterService;
     private final AdminClassRepository adminClasses;
+    private final GradeRepository grades;
     private final TeachingClassRepository teachingClasses;
     private final CourseRepository courses;
     private final TeacherRepository teachers;
@@ -76,6 +85,7 @@ public class TimetableImportService {
     public TimetableImportService(
             SemesterService semesterService,
             AdminClassRepository adminClasses,
+            GradeRepository grades,
             TeachingClassRepository teachingClasses,
             CourseRepository courses,
             TeacherRepository teachers,
@@ -86,6 +96,7 @@ public class TimetableImportService {
             DraftLessonRepository draftLessons) {
         this.semesterService = semesterService;
         this.adminClasses = adminClasses;
+        this.grades = grades;
         this.teachingClasses = teachingClasses;
         this.courses = courses;
         this.teachers = teachers;
@@ -166,7 +177,7 @@ public class TimetableImportService {
     @Transactional(readOnly = true)
     public Analysis inspect(List<RowDto> rows, Long semesterId) {
         if (rows == null || rows.isEmpty()) {
-            return new Analysis(List.of(), new Summary(0, 0, 0, 0, 0));
+            return new Analysis(List.of(), new Summary(0, 0, 0, 0, 0), List.of());
         }
         Long sid = semesterId == null
                 ? semesterService.current().map(SemesterDto::id).orElse(null)
@@ -176,7 +187,8 @@ public class TimetableImportService {
             // page-level blocker instead of a preview that looks importable.
             return new Analysis(
                     List.of(new RowErrorDto(0, "semester", "请先设置当前学期", List.of())),
-                    new Summary(rows.size(), rows.size(), 0, 0, 0));
+                    new Summary(rows.size(), rows.size(), 0, 0, 0),
+                    List.of());
         }
         Match match = match(rows, sid);
         Map<AssignmentKey, List<ResolvedRow>> groups = new LinkedHashMap<>();
@@ -207,7 +219,28 @@ public class TimetableImportService {
         int unresolved = rows.size() - match.resolved().size();
         return new Analysis(
                 List.copyOf(match.errors()),
-                new Summary(rows.size(), unresolved, total, total - updated, updated));
+                new Summary(rows.size(), unresolved, total, total - updated, updated),
+                gradeHints(match.errors(), rows, sid));
+    }
+
+    /**
+     * Guesses a grade for every unmatched class name so the mapping step can offer it.
+     * The semester's own grades are the candidates, in the order the user sees them.
+     */
+    private List<GradeHint> gradeHints(List<RowErrorDto> errors, List<RowDto> rows, Long sid) {
+        List<String> semesterGrades = grades.findBySemesterIdOrderBySortOrderAscNameAsc(sid).stream()
+                .map(Grade::getName)
+                .toList();
+        List<GradeHint> hints = new ArrayList<>();
+        for (RowErrorDto error : errors) {
+            if (error.row() < 1 || !"className".equals(error.field())) {
+                continue;
+            }
+            String inferred = GradeInference.infer(value(rows.get(error.row() - 1), "className"));
+            hints.add(new GradeHint(error.row(),
+                    GradeInference.matchExisting(inferred, semesterGrades), semesterGrades));
+        }
+        return List.copyOf(hints);
     }
 
     /** Resolves every row to foundation entities; any unmatched name becomes a row error. */
