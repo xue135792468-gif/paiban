@@ -660,11 +660,23 @@ public class AiImportService {
                 columns(target),
                 payload.rows(),
                 payload.mappings(),
-                payload.explanation(),
+                explanation(log, payload),
                 threshold(),
                 log.getStatus(),
                 issues(analysis, payload.rows()),
                 summary(analysis));
+    }
+
+    /**
+     * A failed parse never reaches a stored payload, so the reason lives only on the log.
+     * Fall back to it when the payload has nothing to show.
+     */
+    private String explanation(AiImportLog log, Payload payload) {
+        String stored = payload.explanation() == null ? "" : payload.explanation();
+        if (!stored.isBlank() || !AiImportLog.FAILED.equals(log.getStatus())) {
+            return stored;
+        }
+        return log.getAiExplanation() == null ? stored : log.getAiExplanation();
     }
 
     private TimetableImportService.Analysis analysis(ImportTarget target, List<RowDto> rows) {
@@ -698,14 +710,22 @@ public class AiImportService {
                 .map(field -> field.field())
                 .toList();
         List<IssueDto> issues = new ArrayList<>();
+        Map<Integer, TimetableImportService.GradeHint> hints = new LinkedHashMap<>();
+        for (TimetableImportService.GradeHint hint : analysis.gradeHints()) {
+            hints.put(hint.row(), hint);
+        }
         for (RowErrorDto error : analysis.errors()) {
             String value = error.row() >= 1 && error.row() <= rows.size()
                     ? value(rows.get(error.row() - 1), error.field())
                     : "";
+            TimetableImportService.GradeHint hint =
+                    "className".equals(error.field()) ? hints.get(error.row()) : null;
             issues.add(new IssueDto(
                     error.row(), error.field(), value, error.candidates(),
                     requiredFields.contains(error.field()),
-                    error.row() == 0 ? error.message() : ""));
+                    error.row() == 0 ? error.message() : "",
+                    hint == null ? null : hint.inferredGrade(),
+                    hint == null ? List.of() : hint.gradeCandidates()));
         }
         return List.copyOf(issues);
     }
