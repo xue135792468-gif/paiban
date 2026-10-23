@@ -20,6 +20,28 @@
       class="notice"
     />
 
+    <el-card v-if="!preview && lastSession" data-testid="last-session-card" shadow="never">
+      <template #header><span class="card-title">上次导入</span></template>
+      <div class="last-session">
+        <div class="last-session-line">
+          <span class="last-session-name">{{ lastSession.fileName }}</span>
+          <el-tag size="small" :type="statusTagType(lastSession.status)" effect="plain">
+            {{ statusText(lastSession.status) }}
+          </el-tag>
+        </div>
+        <div class="hint">{{ lastSessionTime }}</div>
+      </div>
+      <el-button
+        type="primary"
+        link
+        data-testid="continue-last-session"
+        :loading="restoring"
+        @click="continueLastSession"
+      >
+        继续
+      </el-button>
+    </el-card>
+
     <el-card v-if="!preview" shadow="never">
       <template #header><span class="card-title">选择导入目标</span></template>
       <ImportTargetPicker
@@ -183,6 +205,15 @@
       </el-card>
 
       <el-alert
+        v-if="preview.status === 'FAILED'"
+        data-testid="failed-reason"
+        type="error"
+        show-icon
+        :closable="false"
+        :title="preview.explanation || 'AI 解析失败，请调整文件后重新上传'"
+      />
+
+      <el-alert
         v-for="issue in blockingIssues"
         :key="issue.field + '-' + issue.message"
         data-testid="blocking-issue"
@@ -208,7 +239,10 @@
         class="result-alert"
       >
         <template #title>
-          已成功入库 {{ importedCount }} 条{{ targetTitle(preview.targetType) }}数据
+          <template v-if="importedCount !== null">
+            已成功入库 {{ importedCount }} 条{{ targetTitle(preview.targetType) }}数据
+          </template>
+          <template v-else>该导入已入库</template>
         </template>
         <div class="result-actions">
           <el-button
@@ -246,7 +280,7 @@
         </div>
       </el-alert>
 
-      <div class="footer-actions">
+      <div v-if="preview.status !== 'FAILED'" class="footer-actions">
         <template v-if="isTimetable">
           <el-button
             type="primary"
@@ -295,7 +329,7 @@ import { aiParseErrorMessage } from '@/api/errors'
 import ImportTargetPicker from '@/components/aiImport/ImportTargetPicker.vue'
 import TimetableMappingStep from '@/components/aiImport/TimetableMappingStep.vue'
 import TimetablePreviewGrid from '@/components/aiImport/TimetablePreviewGrid.vue'
-import { useImportSession } from '@/components/aiImport/useImportSession'
+import { useImportSession, statusTagType, statusText } from '@/components/aiImport/useImportSession'
 import { type ImportPreview, type PreviewRow } from '@/components/aiImport/timetablePreview'
 import {
   IMPORT_TARGETS,
@@ -323,6 +357,7 @@ const {
   reparsing,
   commitErrors,
   importedCount,
+  lastSession,
   isTimetable,
   previewIssues,
   commitDisabled,
@@ -330,11 +365,15 @@ const {
   statusLabel,
   statusType,
   setPreview,
+  rememberSession,
+  restore,
+  dropSessionFromUrl,
   commit,
   continueWithAi,
   reparse,
   clear,
 } = useImportSession()
+const restoring = ref(false)
 
 const currentTarget = computed(() => targetCard(selectedTarget.value) ?? IMPORT_TARGETS[0])
 const mappableIssues = computed(() => previewIssues.value.filter((issue) => issue.row > 0))
@@ -347,8 +386,11 @@ const showMappingStep = computed(
   () =>
     isTimetable.value &&
     preview.value?.status !== 'COMMITTED' &&
+    preview.value?.status !== 'FAILED' &&
     (mappableIssues.value.length > 0 || blockingIssues.value.length === 0),
 )
+
+const lastSessionTime = computed(() => formatLocalTime(lastSession.value?.savedAt ?? ''))
 
 const canParse = computed(() => {
   if (inputMode.value === 'excel') return selectedFile.value !== null
@@ -365,6 +407,10 @@ watch(selectedTarget, (target) => {
 })
 
 onMounted(async () => {
+  const session = route.query.session
+  if (typeof session === 'string' && session) {
+    await restoreFrom(session)
+  }
   try {
     const { data } = await http.get('/ai/status')
     configured.value = Boolean(data?.tasks?.data_import?.configured)
@@ -373,6 +419,31 @@ onMounted(async () => {
     configured.value = false
   }
 })
+
+/** Restores a session and lines the target picker up with what was restored. */
+async function restoreFrom(sessionId: string) {
+  restoring.value = true
+  try {
+    const outcome = await restore(sessionId)
+    if (outcome === 'restored' && preview.value) {
+      selectedTarget.value = preselectedTarget(preview.value.targetType)
+    }
+  } finally {
+    restoring.value = false
+  }
+}
+
+async function continueLastSession() {
+  if (!lastSession.value) return
+  await restoreFrom(String(lastSession.value.id))
+}
+
+function formatLocalTime(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const pad = (number: number) => String(number).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
 
 function onSelectTarget(code: string) {
   selectedTarget.value = code
@@ -391,6 +462,7 @@ function onImageChange(file: UploadFile) {
 
 async function parse() {
   if (!configured.value) return
+  dropSessionFromUrl()
   parsing.value = true
   commitErrors.value = []
   const config = { params: { target: selectedTarget.value }, timeout: AI_IMPORT_TIMEOUT_MS }
@@ -409,11 +481,26 @@ async function parse() {
     }
     setPreview(response.data)
     editing.value = false
+    rememberSession(response.data, uploadedFileName())
+    await router.replace({
+      query: {
+        ...route.query,
+        session: String(response.data.sessionId),
+        target: selectedTarget.value,
+      },
+    })
   } catch (error) {
     ElMessage.error(aiParseErrorMessage(error))
   } finally {
     parsing.value = false
   }
+}
+
+/** The label the 「上次导入」 card shows for this parse. */
+function uploadedFileName(): string {
+  if (inputMode.value === 'excel') return selectedFile.value?.name ?? ''
+  if (inputMode.value === 'image') return imageFile.value?.name ?? ''
+  return '粘贴文本'
 }
 
 /** Switches the target the AI suggested, keeping the chosen file for a re-parse. */
@@ -566,5 +653,21 @@ function fieldLabel(field: string) {
 .footer-actions {
   display: flex;
   gap: 12px;
+}
+
+.last-session {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.last-session-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.last-session-name {
+  font-weight: 600;
 }
 </style>
