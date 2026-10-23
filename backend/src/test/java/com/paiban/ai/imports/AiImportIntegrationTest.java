@@ -321,6 +321,109 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         assertThat(awaitSession(admin, sessionId).getString("status")).isEqualTo("PREVIEW");
     }
 
+    // ------------------------------------------------------- stopping a parse (ticket 02)
+
+    @Test
+    void stoppingAParseKeepsTheFinishedBatchesAndLeavesAPreviewThatCanBeCommitted()
+            throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.latencyMs = 250;
+        fake.responder = request -> aiResponse(List.of(
+                timetableRow("语文", "周一", String.valueOf(fake.calls), "张三")));
+
+        Response upload = upload(
+                admin, "/api/ai/import/excel?target=timetable", "一年级课表.xlsx",
+                timetableExcelBytes(4), XLSX);
+        long sessionId = upload.jsonPath().getLong("sessionId");
+
+        // Wait for the first batch to land: the stop must not be able to catch a cold start.
+        for (int i = 0; i < 200; i++) {
+            if (importLogs.findById(sessionId).orElseThrow().getCompletedBatches() >= 1) {
+                break;
+            }
+            Thread.sleep(50);
+        }
+        assertThat(importLogs.findById(sessionId).orElseThrow().getCompletedBatches())
+                .isGreaterThanOrEqualTo(1);
+
+        Response stopped = as(admin).when()
+                .post("/api/ai/import/sessions/" + sessionId + "/stop");
+
+        stopped.then().statusCode(200)
+                .body("status", equalTo("PREVIEW"))
+                .body("progress.total", equalTo(4))
+                .body("failedBatches", hasSize(0));
+        int kept = stopped.jsonPath().getInt("progress.completed");
+        assertThat(kept).isBetween(1, 3);
+        assertThat(stopped.jsonPath().getList("rows")).hasSize(kept);
+        assertThat((Object) stopped.jsonPath().get("progress.currentBatch")).isNull();
+
+        // The in-flight batch may still land; no further AI call may go out after it.
+        Thread.sleep(700);
+        int settledCalls = fake.calls;
+        Thread.sleep(700);
+        assertThat(fake.calls).as("no AI call after the stop").isEqualTo(settledCalls);
+        assertThat(settledCalls).isLessThan(4);
+
+        AiImportLog stored = importLogs.findById(sessionId).orElseThrow();
+        assertThat(stored.getStatus()).isEqualTo(AiImportLog.PREVIEW);
+        // The total stays for the "已完成 N/M 批" display; only the kept batches remain.
+        assertThat(stored.getTotalBatches()).isEqualTo(4);
+        assertThat(stored.getCompletedBatches()).isEqualTo(kept);
+        assertThat(stored.getCurrentBatch()).isNull();
+        assertThat(stored.getBatchesJson()).doesNotContain("PENDING").doesNotContain("FAILED");
+        assertThat(stored.getRowCount()).isEqualTo(kept);
+
+        // A stopped session is a normal preview: it can be committed.
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/commit")
+                .then().statusCode(200)
+                .body("imported", equalTo(kept));
+        assertThat(importLogs.findById(sessionId).orElseThrow().getStatus())
+                .isEqualTo(AiImportLog.COMMITTED);
+    }
+
+    @Test
+    void stoppingTwiceIsAConflict() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.latencyMs = 250;
+        fake.responder = request -> aiResponse(List.of(
+                timetableRow("语文", "周一", String.valueOf(fake.calls), "张三")));
+
+        Response upload = upload(
+                admin, "/api/ai/import/excel?target=timetable", "一年级课表.xlsx",
+                timetableExcelBytes(4), XLSX);
+        long sessionId = upload.jsonPath().getLong("sessionId");
+
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/stop")
+                .then().statusCode(200).body("status", equalTo("PREVIEW"));
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/stop")
+                .then().statusCode(409)
+                .body("message", containsString("无法停止"));
+    }
+
+    @Test
+    void stoppingASessionThatIsNotParsingIsAConflict() throws Exception {
+        String admin = adminToken();
+        timetableFixture(admin);
+        fake.response = aiResponse(List.of(
+                timetableRow("语文", "周一", "1", "张三"),
+                timetableRow("语文", "周一", "2", "张三"),
+                timetableRow("语文", "周一", "3", "张三")));
+
+        // Three data rows (the chunk threshold) parse synchronously into a preview.
+        Response preview = upload(
+                admin, "/api/ai/import/excel?target=timetable", "一年级课表.xlsx",
+                timetableExcelBytes(3), XLSX);
+        preview.then().statusCode(200).body("status", equalTo("PREVIEW"));
+
+        as(admin).when()
+                .post("/api/ai/import/sessions/" + preview.jsonPath().getLong("sessionId") + "/stop")
+                .then().statusCode(409)
+                .body("message", containsString("不在解析中"));
+    }
+
     @Test
     void anInterruptedParsingSessionIsRecoveredOnStartup() {
         String admin = adminToken();
