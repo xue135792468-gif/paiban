@@ -562,6 +562,35 @@ describe('会话恢复', () => {
     expect(router.currentRoute.value.query.session).toBe('9')
   })
 
+  it('恢复已微调会话时显示已微调并保留入库操作', async () => {
+    seedLastSession({ status: 'EDITED' })
+    const { wrapper } = await mountImport('/admin/ai-import?session=9', true, (url) =>
+      url === '/ai/import/sessions/9'
+        ? Promise.resolve({ data: { ...timetablePreview().data, status: 'EDITED' } })
+        : null,
+    )
+
+    expect(wrapper.get('.head-actions').text()).toContain('已微调')
+    expect(wrapper.get('[data-testid="timetable-summary"]').text()).toContain('共 2 节')
+    const commit = commitButton(wrapper)
+    expect(commit.text()).toBe('确认入库')
+    expect((commit.element as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('恢复遇到临时失败时保留 URL 会话，刷新可以重试', async () => {
+    const error = vi.spyOn(ElMessage, 'error')
+    const { wrapper, router } = await mountImport('/admin/ai-import?session=9', true, (url) =>
+      url === '/ai/import/sessions/9' ? Promise.reject({ response: { status: 500 } }) : null,
+    )
+
+    expect(error).toHaveBeenCalled()
+    expect(router.currentRoute.value.query.session).toBe('9')
+    expect(wrapper.find('[data-testid="target-card"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="preview-target"]').exists()).toBe(false)
+    expect(button(wrapper, '开始解析').exists()).toBe(true)
+    error.mockRestore()
+  })
+
   it('恢复失败时给出可读错误、回到上传表单，并清掉 URL 与会话记录', async () => {
     const error = vi.spyOn(ElMessage, 'error')
     seedLastSession()

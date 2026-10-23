@@ -221,7 +221,10 @@ test('课表解析后切页再回来，预览仍在', async ({ page }) => {
   await expect(summary).toContainText('共 4 节，1 节待映射')
   await expect(page).toHaveURL(/session=\d+/)
 
-  await page.goto('/admin/scheduling')
+  // In-app navigation (SPA pushState) followed by browser back (popstate): no reload,
+  // so the preview has to come back from the session in the URL.
+  await page.getByRole('menuitem', { name: '自动排课' }).click()
+  await expect(page).toHaveURL(/\/admin\/scheduling/)
   await page.goBack()
 
   await expect(summary).toBeVisible()

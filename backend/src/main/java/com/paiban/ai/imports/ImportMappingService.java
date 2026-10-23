@@ -157,6 +157,7 @@ public class ImportMappingService {
             if (currentSemesterId == null) {
                 throw ApiException.badRequest("尚未设置当前学期，无法创建班级");
             }
+            Long targetGradeId;
             if (item.gradeId() != null) {
                 // Both were sent: the id wins over the name.
                 Grade grade = grades.findById(item.gradeId())
@@ -164,8 +165,16 @@ public class ImportMappingService {
                 if (!currentSemesterId.equals(grade.getSemesterId())) {
                     throw ApiException.badRequest("年级不属于当前学期: " + grade.getName());
                 }
+                targetGradeId = grade.getId();
             } else if (gradeName.isEmpty()) {
                 throw ApiException.badRequest("创建班级必须指定年级（gradeId 或 gradeName）");
+            } else {
+                // A grade that does not exist yet cannot own classes, so only an existing
+                // semester grade can already have a class with this name.
+                targetGradeId = existingGradeId(currentSemesterId, gradeName);
+            }
+            if (targetGradeId != null) {
+                rejectNameOwnedByAnotherGrade(currentSemesterId, name, targetGradeId);
             }
         }
         return new CreatePlan(
@@ -195,24 +204,46 @@ public class ImportMappingService {
     private String createClass(CreatePlan plan, Map<String, Long> resolvedGrades) {
         Long semesterId = plan.currentSemesterId();
         Long gradeId = resolveGradeId(plan.gradeId(), plan.gradeName(), semesterId, resolvedGrades);
-        String name = plan.name();
+        // Backstop for conflicts the pre-write check cannot see: two creates in the same
+        // batch may bring a name and a grade together only at write time.
+        rejectNameOwnedByAnotherGrade(semesterId, plan.name(), gradeId);
         for (AdminClass existing : adminClasses.findBySemesterIdOrderByGradeIdAscNameAsc(semesterId)) {
-            if (!normalizeName(existing.getName()).equals(normalizeName(name))) {
-                continue;
-            }
-            if (existing.getGradeId().equals(gradeId)) {
+            if (normalizeName(existing.getName()).equals(normalizeName(plan.name()))
+                    && existing.getGradeId().equals(gradeId)) {
                 return existing.getName();
             }
-            // Names are unique per semester (uk_class_semester_name): writing the same
-            // name under another grade is a user error, not a second class.
-            throw ApiException.badRequest("班级名称已存在于其他年级: " + existing.getName());
         }
         AdminClass adminClass = new AdminClass();
         adminClass.setSemesterId(semesterId);
         adminClass.setGradeId(gradeId);
-        adminClass.setName(name);
+        adminClass.setName(plan.name());
         adminClass.setStudentCount(plan.studentCount() == null ? 0 : plan.studentCount());
         return adminClasses.save(adminClass).getName();
+    }
+
+    /**
+     * Names are unique per semester (uk_class_semester_name): the same name under another
+     * grade is a user error, not a second class. Checked before the first write so a bad
+     * batch cannot leave created grades behind.
+     */
+    private void rejectNameOwnedByAnotherGrade(Long semesterId, String name, Long gradeId) {
+        for (AdminClass existing : adminClasses.findBySemesterIdOrderByGradeIdAscNameAsc(semesterId)) {
+            if (normalizeName(existing.getName()).equals(normalizeName(name))
+                    && !existing.getGradeId().equals(gradeId)) {
+                throw ApiException.badRequest("班级名称已存在于其他年级: " + existing.getName());
+            }
+        }
+    }
+
+    /** The semester's existing grade whose normalized name matches, or null when missing. */
+    private Long existingGradeId(Long semesterId, String gradeName) {
+        String key = normalizeName(gradeName);
+        for (Grade existing : grades.findBySemesterIdOrderBySortOrderAscNameAsc(semesterId)) {
+            if (normalizeName(existing.getName()).equals(key)) {
+                return existing.getId();
+            }
+        }
+        return null;
     }
 
     /**
@@ -230,11 +261,10 @@ public class ImportMappingService {
         if (known != null) {
             return known;
         }
-        for (Grade existing : grades.findBySemesterIdOrderBySortOrderAscNameAsc(semesterId)) {
-            if (normalizeName(existing.getName()).equals(key)) {
-                resolvedGrades.put(key, existing.getId());
-                return existing.getId();
-            }
+        Long existing = existingGradeId(semesterId, gradeName);
+        if (existing != null) {
+            resolvedGrades.put(key, existing);
+            return existing;
         }
         Grade grade = new Grade();
         grade.setSemesterId(semesterId);

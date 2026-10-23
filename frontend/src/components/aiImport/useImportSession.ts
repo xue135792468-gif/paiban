@@ -122,6 +122,7 @@ export function useImportSession() {
     preview.value = data
     commitErrors.value = []
     importedCount.value = null
+    rememberStatus(data.sessionId, data.status)
   }
 
   function storeLastSession(record: LastSession | null) {
@@ -143,7 +144,9 @@ export function useImportSession() {
     })
   }
 
-  function forgetSession() {
+  /** Forgets the stored last-import record; with an id, only when it is that session. */
+  function forgetSession(sessionId?: number) {
+    if (sessionId !== undefined && lastSession.value?.id !== sessionId) return
     storeLastSession(null)
   }
 
@@ -169,20 +172,20 @@ export function useImportSession() {
   /**
    * Restores a server-side session into the preview. A session the server no longer
    * knows, or whose status this page cannot render, falls back to the empty import page.
+   * A transient failure keeps `?session=` so a refresh can retry it.
    */
   async function restore(sessionId: number | string): Promise<RestoreOutcome> {
     const id = encodeURIComponent(String(sessionId).trim())
     try {
       const { data } = await http.get<ImportPreview>(`/ai/import/sessions/${id}`)
       if (!data || !RESTORABLE_STATUSES.has(data.status)) {
-        forgetSession()
+        if (data) forgetSession(data.sessionId)
         clear()
         ElMessage.error('该导入会话已不可用，请重新上传文件')
         return 'unusable'
       }
       setPreview(data)
       editing.value = false
-      rememberStatus(data.sessionId, data.status)
       void router.replace({
         query: { ...route.query, session: String(data.sessionId), target: data.targetType },
       })
@@ -190,16 +193,18 @@ export function useImportSession() {
     } catch (error) {
       const status = (error as { response?: { status?: number } })?.response?.status
       if (status === 404 || status === 403) {
-        forgetSession()
+        const requested = Number(String(sessionId).trim())
+        if (Number.isFinite(requested)) forgetSession(requested)
+        clear()
+        ElMessage.error(
+          status === 404
+            ? '上次的导入会话已不存在，请重新上传文件'
+            : '没有权限查看该导入会话，请重新上传文件',
+        )
+        return 'failed'
       }
-      clear()
-      ElMessage.error(
-        status === 404
-          ? '上次的导入会话已不存在，请重新上传文件'
-          : status === 403
-            ? '没有权限查看该导入会话，请重新上传文件'
-            : serverMessage(error, '恢复导入预览失败，请重新上传文件'),
-      )
+      resetState()
+      ElMessage.error(serverMessage(error, '恢复导入预览失败，请重新上传文件'))
       return 'failed'
     }
   }
@@ -210,7 +215,7 @@ export function useImportSession() {
       `/ai/import/sessions/${preview.value.sessionId}/rows`,
       { rows: preview.value.rows },
     )
-    preview.value = data
+    setPreview(data)
   }
 
   async function commit() {
@@ -264,7 +269,7 @@ export function useImportSession() {
         undefined,
         { timeout: AI_IMPORT_TIMEOUT_MS },
       )
-      preview.value = data
+      setPreview(data)
       ElMessage.success('AI 已基于你的修正继续解析')
     } catch (error) {
       ElMessage.error(aiParseErrorMessage(error))
@@ -291,9 +296,8 @@ export function useImportSession() {
         undefined,
         { timeout: AI_IMPORT_TIMEOUT_MS },
       )
-      preview.value = data
+      setPreview(data)
       editing.value = false
-      commitErrors.value = []
       ElMessage.success('已重新解析')
     } catch (error) {
       ElMessage.error(aiParseErrorMessage(error))
@@ -302,12 +306,17 @@ export function useImportSession() {
     }
   }
 
-  /** Drops the session and its URL marker; the view also clears its file/text inputs. */
-  function clear() {
+  /** Clears the preview half only; the URL marker survives so a refresh can retry. */
+  function resetState() {
     preview.value = null
     editing.value = false
     commitErrors.value = []
     importedCount.value = null
+  }
+
+  /** Drops the session and its URL marker; the view also clears its file/text inputs. */
+  function clear() {
+    resetState()
     dropSessionFromUrl()
   }
 

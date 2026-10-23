@@ -119,11 +119,9 @@ describe('课表预览网格映射', () => {
   })
 
   it('未匹配名称所在的行在网格里可标记', () => {
-    const grid = buildTimetableGrid(
-      [timetableRow(), timetableRow({ dayOfWeek: '周二' })],
-      '一年级1班',
-      [issue({ row: 2, field: 'courseName', value: '道法法治' })],
-    )
+    const grid = buildTimetableGrid([timetableRow(), timetableRow({ dayOfWeek: '周二' })], '一年级1班', [
+      issue({ row: 2, field: 'courseName', value: '道法法治' }),
+    ])
 
     expect(grid.issueLessonIds).toEqual([-2])
   })
@@ -244,7 +242,8 @@ describe('映射步骤状态', () => {
     expect(gradeStatusOf({ inferredGrade: '高一', gradeCandidates: ['七年级'] })).toBe('new')
   })
 
-  it('节次问题不是实体映射，而是行编辑', () => {    const groups = mappingGroups([issue({ field: 'periodNo', value: '第九节', candidates: ['第1节'] })])
+  it('节次问题不是实体映射，而是行编辑', () => {
+    const groups = mappingGroups([issue({ field: 'periodNo', value: '第九节', candidates: ['第1节'] })])
 
     expect(groups[0].kind).toBe('slot')
     expect(groups[0].label).toBe('节次')
@@ -259,7 +258,8 @@ describe('映射步骤状态', () => {
     expect(remainingIssueCount([])).toBe(0)
   })
 
-  it('节次修正只改选中的行，其余行保持原值', () => {    const rows = [
+  it('节次修正只改选中的行，其余行保持原值', () => {
+    const rows = [
       timetableRow({ periodNo: '第九节' }),
       timetableRow({ periodNo: '第九节', courseName: '数学' }),
       timetableRow({ periodNo: '第2节', courseName: '英语' }),

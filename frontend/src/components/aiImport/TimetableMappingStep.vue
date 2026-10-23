@@ -322,7 +322,15 @@ function clearSelection() {
 async function batchCreate() {
   const targets = selectedCreatable.value
   if (!targets.length) return
-  const creates = targets.map((group) => createItem(group, group.value, batchStudentCount.value))
+  const creates = targets.map(
+    (group) =>
+      createItem(
+        group,
+        group.value,
+        // A per-row count only exists once the user edits it; the batch default covers the rest.
+        createStudentCounts[group.key] ?? batchStudentCount.value,
+      ),
+  )
   if (creates.some((item) => item === null)) {
     ElMessage.warning('有班级推断不出年级，请先选择年级')
     return

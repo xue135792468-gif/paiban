@@ -112,7 +112,8 @@ function studentCountInput(wrapper: VueWrapper) {
   return found
 }
 
-function previewResponse(issues: PreviewIssue[]) {  return {
+function previewResponse(issues: PreviewIssue[]) {
+  return {
     data: {
       sessionId: 9,
       targetType: 'timetable',
@@ -249,6 +250,31 @@ describe('课表映射步骤', () => {
     })
   })
 
+  it('用户改过的单行人数优先于批量人数，未改的行仍用批量默认值', async () => {
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never)
+    const issues = [
+      issue({ row: 1, value: '八（1）', inferredGrade: '八年级', gradeCandidates: ['八年级'] }),
+      issue({ row: 2, value: '八（2）', inferredGrade: '八年级', gradeCandidates: ['八年级'] }),
+    ]
+    const wrapper = await mountStep(issues, rows(), GRADE_SHEET)
+    httpMock.post.mockResolvedValue(previewResponse([]))
+
+    await enableCreate(wrapper)
+    studentCountInput(wrapper).vm.$emit('update:modelValue', 50)
+    await flushPromises()
+
+    await selectGroups(wrapper, mappingGroups(issues))
+    await clickBatchCreate(wrapper)
+
+    expect(httpMock.post).toHaveBeenCalledWith('/ai/import/sessions/9/mapping', {
+      mappings: [],
+      creates: [
+        { field: 'className', source: '八（1）', name: '八（1）', gradeId: 5, studentCount: 50 },
+        { field: 'className', source: '八（2）', name: '八（2）', gradeId: 5, studentCount: 45 },
+      ],
+    })
+  })
+
   it('推断不出年级的班级要求手动选年级后才能批量创建', async () => {
     const warning = vi.spyOn(ElMessage, 'warning')
     vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never)
@@ -268,9 +294,7 @@ describe('课表映射步骤', () => {
 
     expect(httpMock.post).toHaveBeenCalledWith('/ai/import/sessions/9/mapping', {
       mappings: [],
-      creates: [
-        { field: 'className', source: '综合班', name: '综合班', gradeId: 6, studentCount: 45 },
-      ],
+      creates: [{ field: 'className', source: '综合班', name: '综合班', gradeId: 6, studentCount: 45 }],
     })
     warning.mockRestore()
   })
@@ -290,9 +314,7 @@ describe('课表映射步骤', () => {
   })
 
   it('节次组不能勾选批量创建', async () => {
-    const wrapper = await mountStep([
-      issue({ field: 'periodNo', value: '第九节', candidates: ['第1节'] }),
-    ])
+    const wrapper = await mountStep([issue({ field: 'periodNo', value: '第九节', candidates: ['第1节'] })])
     const selectionColumn = wrapper.findAllComponents({ name: 'ElTableColumn' })[0]
     const selectable = selectionColumn.props('selectable') as (row: { kind: string }) => boolean
 
