@@ -272,7 +272,7 @@ else
   assert_conf "X-Forwarded-For is set" "X-Forwarded-For \$proxy_add_x_forwarded_for"
   assert_conf "X-Real-IP is set" "X-Real-IP \$remote_addr"
   assert_conf "upload limit is 20m" "client_max_body_size 20m;"
-  assert_conf "proxy read timeout is 120s" "proxy_read_timeout 120s;"
+  assert_conf "proxy read timeout covers long AI imports" "proxy_read_timeout 1200s;"
   assert_conf "X-Content-Type-Options is set" "X-Content-Type-Options nosniff"
   assert_conf "X-Frame-Options is SAMEORIGIN" "X-Frame-Options SAMEORIGIN"
   assert_conf "Referrer-Policy is set" "Referrer-Policy"
