@@ -694,6 +694,26 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void aClassNameThatExistsUnderAnotherGradeIsRejectedAndLeavesNoNewGrade() {
+        String admin = adminToken();
+        TimetableFixture f = timetableFixture(admin);
+        fake.response = aiResponse(List.of(timetableRow()));
+        long sessionId = timetableSession(admin);
+
+        as(admin).body(Map.of("creates", List.of(Map.of(
+                        "field", "className", "source", "八（1）", "name", "一年级1班",
+                        "gradeName", "八年级"))))
+                .when().post("/api/ai/import/sessions/" + sessionId + "/mapping")
+                .then().statusCode(400)
+                .body("message", containsString("其他年级"));
+
+        // The rejected create also rolls back the grade it would have needed.
+        assertThat(as(admin).when().get("/api/grades?semesterId=" + f.semesterId())
+                .then().statusCode(200).extract().jsonPath().getList("name"))
+                .containsExactly("一年级");
+    }
+
+    @Test
     void mappingRequiresTimetableEditBeyondFoundationManage() {
         String admin = adminToken();
         timetableFixture(admin);

@@ -197,10 +197,15 @@ public class ImportMappingService {
         Long gradeId = resolveGradeId(plan.gradeId(), plan.gradeName(), semesterId, resolvedGrades);
         String name = plan.name();
         for (AdminClass existing : adminClasses.findBySemesterIdOrderByGradeIdAscNameAsc(semesterId)) {
-            if (existing.getGradeId().equals(gradeId)
-                    && normalizeName(existing.getName()).equals(normalizeName(name))) {
+            if (!normalizeName(existing.getName()).equals(normalizeName(name))) {
+                continue;
+            }
+            if (existing.getGradeId().equals(gradeId)) {
                 return existing.getName();
             }
+            // Names are unique per semester (uk_class_semester_name): writing the same
+            // name under another grade is a user error, not a second class.
+            throw ApiException.badRequest("班级名称已存在于其他年级: " + existing.getName());
         }
         AdminClass adminClass = new AdminClass();
         adminClass.setSemesterId(semesterId);
