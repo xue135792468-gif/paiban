@@ -138,6 +138,8 @@ export function useImportSession() {
     return statusTagType(preview.value.status)
   })
   const isParsing = computed(() => preview.value?.status === 'PARSING')
+  /** Some batches parsed, some did not: the page shows the split and locks the import. */
+  const isPartial = computed(() => preview.value?.status === 'PARTIAL')
   const polling = ref(false)
   let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -409,6 +411,7 @@ export function useImportSession() {
     lastSession,
     isTimetable,
     isParsing,
+    isPartial,
     polling,
     previewIssues,
     remainingIssues,
