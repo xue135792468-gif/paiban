@@ -22,17 +22,28 @@ fi
 mkdir -p "$wt_root"
 git -C "$root" worktree add "$wt" -b "$branch" "$base"
 
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*)
-    target=$(cygpath -w "$root/frontend/node_modules" 2>/dev/null || printf '%s' "$root/frontend/node_modules")
-    link=$(cygpath -w "$wt/frontend/node_modules" 2>/dev/null || printf '%s' "$wt/frontend/node_modules")
-    powershell -NoProfile -Command "New-Item -ItemType Junction -Path '$link' -Target '$target' | Out-Null"
-    ;;
-  *)
-    ln -s "$root/frontend/node_modules" "$wt/frontend/node_modules"
-    ;;
-esac
+link_dir() {
+  local target=$1 link=$2
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      local wtarget wlink
+      wtarget=$(cygpath -w "$target" 2>/dev/null || printf '%s' "$target")
+      wlink=$(cygpath -w "$link" 2>/dev/null || printf '%s' "$link")
+      powershell -NoProfile -Command "New-Item -ItemType Junction -Path '$wlink' -Target '$wtarget' | Out-Null"
+      ;;
+    *)
+      ln -s "$target" "$link"
+      ;;
+  esac
+}
+
+link_dir "$root/frontend/node_modules" "$wt/frontend/node_modules"
+# Playwright's webServer spawns mvnw.cmd, which needs a Windows JAVA_HOME from
+# .tools; without this link `verify.sh --full` cannot start the backend.
+if [ -d "$root/.tools" ]; then
+  link_dir "$root/.tools" "$wt/.tools"
+fi
 
 echo "worktree ready: $wt"
 echo "  cd $wt"
-echo "  source $root/.tools/env.sh   # worktree 内没有 .tools"
+echo "  source .tools/env.sh"
