@@ -28,6 +28,8 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
         try {
             as(adminToken()).body(Map.of("substitution.approval-mode", "approval"))
                     .when().put("/api/settings").then().statusCode(200);
+            as(adminToken()).body(Map.of("userIds", List.of()))
+                    .when().put("/api/settings/substitution-recipients").then().statusCode(200);
         } catch (RuntimeException ignored) {
             // best effort cleanup
         }
@@ -154,14 +156,54 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
                 .body("toStatus", hasItem("SUBMITTED"))
                 .body("toStatus", hasItem("EFFECTIVE"));
 
-        as(token).queryParam("teacherId", context.teacherB())
+        Response substituteStats = as(token).queryParam("teacherId", context.teacherB())
                 .when().get("/api/substitutions/stats")
                 .then().statusCode(200)
-                .body("substitutedIn", greaterThanOrEqualTo(1));
+                .body("substitutedIn", greaterThanOrEqualTo(1))
+                .extract().response();
+        // The substitute had no weekly lessons and gains the covered one.
+        assertThat(substituteStats.jsonPath().getInt("weeklyLessons")).isZero();
+        assertThat(substituteStats.jsonPath().getInt("netLessons")).isEqualTo(1);
+
+        Response originalStats = as(token).queryParam("teacherId", context.teacherA())
+                .when().get("/api/substitutions/stats")
+                .then().statusCode(200).extract().response();
+        int originalWeekly = originalStats.jsonPath().getInt("weeklyLessons");
+        assertThat(originalWeekly).isGreaterThan(0);
+        assertThat(originalStats.jsonPath().getInt("netLessons")).isEqualTo(originalWeekly - 1);
 
         as(context.teacherToken()).when().get("/api/substitutions/my")
                 .then().statusCode(200)
                 .body("$", hasSize(greaterThanOrEqualTo(1)));
+    }
+
+    @Test
+    void configuredRecipientAccountsAlsoReceiveEffectiveNotices() {
+        String token = adminToken();
+        String suffix = TestData.suffix();
+        String watcherName = "watch_" + suffix;
+        createUser(token, watcherName, "teacher123", "teacher");
+        Context context = prepare(token, suffix);
+        long watcherId = as(token).when().get("/api/users").then().statusCode(200)
+                .extract().jsonPath().getLong("find { it.username == '" + watcherName + "' }.id");
+        as(token).body(Map.of("userIds", List.of(watcherId)))
+                .when().put("/api/settings/substitution-recipients")
+                .then().statusCode(200)
+                .body("userIds", hasItem((int) watcherId));
+        as(token).when().get("/api/settings/substitution-recipients")
+                .then().statusCode(200)
+                .body("userIds", hasItem((int) watcherId))
+                .body("options.username", hasItem(watcherName));
+
+        long requestId = submit(context, context.teacherToken(), context.teacherB());
+        as(token).body(Map.of("substituteTeacherId", context.teacherB(), "comment", "同意"))
+                .when().post("/api/substitution-requests/" + requestId + "/approve")
+                .then().statusCode(200);
+
+        String watcherToken = login(watcherName, "teacher123");
+        as(watcherToken).when().get("/api/notifications/recent")
+                .then().statusCode(200)
+                .body("title", hasItem("调代已生效"));
     }
 
     @Test

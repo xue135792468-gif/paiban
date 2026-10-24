@@ -1,12 +1,18 @@
 package com.paiban.common.settings;
 
 import com.paiban.common.web.ApiException;
+import com.paiban.identity.domain.AppUser;
 import com.paiban.identity.domain.Permissions;
+import com.paiban.identity.service.UserService;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -49,10 +55,19 @@ public class SettingsController {
             SettingsService.AI_IMPORT_CONFIDENCE_THRESHOLD);
 
     private final SettingsService settings;
+    private final UserService users;
 
-    public SettingsController(SettingsService settings) {
+    public SettingsController(SettingsService settings, UserService users) {
         this.settings = settings;
+        this.users = users;
     }
+
+    /** The admin picks concrete accounts; there is no separate "grade leader" model. */
+    public record RecipientOption(Long id, String username, String displayName) {}
+
+    public record RecipientConfig(List<Long> userIds, List<RecipientOption> options) {}
+
+    public record RecipientUpdate(List<Long> userIds) {}
 
     @GetMapping
     @PreAuthorize("hasAuthority('" + Permissions.SETTINGS_MANAGE + "')")
@@ -82,6 +97,37 @@ public class SettingsController {
         });
         values.forEach(settings::put);
         return settings.all();
+    }
+
+    @GetMapping("/substitution-recipients")
+    @PreAuthorize("hasAuthority('" + Permissions.SETTINGS_MANAGE + "')")
+    public RecipientConfig substitutionRecipients() {
+        List<RecipientOption> options = users.allUsers().stream()
+                .sorted(java.util.Comparator.comparing(AppUser::getDisplayName,
+                        java.util.Comparator.nullsLast(String::compareToIgnoreCase)))
+                .map(user -> new RecipientOption(
+                        user.getId(), user.getUsername(), user.getDisplayName()))
+                .toList();
+        return new RecipientConfig(settings.substitutionRecipientUserIds(), options);
+    }
+
+    @PutMapping("/substitution-recipients")
+    @PreAuthorize("hasAuthority('" + Permissions.SETTINGS_MANAGE + "')")
+    public RecipientConfig updateSubstitutionRecipients(@RequestBody RecipientUpdate body) {
+        Set<Long> existing = users.allUsers().stream()
+                .map(AppUser::getId)
+                .collect(Collectors.toSet());
+        List<Long> ids = body == null || body.userIds() == null
+                ? List.of()
+                : new ArrayList<>(new LinkedHashSet<>(body.userIds()));
+        for (Long id : ids) {
+            if (id == null || !existing.contains(id)) {
+                throw ApiException.badRequest("通知收件人不存在: " + id);
+            }
+        }
+        settings.put(SettingsService.SUBSTITUTION_NOTIFY_RECIPIENTS,
+                ids.stream().map(String::valueOf).collect(Collectors.joining(",")));
+        return substitutionRecipients();
     }
 
     @PostMapping(value = "/logo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

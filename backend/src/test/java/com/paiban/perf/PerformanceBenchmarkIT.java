@@ -13,6 +13,11 @@ import com.paiban.scheduling.solver.PaibanConstraintProvider;
 import com.paiban.scheduling.solver.TimetableSolution;
 import com.paiban.support.ApiIntegrationTest;
 import com.paiban.support.TestData;
+import com.paiban.substitution.plan.PlanFixtures;
+import com.paiban.substitution.plan.PlanSnapshot;
+import com.paiban.substitution.plan.PlanningResult;
+import com.paiban.substitution.plan.SwapPlanner;
+import java.time.LocalDate;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -68,6 +73,37 @@ class PerformanceBenchmarkIT extends ApiIntegrationTest {
 
     @Autowired
     JdbcTemplate jdbc;
+
+    /**
+     * The swap search budget is 200ms for one class, a 7-day window and six
+     * teachers. This guards the budget from regressing; it runs only with -Dperf.
+     */
+    @Test
+    void swapPlannerStaysWithinItsBudget() {
+        PlanFixtures.Builder builder = PlanFixtures.builder();
+        builder.adminClass(1L, "高一1班", 45, null);
+        for (int day = 1; day <= 5; day++) {
+            for (int periodNo = 1; periodNo <= 8; periodNo++) {
+                long id = day * 100L + periodNo;
+                builder.teacher(id, "老师" + id, "科目" + id);
+                builder.course(id, "课程" + id, null);
+                builder.room(id, "教室" + id, "NORMAL", 50);
+                builder.lesson(1L, id, id, id, day, periodNo);
+            }
+        }
+        PlanSnapshot snapshot = builder.build();
+        long entryId = snapshot.baseline().stream()
+                .filter(lesson -> lesson.dayOfWeek() == 1 && lesson.periodNo() == 1)
+                .findFirst().orElseThrow().entryId();
+        long start = System.nanoTime();
+        PlanningResult result = SwapPlanner.plan(
+                snapshot,
+                new SwapPlanner.Request(1L, entryId, LocalDate.of(2025, 9, 1), 102L),
+                SwapPlanner.Options.defaults());
+        long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+        assertThat(result.candidates()).isNotEmpty();
+        assertThat(elapsedMs).isLessThan(500);
+    }
 
     @Test
     void adr0017Targets() throws Exception {

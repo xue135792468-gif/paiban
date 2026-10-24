@@ -123,6 +123,8 @@ export interface Stats {
   substitutedOut: number
   substitutedIn: number
   swapParticipation: number
+  weeklyLessons: number
+  netLessons: number
 }
 
 export interface AiStatus {

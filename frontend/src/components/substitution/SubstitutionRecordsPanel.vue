@@ -26,6 +26,8 @@
       <span>被代课 <b>{{ stats.substitutedOut }}</b> 次</span>
       <span>代课 <b>{{ stats.substitutedIn }}</b> 次</span>
       <span>参与调课 <b>{{ stats.swapParticipation }}</b> 次</span>
+      <span>周课时 <b>{{ stats.weeklyLessons }}</b></span>
+      <span>净课时（含代课） <b>{{ stats.netLessons }}</b></span>
     </div>
   </el-card>
 

@@ -92,6 +92,7 @@ public class NotificationService {
         if ("with-admin".equals(scope)) {
             adminUsers.addAll(userIds(users.adminUsers()));
         }
+        adminUsers.addAll(settings.substitutionRecipientUserIds());
 
         String link = "/substitutions?requestId=" + request.getId();
         notify(NotificationTemplates.SUBSTITUTION_EFFECTIVE_ORIGINAL, originalUsers, variables, link);
@@ -132,10 +133,22 @@ public class NotificationService {
                 .ifPresent(headTeacherId -> headTeacherUsers.addAll(userIds(users.usersByTeacherId(headTeacherId))));
         notify(NotificationTemplates.SUBSTITUTION_SWAP_HEAD_TEACHER, headTeacherUsers,
                 Map.of("details", summary, "className", className), link);
+        List<Long> adminRecipients = new ArrayList<>();
         if ("with-admin".equals(settings.notificationScope())) {
-            notify(NotificationTemplates.SUBSTITUTION_SWAP_ADMIN, userIds(users.adminUsers()),
-                    Map.of("details", summary, "className", className), link);
+            adminRecipients.addAll(userIds(users.adminUsers()));
         }
+        adminRecipients.addAll(settings.substitutionRecipientUserIds());
+        notify(NotificationTemplates.SUBSTITUTION_SWAP_ADMIN, adminRecipients,
+                Map.of("details", summary, "className", className), link);
+    }
+
+    /** The requester learns that their plan could not be made effective. */
+    @Transactional
+    public void substitutionPlanFailed(Long requesterTeacherId, String details) {
+        notify(NotificationTemplates.SUBSTITUTION_PLAN_FAILED,
+                userIds(users.usersByTeacherId(requesterTeacherId)),
+                Map.of("details", details),
+                "/substitutions");
     }
 
     /** Operational alarm: a plan failed verification and was rejected as a whole. */
