@@ -26,6 +26,9 @@ public class SubstitutionRequest {
     public static final String EFFECTIVE = "EFFECTIVE";
     public static final String CANCELLED = "CANCELLED";
 
+    public static final String TYPE_SWAP = "SWAP";
+    public static final String TYPE_COVER = "COVER";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -65,6 +68,12 @@ public class SubstitutionRequest {
 
     @Column(name = "expected_substitute_teacher_id")
     private Long expectedSubstituteTeacherId;
+
+    @Column(nullable = false, length = 20)
+    private String type = TYPE_COVER;
+
+    @Column(name = "target_period_id")
+    private Long targetPeriodId;
 
     @Column(nullable = false, length = 30)
     private String status;

@@ -14,5 +14,7 @@ public interface SubstitutionRequestRepository extends JpaRepository<Substitutio
     List<SubstitutionRequest> findBySemesterIdAndRequesterTeacherIdOrderByCreatedAtDesc(
             Long semesterId, Long requesterTeacherId);
 
+    List<SubstitutionRequest> findByEntryIdAndEffectiveDate(Long entryId, java.time.LocalDate effectiveDate);
+
     long countBySemesterId(Long semesterId);
 }

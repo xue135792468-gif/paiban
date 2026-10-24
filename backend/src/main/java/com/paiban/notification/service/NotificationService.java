@@ -109,6 +109,42 @@ public class NotificationService {
                 "/substitutions?requestId=" + request.getId());
     }
 
+    /**
+     * One notification per involved teacher describing only their own move; the
+     * head teacher and admins get the whole plan. This is deliberately not the
+     * cover templates, which would tell a swapping teacher they are covering.
+     */
+    @Transactional
+    public void swapEffective(SubstitutionRequest request,
+                              Map<Long, String> detailsByTeacher,
+                              String summary) {
+        String link = "/substitutions?requestId=" + request.getId();
+        String className = adminClasses.findById(request.getAdminClassId())
+                .map(AdminClass::getName).orElse("");
+        detailsByTeacher.forEach((teacherId, details) -> notify(
+                NotificationTemplates.SUBSTITUTION_SWAP_EFFECTIVE,
+                userIds(users.usersByTeacherId(teacherId)),
+                Map.of("details", details, "className", className),
+                link));
+        List<Long> headTeacherUsers = new ArrayList<>();
+        adminClasses.findById(request.getAdminClassId())
+                .map(AdminClass::getHeadTeacherId)
+                .ifPresent(headTeacherId -> headTeacherUsers.addAll(userIds(users.usersByTeacherId(headTeacherId))));
+        notify(NotificationTemplates.SUBSTITUTION_SWAP_HEAD_TEACHER, headTeacherUsers,
+                Map.of("details", summary, "className", className), link);
+        if ("with-admin".equals(settings.notificationScope())) {
+            notify(NotificationTemplates.SUBSTITUTION_SWAP_ADMIN, userIds(users.adminUsers()),
+                    Map.of("details", summary, "className", className), link);
+        }
+    }
+
+    /** Operational alarm: a plan failed verification and was rejected as a whole. */
+    @Transactional
+    public void substitutionVerifyAlert(String details) {
+        notify(NotificationTemplates.SUBSTITUTION_VERIFY_ALERT, userIds(users.adminUsers()),
+                Map.of("details", details), "/substitutions");
+    }
+
     @EventListener
     @Transactional
     public void onTimetablePublished(TimetablePublishedEvent event) {

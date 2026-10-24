@@ -5,8 +5,10 @@ import com.paiban.substitution.service.SubstitutionRecommendationService;
 import com.paiban.substitution.service.SubstitutionService;
 import com.paiban.substitution.web.SubstitutionDtos.CreateSubstitutionRequest;
 import com.paiban.substitution.web.SubstitutionDtos.DecisionRequest;
+import com.paiban.substitution.web.SubstitutionDtos.GeneratePlansResponse;
 import com.paiban.substitution.web.SubstitutionDtos.HistoryDto;
 import com.paiban.substitution.web.SubstitutionDtos.RecommendationResponse;
+import com.paiban.substitution.web.SubstitutionDtos.SubstitutionPlanDto;
 import com.paiban.substitution.web.SubstitutionDtos.SubstitutionRecordDto;
 import com.paiban.substitution.web.SubstitutionDtos.SubstitutionRequestDto;
 import com.paiban.substitution.web.SubstitutionDtos.TeacherStatsDto;
@@ -97,6 +99,28 @@ public class SubstitutionController {
         return recommendations.recommend(id);
     }
 
+    /** Generate (or regenerate) up to three candidate swap cycles for a request. */
+    @PostMapping("/substitution-requests/{id}/plans")
+    @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_APPROVE + "')")
+    public GeneratePlansResponse generatePlans(@PathVariable Long id, Principal principal) {
+        return service.generatePlans(id, principal.getName());
+    }
+
+    @GetMapping("/substitution-requests/{id}/plans")
+    public List<SubstitutionPlanDto> plans(@PathVariable Long id, Principal principal) {
+        return service.plansFor(id, principal.getName());
+    }
+
+    /** Approve one whole plan: every move becomes effective, or none does. */
+    @PostMapping("/substitution-plans/{id}/approve")
+    @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_APPROVE + "')")
+    public SubstitutionRequestDto approvePlan(
+            @PathVariable Long id,
+            @RequestBody(required = false) Map<String, String> body,
+            Principal principal) {
+        return service.approvePlan(id, principal.getName(), body == null ? null : body.get("comment"));
+    }
+
     @GetMapping("/substitutions")
     public List<SubstitutionRecordDto> records(
             @RequestParam(required = false) Long semesterId,
@@ -104,6 +128,7 @@ public class SubstitutionController {
             @RequestParam(required = false) Long classId,
             @RequestParam(required = false) LocalDate dateFrom,
             @RequestParam(required = false) LocalDate dateTo,
+            @RequestParam(required = false) String type,
             Authentication authentication,
             Principal principal) {
         boolean canViewAll = authentication.getAuthorities().stream()
@@ -119,7 +144,7 @@ public class SubstitutionController {
             }
             service.requireHeadTeacher(principal.getName(), classId);
         }
-        return service.records(semesterId, teacherId, classId, dateFrom, dateTo);
+        return service.records(semesterId, teacherId, classId, dateFrom, dateTo, type);
     }
 
     @GetMapping("/substitutions/my")
