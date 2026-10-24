@@ -244,9 +244,11 @@ public class WorkbookImportFlow {
     private List<IssueDto> issues(WorkbookPayload payload) {
         List<IssueDto> issues = new ArrayList<>();
         Long semesterId = currentSemesterId();
-        if (semesterId == null) {
+        // A teacher- or course-only workbook commits without a semester, so it is not blocked.
+        boolean needsSemester = !payload.rows().isEmpty() || !payload.classes().isEmpty();
+        if (needsSemester && semesterId == null) {
             issues.add(new IssueDto(0, "semester", "", List.of(), true, SEMESTER_MISSING, null, List.of()));
-        } else if (periods.countBySemesterId(semesterId) == 0) {
+        } else if (needsSemester && periods.countBySemesterId(semesterId) == 0) {
             issues.add(new IssueDto(0, "periods", "", List.of(), true, PERIODS_MISSING, null, List.of()));
         }
         for (RowErrorDto error : payload.errors()) {
@@ -274,8 +276,11 @@ public class WorkbookImportFlow {
         if (payload.rows().isEmpty() && payload.teachers().isEmpty() && payload.courses().isEmpty()) {
             throw ApiException.badRequest("没有可入库的数据");
         }
+        // A teacher- or course-only workbook needs neither a semester nor periods; only
+        // rows/classes make the semester part of the write.
         Long semesterId = currentSemesterId();
-        if (semesterId == null) {
+        boolean needsSemester = !payload.rows().isEmpty() || !payload.classes().isEmpty();
+        if (needsSemester && semesterId == null) {
             throw ApiException.badRequest(SEMESTER_MISSING);
         }
         if (!payload.rows().isEmpty() && periods.countBySemesterId(semesterId) == 0) {
@@ -288,7 +293,9 @@ public class WorkbookImportFlow {
         Map<String, CategorySummary> committed = new LinkedHashMap<>();
         committed.put(TEACHER, write(() -> mappings.ensureTeachers(payload.teachers())));
         committed.put(COURSE, write(() -> mappings.ensureCourses(payload.courses())));
-        committed.put(CLASS, write(() -> mappings.ensureClasses(payload.classes())));
+        if (!payload.classes().isEmpty()) {
+            committed.put(CLASS, write(() -> mappings.ensureClasses(payload.classes())));
+        }
 
         List<RowErrorDto> rowErrors = new ArrayList<>();
         Long draftId = null;

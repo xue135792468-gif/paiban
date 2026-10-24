@@ -1,4 +1,13 @@
 <template>
+  <el-alert
+    v-if="inputMode === 'excel'"
+    data-testid="workbook-mode-hint"
+    type="info"
+    show-icon
+    :closable="false"
+    title="不选目标时，Excel / CSV 按整本工作簿解析：AI 自己识别课表、教师名单与课程清单。点选下面的目标则按该目标解析（兼容旧的单目标流程）。"
+  />
+
   <el-card shadow="never">
     <template #header><span class="card-title">选择导入目标</span></template>
     <ImportTargetPicker
@@ -21,7 +30,9 @@
           <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
           <div class="el-upload__text">把文件拖到这里，或<em>点击选择</em></div>
           <template #tip>
-            <div class="el-upload__tip">{{ currentTarget.excelHint }}</div>
+            <div class="el-upload__tip">
+              一个文件里有多少张表都可以：课表、班级课表、教师名单、使用说明会分别识别；重复课节自动合并。
+            </div>
           </template>
         </el-upload>
         <div v-if="selectedFileName" class="file-hint">已选择：{{ selectedFileName }}</div>

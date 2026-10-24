@@ -176,9 +176,24 @@ describe('上传请求携带导入目标', () => {
     httpMock.post.mockResolvedValue(preview())
   })
 
-  it('默认以教师为目标上传 Excel', async () => {
+  it('Excel 一律按整本工作簿上传，不受导入目标影响', async () => {
     const { wrapper } = await mountImport()
 
+    chooseFile(wrapper, 0, 'teachers.xlsx')
+    await flushPromises()
+    await button(wrapper, '开始解析').trigger('click')
+    await flushPromises()
+
+    expect(httpMock.post).toHaveBeenCalledWith('/ai/import/excel', expect.any(FormData), {
+      params: { target: 'workbook' },
+      timeout: 300000,
+    })
+  })
+
+  it('点选已选中的教师卡片也会切到单表流程', async () => {
+    const { wrapper } = await mountImport()
+
+    await wrapper.get('[data-testid="target-card"][data-target="teacher"]').trigger('click')
     chooseFile(wrapper, 0, 'teachers.xlsx')
     await flushPromises()
     await button(wrapper, '开始解析').trigger('click')
@@ -190,7 +205,7 @@ describe('上传请求携带导入目标', () => {
     })
   })
 
-  it('选中课表后上传 Excel 带上 target=timetable', async () => {
+  it('点选目标后上传 Excel 走该目标的单表流程', async () => {
     const { wrapper } = await mountImport()
 
     await wrapper.get('[data-testid="target-card"][data-target="timetable"]').trigger('click')

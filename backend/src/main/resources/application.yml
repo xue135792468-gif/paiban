@@ -28,6 +28,9 @@ paiban:
   ai:
     # Development default only; production must provide PAIBAN_AI_ENCRYPTION_KEY.
     encryption-key: ${PAIBAN_AI_ENCRYPTION_KEY:paiban-local-ai-encryption-key-change-me-0123456789}
+    import:
+      # Rows per model call while copying a confirmed workbook structure (ADR-0026).
+      batch-size: ${PAIBAN_AI_IMPORT_BATCH_SIZE:40}
     features:
       substitute-recommendation: false
       natural-language-constraints: false

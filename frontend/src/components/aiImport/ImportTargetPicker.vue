@@ -49,7 +49,7 @@
 <script setup lang="ts">
 import type { ImportTargetCard } from './importTargets'
 
-const props = defineProps<{
+defineProps<{
   targets: ImportTargetCard[]
   selected: string
 }>()
@@ -58,9 +58,9 @@ const emit = defineEmits<{ (event: 'select', code: string): void }>()
 
 function select(target: ImportTargetCard) {
   if (!target.available) return
-  if (target.code !== props.selected) {
-    emit('select', target.code)
-  }
+  // Re-clicking the current card still emits: picking a target explicitly is what keeps
+  // an Excel upload on the single-target path instead of the whole-workbook one.
+  emit('select', target.code)
 }
 </script>
 

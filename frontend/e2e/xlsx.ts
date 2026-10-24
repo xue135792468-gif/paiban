@@ -11,26 +11,40 @@ export interface XlsxOptions {
   merges?: string[]
 }
 
-export function buildXlsx(rows: string[][], options: XlsxOptions = {}): Buffer {
-  const sheetName = options.sheetName ?? 'Sheet1'
-  const rowsXml = rows
-    .map((row, rowIndex) => {
-      const cells = row
-        .map((value, columnIndex) =>
-          value === ''
-            ? ''
-            : `<c r="${columnName(columnIndex)}${rowIndex + 1}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(value)}</t></is></c>`,
-        )
-        .join('')
-      return `<row r="${rowIndex + 1}">${cells}</row>`
-    })
-    .join('')
+/** One sheet of a multi-sheet workbook. */
+export interface XlsxSheet {
+  name: string
+  rows: string[][]
+  merges?: string[]
+}
 
-  const mergesXml = options.merges?.length
-    ? `<mergeCells count="${options.merges.length}">${options.merges
-        .map((range) => `<mergeCell ref="${range}"/>`)
-        .join('')}</mergeCells>`
-    : ''
+/** The single-sheet builder every older test uses. */
+export function buildXlsx(rows: string[][], options: XlsxOptions = {}): Buffer {
+  return buildWorkbookXlsx([
+    { name: options.sheetName ?? 'Sheet1', rows, merges: options.merges },
+  ])
+}
+
+/** A workbook with several sheets, the shape a real 教务 export has. */
+export function buildWorkbookXlsx(sheets: XlsxSheet[]): Buffer {
+  const contentTypes = sheets
+    .map(
+      (_, index) =>
+        `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`,
+    )
+    .join('')
+  const sheetEntries = sheets
+    .map(
+      (sheet, index) =>
+        `<sheet name="${escapeXml(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`,
+    )
+    .join('')
+  const relationships = sheets
+    .map(
+      (_, index) =>
+        `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`,
+    )
+    .join('')
 
   const files: ZipEntry[] = [
     {
@@ -40,7 +54,7 @@ export function buildXlsx(rows: string[][], options: XlsxOptions = {}): Buffer {
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
 <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+${contentTypes}
 </Types>`),
     },
     {
@@ -54,26 +68,49 @@ export function buildXlsx(rows: string[][], options: XlsxOptions = {}): Buffer {
       name: 'xl/workbook.xml',
       data: xml(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-<sheets><sheet name="${escapeXml(sheetName)}" sheetId="1" r:id="rId1"/></sheets>
+<sheets>${sheetEntries}</sheets>
 </workbook>`),
     },
     {
       name: 'xl/_rels/workbook.xml.rels',
       data: xml(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+${relationships}
 </Relationships>`),
     },
-    {
-      name: 'xl/worksheets/sheet1.xml',
+    ...sheets.map((sheet, index) => ({
+      name: `xl/worksheets/sheet${index + 1}.xml`,
       data: xml(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<sheetData>${rowsXml}</sheetData>${mergesXml}
+<sheetData>${sheetData(sheet.rows)}</sheetData>${merges(sheet.merges)}
 </worksheet>`),
-    },
+    })),
   ]
 
   return zip(files)
+}
+
+function sheetData(rows: string[][]): string {
+  return rows
+    .map((row, rowIndex) => {
+      const cells = row
+        .map((value, columnIndex) =>
+          value === ''
+            ? ''
+            : `<c r="${columnName(columnIndex)}${rowIndex + 1}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(value)}</t></is></c>`,
+        )
+        .join('')
+      return `<row r="${rowIndex + 1}">${cells}</row>`
+    })
+    .join('')
+}
+
+function merges(ranges: string[] | undefined): string {
+  return ranges?.length
+    ? `<mergeCells count="${ranges.length}">${ranges
+        .map((range) => `<mergeCell ref="${range}"/>`)
+        .join('')}</mergeCells>`
+    : ''
 }
 
 interface ZipEntry {

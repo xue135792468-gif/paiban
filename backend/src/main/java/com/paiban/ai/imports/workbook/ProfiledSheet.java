@@ -49,9 +49,4 @@ public record ProfiledSheet(
         }
         return 0;
     }
-
-    /** The sheet's data rows with the derived columns already appended. */
-    public List<List<String>> wideDataRows() {
-        return dataRows;
-    }
 }

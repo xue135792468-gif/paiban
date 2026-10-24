@@ -253,6 +253,23 @@ class WorkbookImportIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void aFiveHundredAndSixtyRowSheetPreviewsAsFiveHundredAndFortySixLessons() throws Exception {
+        String admin = adminToken();
+        TestData.semester(admin);
+        long semesterId = currentSemester(admin);
+        generateDefaultPeriods(admin, semesterId);
+        scriptPlan();
+
+        Response preview = upload(admin, workbook(Map.of("数据源", realShapedRows())));
+
+        preview.then().statusCode(200).body("rows", hasSize(546));
+        assertThat(preview.jsonPath().getList("warnings", String.class))
+                .anySatisfy(warning -> assertThat(warning).contains("空课位 14 个"));
+        // 560 rows at 40 per call is 14 extraction calls; the plan took 3 tool rounds.
+        assertThat(fake.calls).isEqualTo(3 + 14);
+    }
+
+    @Test
     void missingSemesterIsAPageLevelBlocker() throws Exception {
         String admin = adminToken();
         scriptPlan();
@@ -310,6 +327,28 @@ class WorkbookImportIntegrationTest extends ApiIntegrationTest {
                         List.of("使用说明"),
                         List.of("1. 本表由教务系统导出"),
                         List.of("2. 请勿修改列顺序")));
+    }
+
+    /** 14 classes x 5 days x 8 periods, with 星期五第7节 left empty for each class. */
+    private List<List<String>> realShapedRows() {
+        List<String> days = List.of("星期一", "星期二", "星期三", "星期四", "星期五");
+        List<String> courses = List.of("语文", "数学", "英语");
+        List<String> teachers = List.of("张三", "李四", "王五");
+        List<List<String>> rows = new ArrayList<>();
+        for (int klass = 1; klass <= 14; klass++) {
+            for (int day = 0; day < days.size(); day++) {
+                for (int period = 1; period <= 8; period++) {
+                    String key = "八（" + klass + "）|" + days.get(day) + "|" + period;
+                    if (day == 4 && period == 7) {
+                        rows.add(List.of(key, "", ""));
+                        continue;
+                    }
+                    int index = (klass + day + period) % courses.size();
+                    rows.add(List.of(key, courses.get(index), teachers.get(index)));
+                }
+            }
+        }
+        return rows;
     }
 
     private byte[] workbook(Map<String, List<List<String>>> sheets) throws IOException {

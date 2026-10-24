@@ -148,14 +148,14 @@
         :title="preview.explanation || 'AI 解析失败，请调整文件后重新上传'"
       />
 
-      <el-alert
-        v-for="issue in blockingIssues"
-        :key="issue.field + '-' + issue.message"
-        data-testid="blocking-issue"
-        type="warning"
-        show-icon
-        :closable="false"
-        :title="issue.message || '当前数据无法入库，请先处理预览中的问题'"
+      <ImportBlockerActions :issues="previewIssues" @reload="reloadPreview" />
+
+      <WorkbookSummaryPanel
+        v-if="preview.workbook"
+        :workbook="preview.workbook"
+        :warnings="preview.warnings"
+        :tool-trace="preview.toolTrace"
+        :columns="preview.columns"
       />
 
       <TimetableMappingStep
@@ -166,8 +166,14 @@
         @updated="setPreview"
       />
 
+      <CommitResultSummary
+        v-if="committedCategories.length"
+        :categories="committedCategories"
+        :draft-id="commitResult?.draftId ?? null"
+      />
+
       <el-alert
-        v-if="isCommittedPreview"
+        v-if="isCommittedPreview && !isWorkbook"
         type="success"
         show-icon
         :closable="false"
@@ -192,15 +198,11 @@
         </div>
       </el-alert>
 
-      <el-card v-if="!isParsing" shadow="never" class="explain-card">
-        <template #header><span class="card-title">AI 说明</span></template>
-        <p class="explanation">{{ preview.explanation || 'AI 未提供额外说明。' }}</p>
-        <el-table :data="preview.mappings" size="small" border>
-          <el-table-column prop="source" label="原始列 / 片段" min-width="160" />
-          <el-table-column prop="target" label="系统字段" width="120" />
-          <el-table-column prop="note" label="映射说明" min-width="200" />
-        </el-table>
-      </el-card>
+      <ImportExplanationCard
+        v-if="!isParsing"
+        :explanation="preview.explanation"
+        :mappings="preview.mappings"
+      />
 
       <el-alert
         v-if="commitErrors.length"
@@ -269,6 +271,10 @@ import ImportProgressPanel from '@/components/aiImport/ImportProgressPanel.vue'
 import LastImportCard from '@/components/aiImport/LastImportCard.vue'
 import PartialResultPanel from '@/components/aiImport/PartialResultPanel.vue'
 import TimetableMappingStep from '@/components/aiImport/TimetableMappingStep.vue'
+import WorkbookSummaryPanel from '@/components/aiImport/WorkbookSummaryPanel.vue'
+import CommitResultSummary from '@/components/aiImport/CommitResultSummary.vue'
+import ImportBlockerActions from '@/components/aiImport/ImportBlockerActions.vue'
+import ImportExplanationCard from '@/components/aiImport/ImportExplanationCard.vue'
 import TimetablePreviewGrid from '@/components/aiImport/TimetablePreviewGrid.vue'
 import { useImportSession } from '@/components/aiImport/useImportSession'
 import { type ImportPreview, type PreviewRow } from '@/components/aiImport/timetablePreview'
@@ -281,6 +287,8 @@ const configured = ref(false)
 const visionCapable = ref(false)
 const inputMode = ref<'excel' | 'text' | 'image'>('excel')
 const selectedTarget = ref(preselectedTarget(route.query.target))
+/** Only an explicit pick (card click or ?target=) keeps Excel on the single-target path. */
+const targetChosen = ref(typeof route.query.target === 'string' && Boolean(route.query.target))
 const selectedFile = ref<File | null>(null)
 const imageFile = ref<File | null>(null)
 const text = ref('')
@@ -297,8 +305,10 @@ const {
   abandoning,
   commitErrors,
   importedCount,
+  commitResult,
   lastSession,
   isTimetable,
+  isWorkbook,
   isParsing,
   isPartial,
   isCommittedPreview,
@@ -324,12 +334,19 @@ const restoring = ref(false)
 
 const mappableIssues = computed(() => previewIssues.value.filter((issue) => issue.row > 0))
 const blockingIssues = computed(() => previewIssues.value.filter((issue) => issue.row === 0))
-/** A partial parse shows the classes it did read, not a preview of a complete timetable. */
-const previewTitle = computed(() =>
-  isPartial.value
-    ? `部分结果（已解析 ${preview.value?.rows.length ?? 0} 节课）`
-    : `解析预览（${preview.value?.rows.length ?? 0} 行）`,
+/** What a commit wrote: from this page, or from a restored committed session. */
+const committedCategories = computed(
+  () => commitResult.value?.categories ?? preview.value?.workbook?.committed ?? [],
 )
+/** A partial parse shows the classes it did read, not a preview of a complete timetable. */
+const previewTitle = computed(() => {
+  const rows = preview.value?.rows.length ?? 0
+  if (isPartial.value) return `部分结果（已解析 ${rows} 节课）`
+  if (isWorkbook.value) {
+    return `识别预览（${preview.value?.workbook?.sheets.length ?? 0} 张工作表，${rows} 节课）`
+  }
+  return `解析预览（${rows} 行）`
+})
 const suggestedTarget = computed(() => {
   const suggested = preview.value?.suggestedTarget
   return suggested && suggested !== preview.value?.targetType ? suggested : ''
@@ -337,6 +354,7 @@ const suggestedTarget = computed(() => {
 const showMappingStep = computed(
   () =>
     isTimetable.value &&
+    !isWorkbook.value &&
     isEditable(preview.value?.status) &&
     (mappableIssues.value.length > 0 || blockingIssues.value.length === 0),
 )
@@ -382,6 +400,12 @@ async function restoreFrom(sessionId: string) {
   }
 }
 
+/** Re-reads the session so a newly generated 作息 clears the blocker. */
+async function reloadPreview() {
+  if (!preview.value) return
+  await restoreFrom(String(preview.value.sessionId))
+}
+
 async function continueLastSession() {
   if (!lastSession.value) return
   await restoreFrom(String(lastSession.value.id))
@@ -389,6 +413,7 @@ async function continueLastSession() {
 
 function onSelectTarget(code: string) {
   selectedTarget.value = code
+  targetChosen.value = true
   commitErrors.value = []
 }
 
@@ -407,7 +432,11 @@ async function parse() {
   dropSessionFromUrl()
   parsing.value = true
   commitErrors.value = []
-  const config = { params: { target: selectedTarget.value }, timeout: AI_IMPORT_TIMEOUT_MS }
+  // Excel defaults to the whole-workbook path. Picking a target card is how the older
+  // single-target parse is still reached (kept for text/images and existing sessions).
+  const target =
+    inputMode.value === 'excel' && !targetChosen.value ? 'workbook' : selectedTarget.value
+  const config = { params: { target }, timeout: AI_IMPORT_TIMEOUT_MS }
   try {
     let response
     if (inputMode.value === 'excel') {
@@ -455,6 +484,7 @@ function switchToSuggestedTarget() {
 
 function reset() {
   clear()
+  targetChosen.value = false
   selectedFile.value = null
   imageFile.value = null
   text.value = ''
@@ -506,10 +536,7 @@ function fieldLabel(field: string) {
   color: #6b7280;
 }
 
-.notice {
-  margin-bottom: 4px;
-}
-
+.notice,
 .suggested-target {
   margin-bottom: 4px;
 }
@@ -555,11 +582,6 @@ function fieldLabel(field: string) {
   border: 1px solid #f0e0a0;
   background: #fff7cc;
   border-radius: 3px;
-}
-
-.explain-card .explanation {
-  margin: 0 0 12px;
-  color: #374151;
 }
 
 .result-actions {
