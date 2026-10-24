@@ -319,8 +319,9 @@ cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test
   （IP 白名单拒绝会提示检查服务器出口 IPv4）。
 - **钉钉同步预演与确认**：设置页「预演同步」调用 `POST /api/integrations/dingtalk/sync/preview`
   （严格只读，不写 `teacher` / `audit_log`），返回新增/补齐/疑似同名/跳过四类结果与按部门分组的明细。
-  可按部门或单人排除；疑似同名必须选择「合并到同名教师 / 作为新教师导入 / 本次跳过」，缺省跳过，
-  绝不自动合并。命中的教师只补空字段，本地非空值不覆盖，冲突在明细中标出。
+  可按部门或单人排除（只有用户的所有部门都被排除才会排除该用户）；疑似同名必须选择
+  「合并到同名教师 / 作为新教师导入 / 本次跳过」，缺省跳过，绝不自动合并。命中的教师只补空字段，
+  本地非空值不覆盖，冲突在明细中标出。
   `POST /api/integrations/dingtalk/sync/confirm` 确认写库并记 `DINGTALK_SYNC` 审计；
   `POST /api/integrations/dingtalk/sync` 保留为「安全默认」的一键同步。
   钉钉的 `sync-strategy` 设置不再影响合并语义（字段保留仅为兼容旧配置）。

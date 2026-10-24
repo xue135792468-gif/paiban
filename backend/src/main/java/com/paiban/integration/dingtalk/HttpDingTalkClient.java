@@ -134,7 +134,8 @@ public class HttpDingTalkClient implements DingTalkClient {
                     .toBodilessEntity();
             return true;
         } catch (RuntimeException ex) {
-            log.warn("DingTalk notification failed for {}: {}", dingtalkUserId, ex.getMessage());
+            log.warn("DingTalk notification failed for {}: {}", dingtalkUserId,
+                    DingTalkApiException.redact(ex.getMessage()));
             return false;
         }
     }

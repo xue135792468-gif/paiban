@@ -1,6 +1,7 @@
 package com.paiban.integration.dingtalk;
 
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * A structured error returned by the DingTalk open platform. Carries the
@@ -11,6 +12,8 @@ public class DingTalkApiException extends RuntimeException {
 
     private static final int DEPARTMENT_UNAVAILABLE = 41;
     private static final int IP_WHITELIST_SUB_CODE = 60020;
+    /** OAPI carries the token as a query parameter, so transport errors can echo it. */
+    private static final Pattern ACCESS_TOKEN = Pattern.compile("(?i)(access_token=)[^&\\s\"']+");
 
     private final int errorCode;
     private final int subCode;
@@ -51,6 +54,15 @@ public class DingTalkApiException extends RuntimeException {
         int subCode = intValue(response.get("sub_code"));
         Object message = response.get("errmsg") != null ? response.get("errmsg") : response.get("message");
         throw new DingTalkApiException(action, errorCode, subCode, message == null ? null : message.toString());
+    }
+
+    /**
+     * Masks {@code access_token} values before a transport error becomes a log,
+     * response or audit detail. DingTalk OAPI puts the token in the URL, and
+     * RestClient error messages can quote the full URI.
+     */
+    public static String redact(String message) {
+        return message == null ? null : ACCESS_TOKEN.matcher(message).replaceAll("$1***");
     }
 
     private static String describe(String action, int errorCode, int subCode, String errorMessage) {

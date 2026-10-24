@@ -4,6 +4,7 @@ import com.paiban.common.settings.SettingsService;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.foundation.service.FoundationService;
+import com.paiban.integration.dingtalk.DingTalkApiException;
 import com.paiban.integration.domain.DingUser;
 import com.paiban.integration.org.DingTalkSyncPlan.Category;
 import com.paiban.integration.org.DingTalkSyncPlan.Item;
@@ -87,7 +88,7 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
         try {
             directory = directoryLoader.load();
         } catch (RuntimeException ex) {
-            String message = "拉取钉钉通讯录失败: " + ex.getMessage();
+            String message = "拉取钉钉通讯录失败: " + DingTalkApiException.redact(ex.getMessage());
             log.warn("钉钉通讯录预演失败：耗时 {} ms，{}", elapsedMs(startedAt), message);
             return DingTalkSyncPreview.failed(message);
         }
@@ -134,11 +135,11 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
             directory = directoryLoader.load();
         } catch (RuntimeException ex) {
             long elapsed = elapsedMs(startedAt);
-            String message = "拉取钉钉通讯录失败: " + ex.getMessage();
+            String message = "拉取钉钉通讯录失败: " + DingTalkApiException.redact(ex.getMessage());
             transactionTemplate.executeWithoutResult(status ->
                     foundation.audit("system", "DINGTALK_SYNC", "teacher", message, 0, 0));
             log.warn("钉钉通讯录同步失败：耗时 {} ms，{}", elapsed, message);
-            return new OrgSyncResult(false, 0, 0, 0, 0, 0, 0, elapsed, message);
+            return new OrgSyncResult(false, 0, 0, 0, 0, 0, 0, 0, elapsed, message);
         }
 
         DingTalkSyncPlan plan = planner.plan(directory, decisions);
@@ -148,7 +149,7 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
         }
         log.info(
                 "钉钉通讯录同步完成：扫描部门 {} 个 / 用户 {} 人 / 耗时 {} ms"
-                        + "（跳过特殊部门 {}，不可读部门 {}），新增 {}，补齐 {}，停用 {}，跳过 {}",
+                        + "（跳过特殊部门 {}，不可读部门 {}），新增 {}，补齐 {}，停用 {}，跳过 {}，疑似同名 {}",
                 result.departmentsScanned(),
                 result.usersScanned(),
                 result.elapsedMs(),
@@ -157,7 +158,8 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
                 result.created(),
                 result.updated(),
                 result.deactivated(),
-                result.skipped());
+                result.skipped(),
+                result.suspected());
         return result;
     }
 
@@ -189,11 +191,13 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
                 deactivated++;
             }
         }
-        int skipped = (int) plan.count(Category.SKIP) + (int) plan.count(Category.SUSPECTED);
+        int skipped = (int) plan.count(Category.SKIP);
+        int suspected = (int) plan.count(Category.SUSPECTED);
         long elapsed = elapsedMs(startedAt);
         String message = "同步完成：扫描 " + directory.departmentsScanned() + " 个部门 / "
                 + directory.usersScanned() + " 人，耗时 " + elapsed + " ms；新增 " + created
-                + "，补齐 " + updated + "，停用 " + deactivated + "，跳过 " + skipped;
+                + "，补齐 " + updated + "，停用 " + deactivated + "，跳过 " + skipped
+                + "，疑似同名 " + suspected;
         foundation.audit("system", "DINGTALK_SYNC", "teacher", message, created + updated, 0);
         return new OrgSyncResult(
                 true,
@@ -201,6 +205,7 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
                 updated,
                 deactivated,
                 skipped,
+                suspected,
                 directory.departmentsScanned(),
                 directory.usersScanned(),
                 elapsed,

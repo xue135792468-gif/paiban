@@ -50,4 +50,13 @@ class DingTalkApiExceptionTest {
                     assertThat(error.isIpWhitelist()).isTrue();
                 });
     }
+
+    @Test
+    void redactsAccessTokensFromTransportErrors() {
+        assertThat(DingTalkApiException.redact(
+                        "I/O error on POST request for \"https://oapi.dingtalk.com/topapi/v2/user/list?access_token=abc123&x=1\": timeout"))
+                .isEqualTo("I/O error on POST request for \"https://oapi.dingtalk.com/topapi/v2/user/list?access_token=***&x=1\": timeout");
+        assertThat(DingTalkApiException.redact(null)).isNull();
+        assertThat(DingTalkApiException.redact("no token here")).isEqualTo("no token here");
+    }
 }

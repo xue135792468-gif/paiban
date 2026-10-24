@@ -5,6 +5,7 @@ export interface SyncResult {
   updated: number
   deactivated: number
   skipped: number
+  suspected: number
   departmentsScanned: number
   usersScanned: number
   elapsedMs: number

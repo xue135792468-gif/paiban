@@ -12,6 +12,7 @@
 
 - 匹配顺序固定：`dingtalk_user_id` → 工号 → 手机。姓名只在没有匹配键命中时用于「疑似同名」提示，**绝不自动合并**。
 - 疑似同名必须带一个决定：`MERGE`（合并到候选教师，必须指定 teacherId）、`CREATE`（确认是不同的人，新建教师）、`SKIP`（本次不导入）。缺省是 `SKIP`，所以「不勾选也不决策」不会产生重复。
+- 部门排除只排除「所有部门都被排除」的用户：一个人同时属于「食堂」和「全校教职工」时，排除食堂不会把他一起排掉。
 - 命中的教师只补空字段（工号、手机、钉钉 UserID、状态）；本地非空值不覆盖，冲突写进预演明细。
 - 钉钉 UserID 属于同步托管字段：为空时补齐；已有且与当前用户不同时按冲突处理，不静默改绑，避免影响已有账号的免登。
 - 本轮没出现的教师不会被自动停用；停用只来自钉钉的 `active=false` 或「离职」部门。
@@ -20,11 +21,11 @@
 ## 接口
 
 - `POST /api/integrations/dingtalk/sync/preview`：严格只读，不写 `teacher`、不写 `audit_log`；返回扫描量、四类计数、按部门分组的明细（补齐/冲突字段、候选教师）。
-- `POST /api/integrations/dingtalk/sync/confirm`：接收 `excludedDepartments`、`excludedUserIds`、`suspectedDecisions`，重新拉取目录、重新分类后写入，并记 `DINGTALK_SYNC` 审计。
+- `POST /api/integrations/dingtalk/sync/confirm`：接收 `excludedDepartments`、`excludedUserIds`、`suspectedDecisions`，重新拉取目录、重新分类后写入，并记 `DINGTALK_SYNC` 审计。返回结构化统计：新增、补齐、停用、跳过、疑似同名（未确认的疑似同名单独计数，不并进跳过）。
 - `POST /api/integrations/dingtalk/sync`：保留为「安全默认一键同步」，内部走同一套 planner + apply。
 
 ## Consequences
 
-- `integration.dingtalk.sync-strategy` 对钉钉同步不再生效：合并语义固定为「只补空字段」。字段与接口保留用于兼容旧配置，设置页不再展示钉钉的同步策略选择。
+- `integration.dingtalk.sync-strategy` 对钉钉同步不再生效：合并语义固定为「只补空字段」。字段与接口保留用于兼容旧配置，设置页不再展示钉钉的同步策略选择。这一点取代 ADR-0018 中「钉钉同步策略选择」的功能项。
 - 预演与确认各自拉一次钉钉目录；两次之间若钉钉数据变化，以确认时的数据为准。
 - 预演不落任何缓存，也不签发 token：确认请求只描述「范围与决定」，不携带预演快照。

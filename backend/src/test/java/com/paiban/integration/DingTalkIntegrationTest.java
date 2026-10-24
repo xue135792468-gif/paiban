@@ -362,7 +362,8 @@ class DingTalkIntegrationTest extends ApiIntegrationTest {
                 .body("success", equalTo(true))
                 .body("created", equalTo(1))
                 .body("updated", equalTo(1))
-                .body("skipped", equalTo(1));
+                .body("skipped", equalTo(0))
+                .body("suspected", equalTo(1));
 
         List<Map<String, Object>> after = teachers(token);
         assertThat(after).hasSize(3);
@@ -423,15 +424,18 @@ class DingTalkIntegrationTest extends ApiIntegrationTest {
         fakeDingTalk.addUser(2, new DingUser("dd-101", "王老师", null, null, "EMP101"));
         fakeDingTalk.addUser(3, new DingUser("dd-201", "厨师甲", null, null, "EMP201"));
         fakeDingTalk.addUser(3, new DingUser("dd-202", "厨师乙", null, null, "EMP202"));
+        // Also a canteen member, but this one also belongs to 全校教职工.
+        fakeDingTalk.addUser(3, new DingUser("dd-301", "双部门老师", null, null, "EMP301"));
+        fakeDingTalk.addUser(2, new DingUser("dd-301", "双部门老师", null, null, "EMP301"));
 
         as(token).body(Map.of(
                         "excludedDepartments", List.of("食堂"),
                         "excludedUserIds", List.of("dd-101")))
                 .when().post("/api/integrations/dingtalk/sync/confirm")
                 .then().statusCode(200)
-                .body("created", equalTo(0));
+                .body("created", equalTo(1));
 
-        assertThat(teachers(token)).isEmpty();
+        assertThat(teacherNames(token)).containsExactly("双部门老师");
     }
 
     @Test

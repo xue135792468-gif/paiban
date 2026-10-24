@@ -153,7 +153,10 @@ public class DingTalkSyncPlanner {
         if (decisions.excludedUserIds().contains(user.userId())) {
             return true;
         }
-        return user.departmentNames().stream().anyMatch(decisions.excludedDepartments()::contains);
+        // A user who belongs to another, still-included department must survive the
+        // exclusion: excluding 食堂 must not drop someone who also teaches in 全校教职工.
+        return !user.departmentNames().isEmpty()
+                && user.departmentNames().stream().allMatch(decisions.excludedDepartments()::contains);
     }
 
     private boolean isBlank(String value) {

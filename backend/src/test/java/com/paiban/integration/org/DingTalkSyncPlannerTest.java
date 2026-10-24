@@ -152,6 +152,21 @@ class DingTalkSyncPlannerTest {
     }
 
     @Test
+    void keepsAMultiDepartmentUserWhenOnlyOneOfTheirDepartmentsIsExcluded() {
+        // The loader unions department names; excluding 食堂 must not drop a teacher
+        // who also belongs to 全校教职工.
+        DingUser shared = new DingUser(
+                "dd-1", "王老师", null, null, "EMP1", true, List.of("全校教职工", "食堂"));
+
+        DingTalkSyncPlan plan = planner.plan(
+                directory(shared),
+                new DingTalkSyncDecisions(Set.of("食堂"), Set.of(), Map.of()));
+
+        assertThat(plan.items()).singleElement()
+                .satisfies(item -> assertThat(item.category()).isEqualTo(Category.CREATE));
+    }
+
+    @Test
     void mergesASuspectedUserOnlyWhenTheAdminDecidesSo() {
         Teacher existing = teacher(7, "王老师");
         when(teachers.findByName("王老师")).thenReturn(List.of(existing));
