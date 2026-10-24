@@ -11,6 +11,7 @@ import com.paiban.substitution.web.SubstitutionDtos.RecommendationResponse;
 import com.paiban.substitution.web.SubstitutionDtos.SubstitutionPlanDto;
 import com.paiban.substitution.web.SubstitutionDtos.SubstitutionRecordDto;
 import com.paiban.substitution.web.SubstitutionDtos.SubstitutionRequestDto;
+import com.paiban.substitution.web.SubstitutionDtos.SwapTargetDto;
 import com.paiban.substitution.web.SubstitutionDtos.TeacherStatsDto;
 import jakarta.validation.Valid;
 import java.security.Principal;
@@ -97,6 +98,16 @@ public class SubstitutionController {
     @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_APPROVE + "')")
     public RecommendationResponse recommend(@PathVariable Long id) {
         return recommendations.recommend(id);
+    }
+
+    /** Same-class slots the requester can swap into (no class-wide timetable data). */
+    @GetMapping("/substitution-requests/{id}/swap-targets")
+    @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_SUBMIT + "')")
+    public List<SwapTargetDto> swapTargets(
+            @PathVariable Long id,
+            @RequestParam LocalDate date,
+            Principal principal) {
+        return service.swapTargets(principal.getName(), id, date);
     }
 
     /** Generate (or regenerate) up to three candidate swap cycles for a request. */

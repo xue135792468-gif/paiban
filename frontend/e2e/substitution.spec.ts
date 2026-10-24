@@ -1,5 +1,13 @@
 import { expect, test } from '@playwright/test'
-import { classEntries, newContext, seedSchool, solveAndPublish, uiLogin } from './helpers'
+import {
+  apiCall,
+  apiLogin,
+  classEntries,
+  newContext,
+  seedSchool,
+  solveAndPublish,
+  uiLogin,
+} from './helpers'
 
 function dateForWeekday(dayOfWeek: number) {
   const date = new Date('2025-09-01T00:00:00')
@@ -42,7 +50,14 @@ test('场景 2：教师提交调代 → 教务审批 → 通知与课表叠加',
   await page.locator('.el-dialog .el-form-item', { hasText: '代课教师' }).locator('.el-select').click()
   await page.locator('.el-select-dropdown:visible .el-select-dropdown__item').first().click()
   await page.getByRole('button', { name: '确认批准' }).click()
-  await expect(page.getByText('已批准，调代已生效')).toBeVisible()
+  await expect(page.getByText('已批准，代课已生效')).toBeVisible()
+
+  // A cover is counted separately from a swap: the original teacher was covered
+  // once, and is not credited with any swap participation.
+  const token = await apiLogin(api)
+  const stats = await apiCall(api, token, 'get', `/substitutions/stats?teacherId=${seed.teacherId}`)
+  expect(stats.substitutedOut).toBe(1)
+  expect(stats.swapParticipation).toBe(0)
 
   await page.goto('/substitutions')
   await page.getByRole('tab', { name: '调代记录' }).click()

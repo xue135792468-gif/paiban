@@ -96,8 +96,22 @@ class SwapFlowIntegrationTest extends ApiIntegrationTest {
 
         as(token).when().post("/api/timetable-drafts/" + draftId + "/publish").then().statusCode(200);
 
+        // Publishing copies draft lessons into timetable_entry with new ids, so read
+        // the published ids back by course instead of reusing the draft lesson ids.
+        List<Map<String, Object>> published = as(token)
+                .queryParam("view", "baseline")
+                .when().get("/api/timetable/class/" + class1)
+                .then().statusCode(200).extract().jsonPath().getList("$");
+        Map<Long, Long> entryByCourse = new LinkedHashMap<>();
+        published.forEach(row -> entryByCourse.put(
+                ((Number) row.get("courseId")).longValue(),
+                ((Number) row.get("id")).longValue()));
+        long chineseEntry = entryByCourse.get(courses.get("语文"));
+        long mathEntry = entryByCourse.get(courses.get("数学"));
+        long englishEntry = entryByCourse.get(courses.get("英语"));
+
         return new World(semesterId, class1, class2, periodByNo, teachers, courses, rooms,
-                chinese, math, english);
+                chineseEntry, mathEntry, englishEntry);
     }
 
     private long place(long draftId, long classId, long courseId, long teacherId,

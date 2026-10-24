@@ -34,13 +34,13 @@ export const TOOLTIPS: Record<TooltipKey, string> = {
   'assignment.weeklyLessons':
     '该行政班这门课每周要排的课时数，班级全部课程合计不宜超过一周可排节次。',
   'substitution.approvalMode':
-    '审批模式：申请经教务批准后才生效；直接生效：提交即生效，适合教师自主调代。',
+    '审批模式：代课申请经教务批准后才生效；直接生效：代课提交即生效。调课始终需要教务整单批准。',
   'substitution.effectiveDate':
-    '调代实际生效的日期，课表上这一天的这节课会显示代课教师。',
+    '调代实际生效的日期，课表「最新」视角会显示该日的调整。',
   'timetable.view':
     '最新：包含已生效调代与最近发布的结果；原始：学期初始发布的基线课表，不含调代。',
   'timetable.substitutionMark':
-    '「代」表示该课节已由其他教师代课，悬停可查看原教师与调代原因。',
+    '「调」表示该课节被调课方案挪动，「代」表示由其他教师代课；悬停可查看原教师与原因。',
   'settings.schoolType':
     '初中模式会隐藏权重、模板、多草稿对比等高级功能；切换后页面会自动刷新。',
   'settings.aiProvider':

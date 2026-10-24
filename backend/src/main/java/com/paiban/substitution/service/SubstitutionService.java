@@ -46,6 +46,7 @@ import com.paiban.substitution.web.SubstitutionDtos.PlanMoveDto;
 import com.paiban.substitution.web.SubstitutionDtos.SubstitutionPlanDto;
 import com.paiban.substitution.web.SubstitutionDtos.SubstitutionRecordDto;
 import com.paiban.substitution.web.SubstitutionDtos.SubstitutionRequestDto;
+import com.paiban.substitution.web.SubstitutionDtos.SwapTargetDto;
 import com.paiban.substitution.web.SubstitutionDtos.TeacherStatsDto;
 import com.paiban.timetable.domain.TimetableEntry;
 import com.paiban.timetable.domain.TimetableEntryRepository;
@@ -295,9 +296,41 @@ public class SubstitutionService {
                         .toList());
     }
 
+    /**
+     * Same-class occupied slots the requester can swap into. Deliberately narrow:
+     * a plain teacher cannot read the class timetable, so the form asks only for
+     * the slots it needs to render the target picker.
+     */
     @Transactional(readOnly = true)
-    public List<SubstitutionPlanDto> plansFor(Long requestId, String username) {
-        SubstitutionRequest request = requireRequest(requestId);
+    public List<SwapTargetDto> swapTargets(String username, Long entryId, LocalDate date) {
+        TimetableEntry entry = entries.findById(entryId)
+                .orElseThrow(() -> ApiException.notFound("课节不存在: " + entryId));
+        AppUser user = users.getByUsername(username);
+        boolean admin = users.hasPermission(user, com.paiban.identity.domain.Permissions.SUBSTITUTION_VIEW);
+        if (!admin && !Objects.equals(user.getTeacherId(), entry.getTeacherId())) {
+            throw ApiException.forbidden("只能为自己的课选择目标节次");
+        }
+        if (date == null || date.getDayOfWeek().getValue() != entry.getDayOfWeek()) {
+            throw ApiException.badRequest("目标日期与课节的星期不一致");
+        }
+        PlanSnapshot snapshot = snapshots.build(entry.getSemesterId());
+        Map<Long, SwapTargetDto> byPeriod = new LinkedHashMap<>();
+        for (var lesson : snapshot.scheduleOn(date).ofClass(entry.getAdminClassId())) {
+            if (lesson.entryId() == entryId) {
+                continue;
+            }
+            var course = snapshot.course(lesson.courseId());
+            var teacher = snapshot.teacher(lesson.teacherId());
+            byPeriod.putIfAbsent(lesson.periodId(), new SwapTargetDto(
+                    lesson.periodId(), lesson.periodNo(), lesson.courseId(),
+                    course == null ? null : course.name(), lesson.teacherId(),
+                    teacher == null ? null : teacher.name()));
+        }
+        return new ArrayList<>(byPeriod.values());
+    }
+
+    @Transactional(readOnly = true)
+    public List<SubstitutionPlanDto> plansFor(Long requestId, String username) {        SubstitutionRequest request = requireRequest(requestId);
         AppUser user = users.getByUsername(username);
         boolean approver = users.hasPermission(user, com.paiban.identity.domain.Permissions.SUBSTITUTION_APPROVE);
         if (!approver && !Objects.equals(user.getTeacherId(), request.getRequesterTeacherId())) {

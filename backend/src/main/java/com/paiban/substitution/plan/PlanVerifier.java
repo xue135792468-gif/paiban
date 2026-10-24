@@ -39,6 +39,57 @@ public final class PlanVerifier {
 
     private PlanVerifier() {}
 
+    /**
+     * Compares two weekly baselines (the CLI {@code verify} use case). Every changed
+     * entry becomes a move, so the same invariant checks run, and any added or
+     * removed entry is reported rather than silently accepted.
+     */
+    public static Result verifyDiff(PlanSnapshot before, PlanSnapshot after) {
+        List<Issue> issues = new ArrayList<>();
+        Map<Long, PlanSnapshot.BaselineLesson> afterByEntry = new HashMap<>();
+        after.baseline().forEach(lesson -> afterByEntry.put(lesson.entryId(), lesson));
+        Map<Long, PlanSnapshot.BaselineLesson> beforeByEntry = new HashMap<>();
+        before.baseline().forEach(lesson -> beforeByEntry.put(lesson.entryId(), lesson));
+
+        List<PlanMove> moves = new ArrayList<>();
+        boolean teacherChanged = false;
+        for (PlanSnapshot.BaselineLesson lesson : before.baseline()) {
+            PlanSnapshot.BaselineLesson now = afterByEntry.get(lesson.entryId());
+            if (now == null) {
+                issues.add(new Issue("ENTRY_REMOVED", "课节在改动后消失", lesson.entryId(), lesson.periodId()));
+                continue;
+            }
+            if (now.periodId() == lesson.periodId()
+                    && Objects.equals(now.teacherId(), lesson.teacherId())
+                    && Objects.equals(now.roomId(), lesson.roomId())
+                    && now.courseId() == lesson.courseId()) {
+                continue;
+            }
+            teacherChanged |= now.teacherId() != lesson.teacherId();
+            LocalDate fromDate = dateFor(before, lesson.dayOfWeek());
+            LocalDate toDate = dateFor(after, now.dayOfWeek());
+            moves.add(new PlanMove(
+                    lesson.entryId(), lesson.classId(), lesson.courseId(), now.teacherId(), now.roomId(),
+                    lesson.periodId(), lesson.dayOfWeek(), lesson.periodNo(), fromDate,
+                    now.periodId(), now.dayOfWeek(), now.periodNo(), toDate, moves.size()));
+        }
+        for (PlanSnapshot.BaselineLesson lesson : after.baseline()) {
+            if (!beforeByEntry.containsKey(lesson.entryId())) {
+                issues.add(new Issue("ENTRY_ADDED", "改动后出现了新课时", lesson.entryId(), lesson.periodId()));
+            }
+        }
+        Kind kind = teacherChanged ? Kind.COVER : Kind.SWAP;
+        Result structural = verify(before, moves, kind, -1);
+        List<Issue> all = new ArrayList<>(issues);
+        all.addAll(structural.issues());
+        return new Result(all.isEmpty(), all, structural.softPenalty());
+    }
+
+    private static LocalDate dateFor(PlanSnapshot snapshot, int dayOfWeek) {
+        int startDay = snapshot.semesterStart().getDayOfWeek().getValue();
+        return snapshot.semesterStart().plusDays(Math.floorMod(dayOfWeek - startDay, 7));
+    }
+
     public static Result verify(PlanSnapshot snapshot,
                                 List<PlanMove> moves,
                                 Kind kind,

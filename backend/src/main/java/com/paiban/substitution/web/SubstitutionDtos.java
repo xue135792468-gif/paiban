@@ -99,6 +99,10 @@ public final class SubstitutionDtos {
 
     public record DiagnosisDto(String code, String message, Long entryId, Long periodId) {}
 
+    /** A same-class slot a teacher may move their lesson to; no class-wide data leaks. */
+    public record SwapTargetDto(Long periodId, int periodNo, Long courseId, String courseName,
+                                Long teacherId, String teacherName) {}
+
     public record GeneratePlansResponse(Long requestId,
                                         String rankingPreset,
                                         String rankingPresetLabel,
