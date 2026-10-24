@@ -10,6 +10,10 @@ Issues and specs for this repo live as markdown files in `.scratch/`.
 - Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
 - Comments and conversation history append to the bottom of the file under a `## Comments` heading
 
+## Definition of done
+
+A ticket is done when `/code-review` has run against the branch and `scripts/verify.sh` is green. Deferred review findings get their own follow-up ticket rather than an unchecked box.
+
 ## When a skill says "publish to the issue tracker"
 
 Create a new file under `.scratch/<feature-slug>/` (creating the directory if needed).
