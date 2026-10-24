@@ -311,6 +311,21 @@ cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test
 - **钉钉集成**：`AuthProvider` / `OrgDataProvider` / `NotificationChannel` 三组接口均有本地与钉钉实现；
   钉钉 Stream 增量事件通过 `POST /api/integrations/dingtalk/event` 接收（生产可接官方 Stream SDK 转发）。
   关闭集成后系统完整可用，通知自动降级为系统内消息。
+- **钉钉通讯录递归同步**：从根部门开始递归遍历部门树（`department/listsub`），逐部门分页拉取
+  （`user/list`，`cursor` 翻到底），跨部门按 `userid` 去重。负 id 部门（含 `-7` 家校通讯录）直接跳过。
+  导入范围完全由钉钉侧的通讯录权限与应用可见范围决定，程序没有部门白名单或 `sync-dept-id` 配置。
+  部门名含「离职」或钉钉返回 `active=false` 的用户落库为停用，不进入排课候选；本轮未出现的教师
+  不会被自动停用。匹配顺序为 `dingtalk_user_id` → 工号 → 手机。成功文案带
+  「扫描 N 个部门 / M 人 / 耗时 X ms」，失败文案透传 `errcode` / `sub_code`
+  （IP 白名单拒绝会提示检查服务器出口 IPv4）。
+- **钉钉同步预演与确认**：设置页「预演同步」调用 `POST /api/integrations/dingtalk/sync/preview`
+  （严格只读，不写 `teacher` / `audit_log`），返回新增/补齐/疑似同名/跳过四类结果与按部门分组的明细。
+  可按部门或单人排除（只有用户的所有部门都被排除才会排除该用户）；疑似同名必须选择
+  「合并到同名教师 / 作为新教师导入 / 本次跳过」，缺省跳过，绝不自动合并。命中的教师只补空字段，
+  本地非空值不覆盖，冲突在明细中标出。
+  `POST /api/integrations/dingtalk/sync/confirm` 确认写库并记 `DINGTALK_SYNC` 审计；
+  `POST /api/integrations/dingtalk/sync` 保留为「安全默认」的一键同步。
+  钉钉的 `sync-strategy` 设置不再影响合并语义（字段保留仅为兼容旧配置）。
 - **飞书集成**：与钉钉同一组接口的飞书实现；设置中心「飞书集成」卡片可配置 App ID / App Secret /
   验证 Token 与同步策略（`feishu` 飞书为准、`local` 本地为准），并手动触发全量同步
   （`POST /api/integrations/feishu/sync`）与查看 `FEISHU_SYNC` 同步日志。
@@ -350,7 +365,8 @@ cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test
 
 - **钉钉 Stream 长连接**：一期未内嵌官方 Stream SDK。增量事件通过
   `POST /api/integrations/dingtalk/event`（需 `X-DingTalk-Token`，值为设置中心的“事件令牌”）接收，
-  生产环境可用官方 SDK 将事件转发到该端点；全量同步走 `POST /api/integrations/dingtalk/sync`。
+  生产环境可用官方 SDK 将事件转发到该端点；全量同步走 `POST /api/integrations/dingtalk/sync`
+  （设置页走「预演 → 确认」两步，见上文）。
 - **飞书 Stream 长连接**：本仓库未内嵌官方飞书 Stream SDK，也不自行维护 WebSocket 长连接。
   增量事件由 `POST /api/integrations/feishu/event` 接收（需 `X-Feishu-Token`，值为设置中心的“验证 Token”），
   生产环境可用官方 Stream SDK 订阅 `contact.user.created_v3` / `updated_v3` / `deleted_v3`

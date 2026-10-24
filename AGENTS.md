@@ -39,4 +39,19 @@
 - 多票据 worktree：用 `scripts/worktree-add.sh <name> <branch> [base]` 创建、`scripts/worktree-remove.sh <name>` 清理；脚本会处理 `frontend/node_modules` junction，不要直接 `rm -rf`（会顺着 junction 删主仓库依赖）。Maven 用 `.tools/env.sh` 的绝对路径（worktree 内没有 `.tools`）
 - 多个会话并行时各自开 worktree，主仓库只用于合并；提交只 stage 本任务路径（用 `git add <path>`，不要 `git add -A`），别把另一个会话的未提交改动带进自己的提交
 - 性能基准（ADR-0017，约 3 分钟）：`cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test`
+
+## Agent skills
+
+### Issue tracker
+
+票据与规格以本地 markdown 记录在 `.scratch/<feature>/`，每张票据一个文件。See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+沿用五个默认 triage 角色（`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`）。See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+单上下文：根 `GLOSSARY.md` + `docs/adr/`。See `docs/agents/domain.md`.
+
 - Git Bash 下 `git show branch:path` 会被路径转换改写，前面加 `MSYS_NO_PATHCONV=1`

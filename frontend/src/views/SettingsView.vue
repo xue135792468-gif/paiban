@@ -102,18 +102,14 @@
             placeholder="用于校验 /integrations/dingtalk/event 回调（X-DingTalk-Token）"
           />
         </el-form-item>
-        <el-form-item v-if="!isJunior" label="同步策略">
-          <el-select v-model="dingtalk.syncStrategy" style="width: 220px">
-            <el-option label="钉钉为准（覆盖本地）" value="dingtalk" />
-            <el-option label="本地为准（只补空字段）" value="local" />
-          </el-select>
-        </el-form-item>
         <el-form-item>
           <el-button type="primary" :loading="savingDingtalk" @click="saveDingtalk">保存钉钉配置</el-button>
-          <el-button :loading="syncing" :disabled="!dingtalk.enabled" @click="sync">立即同步教职工</el-button>
+          <el-button :loading="previewing" :disabled="!dingtalk.enabled" @click="previewSync">预演同步</el-button>
+          <span class="hint inline">只补齐空字段，冲突与疑似同名在预演中确认</span>
         </el-form-item>
       </el-form>
-      <el-alert v-if="syncResult" :title="syncResult.message" type="success" :closable="false" show-icon class="sync-result" />
+      <el-alert v-if="syncResult" :title="syncResult.message" :type="syncResult.success ? 'success' : 'error'" :closable="false" show-icon class="sync-result" />
+      <DingTalkSyncPreview v-if="syncPreview" :preview="syncPreview" :confirming="confirming" @confirm="confirmSync" />
       <el-collapse class="logs">
         <el-collapse-item title="同步日志" name="logs">
           <el-table v-loading="loadingLogs" :data="logs" size="small" border>
@@ -175,14 +171,7 @@
           </el-button>
         </el-form-item>
       </el-form>
-      <el-alert
-        v-if="feishuSyncResult"
-        :title="feishuSyncResult.message"
-        type="success"
-        :closable="false"
-        show-icon
-        class="sync-result"
-      />
+      <el-alert v-if="feishuSyncResult" :title="feishuSyncResult.message" :type="feishuSyncResult.success ? 'success' : 'error'" :closable="false" show-icon class="sync-result" />
       <el-collapse class="logs">
         <el-collapse-item title="同步日志" name="feishu-logs">
           <el-table v-loading="loadingFeishuLogs" :data="feishuLogs" size="small" border>
@@ -280,34 +269,22 @@ import { http } from '@/api/http'
 import { useSettingsStore } from '@/stores/settings'
 import ImPlatformCard from '@/components/ImPlatformCard.vue'
 import InfoTooltip from '@/components/InfoTooltip.vue'
+import DingTalkSyncPreview from '@/components/DingTalkSyncPreview.vue'
 import { resetTour, startTour } from '@/onboarding/tour'
 import { serverMessage } from '@/api/errors'
-
-interface DingTalkConfig {
-  enabled: boolean
-  appKey: string
-  appSecret?: string
-  hasSecret: boolean
-  agentId: string
-  corpId?: string
-  syncStrategy: string
-}
+import type {
+  DingTalkConfig,
+  FeishuConfig,
+  SyncConfirmRequest,
+  SyncPreview,
+  SyncResult,
+} from '@/api/integration'
 
 interface SyncLog {
   id: number
   createdAt: string
   detail: string
   successRows: number
-}
-
-interface FeishuConfig {
-  enabled: boolean
-  appId: string
-  appSecret?: string
-  hasSecret: boolean
-  syncStrategy: string
-  verificationToken?: string
-  verificationTokenConfigured: boolean
 }
 
 const form = reactive<Record<string, string>>({})
@@ -323,7 +300,8 @@ const dingtalk = reactive<DingTalkConfig>({
   syncStrategy: 'dingtalk',
 })
 const logs = ref<SyncLog[]>([])
-const syncResult = ref<{ created: number; updated: number; deactivated: number; message: string } | null>(null)
+const syncResult = ref<SyncResult | null>(null)
+const syncPreview = ref<SyncPreview | null>(null)
 const feishu = reactive<FeishuConfig>({
   enabled: false,
   appId: '',
@@ -334,15 +312,11 @@ const feishu = reactive<FeishuConfig>({
   verificationTokenConfigured: false,
 })
 const feishuLogs = ref<SyncLog[]>([])
-const feishuSyncResult = ref<{
-  created: number
-  updated: number
-  deactivated: number
-  message: string
-} | null>(null)
+const feishuSyncResult = ref<SyncResult | null>(null)
 const saving = ref(false)
 const savingDingtalk = ref(false)
-const syncing = ref(false)
+const previewing = ref(false)
+const confirming = ref(false)
 const savingFeishu = ref(false)
 const syncingFeishu = ref(false)
 const uploading = ref(false)
@@ -487,17 +461,38 @@ async function saveDingtalk() {
   }
 }
 
-async function sync() {
-  syncing.value = true
+async function previewSync() {
+  previewing.value = true
+  syncResult.value = null
   try {
-    const { data } = await http.post('/integrations/dingtalk/sync')
+    const { data } = await http.post<SyncPreview>('/integrations/dingtalk/sync/preview')
+    syncPreview.value = data
+    if (!data.success) {
+      ElMessage.error(data.message)
+    }
+  } catch (e: any) {
+    ElMessage.error(serverMessage(e, '预演失败'))
+  } finally {
+    previewing.value = false
+  }
+}
+
+async function confirmSync(request: SyncConfirmRequest) {
+  confirming.value = true
+  try {
+    const { data } = await http.post<SyncResult>('/integrations/dingtalk/sync/confirm', request)
     syncResult.value = data
-    ElMessage.success(data.message)
+    if (data.success) {
+      ElMessage.success(data.message)
+      syncPreview.value = null
+    } else {
+      ElMessage.error(data.message)
+    }
     await loadLogs()
   } catch (e: any) {
     ElMessage.error(serverMessage(e, '同步失败'))
   } finally {
-    syncing.value = false
+    confirming.value = false
   }
 }
 
@@ -526,9 +521,13 @@ async function saveFeishu() {
 async function syncFeishu() {
   syncingFeishu.value = true
   try {
-    const { data } = await http.post('/integrations/feishu/sync')
+    const { data } = await http.post<SyncResult>('/integrations/feishu/sync')
     feishuSyncResult.value = data
-    ElMessage.success(data.message)
+    if (data.success) {
+      ElMessage.success(data.message)
+    } else {
+      ElMessage.error(data.message)
+    }
     await loadFeishuLogs()
   } catch (e: any) {
     ElMessage.error(serverMessage(e, '同步失败'))

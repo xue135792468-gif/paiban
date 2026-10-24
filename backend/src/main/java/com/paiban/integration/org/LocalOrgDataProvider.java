@@ -12,6 +12,6 @@ public class LocalOrgDataProvider implements OrgDataProvider {
 
     @Override
     public OrgSyncResult sync() {
-        return new OrgSyncResult(0, 0, 0, "本地模式无需同步");
+        return OrgSyncResult.ok(0, 0, 0, "本地模式无需同步");
     }
 }
