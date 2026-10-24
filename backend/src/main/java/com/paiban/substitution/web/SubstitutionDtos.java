@@ -58,7 +58,8 @@ public final class SubstitutionDtos {
                                         int toDayOfWeek, int toPeriodNo, String toPeriodLabel) {}
 
     public record TeacherStatsDto(Long teacherId, String teacherName, long substitutedOut,
-                                  long substitutedIn, long swapParticipation) {}
+                                  long substitutedIn, long swapParticipation,
+                                  long weeklyLessons, long netLessons) {}
 
     /** One lesson moved by a plan, with display names resolved for the UI. */
     public record PlanMoveDto(Long id,

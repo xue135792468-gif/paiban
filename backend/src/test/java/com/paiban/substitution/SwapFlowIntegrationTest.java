@@ -216,12 +216,16 @@ class SwapFlowIntegrationTest extends ApiIntegrationTest {
                 .body("planId", org.hamcrest.Matchers.everyItem(equalTo((int) planId)));
         for (long teacherId : List.of(world.teachers().get("A"), world.teachers().get("B"),
                 world.teachers().get("C"))) {
-            as(admin).queryParam("teacherId", teacherId)
+            Response stats = as(admin).queryParam("teacherId", teacherId)
                     .when().get("/api/substitutions/stats")
                     .then().statusCode(200)
                     .body("substitutedOut", equalTo(0))
                     .body("substitutedIn", equalTo(0))
-                    .body("swapParticipation", equalTo(1));
+                    .body("swapParticipation", equalTo(1))
+                    .extract().response();
+            // A swap moves the slot, not the teacher's weekly load.
+            assertThat(stats.jsonPath().getInt("netLessons"))
+                    .isEqualTo(stats.jsonPath().getInt("weeklyLessons"));
         }
 
         // The plan's reported soft score is what the verifier recomputed.

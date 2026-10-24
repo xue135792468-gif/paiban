@@ -36,9 +36,12 @@ public class SubstitutionAuditService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void planFailure(Long planId, String status, String actor, String action,
-                            String detail, boolean alert) {
+                            String detail, boolean alert, Long requesterTeacherId) {
         plans.findById(planId).ifPresent(plan -> plan.setStatus(status));
         record(actor, action, "SUBSTITUTION_PLAN", detail, alert);
+        if (requesterTeacherId != null) {
+            notifications.substitutionPlanFailed(requesterTeacherId, detail);
+        }
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

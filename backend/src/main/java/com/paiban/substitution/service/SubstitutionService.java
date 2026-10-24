@@ -379,7 +379,8 @@ public class SubstitutionService {
                     .map(issue -> issue.code() + ": " + issue.message())
                     .collect(Collectors.joining("；"));
             audits.planFailure(planId, SubstitutionPlan.REJECTED, username,
-                    "SUBSTITUTION_PLAN_VERIFY_FAILED", detail, true);
+                    "SUBSTITUTION_PLAN_VERIFY_FAILED", detail, true,
+                    request.getRequesterTeacherId());
             throw ApiException.conflict("方案未通过校验，整单不生效：" + detail);
         }
 
@@ -669,8 +670,13 @@ public class SubstitutionService {
         long in = substitutions.countBySemesterIdAndSubstituteTeacherIdAndTypeAndStatus(
                 semesterId, teacherId, Substitution.TYPE_COVER, Substitution.EFFECTIVE);
         long swaps = substitutions.countSwapPlans(semesterId, teacherId);
+        long weeklyLessons = entries.findBySemesterIdAndTeacherId(semesterId, teacherId).size();
+        // A cover moves one lesson from the original teacher to the substitute; a
+        // swap only moves the slot, so the teacher's load is unchanged.
+        long netLessons = weeklyLessons + in - out;
         Teacher teacher = teachers.findById(teacherId).orElse(null);
-        return new TeacherStatsDto(teacherId, teacher == null ? null : teacher.getName(), out, in, swaps);
+        return new TeacherStatsDto(teacherId, teacher == null ? null : teacher.getName(),
+                out, in, swaps, weeklyLessons, netLessons);
     }
 
     /** Row lock on the semester: all substitution writes in it are serialised. */

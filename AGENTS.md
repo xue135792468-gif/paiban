@@ -21,7 +21,7 @@
 | `foundation/` | 学期/作息、年级/班级/教师/教室/课程、Excel 导入 |
 | `scheduling/` | 授课任务、约束、Timefold 求解、草稿；任务生命周期在 `service/SchedulingService.java` |
 | `timetable/` | 基线发布（发布后只读）、四视角视图、导出 |
-| `substitution/` | 调代申请/审批、叠加视图 |
+| `substitution/` | 调代申请/审批、置换环方案与独立校验、只读 CLI；纯求解器在 `substitution/plan` |
 | `notification/` | 模板、站内通知、钉钉降级 |
 | `integration/` | 钉钉（可选，关闭后系统完整可用） |
 | `onboarding/` | 初始化向导 |

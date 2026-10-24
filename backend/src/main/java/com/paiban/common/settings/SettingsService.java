@@ -18,6 +18,8 @@ public class SettingsService {
     public static final String SUBSTITUTION_SEARCH_WINDOW_DAYS = "substitution.search-window-days";
     public static final String SUBSTITUTION_MAX_PLAN_TEACHERS = "substitution.max-plan-teachers";
     public static final String SUBSTITUTION_RANKING_PRESET = "substitution.ranking-preset";
+    /** Extra notification recipients, stored as a comma-separated list of user ids. */
+    public static final String SUBSTITUTION_NOTIFY_RECIPIENTS = "substitution.notify.recipients";
     public static final String NOTIFICATION_SCOPE = "notification.scope";
     public static final String DINGTALK_ENABLED = "integration.dingtalk.enabled";
     public static final String DINGTALK_APP_KEY = "integration.dingtalk.app-key";
@@ -120,6 +122,23 @@ public class SettingsService {
             case "min-impact", "min-teachers", "stable-timetable" -> value;
             default -> "min-impact";
         };
+    }
+
+    /** User accounts that always receive substitution notices, on top of the scope. */
+    public java.util.List<Long> substitutionRecipientUserIds() {
+        String raw = get(SUBSTITUTION_NOTIFY_RECIPIENTS, "");
+        if (raw.isBlank()) {
+            return java.util.List.of();
+        }
+        java.util.List<Long> ids = new java.util.ArrayList<>();
+        for (String part : raw.split(",")) {
+            try {
+                ids.add(Long.parseLong(part.trim()));
+            } catch (NumberFormatException ignored) {
+                // A stale or hand-edited value must never break notifications.
+            }
+        }
+        return ids;
     }
 
     private int clampInt(String raw, int min, int max, int fallback) {

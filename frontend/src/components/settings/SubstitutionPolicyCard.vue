@@ -36,8 +36,8 @@
       <el-form-item label="通知范围">
         <el-select v-model="form['notification.scope']" style="width: 260px">
           <el-option label="当事人（原教师 + 代课教师 + 班主任）" value="minimal" />
-          <el-option label="含年级组长（一期未建模，等同当事人）" value="with-grade-leader" />
           <el-option label="含教务（增加教务管理员）" value="with-admin" />
+          <el-option label="含年级组长（兼容旧值，等同当事人 + 下方额外收件人）" value="with-grade-leader" />
         </el-select>
       </el-form-item>
     </el-form>

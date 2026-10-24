@@ -38,9 +38,8 @@
         </el-form-item>
       </el-form>
     </el-card>
-
     <SubstitutionPolicyCard v-model="form" />
-
+    <SubstitutionRecipientsCard />
     <ImPlatformCard @switched="reloadIntegrations" />
 
     <el-card id="dingtalk-integration" shadow="never">
@@ -248,6 +247,7 @@ import { useSettingsStore } from '@/stores/settings'
 import ImPlatformCard from '@/components/ImPlatformCard.vue'
 import InfoTooltip from '@/components/InfoTooltip.vue'
 import SubstitutionPolicyCard from '@/components/settings/SubstitutionPolicyCard.vue'
+import SubstitutionRecipientsCard from '@/components/settings/SubstitutionRecipientsCard.vue'
 import DingTalkSyncPreview from '@/components/DingTalkSyncPreview.vue'
 import { resetTour, startTour } from '@/onboarding/tour'
 import { serverMessage } from '@/api/errors'

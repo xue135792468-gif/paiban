@@ -16,6 +16,7 @@ public final class NotificationTemplates {
     public static final String SUBSTITUTION_SWAP_HEAD_TEACHER = "SUBSTITUTION_SWAP_HEAD_TEACHER";
     public static final String SUBSTITUTION_SWAP_ADMIN = "SUBSTITUTION_SWAP_ADMIN";
     public static final String SUBSTITUTION_VERIFY_ALERT = "SUBSTITUTION_VERIFY_ALERT";
+    public static final String SUBSTITUTION_PLAN_FAILED = "SUBSTITUTION_PLAN_FAILED";
     public static final String TIMETABLE_PUBLISHED = "TIMETABLE_PUBLISHED";
 
     private static final Map<String, Template> TEMPLATES = new LinkedHashMap<>();
@@ -52,6 +53,9 @@ public final class NotificationTemplates {
         TEMPLATES.put(SUBSTITUTION_SWAP_ADMIN, new Template(
                 "调课方案已生效",
                 "[[${className}]]：[[${details}]]。"));
+        TEMPLATES.put(SUBSTITUTION_PLAN_FAILED, new Template(
+                "调课方案未通过校验",
+                "您的调课申请未能生成可生效的方案：[[${details}]]。请重新选择时间后再提交。"));
         TEMPLATES.put(SUBSTITUTION_VERIFY_ALERT, new Template(
                 "调课方案校验失败",
                 "一笔调课方案在批准前校验失败，已整单拒绝：[[${details}]]。请检查课表数据。"));
