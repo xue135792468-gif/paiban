@@ -4,11 +4,13 @@
 
 **Blocked by:** 04, 05, 06, 07
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Playwright 覆盖调课全流程：提交 → 生成方案 → 选择 → 批准 → 课表显示「调」→ 记录可查
-- [ ] Playwright 覆盖跨天调课至少一条（周五的课换到下周一至周四）
-- [ ] Playwright 覆盖代课全流程：提交 → 批准 → 课表显示「代」→ 统计区分
-- [ ] 帮助中心更新：调代课总览、调课/代课区别、方案卡各字段含义、搜索窗口与排序预设、常见无解原因
-- [ ] CLI 文档：`plan` / `verify` 的输入输出示例、退出码、schemaVersion
-- [ ] `scripts/verify.sh --full` 全绿
+- [x] Playwright 覆盖调课全流程：提交 → 生成方案 → 选择 → 批准 → 课表显示「调」→ 记录可查
+- [x] Playwright 覆盖跨天调课至少一条（周五的课换到下周一至周四）
+- [x] Playwright 覆盖代课全流程：提交 → 批准 → 课表显示「代」→ 统计区分
+- [x] 帮助中心更新：调代课总览、调课/代课区别、方案卡各字段含义、搜索窗口与排序预设、常见无解原因
+- [x] CLI 文档：`plan` / `verify` 的输入输出示例、退出码、schemaVersion
+- [x] `scripts/verify.sh --full` 全绿
+
+**实现说明：** 新增 `e2e/substitution-swap.spec.ts`：9a 同日调课全流程（提交→生成→整单批准→课表「调」→记录/统计），9b 周五跨天到下周（影响 2 天）；代课 E2E 增加统计分离断言。帮助中心更新调代总览、调课/代课区别、方案卡字段、窗口与排序预设、常见无解原因与 CLI 用法；设置页与 tooltip 同步。`scripts/verify.sh --full` 全绿（44 条 Playwright）。
