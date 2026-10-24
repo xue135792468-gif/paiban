@@ -72,7 +72,7 @@ public class DingTalkApiException extends RuntimeException {
             text.append("，sub_code=").append(subCode);
         }
         if (errorMessage != null && !errorMessage.isBlank()) {
-            text.append("，").append(errorMessage);
+            text.append("，").append(redact(errorMessage));
         }
         if (subCode == IP_WHITELIST_SUB_CODE) {
             text.append("。钉钉拒绝了服务器出口 IP，请把服务器 IPv4 加入该应用的 IP 白名单后重试");

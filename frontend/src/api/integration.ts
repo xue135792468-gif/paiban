@@ -102,3 +102,21 @@ export interface SyncConfirmRequest {
   excludedUserIds: string[]
   suspectedDecisions: SuspectedDecision[]
 }
+
+/**
+ * Mirrors the backend exclusion rule: a user is dropped only when every department
+ * they belong to is excluded (or when the user is explicitly excluded).
+ */
+export function isUserIncluded(
+  item: Pick<SyncItem, 'userId' | 'departments'>,
+  excludedDepartments: string[],
+  excludedUserIds: string[],
+): boolean {
+  if (excludedUserIds.includes(item.userId)) {
+    return false
+  }
+  if (item.departments.length === 0) {
+    return true
+  }
+  return !item.departments.every((department) => excludedDepartments.includes(department))
+}

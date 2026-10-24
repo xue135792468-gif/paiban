@@ -120,6 +120,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import { isUserIncluded } from '@/api/integration'
 import type {
   SyncCandidate,
   SyncConfirmRequest,
@@ -178,8 +179,7 @@ function allItems(preview: SyncPreview): SyncItem[] {
 }
 
 function included(item: SyncItem): boolean {
-  if (excludedUserIds.value.includes(item.userId)) return false
-  return !item.departments.some((department) => excludedDepartments.value.includes(department))
+  return isUserIncluded(item, excludedDepartments.value, excludedUserIds.value)
 }
 
 function toggleDepartment(department: string) {

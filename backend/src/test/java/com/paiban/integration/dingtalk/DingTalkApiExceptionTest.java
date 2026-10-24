@@ -59,4 +59,12 @@ class DingTalkApiExceptionTest {
         assertThat(DingTalkApiException.redact(null)).isNull();
         assertThat(DingTalkApiException.redact("no token here")).isEqualTo("no token here");
     }
+
+    @Test
+    void redactsTokensEchoedInTheDingTalkErrorMessage() {
+        DingTalkApiException error = new DingTalkApiException(
+                "拉取部门用户", 88, 60020, "bad token for https://x?access_token=secret&y=1");
+
+        assertThat(error.getMessage()).doesNotContain("secret").contains("access_token=***");
+    }
 }
