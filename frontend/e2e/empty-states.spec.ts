@@ -212,7 +212,7 @@ test('调代待审批与调代记录为空时显示引导', async ({ page }) => 
   await page.getByRole('tab', { name: '调代记录' }).click()
   await expectGuide(page, {
     title: '还没有调代记录',
-    href: '/help/substitution#apply',
+    href: '/help/substitution#records',
   })
 })
 

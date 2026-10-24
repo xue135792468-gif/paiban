@@ -217,6 +217,8 @@ public class TimetableViewService {
                 section,
                 periodLabel,
                 true,
+                substitution.getType() == null
+                        ? com.paiban.substitution.domain.Substitution.TYPE_COVER : substitution.getType(),
                 substitution.getSubstituteTeacherId(),
                 substitute == null ? null : substitute.getName(),
                 teachers.findById(substitution.getOriginalTeacherId())
@@ -263,6 +265,7 @@ public class TimetableViewService {
                     period == null ? null : period.getSection().name(),
                     "周" + entry.getDayOfWeek() + "第" + entry.getPeriodNo() + "节",
                     false,
+                    null,
                     null,
                     null,
                     null,

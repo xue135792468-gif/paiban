@@ -15,6 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class SettingsService {
 
     public static final String SUBSTITUTION_APPROVAL_MODE = "substitution.approval-mode";
+    public static final String SUBSTITUTION_SEARCH_WINDOW_DAYS = "substitution.search-window-days";
+    public static final String SUBSTITUTION_MAX_PLAN_TEACHERS = "substitution.max-plan-teachers";
+    public static final String SUBSTITUTION_RANKING_PRESET = "substitution.ranking-preset";
     public static final String NOTIFICATION_SCOPE = "notification.scope";
     public static final String DINGTALK_ENABLED = "integration.dingtalk.enabled";
     public static final String DINGTALK_APP_KEY = "integration.dingtalk.app-key";
@@ -98,6 +101,33 @@ public class SettingsService {
 
     public String approvalMode() {
         return get(SUBSTITUTION_APPROVAL_MODE, defaultApprovalMode);
+    }
+
+    /** Cross-day swap search window in natural days; 7 by default, 1-30. */
+    public int substitutionSearchWindowDays() {
+        return clampInt(get(SUBSTITUTION_SEARCH_WINDOW_DAYS, "7"), 1, 30, 7);
+    }
+
+    /** Hard cap on swap-cycle length; 6 by default, 2-10. */
+    public int substitutionMaxPlanTeachers() {
+        return clampInt(get(SUBSTITUTION_MAX_PLAN_TEACHERS, "6"), 2, 10, 6);
+    }
+
+    /** min-impact | min-teachers | stable-timetable. */
+    public String substitutionRankingPreset() {
+        String value = get(SUBSTITUTION_RANKING_PRESET, "min-impact");
+        return switch (value) {
+            case "min-impact", "min-teachers", "stable-timetable" -> value;
+            default -> "min-impact";
+        };
+    }
+
+    private int clampInt(String raw, int min, int max, int fallback) {
+        try {
+            return Math.max(min, Math.min(max, Integer.parseInt(raw.trim())));
+        } catch (NumberFormatException ex) {
+            return fallback;
+        }
     }
 
     public String notificationScope() {
@@ -230,6 +260,9 @@ public class SettingsService {
     public Map<String, String> all() {
         Map<String, String> values = new LinkedHashMap<>();
         values.put(SUBSTITUTION_APPROVAL_MODE, approvalMode());
+        values.put(SUBSTITUTION_SEARCH_WINDOW_DAYS, String.valueOf(substitutionSearchWindowDays()));
+        values.put(SUBSTITUTION_MAX_PLAN_TEACHERS, String.valueOf(substitutionMaxPlanTeachers()));
+        values.put(SUBSTITUTION_RANKING_PRESET, substitutionRankingPreset());
         values.put(NOTIFICATION_SCOPE, notificationScope());
         values.put(DINGTALK_ENABLED, String.valueOf(dingtalkEnabled()));
         values.put(DINGTALK_APP_KEY, dingtalkAppKey());

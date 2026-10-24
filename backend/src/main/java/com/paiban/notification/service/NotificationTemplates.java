@@ -12,6 +12,10 @@ public final class NotificationTemplates {
     public static final String SUBSTITUTION_EFFECTIVE_HEAD_TEACHER = "SUBSTITUTION_EFFECTIVE_HEAD_TEACHER";
     public static final String SUBSTITUTION_EFFECTIVE_ADMIN = "SUBSTITUTION_EFFECTIVE_ADMIN";
     public static final String SUBSTITUTION_REJECTED = "SUBSTITUTION_REJECTED";
+    public static final String SUBSTITUTION_SWAP_EFFECTIVE = "SUBSTITUTION_SWAP_EFFECTIVE";
+    public static final String SUBSTITUTION_SWAP_HEAD_TEACHER = "SUBSTITUTION_SWAP_HEAD_TEACHER";
+    public static final String SUBSTITUTION_SWAP_ADMIN = "SUBSTITUTION_SWAP_ADMIN";
+    public static final String SUBSTITUTION_VERIFY_ALERT = "SUBSTITUTION_VERIFY_ALERT";
     public static final String TIMETABLE_PUBLISHED = "TIMETABLE_PUBLISHED";
 
     private static final Map<String, Template> TEMPLATES = new LinkedHashMap<>();
@@ -39,6 +43,18 @@ public final class NotificationTemplates {
         TEMPLATES.put(TIMETABLE_PUBLISHED, new Template(
                 "课表已发布",
                 "[[${semesterName}]] 的课表已发布，可在「课表」中查看最新安排。"));
+        TEMPLATES.put(SUBSTITUTION_SWAP_EFFECTIVE, new Template(
+                "您的调课已生效",
+                "您参与的调课已整单批准：[[${details}]]。"));
+        TEMPLATES.put(SUBSTITUTION_SWAP_HEAD_TEACHER, new Template(
+                "本班课表有调课",
+                "[[${className}]] 的调课已生效：[[${details}]]。"));
+        TEMPLATES.put(SUBSTITUTION_SWAP_ADMIN, new Template(
+                "调课方案已生效",
+                "[[${className}]]：[[${details}]]。"));
+        TEMPLATES.put(SUBSTITUTION_VERIFY_ALERT, new Template(
+                "调课方案校验失败",
+                "一笔调课方案在批准前校验失败，已整单拒绝：[[${details}]]。请检查课表数据。"));
     }
 
     private NotificationTemplates() {}

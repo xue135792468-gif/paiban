@@ -39,29 +39,7 @@
       </el-form>
     </el-card>
 
-    <el-card shadow="never">
-      <template #header><span class="card-title">调代与通知</span></template>
-      <el-form label-width="110px" class="form">
-        <el-form-item>
-          <template #label>
-            审批模式
-            <InfoTooltip field="substitution.approvalMode" />
-          </template>
-          <el-radio-group v-model="form['substitution.approval-mode']">
-            <el-radio-button value="approval">审批模式</el-radio-button>
-            <el-radio-button value="direct">直接生效</el-radio-button>
-          </el-radio-group>
-          <div class="hint">切换只影响新提交的申请，已在流程中的申请按提交时的模式走完。</div>
-        </el-form-item>
-        <el-form-item label="通知范围">
-          <el-select v-model="form['notification.scope']" style="width: 260px">
-            <el-option label="当事人（原教师 + 代课教师 + 班主任）" value="minimal" />
-            <el-option label="含年级组长（一期未建模，等同当事人）" value="with-grade-leader" />
-            <el-option label="含教务（增加教务管理员）" value="with-admin" />
-          </el-select>
-        </el-form-item>
-      </el-form>
-    </el-card>
+    <SubstitutionPolicyCard v-model="form" />
 
     <ImPlatformCard @switched="reloadIntegrations" />
 
@@ -269,6 +247,7 @@ import { http } from '@/api/http'
 import { useSettingsStore } from '@/stores/settings'
 import ImPlatformCard from '@/components/ImPlatformCard.vue'
 import InfoTooltip from '@/components/InfoTooltip.vue'
+import SubstitutionPolicyCard from '@/components/settings/SubstitutionPolicyCard.vue'
 import DingTalkSyncPreview from '@/components/DingTalkSyncPreview.vue'
 import { resetTour, startTour } from '@/onboarding/tour'
 import { serverMessage } from '@/api/errors'
@@ -287,7 +266,7 @@ interface SyncLog {
   successRows: number
 }
 
-const form = reactive<Record<string, string>>({})
+const form = ref<Record<string, string>>({})
 const settings = useSettingsStore()
 const isJunior = computed(() => settings.schoolType === 'junior')
 const dingtalk = reactive<DingTalkConfig>({
@@ -325,14 +304,14 @@ const loadingFeishuLogs = ref(false)
 const router = useRouter()
 
 const logoName = computed(() => {
-  const path = form['school.logo-path']
+  const path = form.value['school.logo-path']
   return path ? path.split(/[\\/]/).pop() : ''
 })
 
-const confidenceThreshold = computed(() => Number(form['ai.import.confidence-threshold'] ?? 0.8))
+const confidenceThreshold = computed(() => Number(form.value['ai.import.confidence-threshold'] ?? 0.8))
 
 function setConfidenceThreshold(value: number | undefined) {
-  form['ai.import.confidence-threshold'] = String(value ?? 0.8)
+  form.value['ai.import.confidence-threshold'] = String(value ?? 0.8)
 }
 
 function reopenTour() {
@@ -343,8 +322,8 @@ function reopenTour() {
 // ADR-0003: AI entry points are hidden entirely while every feature is off.
 const aiEnabled = computed(
   () =>
-    form['ai.features.substitute-recommendation'] === 'true' ||
-    form['ai.features.natural-language-constraints'] === 'true',
+    form.value['ai.features.substitute-recommendation'] === 'true' ||
+    form.value['ai.features.natural-language-constraints'] === 'true',
 )
 
 function formatTime(value: string) {
@@ -354,7 +333,7 @@ function formatTime(value: string) {
 async function loadSettings() {
   const { data } = await http.get('/settings')
   Object.keys(data).forEach((key) => {
-    form[key] = data[key]
+    form.value[key] = data[key]
   })
 }
 
@@ -403,7 +382,7 @@ async function reloadIntegrations() {
 }
 
 async function saveSettings() {
-  const typeChanged = (form['school.type'] ?? 'junior') !== settings.schoolType
+  const typeChanged = (form.value['school.type'] ?? 'junior') !== settings.schoolType
   if (typeChanged) {
     try {
       await ElMessageBox.confirm(
@@ -420,12 +399,12 @@ async function saveSettings() {
   try {
     // Read-only settings: the logo is written by the upload endpoint, and the
     // active IM platform only by PUT /integrations/platform.
-    const payload = { ...form }
+    const payload = { ...form.value }
     delete payload['school.logo-path']
     delete payload['integration.active-platform']
     const { data } = await http.put('/settings', payload)
     Object.keys(data).forEach((key) => {
-      form[key] = data[key]
+      form.value[key] = data[key]
     })
     if (typeChanged) {
       location.reload()
@@ -544,7 +523,7 @@ async function uploadLogo(upload: UploadFile) {
     body.append('file', upload.raw)
     const { data } = await http.post('/settings/logo', body)
     Object.keys(data).forEach((key) => {
-      form[key] = data[key]
+      form.value[key] = data[key]
     })
     ElMessage.success('Logo 已上传')
   } catch (e: any) {

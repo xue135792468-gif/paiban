@@ -24,6 +24,9 @@ public class SettingsController {
 
     private static final List<String> EDITABLE = List.of(
             SettingsService.SUBSTITUTION_APPROVAL_MODE,
+            SettingsService.SUBSTITUTION_SEARCH_WINDOW_DAYS,
+            SettingsService.SUBSTITUTION_MAX_PLAN_TEACHERS,
+            SettingsService.SUBSTITUTION_RANKING_PRESET,
             SettingsService.NOTIFICATION_SCOPE,
             SettingsService.DINGTALK_ENABLED,
             SettingsService.DINGTALK_APP_KEY,
@@ -115,10 +118,31 @@ public class SettingsController {
         throw ApiException.badRequest("只支持 PNG / JPG 图片（不允许 SVG）");
     }
 
+    private void requireIntInRange(String key, String value, int min, int max, String message) {
+        try {
+            int number = Integer.parseInt(value.trim());
+            if (number < min || number > max) {
+                throw ApiException.badRequest(message);
+            }
+        } catch (NumberFormatException ex) {
+            throw ApiException.badRequest(message);
+        }
+    }
+
     private void validate(String key, String value) {
         if (SettingsService.SUBSTITUTION_APPROVAL_MODE.equals(key)
                 && !List.of("approval", "direct").contains(value)) {
             throw ApiException.badRequest("审批模式只能是 approval 或 direct");
+        }
+        if (SettingsService.SUBSTITUTION_SEARCH_WINDOW_DAYS.equals(key)) {
+            requireIntInRange(key, value, 1, 30, "调课搜索窗口必须在 1 到 30 天之间");
+        }
+        if (SettingsService.SUBSTITUTION_MAX_PLAN_TEACHERS.equals(key)) {
+            requireIntInRange(key, value, 2, 10, "调课方案教师数必须在 2 到 10 之间");
+        }
+        if (SettingsService.SUBSTITUTION_RANKING_PRESET.equals(key)
+                && !List.of("min-impact", "min-teachers", "stable-timetable").contains(value)) {
+            throw ApiException.badRequest("排序预设只能是 min-impact / min-teachers / stable-timetable");
         }
         if (SettingsService.NOTIFICATION_SCOPE.equals(key)
                 && !List.of("minimal", "with-grade-leader", "with-admin").contains(value)) {

@@ -22,6 +22,7 @@ public final class TimetableDtos {
                                     String section,
                                     String periodLabel,
                                     boolean substituted,
+                                    String substitutionType,
                                     Long substituteTeacherId,
                                     String substituteTeacherName,
                                     String originalTeacherName,

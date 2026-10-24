@@ -22,6 +22,8 @@ public class Substitution {
 
     public static final String EFFECTIVE = "EFFECTIVE";
     public static final String CANCELLED = "CANCELLED";
+    public static final String TYPE_SWAP = "SWAP";
+    public static final String TYPE_COVER = "COVER";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -56,6 +58,12 @@ public class Substitution {
 
     @Column(name = "new_period_no")
     private Integer newPeriodNo;
+
+    @Column(nullable = false, length = 20)
+    private String type = TYPE_COVER;
+
+    @Column(name = "plan_id")
+    private Long planId;
 
     @Column(nullable = false, length = 20)
     private String status = EFFECTIVE;

@@ -6,8 +6,8 @@
         <p class="subtitle">
           {{
             isJunior
-              ? '按行政班、教师或教室查看课表。调代生效的课节会标注「代」。'
-              : '按行政班、教师、教室或全校查看课表。调代生效的课节会标注「代」。'
+              ? '按行政班、教师或教室查看课表。调代生效的课节会标注「调」或「代」。'
+              : '按行政班、教师、教室或全校查看课表。调代生效的课节会标注「调」或「代」。'
           }}
           <InfoTooltip field="timetable.substitutionMark" />
         </p>
@@ -106,7 +106,13 @@
                 <div class="lesson" :style="{ background: courseColor(cellAt(day, row.periodNo)!.courseId) }">
                   <div class="lesson-course">
                     {{ cellAt(day, row.periodNo)!.courseName }}
-                    <el-tag v-if="cellAt(day, row.periodNo)!.substituted" size="small" type="warning">代</el-tag>
+                    <el-tag
+                      v-if="cellAt(day, row.periodNo)!.substituted"
+                      size="small"
+                      :type="cellAt(day, row.periodNo)!.substitutionType === 'SWAP' ? 'warning' : 'info'"
+                    >
+                      {{ cellAt(day, row.periodNo)!.substitutionType === 'SWAP' ? '调' : '代' }}
+                    </el-tag>
                   </div>
                   <div class="lesson-meta">
                     {{ cellAt(day, row.periodNo)!.teacherName }}
@@ -150,6 +156,7 @@ interface Entry {
   dayOfWeek: number
   periodNo: number
   substituted: boolean
+  substitutionType?: 'SWAP' | 'COVER'
   substituteTeacherName?: string
   originalTeacherName?: string
   substitutionReason?: string
@@ -266,7 +273,7 @@ function dayName(day: number) {
 function schoolCell(group: { cells: Record<string, Entry> }, day: number, periodNo: number) {
   const entry = group.cells[`${day}-${periodNo}`]
   if (!entry) return ''
-  return `${entry.courseName} · ${entry.teacherName}${entry.substituted ? '（代）' : ''}`
+  return `${entry.courseName} · ${entry.teacherName}${entry.substituted ? (entry.substitutionType === 'SWAP' ? '（调）' : '（代）') : ''}`
 }
 
 // ADR-0017: the school-wide table is virtualised instead of rendering every class at once.
@@ -313,7 +320,8 @@ function tooltip(entry: Entry) {
   const base = `${entry.courseName} · ${entry.teacherName}`
   if (!entry.substituted) return base
   const reason = entry.substitutionReason ? `；原因：${entry.substitutionReason}` : ''
-  return `${base}（代课）；原教师：${entry.originalTeacherName ?? '—'}${reason}；${entry.note ?? ''}`
+  const kind = entry.substitutionType === 'SWAP' ? '调课' : '代课'
+  return `${base}（${kind}）；原教师：${entry.originalTeacherName ?? '—'}${reason}；${entry.note ?? ''}`
 }
 
 function onModeChange() {
