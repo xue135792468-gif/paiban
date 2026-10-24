@@ -77,6 +77,18 @@ public final class ScheduleFixture {
         return result;
     }
 
+    /**
+     * Published entries for a class. Publishing copies draft lessons into
+     * timetable_entry with <em>new</em> ids, so callers must map by slot/course;
+     * never reuse a {@code DraftLesson} id as a timetable entry id.
+     */
+    public static List<Map<String, Object>> publishedEntries(String token, long classId) {
+        return RestAssuredHolder.given(token)
+                .queryParam("view", "baseline")
+                .when().get("/api/timetable/class/" + classId)
+                .then().statusCode(200).extract().jsonPath().getList("$");
+    }
+
     public static List<Map<String, Object>> classEntries(String token, long classId) {
         return RestAssuredHolder.given(token)
                 .when().get("/api/timetable/class/" + classId)

@@ -58,7 +58,7 @@ export default defineConfig({
       url: `${backendUrl}/api/health`,
       timeout: 300_000,
       reuseExistingServer: !isolated,
-      stdout: 'ignore',
+      stdout: 'pipe',
       stderr: 'pipe',
       env: backendEnv,
     },
