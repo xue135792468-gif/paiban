@@ -36,9 +36,13 @@
 - 构建前 `source .tools/env.sh`：JDK 21、Maven、E 盘仓库；`scripts/verify.sh` 会在 `.tools/env.sh` 存在时自动 source
 - 首次检出后执行 `git config core.hooksPath .githooks`：pre-commit 只对 staged 的 `frontend/**` 跑 eslint（`npm run lint` 覆盖全量，本地钩子只挡增量）；pre-push 在分支未包含 `origin/main` 时阻止推送。
 - `scripts/verify.sh` — 本地闸门，与 CI 同一条路径；`--full` 用隔离端口 28080/25173 跑 Playwright（可用 `PAIBAN_E2E_BACKEND_PORT` / `PAIBAN_E2E_FRONTEND_PORT` 覆盖），`--quick` 只做后端编译 + 前端 lint/build/unit，迭代期用
+- 单条 E2E 用 `scripts/e2e.sh <spec>`：自动 source `.tools/env.sh`、隔离端口，并把 Git Bash 下的 Maven 路径转成 Windows 绝对路径
 - 多票据 worktree：用 `scripts/worktree-add.sh <name> <branch> [base]` 创建、`scripts/worktree-remove.sh <name>` 清理；脚本会联接 `frontend/node_modules` 和 `.tools`（`--full` 需要），不要直接 `rm -rf`（会顺着 junction 删主仓库依赖）
+- 串行依赖的票据链在集成分支上顺序实现；只有真正可并行 frontier 才开 worktree
 - 多个会话并行时各自开 worktree，主仓库只用于合并；提交只 stage 本任务路径（用 `git add <path>`，不要 `git add -A`），别把另一个会话的未提交改动带进自己的提交
 - 性能基准（ADR-0017，约 3 分钟）：`cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test`
+- 提交后跑 `git status --short`：非空先确认是否漏 stage；按目录 stage 容易漏掉同任务里散落在其他目录的单文件
+- 发布课表会重建 `timetable_entry` 的 id；测试里按槽位/课程回查（`ScheduleFixture.publishedEntries`），不要复用 `DraftLesson` id
 - Git Bash 下 `git show branch:path` 会被路径转换改写，前面加 `MSYS_NO_PATHCONV=1`
 
 ## Agent skills

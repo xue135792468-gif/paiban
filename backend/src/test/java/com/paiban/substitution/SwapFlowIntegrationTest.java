@@ -10,6 +10,7 @@ import com.paiban.scheduling.domain.DraftLessonRepository;
 import com.paiban.scheduling.domain.TimetableDraft;
 import com.paiban.scheduling.domain.TimetableDraftRepository;
 import com.paiban.support.ApiIntegrationTest;
+import com.paiban.support.ScheduleFixture;
 import com.paiban.support.TestData;
 import io.restassured.response.Response;
 import java.time.Instant;
@@ -103,10 +104,7 @@ class SwapFlowIntegrationTest extends ApiIntegrationTest {
 
         // Publishing copies draft lessons into timetable_entry with new ids, so read
         // the published ids back by course instead of reusing the draft lesson ids.
-        List<Map<String, Object>> published = as(token)
-                .queryParam("view", "baseline")
-                .when().get("/api/timetable/class/" + class1)
-                .then().statusCode(200).extract().jsonPath().getList("$");
+        List<Map<String, Object>> published = ScheduleFixture.publishedEntries(token, class1);
         Map<Long, Long> entryByCourse = new LinkedHashMap<>();
         published.forEach(row -> entryByCourse.put(
                 ((Number) row.get("courseId")).longValue(),
@@ -236,6 +234,28 @@ class SwapFlowIntegrationTest extends ApiIntegrationTest {
         as(admin).when().get("/api/substitution-requests/" + requestId + "/history")
                 .then().statusCode(200)
                 .body("toStatus", hasItem("EFFECTIVE"));
+    }
+
+    @Test
+    void onlyTheLessonOwnerCanListSwapTargets() {
+        String admin = adminToken();
+        String suffix = TestData.suffix();
+        World world = prepare(admin, suffix);
+        String teacherA = teacherUser(admin, "targeta_" + suffix, world.teachers().get("A"));
+        String teacherB = teacherUser(admin, "targetb_" + suffix, world.teachers().get("B"));
+
+        as(teacherA)
+                .queryParam("entryId", world.chineseEntry())
+                .queryParam("date", MONDAY.toString())
+                .when().get("/api/substitution-swap-targets")
+                .then().statusCode(200)
+                .body("$", hasSize(2));
+
+        as(teacherB)
+                .queryParam("entryId", world.chineseEntry())
+                .queryParam("date", MONDAY.toString())
+                .when().get("/api/substitution-swap-targets")
+                .then().statusCode(403);
     }
 
     @Test
