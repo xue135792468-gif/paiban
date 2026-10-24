@@ -43,8 +43,9 @@
         <el-table :data="toolTrace" size="small" border data-testid="workbook-tool-trace">
           <el-table-column prop="round" label="#" width="52" />
           <el-table-column prop="tool" label="工具" width="120" />
-          <el-table-column prop="args" label="参数" min-width="180" />
-          <el-table-column prop="result" label="结果摘要" min-width="260" />
+          <el-table-column prop="args" label="参数" min-width="160" />
+          <el-table-column prop="reply" label="模型回复" min-width="200" />
+          <el-table-column prop="result" label="结果摘要" min-width="220" />
         </el-table>
       </el-collapse-item>
     </el-collapse>

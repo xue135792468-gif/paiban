@@ -47,12 +47,20 @@ public class AiImportController {
         return mappings.lookup(type, query);
     }
 
+    /**
+     * Spreadsheets do not need a target: without one the whole workbook is read and the
+     * model decides what each sheet is. An explicit target keeps the single-target parse
+     * available (text and images still require one).
+     */
     @PostMapping(value = "/excel", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public PreviewDto excel(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "target", required = false, defaultValue = "teacher") String target,
+            @RequestParam(value = "target", required = false) String target,
             Principal principal) {
-        return service.startExcel(file, principal.getName(), targetOf(target));
+        ImportTarget effective = target == null || target.isBlank()
+                ? ImportTarget.WORKBOOK
+                : targetOf(target);
+        return service.startExcel(file, principal.getName(), effective);
     }
 
     @PostMapping("/text")

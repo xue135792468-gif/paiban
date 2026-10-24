@@ -2,8 +2,6 @@ package com.paiban.ai.imports.workbook;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.paiban.ai.AiGateway;
-import com.paiban.ai.AiTaskType;
 import com.paiban.ai.imports.AiImportLog;
 import com.paiban.ai.imports.AiImportLogRepository;
 import com.paiban.ai.imports.CsvTableReader;
@@ -20,6 +18,7 @@ import com.paiban.ai.imports.ImportDtos.TimetableSummaryDto;
 import com.paiban.ai.imports.ImportDtos.ToolTraceDto;
 import com.paiban.ai.imports.ImportDtos.WorkbookSummaryDto;
 import com.paiban.ai.imports.ImportMappingService;
+import com.paiban.ai.imports.ImportPermissions;
 import com.paiban.ai.imports.ImportMappingService.CourseDraft;
 import com.paiban.ai.imports.ImportMappingService.EntityOutcome;
 import com.paiban.ai.imports.ImportMappingService.TeacherDraft;
@@ -35,11 +34,10 @@ import com.paiban.common.excel.ExcelTableReader;
 import com.paiban.common.excel.ExcelTableReader.Grid;
 import com.paiban.common.settings.SettingsService;
 import com.paiban.common.web.ApiException;
+import com.paiban.identity.domain.AppUser;
 import com.paiban.foundation.domain.PeriodRepository;
 import com.paiban.foundation.service.SemesterService;
 import com.paiban.foundation.web.SemesterDtos.SemesterDto;
-import com.paiban.identity.domain.AppUser;
-import com.paiban.identity.domain.Permissions;
 import com.paiban.identity.service.UserService;
 import java.io.ByteArrayInputStream;
 import java.time.Instant;
@@ -74,7 +72,7 @@ public class WorkbookImportFlow {
             "当前学期还没有课节，请先生成默认作息（上午 4 + 下午 4，周一至周五）";
     private static final String UNCONFIRMED = "结构未确认，请人工核对";
 
-    private final AiGateway gateway;
+    private final ImportPermissions permissions;
     private final UploadStorage storage;
     private final AiImportLogRepository logs;
     private final ObjectMapper objectMapper;
@@ -88,7 +86,7 @@ public class WorkbookImportFlow {
     private final SettingsService settings;
 
     public WorkbookImportFlow(
-            AiGateway gateway,
+            ImportPermissions permissions,
             UploadStorage storage,
             AiImportLogRepository logs,
             ObjectMapper objectMapper,
@@ -100,7 +98,7 @@ public class WorkbookImportFlow {
             PeriodRepository periods,
             UserService users,
             SettingsService settings) {
-        this.gateway = gateway;
+        this.permissions = permissions;
         this.storage = storage;
         this.logs = logs;
         this.objectMapper = objectMapper;
@@ -117,9 +115,7 @@ public class WorkbookImportFlow {
     // ------------------------------------------------------------------- entry
 
     public PreviewDto start(MultipartFile file, String username) {
-        if (!gateway.configured(AiTaskType.DATA_IMPORT)) {
-            throw ApiException.badRequest("请先在设置中配置 AI 供应商与模型");
-        }
+        permissions.requireConfigured();
         UploadStorage.StoredFile stored = storage.storeSpreadsheet(file);
         AiImportLog log = newLog(stored, username);
         try {
@@ -189,12 +185,7 @@ public class WorkbookImportFlow {
                 new WorkbookSummaryDto(
                         payload.structureConfirmed(),
                         payload.sheets().stream().map(this::sheetDto).toList(),
-                        payload.committed().entrySet().stream()
-                                .map(entry -> new CategoryResultDto(
-                                        entry.getKey(), entry.getValue().created(),
-                                        entry.getValue().updated(), entry.getValue().skipped(),
-                                        entry.getValue().errors()))
-                                .toList()),
+                        categoryDtos(payload.committed())),
                 payload.warnings(),
                 trace(log.getToolTraceJson()));
     }
@@ -290,6 +281,7 @@ public class WorkbookImportFlow {
             requireTimetableEdit(username);
         }
 
+        Map<String, CategorySummary> previous = payload.committed();
         Map<String, CategorySummary> committed = new LinkedHashMap<>();
         committed.put(TEACHER, write(() -> mappings.ensureTeachers(payload.teachers())));
         committed.put(COURSE, write(() -> mappings.ensureCourses(payload.courses())));
@@ -312,13 +304,17 @@ public class WorkbookImportFlow {
                     rowErrors.addAll(result.errors());
                     committed.put(TIMETABLE, new CategorySummary(
                             0, 0, rowsSkipped(result.errors()),
-                            result.errors().stream().map(this::errorText).toList()));
+                            result.errors().stream().map(RowErrorDto::message).toList()));
                 }
             } catch (RuntimeException ex) {
                 committed.put(TIMETABLE, new CategorySummary(0, 0, 0, List.of(message(ex))));
             }
         }
 
+        // A retry re-runs only what is missing, so its own counts are 0 for work already
+        // done. The summary a user reads is the session's total, not the last attempt's.
+        committed.replaceAll((category, current) ->
+                mergeCounts(previous.get(category), current));
         WorkbookPayload saved = new WorkbookPayload(
                 payload.rows(), payload.sheets(), payload.structureConfirmed(),
                 payload.explanation(), payload.warnings(), payload.errors(),
@@ -342,20 +338,19 @@ public class WorkbookImportFlow {
         log.setUpdatedAt(Instant.now());
         logs.save(log);
         return new CommitResultDto(
-                total, List.copyOf(rowErrors), draftId, payload.warnings(),
-                committed.entrySet().stream()
-                        .map(entry -> new CategoryResultDto(
-                                entry.getKey(), entry.getValue().created(), entry.getValue().updated(),
-                                entry.getValue().skipped(), entry.getValue().errors()))
-                        .toList());
+                total, List.copyOf(rowErrors), draftId, payload.warnings(), categoryDtos(committed));
+    }
+
+    private List<CategoryResultDto> categoryDtos(Map<String, CategorySummary> committed) {
+        return committed.entrySet().stream()
+                .map(entry -> new CategoryResultDto(
+                        entry.getKey(), entry.getValue().created(), entry.getValue().updated(),
+                        entry.getValue().skipped(), entry.getValue().errors()))
+                .toList();
     }
 
     private int rowsSkipped(List<RowErrorDto> errors) {
         return (int) errors.stream().map(RowErrorDto::row).distinct().count();
-    }
-
-    private String errorText(RowErrorDto error) {
-        return error.message();
     }
 
     private CategorySummary write(Supplier<List<EntityOutcome>> action) {
@@ -374,11 +369,19 @@ public class WorkbookImportFlow {
         }
     }
 
-    private void requireTimetableEdit(String username) {
-        AppUser user = users.getByUsername(username);
-        if (user == null || !users.hasPermission(user, Permissions.TIMETABLE_EDIT)) {
-            throw ApiException.forbidden("没有权限导入课表");
+    private CategorySummary mergeCounts(CategorySummary previous, CategorySummary current) {
+        if (previous == null) {
+            return current;
         }
+        return new CategorySummary(
+                previous.created() + current.created(),
+                previous.updated() + current.updated(),
+                current.skipped(),
+                current.errors());
+    }
+
+    private void requireTimetableEdit(String username) {
+        permissions.requireTimetableEdit(username);
     }
 
     // ----------------------------------------------------------------- payload
@@ -511,7 +514,9 @@ public class WorkbookImportFlow {
             } else {
                 recognized = profile.dataRows().size();
                 fresh = 0;
-                skipReason = "判断为说明类，已跳过";
+                skipReason = category == SheetCategory.EXPLANATION
+                        ? "判断为说明类，已跳过"
+                        : "未识别的表，已跳过";
             }
             sheets.add(new SheetSummary(
                     profile.name(), category.code(), columns, recognized, fresh, skipReason, note));
@@ -581,17 +586,19 @@ public class WorkbookImportFlow {
     private WorkbookPayload payload(AiImportLog log) {
         String json = log.getPreviewJson();
         if (json == null || json.isBlank()) {
-            return new WorkbookPayload(
-                    List.of(), List.of(), false, "", List.of(), List.of(),
-                    List.of(), List.of(), List.of(), Map.of());
+            return emptyPayload();
         }
         try {
             return objectMapper.readValue(json, WorkbookPayload.class);
         } catch (Exception ex) {
-            return new WorkbookPayload(
-                    List.of(), List.of(), false, "", List.of(), List.of(),
-                    List.of(), List.of(), List.of(), Map.of());
+            return emptyPayload();
         }
+    }
+
+    private WorkbookPayload emptyPayload() {
+        return new WorkbookPayload(
+                List.of(), List.of(), false, "", List.of(), List.of(),
+                List.of(), List.of(), List.of(), Map.of());
     }
 
     private List<ToolTraceDto> trace(String json) {
@@ -607,7 +614,8 @@ public class WorkbookImportFlow {
 
     private List<ToolTraceDto> trace(List<WorkbookPlanner.Trace> rounds) {
         return rounds.stream()
-                .map(round -> new ToolTraceDto(round.round(), round.tool(), round.args(), round.result()))
+                .map(round -> new ToolTraceDto(
+                        round.round(), round.tool(), round.args(), round.reply(), round.result()))
                 .toList();
     }
 

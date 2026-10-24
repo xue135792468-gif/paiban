@@ -49,8 +49,11 @@ public final class ImportDtos {
             /** Empty until a commit ran; then one entry per category with what it wrote. */
             List<CategoryResultDto> committed) {}
 
-    /** One round of the tool loop, so a wrong structural judgement can be replayed. */
-    public record ToolTraceDto(int round, String tool, String args, String result) {}
+    /**
+     * One round of the tool loop: what the model asked for, its own reply, and what the
+     * tool returned. Persisted so a wrong structural judgement can be replayed.
+     */
+    public record ToolTraceDto(int round, String tool, String args, String reply, String result) {}
 
     /** What writing one category did; a failure here does not undo the other categories. */
     public record CategoryResultDto(String category, int created, int updated, int skipped, List<String> errors) {}

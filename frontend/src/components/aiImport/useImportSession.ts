@@ -5,6 +5,7 @@ import { AI_IMPORT_TIMEOUT_MS, http } from '@/api/http'
 import { aiParseErrorMessage, serverMessage } from '@/api/errors'
 import {
   canCommit,
+  isPageBlocker,
   isWorkbookPreview,
   remainingIssueCount,
   type CategoryResult,
@@ -106,11 +107,13 @@ export function useImportSession() {
     () => preview.value?.targetType === 'timetable' || isWorkbook.value,
   )
   const previewIssues = computed(() => preview.value?.issues ?? [])
+  /** Page-level blockers: missing semester, missing periods, rows the merge refused. */
+  const blockingIssues = computed(() => previewIssues.value.filter(isPageBlocker))
   const remainingIssues = computed(() => remainingIssueCount(previewIssues.value))
   const allIssuesResolved = computed(() => canCommit(previewIssues.value))
   /** Page-level blockers (missing semester, missing periods, refused rows) block a workbook. */
   const workbookBlocked = computed(
-    () => isWorkbook.value && previewIssues.value.some((issue) => issue.row === 0),
+    () => isWorkbook.value && previewIssues.value.some(isPageBlocker),
   )
   const commitDisabled = computed(
     () =>
@@ -556,6 +559,7 @@ export function useImportSession() {
     isFailedPreview,
     polling,
     previewIssues,
+    blockingIssues,
     remainingIssues,
     allIssuesResolved,
     commitDisabled,

@@ -96,6 +96,8 @@ public class AiImportService {
     private final BatchStore batchStore;
     /** The phase-11 workbook pipeline: browse with tools, merge by slot, commit categories. */
     private final WorkbookImportFlow workbook;
+    /** Configured-AI and timetable-edit gates shared with the workbook pipeline. */
+    private final ImportPermissions permissions;
     /**
      * Live stop requests, keyed by session. In memory on purpose: a stop only matters to
      * the background thread of this process; a restart is covered by the startup recovery.
@@ -114,6 +116,7 @@ public class AiImportService {
             TimetableImportService timetableImports,
             ImportMappingService nameMappings,
             WorkbookImportFlow workbook,
+            ImportPermissions permissions,
             @Qualifier("importExecutor") TaskExecutor importExecutor,
             PlatformTransactionManager transactionManager) {
         this.gateway = gateway;
@@ -127,6 +130,7 @@ public class AiImportService {
         this.timetableImports = timetableImports;
         this.nameMappings = nameMappings;
         this.workbook = workbook;
+        this.permissions = permissions;
         this.importExecutor = importExecutor;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.batchStore = new BatchStore(objectMapper);
@@ -389,10 +393,7 @@ public class AiImportService {
     }
 
     private void requireTimetableEdit(String username) {
-        AppUser user = users.getByUsername(username);
-        if (user == null || !users.hasPermission(user, Permissions.TIMETABLE_EDIT)) {
-            throw ApiException.forbidden("没有权限导入课表");
-        }
+        permissions.requireTimetableEdit(username);
     }
 
     /**
@@ -1379,9 +1380,7 @@ public class AiImportService {
     }
 
     private void requireConfigured() {
-        if (!gateway.configured(AiTaskType.DATA_IMPORT)) {
-            throw ApiException.badRequest("请先在设置中配置 AI 供应商与模型");
-        }
+        permissions.requireConfigured();
     }
 
     // ------------------------------------------------------------ source data

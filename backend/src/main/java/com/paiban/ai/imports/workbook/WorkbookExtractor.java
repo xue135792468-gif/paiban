@@ -10,6 +10,7 @@ import com.paiban.ai.AiTaskType;
 import com.paiban.ai.imports.AiImportParser;
 import com.paiban.ai.imports.ImportDtos.RowDto;
 import com.paiban.ai.imports.ImportTarget;
+import com.paiban.ai.imports.SlotText;
 import com.paiban.ai.imports.workbook.WorkbookPlan.SheetCategory;
 import com.paiban.ai.imports.workbook.WorkbookPlan.SheetPlan;
 import com.paiban.common.settings.SettingsService;
@@ -146,7 +147,7 @@ public class WorkbookExtractor {
             projected.add(List.copyOf(cells));
         }
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("target", target(plan.category()));
+        payload.put("target", parserTarget(plan.category()));
         payload.put("sheet", sheet.name());
         payload.put("columns", labels);
         payload.put("firstRow", offset + 1);
@@ -170,17 +171,11 @@ public class WorkbookExtractor {
     }
 
     private List<RowDto> parse(String content, SheetCategory category) {
-        ImportTarget target = category == SheetCategory.TIMETABLE
-                ? ImportTarget.TIMETABLE
-                : ImportTarget.TEACHER;
         try {
-            return parser.parse(content, target, settings.aiImportConfidenceThreshold()).rows();
+            return parser.parse(
+                    content, parserTarget(category), settings.aiImportConfidenceThreshold(), true)
+                    .rows();
         } catch (IllegalArgumentException ex) {
-            // An empty batch is not a broken answer: a sheet can end on rows the model has
-            // nothing to say about. Anything else means the answer was unusable.
-            if (ex.getMessage() != null && ex.getMessage().contains("未返回任何数据行")) {
-                return List.of();
-            }
             throw ApiException.badRequest("AI 返回内容无法解析：" + ex.getMessage());
         }
     }
@@ -205,15 +200,15 @@ public class WorkbookExtractor {
         return resolved;
     }
 
-    private String target(SheetCategory category) {
-        return category == SheetCategory.TIMETABLE
-                ? ImportTarget.TIMETABLE.code()
-                : ImportTarget.TEACHER.code();
+    /** Course rows share the teacher shape: {@code name} plus {@code subject}. */
+    private ImportTarget parserTarget(SheetCategory category) {
+        return category == SheetCategory.TIMETABLE ? ImportTarget.TIMETABLE : ImportTarget.TEACHER;
     }
 
     private ProfiledSheet find(List<ProfiledSheet> profiles, String name) {
+        String needle = SlotText.normalizeName(name);
         for (ProfiledSheet sheet : profiles) {
-            if (sheet.name().equals(name)) {
+            if (SlotText.normalizeName(sheet.name()).equals(needle)) {
                 return sheet;
             }
         }

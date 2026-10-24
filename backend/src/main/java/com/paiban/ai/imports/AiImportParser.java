@@ -30,10 +30,19 @@ public class AiImportParser {
             List<MappingDto> mappings, List<RowDto> rows, String explanation, String suggestedTarget) {}
 
     public Parsed parse(String content, ImportTarget target, double threshold) {
+        return parse(content, target, threshold, false);
+    }
+
+    /**
+     * {@code allowEmpty} is for one batch of a larger table: a sheet can end on rows the
+     * model has nothing to say about, and an empty answer there is not a broken answer.
+     * A whole-table parse keeps requiring at least one row.
+     */
+    public Parsed parse(String content, ImportTarget target, double threshold, boolean allowEmpty) {
         JsonNode root = readRoot(content);
         List<MappingDto> mappings = parseMappings(root.path("mappings"));
         List<RowDto> rows = parseRows(root.path("rows"), target, threshold);
-        if (rows.isEmpty()) {
+        if (rows.isEmpty() && !allowEmpty) {
             throw new IllegalArgumentException("AI 未返回任何数据行，请打回重析或检查原始数据");
         }
         String explanation = root.path("explanation").asText("");

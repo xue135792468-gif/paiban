@@ -179,7 +179,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
@@ -337,7 +337,6 @@ async function selectAllUnmatched() {
   } finally {
     busy.value = ''
   }
-  await nextTick()
 }
 
 function clearSelection() {

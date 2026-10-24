@@ -54,6 +54,17 @@ class SlotMergerTest {
     }
 
     @Test
+    void anEmptyDuplicateOfALessonSlotStillCountsAsAFreePeriod() {
+        SlotMerger.Merge merge = SlotMerger.merge(List.of(
+                kept("班级课表", 2, "八（1）", "星期一", "1", "语文", "张三"),
+                kept("数据源", 30, "八（1）", "星期一", "1", "", "")));
+
+        assertThat(merge.kept()).hasSize(1);
+        assertThat(merge.freeSlots()).isEqualTo(1);
+        assertThat(merge.perSheet().get("数据源").freeSlots()).isEqualTo(1);
+    }
+
+    @Test
     void sameClassDifferentDayStaysSeparate() {
         SlotMerger.Merge merge = SlotMerger.merge(List.of(
                 kept("数据源", 2, "八（1）", "星期一", "1", "语文", "张三"),

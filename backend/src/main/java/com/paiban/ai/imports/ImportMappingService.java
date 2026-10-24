@@ -26,6 +26,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -407,9 +408,9 @@ public class ImportMappingService {
                 Teacher created = new Teacher();
                 created.setName(draft.name());
                 created.setEmployeeNo(freeEmployeeNo(draft.employeeNo(), null));
-                created.setPhone(blankToNull(draft.phone()));
-                created.setEmail(blankToNull(draft.email()));
-                created.setSubject(blankToNull(draft.subject()));
+                created.setPhone(trimToNull(draft.phone()));
+                created.setEmail(trimToNull(draft.email()));
+                created.setSubject(trimToNull(draft.subject()));
                 created.setActive(true);
                 created.setCreatedAt(java.time.Instant.now());
                 teachers.save(created);
@@ -417,22 +418,23 @@ public class ImportMappingService {
                 continue;
             }
             boolean changed = false;
-            if (isBlank(teacher.getEmployeeNo()) && !isBlank(draft.employeeNo())) {
+            if (!StringUtils.hasText(teacher.getEmployeeNo())
+                    && StringUtils.hasText(draft.employeeNo())) {
                 String employeeNo = freeEmployeeNo(draft.employeeNo(), teacher.getId());
                 if (employeeNo != null) {
                     teacher.setEmployeeNo(employeeNo);
                     changed = true;
                 }
             }
-            if (isBlank(teacher.getPhone()) && !isBlank(draft.phone())) {
+            if (!StringUtils.hasText(teacher.getPhone()) && StringUtils.hasText(draft.phone())) {
                 teacher.setPhone(draft.phone().trim());
                 changed = true;
             }
-            if (isBlank(teacher.getEmail()) && !isBlank(draft.email())) {
+            if (!StringUtils.hasText(teacher.getEmail()) && StringUtils.hasText(draft.email())) {
                 teacher.setEmail(draft.email().trim());
                 changed = true;
             }
-            if (isBlank(teacher.getSubject()) && !isBlank(draft.subject())) {
+            if (!StringUtils.hasText(teacher.getSubject()) && StringUtils.hasText(draft.subject())) {
                 teacher.setSubject(draft.subject().trim());
                 changed = true;
             }
@@ -475,7 +477,7 @@ public class ImportMappingService {
                 continue;
             }
             boolean changed = false;
-            if (isBlank(course.getSubject()) && draft.subject() != null) {
+            if (!StringUtils.hasText(course.getSubject()) && draft.subject() != null) {
                 course.setSubject(draft.subject());
                 changed = true;
             }
@@ -553,7 +555,7 @@ public class ImportMappingService {
 
     /** Employee numbers are unique; one already taken by another teacher is left out. */
     private String freeEmployeeNo(String employeeNo, Long selfId) {
-        if (isBlank(employeeNo)) {
+        if (!StringUtils.hasText(employeeNo)) {
             return null;
         }
         String value = employeeNo.trim();
@@ -566,16 +568,8 @@ public class ImportMappingService {
         return value;
     }
 
-    private static boolean isBlank(String value) {
-        return value == null || value.isBlank();
-    }
-
     private static String trimToNull(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
-    }
-
-    private static String blankToNull(String value) {
-        return trimToNull(value);
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 
     private MappingKind kindOf(String field) {        return switch (field) {

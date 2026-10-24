@@ -90,6 +90,8 @@ export interface ToolTrace {
   round: number
   tool: string
   args: string
+  /** The model's own reply for this round. */
+  reply?: string
   result: string
 }
 
@@ -462,6 +464,11 @@ export const CATEGORY_LABELS: Record<string, string> = {
 
 export function categoryLabel(category: string): string {
   return CATEGORY_LABELS[category] ?? category
+}
+
+/** A row-0 issue blocks the whole page (missing semester, missing periods, refused rows). */
+export function isPageBlocker(issue: PreviewIssue): boolean {
+  return issue.row === 0
 }
 
 /** True when the preview came from a whole-workbook upload (no target was chosen). */

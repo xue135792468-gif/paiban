@@ -67,10 +67,6 @@ public record WorkbookPlan(List<SheetPlan> sheets, boolean confirmed, String exp
         sheets = List.copyOf(sheets);
     }
 
-    public List<SheetPlan> of(SheetCategory category) {
-        return sheets.stream().filter(plan -> plan.category() == category).toList();
-    }
-
     /** Every sheet that contributes rows to the preview (explanations do not). */
     public List<SheetPlan> dataSheets() {
         return sheets.stream()

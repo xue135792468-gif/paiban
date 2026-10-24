@@ -47,8 +47,12 @@ public class WorkbookPlanner {
         this.mappings = mappings;
     }
 
-    /** One round of the loop, kept for the preview and for replaying a wrong judgement. */
-    public record Trace(int round, String tool, String args, String result) {}
+    /**
+     * One round of the loop: the tool the model asked for, its arguments, the model's own
+     * reply and a readable summary of what the tool returned. Kept on the session so a
+     * wrong structural judgement can be replayed.
+     */
+    public record Trace(int round, String tool, String args, String reply, String result) {}
 
     public record Outcome(WorkbookPlan plan, List<Trace> trace) {}
 
@@ -68,14 +72,16 @@ public class WorkbookPlanner {
             String content = result.content();
             Action action = parseAction(content);
             if (action == null) {
-                trace.add(new Trace(round, "invalid", "", summarize(content)));
+                trace.add(new Trace(round, "invalid", "", summarize(content), ""));
                 messages.add(AiMessage.assistant(content == null ? "" : content));
                 messages.add(AiMessage.user(
                         "上一轮回复不是可解析的动作对象。请只输出一个 JSON 对象，字段为 tool 和 args。"));
                 continue;
             }
             String toolResult = execute(action, profiles);
-            trace.add(new Trace(round, action.tool(), json(action.args()), summarize(toolResult)));
+            trace.add(new Trace(
+                    round, action.tool(), json(action.args()), summarize(content),
+                    summarize(toolResult)));
             if ("finish".equals(action.tool())) {
                 WorkbookPlan plan = finishPlan(action.args(), profiles);
                 if (plan != null) {
@@ -143,15 +149,53 @@ public class WorkbookPlanner {
                                 .map(CompositeColumns.Derived::label).toList()))
                         .append("\n");
             }
-            text.append("  预览：").append(preview(sheet)).append("\n");
+            text.append("  预览：").append(json(head(sheet.grid()))).append("\n");
+            List<String> composite = unSplitComposite(sheet);
+            if (!composite.isEmpty()) {
+                text.append("  可能未拆分的复合单元格：")
+                        .append(String.join("、", composite))
+                        .append("（如果一个单元格里挤着多个字段，请在 columns 里按列名指定）\n");
+            }
         }
         text.append("请调用工具确认结构，最后调用 finish 宣告每张有数据的工作表。");
         return text.toString();
     }
 
-    private String preview(ProfiledSheet sheet) {
-        List<List<String>> rows = sheet.grid().subList(0, Math.min(PREVIEW_ROWS, sheet.grid().size()));
-        return json(rows);
+    /** The first few normalized rows, header included: enough to judge the layout. */
+    private List<List<String>> head(List<List<String>> rows) {
+        return rows.subList(0, Math.min(PREVIEW_ROWS, rows.size()));
+    }
+
+    /**
+     * Columns that still contain a separator but were not split. The model is told about
+     * them so it can map them deliberately instead of guessing at the parts.
+     */
+    private List<String> unSplitComposite(ProfiledSheet sheet) {
+        java.util.Set<Integer> splitSources = new java.util.HashSet<>();
+        for (CompositeColumns.Derived derived : sheet.derived()) {
+            splitSources.add(derived.sourceColumn());
+        }
+        List<String> candidates = new ArrayList<>();
+        for (int column = 0; column < sheet.labels().size() - sheet.derived().size(); column++) {
+            if (splitSources.contains(column)) {
+                continue;
+            }
+            int hits = 0;
+            for (List<String> row : sheet.dataRows()) {
+                String value = column < row.size() && row.get(column) != null ? row.get(column) : "";
+                if (value.contains("|") || value.contains("｜") || value.contains("·")
+                        || value.contains("—")) {
+                    hits++;
+                }
+            }
+            if (hits >= 3) {
+                candidates.add(sheet.labels().get(column));
+            }
+            if (candidates.size() >= 3) {
+                break;
+            }
+        }
+        return candidates;
     }
 
     // ------------------------------------------------------------------- tools
@@ -200,8 +244,7 @@ public class WorkbookPlanner {
                 item.put("rows", sheet.dataRows().size());
                 item.put("columns", sheet.labels().size());
                 item.put("headerRow", sheet.headerRowIndex() < 0 ? null : sheet.headerRowIndex() + 1);
-                item.put("preview", sheet.grid().subList(
-                        0, Math.min(PREVIEW_ROWS, sheet.grid().size())));
+                item.put("preview", head(sheet.grid()));
             }
             sheets.add(item);
         }
@@ -287,6 +330,7 @@ public class WorkbookPlanner {
         if (planned.isEmpty()) {
             return null;
         }
+        int plannedFromModel = planned.size();
         // A sheet the model left out is still in the workbook: guess it so no data is silently lost.
         for (ProfiledSheet sheet : profiles) {
             if (sheet.skipped() || planned.containsKey(sheet.name())) {
@@ -297,9 +341,14 @@ public class WorkbookPlanner {
                     sheet.name(), category, WorkbookPlan.columns(sheet, category), "", false));
         }
         String explanation = args.path("explanation").asText("").trim();
+        // Only a plan that covers every non-skipped sheet with a known category counts as
+        // confirmed; a guessed sheet (or an "unknown" one) leaves the marker on the preview.
+        int expected = (int) profiles.stream().filter(sheet -> !sheet.skipped()).count();
+        boolean complete = plannedFromModel == expected
+                && planned.values().stream().noneMatch(plan -> plan.category() == SheetCategory.UNKNOWN);
         return new WorkbookPlan(
                 List.copyOf(planned.values()),
-                !planned.isEmpty(),
+                complete,
                 explanation.isEmpty() ? "模型已确认工作表结构" : explanation);
     }
 

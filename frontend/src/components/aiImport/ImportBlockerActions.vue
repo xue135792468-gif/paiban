@@ -35,7 +35,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
-import type { PreviewIssue } from './timetablePreview'
+import { isPageBlocker, type PreviewIssue } from './timetablePreview'
 
 const props = defineProps<{ issues: PreviewIssue[] }>()
 const emit = defineEmits<{ (e: 'reload'): void }>()
@@ -43,7 +43,7 @@ const emit = defineEmits<{ (e: 'reload'): void }>()
 const router = useRouter()
 const generating = ref(false)
 
-const blockers = computed(() => props.issues.filter((issue) => issue.row === 0))
+const blockers = computed(() => props.issues.filter(isPageBlocker))
 
 function goSemesters() {
   router.push('/admin/semesters')

@@ -42,7 +42,7 @@ function workbook(overrides: Partial<WorkbookSummary> = {}): WorkbookSummary {
 async function mountPanel(props: {
   workbook?: WorkbookSummary
   warnings?: string[]
-  toolTrace?: { round: number; tool: string; args: string; result: string }[]
+  toolTrace?: { round: number; tool: string; args: string; reply?: string; result: string }[]
 }) {
   const wrapper = mount(WorkbookSummaryPanel, {
     props: {
@@ -94,8 +94,8 @@ describe('WorkbookSummaryPanel', () => {
   it('展示模型调用轨迹', async () => {
     const wrapper = await mountPanel({
       toolTrace: [
-        { round: 1, tool: 'list_sheets', args: '', result: '{"sheets":[...]}' },
-        { round: 2, tool: 'finish', args: '{"sheets":[...]}', result: '结构已收到' },
+        { round: 1, tool: 'list_sheets', args: '', reply: '{"tool":"list_sheets"}', result: '{"sheets":[...]}' },
+        { round: 2, tool: 'finish', args: '{"sheets":[...]}', reply: '{"tool":"finish"}', result: '结构已收到' },
       ],
     })
 

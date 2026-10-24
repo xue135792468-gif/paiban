@@ -76,6 +76,9 @@ class WorkbookImportIntegrationTest extends ApiIntegrationTest {
     @Autowired
     private DraftLessonRepository draftLessons;
 
+    @Autowired
+    private com.paiban.ai.imports.AiImportLogRepository importLogs;
+
     private final ObjectMapper mapper = new ObjectMapper();
     private final AtomicInteger planRounds = new AtomicInteger();
 
@@ -123,6 +126,12 @@ class WorkbookImportIntegrationTest extends ApiIntegrationTest {
         assertThat(sheet(preview, "数据源").path("category").asText()).isEqualTo("timetable");
         assertThat(sheet(preview, "教师名单").path("category").asText()).isEqualTo("teacher");
         assertThat(sheet(preview, "数据源").path("recognizedRows").asInt()).isEqualTo(5);
+
+        // The audit columns the spec asks for: the tool trace and the raw answers.
+        long sessionId = preview.jsonPath().getLong("sessionId");
+        com.paiban.ai.imports.AiImportLog log = importLogs.findById(sessionId).orElseThrow();
+        assertThat(log.getToolTraceJson()).contains("list_sheets").contains("read_sheet").contains("finish");
+        assertThat(log.getAiRawResponse()).contains("values");
     }
 
     @Test

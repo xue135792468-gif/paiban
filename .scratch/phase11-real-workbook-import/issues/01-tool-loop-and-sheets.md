@@ -16,4 +16,4 @@
 - [x] 图片与纯文本通道的行为保持不变
 - [x] 未配置 AI 时仍给出原有的「请先配置 AI 供应商」提示
 
-**实现说明：** `WorkbookPlanner` 用纯 JSON 请求实现只读工具循环（`list_sheets` / `read_sheet` / `lookup` / `finish`），最多 6 轮；未收敛时由 `WorkbookPlan.fallback` 按表头与表名给出确定性判断并标记「结构未确认」。每轮（工具名、参数、结果摘要）写入 `ai_import_log.tool_trace_json`（迁移 V23），刷新后仍可回放。`lookup` 走 `ImportMappingService.lookupNames`，只读不写。文本与图片通道、未配置 AI 的提示均未改动。
+**实现说明：** `WorkbookPlanner` 用纯 JSON 请求实现只读工具循环（`list_sheets` / `read_sheet` / `lookup` / `finish`），最多 6 轮；未收敛时由 `WorkbookPlan.fallback` 按表头与表名给出确定性判断并标记「结构未确认」。每轮（工具名、参数、结果摘要）写入 `ai_import_log.tool_trace_json`（迁移 V23），刷新后仍可回放。`lookup` 走 `ImportMappingService.lookupNames`，只读不写。轨迹每轮记录工具名、参数、模型原始回复与工具结果摘要；`read_sheet` 返回的是规整后的网格（首行是列名，已拆分的派生列在末尾），这样模型映射的列名与它读到的列一一对应。文本与图片通道、未配置 AI 的提示均未改动。

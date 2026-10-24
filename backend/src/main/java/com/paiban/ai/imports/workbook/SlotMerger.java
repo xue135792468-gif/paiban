@@ -107,8 +107,15 @@ public final class SlotMerger {
                 if (!incomplete.isEmpty()) {
                     droppedIncomplete += incomplete.size();
                     for (Candidate candidate : incomplete) {
-                        Counter counter = counters.get(candidate.row.sheet());
-                        counter.droppedIncomplete++;
+                        counters.get(candidate.row.sheet()).droppedIncomplete++;
+                    }
+                }
+                // An empty duplicate of a slot that does have a lesson is still a free
+                // period in the file; counting it keeps the warning honest.
+                if (!free.isEmpty()) {
+                    freeSlots += free.size();
+                    for (Candidate candidate : free) {
+                        counters.get(candidate.row.sheet()).freeSlots++;
                     }
                 }
                 continue;

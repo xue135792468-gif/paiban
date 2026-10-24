@@ -172,31 +172,12 @@
         :draft-id="commitResult?.draftId ?? null"
       />
 
-      <el-alert
+      <ImportCommittedAlert
         v-if="isCommittedPreview && !isWorkbook"
-        type="success"
-        show-icon
-        :closable="false"
-        class="result-alert"
-      >
-        <template #title>
-          <template v-if="importedCount !== null">
-            已成功入库 {{ importedCount }} 条{{ targetTitle(preview.targetType) }}数据
-          </template>
-          <template v-else>该导入已入库</template>
-        </template>
-        <div class="result-actions">
-          <el-button
-            v-if="preview.targetType === 'teacher'"
-            link
-            type="primary"
-            @click="goTeachers"
-          >
-            查看教师
-          </el-button>
-          <el-button link type="primary" @click="reset">继续导入</el-button>
-        </div>
-      </el-alert>
+        :target-type="preview.targetType"
+        :imported-count="importedCount"
+        @reset="reset"
+      />
 
       <ImportExplanationCard
         v-if="!isParsing"
@@ -275,6 +256,7 @@ import WorkbookSummaryPanel from '@/components/aiImport/WorkbookSummaryPanel.vue
 import CommitResultSummary from '@/components/aiImport/CommitResultSummary.vue'
 import ImportBlockerActions from '@/components/aiImport/ImportBlockerActions.vue'
 import ImportExplanationCard from '@/components/aiImport/ImportExplanationCard.vue'
+import ImportCommittedAlert from '@/components/aiImport/ImportCommittedAlert.vue'
 import TimetablePreviewGrid from '@/components/aiImport/TimetablePreviewGrid.vue'
 import { useImportSession } from '@/components/aiImport/useImportSession'
 import { type ImportPreview, type PreviewRow } from '@/components/aiImport/timetablePreview'
@@ -314,6 +296,7 @@ const {
   isCommittedPreview,
   isFailedPreview,
   previewIssues,
+  blockingIssues,
   commitDisabled,
   commitLabel,
   statusLabel,
@@ -333,7 +316,6 @@ const {
 const restoring = ref(false)
 
 const mappableIssues = computed(() => previewIssues.value.filter((issue) => issue.row > 0))
-const blockingIssues = computed(() => previewIssues.value.filter((issue) => issue.row === 0))
 /** What a commit wrote: from this page, or from a restored committed session. */
 const committedCategories = computed(
   () => commitResult.value?.categories ?? preview.value?.workbook?.committed ?? [],
@@ -499,10 +481,6 @@ async function abandonImport() {
   text.value = ''
 }
 
-function goTeachers() {
-  router.push('/admin/teachers')
-}
-
 function confidenceTitle(row: PreviewRow, field: string) {
   const value = row.confidence?.[field]
   return value === undefined ? undefined : `AI 置信度 ${Math.round(value * 100)}%`
@@ -582,10 +560,6 @@ function fieldLabel(field: string) {
   border: 1px solid #f0e0a0;
   background: #fff7cc;
   border-radius: 3px;
-}
-
-.result-actions {
-  margin-top: 6px;
 }
 
 .errors {
