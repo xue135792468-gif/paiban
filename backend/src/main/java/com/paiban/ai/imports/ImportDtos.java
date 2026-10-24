@@ -28,6 +28,33 @@ public final class ImportDtos {
     /** A batch the AI could not parse, kept so the page can name the class to retry. */
     public record FailedBatchDto(int index, String label, String reason) {}
 
+    /**
+     * One sheet of a workbook import: what the model judged it to be, which columns feed
+     * which system fields, how many rows it contributed and how many survived de-duplication.
+     * {@code skippedReason} is set for sheets a conservative rule skipped.
+     */
+    public record SheetSummaryDto(
+            String sheet,
+            String category,
+            Map<String, String> columns,
+            int recognizedRows,
+            int newRows,
+            String skippedReason,
+            String note) {}
+
+    /** The workbook behind a preview: whether the model confirmed it, and each sheet. */
+    public record WorkbookSummaryDto(
+            boolean structureConfirmed,
+            List<SheetSummaryDto> sheets,
+            /** Empty until a commit ran; then one entry per category with what it wrote. */
+            List<CategoryResultDto> committed) {}
+
+    /** One round of the tool loop, so a wrong structural judgement can be replayed. */
+    public record ToolTraceDto(int round, String tool, String args, String result) {}
+
+    /** What writing one category did; a failure here does not undo the other categories. */
+    public record CategoryResultDto(String category, int created, int updated, int skipped, List<String> errors) {}
+
     public record PreviewDto(
             Long sessionId,
             String targetType,
@@ -44,7 +71,13 @@ public final class ImportDtos {
             /** Null unless the session was (or is being) parsed in batches. */
             ImportProgressDto progress,
             /** Batches that failed; empty unless the parse is partial (or was stopped). */
-            List<FailedBatchDto> failedBatches) {}
+            List<FailedBatchDto> failedBatches,
+            /** Null for every target except {@link ImportTarget#WORKBOOK}. */
+            WorkbookSummaryDto workbook,
+            /** Non-blocking notes: free periods skipped, duplicate rows dropped, structure unconfirmed. */
+            List<String> warnings,
+            /** The tool rounds the model ran while browsing the workbook. */
+            List<ToolTraceDto> toolTrace) {}
 
     public record TextImportRequest(@NotBlank(message = "请粘贴需要解析的文本") @Size(max = 200000) String text) {}
 
@@ -91,5 +124,11 @@ public final class ImportDtos {
 
     public record MappingRequest(List<MappingItem> mappings, List<CreateItem> creates) {}
 
-    public record CommitResultDto(int imported, List<RowErrorDto> errors, Long draftId, List<String> warnings) {}
+    public record CommitResultDto(
+            int imported,
+            List<RowErrorDto> errors,
+            Long draftId,
+            List<String> warnings,
+            /** Per-category write results; empty for single-target imports. */
+            List<CategoryResultDto> categories) {}
 }

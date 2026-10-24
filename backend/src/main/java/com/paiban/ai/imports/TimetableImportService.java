@@ -33,7 +33,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -247,19 +246,19 @@ public class TimetableImportService {
     private Match match(List<RowDto> rows, Long sid) {
         Map<String, AdminClass> classByName = new LinkedHashMap<>();
         for (AdminClass adminClass : adminClasses.findBySemesterIdOrderByGradeIdAscNameAsc(sid)) {
-            classByName.putIfAbsent(normalizeName(adminClass.getName()), adminClass);
+            classByName.putIfAbsent(SlotText.normalizeName(adminClass.getName()), adminClass);
         }
         Map<String, Course> courseByName = new LinkedHashMap<>();
         for (Course course : courses.findAllByOrderByNameAsc()) {
-            courseByName.putIfAbsent(normalizeName(course.getName()), course);
+            courseByName.putIfAbsent(SlotText.normalizeName(course.getName()), course);
         }
         Map<String, Teacher> teacherByName = new LinkedHashMap<>();
         for (Teacher teacher : teachers.findAllByOrderByNameAsc()) {
-            teacherByName.putIfAbsent(normalizeName(teacher.getName()), teacher);
+            teacherByName.putIfAbsent(SlotText.normalizeName(teacher.getName()), teacher);
         }
         Map<String, Room> roomByName = new LinkedHashMap<>();
         for (Room room : rooms.findAllByOrderByNameAsc()) {
-            roomByName.putIfAbsent(normalizeName(room.getName()), room);
+            roomByName.putIfAbsent(SlotText.normalizeName(room.getName()), room);
         }
         Map<String, Period> periodBySlot = new LinkedHashMap<>();
         Map<Integer, List<Period>> periodsByDay = new LinkedHashMap<>();
@@ -285,7 +284,7 @@ public class TimetableImportService {
                 errors.add(new RowErrorDto(line, "className", "班级不能为空", classCandidates));
                 failed = true;
             } else {
-                adminClass = classByName.get(normalizeName(className));
+                adminClass = classByName.get(SlotText.normalizeName(className));
                 if (adminClass == null) {
                     errors.add(new RowErrorDto(line, "className", "系统中找不到班级：" + className, classCandidates));
                     failed = true;
@@ -298,7 +297,7 @@ public class TimetableImportService {
                 errors.add(new RowErrorDto(line, "courseName", "课程不能为空", courseCandidates));
                 failed = true;
             } else {
-                course = courseByName.get(normalizeName(courseName));
+                course = courseByName.get(SlotText.normalizeName(courseName));
                 if (course == null) {
                     errors.add(new RowErrorDto(line, "courseName", "系统中找不到课程：" + courseName, courseCandidates));
                     failed = true;
@@ -311,7 +310,7 @@ public class TimetableImportService {
                 errors.add(new RowErrorDto(line, "teacherName", "教师不能为空", teacherCandidates));
                 failed = true;
             } else {
-                teacher = teacherByName.get(normalizeName(teacherName));
+                teacher = teacherByName.get(SlotText.normalizeName(teacherName));
                 if (teacher == null) {
                     errors.add(new RowErrorDto(line, "teacherName", "系统中找不到教师：" + teacherName, teacherCandidates));
                     failed = true;
@@ -321,7 +320,7 @@ public class TimetableImportService {
             String roomName = value(row, "roomName");
             Room room = null;
             if (!roomName.isBlank()) {
-                room = roomByName.get(normalizeName(roomName));
+                room = roomByName.get(SlotText.normalizeName(roomName));
                 if (room == null) {
                     errors.add(new RowErrorDto(line, "roomName", "系统中找不到教室：" + roomName, roomCandidates));
                     failed = true;
@@ -334,7 +333,7 @@ public class TimetableImportService {
                 errors.add(new RowErrorDto(line, "dayOfWeek", "星期不能为空", DAY_LABELS));
                 failed = true;
             } else {
-                day = parseDay(dayText).orElse(null);
+                day = SlotText.day(dayText).orElse(null);
                 if (day == null) {
                     errors.add(new RowErrorDto(line, "dayOfWeek", "无法识别星期：" + dayText, DAY_LABELS));
                     failed = true;
@@ -347,7 +346,7 @@ public class TimetableImportService {
                 errors.add(new RowErrorDto(line, "periodNo", "节次不能为空", periodCandidates(periodsByDay, day)));
                 failed = true;
             } else {
-                periodNo = parsePeriodNo(periodText).orElse(null);
+                periodNo = SlotText.periodNo(periodText).orElse(null);
                 if (periodNo == null) {
                     errors.add(new RowErrorDto(line, "periodNo", "无法识别节次：" + periodText,
                             periodCandidates(periodsByDay, day)));
@@ -440,72 +439,6 @@ public class TimetableImportService {
                 .sorted()
                 .map(no -> "第" + no + "节")
                 .toList();
-    }
-
-    private static Optional<Integer> parseDay(String raw) {
-        String value = normalizeSymbols(raw);
-        value = value.replace("星期", "").replace("礼拜", "").replace("周", "");
-        return switch (value) {
-            case "一", "1" -> Optional.of(1);
-            case "二", "2" -> Optional.of(2);
-            case "三", "3" -> Optional.of(3);
-            case "四", "4" -> Optional.of(4);
-            case "五", "5" -> Optional.of(5);
-            case "六", "6" -> Optional.of(6);
-            case "日", "天", "七", "7" -> Optional.of(7);
-            default -> Optional.empty();
-        };
-    }
-
-    private static Optional<Integer> parsePeriodNo(String raw) {
-        String value = normalizeSymbols(raw);
-        if (value.startsWith("第")) {
-            value = value.substring(1);
-        }
-        if (value.endsWith("节")) {
-            value = value.substring(0, value.length() - 1);
-        }
-        if (value.isEmpty()) {
-            return Optional.empty();
-        }
-        int number;
-        if (value.matches("\\d+")) {
-            number = Integer.parseInt(value);
-        } else {
-            number = chineseNumber(value);
-        }
-        return number > 0 ? Optional.of(number) : Optional.empty();
-    }
-
-    /** Parses 一..九, 十, 十一..九十九; anything else yields 0. */
-    private static int chineseNumber(String value) {
-        String digits = "一二三四五六七八九";
-        int total = 0;
-        int current = 0;
-        for (char c : value.toCharArray()) {
-            int digit = c == '两' ? 2 : digits.indexOf(c) + 1;
-            if (digit > 0) {
-                current = digit;
-            } else if (c == '十') {
-                total += (current == 0 ? 1 : current) * 10;
-                current = 0;
-            } else {
-                return 0;
-            }
-        }
-        return total + current;
-    }
-
-    private static String normalizeSymbols(String value) {
-        if (value == null) {
-            return "";
-        }
-        return java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFKC)
-                .replaceAll("\\s+", "");
-    }
-
-    private static String normalizeName(String value) {
-        return normalizeSymbols(value).toLowerCase(java.util.Locale.ROOT);
     }
 
     private static String value(RowDto row, String field) {

@@ -22,6 +22,7 @@ import com.paiban.ai.imports.ImportDtos.PreviewDto;
 import com.paiban.ai.imports.ImportDtos.RowDto;
 import com.paiban.ai.imports.ImportDtos.RowErrorDto;
 import com.paiban.ai.imports.ImportDtos.TimetableSummaryDto;
+import com.paiban.ai.imports.workbook.WorkbookImportFlow;
 import com.paiban.common.excel.ExcelTableReader;
 import com.paiban.common.settings.SettingsService;
 import com.paiban.common.web.ApiException;
@@ -64,7 +65,7 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class AiImportService {
 
-    private static final int MAX_ROWS = 2000;
+    private static final int MAX_ROWS = 5000;
     private static final int DATA_IMPORT_MAX_TOKENS = 8192;
     private static final int TIMETABLE_HEADER_ROWS = 2;
     private static final int TIMETABLE_CHUNK_ROWS = 1;
@@ -93,6 +94,8 @@ public class AiImportService {
     private final TransactionTemplate transactionTemplate;
     /** Reads and writes {@code batches_json}; the one place batches are folded together. */
     private final BatchStore batchStore;
+    /** The phase-11 workbook pipeline: browse with tools, merge by slot, commit categories. */
+    private final WorkbookImportFlow workbook;
     /**
      * Live stop requests, keyed by session. In memory on purpose: a stop only matters to
      * the background thread of this process; a restart is covered by the startup recovery.
@@ -110,6 +113,7 @@ public class AiImportService {
             UserService users,
             TimetableImportService timetableImports,
             ImportMappingService nameMappings,
+            WorkbookImportFlow workbook,
             @Qualifier("importExecutor") TaskExecutor importExecutor,
             PlatformTransactionManager transactionManager) {
         this.gateway = gateway;
@@ -122,6 +126,7 @@ public class AiImportService {
         this.users = users;
         this.timetableImports = timetableImports;
         this.nameMappings = nameMappings;
+        this.workbook = workbook;
         this.importExecutor = importExecutor;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.batchStore = new BatchStore(objectMapper);
@@ -135,6 +140,10 @@ public class AiImportService {
 
     public PreviewDto startExcel(MultipartFile file, String username, ImportTarget target) {
         ImportTarget effective = target == null ? ImportTarget.TEACHER : target;
+        if (effective == ImportTarget.WORKBOOK) {
+            // No target is chosen for a real workbook: the model decides what each sheet is.
+            return workbook.start(file, username);
+        }
         requireConfigured();
         UploadStorage.StoredFile stored = storage.storeSpreadsheet(file);
         AiImportLog log = newLog("excel", stored, username, effective);
@@ -200,13 +209,18 @@ public class AiImportService {
 
     public PreviewDto getSession(long id, String username) {
         AiImportLog log = requireSession(id, username);
-        return preview(log);
+        return isWorkbook(log) ? workbook.preview(log) : preview(log);
+    }
+
+    private boolean isWorkbook(AiImportLog log) {
+        return ImportTarget.WORKBOOK.code().equals(log.getTargetType());
     }
 
     @Transactional
     public PreviewDto updateRows(long id, List<RowDto> rows, String username) {
         AiImportLog log = requireSession(id, username);
         requireEditable(log);
+        requireNotWorkbook(log);
         ImportTarget target = targetOf(log);
         List<RowDto> normalized = normalize(rows, threshold(), target);
         Payload existing = readPreviewPayload(log, target);
@@ -224,6 +238,7 @@ public class AiImportService {
     public PreviewDto applyMapping(long id, MappingRequest request, String username) {
         AiImportLog log = requireSession(id, username);
         requireEditable(log);
+        requireNotWorkbook(log);
         ImportTarget target = targetOf(log);
         if (target != ImportTarget.TIMETABLE) {
             throw ApiException.badRequest("该导入目标不支持名称映射");
@@ -249,6 +264,7 @@ public class AiImportService {
     public PreviewDto continueWithAi(long id, String username) {
         AiImportLog log = requireSession(id, username);
         requireEditable(log);
+        requireNotWorkbook(log);
         ImportTarget target = targetOf(log);
         Payload existing = readWorkingPayload(log, target);
         List<RowDto> current = existing.rows();
@@ -287,6 +303,9 @@ public class AiImportService {
             throw ApiException.conflict("这次导入只解析了一部分班级，请先重试失败批次或放弃导入");
         }
         ImportTarget target = targetOf(log);
+        if (target == ImportTarget.WORKBOOK) {
+            return workbook.reparse(log);
+        }
         if (target == ImportTarget.TIMETABLE && log.getFilePath() != null) {
             GridData grid = readGrid(log.getFilePath());
             if (dataRowCount(grid.rows()) > TIMETABLE_CHUNK_THRESHOLD) {
@@ -304,11 +323,18 @@ public class AiImportService {
      * teacher records; timetable rows become a DRAFT timetable in the current
      * semester and return its id.
      */
-    @Transactional
     public CommitResultDto commit(long id, String username) {
         AiImportLog log = requireSession(id, username);
         requireEditable(log);
         ImportTarget target = targetOf(log);
+        if (target == ImportTarget.WORKBOOK) {
+            // Each category is its own transaction, so this one must not wrap them all.
+            return workbook.commit(log, username);
+        }
+        return transactionTemplate.execute(status -> commitSingleTarget(log, target, username));
+    }
+
+    private CommitResultDto commitSingleTarget(AiImportLog log, ImportTarget target, String username) {
         Payload working = readWorkingPayload(log, target);
         List<RowDto> rows = working.rows();
         if (rows.isEmpty()) {
@@ -339,7 +365,7 @@ public class AiImportService {
         log.setImportedCount(entities.size());
         log.setResultJson(writeJson(Map.of("imported", entities.size(), "rows", rows)));
         touch(log);
-        return new CommitResultDto(entities.size(), List.of(), null, List.of());
+        return new CommitResultDto(entities.size(), List.of(), null, List.of(), List.of());
     }
 
     private CommitResultDto commitTimetable(
@@ -358,7 +384,8 @@ public class AiImportService {
         log.setImportedCount(result.imported());
         log.setResultJson(writeJson(Map.of("draftId", result.draftId(), "lessons", result.imported())));
         touch(log);
-        return new CommitResultDto(result.imported(), List.of(), result.draftId(), result.warnings());
+        return new CommitResultDto(
+                result.imported(), List.of(), result.draftId(), result.warnings(), List.of());
     }
 
     private void requireTimetableEdit(String username) {
@@ -1135,7 +1162,10 @@ public class AiImportService {
                 issues(analysis, payload.rows()),
                 summary(analysis),
                 progress(log, plan),
-                failedBatches(log, plan));
+                failedBatches(log, plan),
+                null,
+                List.of(),
+                List.of());
     }
 
     /** Null for sessions that were never batched (small tables, text, images). */
@@ -1321,6 +1351,13 @@ public class AiImportService {
             throw ApiException.forbidden("不能访问他人的导入记录");
         }
         return log;
+    }
+
+    /** A workbook preview has no name-mapping step: every entity is created on commit. */
+    private void requireNotWorkbook(AiImportLog log) {
+        if (isWorkbook(log)) {
+            throw ApiException.badRequest("多表导入在预览中不再需要手工映射，确认后自动创建");
+        }
     }
 
     private void requireEditable(AiImportLog log) {

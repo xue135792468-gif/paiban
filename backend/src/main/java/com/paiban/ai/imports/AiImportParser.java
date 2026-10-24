@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class AiImportParser {
 
-    private static final int MAX_ROWS = 2000;
+    private static final int MAX_ROWS = 5000;
     private static final int MAX_VALUE = 2000;
 
     private final ObjectMapper objectMapper;
