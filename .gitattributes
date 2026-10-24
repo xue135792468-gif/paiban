@@ -3,3 +3,6 @@
 # CRLF after the shebang and the image would fail with
 # "exec /app/entrypoint.sh: no such file or directory".
 *.sh text eol=lf
+
+# Git hooks run through sh; a CRLF after the shebang would break them.
+.githooks/* text eol=lf

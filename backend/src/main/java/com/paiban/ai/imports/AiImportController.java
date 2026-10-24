@@ -105,6 +105,24 @@ public class AiImportController {
         return service.continueWithAi(id, principal.getName());
     }
 
+    /** Stops a background parse; only a {@code PARSING} session accepts it. */
+    @PostMapping("/sessions/{id}/stop")
+    public PreviewDto stop(@PathVariable Long id, Principal principal) {
+        return service.stop(id, principal.getName());
+    }
+
+    /** Re-runs the failed batches of a partial parse; only a {@code PARTIAL} session accepts it. */
+    @PostMapping("/sessions/{id}/retry")
+    public PreviewDto retry(@PathVariable Long id, Principal principal) {
+        return service.retry(id, principal.getName());
+    }
+
+    /** Abandons an unfinished parse; only a {@code PARSING} or {@code PARTIAL} session accepts it. */
+    @PostMapping("/sessions/{id}/abandon")
+    public PreviewDto abandon(@PathVariable Long id, Principal principal) {
+        return service.abandon(id, principal.getName());
+    }
+
     @PostMapping("/sessions/{id}/reparse")
     public PreviewDto reparse(@PathVariable Long id, Principal principal) {
         return service.reparse(id, principal.getName());

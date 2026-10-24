@@ -112,6 +112,17 @@ describe('searchDocs', () => {
     expect(searchDocs('年级推断').map((result) => result.doc.slug)).toContain('ai-import')
   })
 
+  it('covers the background parse states and what to do in each', () => {
+    const body = findDoc('ai-import')!.body
+    for (const state of ['PARSING', 'PARTIAL', 'ABANDONED']) {
+      expect(body).toContain(state)
+    }
+    for (const action of ['停止解析', '重试失败批次', '放弃导入']) {
+      expect(body).toContain(action)
+    }
+    expect(searchDocs('后台解析').map((result) => result.doc.slug)).toContain('ai-import')
+  })
+
   it('matches body text and returns a snippet around the hit', () => {
     const results = searchDocs('每周节数')
     const assignmentHit = results.find((result) => result.doc.slug === 'scheduling')

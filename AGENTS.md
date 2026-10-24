@@ -29,11 +29,15 @@
 
 求解器只有一条线程（`common/config/AsyncConfig.java`），同一时刻只跑一个任务；取消与排队逻辑都绑在这个约束上。
 
+课表导入的分批解析另有一条线程（`importExecutor`），与求解器互不影响；会话状态机在 `ai/imports/AiImportService.java`，批次数据在 `ai_import_log.batches_json`（迁移 V20、V21）。
+
 ## 本地开发
 
 - 构建前 `source .tools/env.sh`：JDK 21、Maven、E 盘仓库；`scripts/verify.sh` 会在 `.tools/env.sh` 存在时自动 source
+- 首次检出后执行 `git config core.hooksPath .githooks`：pre-commit 只对 staged 的 `frontend/**` 跑 eslint（`npm run lint` 覆盖全量，本地钩子只挡增量）
 - `scripts/verify.sh` — 本地闸门，与 CI 同一条路径；`--full` 用隔离端口 28080/25173 跑 Playwright，不会复用本地 dev 服务（可用 `PAIBAN_E2E_BACKEND_PORT` / `PAIBAN_E2E_FRONTEND_PORT` 覆盖）
 - 多票据 worktree：用 `scripts/worktree-add.sh <name> <branch> [base]` 创建、`scripts/worktree-remove.sh <name>` 清理；脚本会处理 `frontend/node_modules` junction，不要直接 `rm -rf`（会顺着 junction 删主仓库依赖）。Maven 用 `.tools/env.sh` 的绝对路径（worktree 内没有 `.tools`）
+- 多个会话并行时各自开 worktree，主仓库只用于合并；提交只 stage 本任务路径（用 `git add <path>`，不要 `git add -A`），别把另一个会话的未提交改动带进自己的提交
 - 性能基准（ADR-0017，约 3 分钟）：`cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test`
 
 ## Agent skills

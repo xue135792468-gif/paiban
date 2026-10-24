@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Lint only the staged frontend files. The PR gate lints everything
+# (`npm run lint`); this catches the case where a commit or merge breaks lint
+# while the unit tests stay green, without paying for a full lint per commit.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+mapfile -t staged < <(git diff --cached --name-only --diff-filter=ACMR \
+  | grep -E '^frontend/.*\.(ts|vue|js|mjs)$' || true)
+(( ${#staged[@]} == 0 )) && exit 0
+# A checkout without dependencies (fresh clone, CI) lets the full gate decide.
+[ -d frontend/node_modules ] || exit 0
+
+cd frontend
+npx eslint --no-warn-ignored --max-warnings 0 "${staged[@]#frontend/}"
