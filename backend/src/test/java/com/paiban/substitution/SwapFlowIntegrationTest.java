@@ -14,7 +14,6 @@ import com.paiban.support.TestData;
 import io.restassured.response.Response;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +46,10 @@ class SwapFlowIntegrationTest extends ApiIntegrationTest {
                          long chineseEntry, long mathEntry, long englishEntry) {}
 
     private World prepare(String token, String suffix) {
+        return prepare(token, suffix, true);
+    }
+
+    private World prepare(String token, String suffix, boolean blockSameDay) {
         long semesterId = TestData.semester(token);
         as(token).body(Map.of("morningCount", 2, "afternoonCount", 2, "eveningCount", 0))
                 .when().post("/api/semesters/" + semesterId + "/periods/default")
@@ -91,8 +94,10 @@ class SwapFlowIntegrationTest extends ApiIntegrationTest {
         long chinese = place(draftId, class1, courses.get("语文"), teachers.get("A"), periodByNo.get(1), rooms.get("R1"));
         long math = place(draftId, class1, courses.get("数学"), teachers.get("B"), periodByNo.get(2), rooms.get("R2"));
         long english = place(draftId, class1, courses.get("英语"), teachers.get("C"), periodByNo.get(3), rooms.get("R3"));
-        // Teacher B is busy at Monday period 1, forcing a three-teacher cycle.
-        place(draftId, class2, courses.get("数学"), teachers.get("B"), periodByNo.get(1), rooms.get("R4"));
+        // When blockSameDay is set, teacher B is busy on Monday period 1, forcing a
+        // three-teacher cycle; otherwise the plain two-teacher cycle is available.
+        place(draftId, class2, courses.get("数学"), teachers.get("B"),
+                periodByNo.get(blockSameDay ? 1 : 4), rooms.get("R4"));
 
         as(token).when().post("/api/timetable-drafts/" + draftId + "/publish").then().statusCode(200);
 
@@ -222,10 +227,42 @@ class SwapFlowIntegrationTest extends ApiIntegrationTest {
         }
 
         // The plan's reported soft score is what the verifier recomputed.
+        String csv = as(admin).queryParam("type", "SWAP")
+                .when().get("/api/substitutions/export")
+                .then().statusCode(200).extract().asString();
+        assertThat(csv).contains("类型").contains("调课");
+
         assertThat(softPenalty).isZero();
         as(admin).when().get("/api/substitution-requests/" + requestId + "/history")
                 .then().statusCode(200)
                 .body("toStatus", hasItem("EFFECTIVE"));
+    }
+
+    @Test
+    void approvesATwoTeacherSameDayCycleAsOneUnit() {
+        String admin = adminToken();
+        String suffix = TestData.suffix();
+        World world = prepare(admin, suffix, false);
+        String teacherA = teacherUser(admin, "twoa_" + suffix, world.teachers().get("A"));
+        teacherUser(admin, "twob_" + suffix, world.teachers().get("B"));
+
+        long requestId = submitSwap(teacherA, world.chineseEntry(), world.periodByNo().get(2));
+        long planId = as(admin).when().post("/api/substitution-requests/" + requestId + "/plans")
+                .then().statusCode(200)
+                .body("plans[0].cycleLength", equalTo(2))
+                .body("plans[0].impactTeachers", equalTo(2))
+                .body("plans[0].moves", hasSize(2))
+                .extract().jsonPath().getLong("plans[0].id");
+
+        as(admin).when().post("/api/substitution-plans/" + planId + "/approve")
+                .then().statusCode(200)
+                .body("status", equalTo("EFFECTIVE"));
+
+        as(admin).queryParam("type", "SWAP")
+                .when().get("/api/substitutions")
+                .then().statusCode(200)
+                .body("$", hasSize(2))
+                .body("type", org.hamcrest.Matchers.everyItem(equalTo("SWAP")));
     }
 
     @Test
@@ -294,9 +331,4 @@ class SwapFlowIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(400);
     }
 
-    private List<Long> ids(Response response) {
-        List<Long> result = new ArrayList<>();
-        response.jsonPath().getList("id").forEach(id -> result.add(((Number) id).longValue()));
-        return result;
-    }
 }

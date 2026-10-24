@@ -112,8 +112,8 @@ async function loadTargets() {
   if (!entry || form.type !== 'SWAP') return
   loadingTargets.value = true
   try {
-    const { data } = await http.get(`/substitution-requests/${entry.id}/swap-targets`, {
-      params: { date: form.date },
+    const { data } = await http.get('/substitution-swap-targets', {
+      params: { entryId: entry.id, date: form.date },
     })
     targetOptions.value = data as SwapTarget[]
   } catch {

@@ -32,6 +32,10 @@ import java.util.Set;
  * problem is a shortest simple cycle from {@code T} back to {@code O} through the
  * same class's occupied slots. A cycle of {@code n} nodes produces {@code n} moves
  * ({@code O -> T} plus one edge per node on the path).
+ *
+ * <p>Day-first is expressed by the {@code min-impact} comparator (impact days come
+ * first); the other presets deliberately trade days for fewer teachers or a more
+ * stable soft score.
  */
 public final class SwapPlanner {
 
@@ -337,9 +341,9 @@ public final class SwapPlanner {
             List<LessonView> beforeViews = views(before.get(date));
             List<LessonView> afterViews = views(after.get(date));
             List<ConstraintViolation> beforeViolations =
-                    ConstraintChecker.checkHard(search.snapshot.context(), beforeViews);
+                    ConstraintChecker.checkHardFast(search.snapshot.context(), beforeViews);
             List<ConstraintViolation> afterViolations =
-                    ConstraintChecker.checkHard(search.snapshot.context(), afterViews);
+                    ConstraintChecker.checkHardFast(search.snapshot.context(), afterViews);
             if (introducesViolation(beforeViolations, afterViolations)) {
                 return null;
             }

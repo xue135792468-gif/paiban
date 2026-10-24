@@ -19,6 +19,7 @@
         end-placeholder="结束日期"
       />
       <el-button type="primary" @click="loadRecords">查询</el-button>
+      <el-button @click="exportRecords">导出</el-button>
     </div>
     <div v-if="stats" class="stats">
       <span>教师：{{ stats.teacherName }}</span>
@@ -92,11 +93,9 @@ import type { Plan, PlanMove, RecordRow, Stats, Teacher } from './types'
 import { statusLabel, typeLabel } from './types'
 
 const props = defineProps<{
-  classes: Array<{ id: number; name: string; headTeacherId?: number | null }>
   classOptions: Array<{ id: number; name: string }>
   teachers: Teacher[]
   canViewAll: boolean
-  myTeacherId: number | null
 }>()
 
 const records = ref<RecordRow[]>([])
@@ -117,15 +116,7 @@ async function loadRecords() {
   }
   loading.value = true
   try {
-    const params: Record<string, unknown> = {}
-    if (filter.classId) params.classId = filter.classId
-    if (filter.teacherId) params.teacherId = filter.teacherId
-    if (filter.type) params.type = filter.type
-    if (filter.range && filter.range.length === 2) {
-      params.dateFrom = filter.range[0]
-      params.dateTo = filter.range[1]
-    }
-    const { data } = await http.get('/substitutions', { params })
+    const { data } = await http.get('/substitutions', { params: buildParams() })
     records.value = data
     planMoves.value = {}
     if (filter.teacherId) {
@@ -137,6 +128,31 @@ async function loadRecords() {
   } finally {
     loading.value = false
   }
+}
+
+function buildParams() {
+  const params: Record<string, unknown> = {}
+  if (filter.classId) params.classId = filter.classId
+  if (filter.teacherId) params.teacherId = filter.teacherId
+  if (filter.type) params.type = filter.type
+  if (filter.range && filter.range.length === 2) {
+    params.dateFrom = filter.range[0]
+    params.dateTo = filter.range[1]
+  }
+  return params
+}
+
+async function exportRecords() {
+  const response = await http.get('/substitutions/export', {
+    params: buildParams(),
+    responseType: 'blob',
+  })
+  const url = URL.createObjectURL(response.data)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'substitutions.csv'
+  link.click()
+  URL.revokeObjectURL(url)
 }
 
 async function onExpand(row: RecordRow, expandedRows: RecordRow[]) {

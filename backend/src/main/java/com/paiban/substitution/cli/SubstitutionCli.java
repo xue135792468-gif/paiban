@@ -90,12 +90,18 @@ public final class SubstitutionCli {
 
     private static int plan(String[] args, PrintStream out, PrintStream err) throws Exception {
         Map<String, String> options = parse(args);
+        requireKnown(options, "--snapshot", "--request", "--format", "--window",
+                "--max-teachers", "--preset");
         Path snapshotPath = requirePath(options, "--snapshot");
         Path requestPath = requirePath(options, "--request");
         String format = options.getOrDefault("--format", "json");
         int window = intOption(options, "--window", SwapPlanner.Options.DEFAULT_WINDOW_DAYS);
         int maxTeachers = intOption(options, "--max-teachers", SwapPlanner.Options.DEFAULT_MAX_TEACHERS);
-        RankingPreset preset = RankingPreset.fromCode(options.getOrDefault("--preset", "min-impact"));
+        String presetCode = options.getOrDefault("--preset", "min-impact");
+        if (!List.of("min-impact", "min-teachers", "stable-timetable").contains(presetCode)) {
+            throw new IllegalArgumentException("未知排序预设: " + presetCode);
+        }
+        RankingPreset preset = RankingPreset.fromCode(presetCode);
 
         PlanSnapshot snapshot = readSnapshot(snapshotPath);
         RequestJson request = MAPPER.readValue(requestPath.toFile(), RequestJson.class);
@@ -130,6 +136,8 @@ public final class SubstitutionCli {
 
     private static int verify(String[] args, PrintStream out, PrintStream err) throws Exception {
         Map<String, String> options = parse(args);
+        requireKnown(options, "--snapshot", "--before", "--after", "--plan",
+                "--kind", "--format");
         String format = options.getOrDefault("--format", "json");
         Path snapshotPath = options.containsKey("--snapshot") ? Path.of(options.get("--snapshot")) : null;
         Path beforePath = options.containsKey("--before") ? Path.of(options.get("--before")) : null;
@@ -147,9 +155,21 @@ public final class SubstitutionCli {
             PlanVerifier.Kind requested = options.containsKey("--kind")
                     ? PlanVerifier.Kind.valueOf(options.get("--kind").toUpperCase())
                     : PlanVerifier.Kind.SWAP;
+            List<PlanMove> moves = plan.moves;
+            Integer softPenalty = plan.softPenalty;
+            // Accept the output of `plan` directly: its best candidate is the plan.
+            if ((moves == null || moves.isEmpty()) && plan.candidates != null
+                    && !plan.candidates.isEmpty()) {
+                moves = plan.candidates.get(0).moves;
+                if (softPenalty == null) {
+                    softPenalty = plan.candidates.get(0).softPenalty;
+                }
+            }
+            if (moves == null || moves.isEmpty()) {
+                throw new IllegalArgumentException("方案文件没有可校验的 moves");
+            }
             result = PlanVerifier.verify(
-                    snapshot, plan.moves == null ? List.of() : plan.moves, requested,
-                    plan.softPenalty == null ? -1 : plan.softPenalty);
+                    snapshot, moves, requested, softPenalty == null ? -1 : softPenalty);
             kind = requested.name();
         } else if (beforePath != null && afterPath != null) {
             result = PlanVerifier.verifyDiff(readSnapshot(beforePath), readSnapshot(afterPath));
@@ -309,6 +329,14 @@ public final class SubstitutionCli {
         return options;
     }
 
+    private static void requireKnown(Map<String, String> options, String... allowed) {
+        for (String key : options.keySet()) {
+            if (!List.of(allowed).contains(key)) {
+                throw new IllegalArgumentException("未知参数: " + key);
+            }
+        }
+    }
+
     private static Path requirePath(Map<String, String> options, String name) {
         if (!options.containsKey(name)) {
             throw new IllegalArgumentException("缺少参数 " + name);
@@ -441,6 +469,14 @@ public final class SubstitutionCli {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class PlanFile {
         public Integer schemaVersion;
+        public List<PlanMove> moves;
+        public Integer softPenalty;
+        /** Present when the file is the direct output of {@code plan}. */
+        public List<CandidateFile> candidates;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class CandidateFile {
         public List<PlanMove> moves;
         public Integer softPenalty;
     }

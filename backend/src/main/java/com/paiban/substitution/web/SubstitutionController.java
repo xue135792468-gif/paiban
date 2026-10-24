@@ -101,13 +101,13 @@ public class SubstitutionController {
     }
 
     /** Same-class slots the requester can swap into (no class-wide timetable data). */
-    @GetMapping("/substitution-requests/{id}/swap-targets")
+    @GetMapping("/substitution-swap-targets")
     @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_SUBMIT + "')")
     public List<SwapTargetDto> swapTargets(
-            @PathVariable Long id,
+            @RequestParam Long entryId,
             @RequestParam LocalDate date,
             Principal principal) {
-        return service.swapTargets(principal.getName(), id, date);
+        return service.swapTargets(principal.getName(), entryId, date);
     }
 
     /** Generate (or regenerate) up to three candidate swap cycles for a request. */
@@ -118,6 +118,7 @@ public class SubstitutionController {
     }
 
     @GetMapping("/substitution-requests/{id}/plans")
+    @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_SUBMIT + "')")
     public List<SubstitutionPlanDto> plans(@PathVariable Long id, Principal principal) {
         return service.plansFor(id, principal.getName());
     }
@@ -142,20 +143,44 @@ public class SubstitutionController {
             @RequestParam(required = false) String type,
             Authentication authentication,
             Principal principal) {
+        authorizeRecords(authentication, principal, classId);
+        return service.records(semesterId, teacherId, classId, dateFrom, dateTo, type);
+    }
+
+    /** Same filters as the records page; the type column distinguishes 调课 / 代课. */
+    @GetMapping(value = "/substitutions/export", produces = "text/csv;charset=UTF-8")
+    public org.springframework.http.ResponseEntity<byte[]> exportRecords(
+            @RequestParam(required = false) Long semesterId,
+            @RequestParam(required = false) Long teacherId,
+            @RequestParam(required = false) Long classId,
+            @RequestParam(required = false) LocalDate dateFrom,
+            @RequestParam(required = false) LocalDate dateTo,
+            @RequestParam(required = false) String type,
+            Authentication authentication,
+            Principal principal) {
+        authorizeRecords(authentication, principal, classId);
+        String csv = service.recordsCsv(semesterId, teacherId, classId, dateFrom, dateTo, type);
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=substitutions.csv")
+                .contentType(org.springframework.http.MediaType.parseMediaType("text/csv;charset=UTF-8"))
+                .body(csv.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    private void authorizeRecords(Authentication authentication, Principal principal, Long classId) {
         boolean canViewAll = authentication.getAuthorities().stream()
                 .anyMatch(authority -> authority.getAuthority().equals(Permissions.SUBSTITUTION_VIEW));
-        if (!canViewAll) {
-            boolean canViewClass = authentication.getAuthorities().stream()
-                    .anyMatch(authority -> authority.getAuthority().equals(Permissions.SUBSTITUTION_VIEW_CLASS));
-            if (!canViewClass) {
-                throw com.paiban.common.web.ApiException.forbidden("没有权限查看调代记录");
-            }
-            if (classId == null) {
-                throw com.paiban.common.web.ApiException.badRequest("班主任查看调代记录时必须指定班级");
-            }
-            service.requireHeadTeacher(principal.getName(), classId);
+        if (canViewAll) {
+            return;
         }
-        return service.records(semesterId, teacherId, classId, dateFrom, dateTo, type);
+        boolean canViewClass = authentication.getAuthorities().stream()
+                .anyMatch(authority -> authority.getAuthority().equals(Permissions.SUBSTITUTION_VIEW_CLASS));
+        if (!canViewClass) {
+            throw com.paiban.common.web.ApiException.forbidden("没有权限查看调代记录");
+        }
+        if (classId == null) {
+            throw com.paiban.common.web.ApiException.badRequest("班主任查看调代记录时必须指定班级");
+        }
+        service.requireHeadTeacher(principal.getName(), classId);
     }
 
     @GetMapping("/substitutions/my")

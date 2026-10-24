@@ -21,6 +21,12 @@ import java.util.Set;
  * before/after timetable from the snapshot and the moves, then brute-scans the
  * four core invariants and the configured hard rules. A solver bug cannot make a
  * bad plan effective.
+ *
+ * <p>The soft score is recomputed from the final timetable, not copied from the
+ * planner. It intentionally goes through the one rule catalogue (ADR-0025: no
+ * second copy of the 24 rules), so the comparison catches planner bookkeeping
+ * errors rather than a shared arithmetic bug; the property test pins the two
+ * computations together.
  */
 public final class PlanVerifier {
 
@@ -78,7 +84,9 @@ public final class PlanVerifier {
                 issues.add(new Issue("ENTRY_ADDED", "改动后出现了新课时", lesson.entryId(), lesson.periodId()));
             }
         }
-        Kind kind = teacherChanged ? Kind.COVER : Kind.SWAP;
+        Kind kind = teacherChanged && moves.stream()
+                .allMatch(move -> move.fromPeriodId() == move.toPeriodId())
+                ? Kind.COVER : Kind.SWAP;
         Result structural = verify(before, moves, kind, -1);
         List<Issue> all = new ArrayList<>(issues);
         all.addAll(structural.issues());
@@ -237,9 +245,9 @@ public final class PlanVerifier {
                                        List<ScheduledLesson> after,
                                        List<Issue> issues) {
         List<ConstraintViolation> beforeViolations =
-                ConstraintChecker.checkHard(snapshot.context(), views(before));
+                ConstraintChecker.checkHardFast(snapshot.context(), views(before));
         List<ConstraintViolation> afterViolations =
-                ConstraintChecker.checkHard(snapshot.context(), views(after));
+                ConstraintChecker.checkHardFast(snapshot.context(), views(after));
         Map<String, Integer> counts = new HashMap<>();
         beforeViolations.forEach(violation -> counts.merge(violationKey(violation), 1, Integer::sum));
         for (ConstraintViolation violation : afterViolations) {
@@ -284,6 +292,10 @@ public final class PlanVerifier {
             if (kind == Kind.SWAP && source.teacherId() != move.teacherId()) {
                 issues.add(new Issue("TEACHER_CHANGED", "调课不能改变任课教师", move.entryId(),
                         move.toPeriodId()));
+            }
+            if (kind == Kind.COVER && move.fromPeriodId() != move.toPeriodId()) {
+                issues.add(new Issue("COVER_MOVED_SLOT",
+                        "代课只换教师，不换节次；换时间请走调课", move.entryId(), move.toPeriodId()));
             }
         }
     }

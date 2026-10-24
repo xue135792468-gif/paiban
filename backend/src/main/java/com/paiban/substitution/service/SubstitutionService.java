@@ -14,6 +14,7 @@ import com.paiban.foundation.domain.Room;
 import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
+import com.paiban.foundation.domain.SemesterRepository;
 import com.paiban.foundation.service.SemesterService;
 import com.paiban.identity.domain.AppUser;
 import com.paiban.identity.service.UserService;
@@ -83,6 +84,7 @@ public class SubstitutionService {
     private final RoomRepository rooms;
     private final PeriodRepository periods;
     private final SemesterService semesters;
+    private final SemesterRepository semesterRows;
     private final UserService users;
     private final SettingsService settings;
     private final NotificationService notifications;
@@ -103,6 +105,7 @@ public class SubstitutionService {
             RoomRepository rooms,
             PeriodRepository periods,
             SemesterService semesters,
+            SemesterRepository semesterRows,
             UserService users,
             SettingsService settings,
             NotificationService notifications,
@@ -121,6 +124,7 @@ public class SubstitutionService {
         this.rooms = rooms;
         this.periods = periods;
         this.semesters = semesters;
+        this.semesterRows = semesterRows;
         this.users = users;
         this.settings = settings;
         this.notifications = notifications;
@@ -217,6 +221,7 @@ public class SubstitutionService {
         recordHistory(saved.getId(), null, SubstitutionRequest.SUBMITTED, username, null);
 
         if (direct && Substitution.TYPE_COVER.equals(type)) {
+            lockSemester(semesterId);
             verifyCoverOrReject(username, saved, body.expectedSubstituteTeacherId(), null, null);
             saved.setStatus(SubstitutionRequest.EFFECTIVE);
             saved.setUpdatedAt(Instant.now());
@@ -330,7 +335,8 @@ public class SubstitutionService {
     }
 
     @Transactional(readOnly = true)
-    public List<SubstitutionPlanDto> plansFor(Long requestId, String username) {        SubstitutionRequest request = requireRequest(requestId);
+    public List<SubstitutionPlanDto> plansFor(Long requestId, String username) {
+        SubstitutionRequest request = requireRequest(requestId);
         AppUser user = users.getByUsername(username);
         boolean approver = users.hasPermission(user, com.paiban.identity.domain.Permissions.SUBSTITUTION_APPROVE);
         if (!approver && !Objects.equals(user.getTeacherId(), request.getRequesterTeacherId())) {
@@ -355,6 +361,7 @@ public class SubstitutionService {
                     "SUBSTITUTION_PLAN_EXPIRED", "方案 " + planId + " 已超过 30 分钟有效期");
             throw ApiException.conflict("方案已过期，请重新生成");
         }
+        lockSemester(request.getSemesterId());
         PlanSnapshot snapshot = snapshots.build(request.getSemesterId());
         if (!snapshot.snapshotHash().equals(plan.getSnapshotHash())) {
             audits.expirePlan(planId, SubstitutionPlan.EXPIRED, username,
@@ -458,6 +465,11 @@ public class SubstitutionService {
                 request.getEntryId(), request.getEffectiveDate(), Substitution.EFFECTIVE).isPresent()) {
             throw ApiException.conflict("该课节当天已有生效的调代，不能重复生效");
         }
+        if (decision != null && decision.newPeriodId() != null
+                && !decision.newPeriodId().equals(request.getPeriodId())) {
+            throw ApiException.badRequest("代课只换教师，不换节次；换时间请使用调课");
+        }
+        lockSemester(request.getSemesterId());
         verifyCoverOrReject(username, request, substituteTeacherId,
                 decision == null ? null : decision.newRoomId(),
                 decision == null ? null : decision.newPeriodId());
@@ -615,6 +627,39 @@ public class SubstitutionService {
         return result.stream().map(this::toRecordDto).toList();
     }
 
+    /** Semester-end export: the same filtered rows as the records page, as CSV. */
+    @Transactional(readOnly = true)
+    public String recordsCsv(Long semesterId, Long teacherId, Long classId,
+                             LocalDate dateFrom, LocalDate dateTo, String type) {
+        List<SubstitutionRecordDto> rows = records(semesterId, teacherId, classId, dateFrom, dateTo, type);
+        StringBuilder csv = new StringBuilder("﻿");
+        csv.append("类型,生效日期,行政班,课程,原教师,代课教师,教室,原节次,目标节次,方案ID\n");
+        for (SubstitutionRecordDto row : rows) {
+            boolean swap = Substitution.TYPE_SWAP.equals(row.type());
+            csv.append(csvCell(swap ? "调课" : "代课")).append(',')
+                    .append(csvCell(row.effectiveDate() == null ? "" : row.effectiveDate().toString())).append(',')
+                    .append(csvCell(row.className())).append(',')
+                    .append(csvCell(row.courseName())).append(',')
+                    .append(csvCell(row.originalTeacherName())).append(',')
+                    .append(csvCell(swap ? "" : row.substituteTeacherName())).append(',')
+                    .append(csvCell(row.roomName())).append(',')
+                    .append(csvCell(row.fromPeriodLabel())).append(',')
+                    .append(csvCell(row.toPeriodLabel())).append(',')
+                    .append(row.planId() == null ? "" : row.planId()).append('\n');
+        }
+        return csv.toString();
+    }
+
+    private static String csvCell(String value) {
+        if (value == null) {
+            return "";
+        }
+        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
+            return "\"" + value.replace("\"", "\"\"") + "\"";
+        }
+        return value;
+    }
+
     @Transactional(readOnly = true)
     public TeacherStatsDto stats(Long teacherId) {
         requireTeacher(teacherId);
@@ -626,6 +671,12 @@ public class SubstitutionService {
         long swaps = substitutions.countSwapPlans(semesterId, teacherId);
         Teacher teacher = teachers.findById(teacherId).orElse(null);
         return new TeacherStatsDto(teacherId, teacher == null ? null : teacher.getName(), out, in, swaps);
+    }
+
+    /** Row lock on the semester: all substitution writes in it are serialised. */
+    private void lockSemester(Long semesterId) {
+        semesterRows.findWithLockById(semesterId)
+                .orElseThrow(() -> ApiException.notFound("学期不存在: " + semesterId));
     }
 
     private void verifyCoverOrReject(String username, SubstitutionRequest request, Long substituteTeacherId,

@@ -21,11 +21,9 @@
       <el-tab-pane v-if="canViewRecords" label="调代记录" name="records">
         <SubstitutionRecordsPanel
           ref="recordsRef"
-          :classes="classes"
           :class-options="classOptions"
           :teachers="teachers"
           :can-view-all="canViewAllRecords"
-          :my-teacher-id="myTeacherId"
         />
       </el-tab-pane>
     </el-tabs>

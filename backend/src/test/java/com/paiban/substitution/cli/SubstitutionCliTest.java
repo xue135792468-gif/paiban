@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -87,6 +89,32 @@ class SubstitutionCliTest {
 
         assertThat(run.code()).isEqualTo(1);
         assertThat(run.err()).contains("--request");
+    }
+
+    @Test
+    void planOutputCanBeFedBackIntoVerify() throws Exception {
+        Run plan = run("plan", "--snapshot", DIR + "snapshot.json", "--request", DIR + "request.json");
+        assertThat(plan.code()).isZero();
+
+        Path planFile = Files.createTempFile("substitution-plan", ".json");
+        Files.writeString(planFile, plan.out(), StandardCharsets.UTF_8);
+        Run verify = run("verify", "--snapshot", DIR + "snapshot.json", "--plan", planFile.toString());
+
+        assertThat(verify.code()).isZero();
+        assertThat(MAPPER.readTree(verify.out()).get("status").asText()).isEqualTo("PASS");
+    }
+
+    @Test
+    void unknownFlagsAndPresetsAreRejected() {
+        Run unknownFlag = run("plan", "--snapshot", DIR + "snapshot.json",
+                "--request", DIR + "request.json", "--bogus", "1");
+        assertThat(unknownFlag.code()).isEqualTo(1);
+        assertThat(unknownFlag.err()).contains("未知参数");
+
+        Run badPreset = run("plan", "--snapshot", DIR + "snapshot.json",
+                "--request", DIR + "request.json", "--preset", "bogus");
+        assertThat(badPreset.code()).isEqualTo(1);
+        assertThat(badPreset.err()).contains("未知排序预设");
     }
 
     @Test
