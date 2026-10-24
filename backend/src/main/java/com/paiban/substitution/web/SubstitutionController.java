@@ -1,8 +1,10 @@
 package com.paiban.substitution.web;
 
 import com.paiban.identity.domain.Permissions;
+import com.paiban.substitution.service.SubstitutionPlanService;
+import com.paiban.substitution.service.SubstitutionQueryService;
 import com.paiban.substitution.service.SubstitutionRecommendationService;
-import com.paiban.substitution.service.SubstitutionService;
+import com.paiban.substitution.service.SubstitutionRequestService;
 import com.paiban.substitution.web.SubstitutionDtos.CreateSubstitutionRequest;
 import com.paiban.substitution.web.SubstitutionDtos.DecisionRequest;
 import com.paiban.substitution.web.SubstitutionDtos.GeneratePlansResponse;
@@ -32,12 +34,19 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api")
 public class SubstitutionController {
 
-    private final SubstitutionService service;
+    private final SubstitutionRequestService requests;
+    private final SubstitutionPlanService plans;
+    private final SubstitutionQueryService queries;
     private final SubstitutionRecommendationService recommendations;
 
     public SubstitutionController(
-            SubstitutionService service, SubstitutionRecommendationService recommendations) {
-        this.service = service;
+            SubstitutionRequestService requests,
+            SubstitutionPlanService plans,
+            SubstitutionQueryService queries,
+            SubstitutionRecommendationService recommendations) {
+        this.requests = requests;
+        this.plans = plans;
+        this.queries = queries;
         this.recommendations = recommendations;
     }
 
@@ -45,7 +54,7 @@ public class SubstitutionController {
     @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_SUBMIT + "')")
     public SubstitutionRequestDto create(
             @Valid @RequestBody CreateSubstitutionRequest request, Principal principal) {
-        return service.create(principal.getName(), request);
+        return requests.create(principal.getName(), request);
     }
 
     @GetMapping("/substitution-requests")
@@ -57,23 +66,23 @@ public class SubstitutionController {
             Principal principal) {
         boolean canApprove = authentication.getAuthorities().stream()
                 .anyMatch(authority -> authority.getAuthority().equals(Permissions.SUBSTITUTION_APPROVE));
-        return service.list(principal.getName(), semesterId, status, mine || !canApprove);
+        return requests.list(principal.getName(), semesterId, status, mine || !canApprove);
     }
 
     @GetMapping("/substitution-requests/pending")
     @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_APPROVE + "')")
     public List<SubstitutionRequestDto> pending(Principal principal) {
-        return service.pending(principal.getName());
+        return requests.pending(principal.getName());
     }
 
     @GetMapping("/substitution-requests/{id}")
     public SubstitutionRequestDto detail(@PathVariable Long id, Principal principal) {
-        return service.detail(principal.getName(), id);
+        return requests.detail(principal.getName(), id);
     }
 
     @GetMapping("/substitution-requests/{id}/history")
     public List<HistoryDto> history(@PathVariable Long id, Principal principal) {
-        return service.history(principal.getName(), id);
+        return requests.history(principal.getName(), id);
     }
 
     @PostMapping("/substitution-requests/{id}/approve")
@@ -82,7 +91,7 @@ public class SubstitutionController {
             @PathVariable Long id,
             @RequestBody(required = false) DecisionRequest decision,
             Principal principal) {
-        return service.approve(id, principal.getName(), decision);
+        return requests.approve(id, principal.getName(), decision);
     }
 
     @PostMapping("/substitution-requests/{id}/reject")
@@ -91,7 +100,7 @@ public class SubstitutionController {
             @PathVariable Long id,
             @RequestBody(required = false) Map<String, String> body,
             Principal principal) {
-        return service.reject(id, principal.getName(), body == null ? null : body.get("comment"));
+        return requests.reject(id, principal.getName(), body == null ? null : body.get("comment"));
     }
 
     @PostMapping("/substitution-requests/{id}/recommend")
@@ -107,20 +116,20 @@ public class SubstitutionController {
             @RequestParam Long entryId,
             @RequestParam LocalDate date,
             Principal principal) {
-        return service.swapTargets(principal.getName(), entryId, date);
+        return plans.swapTargets(principal.getName(), entryId, date);
     }
 
     /** Generate (or regenerate) up to three candidate swap cycles for a request. */
     @PostMapping("/substitution-requests/{id}/plans")
     @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_APPROVE + "')")
     public GeneratePlansResponse generatePlans(@PathVariable Long id, Principal principal) {
-        return service.generatePlans(id, principal.getName());
+        return plans.generatePlans(id, principal.getName());
     }
 
     @GetMapping("/substitution-requests/{id}/plans")
     @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_SUBMIT + "')")
     public List<SubstitutionPlanDto> plans(@PathVariable Long id, Principal principal) {
-        return service.plansFor(id, principal.getName());
+        return plans.plansFor(id, principal.getName());
     }
 
     /** Approve one whole plan: every move becomes effective, or none does. */
@@ -130,7 +139,7 @@ public class SubstitutionController {
             @PathVariable Long id,
             @RequestBody(required = false) Map<String, String> body,
             Principal principal) {
-        return service.approvePlan(id, principal.getName(), body == null ? null : body.get("comment"));
+        return plans.approvePlan(id, principal.getName(), body == null ? null : body.get("comment"));
     }
 
     @GetMapping("/substitutions")
@@ -144,7 +153,7 @@ public class SubstitutionController {
             Authentication authentication,
             Principal principal) {
         authorizeRecords(authentication, principal, classId);
-        return service.records(semesterId, teacherId, classId, dateFrom, dateTo, type);
+        return queries.records(semesterId, teacherId, classId, dateFrom, dateTo, type);
     }
 
     /** Same filters as the records page; the type column distinguishes 调课 / 代课. */
@@ -159,7 +168,7 @@ public class SubstitutionController {
             Authentication authentication,
             Principal principal) {
         authorizeRecords(authentication, principal, classId);
-        String csv = service.recordsCsv(semesterId, teacherId, classId, dateFrom, dateTo, type);
+        String csv = queries.recordsCsv(semesterId, teacherId, classId, dateFrom, dateTo, type);
         return org.springframework.http.ResponseEntity.ok()
                 .header("Content-Disposition", "attachment; filename=substitutions.csv")
                 .contentType(org.springframework.http.MediaType.parseMediaType("text/csv;charset=UTF-8"))
@@ -180,18 +189,18 @@ public class SubstitutionController {
         if (classId == null) {
             throw com.paiban.common.web.ApiException.badRequest("班主任查看调代记录时必须指定班级");
         }
-        service.requireHeadTeacher(principal.getName(), classId);
+        queries.requireHeadTeacher(principal.getName(), classId);
     }
 
     @GetMapping("/substitutions/my")
     @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_VIEW_OWN + "')")
     public List<SubstitutionRecordDto> myRecords(Principal principal) {
-        return service.myRecords(principal.getName());
+        return queries.myRecords(principal.getName());
     }
 
     @GetMapping("/substitutions/stats")
     @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_VIEW + "')")
     public TeacherStatsDto stats(@RequestParam Long teacherId) {
-        return service.stats(teacherId);
+        return queries.stats(teacherId);
     }
 }
