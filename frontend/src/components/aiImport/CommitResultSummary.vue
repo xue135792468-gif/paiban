@@ -21,17 +21,29 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <SuspiciousTeacherList
+      v-if="teacherWarnings.length"
+      :warnings="teacherWarnings"
+      class="teacher-warnings"
+    />
   </el-card>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { categoryLabel, type CategoryResult } from './timetablePreview'
+import SuspiciousTeacherList from './SuspiciousTeacherList.vue'
+import { categoryLabel, type CategoryResult, type TeacherWarning } from './timetablePreview'
 
 const props = defineProps<{
   categories: CategoryResult[]
   draftId?: number | null
+  /** The same aggregated list the preview showed, so the counts agree. */
+  teacherWarnings?: TeacherWarning[]
 }>()
+
+const teacherWarnings = computed(() => props.teacherWarnings ?? [])
 
 const router = useRouter()
 
@@ -56,5 +68,9 @@ function openDraft() {
 .error-line {
   font-size: 12px;
   color: #b91c1c;
+}
+
+.teacher-warnings {
+  margin-top: 12px;
 }
 </style>

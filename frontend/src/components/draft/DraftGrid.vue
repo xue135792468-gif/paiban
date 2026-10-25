@@ -32,6 +32,7 @@
               dragging: draggedLessonId === lesson.id,
               highlight: highlightedIds.has(lesson.id),
               conflict: conflictIds.has(lesson.id),
+              warning: warningIds.has(lesson.id),
             }"
             :style="{ background: courseColor(courses, lesson.courseId) }"
             :draggable="draggable"
@@ -69,6 +70,8 @@ const props = defineProps<{
   highlightLessonIds?: number[]
   /** Lessons that must be flagged as a hard conflict, for example duplicate import rows. */
   conflictLessonIds?: number[]
+  /** Lessons worth a look but not a conflict, for example a placeholder teacher name. */
+  warningLessonIds?: number[]
   /** Narrower columns for the side-by-side preview. */
   compact?: boolean
 }>()
@@ -91,6 +94,8 @@ const columnWidth = computed(() => (props.compact ? 110 : 150))
 const highlightedIds = computed(() => new Set(props.highlightLessonIds ?? []))
 
 const conflictIds = computed(() => new Set(props.conflictLessonIds ?? []))
+
+const warningIds = computed(() => new Set(props.warningLessonIds ?? []))
 
 const periodRows = computed(() => {
   const map = new Map<number, { periodNo: number; time: string; section: string }>()
@@ -250,6 +255,11 @@ function onDrop(day: number, periodNo: number) {
   outline: 2px solid #eb5757;
   outline-offset: -2px;
   box-shadow: 0 0 0 2px rgba(235, 87, 87, 0.25);
+}
+.lesson.warning {
+  outline: 2px solid #e6a23c;
+  outline-offset: -2px;
+  box-shadow: 0 0 0 2px rgba(230, 162, 60, 0.25);
 }
 .lesson-course {
   font-weight: 600;

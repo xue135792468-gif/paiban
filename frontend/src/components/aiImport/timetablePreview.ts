@@ -54,8 +54,27 @@ export interface ImportPreview {
   workbook?: WorkbookSummary | null
   /** Non-blocking notes: skipped free periods, dropped duplicates, unconfirmed structure. */
   warnings?: string[]
+  /** Teacher values that look like a course name or a placeholder; never blocks the import. */
+  teacherWarnings?: TeacherWarning[]
   /** The read-only tool rounds the model ran while browsing the workbook. */
   toolTrace?: ToolTrace[]
+}
+
+/** Why one teacher value was flagged; `code` is stable, `message` is for people. */
+export interface TeacherWarningReason {
+  code: string
+  message: string
+}
+
+/**
+ * One de-duplicated suspicious teacher value. `rowNumbers` are 1-based preview rows
+ * (grid lesson ids are their negatives); `lessonCount` is 0 for a name-sheet-only value.
+ */
+export interface TeacherWarning {
+  value: string
+  reasons: TeacherWarningReason[]
+  lessonCount: number
+  rowNumbers: number[]
 }
 
 /** One sheet of a workbook import and what it contributed. */
@@ -474,4 +493,18 @@ export function isPageBlocker(issue: PreviewIssue): boolean {
 /** True when the preview came from a whole-workbook upload (no target was chosen). */
 export function isWorkbookPreview(preview: ImportPreview | null | undefined): boolean {
   return preview?.targetType === 'workbook'
+}
+
+/**
+ * Suspicious teacher values aggregated by the backend, mapped onto grid lesson ids so the
+ * preview can outline exactly the affected lessons (lesson -N belongs to preview row N).
+ */
+export function teacherWarningLessonIds(warnings: TeacherWarning[] | null | undefined): number[] {
+  const ids = new Set<number>()
+  for (const warning of warnings ?? []) {
+    for (const row of warning.rowNumbers ?? []) {
+      if (row > 0) ids.add(-row)
+    }
+  }
+  return [...ids]
 }
