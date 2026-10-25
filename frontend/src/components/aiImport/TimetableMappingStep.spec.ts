@@ -203,6 +203,38 @@ describe('课表映射步骤', () => {
     })
   })
 
+  it('清空人数输入时回落到默认 45，不提交 0', async () => {
+    const wrapper = await mountStep(
+      [issue({ inferredGrade: '八年级', gradeCandidates: ['八年级'] })],
+      rows(),
+      GRADE_SHEET,
+    )
+    httpMock.post.mockResolvedValue(previewResponse([]))
+    await enableCreate(wrapper)
+
+    // 0 is rejected by the class API, so the field may not offer it either.
+    expect(studentCountInput(wrapper).props('min')).toBe(1)
+    studentCountInput(wrapper).vm.$emit('update:modelValue', undefined)
+    await flushPromises()
+    expect(studentCountInput(wrapper).props('modelValue')).toBe(45)
+
+    await createButton(wrapper).trigger('click')
+    await flushPromises()
+
+    expect(httpMock.post).toHaveBeenCalledWith('/ai/import/sessions/9/mapping', {
+      mappings: [],
+      creates: [
+        {
+          field: 'className',
+          source: '一年级(1)班',
+          name: '一年级(1)班',
+          gradeId: 5,
+          studentCount: 45,
+        },
+      ],
+    })
+  })
+
   it('节次问题通过行编辑修正，只改相关行', async () => {
     const customRows = rows()
     customRows[1].values.periodNo = '第3节'

@@ -33,13 +33,41 @@ import org.springframework.transaction.annotation.Transactional;
  * reasons ("张老师此时在 3 班有数学课") instead of a bare score. The rule
  * definitions live in {@link ConstraintChecker} so the published-timetable
  * verifier uses exactly the same 24 rules.
+ *
+ * <p>{@link #validateDraft} goes one step further than a local check: it also reports
+ * the {@link DraftPublishReadiness} blockers, which is the same judgement
+ * {@code TimetablePublishService} refuses on. The page therefore cannot say "passed"
+ * for a draft publishing will reject.
  */
 @Service
 public class DraftValidator {
 
     public record Conflict(String type, String message, Long lessonId) {}
 
-    public record ValidationResult(boolean valid, int hardConflicts, List<Conflict> conflicts) {}
+    /**
+     * The shape every validation endpoint returns. {@code valid}, {@code hardConflicts} and
+     * {@code conflicts} keep their original meaning for existing consumers;
+     * {@code publishable} and {@code blockers} are additive.
+     *
+     * <p>{@code valid} answers "is this draft complete enough to be a timetable?" — no
+     * scheduling conflict, no unscheduled lesson, no dangling period and no lesson without
+     * a room. It deliberately says nothing about the already-published state
+     * ({@code DRAFT_PUBLISHED}, {@code SEMESTER_ALREADY_PUBLISHED}): those are terminal
+     * states, not defects of the content, so they only show up in {@code publishable} and
+     * {@code blockers}. Otherwise the very draft that was just published would read back as
+     * "invalid", which is the response change ticket 13 promised not to make.
+     *
+     * <p>A local check ({@code validate-move}, {@code validate-moves}, swap scenarios) only
+     * looks at the lessons it was asked about, so it reports no blockers and
+     * {@code publishable} mirrors {@code valid} there. Only the whole-draft check
+     * ({@link #validateDraft}) answers the publishing question.
+     */
+    public record ValidationResult(
+            boolean valid,
+            int hardConflicts,
+            List<Conflict> conflicts,
+            boolean publishable,
+            List<DraftPublishReadiness.Blocker> blockers) {}
 
     private final TimetableDraftRepository drafts;
     private final DraftLessonRepository draftLessons;
@@ -49,6 +77,7 @@ public class DraftValidator {
     private final TeacherRepository teachers;
     private final AdminClassRepository adminClasses;
     private final ConstraintService constraints;
+    private final SemesterBaselineQuery baselines;
     private final ObjectMapper objectMapper;
 
     public DraftValidator(
@@ -60,6 +89,7 @@ public class DraftValidator {
             TeacherRepository teachers,
             AdminClassRepository adminClasses,
             ConstraintService constraints,
+            SemesterBaselineQuery baselines,
             ObjectMapper objectMapper) {
         this.drafts = drafts;
         this.draftLessons = draftLessons;
@@ -69,6 +99,7 @@ public class DraftValidator {
         this.teachers = teachers;
         this.adminClasses = adminClasses;
         this.constraints = constraints;
+        this.baselines = baselines;
         this.objectMapper = objectMapper;
     }
 
@@ -109,9 +140,126 @@ public class DraftValidator {
         return resultOf(checkAffected(snapshot, applyChanges(snapshot, changes)));
     }
 
+    /**
+     * A room that does not exist yet, used by a preview that must judge the change
+     * before anything is written. Its id is a negative placeholder.
+     */
+    public record PlannedRoom(long placeholderId, String name, String type, int capacity) {}
+
+    /**
+     * Before and after the same whole-draft judgement. {@code added} holds only the
+     * conflicts the change introduces: pre-existing ones stay visible but never block
+     * a change on their own.
+     */
+    public record ChangeImpact(
+            List<Conflict> before,
+            List<Conflict> after,
+            List<Conflict> added,
+            List<DraftPublishReadiness.Blocker> remainingBlockers) {}
+
+    /**
+     * Impact of filling empty rooms only. Unlike {@link #validateChanges}, nothing but
+     * the room is assigned, so a preview cannot accidentally clear a period or teacher.
+     * Planned rooms are judged through their name, type and capacity before they exist.
+     */
+    @Transactional(readOnly = true)
+    public ChangeImpact previewRoomAssignment(
+            Long draftId, Map<Long, Long> roomIdByLesson, List<PlannedRoom> plannedRooms) {
+        Snapshot snapshot = snapshot(draftId);
+        List<Conflict> before = checkAffected(snapshot, null);
+        Snapshot after = snapshot.withPlannedRooms(plannedRooms);
+        for (L lesson : after.lessons) {
+            Long roomId = roomIdByLesson.get(lesson.id);
+            if (roomId != null) {
+                lesson.roomId = roomId;
+            }
+        }
+        List<Conflict> afterConflicts = checkAffected(after, null);
+        return new ChangeImpact(
+                before,
+                afterConflicts,
+                addedConflicts(before, afterConflicts),
+                DraftPublishReadiness.blockers(factsOf(after, afterConflicts.size())));
+    }
+
+    /** Multiset difference by code, lesson and message: what the change newly breaks. */
+    private List<Conflict> addedConflicts(List<Conflict> before, List<Conflict> after) {
+        Map<String, Integer> remaining = new HashMap<>();
+        before.forEach(conflict -> remaining.merge(keyOf(conflict), 1, Integer::sum));
+        List<Conflict> added = new ArrayList<>();
+        for (Conflict conflict : after) {
+            String key = keyOf(conflict);
+            Integer count = remaining.get(key);
+            if (count == null || count == 0) {
+                added.add(conflict);
+            } else {
+                remaining.put(key, count - 1);
+            }
+        }
+        return added;
+    }
+
+    private static String keyOf(Conflict conflict) {
+        return conflict.type() + "|" + conflict.lessonId() + "|" + conflict.message();
+    }
+
+    /**
+     * Whole-draft check: the 24 conflict rules plus every publishing precondition, from
+     * the one judgement publishing itself uses ({@link DraftPublishReadiness}). A draft
+     * with lessons but no rooms is therefore not "valid" any more: it cannot be published.
+     *
+     * <p>{@code valid} and {@code publishable} both come from this one list, differing only
+     * in that the two terminal-state blockers ({@code DRAFT_PUBLISHED},
+     * {@code SEMESTER_ALREADY_PUBLISHED}) do not make the content invalid — see
+     * {@link ValidationResult}.
+     */
     @Transactional(readOnly = true)
     public ValidationResult validateDraft(Long draftId) {
-        return resultOf(checkAffected(snapshot(draftId), null));
+        Snapshot snapshot = snapshot(draftId);
+        List<Conflict> conflicts = checkAffected(snapshot, null);
+        List<DraftPublishReadiness.Blocker> blockers =
+                DraftPublishReadiness.blockers(factsOf(snapshot, conflicts.size()));
+        return new ValidationResult(
+                contentComplete(blockers), conflicts.size(), conflicts, blockers.isEmpty(), blockers);
+    }
+
+    /**
+     * True when every blocker is about the draft's content; a blocker that only says "this
+     * is already published" is a state of the world, not something the content lacks.
+     */
+    private static boolean contentComplete(List<DraftPublishReadiness.Blocker> blockers) {
+        return blockers.stream().allMatch(blocker -> isTerminalState(blocker.code()));
+    }
+
+    /** The codes that describe a publish state rather than a gap in the draft. */
+    private static boolean isTerminalState(String code) {
+        return DraftPublishReadiness.DRAFT_PUBLISHED.equals(code)
+                || DraftPublishReadiness.SEMESTER_ALREADY_PUBLISHED.equals(code);
+    }
+
+    /** Counts the structural and resource gaps the publishing preconditions care about. */
+    private DraftPublishReadiness.Facts factsOf(Snapshot snapshot, int hardConflicts) {
+        int unscheduled = 0;
+        int missingRooms = 0;
+        int invalidPeriods = 0;
+        for (L lesson : snapshot.lessons) {
+            if (lesson.periodId == null) {
+                unscheduled++;
+            } else if (!snapshot.context.periods().containsKey(lesson.periodId)) {
+                invalidPeriods++;
+            }
+            if (lesson.roomId == null) {
+                missingRooms++;
+            }
+        }
+        return new DraftPublishReadiness.Facts(
+                "PUBLISHED".equals(snapshot.draft.getStatus()),
+                snapshot.lessons.size(),
+                unscheduled,
+                missingRooms,
+                invalidPeriods,
+                hardConflicts,
+                baselines.hasPublishedBaseline(snapshot.draft.getSemesterId()));
     }
 
     /**
@@ -199,8 +347,10 @@ public class DraftValidator {
                 .toList();
     }
 
+    /** Local checks report conflicts only; they never gate on the rest of the draft. */
     private ValidationResult resultOf(List<Conflict> conflicts) {
-        return new ValidationResult(conflicts.isEmpty(), conflicts.size(), conflicts);
+        boolean valid = conflicts.isEmpty();
+        return new ValidationResult(valid, conflicts.size(), conflicts, valid, List.of());
     }
 
     private Snapshot snapshot(Long draftId) {
@@ -240,14 +390,33 @@ public class DraftValidator {
         ConstraintContext context =
                 new ConstraintContext(periodMap, roomMap, courseMap, teacherMap, classMap, settings);
         List<L> copies = lessons.stream().map(L::of).toList();
-        return new Snapshot(copies, context);
+        return new Snapshot(draft, copies, context);
     }
 
-    private record Snapshot(List<L> lessons, ConstraintContext context) {
+    private record Snapshot(TimetableDraft draft, List<L> lessons, ConstraintContext context) {
 
         /** Same reference data, independent lesson copies, for scenario evaluation. */
         Snapshot withFreshLessons() {
-            return new Snapshot(lessons.stream().map(L::copy).toList(), context);
+            return new Snapshot(draft, lessons.stream().map(L::copy).toList(), context);
+        }
+
+        /**
+         * Independent lesson copies plus the rooms a preview is about to create, so the
+         * rules can judge assignments to rooms that do not exist yet.
+         */
+        Snapshot withPlannedRooms(List<PlannedRoom> plannedRooms) {
+            if (plannedRooms == null || plannedRooms.isEmpty()) {
+                return withFreshLessons();
+            }
+            Map<Long, ConstraintContext.RoomView> roomMap = new HashMap<>(context.rooms());
+            for (PlannedRoom room : plannedRooms) {
+                roomMap.put(room.placeholderId(), new ConstraintContext.RoomView(
+                        room.placeholderId(), room.name(), room.type(), room.capacity()));
+            }
+            ConstraintContext widened = new ConstraintContext(
+                    context.periods(), Map.copyOf(roomMap), context.courses(),
+                    context.teachers(), context.classes(), context.settings());
+            return new Snapshot(draft, lessons.stream().map(L::copy).toList(), widened);
         }
     }
 

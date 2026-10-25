@@ -210,6 +210,33 @@ class WorkbookImportIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void classesAutoCreatedByTheWorkbookGetTheDefaultStudentCountAndStayEditable() throws Exception {
+        String admin = adminToken();
+        TestData.semester(admin);
+        long semesterId = currentSemester(admin);
+        generateDefaultPeriods(admin, semesterId);
+        scriptPlan();
+
+        Response preview = upload(admin, workbook(realisticSheets()));
+        long sessionId = preview.jsonPath().getLong("sessionId");
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/commit").then().statusCode(200);
+
+        // The workbook carries no class size, so the manual form's default applies.
+        List<com.paiban.foundation.domain.AdminClass> created =
+                adminClasses.findBySemesterIdOrderByGradeIdAscNameAsc(semesterId);
+        assertThat(created).hasSize(2);
+        assertThat(created).allSatisfy(adminClass -> assertThat(adminClass.getStudentCount()).isEqualTo(45));
+
+        // Editing the imported class must work: a 0 count used to fail the save.
+        com.paiban.foundation.domain.AdminClass first = created.get(0);
+        as(admin).body(Map.of("gradeId", first.getGradeId(), "name", "八年级1班"))
+                .when().put("/api/classes/" + first.getId())
+                .then().statusCode(200)
+                .body("name", equalTo("八年级1班"))
+                .body("studentCount", equalTo(45));
+    }
+
+    @Test
     void existingNamesAreCompletedButNeverOverwritten() throws Exception {
         String admin = adminToken();
         TestData.semester(admin);
@@ -412,6 +439,89 @@ class WorkbookImportIntegrationTest extends ApiIntegrationTest {
         preview.then().statusCode(200)
                 .body("issues[0].field", equalTo("periods"))
                 .body("issues[0].message", containsString("默认作息"));
+    }
+
+    @Test
+    void aPlaceholderTeacherValueIsWarnedButStillImportsAndSurvivesARename() throws Exception {
+        String admin = adminToken();
+        TestData.semester(admin);
+        long semesterId = currentSemester(admin);
+        generateDefaultPeriods(admin, semesterId);
+        scriptPlan();
+
+        // The real workbook writes the post name into the teacher column: 14 lessons of
+        // 信息科技 carry 信息技术 as their "teacher".
+        Response preview = upload(admin, workbook(Map.of(
+                "数据源", List.of(
+                        List.of("八（1）|星期一|1", "信息科技", "信息技术"),
+                        List.of("八（1）|星期一|2", "信息科技", "张伟"),
+                        List.of("八（2）|星期二|1", "语文", "李娜")))));
+
+        preview.then().statusCode(200)
+                .body("rows", hasSize(3))
+                .body("teacherWarnings", hasSize(1));
+        assertThat(preview.jsonPath().getList("teacherWarnings.value", String.class))
+                .containsExactly("信息技术");
+        JsonNode warning = mapper.readTree(preview.body().asString()).path("teacherWarnings").get(0);
+        assertThat(warning.path("lessonCount").asInt()).isEqualTo(1);
+        assertThat(warning.path("rowNumbers").toString()).isEqualTo("[1]");
+        assertThat(warning.path("reasons").findValuesAsText("code")).contains("placeholder");
+        // A warning is a separate non-blocking channel: it must not turn into an issue.
+        assertThat(preview.jsonPath().getList("issues.field", String.class)).isEmpty();
+
+        long sessionId = preview.jsonPath().getLong("sessionId");
+        Response commit = as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/commit");
+
+        commit.then().statusCode(200)
+                .body("imported", equalTo(3))
+                .body("teacherWarnings", hasSize(1));
+        long draftId = commit.jsonPath().getLong("draftId");
+        assertThat(draftLessons.findAll().stream()
+                .filter(lesson -> Long.valueOf(draftId).equals(lesson.getDraftId())).count()).isEqualTo(3);
+
+        // Renaming the teacher on the teacher page keeps the lesson reference intact:
+        // draft lessons point at the id, not the name.
+        com.paiban.foundation.domain.Teacher placeholder =
+                teachers.findAll().stream()
+                        .filter(teacher -> "信息技术".equals(teacher.getName()))
+                        .findFirst()
+                        .orElseThrow();
+        assertThat(draftLessons.findAll().stream()
+                .filter(lesson -> Long.valueOf(draftId).equals(lesson.getDraftId()))
+                .map(lesson -> lesson.getTeacherId())
+                .toList()).contains(placeholder.getId());
+
+        as(admin).body(Map.of("name", "周敏"))
+                .when().put("/api/teachers/" + placeholder.getId())
+                .then().statusCode(200);
+
+        // The rename changes nothing structural: the only publishing blocker left is the
+        // one the import never fills (no rooms), not a dangling lesson reference.
+        as(admin).when().get("/api/timetable-drafts/" + draftId + "/validation")
+                .then().statusCode(200)
+                .body("blockers.code", org.hamcrest.Matchers.contains("MISSING_ROOMS"));
+
+        // Give the imported lessons a room, then the whole-draft check passes with the
+        // renamed teacher, i.e. nothing was lost when the teacher record changed.
+        long roomId = TestData.room(admin, "101");
+        List<com.paiban.scheduling.domain.DraftLesson> imported = draftLessons.findAll().stream()
+                .filter(lesson -> Long.valueOf(draftId).equals(lesson.getDraftId()))
+                .toList();
+        for (com.paiban.scheduling.domain.DraftLesson lesson : imported) {
+            as(admin).body(Map.of(
+                            "periodId", lesson.getPeriodId(),
+                            "roomId", roomId,
+                            "force", true))
+                    .when().patch("/api/timetable-drafts/" + draftId + "/lessons/" + lesson.getId())
+                    .then().statusCode(200);
+        }
+        as(admin).when().get("/api/timetable-drafts/" + draftId + "/validation")
+                .then().statusCode(200)
+                .body("valid", equalTo(true));
+        assertThat(as(admin).when().get("/api/timetable-drafts/" + draftId)
+                .then().statusCode(200)
+                .extract().jsonPath().getList("lessons.teacherName", String.class))
+                .contains("周敏");
     }
 
     // ---------------------------------------------------------------- fixtures

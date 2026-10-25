@@ -25,6 +25,25 @@ export interface DraftConflict {
   lessonId: number
 }
 
+/** One reason the draft cannot be published, as returned by the whole-draft check. */
+export interface DraftPublishBlocker {
+  code: string
+  message: string
+  /** Affected lessons; 0 when the gap is the draft itself. */
+  count: number
+  /** Stable action identifier the page turns into a link or button. */
+  action: string
+}
+
+/** `GET /timetable-drafts/{id}/validation`; local move checks omit the publishing part. */
+export interface DraftValidation {
+  valid: boolean
+  hardConflicts: number
+  conflicts: DraftConflict[]
+  publishable: boolean
+  blockers: DraftPublishBlocker[]
+}
+
 export interface DraftLesson {
   id: number
   assignmentId: number

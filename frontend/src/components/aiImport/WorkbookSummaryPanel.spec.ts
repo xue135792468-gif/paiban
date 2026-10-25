@@ -1,8 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import WorkbookSummaryPanel from './WorkbookSummaryPanel.vue'
-import type { WorkbookSummary } from './timetablePreview'
+import type { TeacherWarning, WorkbookSummary } from './timetablePreview'
+
+const push = vi.fn()
+vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
 
 const COLUMNS = [
   { field: 'className', label: '班级' },
@@ -42,6 +45,7 @@ function workbook(overrides: Partial<WorkbookSummary> = {}): WorkbookSummary {
 async function mountPanel(props: {
   workbook?: WorkbookSummary
   warnings?: string[]
+  teacherWarnings?: TeacherWarning[]
   toolTrace?: { round: number; tool: string; args: string; reply?: string; result: string }[]
 }) {
   const wrapper = mount(WorkbookSummaryPanel, {
@@ -49,6 +53,7 @@ async function mountPanel(props: {
       workbook: props.workbook ?? workbook(),
       columns: COLUMNS,
       warnings: props.warnings ?? [],
+      teacherWarnings: props.teacherWarnings ?? [],
       toolTrace: props.toolTrace ?? [],
     },
     global: { plugins: [ElementPlus] },
@@ -101,5 +106,44 @@ describe('WorkbookSummaryPanel', () => {
 
     expect(wrapper.text()).toContain('模型调用轨迹（2 轮）')
     expect(wrapper.text()).toContain('list_sheets')
+  })
+
+  it('列出疑似教师值、课节数与命中原因', async () => {
+    const wrapper = await mountPanel({
+      teacherWarnings: [
+        {
+          value: '信息技术',
+          reasons: [{ code: 'placeholder', message: '命中占位词「信息技术」' }],
+          lessonCount: 14,
+          rowNumbers: [1, 2, 3],
+        },
+      ],
+    })
+
+    const text = wrapper.get('[data-testid=teacher-warnings]').text()
+    expect(text).toContain('疑似教师值 1 个')
+    expect(text).toContain('信息技术')
+    expect(text).toContain('14 节')
+    expect(text).toContain('命中占位词「信息技术」')
+    // 警告是非阻断通道：不能出现在工作表警告或错误里。
+    expect(wrapper.findAll('[data-testid=workbook-warning]')).toHaveLength(0)
+  })
+
+  it('从摘要提供到教师页改名的入口', async () => {
+    const wrapper = await mountPanel({
+      teacherWarnings: [
+        { value: '待定', reasons: [{ code: 'placeholder', message: '命中占位词「待定」' }], lessonCount: 1, rowNumbers: [1] },
+      ],
+    })
+
+    await wrapper.get('[data-testid=teacher-warnings-rename]').trigger('click')
+
+    expect(push).toHaveBeenCalledWith('/admin/teachers')
+  })
+
+  it('没有疑似教师值时不渲染该区块', async () => {
+    const wrapper = await mountPanel({})
+
+    expect(wrapper.find('[data-testid=teacher-warnings]').exists()).toBe(false)
   })
 })

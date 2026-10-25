@@ -1,6 +1,9 @@
 package com.paiban.ai.imports;
 
+import com.paiban.ai.imports.ImportDtos.ApplyMissingPeriodsRequest;
+import com.paiban.ai.imports.ImportDtos.ApplyMissingPeriodsResult;
 import com.paiban.ai.imports.ImportDtos.CommitResultDto;
+import com.paiban.ai.imports.ImportDtos.MissingPeriodsDto;
 import com.paiban.ai.imports.ImportDtos.LookupDto;
 import com.paiban.ai.imports.ImportDtos.MappingRequest;
 import com.paiban.ai.imports.ImportDtos.PreviewDto;
@@ -34,10 +37,15 @@ public class AiImportController {
 
     private final AiImportService service;
     private final ImportMappingService mappings;
+    private final MissingPeriodsService missingPeriods;
 
-    public AiImportController(AiImportService service, ImportMappingService mappings) {
+    public AiImportController(
+            AiImportService service,
+            ImportMappingService mappings,
+            MissingPeriodsService missingPeriods) {
         this.service = service;
         this.mappings = mappings;
+        this.missingPeriods = missingPeriods;
     }
 
     @GetMapping("/lookup")
@@ -139,6 +147,31 @@ public class AiImportController {
     @PostMapping("/sessions/{id}/commit")
     public CommitResultDto commit(@PathVariable Long id, Principal principal) {
         return service.commit(id, principal.getName());
+    }
+
+    /**
+     * The periods this saved preview uses that the current semester does not have, with a
+     * computed time where one is defensible. Read-only and derived from {@code preview_json}:
+     * no re-parse, no model call.
+     */
+    @GetMapping("/sessions/{id}/missing-periods")
+    public MissingPeriodsDto missingPeriods(@PathVariable Long id, Principal principal) {
+        return missingPeriods.plan(id, principal.getName());
+    }
+
+    /**
+     * Appends the confirmed slots. Writing the period table is institutional data, so this
+     * needs the import permission and {@code semester:manage} (the class-level annotation is
+     * replaced by this one, hence both are named).
+     */
+    @PostMapping("/sessions/{id}/missing-periods")
+    @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')"
+            + " and hasAuthority('" + Permissions.SEMESTER_MANAGE + "')")
+    public ApplyMissingPeriodsResult fillMissingPeriods(
+            @PathVariable Long id,
+            @Valid @RequestBody ApplyMissingPeriodsRequest request,
+            Principal principal) {
+        return missingPeriods.apply(id, principal.getName(), request);
     }
 
     @GetMapping("/sessions/{id}/file")

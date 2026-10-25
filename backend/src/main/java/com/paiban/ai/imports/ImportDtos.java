@@ -1,8 +1,15 @@
 package com.paiban.ai.imports;
 
+import com.paiban.foundation.domain.PeriodSection;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 
@@ -80,7 +87,13 @@ public final class ImportDtos {
             /** Non-blocking notes: free periods skipped, duplicate rows dropped, structure unconfirmed. */
             List<String> warnings,
             /** The tool rounds the model ran while browsing the workbook. */
-            List<ToolTraceDto> toolTrace) {}
+            List<ToolTraceDto> toolTrace,
+            /**
+             * Teacher values that look like a course name or a placeholder. A separate,
+             * non-blocking channel: a warning never becomes an issue and never stops the
+             * commit or the draft.
+             */
+            List<TeacherWarningDto> teacherWarnings) {}
 
     public record TextImportRequest(@NotBlank(message = "请粘贴需要解析的文本") @Size(max = 200000) String text) {}
 
@@ -117,15 +130,19 @@ public final class ImportDtos {
                               @NotBlank(message = "原值不能为空") String source,
                               @NotNull(message = "目标 ID 不能为空") Long targetId) {}
 
-    /** Create one missing entity, then map the source value to its name. */
+    /**
+     * Create one missing entity, then map the source value to its name. A class's
+     * {@code studentCount} is optional (the entity default applies) but, when given, it
+     * must be a positive integer — the same rule the manual class form enforces.
+     */
     public record CreateItem(@NotBlank(message = "字段不能为空") String field,
                              @NotBlank(message = "原值不能为空") String source,
                              String name,
                              Long gradeId,
                              String gradeName,
-                             Integer studentCount) {}
+                             @Positive Integer studentCount) {}
 
-    public record MappingRequest(List<MappingItem> mappings, List<CreateItem> creates) {}
+    public record MappingRequest(List<MappingItem> mappings, List<@Valid CreateItem> creates) {}
 
     public record CommitResultDto(
             int imported,
@@ -133,5 +150,61 @@ public final class ImportDtos {
             Long draftId,
             List<String> warnings,
             /** Per-category write results; empty for single-target imports. */
-            List<CategoryResultDto> categories) {}
+            List<CategoryResultDto> categories,
+            /** The same aggregated suspicious teacher values the preview showed. */
+            List<TeacherWarningDto> teacherWarnings) {}
+
+    /**
+     * One (day, periodNo) the saved preview references and the semester does not have.
+     * {@code PROPOSED} carries the time the planner derived and may be confirmed;
+     * {@code MANUAL} carries only a {@code reason} and needs the period form.
+     */
+    public record MissingPeriodDto(
+            int dayOfWeek,
+            int periodNo,
+            String status,
+            String label,
+            PeriodSection section,
+            LocalTime startTime,
+            LocalTime endTime,
+            String reason) {}
+
+    /** The gap list for a session: which semester it compares against, and whether it is closed. */
+    public record MissingPeriodsDto(
+            Long semesterId,
+            String semesterName,
+            /** A published semester's period table is read-only, so every item is manual. */
+            boolean published,
+            List<MissingPeriodDto> items) {}
+
+    /** One proposed period the user ticked in the preview. */
+    public record MissingPeriodItem(
+            @NotNull(message = "星期不能为空") @Min(value = 1, message = "星期必须在 1-7 之间")
+                    @Max(value = 7, message = "星期必须在 1-7 之间") Integer dayOfWeek,
+            @NotNull(message = "节次不能为空") @Positive(message = "节次序号必须为正整数") Integer periodNo,
+            @NotNull(message = "开始时间不能为空") LocalTime startTime,
+            @NotNull(message = "结束时间不能为空") LocalTime endTime) {}
+
+    /**
+     * The user's confirmation. {@code semesterId} is the one the preview was computed
+     * against; a different current semester means the plan is stale.
+     */
+    public record ApplyMissingPeriodsRequest(
+            @NotNull(message = "学期不能为空") Long semesterId,
+            @NotEmpty(message = "请至少选择一节要补的课时")
+                    List<@Valid MissingPeriodItem> items) {}
+
+    /** What the confirmation wrote, plus the gap list as it stands afterwards. */
+    public record ApplyMissingPeriodsResult(int created, MissingPeriodsDto plan) {}
+
+    /** Why one teacher value was flagged; {@code code} is stable, {@code message} is for people. */
+    public record TeacherWarningReasonDto(String code, String message) {}
+
+    /**
+     * One suspicious teacher value, de-duplicated on its normalized form. {@code rowNumbers}
+     * are 1-based preview rows (the grid's lesson ids are their negatives); {@code lessonCount}
+     * is how many lessons carry it, 0 when it came from a name sheet only.
+     */
+    public record TeacherWarningDto(
+            String value, List<TeacherWarningReasonDto> reasons, int lessonCount, List<Integer> rowNumbers) {}
 }

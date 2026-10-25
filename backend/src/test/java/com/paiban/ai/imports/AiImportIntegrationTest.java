@@ -1794,7 +1794,7 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void aClassCreatedWithoutAStudentCountDefaultsToZeroAndAnExistingClassKeepsItsOwn() {
+    void aClassCreatedWithoutAStudentCountDefaultsToFortyFiveAndStaysEditable() {
         String admin = adminToken();
         TimetableFixture f = timetableFixture(admin);
         TestData.adminClass(admin, f.semesterId(), f.gradeId(), "一年级3班");
@@ -1814,12 +1814,63 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(200).extract().jsonPath().getList("$");
         assertThat(classes).anySatisfy(adminClass -> {
             assertThat(adminClass.get("name")).isEqualTo("一年级2班");
-            assertThat(adminClass.get("studentCount")).isEqualTo(0);
+            assertThat(adminClass.get("studentCount")).isEqualTo(45);
         });
+        // A class the mapping only re-used keeps the count it already had.
         assertThat(classes).anySatisfy(adminClass -> {
             assertThat(adminClass.get("name")).isEqualTo("一年级3班");
             assertThat(adminClass.get("studentCount")).isEqualTo(45);
         });
+
+        // The created class must stay editable: 0 used to fail the edit form's own validation.
+        Map<String, Object> created = classes.stream()
+                .filter(adminClass -> "一年级2班".equals(adminClass.get("name")))
+                .findFirst().orElseThrow();
+        as(admin).body(Map.of("gradeId", created.get("gradeId"), "name", "一年级2班改"))
+                .when().put("/api/classes/" + created.get("id"))
+                .then().statusCode(200)
+                .body("name", equalTo("一年级2班改"))
+                .body("studentCount", equalTo(45));
+    }
+
+    @Test
+    void creatingAClassWithANonPositiveStudentCountIsRejectedLikeTheManualForm() {
+        String admin = adminToken();
+        TimetableFixture f = timetableFixture(admin);
+        fake.response = aiResponse(List.of(timetableRow()));
+        long sessionId = timetableSession(admin);
+
+        // The manual form is the yardstick: the same value must fail the same way.
+        String manualMessage = as(admin)
+                .body(Map.of("gradeId", f.gradeId(), "name", "一年级1班", "studentCount", 0))
+                .when().put("/api/classes/" + f.classId())
+                .then().statusCode(400)
+                .body("message", equalTo("参数校验失败"))
+                .extract().jsonPath().getString("fields.studentCount");
+        assertThat(manualMessage).isNotBlank();
+
+        for (int invalid : new int[] {0, -1}) {
+            Response rejection = as(admin).body(Map.of("creates", List.of(Map.of(
+                            "field", "className", "source", "八（1）", "name", "八年级1班",
+                            "gradeName", "八年级", "studentCount", invalid))))
+                    .when().post("/api/ai/import/sessions/" + sessionId + "/mapping")
+                    .then().statusCode(400)
+                    .body("message", equalTo("参数校验失败"))
+                    .extract().response();
+
+            Map<String, String> fields = rejection.jsonPath().getMap("fields");
+            assertThat(fields).hasSize(1);
+            assertThat(fields.keySet()).anySatisfy(key -> assertThat(key).endsWith("studentCount"));
+            assertThat(fields.values()).containsExactly(manualMessage);
+        }
+
+        // Rejection happens before any write: nothing was created, no grade either.
+        assertThat(adminClasses.findBySemesterIdOrderByGradeIdAscNameAsc(f.semesterId()))
+                .extracting(adminClass -> adminClass.getName())
+                .containsExactly("一年级1班");
+        assertThat(as(admin).when().get("/api/grades?semesterId=" + f.semesterId())
+                .then().statusCode(200).extract().jsonPath().getList("name"))
+                .containsExactly("一年级");
     }
 
     @Test

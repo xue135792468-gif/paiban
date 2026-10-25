@@ -131,6 +131,7 @@
           :rows="preview.rows"
           :issues="previewIssues"
           :summary="preview.summary"
+          :teacher-warnings="teacherWarnings"
         />
 
         <div v-if="!isTimetable && !isPartial" class="legend">
@@ -150,10 +151,17 @@
 
       <ImportBlockerActions :issues="previewIssues" @reload="reloadPreview" />
 
+      <MissingPeriodsPanel
+        v-if="isWorkbook && !isCommittedPreview && !isParsing && preview"
+        :session-id="preview.sessionId"
+        @applied="reloadPreview"
+      />
+
       <WorkbookSummaryPanel
         v-if="preview.workbook"
         :workbook="preview.workbook"
         :warnings="preview.warnings"
+        :teacher-warnings="isCommittedPreview ? [] : teacherWarnings"
         :tool-trace="preview.toolTrace"
         :columns="preview.columns"
       />
@@ -170,6 +178,7 @@
         v-if="committedCategories.length"
         :categories="committedCategories"
         :draft-id="commitResult?.draftId ?? null"
+        :teacher-warnings="teacherWarnings"
       />
 
       <ImportCommittedAlert
@@ -253,6 +262,7 @@ import LastImportCard from '@/components/aiImport/LastImportCard.vue'
 import PartialResultPanel from '@/components/aiImport/PartialResultPanel.vue'
 import TimetableMappingStep from '@/components/aiImport/TimetableMappingStep.vue'
 import WorkbookSummaryPanel from '@/components/aiImport/WorkbookSummaryPanel.vue'
+import MissingPeriodsPanel from '@/components/aiImport/MissingPeriodsPanel.vue'
 import CommitResultSummary from '@/components/aiImport/CommitResultSummary.vue'
 import ImportBlockerActions from '@/components/aiImport/ImportBlockerActions.vue'
 import ImportExplanationCard from '@/components/aiImport/ImportExplanationCard.vue'
@@ -319,6 +329,13 @@ const mappableIssues = computed(() => previewIssues.value.filter((issue) => issu
 /** What a commit wrote: from this page, or from a restored committed session. */
 const committedCategories = computed(
   () => commitResult.value?.categories ?? preview.value?.workbook?.committed ?? [],
+)
+/**
+ * The one aggregated list of suspicious teacher values. Both the preview panel and the
+ * result card read it, so the counts they show can never disagree.
+ */
+const teacherWarnings = computed(
+  () => commitResult.value?.teacherWarnings ?? preview.value?.teacherWarnings ?? [],
 )
 /** A partial parse shows the classes it did read, not a preview of a complete timetable. */
 const previewTitle = computed(() => {

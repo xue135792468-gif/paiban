@@ -8,6 +8,7 @@ import com.paiban.scheduling.domain.DraftLesson;
 import com.paiban.scheduling.domain.DraftLessonRepository;
 import com.paiban.scheduling.domain.TimetableDraft;
 import com.paiban.scheduling.domain.TimetableDraftRepository;
+import com.paiban.scheduling.service.DraftPublishReadiness;
 import com.paiban.scheduling.service.DraftValidator;
 import com.paiban.timetable.domain.TimetableEntry;
 import com.paiban.timetable.domain.TimetableEntryRepository;
@@ -55,30 +56,10 @@ public class TimetablePublishService {
     public PublishResultDto publish(Long draftId, String actor) {
         TimetableDraft draft = drafts.findById(draftId)
                 .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
-        if ("PUBLISHED".equals(draft.getStatus())) {
-            throw ApiException.conflict("该草稿已发布");
-        }
-        List<DraftLesson> lessons = draftLessons.findByDraftIdOrderByIdAsc(draftId);
-        if (lessons.isEmpty()) {
-            throw ApiException.badRequest("草稿没有课节，无法发布");
-        }
-        List<DraftLesson> unassigned = lessons.stream()
-                .filter(lesson -> lesson.getPeriodId() == null || lesson.getRoomId() == null)
-                .toList();
-        if (!unassigned.isEmpty()) {
-            throw ApiException.badRequest("还有 " + unassigned.size() + " 节课未排课或未分配教室，不能发布");
-        }
+        // Same judgement the page's whole-draft check shows: no second opinion here.
         DraftValidator.ValidationResult validation = validator.validateDraft(draftId);
-        if (!validation.valid()) {
-            String reasons = validation.conflicts().stream()
-                    .limit(3)
-                    .map(DraftValidator.Conflict::message)
-                    .collect(Collectors.joining("；"));
-            throw ApiException.conflict("课表存在 " + validation.hardConflicts() + " 处硬冲突，不能发布：" + reasons);
-        }
-        if (publishes.findFirstBySemesterIdOrderByPublishedAtDesc(draft.getSemesterId()).isPresent()) {
-            throw ApiException.conflict("该学期课表已发布，基线只读；后续调整请走调代流程");
-        }
+        refuse(validation);
+        List<DraftLesson> lessons = draftLessons.findByDraftIdOrderByIdAsc(draftId);
 
         entries.deleteBySemesterId(draft.getSemesterId());
         entries.flush();
@@ -124,6 +105,33 @@ public class TimetablePublishService {
 
         events.publishEvent(new TimetablePublishedEvent(draft.getSemesterId(), draftId, actor));
         return new PublishResultDto(draftId, baseline.size(), now, saved.getId());
+    }
+
+    /**
+     * Turns the draft's first blocker into the refusal. Codes map back to the HTTP
+     * semantics publishing always had: a status clash is 409, incomplete or dangling data
+     * is 400, and a scheduling conflict stays 409 with its reasons attached.
+     */
+    private void refuse(DraftValidator.ValidationResult validation) {
+        if (validation.blockers().isEmpty()) {
+            return;
+        }
+        DraftPublishReadiness.Blocker blocker = validation.blockers().get(0);
+        switch (blocker.code()) {
+            case DraftPublishReadiness.DRAFT_PUBLISHED,
+                    DraftPublishReadiness.SEMESTER_ALREADY_PUBLISHED ->
+                    throw ApiException.conflict(blocker.message());
+            case DraftPublishReadiness.HARD_CONFLICTS -> throw ApiException.conflict(
+                    "课表存在 " + blocker.count() + " 处硬冲突，不能发布：" + reasons(validation));
+            default -> throw ApiException.badRequest(blocker.message());
+        }
+    }
+
+    private String reasons(DraftValidator.ValidationResult validation) {
+        return validation.conflicts().stream()
+                .limit(3)
+                .map(DraftValidator.Conflict::message)
+                .collect(Collectors.joining("；"));
     }
 
     @Transactional(readOnly = true)

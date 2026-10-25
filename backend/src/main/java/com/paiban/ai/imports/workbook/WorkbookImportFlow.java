@@ -14,6 +14,7 @@ import com.paiban.ai.imports.ImportDtos.PreviewDto;
 import com.paiban.ai.imports.ImportDtos.RowDto;
 import com.paiban.ai.imports.ImportDtos.RowErrorDto;
 import com.paiban.ai.imports.ImportDtos.SheetSummaryDto;
+import com.paiban.ai.imports.ImportDtos.TeacherWarningDto;
 import com.paiban.ai.imports.ImportDtos.TimetableSummaryDto;
 import com.paiban.ai.imports.ImportDtos.ToolTraceDto;
 import com.paiban.ai.imports.ImportDtos.WorkbookSummaryDto;
@@ -24,6 +25,7 @@ import com.paiban.ai.imports.ImportMappingService.EntityOutcome;
 import com.paiban.ai.imports.ImportMappingService.TeacherDraft;
 import com.paiban.ai.imports.ImportTarget;
 import com.paiban.ai.imports.SlotText;
+import com.paiban.ai.imports.SuspiciousTeacherNames;
 import com.paiban.ai.imports.TimetableImportService;
 import com.paiban.ai.imports.UploadStorage;
 import com.paiban.ai.imports.workbook.WorkbookPayload.CategorySummary;
@@ -48,6 +50,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
@@ -187,7 +190,8 @@ public class WorkbookImportFlow {
                         payload.sheets().stream().map(this::sheetDto).toList(),
                         categoryDtos(payload.committed())),
                 payload.warnings(),
-                trace(log.getToolTraceJson()));
+                trace(log.getToolTraceJson()),
+                payload.teacherWarnings());
     }
 
     private List<ColumnDto> columns() {
@@ -317,8 +321,8 @@ public class WorkbookImportFlow {
                 mergeCounts(previous.get(category), current));
         WorkbookPayload saved = new WorkbookPayload(
                 payload.rows(), payload.sheets(), payload.structureConfirmed(),
-                payload.explanation(), payload.warnings(), payload.errors(),
-                payload.teachers(), payload.courses(), payload.classes(), committed);
+                payload.explanation(), payload.warnings(), payload.teacherWarnings(),
+                payload.errors(), payload.teachers(), payload.courses(), payload.classes(), committed);
         log.setPreviewJson(writeJson(saved));
         log.setAiExplanation(payload.explanation());
         log.setRowCount(payload.rows().size());
@@ -338,7 +342,8 @@ public class WorkbookImportFlow {
         log.setUpdatedAt(Instant.now());
         logs.save(log);
         return new CommitResultDto(
-                total, List.copyOf(rowErrors), draftId, payload.warnings(), categoryDtos(committed));
+                total, List.copyOf(rowErrors), draftId, payload.warnings(), categoryDtos(committed),
+                payload.teacherWarnings());
     }
 
     private List<CategoryResultDto> categoryDtos(Map<String, CategorySummary> committed) {
@@ -464,6 +469,7 @@ public class WorkbookImportFlow {
         if (merge.duplicates() > 0) {
             warnings.add("合并 " + merge.duplicates() + " 行（重复槽位）");
         }
+        List<TeacherWarningDto> teacherWarnings = teacherWarnings(rows, sheetTeachers, courseNames, courses);
         List<SheetSummary> sheets = sheets(profiles, plan, merge, sheetRows, sheetTeachers, sheetCourses);
         // "有数据的工作表" means sheets that contributed rows, not sheets without a skip
         // note: a timetable sheet usually carries one ("跳过空课位 N 个").
@@ -477,8 +483,41 @@ public class WorkbookImportFlow {
                 : plan.explanation())
                 + "（" + contributing + " 张有数据的工作表，" + rows.size() + " 节课）";
         return new WorkbookPayload(
-                rows, sheets, plan.confirmed(), explanation, warnings, merge.errors(),
-                teachers, courses, List.copyOf(classNames.values()), Map.of());
+                rows, sheets, plan.confirmed(), explanation, warnings, teacherWarnings,
+                merge.errors(), teachers, courses, List.copyOf(classNames.values()), Map.of());
+    }
+
+    /**
+     * Suspicious teacher values, from the timetable rows and from the teacher sheets that
+     * create teachers too. The course names compared against are the workbook's own (the
+     * timetable course column and the course sheets), so the rule needs no extra query and
+     * a preview never changes because someone edited the course list meanwhile.
+     */
+    private List<TeacherWarningDto> teacherWarnings(
+            List<RowDto> rows,
+            Map<String, List<String>> sheetTeachers,
+            Map<String, String> courseNames,
+            List<CourseDraft> courses) {
+        List<SuspiciousTeacherNames.Occurrence> occurrences = new ArrayList<>();
+        for (int i = 0; i < rows.size(); i++) {
+            String teacher = value(rows.get(i), "teacherName");
+            if (StringUtils.hasText(teacher)) {
+                occurrences.add(new SuspiciousTeacherNames.Occurrence(teacher, i + 1));
+            }
+        }
+        for (List<String> names : sheetTeachers.values()) {
+            for (String name : names) {
+                // A name sheet carries no lesson: row 0 keeps it out of the count and the rows.
+                occurrences.add(new SuspiciousTeacherNames.Occurrence(name, 0));
+            }
+        }
+        List<String> knownCourses = new ArrayList<>(courseNames.values());
+        for (CourseDraft course : courses) {
+            if (StringUtils.hasText(course.name())) {
+                knownCourses.add(course.name());
+            }
+        }
+        return SuspiciousTeacherNames.inspect(occurrences, knownCourses);
     }
 
     /** One line per sheet, in the file's own order; skipped sheets keep their reason. */
@@ -603,7 +642,7 @@ public class WorkbookImportFlow {
 
     private WorkbookPayload emptyPayload() {
         return new WorkbookPayload(
-                List.of(), List.of(), false, "", List.of(), List.of(),
+                List.of(), List.of(), false, "", List.of(), List.of(), List.of(),
                 List.of(), List.of(), List.of(), Map.of());
     }
 

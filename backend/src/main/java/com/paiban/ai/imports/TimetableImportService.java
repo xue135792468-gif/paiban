@@ -11,6 +11,7 @@ import com.paiban.foundation.domain.Grade;
 import com.paiban.foundation.domain.GradeRepository;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
+import com.paiban.foundation.domain.PeriodSlotKey;
 import com.paiban.foundation.domain.Room;
 import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.foundation.domain.Semester;
@@ -263,7 +264,7 @@ public class TimetableImportService {
         Map<String, Period> periodBySlot = new LinkedHashMap<>();
         Map<Integer, List<Period>> periodsByDay = new LinkedHashMap<>();
         for (Period period : periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(sid)) {
-            periodBySlot.put(period.getDayOfWeek() + "-" + period.getPeriodNo(), period);
+            periodBySlot.put(PeriodSlotKey.of(period.getDayOfWeek(), period.getPeriodNo()), period);
             periodsByDay.computeIfAbsent(period.getDayOfWeek(), key -> new ArrayList<>()).add(period);
         }
 
@@ -356,7 +357,7 @@ public class TimetableImportService {
 
             Period period = null;
             if (day != null && periodNo != null) {
-                period = periodBySlot.get(day + "-" + periodNo);
+                period = periodBySlot.get(PeriodSlotKey.of(day, periodNo));
                 if (period == null) {
                     errors.add(new RowErrorDto(line, "periodNo", "该星期没有第 " + periodNo + " 节",
                             periodCandidates(periodsByDay, day)));

@@ -98,6 +98,15 @@ export const useAuthStore = defineStore('auth', () => {
     return user.value?.roles.includes(code) ?? false
   }
 
+  /**
+   * Filling a draft's missing rooms creates main data (rooms) as well as editing the
+   * draft, so the server wants both powers. Kept here, not assembled in the view, so the
+   * pair has one definition.
+   */
+  const canFillDraftRooms = computed(
+    () => hasPermission('timetable:edit') && hasPermission('foundation:manage'),
+  )
+
   return {
     token,
     user,
@@ -112,5 +121,6 @@ export const useAuthStore = defineStore('auth', () => {
     hasPermission,
     hasAnyPermission,
     hasRole,
+    canFillDraftRooms,
   }
 })

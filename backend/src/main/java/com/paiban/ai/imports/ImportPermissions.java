@@ -37,4 +37,15 @@ public class ImportPermissions {
             throw ApiException.forbidden("没有权限导入课表");
         }
     }
+
+    /**
+     * The period table is the school's institutional data, so appending to it is not covered
+     * by the import page's own permission: it needs {@code semester:manage} as well.
+     */
+    public void requireSemesterManage(String username) {
+        AppUser user = users.getByUsername(username);
+        if (user == null || !users.hasPermission(user, Permissions.SEMESTER_MANAGE)) {
+            throw ApiException.forbidden("没有权限修改学期与作息");
+        }
+    }
 }

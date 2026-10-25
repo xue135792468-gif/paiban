@@ -10,6 +10,7 @@ import {
   remainingIssueCount,
   type CategoryResult,
   type ImportPreview,
+  type TeacherWarning,
 } from './timetablePreview'
 import { targetTitle } from './importTargets'
 import {
@@ -37,6 +38,8 @@ export interface CommitResult {
   draftId?: number | null
   /** Per-category write results; only a workbook import fills this. */
   categories?: CategoryResult[]
+  /** The same aggregated suspicious teacher values the preview showed. */
+  teacherWarnings?: TeacherWarning[]
 }
 
 /** Where the last import came from, kept so an empty page can offer to continue it. */
