@@ -110,7 +110,7 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         String admin = adminToken();
         fake.response = aiResponse(teachers(23, "语文", 0.5));
 
-        Response preview = upload(admin, "/api/ai/import/excel", "教师名单.xlsx", excelBytes(23), XLSX);
+        Response preview = upload(admin, "/api/ai/import/excel?target=teacher", "教师名单.xlsx", excelBytes(23), XLSX);
         preview.then().statusCode(200)
                 .body("targetType", equalTo("teacher"))
                 .body("columns", hasSize(5))
@@ -2123,7 +2123,7 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         String csv = "2026 教师名单\n姓名,学科,电话\n赵六,化学,13800000004\n";
 
         Response preview = upload(
-                admin, "/api/ai/import/excel", "教师.csv", csv.getBytes(StandardCharsets.UTF_8), "text/csv");
+                admin, "/api/ai/import/excel?target=teacher", "教师.csv", csv.getBytes(StandardCharsets.UTF_8), "text/csv");
         preview.then().statusCode(200).body("rows", hasSize(1));
         assertThat(fake.lastRequest.messages().get(1).content())
                 .contains("[\"2026 教师名单\"]")
@@ -2183,7 +2183,7 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         String csv = "姓名,学科,电话\n赵六,化学,13800000004\n";
         byte[] bytes = csv.getBytes(Charset.forName("GBK"));
 
-        Response preview = upload(admin, "/api/ai/import/excel", "教师.csv", bytes, "text/csv");
+        Response preview = upload(admin, "/api/ai/import/excel?target=teacher", "教师.csv", bytes, "text/csv");
         preview.then().statusCode(200).body("rows", hasSize(1));
         assertThat(fake.lastRequest.messages().get(1).content()).contains("赵六");
     }

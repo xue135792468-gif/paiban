@@ -83,6 +83,13 @@ public class AiImportLog {
     @Column(name = "ai_raw_response", columnDefinition = "TEXT")
     private String aiRawResponse;
 
+    /**
+     * The tool rounds a workbook import ran (name, arguments, result summary). Only the
+     * phase-11 workbook path fills it; every other channel leaves it null.
+     */
+    @Column(name = "tool_trace_json", columnDefinition = "TEXT")
+    private String toolTraceJson;
+
     @Column(nullable = false, length = 20)
     private String status;
 

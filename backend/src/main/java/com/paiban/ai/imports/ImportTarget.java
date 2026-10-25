@@ -7,6 +7,9 @@ import java.util.List;
  * flat lists of objects (teachers today); {@link Kind#GRID} targets are one row per
  * timetable slot. Adding a target means adding one enum value and its persistence
  * hook in {@link AiImportService}, leaving the AI prompt and preview format unchanged.
+ * <p>{@link #WORKBOOK} is the phase-11 entry: the upload does not name a target, the
+ * model decides which sheets are timetables, teacher lists or course lists, and one
+ * confirmed commit writes every category.
  */
 public enum ImportTarget {
 
@@ -17,13 +20,9 @@ public enum ImportTarget {
             new Field("email", "邮箱", false),
             new Field("subject", "学科", false))),
 
-    TIMETABLE("timetable", Kind.GRID, List.of(
-            new Field("className", "班级", true),
-            new Field("dayOfWeek", "星期", true),
-            new Field("periodNo", "节次", true),
-            new Field("courseName", "课程", true),
-            new Field("teacherName", "教师", true),
-            new Field("roomName", "教室", false)));
+    TIMETABLE("timetable", Kind.GRID, gridFields()),
+
+    WORKBOOK("workbook", Kind.GRID, gridFields());
 
     public enum Kind {
         /** One row is one object; preview renders a table. */
@@ -42,6 +41,17 @@ public enum ImportTarget {
         this.code = code;
         this.kind = kind;
         this.fields = fields;
+    }
+
+    /** The timetable slot shape: a workbook preview and a timetable import share it. */
+    private static List<Field> gridFields() {
+        return List.of(
+                new Field("className", "班级", true),
+                new Field("dayOfWeek", "星期", true),
+                new Field("periodNo", "节次", true),
+                new Field("courseName", "课程", true),
+                new Field("teacherName", "教师", true),
+                new Field("roomName", "教室", false));
     }
 
     public String code() {

@@ -313,6 +313,20 @@ describe('课表映射步骤', () => {
     warning.mockRestore()
   })
 
+  it('全选未匹配选中全部可创建的项，槽位组不参与', async () => {
+    const wrapper = await mountStep([
+      issue({ field: 'teacherName', value: '王五', candidates: [] }),
+      issue({ field: 'courseName', value: '化学', row: 2, candidates: [] }),
+      issue({ field: 'periodNo', value: '第九节', candidates: ['第1节'] }),
+    ])
+
+    await wrapper.get('[data-testid=select-all-unmatched]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('已选 2 项')
+    expect(wrapper.text()).toContain('批量创建所选（2）')
+  })
+
   it('节次组不能勾选批量创建', async () => {
     const wrapper = await mountStep([issue({ field: 'periodNo', value: '第九节', candidates: ['第1节'] })])
     const selectionColumn = wrapper.findAllComponents({ name: 'ElTableColumn' })[0]

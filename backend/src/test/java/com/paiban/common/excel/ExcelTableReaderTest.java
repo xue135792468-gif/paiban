@@ -77,16 +77,30 @@ class ExcelTableReaderTest {
     }
 
     @Test
-    void rejectsMoreThanFiveHundredRows() throws Exception {
+    void acceptsARealFiveHundredAndSixtyRowSheet() throws Exception {
         byte[] bytes = workbook(sheet -> {
-            for (int r = 0; r <= 500; r++) {
+            for (int r = 0; r < 560; r++) {
+                sheet.createRow(r).createCell(0).setCellValue("第" + r + "行");
+            }
+        });
+
+        ExcelTableReader.Grid grid = ExcelTableReader.readGrid(new ByteArrayInputStream(bytes));
+
+        assertThat(grid.rows()).hasSize(560);
+    }
+
+    @Test
+    void rejectsMoreThanFiveThousandRows() throws Exception {
+        byte[] bytes = workbook(sheet -> {
+            for (int r = 0; r <= 5000; r++) {
                 sheet.createRow(r).createCell(0).setCellValue("第" + r + "行");
             }
         });
 
         assertThatThrownBy(() -> ExcelTableReader.readGrid(new ByteArrayInputStream(bytes)))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("500")
+                .hasMessageContaining("5001")
+                .hasMessageContaining("5000")
                 .hasMessageContaining("拆分");
     }
 

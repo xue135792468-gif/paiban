@@ -3,7 +3,14 @@ import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { AI_IMPORT_TIMEOUT_MS, http } from '@/api/http'
 import { aiParseErrorMessage, serverMessage } from '@/api/errors'
-import { canCommit, remainingIssueCount, type ImportPreview } from './timetablePreview'
+import {
+  canCommit,
+  isPageBlocker,
+  isWorkbookPreview,
+  remainingIssueCount,
+  type CategoryResult,
+  type ImportPreview,
+} from './timetablePreview'
 import { targetTitle } from './importTargets'
 import {
   isAbandoned,
@@ -28,6 +35,8 @@ export interface CommitResult {
   errors?: RowError[]
   warnings?: string[]
   draftId?: number | null
+  /** Per-category write results; only a workbook import fills this. */
+  categories?: CategoryResult[]
 }
 
 /** Where the last import came from, kept so an empty page can offer to continue it. */
@@ -86,20 +95,33 @@ export function useImportSession() {
   const stopping = ref(false)
   const abandoning = ref(false)
   const commitErrors = ref<RowError[]>([])
+  /** The last commit's per-category result; only a workbook import has one. */
+  const commitResult = ref<CommitResult | null>(null)
   /** Null until this page commits: a restored COMMITTED session has no known count. */
   const importedCount = ref<number | null>(null)
   const lastSession = ref<LastSession | null>(readLastSession())
 
-  const isTimetable = computed(() => preview.value?.targetType === 'timetable')
+  const isWorkbook = computed(() => isWorkbookPreview(preview.value))
+  // A workbook preview renders the merged timetable grid, so it shares the grid layout.
+  const isTimetable = computed(
+    () => preview.value?.targetType === 'timetable' || isWorkbook.value,
+  )
   const previewIssues = computed(() => preview.value?.issues ?? [])
+  /** Page-level blockers: missing semester, missing periods, rows the merge refused. */
+  const blockingIssues = computed(() => previewIssues.value.filter(isPageBlocker))
   const remainingIssues = computed(() => remainingIssueCount(previewIssues.value))
   const allIssuesResolved = computed(() => canCommit(previewIssues.value))
+  /** Page-level blockers (missing semester, missing periods, refused rows) block a workbook. */
+  const workbookBlocked = computed(
+    () => isWorkbook.value && previewIssues.value.some(isPageBlocker),
+  )
   const commitDisabled = computed(
     () =>
       !preview.value ||
       isCommitted(preview.value.status) ||
       isFailed(preview.value.status) ||
       isLocked(preview.value.status) ||
+      workbookBlocked.value ||
       (isTimetable.value && !allIssuesResolved.value),
   )
   const commitLabel = computed(() => {
@@ -314,8 +336,25 @@ export function useImportSession() {
         `/ai/import/sessions/${current.sessionId}/commit`,
       )
       importedCount.value = data.imported
-      preview.value = { ...current, status: 'COMMITTED' }
-      rememberStatus(current.sessionId, 'COMMITTED')
+      commitResult.value = data
+      const failedCategories = (data.categories ?? []).filter((category) => category.errors?.length)
+      // A workbook commit keeps the session editable when one category failed: the next
+      // click retries only what is missing, so the status must not claim it is finished.
+      const settled = !failedCategories.length
+      preview.value = { ...current, status: settled ? 'COMMITTED' : current.status }
+      if (settled) {
+        rememberStatus(current.sessionId, 'COMMITTED')
+      }
+      if (isWorkbook.value) {
+        // The workbook summary (what each category wrote) is the result page; the draft
+        // is one click away instead of navigating away from that summary.
+        if (failedCategories.length) {
+          ElMessage.warning('部分类别没有写入成功，可以在下方查看原因后重试')
+        } else {
+          ElMessage.success(`已入库 ${data.imported} 条数据`)
+        }
+        return
+      }
       if (data.draftId) {
         for (const warning of data.warnings ?? []) {
           ElMessage({ type: 'warning', message: warning, duration: 6000, showClose: true })
@@ -480,6 +519,7 @@ export function useImportSession() {
 
   /** Clears the preview half only; the URL marker survives so a refresh can retry. */
   function resetState() {
+    commitResult.value = null
     stopPolling()
     retryRound.value = false
     preview.value = null
@@ -508,14 +548,18 @@ export function useImportSession() {
     abandoning,
     commitErrors,
     importedCount,
+    commitResult,
     lastSession,
     isTimetable,
+    isWorkbook,
+    workbookBlocked,
     isParsing,
     isPartial,
     isCommittedPreview,
     isFailedPreview,
     polling,
     previewIssues,
+    blockingIssues,
     remainingIssues,
     allIssuesResolved,
     commitDisabled,

@@ -26,6 +26,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -72,6 +73,59 @@ public class ImportMappingService {
                     room -> new LookupDto(room.getId(), room.getName(), room.getBuilding()), q);
             default -> throw ApiException.badRequest("不支持的查询类型: " + type);
         };
+    }
+
+    /** What a batch of names resolves to: the search an import agent runs while browsing. */
+    public record NameLookup(String type, List<String> found, List<String> missing, int total) {}
+
+    /**
+     * Resolves several names at once against the entities an import can write (exact
+     * normalized match). Unlike {@link #lookup}, this is not a search: the caller wants to
+     * know which names already exist before deciding what a commit would create.
+     */
+    public NameLookup lookupNames(String type, List<String> names) {
+        Map<String, String> canonical = new LinkedHashMap<>();
+        switch (lookupType(type)) {
+            case "class" -> {
+                Long sid = semesters.current().map(SemesterDto::id).orElse(null);
+                if (sid != null) {
+                    for (AdminClass adminClass : adminClasses.findBySemesterIdOrderByGradeIdAscNameAsc(sid)) {
+                        canonical.putIfAbsent(normalizeName(adminClass.getName()), adminClass.getName());
+                    }
+                }
+            }
+            case "course" -> {
+                for (Course course : courses.findAllByOrderByNameAsc()) {
+                    canonical.putIfAbsent(normalizeName(course.getName()), course.getName());
+                }
+            }
+            case "teacher" -> {
+                for (Teacher teacher : teachers.findAllByOrderByNameAsc()) {
+                    canonical.putIfAbsent(normalizeName(teacher.getName()), teacher.getName());
+                }
+            }
+            case "room" -> {
+                for (Room room : rooms.findAllByOrderByNameAsc()) {
+                    canonical.putIfAbsent(normalizeName(room.getName()), room.getName());
+                }
+            }
+            default -> throw ApiException.badRequest("不支持的查询类型: " + type);
+        }
+        List<String> found = new ArrayList<>();
+        List<String> missing = new ArrayList<>();
+        for (String name : names == null ? List.<String>of() : names) {
+            String trimmed = name == null ? "" : name.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            String match = canonical.get(normalizeName(trimmed));
+            if (match == null) {
+                missing.add(trimmed);
+            } else if (!found.contains(match)) {
+                found.add(match);
+            }
+        }
+        return new NameLookup(type, List.copyOf(found), List.copyOf(missing), canonical.size());
     }
 
     private String lookupType(String type) {
@@ -316,8 +370,209 @@ public class ImportMappingService {
         return rooms.save(room).getName();
     }
 
-    private MappingKind kindOf(String field) {
-        return switch (field) {
+    // ------------------------------------------------- workbook commit (phase 11)
+
+    /** What creating-or-completing one named entity did. {@code error} means it was skipped. */
+    public record EntityOutcome(String name, boolean created, boolean updated, String error) {}
+
+    /** A teacher row as the workbook wrote it; only {@code name} is required. */
+    public record TeacherDraft(
+            String name, String employeeNo, String phone, String email, String subject) {}
+
+    public record CourseDraft(String name, String subject) {}
+
+    /**
+     * Teachers only need a name. A name that already exists is completed, never overwritten:
+     * the fields the school already filled in win over the import.
+     */
+    @Transactional
+    public List<EntityOutcome> ensureTeachers(List<TeacherDraft> drafts) {
+        List<EntityOutcome> outcomes = new ArrayList<>();
+        Map<String, TeacherDraft> merged = new LinkedHashMap<>();
+        for (TeacherDraft draft : drafts) {
+            String name = draft == null || draft.name() == null ? "" : draft.name().trim();
+            if (name.isEmpty()) {
+                continue;
+            }
+            merged.merge(normalizeName(name), normalize(draft), ImportMappingService::mergeTeacher);
+        }
+        for (TeacherDraft draft : merged.values()) {
+            Teacher teacher = null;
+            for (Teacher candidate : teachers.findAllByOrderByNameAsc()) {
+                if (normalizeName(candidate.getName()).equals(normalizeName(draft.name()))) {
+                    teacher = candidate;
+                    break;
+                }
+            }
+            if (teacher == null) {
+                Teacher created = new Teacher();
+                created.setName(draft.name());
+                created.setEmployeeNo(freeEmployeeNo(draft.employeeNo(), null));
+                created.setPhone(trimToNull(draft.phone()));
+                created.setEmail(trimToNull(draft.email()));
+                created.setSubject(trimToNull(draft.subject()));
+                created.setActive(true);
+                created.setCreatedAt(java.time.Instant.now());
+                teachers.save(created);
+                outcomes.add(new EntityOutcome(draft.name(), true, false, null));
+                continue;
+            }
+            boolean changed = false;
+            if (!StringUtils.hasText(teacher.getEmployeeNo())
+                    && StringUtils.hasText(draft.employeeNo())) {
+                String employeeNo = freeEmployeeNo(draft.employeeNo(), teacher.getId());
+                if (employeeNo != null) {
+                    teacher.setEmployeeNo(employeeNo);
+                    changed = true;
+                }
+            }
+            if (!StringUtils.hasText(teacher.getPhone()) && StringUtils.hasText(draft.phone())) {
+                teacher.setPhone(draft.phone().trim());
+                changed = true;
+            }
+            if (!StringUtils.hasText(teacher.getEmail()) && StringUtils.hasText(draft.email())) {
+                teacher.setEmail(draft.email().trim());
+                changed = true;
+            }
+            if (!StringUtils.hasText(teacher.getSubject()) && StringUtils.hasText(draft.subject())) {
+                teacher.setSubject(draft.subject().trim());
+                changed = true;
+            }
+            if (changed) {
+                teachers.save(teacher);
+            }
+            outcomes.add(new EntityOutcome(teacher.getName(), false, changed, null));
+        }
+        return List.copyOf(outcomes);
+    }
+
+    /** Courses only need a name; an existing course keeps every field the school set. */
+    @Transactional
+    public List<EntityOutcome> ensureCourses(List<CourseDraft> drafts) {
+        List<EntityOutcome> outcomes = new ArrayList<>();
+        Map<String, CourseDraft> merged = new LinkedHashMap<>();
+        for (CourseDraft draft : drafts) {
+            String name = draft == null || draft.name() == null ? "" : draft.name().trim();
+            if (name.isEmpty()) {
+                continue;
+            }
+            merged.merge(normalizeName(name), new CourseDraft(name, trimToNull(draft.subject())),
+                    (left, right) -> new CourseDraft(
+                            left.name(), left.subject() != null ? left.subject() : right.subject()));
+        }
+        for (CourseDraft draft : merged.values()) {
+            Course course = null;
+            for (Course candidate : courses.findAllByOrderByNameAsc()) {
+                if (normalizeName(candidate.getName()).equals(normalizeName(draft.name()))) {
+                    course = candidate;
+                    break;
+                }
+            }
+            if (course == null) {
+                Course created = new Course();
+                created.setName(draft.name());
+                created.setSubject(draft.subject());
+                courses.save(created);
+                outcomes.add(new EntityOutcome(draft.name(), true, false, null));
+                continue;
+            }
+            boolean changed = false;
+            if (!StringUtils.hasText(course.getSubject()) && draft.subject() != null) {
+                course.setSubject(draft.subject());
+                changed = true;
+            }
+            if (changed) {
+                courses.save(course);
+            }
+            outcomes.add(new EntityOutcome(course.getName(), false, changed, null));
+        }
+        return List.copyOf(outcomes);
+    }
+
+    /**
+     * Classes are created from the timetable's own class names. The grade is inferred from
+     * the name (八（1）→ 八年级) and created when the semester does not have it yet.
+     */
+    @Transactional
+    public List<EntityOutcome> ensureClasses(List<String> names) {
+        Long semesterId = semesters.current().map(SemesterDto::id).orElse(null);
+        List<EntityOutcome> outcomes = new ArrayList<>();
+        if (semesterId == null) {
+            return List.of(new EntityOutcome("", false, false, "尚未设置当前学期"));
+        }
+        Map<String, String> seen = new LinkedHashMap<>();
+        for (String raw : names) {
+            String name = raw == null ? "" : raw.trim();
+            if (!name.isEmpty()) {
+                seen.putIfAbsent(normalizeName(name), name);
+            }
+        }
+        Map<String, Long> resolvedGrades = new LinkedHashMap<>();
+        for (String name : seen.values()) {
+            AdminClass existing = null;
+            for (AdminClass candidate : adminClasses.findBySemesterIdOrderByGradeIdAscNameAsc(semesterId)) {
+                if (normalizeName(candidate.getName()).equals(normalizeName(name))) {
+                    existing = candidate;
+                    break;
+                }
+            }
+            if (existing != null) {
+                outcomes.add(new EntityOutcome(existing.getName(), false, false, null));
+                continue;
+            }
+            String gradeName = GradeInference.infer(name);
+            if (gradeName == null) {
+                outcomes.add(new EntityOutcome(name, false, false, "无法从班级名推断年级：" + name));
+                continue;
+            }
+            Long gradeId = resolveGradeId(null, gradeName, semesterId, resolvedGrades);
+            AdminClass adminClass = new AdminClass();
+            adminClass.setSemesterId(semesterId);
+            adminClass.setGradeId(gradeId);
+            adminClass.setName(name);
+            adminClass.setStudentCount(0);
+            adminClasses.save(adminClass);
+            outcomes.add(new EntityOutcome(name, true, false, null));
+        }
+        return List.copyOf(outcomes);
+    }
+
+    private TeacherDraft normalize(TeacherDraft draft) {
+        return new TeacherDraft(
+                draft.name().trim(), trimToNull(draft.employeeNo()), trimToNull(draft.phone()),
+                trimToNull(draft.email()), trimToNull(draft.subject()));
+    }
+
+    /** Same teacher from two sheets: the first non-empty value of each field wins. */
+    private static TeacherDraft mergeTeacher(TeacherDraft left, TeacherDraft right) {
+        return new TeacherDraft(
+                left.name(),
+                left.employeeNo() != null ? left.employeeNo() : right.employeeNo(),
+                left.phone() != null ? left.phone() : right.phone(),
+                left.email() != null ? left.email() : right.email(),
+                left.subject() != null ? left.subject() : right.subject());
+    }
+
+    /** Employee numbers are unique; one already taken by another teacher is left out. */
+    private String freeEmployeeNo(String employeeNo, Long selfId) {
+        if (!StringUtils.hasText(employeeNo)) {
+            return null;
+        }
+        String value = employeeNo.trim();
+        for (Teacher teacher : teachers.findAllByOrderByNameAsc()) {
+            if (value.equals(teacher.getEmployeeNo())
+                    && (selfId == null || !selfId.equals(teacher.getId()))) {
+                return null;
+            }
+        }
+        return value;
+    }
+
+    private static String trimToNull(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private MappingKind kindOf(String field) {        return switch (field) {
             case "className" -> MappingKind.CLASS;
             case "courseName" -> MappingKind.COURSE;
             case "teacherName" -> MappingKind.TEACHER;

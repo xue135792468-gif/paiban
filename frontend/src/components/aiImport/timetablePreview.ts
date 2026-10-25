@@ -50,6 +50,49 @@ export interface ImportPreview {
   progress?: ImportProgress | null
   /** Batches the AI could not parse; empty unless the parse is partial. */
   failedBatches?: FailedBatch[]
+  /** Present only for a whole-workbook import (phase 11). */
+  workbook?: WorkbookSummary | null
+  /** Non-blocking notes: skipped free periods, dropped duplicates, unconfirmed structure. */
+  warnings?: string[]
+  /** The read-only tool rounds the model ran while browsing the workbook. */
+  toolTrace?: ToolTrace[]
+}
+
+/** One sheet of a workbook import and what it contributed. */
+export interface SheetSummary {
+  sheet: string
+  category: string
+  columns: Record<string, string>
+  recognizedRows: number
+  newRows: number
+  skippedReason?: string | null
+  note?: string | null
+}
+
+/** What writing one category did; the commit summary lists one row per category. */
+export interface CategoryResult {
+  category: string
+  created: number
+  updated: number
+  skipped: number
+  errors?: string[]
+}
+
+export interface WorkbookSummary {
+  structureConfirmed: boolean
+  sheets: SheetSummary[]
+  /** Empty until a commit ran. */
+  committed?: CategoryResult[]
+}
+
+/** One round of the workbook tool loop. */
+export interface ToolTrace {
+  round: number
+  tool: string
+  args: string
+  /** The model's own reply for this round. */
+  reply?: string
+  result: string
 }
 
 /** How far a background parse has got; `currentBatch` is the class in flight. */
@@ -408,4 +451,27 @@ export function applySlotValue(
       ? { ...row, values: { ...row.values, [field]: value } }
       : row,
   )
+}
+
+/** How a workbook sheet's category reads on the preview. */
+export const CATEGORY_LABELS: Record<string, string> = {
+  timetable: '课表',
+  teacher: '教师名单',
+  course: '课程清单',
+  explanation: '说明',
+  unknown: '未识别',
+}
+
+export function categoryLabel(category: string): string {
+  return CATEGORY_LABELS[category] ?? category
+}
+
+/** A row-0 issue blocks the whole page (missing semester, missing periods, refused rows). */
+export function isPageBlocker(issue: PreviewIssue): boolean {
+  return issue.row === 0
+}
+
+/** True when the preview came from a whole-workbook upload (no target was chosen). */
+export function isWorkbookPreview(preview: ImportPreview | null | undefined): boolean {
+  return preview?.targetType === 'workbook'
 }

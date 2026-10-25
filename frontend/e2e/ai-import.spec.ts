@@ -2,7 +2,7 @@ import { expect, request, test, type APIRequestContext, type Page } from '@playw
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { apiCall, apiLogin, uiLogin } from './helpers'
-import { buildXlsx } from './xlsx'
+import { buildWorkbookXlsx, buildXlsx } from './xlsx'
 
 /**
  * End-to-end coverage for the generic AI import.
@@ -188,6 +188,8 @@ test('教师导入回归：上传、预览行、入库', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
   await page.goto('/admin/ai-import')
   await expect(page.getByText('AI 已就绪')).toBeVisible()
+  // Picking a card opts back into the single-target parse this regression covers.
+  await page.locator('[data-target=teacher]').click()
   await expect(page.locator('[data-target=teacher]')).toContainText('已选择')
 
   await uploadExcel(page, 'teachers.xlsx', buildXlsx(teacherSheet(seed), { sheetName: '教师名单' }))
@@ -206,6 +208,56 @@ test('教师导入回归：上传、预览行、入库', async ({ page }) => {
   const names = (teachers as Array<{ name: string }>).map((teacher) => teacher.name)
   expect(names).toContain(seed.importedTeacherOne)
   expect(names).toContain(seed.importedTeacherTwo)
+})
+
+test('多工作表工作簿：一次识别四类数据、跳过说明表并生成草稿', async ({ page }) => {
+  await uiLogin(page, 'admin', 'admin123')
+  await page.goto('/admin/ai-import')
+  const suffix = seedSuffix(seed)
+  const workbook = buildWorkbookXlsx([
+    {
+      name: '数据源',
+      rows: [
+        ['班级', '星期', '节次', '课程', '教师'],
+        [`高一3班-${suffix}`, '星期一', '1', `导入课程甲-${suffix}`, `导入教师甲-${suffix}`],
+        [`高一3班-${suffix}`, '星期一', '2', `导入课程乙-${suffix}`, `导入教师乙-${suffix}`],
+        [`高一3班-${suffix}`, '星期五', '7', '', ''],
+      ],
+    },
+    {
+      name: '教师名单',
+      rows: [
+        ['姓名', '手机'],
+        [`导入教师甲-${suffix}`, '13800000011'],
+      ],
+    },
+    {
+      name: '使用说明',
+      rows: [['使用说明'], ['1. 本表由教务系统导出'], ['2. 请勿修改列顺序']],
+    },
+  ])
+
+  await uploadExcel(page, '真实教务工作簿.xlsx', workbook)
+  await page.getByRole('button', { name: '开始解析' }).click()
+
+  await expect(page.getByTestId('workbook-summary')).toBeVisible()
+  const sheets = page.getByTestId('workbook-sheets')
+  await expect(sheets).toContainText('数据源')
+  await expect(sheets).toContainText('教师名单')
+  await expect(sheets).toContainText('使用说明')
+  await expect(sheets).toContainText('非空单元格少于 5 个')
+  await expect(page.getByTestId('workbook-summary')).toContainText('结构已确认')
+  await expect(page.getByText('空课位 1 个（没有课程与教师），已跳过')).toBeVisible()
+  await expect(page.getByTestId('timetable-summary')).toContainText('共 2 节')
+
+  await page.getByRole('button', { name: '确认入库' }).click()
+
+  await expect(page.getByTestId('commit-result')).toBeVisible()
+  await expect(page.getByTestId('commit-categories')).toContainText('课表')
+  await expect(page.getByTestId('commit-categories')).toContainText('教师名单')
+
+  await page.getByRole('button', { name: '查看草稿' }).click()
+  await expect(page).toHaveURL(/\/admin\/drafts\/\d+/)
 })
 
 test('解析失败给出可操作提示，而不是通用「操作失败」', async ({ page }) => {
@@ -744,6 +796,58 @@ function teacherPreview(seedData: ImportSeed): Record<string, unknown> {
   }
 }
 
+const WORKBOOK_DATA_MARKER = '数据（JSON）：'
+
+/** What the stub decides a multi-sheet workbook is: one timetable sheet and one list. */
+function workbookPlan(): Record<string, unknown> {
+  return {
+    tool: 'finish',
+    args: {
+      sheets: [
+        {
+          sheet: '数据源',
+          category: 'timetable',
+          columns: {
+            className: '班级',
+            dayOfWeek: '星期',
+            periodNo: '节次',
+            courseName: '课程',
+            teacherName: '教师',
+          },
+          note: '一行一节课',
+        },
+        {
+          sheet: '教师名单',
+          category: 'teacher',
+          columns: { name: '姓名', phone: '手机' },
+          note: '教师名单补充联系方式',
+        },
+      ],
+      explanation: '数据源是逐节课的查询结果，教师名单提供联系方式。',
+    },
+  }
+}
+
+/** Copies the batch's mapped columns into fields, the way a cooperating model would. */
+function workbookExtraction(prompt: string): string {
+  const marker = prompt.indexOf(WORKBOOK_DATA_MARKER)
+  const payload = JSON.parse(prompt.slice(marker + WORKBOOK_DATA_MARKER.length).trim()) as {
+    columns: Record<string, string>
+    rows: string[][]
+  }
+  const fields = Object.keys(payload.columns)
+  const rows = payload.rows.map((cells) => {
+    const values: Record<string, string> = {}
+    const confidence: Record<string, number> = {}
+    fields.forEach((field, index) => {
+      values[field] = cells[index] ?? ''
+      confidence[field] = 1
+    })
+    return { values, confidence }
+  })
+  return JSON.stringify({ rows, explanation: '' })
+}
+
 async function startStub(
   timetable: () => Record<string, unknown>,
   teacher: () => Record<string, unknown>,
@@ -759,6 +863,16 @@ async function startStub(
         typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
       )
       .join('\n')
+    // Phase 11: the workbook pipeline first asks the model to browse with tools, then
+    // extracts batch by batch under the mapping it declared.
+    if (prompt.includes('只读工具')) {
+      sendCompletion(res, body, JSON.stringify(workbookPlan()))
+      return
+    }
+    if (prompt.includes(WORKBOOK_DATA_MARKER)) {
+      sendCompletion(res, body, workbookExtraction(prompt))
+      return
+    }
     const isTimetable = prompt.includes('目标对象：timetable') || prompt.includes('"target":"timetable"')
     // A chunked parse asks one batch at a time; those prompts say which one it is.
     const batch = /"chunk":"(\d+)\/(\d+)"/.exec(prompt)

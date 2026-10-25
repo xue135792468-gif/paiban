@@ -80,8 +80,13 @@ export function targetCard(code: string): ImportTargetCard | undefined {
   return IMPORT_TARGETS.find((target) => target.code === code)
 }
 
+/** Codes that are not pickable cards but still appear on a preview. */
+const EXTRA_TITLES: Record<string, string> = {
+  workbook: '整本工作簿',
+}
+
 export function targetTitle(code: string): string {
-  return targetCard(code)?.title ?? code
+  return targetCard(code)?.title ?? EXTRA_TITLES[code] ?? code
 }
 
 /** Query parameters may name a target; unknown or unavailable codes fall back to teacher. */

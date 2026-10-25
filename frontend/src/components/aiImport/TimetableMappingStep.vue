@@ -9,6 +9,15 @@
 
     <div class="batch-bar">
       <span class="hint">已选 {{ selected.length }} 项</span>
+      <el-button
+        size="small"
+        data-testid="select-all-unmatched"
+        :disabled="!entityGroups.length"
+        :loading="busy === 'select-all'"
+        @click="selectAllUnmatched"
+      >
+        全选未匹配（{{ entityGroups.length }}）
+      </el-button>
       <el-button size="small" :disabled="!selected.length" @click="clearSelection">清空选择</el-button>
       <el-button
         size="small"
@@ -206,6 +215,7 @@ interface GradeOption {
 }
 
 const groups = computed(() => mappingGroups(props.issues))
+const entityGroups = computed(() => groups.value.filter((group) => group.kind === 'entity'))
 const busy = ref('')
 const tableRef = ref()
 const selected = ref<MappingGroup[]>([])
@@ -312,6 +322,21 @@ function isSelectable(row: MappingGroup): boolean {
 
 function onSelectionChange(rows: MappingGroup[]) {
   selected.value = rows
+}
+
+/** Selects every unmatched name that can be created, so one batch call covers them all. */
+async function selectAllUnmatched() {
+  const table = tableRef.value
+  if (!table) return
+  busy.value = 'select-all'
+  try {
+    table.clearSelection()
+    for (const group of entityGroups.value) {
+      table.toggleRowSelection(group, true)
+    }
+  } finally {
+    busy.value = ''
+  }
 }
 
 function clearSelection() {

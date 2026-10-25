@@ -51,6 +51,8 @@ class AiImportServiceRaceTest {
                 users,
                 mock(TimetableImportService.class),
                 mock(ImportMappingService.class),
+                mock(com.paiban.ai.imports.workbook.WorkbookImportFlow.class),
+                new com.paiban.ai.imports.ImportPermissions(mock(AiGateway.class), users),
                 Runnable::run,
                 new NoTransaction());
     }
