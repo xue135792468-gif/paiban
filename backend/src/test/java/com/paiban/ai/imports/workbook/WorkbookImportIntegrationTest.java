@@ -441,6 +441,69 @@ class WorkbookImportIntegrationTest extends ApiIntegrationTest {
                 .body("issues[0].message", containsString("默认作息"));
     }
 
+    @Test
+    void aPlaceholderTeacherValueIsWarnedButStillImportsAndSurvivesARename() throws Exception {
+        String admin = adminToken();
+        TestData.semester(admin);
+        long semesterId = currentSemester(admin);
+        generateDefaultPeriods(admin, semesterId);
+        scriptPlan();
+
+        // The real workbook writes the post name into the teacher column: 14 lessons of
+        // 信息科技 carry 信息技术 as their "teacher".
+        Response preview = upload(admin, workbook(Map.of(
+                "数据源", List.of(
+                        List.of("八（1）|星期一|1", "信息科技", "信息技术"),
+                        List.of("八（1）|星期一|2", "信息科技", "张伟"),
+                        List.of("八（2）|星期二|1", "语文", "李娜")))));
+
+        preview.then().statusCode(200)
+                .body("rows", hasSize(3))
+                .body("teacherWarnings", hasSize(1));
+        assertThat(preview.jsonPath().getList("teacherWarnings.value", String.class))
+                .containsExactly("信息技术");
+        JsonNode warning = mapper.readTree(preview.body().asString()).path("teacherWarnings").get(0);
+        assertThat(warning.path("lessonCount").asInt()).isEqualTo(1);
+        assertThat(warning.path("rowNumbers").toString()).isEqualTo("[1]");
+        assertThat(warning.path("reasons").findValuesAsText("code")).contains("placeholder");
+        // A warning is a separate non-blocking channel: it must not turn into an issue.
+        assertThat(preview.jsonPath().getList("issues.field", String.class)).isEmpty();
+
+        long sessionId = preview.jsonPath().getLong("sessionId");
+        Response commit = as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/commit");
+
+        commit.then().statusCode(200)
+                .body("imported", equalTo(3))
+                .body("teacherWarnings", hasSize(1));
+        long draftId = commit.jsonPath().getLong("draftId");
+        assertThat(draftLessons.findAll().stream()
+                .filter(lesson -> Long.valueOf(draftId).equals(lesson.getDraftId())).count()).isEqualTo(3);
+
+        // Renaming the teacher on the teacher page keeps the lesson reference intact:
+        // draft lessons point at the id, not the name.
+        com.paiban.foundation.domain.Teacher placeholder =
+                teachers.findAll().stream()
+                        .filter(teacher -> "信息技术".equals(teacher.getName()))
+                        .findFirst()
+                        .orElseThrow();
+        assertThat(draftLessons.findAll().stream()
+                .filter(lesson -> Long.valueOf(draftId).equals(lesson.getDraftId()))
+                .map(lesson -> lesson.getTeacherId())
+                .toList()).contains(placeholder.getId());
+
+        as(admin).body(Map.of("name", "周敏"))
+                .when().put("/api/teachers/" + placeholder.getId())
+                .then().statusCode(200);
+
+        as(admin).when().get("/api/timetable-drafts/" + draftId + "/validation")
+                .then().statusCode(200)
+                .body("valid", equalTo(true));
+        assertThat(as(admin).when().get("/api/timetable-drafts/" + draftId)
+                .then().statusCode(200)
+                .extract().jsonPath().getList("lessons.teacherName", String.class))
+                .contains("周敏");
+    }
+
     // ---------------------------------------------------------------- fixtures
 
     private Map<String, List<List<String>>> realisticSheets() {

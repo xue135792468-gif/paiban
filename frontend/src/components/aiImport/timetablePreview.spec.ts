@@ -11,6 +11,7 @@ import {
   mappingGroups,
   normalizeGradeName,
   remainingIssueCount,
+  teacherWarningLessonIds,
   timetableClasses,
   timetableTeachers,
   type PreviewIssue,
@@ -286,5 +287,16 @@ describe('映射步骤状态', () => {
     expect(createRequiresGrade('courseName')).toBe(false)
     expect(createRequiresGrade('teacherName')).toBe(false)
     expect(createRequiresGrade('roomName')).toBe(false)
+  })
+
+  it('疑似教师值的行号映射成网格课节 id', () => {
+    const ids = teacherWarningLessonIds([
+      { value: '信息技术', reasons: [], lessonCount: 2, rowNumbers: [1, 4] },
+      { value: '待定', reasons: [], lessonCount: 0, rowNumbers: [] },
+    ])
+
+    expect(ids).toEqual([-1, -4])
+    expect(teacherWarningLessonIds([])).toEqual([])
+    expect(teacherWarningLessonIds(undefined)).toEqual([])
   })
 })

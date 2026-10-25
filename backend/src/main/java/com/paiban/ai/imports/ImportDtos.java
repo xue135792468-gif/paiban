@@ -82,7 +82,13 @@ public final class ImportDtos {
             /** Non-blocking notes: free periods skipped, duplicate rows dropped, structure unconfirmed. */
             List<String> warnings,
             /** The tool rounds the model ran while browsing the workbook. */
-            List<ToolTraceDto> toolTrace) {}
+            List<ToolTraceDto> toolTrace,
+            /**
+             * Teacher values that look like a course name or a placeholder. A separate,
+             * non-blocking channel: a warning never becomes an issue and never stops the
+             * commit or the draft.
+             */
+            List<TeacherWarningDto> teacherWarnings) {}
 
     public record TextImportRequest(@NotBlank(message = "请粘贴需要解析的文本") @Size(max = 200000) String text) {}
 
@@ -139,5 +145,18 @@ public final class ImportDtos {
             Long draftId,
             List<String> warnings,
             /** Per-category write results; empty for single-target imports. */
-            List<CategoryResultDto> categories) {}
+            List<CategoryResultDto> categories,
+            /** The same aggregated suspicious teacher values the preview showed. */
+            List<TeacherWarningDto> teacherWarnings) {}
+
+    /** Why one teacher value was flagged; {@code code} is stable, {@code message} is for people. */
+    public record TeacherWarningReasonDto(String code, String message) {}
+
+    /**
+     * One suspicious teacher value, de-duplicated on its normalized form. {@code rowNumbers}
+     * are 1-based preview rows (the grid's lesson ids are their negatives); {@code lessonCount}
+     * is how many lessons carry it, 0 when it came from a name sheet only.
+     */
+    public record TeacherWarningDto(
+            String value, List<TeacherWarningReasonDto> reasons, int lessonCount, List<Integer> rowNumbers) {}
 }

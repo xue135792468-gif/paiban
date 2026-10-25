@@ -7,8 +7,17 @@
           结构未确认
         </el-tag>
         <el-tag v-else size="small" type="success" effect="plain">结构已确认</el-tag>
+        <el-tag v-if="teacherWarnings.length" size="small" type="warning" effect="plain">
+          疑似教师值 {{ teacherWarnings.length }} 个
+        </el-tag>
       </div>
     </template>
+
+    <SuspiciousTeacherList
+      v-if="teacherWarnings.length"
+      :warnings="teacherWarnings"
+      class="teacher-warnings"
+    />
 
     <el-alert
       v-for="warning in warnings"
@@ -54,8 +63,10 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import SuspiciousTeacherList from './SuspiciousTeacherList.vue'
 import {
   categoryLabel,
+  type TeacherWarning,
   type ToolTrace,
   type WorkbookSummary,
 } from './timetablePreview'
@@ -63,11 +74,14 @@ import {
 const props = defineProps<{
   workbook: WorkbookSummary
   warnings?: string[]
+  /** The backend's one aggregated list; its length is the count shown in the header. */
+  teacherWarnings?: TeacherWarning[]
   toolTrace?: ToolTrace[]
   columns: { field: string; label: string }[]
 }>()
 
 const warnings = computed(() => props.warnings ?? [])
+const teacherWarnings = computed(() => props.teacherWarnings ?? [])
 const toolTrace = computed(() => props.toolTrace ?? [])
 
 function columnSummary(columns: Record<string, string>): string {
@@ -94,6 +108,10 @@ function labelOf(field: string): string {
 
 .warning {
   margin-bottom: 8px;
+}
+
+.teacher-warnings {
+  margin-bottom: 12px;
 }
 
 .trace {

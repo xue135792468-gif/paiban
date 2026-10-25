@@ -369,7 +369,8 @@ public class AiImportService {
         log.setImportedCount(entities.size());
         log.setResultJson(writeJson(Map.of("imported", entities.size(), "rows", rows)));
         touch(log);
-        return new CommitResultDto(entities.size(), List.of(), null, List.of(), List.of());
+        return new CommitResultDto(
+                entities.size(), List.of(), null, List.of(), List.of(), List.of());
     }
 
     private CommitResultDto commitTimetable(
@@ -389,7 +390,7 @@ public class AiImportService {
         log.setResultJson(writeJson(Map.of("draftId", result.draftId(), "lessons", result.imported())));
         touch(log);
         return new CommitResultDto(
-                result.imported(), List.of(), result.draftId(), result.warnings(), List.of());
+                result.imported(), List.of(), result.draftId(), result.warnings(), List.of(), List.of());
     }
 
     private void requireTimetableEdit(String username) {
@@ -1165,6 +1166,7 @@ public class AiImportService {
                 progress(log, plan),
                 failedBatches(log, plan),
                 null,
+                List.of(),
                 List.of(),
                 List.of());
     }
