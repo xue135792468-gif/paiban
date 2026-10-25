@@ -33,13 +33,33 @@ import org.springframework.transaction.annotation.Transactional;
  * reasons ("张老师此时在 3 班有数学课") instead of a bare score. The rule
  * definitions live in {@link ConstraintChecker} so the published-timetable
  * verifier uses exactly the same 24 rules.
+ *
+ * <p>{@link #validateDraft} goes one step further than a local check: it also reports
+ * the {@link DraftPublishReadiness} blockers, which is the same judgement
+ * {@code TimetablePublishService} refuses on. The page therefore cannot say "passed"
+ * for a draft publishing will reject.
  */
 @Service
 public class DraftValidator {
 
     public record Conflict(String type, String message, Long lessonId) {}
 
-    public record ValidationResult(boolean valid, int hardConflicts, List<Conflict> conflicts) {}
+    /**
+     * The shape every validation endpoint returns. {@code valid}, {@code hardConflicts} and
+     * {@code conflicts} keep their original meaning for existing consumers;
+     * {@code publishable} and {@code blockers} are additive.
+     *
+     * <p>A local check ({@code validate-move}, {@code validate-moves}, swap scenarios) only
+     * looks at the lessons it was asked about, so it reports no blockers and
+     * {@code publishable} mirrors {@code valid} there. Only the whole-draft check
+     * ({@link #validateDraft}) answers the publishing question.
+     */
+    public record ValidationResult(
+            boolean valid,
+            int hardConflicts,
+            List<Conflict> conflicts,
+            boolean publishable,
+            List<DraftPublishReadiness.Blocker> blockers) {}
 
     private final TimetableDraftRepository drafts;
     private final DraftLessonRepository draftLessons;
@@ -49,6 +69,7 @@ public class DraftValidator {
     private final TeacherRepository teachers;
     private final AdminClassRepository adminClasses;
     private final ConstraintService constraints;
+    private final SemesterBaselineQuery baselines;
     private final ObjectMapper objectMapper;
 
     public DraftValidator(
@@ -60,6 +81,7 @@ public class DraftValidator {
             TeacherRepository teachers,
             AdminClassRepository adminClasses,
             ConstraintService constraints,
+            SemesterBaselineQuery baselines,
             ObjectMapper objectMapper) {
         this.drafts = drafts;
         this.draftLessons = draftLessons;
@@ -69,6 +91,7 @@ public class DraftValidator {
         this.teachers = teachers;
         this.adminClasses = adminClasses;
         this.constraints = constraints;
+        this.baselines = baselines;
         this.objectMapper = objectMapper;
     }
 
@@ -109,9 +132,43 @@ public class DraftValidator {
         return resultOf(checkAffected(snapshot, applyChanges(snapshot, changes)));
     }
 
+    /**
+     * Whole-draft check: the 24 conflict rules plus every publishing precondition, from
+     * the one judgement publishing itself uses ({@link DraftPublishReadiness}). A draft
+     * with lessons but no rooms is therefore not "valid" any more: it cannot be published.
+     */
     @Transactional(readOnly = true)
     public ValidationResult validateDraft(Long draftId) {
-        return resultOf(checkAffected(snapshot(draftId), null));
+        Snapshot snapshot = snapshot(draftId);
+        List<Conflict> conflicts = checkAffected(snapshot, null);
+        List<DraftPublishReadiness.Blocker> blockers =
+                DraftPublishReadiness.blockers(factsOf(snapshot, conflicts.size()));
+        return new ValidationResult(blockers.isEmpty(), conflicts.size(), conflicts, blockers.isEmpty(), blockers);
+    }
+
+    /** Counts the structural and resource gaps the publishing preconditions care about. */
+    private DraftPublishReadiness.Facts factsOf(Snapshot snapshot, int hardConflicts) {
+        int unscheduled = 0;
+        int missingRooms = 0;
+        int invalidPeriods = 0;
+        for (L lesson : snapshot.lessons) {
+            if (lesson.periodId == null) {
+                unscheduled++;
+            } else if (!snapshot.context.periods().containsKey(lesson.periodId)) {
+                invalidPeriods++;
+            }
+            if (lesson.roomId == null) {
+                missingRooms++;
+            }
+        }
+        return new DraftPublishReadiness.Facts(
+                "PUBLISHED".equals(snapshot.draft.getStatus()),
+                snapshot.lessons.size(),
+                unscheduled,
+                missingRooms,
+                invalidPeriods,
+                hardConflicts,
+                baselines.hasPublishedBaseline(snapshot.draft.getSemesterId()));
     }
 
     /**
@@ -199,8 +256,10 @@ public class DraftValidator {
                 .toList();
     }
 
+    /** Local checks report conflicts only; they never gate on the rest of the draft. */
     private ValidationResult resultOf(List<Conflict> conflicts) {
-        return new ValidationResult(conflicts.isEmpty(), conflicts.size(), conflicts);
+        boolean valid = conflicts.isEmpty();
+        return new ValidationResult(valid, conflicts.size(), conflicts, valid, List.of());
     }
 
     private Snapshot snapshot(Long draftId) {
@@ -240,14 +299,14 @@ public class DraftValidator {
         ConstraintContext context =
                 new ConstraintContext(periodMap, roomMap, courseMap, teacherMap, classMap, settings);
         List<L> copies = lessons.stream().map(L::of).toList();
-        return new Snapshot(copies, context);
+        return new Snapshot(draft, copies, context);
     }
 
-    private record Snapshot(List<L> lessons, ConstraintContext context) {
+    private record Snapshot(TimetableDraft draft, List<L> lessons, ConstraintContext context) {
 
         /** Same reference data, independent lesson copies, for scenario evaluation. */
         Snapshot withFreshLessons() {
-            return new Snapshot(lessons.stream().map(L::copy).toList(), context);
+            return new Snapshot(draft, lessons.stream().map(L::copy).toList(), context);
         }
     }
 
