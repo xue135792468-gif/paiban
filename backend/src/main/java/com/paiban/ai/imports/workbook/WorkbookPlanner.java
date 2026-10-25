@@ -315,6 +315,7 @@ public class WorkbookPlanner {
         }
         Map<String, SheetPlan> declared = new LinkedHashMap<>();
         Map<String, SheetPlan> planned = new LinkedHashMap<>();
+        boolean guessed = false;
         for (JsonNode item : sheets) {
             String name = item.path("sheet").asText(item.path("name").asText("")).trim();
             ProfiledSheet sheet = find(profiles, name);
@@ -322,13 +323,20 @@ public class WorkbookPlanner {
                 continue;
             }
             SheetCategory category = category(item.path("category").asText(""));
+            if (category == SheetCategory.UNKNOWN) {
+                // The model named the sheet but did not judge it (a weak model often just
+                // lists names). Guess instead of dropping the sheet: a preview marked
+                // "unconfirmed" is useful, an all-unknown preview is not.
+                category = WorkbookPlan.guess(sheet);
+                guessed = true;
+            }
             Map<String, String> columns = resolveColumns(item.path("columns"), sheet, category);
             if (columns.isEmpty() && category != SheetCategory.EXPLANATION
                     && category != SheetCategory.UNKNOWN) {
                 columns = WorkbookPlan.columns(sheet, category);
             }
             SheetPlan plan = new SheetPlan(
-                    sheet.name(), category, columns, item.path("note").asText(""), true);
+                    sheet.name(), category, columns, item.path("note").asText(""), !guessed);
             declared.put(sheet.name(), plan);
             planned.put(sheet.name(), WorkbookPlan.normalize(plan));
         }
@@ -351,6 +359,7 @@ public class WorkbookPlanner {
         // A sheet this code later downgrades to a wide pivot still counts as declared.
         int expected = (int) profiles.stream().filter(sheet -> !sheet.skipped()).count();
         boolean complete = plannedFromModel == expected
+                && !guessed
                 && declared.values().stream().noneMatch(plan -> plan.category() == SheetCategory.UNKNOWN);
         return new WorkbookPlan(
                 List.copyOf(planned.values()),

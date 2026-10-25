@@ -349,6 +349,39 @@ class WorkbookImportIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void aFinishThatOnlyListsSheetNamesStillProducesAPreview() throws Exception {
+        String admin = adminToken();
+        TestData.semester(admin);
+        // Observed on the server: the flash model called finish with only name/rows/columns
+        // and no category at all, so every sheet was "未识别" and the preview had 0 rows.
+        fake.responder = request -> {
+            if (!isPlanner(request)) {
+                return extractionAnswer(request);
+            }
+            int round = planRounds.incrementAndGet();
+            return round < 2 ? "{\"tool\":\"list_sheets\"}" : namesOnlyFinishAction();
+        };
+
+        Response preview = upload(admin, workbook(Map.of(
+                "数据源", List.of(
+                        List.of("八（1）|星期一|1", "语文", "金林墨"),
+                        List.of("八（1）|星期一|2", "数学", "周小媚"),
+                        List.of("八（2）|星期二|1", "英语", "虞文茜")),
+                "班级课表", List.of(
+                        List.of("八年级班级课表"),
+                        List.of("请选择班级：", "八（2）"),
+                        List.of("节次", "星期一", "星期二", "星期三", "星期四", "星期五"),
+                        List.of("第一节", "数学  周小媚", "英语  虞文茜", "科学  徐良贵", "语文  金林墨", "历史地理  贾方俊")))));
+
+        preview.then().statusCode(200).body("rows", hasSize(3));
+        assertThat(preview.jsonPath().getBoolean("workbook.structureConfirmed")).isFalse();
+        assertThat(preview.jsonPath().getList("warnings", String.class))
+                .anySatisfy(warning -> assertThat(warning).contains("结构未确认"));
+        assertThat(sheet(preview, "数据源").path("category").asText()).isEqualTo("timetable");
+        assertThat(sheet(preview, "班级课表").path("category").asText()).isEqualTo("unknown");
+    }
+
+    @Test
     void missingSemesterIsAPageLevelBlocker() throws Exception {
         String admin = adminToken();
         scriptPlan();
@@ -544,6 +577,22 @@ class WorkbookImportIntegrationTest extends ApiIntegrationTest {
         } catch (Exception ex) {
             throw new IllegalStateException("无法按表结构构造回答", ex);
         }
+    }
+
+    /** The finish the flash model actually sent: sheet names plus sizes, no category. */
+    private String namesOnlyFinishAction() {
+        List<Map<String, Object>> sheets = new ArrayList<>();
+        for (String[] entry : new String[][] {{"数据源", "560", "30"}, {"班级课表", "8", "6"}}) {
+            Map<String, Object> plan = new LinkedHashMap<>();
+            plan.put("name", entry[0]);
+            plan.put("rows", Integer.parseInt(entry[1]));
+            plan.put("columns", Integer.parseInt(entry[2]));
+            plan.put("header_row", null);
+            sheets.add(plan);
+        }
+        Map<String, Object> args = new LinkedHashMap<>();
+        args.put("sheets", sheets);
+        return json(Map.of("tool", "finish", "args", args));
     }
 
     private String widePivotFinishAction() {
