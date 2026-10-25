@@ -15,8 +15,10 @@ import com.paiban.foundation.web.SemesterDtos.SaveSemesterRequest;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.springframework.context.ApplicationEventPublisher;
@@ -29,16 +31,22 @@ public class SemesterService {
     private final SemesterRepository semesters;
     private final PeriodRepository periods;
     private final com.paiban.timetable.domain.TimetableEntryRepository timetableEntries;
+    private final com.paiban.scheduling.domain.DraftLessonRepository draftLessons;
+    private final com.paiban.scheduling.domain.TimetableDraftRepository drafts;
     private final ApplicationEventPublisher events;
 
     public SemesterService(
             SemesterRepository semesters,
             PeriodRepository periods,
             com.paiban.timetable.domain.TimetableEntryRepository timetableEntries,
+            com.paiban.scheduling.domain.DraftLessonRepository draftLessons,
+            com.paiban.scheduling.domain.TimetableDraftRepository drafts,
             ApplicationEventPublisher events) {
         this.semesters = semesters;
         this.periods = periods;
         this.timetableEntries = timetableEntries;
+        this.draftLessons = draftLessons;
+        this.drafts = drafts;
         this.events = events;
     }
 
@@ -83,13 +91,16 @@ public class SemesterService {
 
     @Transactional
     public void delete(Long id) {
-        Semester semester = require(id);
+        Semester semester = lockSemester(id);
         if (semester.isCurrent()) {
             throw ApiException.conflict("不能删除当前学期，请先切换到其他学期");
         }
         if (timetableEntries.countBySemesterId(id) > 0) {
             throw ApiException.conflict("该学期已发布课表，不能删除");
         }
+        // Draft lessons now carry a foreign key to period, so the cascade that used to
+        // happen at the database level on semester delete has to run in FK order.
+        drafts.deleteBySemesterId(id);
         periods.deleteBySemesterId(id);
         semesters.delete(semester);
     }
@@ -125,19 +136,46 @@ public class SemesterService {
                 .toList();
     }
 
+    /**
+     * Replaces the semester's period table, keeping the identity of every slot that
+     * stays. A slot is "the same slot" when (dayOfWeek, periodNo) is unchanged: its row
+     * keeps its id and only label/section/times may change, so drafts that point at it
+     * stay valid. Slots that disappear are only removed when no draft lesson uses them;
+     * otherwise the whole request is refused so the caller never loses work silently.
+     */
     @Transactional
     public List<PeriodDto> replacePeriods(Long semesterId, List<PeriodSlot> slots) {
-        require(semesterId);
+        lockSemester(semesterId);
         if (timetableEntries.countBySemesterId(semesterId) > 0) {
             throw ApiException.conflict("该学期已发布课表，不能修改作息表");
         }
         validateSlots(slots);
-        periods.deleteBySemesterId(semesterId);
-        periods.flush();
+        Map<String, Period> existing = new HashMap<>();
+        for (Period period : periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(semesterId)) {
+            existing.put(slotKey(period.getDayOfWeek(), period.getPeriodNo()), period);
+        }
+        Set<String> requested = new HashSet<>();
+        for (PeriodSlot slot : slots) {
+            for (Integer day : slot.days()) {
+                requested.add(slotKey(day, slot.periodNo()));
+            }
+        }
+        List<Period> removed = existing.entrySet().stream()
+                .filter(entry -> !requested.contains(entry.getKey()))
+                .map(Map.Entry::getValue)
+                .toList();
+        if (!removed.isEmpty()) {
+            long used = draftLessons.countByPeriodIdIn(removed.stream().map(Period::getId).toList());
+            if (used > 0) {
+                throw ApiException.conflict("要删除的课节仍被 " + used + " 条课表草稿课节使用，"
+                        + "请先在草稿中调整这些课节，或保留这些课时");
+            }
+            periods.deleteAll(removed);
+        }
         List<Period> saved = new ArrayList<>();
         for (PeriodSlot slot : slots) {
             for (Integer day : slot.days()) {
-                Period period = new Period();
+                Period period = existing.getOrDefault(slotKey(day, slot.periodNo()), new Period());
                 period.setSemesterId(semesterId);
                 period.setDayOfWeek(day);
                 period.setPeriodNo(slot.periodNo());
@@ -154,6 +192,19 @@ public class SemesterService {
                         : Integer.compare(a.getPeriodNo(), b.getPeriodNo()))
                 .map(this::toDto)
                 .toList();
+    }
+
+    private static String slotKey(int dayOfWeek, int periodNo) {
+        return dayOfWeek + "-" + periodNo;
+    }
+
+    /**
+     * Semester-level write lock, so two saves of the same period table (or a save and a
+     * semester delete) cannot interleave between the reference check and the write.
+     */
+    private Semester lockSemester(Long semesterId) {
+        return semesters.findWithLockById(semesterId)
+                .orElseThrow(() -> ApiException.notFound("学期不存在: " + semesterId));
     }
 
     @Transactional

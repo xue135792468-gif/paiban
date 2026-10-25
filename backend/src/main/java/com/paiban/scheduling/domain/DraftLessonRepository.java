@@ -11,5 +11,8 @@ public interface DraftLessonRepository extends JpaRepository<DraftLesson, Long> 
 
     long countByAdminClassId(Long adminClassId);
 
+    /** Number of draft lessons still pointing at any of these period rows. */
+    long countByPeriodIdIn(List<Long> periodIds);
+
     void deleteByDraftId(Long draftId);
 }
