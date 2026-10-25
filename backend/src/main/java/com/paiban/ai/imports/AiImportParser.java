@@ -41,7 +41,10 @@ public class AiImportParser {
     public Parsed parse(String content, ImportTarget target, double threshold, boolean allowEmpty) {
         JsonNode root = readRoot(content);
         List<MappingDto> mappings = parseMappings(root.path("mappings"));
-        List<RowDto> rows = parseRows(root.path("rows"), target, threshold);
+        // A model that answers one row per line, or a single row object, is understood as
+        // the rows it clearly meant - the contract stays, the tolerance is in reading it.
+        JsonNode rowsNode = root.path("rows");
+        List<RowDto> rows = parseRows(rowsNode.isArray() ? rowsNode : root, target, threshold);
         if (rows.isEmpty() && !allowEmpty) {
             throw new IllegalArgumentException("AI 未返回任何数据行，请打回重析或检查原始数据");
         }
@@ -54,30 +57,103 @@ public class AiImportParser {
         if (content == null || content.isBlank()) {
             throw new IllegalArgumentException("AI 返回内容为空");
         }
-        String cleaned = content.trim();
-        if (cleaned.startsWith("```")) {
-            int firstNewline = cleaned.indexOf('\n');
-            int lastFence = cleaned.lastIndexOf("```");
-            if (firstNewline >= 0 && lastFence > firstNewline) {
-                cleaned = cleaned.substring(firstNewline + 1, lastFence).trim();
-            }
+        String cleaned = stripFence(content.trim());
+        JsonNode single = readObject(cleaned, true);
+        if (single != null) {
+            return single;
         }
+        JsonNode array = readArray(cleaned);
+        if (array != null) {
+            return rowsRoot(array);
+        }
+        JsonNode many = readLineByLine(cleaned);
+        if (many != null) {
+            return rowsRoot(many);
+        }
+        // Last resort: one object with prose around it, the shape the old parser accepted.
+        JsonNode lenient = readObject(cleaned, false);
+        if (lenient != null) {
+            return lenient;
+        }
+        throw new IllegalArgumentException("无法解析 AI 返回的 JSON");
+    }
+
+    private String stripFence(String cleaned) {
+        if (!cleaned.startsWith("```")) {
+            return cleaned;
+        }
+        int firstNewline = cleaned.indexOf('\n');
+        int lastFence = cleaned.lastIndexOf("```");
+        return firstNewline >= 0 && lastFence > firstNewline
+                ? cleaned.substring(firstNewline + 1, lastFence).trim()
+                : cleaned;
+    }
+
+    /**
+     * {@code strict} rejects trailing content, so one JSON object per line is not silently
+     * read as its first object only; the lenient pass (prose after the JSON) comes last.
+     */
+    private JsonNode readObject(String cleaned, boolean strict) {
         int start = cleaned.indexOf('{');
         int end = cleaned.lastIndexOf('}');
         if (start < 0 || end <= start) {
-            throw new IllegalArgumentException("AI 返回的不是 JSON 对象");
+            return null;
+        }
+        String candidate = cleaned.substring(start, end + 1);
+        try {
+            com.fasterxml.jackson.databind.ObjectReader reader = strict
+                    ? objectMapper.reader().with(
+                            com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                    : objectMapper.reader();
+            JsonNode node = reader.readTree(candidate);
+            return node != null && node.isObject() ? node : null;
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private JsonNode readArray(String cleaned) {
+        int start = cleaned.indexOf('[');
+        int end = cleaned.lastIndexOf(']');
+        if (start < 0 || end <= start) {
+            return null;
         }
         try {
             JsonNode node = objectMapper.readTree(cleaned.substring(start, end + 1));
-            if (node == null || !node.isObject()) {
-                throw new IllegalArgumentException("AI 返回的 JSON 结构不正确");
-            }
-            return node;
-        } catch (IllegalArgumentException ex) {
-            throw ex;
+            return node != null && node.isArray() ? node : null;
         } catch (Exception ex) {
-            throw new IllegalArgumentException("无法解析 AI 返回的 JSON");
+            return null;
         }
+    }
+
+    /** One JSON object per line, the shape weak models fall back to for tabular answers. */
+    private JsonNode readLineByLine(String cleaned) {
+        com.fasterxml.jackson.databind.node.ArrayNode rows = objectMapper.createArrayNode();
+        for (String line : cleaned.split("\n")) {
+            String candidate = line.trim();
+            if (!candidate.startsWith("{")) {
+                continue;
+            }
+            int end = candidate.lastIndexOf('}');
+            if (end < 0) {
+                continue;
+            }
+            try {
+                JsonNode node = objectMapper.readTree(candidate.substring(0, end + 1));
+                if (node != null && node.isObject()) {
+                    rows.add(node);
+                }
+            } catch (Exception ignored) {
+                // A line that is not JSON (prose around the data) is simply not a row.
+            }
+        }
+        return rows.isEmpty() ? null : rows;
+    }
+
+    private JsonNode rowsRoot(JsonNode rows) {
+        com.fasterxml.jackson.databind.node.ObjectNode root = objectMapper.createObjectNode();
+        root.set("rows", rows);
+        return root;
     }
 
     private List<MappingDto> parseMappings(JsonNode node) {
@@ -98,10 +174,13 @@ public class AiImportParser {
 
     private List<RowDto> parseRows(JsonNode node, ImportTarget target, double threshold) {
         List<RowDto> rows = new ArrayList<>();
-        if (!node.isArray()) {
-            return rows;
+        List<JsonNode> items = new ArrayList<>();
+        if (node.isArray()) {
+            node.forEach(items::add);
+        } else if (node.isObject()) {
+            items.add(node);
         }
-        for (JsonNode item : node) {
+        for (JsonNode item : items) {
             if (rows.size() >= MAX_ROWS) {
                 break;
             }

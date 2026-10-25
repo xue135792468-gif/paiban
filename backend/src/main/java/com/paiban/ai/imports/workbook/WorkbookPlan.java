@@ -15,6 +15,9 @@ import java.util.Map;
  */
 public record WorkbookPlan(List<SheetPlan> sheets, boolean confirmed, String explanation) {
 
+    /** Explains why a sheet that calls itself a timetable contributed no rows. */
+    public static final String WIDE_SHEET = "宽表（星期为列）或缺少班级/星期/节次列，已跳过";
+
     public enum SheetCategory {
         /** One row is one lesson: class + day + period (+ course, teacher, room). */
         TIMETABLE,
@@ -87,10 +90,31 @@ public record WorkbookPlan(List<SheetPlan> sheets, boolean confirmed, String exp
                 continue;
             }
             SheetCategory category = guess(sheet);
-            sheets.add(new SheetPlan(
-                    sheet.name(), category, columns(sheet, category), "", false));
+            sheets.add(normalize(new SheetPlan(
+                    sheet.name(), category, columns(sheet, category), "", false)));
         }
         return new WorkbookPlan(sheets, false, note);
+    }
+
+    /** The three columns a row-per-lesson sheet must have to be read as slots. */
+    public static boolean hasSlotColumns(Map<String, String> columns) {
+        return columns.containsKey("className")
+                && columns.containsKey("dayOfWeek")
+                && columns.containsKey("periodNo");
+    }
+
+    /**
+     * A sheet called a timetable but without class/day/period columns is a wide pivot
+     * (periods as rows, weekdays as columns) or otherwise unreadable as slots. Reading it
+     * would produce one row error per line and block the whole workbook, so it is skipped
+     * visibly instead.
+     */
+    public static SheetPlan normalize(SheetPlan plan) {
+        if (plan.category() != SheetCategory.TIMETABLE || hasSlotColumns(plan.columns())) {
+            return plan;
+        }
+        return new SheetPlan(
+                plan.sheet(), SheetCategory.UNKNOWN, Map.of(), WIDE_SHEET, plan.confirmed());
     }
 
     public static SheetCategory guess(ProfiledSheet sheet) {

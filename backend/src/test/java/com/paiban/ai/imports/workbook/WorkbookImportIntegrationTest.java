@@ -315,6 +315,40 @@ class WorkbookImportIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void toleratesTheWeakModelAnswersActuallyObservedInProduction() throws Exception {
+        String admin = adminToken();
+        TestData.semester(admin);
+        long semesterId = currentSemester(admin);
+        generateDefaultPeriods(admin, semesterId);
+        // The configured flash model answers with `name` instead of `sheet`, Chinese
+        // categories, nested column objects, and one JSON object per line for the data.
+        fake.responder = request -> {
+            if (!isPlanner(request)) {
+                return oneObjectPerLine(request);
+            }
+            int round = planRounds.incrementAndGet();
+            return round < 2 ? "{\"tool\":\"list_sheets\"}" : weakModelFinishAction();
+        };
+
+        Response preview = upload(admin, workbook(Map.of(
+                "数据源", List.of(
+                        List.of("八（1）|星期一|1", "语文", "金林墨"),
+                        List.of("八（1）|星期一|2", "数学", "周小媚"),
+                        List.of("八（2）|星期二|1", "英语", "虞文茜")),
+                "班级课表", List.of(
+                        List.of("八年级班级课表"),
+                        List.of("请选择班级：", "八（2）"),
+                        List.of("节次", "星期一", "星期二", "星期三", "星期四", "星期五"),
+                        List.of("第一节", "数学  周小媚", "英语  虞文茜", "科学  徐良贵", "语文  金林墨", "历史地理  贾方俊")))));
+
+        preview.then().statusCode(200).body("rows", hasSize(3));
+        assertThat(preview.jsonPath().getList("issues.field", String.class)).isEmpty();
+        assertThat(sheet(preview, "数据源").path("category").asText()).isEqualTo("timetable");
+        assertThat(sheet(preview, "班级课表").path("category").asText()).isEqualTo("unknown");
+        assertThat(preview.jsonPath().getString("rows[0].values.teacherName")).isEqualTo("金林墨");
+    }
+
+    @Test
     void missingSemesterIsAPageLevelBlocker() throws Exception {
         String admin = adminToken();
         scriptPlan();
@@ -462,6 +496,54 @@ class WorkbookImportIntegrationTest extends ApiIntegrationTest {
         args.put("sheets", sheets);
         args.put("explanation", "数据源为无表头的查询表，班级课表是透视视图，教师名单提供教师字段。");
         return json(Map.of("tool", "finish", "args", args));
+    }
+
+    /** The plan the flash model produced on the real file: name key, Chinese category. */
+    private String weakModelFinishAction() {
+        Map<String, Object> nested = new LinkedHashMap<>();
+        nested.put("列1", Map.of("split_into", List.of("班级", "星期", "节次")));
+        List<Map<String, Object>> sheets = List.of(
+                sheetPlanNamed("数据源", "原始数据", nested, "无表头，复合列已拆分"),
+                sheetPlanNamed("班级课表", "班级课表", Map.of("节次", Map.of()), "按班级查询的宽表"));
+        Map<String, Object> args = new LinkedHashMap<>();
+        args.put("sheets", sheets);
+        args.put("explanation", "数据源逐节课；班级课表是宽表。");
+        return json(Map.of("tool", "finish", "args", args));
+    }
+
+    private Map<String, Object> sheetPlanNamed(
+            String sheet, String category, Map<String, Object> columns, String note) {
+        Map<String, Object> plan = new LinkedHashMap<>();
+        plan.put("name", sheet);
+        plan.put("category", category);
+        plan.put("columns", columns);
+        plan.put("note", note);
+        return plan;
+    }
+
+    /** One JSON object per line, no `rows` wrapper: what the flash model returned. */
+    private String oneObjectPerLine(AiRequest request) {
+        try {
+            String prompt = request.messages().get(1).content();
+            int marker = prompt.indexOf(DATA_MARKER);
+            JsonNode payload = mapper.readTree(prompt.substring(marker + DATA_MARKER.length()).trim());
+            List<String> fields = new ArrayList<>();
+            payload.path("columns").fieldNames().forEachRemaining(fields::add);
+            StringBuilder answer = new StringBuilder();
+            for (JsonNode row : payload.path("rows")) {
+                Map<String, String> values = new LinkedHashMap<>();
+                for (int i = 0; i < fields.size(); i++) {
+                    values.put(fields.get(i), row.path(i).asText(""));
+                }
+                if (answer.length() > 0) {
+                    answer.append('\n');
+                }
+                answer.append(json(values));
+            }
+            return answer.toString();
+        } catch (Exception ex) {
+            throw new IllegalStateException("无法按表结构构造回答", ex);
+        }
     }
 
     private String widePivotFinishAction() {

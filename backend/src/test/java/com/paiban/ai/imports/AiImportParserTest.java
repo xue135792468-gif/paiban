@@ -35,6 +35,38 @@ class AiImportParserTest {
     }
 
     @Test
+    void readsOneRowPerLineWhenTheModelAnswersThatWay() {
+        String ndjson = "{\"className\":\"八（1）\",\"dayOfWeek\":\"星期一\",\"periodNo\":\"1\",\"courseName\":\"语文\",\"teacherName\":\"金林墨\"}"
+                + "\n"
+                + "{\"className\":\"八（1）\",\"dayOfWeek\":\"星期一\",\"periodNo\":\"2\",\"courseName\":\"数学\",\"teacherName\":\"周小媚\"}";
+
+        AiImportParser.Parsed parsed = parser.parse(ndjson, ImportTarget.TIMETABLE, 0.7, true);
+
+        assertThat(parsed.rows()).hasSize(2);
+        assertThat(parsed.rows().get(1).values()).containsEntry("teacherName", "周小媚");
+    }
+
+    @Test
+    void readsABareArrayOfRows() {
+        String array = "[{\"className\":\"八（1）\",\"dayOfWeek\":\"星期一\",\"periodNo\":\"1\"}]";
+
+        AiImportParser.Parsed parsed = parser.parse(array, ImportTarget.TIMETABLE, 0.7, true);
+
+        assertThat(parsed.rows()).hasSize(1);
+        assertThat(parsed.rows().get(0).values()).containsEntry("periodNo", "1");
+    }
+
+    @Test
+    void readsASingleRowObject() {
+        String single = "{\"name\":\"张三\",\"subject\":\"语文\"}";
+
+        AiImportParser.Parsed parsed = parser.parse(single, ImportTarget.TEACHER, 0.7, true);
+
+        assertThat(parsed.rows()).hasSize(1);
+        assertThat(parsed.rows().get(0).values()).containsEntry("name", "张三");
+    }
+
+    @Test
     void aMissingSuggestedTargetStaysEmpty() {
         AiImportParser.Parsed parsed = parser.parse(answer(null), ImportTarget.TEACHER, 0.7);
 

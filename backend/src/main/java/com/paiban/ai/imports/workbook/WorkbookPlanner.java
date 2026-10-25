@@ -313,60 +313,71 @@ public class WorkbookPlanner {
         if (!sheets.isArray()) {
             return null;
         }
+        Map<String, SheetPlan> declared = new LinkedHashMap<>();
         Map<String, SheetPlan> planned = new LinkedHashMap<>();
         for (JsonNode item : sheets) {
-            String name = item.path("sheet").asText("").trim();
+            String name = item.path("sheet").asText(item.path("name").asText("")).trim();
             ProfiledSheet sheet = find(profiles, name);
             if (sheet == null || sheet.skipped()) {
                 continue;
             }
-            SheetCategory category = SheetCategory.from(item.path("category").asText(""));
+            SheetCategory category = category(item.path("category").asText(""));
             Map<String, String> columns = resolveColumns(item.path("columns"), sheet, category);
             if (columns.isEmpty() && category != SheetCategory.EXPLANATION
                     && category != SheetCategory.UNKNOWN) {
                 columns = WorkbookPlan.columns(sheet, category);
             }
-            String note = item.path("note").asText("");
-            if (category == SheetCategory.TIMETABLE && !hasSlotColumns(columns)) {
-                // A wide pivot (periods as rows, weekdays as columns) is not one row per
-                // lesson. Reading it as slots would produce a row error per row and block
-                // the whole workbook, so it is skipped visibly instead.
-                category = SheetCategory.UNKNOWN;
-                columns = Map.of();
-                note = WIDE_SHEET;
-            }
-            planned.put(sheet.name(), new SheetPlan(
-                    sheet.name(), category, columns, note, true));
+            SheetPlan plan = new SheetPlan(
+                    sheet.name(), category, columns, item.path("note").asText(""), true);
+            declared.put(sheet.name(), plan);
+            planned.put(sheet.name(), WorkbookPlan.normalize(plan));
         }
         if (planned.isEmpty()) {
             return null;
         }
-        int plannedFromModel = planned.size();
+        int plannedFromModel = declared.size();
         // A sheet the model left out is still in the workbook: guess it so no data is silently lost.
         for (ProfiledSheet sheet : profiles) {
             if (sheet.skipped() || planned.containsKey(sheet.name())) {
                 continue;
             }
             SheetCategory category = WorkbookPlan.guess(sheet);
-            planned.put(sheet.name(), new SheetPlan(
-                    sheet.name(), category, WorkbookPlan.columns(sheet, category), "", false));
+            planned.put(sheet.name(), WorkbookPlan.normalize(new SheetPlan(
+                    sheet.name(), category, WorkbookPlan.columns(sheet, category), "", false)));
         }
         String explanation = args.path("explanation").asText("").trim();
         // Only a plan that covers every non-skipped sheet with a known category counts as
         // confirmed; a guessed sheet (or an "unknown" one) leaves the marker on the preview.
+        // A sheet this code later downgrades to a wide pivot still counts as declared.
         int expected = (int) profiles.stream().filter(sheet -> !sheet.skipped()).count();
         boolean complete = plannedFromModel == expected
-                && planned.values().stream().noneMatch(plan -> plan.category() == SheetCategory.UNKNOWN);
+                && declared.values().stream().noneMatch(plan -> plan.category() == SheetCategory.UNKNOWN);
         return new WorkbookPlan(
                 List.copyOf(planned.values()),
                 complete,
                 explanation.isEmpty() ? "模型已确认工作表结构" : explanation);
     }
 
-    private boolean hasSlotColumns(Map<String, String> columns) {
-        return columns.containsKey("className")
-                && columns.containsKey("dayOfWeek")
-                && columns.containsKey("periodNo");
+    /** Chinese category names a model may write instead of the enum codes. */
+    private SheetCategory category(String raw) {
+        String value = raw == null ? "" : raw.trim().toLowerCase(java.util.Locale.ROOT);
+        if (value.isEmpty()) {
+            return SheetCategory.UNKNOWN;
+        }
+        if (value.contains("说明") || value.contains("备注") || value.contains("解释")) {
+            return SheetCategory.EXPLANATION;
+        }
+        if (value.contains("课表") || value.contains("考勤") || value.contains("数据源")
+                || value.contains("原始数据") || value.contains("排课")) {
+            return SheetCategory.TIMETABLE;
+        }
+        if (value.contains("教师") || value.contains("老师")) {
+            return SheetCategory.TEACHER;
+        }
+        if (value.contains("课程") || value.contains("科目")) {
+            return SheetCategory.COURSE;
+        }
+        return SheetCategory.from(raw);
     }
 
     private Map<String, String> resolveColumns(JsonNode node, ProfiledSheet sheet, SheetCategory category) {
@@ -375,7 +386,13 @@ public class WorkbookPlanner {
             return Map.of();
         }
         node.fieldNames().forEachRemaining(field -> {
-            String label = columnLabel(node.path(field).asText(""), sheet);
+            JsonNode value = node.path(field);
+            // A model may describe a column as an object ({"split_into":[...]}) instead of
+            // naming it; that is not a mapping, so the deterministic columns are used.
+            if (!value.isValueNode()) {
+                return;
+            }
+            String label = columnLabel(value.asText(""), sheet);
             if (label != null && relevant(field, category)) {
                 columns.put(field, label);
             }
