@@ -198,7 +198,10 @@ public class SemesterService {
         return dayOfWeek + "-" + periodNo;
     }
 
-    /** Semester-level write lock: concurrent period saves and publishes serialise on it. */
+    /**
+     * Semester-level write lock, so two saves of the same period table (or a save and a
+     * semester delete) cannot interleave between the reference check and the write.
+     */
     private Semester lockSemester(Long semesterId) {
         return semesters.findWithLockById(semesterId)
                 .orElseThrow(() -> ApiException.notFound("学期不存在: " + semesterId));
