@@ -60,19 +60,23 @@ class DraftValidatorTest {
     private static final long LESSON_4 = 604L;
 
     private DraftValidator validator;
+    private DraftLessonRepository draftLessons;
+    private TimetableDraft draft;
+    private SemesterBaselineQuery baselines;
 
     @BeforeEach
     void setUp() {
         TimetableDraftRepository drafts = mock(TimetableDraftRepository.class);
-        DraftLessonRepository draftLessons = mock(DraftLessonRepository.class);
+        draftLessons = mock(DraftLessonRepository.class);
         PeriodRepository periods = mock(PeriodRepository.class);
         RoomRepository rooms = mock(RoomRepository.class);
         CourseRepository courses = mock(CourseRepository.class);
         TeacherRepository teachers = mock(TeacherRepository.class);
         AdminClassRepository adminClasses = mock(AdminClassRepository.class);
         ConstraintService constraints = mock(ConstraintService.class);
+        baselines = mock(SemesterBaselineQuery.class);
 
-        TimetableDraft draft = new TimetableDraft();
+        draft = new TimetableDraft();
         draft.setId(DRAFT_ID);
         draft.setSemesterId(SEMESTER_ID);
         when(drafts.findById(DRAFT_ID)).thenReturn(Optional.of(draft));
@@ -99,7 +103,13 @@ class DraftValidatorTest {
                 adminClass(CLASS_2, "高一2班")));
 
         validator = new DraftValidator(
-                drafts, draftLessons, periods, rooms, courses, teachers, adminClasses, constraints, new ObjectMapper());
+                drafts, draftLessons, periods, rooms, courses, teachers, adminClasses, constraints,
+                baselines, new ObjectMapper());
+    }
+
+    /** Re-stubs the lesson list for the whole-draft check on the same snapshot fixtures. */
+    private void useLessons(DraftLesson... lessons) {
+        when(draftLessons.findByDraftIdOrderByIdAsc(DRAFT_ID)).thenReturn(List.of(lessons));
     }
 
     @Test
@@ -170,8 +180,93 @@ class DraftValidatorTest {
         });
     }
 
+    @Test
+    void wholeDraftCheckReportsMissingRoomsAsABlockerNotAConflict() {
+        useLessons(
+                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1, ROOM_1),
+                lesson(LESSON_2, MATH, TEACHER_2, CLASS_1, P2, null));
+
+        ValidationResult result = validator.validateDraft(DRAFT_ID);
+
+        assertThat(result.valid()).isFalse();
+        assertThat(result.publishable()).isFalse();
+        assertThat(result.hardConflicts()).isZero();
+        assertThat(result.conflicts()).isEmpty();
+        assertThat(result.blockers())
+                .extracting(DraftPublishReadiness.Blocker::code)
+                .containsExactly(DraftPublishReadiness.MISSING_ROOMS);
+        assertThat(result.blockers().get(0).count()).isEqualTo(1);
+    }
+
+    @Test
+    void wholeDraftCheckSeparatesUnscheduledLessonsFromDanglingPeriods() {
+        useLessons(
+                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, null, ROOM_1),
+                lesson(LESSON_2, MATH, TEACHER_2, CLASS_1, 999L, ROOM_2),
+                lesson(LESSON_3, CHINESE, TEACHER_1, CLASS_2, P1, ROOM_1));
+
+        ValidationResult result = validator.validateDraft(DRAFT_ID);
+
+        assertThat(result.publishable()).isFalse();
+        assertThat(result.blockers())
+                .filteredOn(blocker -> blocker.code().equals(DraftPublishReadiness.UNSCHEDULED_LESSONS))
+                .singleElement()
+                .satisfies(blocker -> assertThat(blocker.count()).isEqualTo(1));
+        assertThat(result.blockers())
+                .filteredOn(blocker -> blocker.code().equals(DraftPublishReadiness.INVALID_PERIODS))
+                .singleElement()
+                .satisfies(blocker -> assertThat(blocker.count()).isEqualTo(1));
+    }
+
+    @Test
+    void wholeDraftCheckIsCleanWhenEveryLessonHasAPeriodAndARoom() {
+        ValidationResult result = validator.validateDraft(DRAFT_ID);
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.publishable()).isTrue();
+        assertThat(result.blockers()).isEmpty();
+    }
+
+    @Test
+    void publishedDraftIsNeitherValidNorPublishable() {
+        draft.setStatus("PUBLISHED");
+
+        ValidationResult result = validator.validateDraft(DRAFT_ID);
+
+        assertThat(result.valid()).isFalse();
+        assertThat(result.publishable()).isFalse();
+        assertThat(result.blockers())
+                .extracting(DraftPublishReadiness.Blocker::code)
+                .contains(DraftPublishReadiness.DRAFT_PUBLISHED);
+    }
+
+    @Test
+    void draftInAPublishedSemesterIsNotPublishable() {
+        when(baselines.hasPublishedBaseline(SEMESTER_ID)).thenReturn(true);
+
+        ValidationResult result = validator.validateDraft(DRAFT_ID);
+
+        assertThat(result.publishable()).isFalse();
+        assertThat(result.blockers())
+                .extracting(DraftPublishReadiness.Blocker::code)
+                .contains(DraftPublishReadiness.SEMESTER_ALREADY_PUBLISHED);
+    }
+
+    @Test
+    void localMoveCheckIsNotGatedByAnotherLessonMissingARoom() {
+        useLessons(
+                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1, null),
+                lesson(LESSON_2, MATH, TEACHER_2, CLASS_1, P2, ROOM_2));
+
+        ValidationResult result = validator.validateMoves(
+                DRAFT_ID, List.of(new LessonOverride(LESSON_2, P2, null, null)));
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.blockers()).isEmpty();
+    }
+
     private static DraftLesson lesson(
-            long id, long courseId, long teacherId, long classId, long periodId, long roomId) {
+            long id, long courseId, long teacherId, long classId, Long periodId, Long roomId) {
         DraftLesson lesson = new DraftLesson();
         lesson.setId(id);
         lesson.setDraftId(DRAFT_ID);
