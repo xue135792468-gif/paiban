@@ -50,8 +50,12 @@
     <DraftPublishBlockers
       v-if="detail?.draft.status !== 'PUBLISHED'"
       :blockers="blockers"
+      :room-fill="canFillRooms"
       @edit-lessons="drawerVisible = true"
+      @fill-rooms="roomFillVisible = true"
     />
+
+    <RoomFillDialog v-model="roomFillVisible" :draft-id="draftId" @applied="load" />
 
     <el-card shadow="never" class="control-card">
       <div class="controls">
@@ -197,6 +201,7 @@ import DraftGrid from '@/components/draft/DraftGrid.vue'
 import DraftCompareDialog from '@/components/draft/DraftCompareDialog.vue'
 import DraftStats from '@/components/draft/DraftStats.vue'
 import DraftPublishBlockers from '@/components/draft/DraftPublishBlockers.vue'
+import RoomFillDialog from '@/components/draft/RoomFillDialog.vue'
 import SwapCandidatePanel from '@/components/draft/SwapCandidatePanel.vue'
 import DualTimetablePreview from '@/components/draft/DualTimetablePreview.vue'
 import { courseColor } from '@/components/draft/colors'
@@ -221,6 +226,10 @@ const isJunior = computed(() => settings.schoolType === 'junior')
 const draftId = Number(route.params.id)
 const canEdit = computed(() => auth.hasPermission('timetable:edit'))
 const canPublish = computed(() => auth.hasPermission('timetable:publish'))
+// Filling rooms creates main data as well as editing the draft, so the server wants both.
+const canFillRooms = computed(
+  () => auth.hasPermission('timetable:edit') && auth.hasPermission('foundation:manage'),
+)
 
 const adjust = useDraftAdjust(draftId)
 const { undoCount, canUndo, undoing, move, undo, loadMoveTargets } = adjust
@@ -261,6 +270,7 @@ const dragTargets = ref<Record<number, MoveTargetState> | null>(null)
 const conflictVisible = ref(false)
 const cellConflicts = ref<DraftConflict[]>([])
 const compareVisible = ref(false)
+const roomFillVisible = ref(false)
 
 const filteredLessons = computed(() => {
   const lessons = detail.value?.lessons ?? []

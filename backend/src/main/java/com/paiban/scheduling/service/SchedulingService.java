@@ -448,6 +448,33 @@ public class SchedulingService {
         return new MoveResult(true, result.valid(), result.hardConflicts(), result.conflicts());
     }
 
+    /**
+     * The write path for the explicit "fill fixed rooms" action (ticket 07): assigns a
+     * room only to lessons whose {@code roomId} is still empty, so a value a person
+     * entered by hand survives. The caller owns the transaction and the all-or-nothing
+     * decision; this method refuses a published draft like every other edit.
+     */
+    @Transactional
+    public int fillMissingRooms(Long draftId, Map<Long, Long> roomIdByLesson) {
+        TimetableDraft draft = requireDraft(draftId);
+        if ("PUBLISHED".equals(draft.getStatus())) {
+            throw ApiException.conflict("已发布的课表不能修改");
+        }
+        int assigned = 0;
+        for (Map.Entry<Long, Long> entry : roomIdByLesson.entrySet()) {
+            DraftLesson lesson = draftLessons.findById(entry.getKey())
+                    .orElseThrow(() -> ApiException.notFound("课节不存在: " + entry.getKey()));
+            if (!lesson.getDraftId().equals(draftId)) {
+                throw ApiException.badRequest("课节不属于该草稿");
+            }
+            if (lesson.getRoomId() == null) {
+                lesson.setRoomId(entry.getValue());
+                assigned++;
+            }
+        }
+        return assigned;
+    }
+
     private TimetableDraft requireDraft(Long draftId) {
         return drafts.findById(draftId)
                 .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
