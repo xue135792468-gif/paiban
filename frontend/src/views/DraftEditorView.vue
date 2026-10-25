@@ -32,6 +32,7 @@
         <el-button
           v-if="canPublish && detail?.draft.status !== 'PUBLISHED'"
           type="success"
+          :disabled="!publishable"
           @click="publishDraft"
         >
           发布课表
@@ -39,24 +40,18 @@
         <el-button v-if="canEdit" type="danger" plain @click="removeDraft">删除</el-button>
       </div>
     </div>
-    <div class="stats">
-      <div class="stat">
-        <span class="stat-label">硬冲突</span>
-        <span class="stat-value" :class="{ danger: hardConflicts > 0 }">{{ hardConflicts }}</span>
-      </div>
-      <div class="stat">
-        <span class="stat-label">得分</span>
-        <span class="stat-value">{{ scoreLabel }}</span>
-      </div>
-      <div class="stat">
-        <span class="stat-label">课节数</span>
-        <span class="stat-value">{{ detail?.lessons.length ?? 0 }}</span>
-      </div>
-      <div class="stat">
-        <span class="stat-label">未排课</span>
-        <span class="stat-value" :class="{ danger: unassigned.length > 0 }">{{ unassigned.length }}</span>
-      </div>
-    </div>
+    <DraftStats
+      :hard-conflicts="hardConflicts"
+      :score-label="scoreLabel"
+      :lesson-count="detail?.lessons.length ?? 0"
+      :unassigned-count="unassigned.length"
+    />
+
+    <DraftPublishBlockers
+      v-if="detail?.draft.status !== 'PUBLISHED'"
+      :blockers="blockers"
+      @edit-lessons="drawerVisible = true"
+    />
 
     <el-card shadow="never" class="control-card">
       <div class="controls">
@@ -200,6 +195,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import DraftGrid from '@/components/draft/DraftGrid.vue'
 import DraftCompareDialog from '@/components/draft/DraftCompareDialog.vue'
+import DraftStats from '@/components/draft/DraftStats.vue'
+import DraftPublishBlockers from '@/components/draft/DraftPublishBlockers.vue'
 import SwapCandidatePanel from '@/components/draft/SwapCandidatePanel.vue'
 import DualTimetablePreview from '@/components/draft/DualTimetablePreview.vue'
 import { courseColor } from '@/components/draft/colors'
@@ -212,6 +209,7 @@ import type {
   DraftLesson,
   DraftPeriod,
   DraftRoom,
+  DraftValidation,
   MoveTargetState,
 } from '@/components/draft/types'
 
@@ -253,7 +251,7 @@ const loading = ref(false)
 type DraftDetail = { draft: Draft; lessons: DraftLesson[]; periods: DraftPeriod[]; rooms: DraftRoom[] }
 const detail = ref<DraftDetail | null>(null)
 const draftEditable = computed(() => canEdit.value && detail.value?.draft.status === 'DRAFT')
-const validation = ref<{ valid: boolean; hardConflicts: number; conflicts: DraftConflict[] } | null>(null)
+const validation = ref<DraftValidation | null>(null)
 const courses = ref<DraftCourse[]>([])
 const viewMode = ref<'class' | 'teacher' | 'room'>('class')
 const targetId = ref<number | null>(null)
@@ -277,6 +275,9 @@ const filteredLessons = computed(() => {
 const unassigned = computed(() => filteredLessons.value.filter((lesson) => !lesson.periodId))
 
 const hardConflicts = computed(() => validation.value?.hardConflicts ?? 0)
+// The server's whole-draft judgement is the only opinion on whether publishing can work.
+const blockers = computed(() => validation.value?.blockers ?? [])
+const publishable = computed(() => validation.value?.publishable ?? true)
 const scoreLabel = computed(
   () => `${detail.value?.draft.scoreHard ?? 0} hard / ${detail.value?.draft.scoreSoft ?? 0} soft`,
 )
@@ -509,31 +510,6 @@ h2 {
 .actions {
   display: flex;
   gap: 8px;
-}
-.stats {
-  display: flex;
-  gap: 12px;
-}
-.stat {
-  background: #fff;
-  border-radius: 10px;
-  padding: 12px 18px;
-  min-width: 150px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  border: 1px solid #eef0f5;
-}
-.stat-label {
-  color: var(--paiban-muted);
-  font-size: 12px;
-}
-.stat-value {
-  font-size: 18px;
-  font-weight: 600;
-}
-.danger {
-  color: #e45656;
 }
 .control-card {
   border: none;
