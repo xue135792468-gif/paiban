@@ -6,7 +6,7 @@
 
 **Blocked by:** None（与 07-rooms-before-publish 相关：07 补教室入口，本票统一口径）
 
-**Status:** needs-triage
+**Status:** ready-for-agent
 
 - [ ] 草稿校验包含"发布前置条件"（缺课节/缺教室/未排课），或在结果里单独列出 publishable=false 及原因
 - [ ] 发布与校验共用同一套判定

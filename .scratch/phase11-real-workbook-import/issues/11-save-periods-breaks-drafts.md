@@ -6,7 +6,7 @@
 
 **Blocked by:** None
 
-**Status:** needs-triage
+**Status:** ready-for-agent
 
 - [ ] 保存作息表前检测：本学期已有草稿引用课节时，要么拒绝并说明原因，要么在事务内按 (day, periodNo) 迁移 `draft_lesson.period_id`
 - [ ] 给 `draft_lesson.period_id` 加外键（或至少加一致性校验任务），让"草稿指向不存在课节"在写库时就被拦住

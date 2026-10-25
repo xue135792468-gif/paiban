@@ -6,7 +6,7 @@
 
 **Blocked by:** None
 
-**Status:** needs-triage
+**Status:** ready-for-agent
 
 - [ ] 导入建班使用与手工建班一致的默认人数（45），或在工作簿里读不到人数时留空并沿用默认
 - [ ] 校验口径统一：要么允许 0（表示未知），要么导入与手工都拒绝 0
