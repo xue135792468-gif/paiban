@@ -46,7 +46,7 @@ teacherWarnings: [
 测试：
 
 - `SuspiciousTeacherNamesTest`（10 条）：同名、含课程名、课程名包含教师值、单字重叠不命中、7 个固定词逐个命中、正常姓名（张伟/李娜/欧阳明）不命中、一词多因、同值去重与计数、全角空格与括注归一。
-- `WorkbookImportIntegrationTest#aPlaceholderTeacherValueIsWarnedButStillImportsAndSurvivesARename`：合成工作簿（信息科技 / 信息技术，另有张伟、李娜）→ 预览 200 且 `teacherWarnings` 只有一条、`issues` 为空 → 入库 200、3 节课成草稿 → 教师页改名 200 → 草稿校验 `valid=true` 且课节显示新姓名。
+- `WorkbookImportIntegrationTest#aPlaceholderTeacherValueIsWarnedButStillImportsAndSurvivesARename`：合成工作簿（信息科技 / 信息技术，另有张伟、李娜）→ 预览 200 且 `teacherWarnings` 只有一条、`issues` 为空 → 入库 200、3 节课成草稿 → 教师页改名 200 → 改名不产生结构性阻断（整草稿检查仅剩导入本就不填的 `MISSING_ROOMS`）→ 补教室后整草稿检查 `valid=true`，课节显示新姓名（票 13 语义：整草稿检查已包含缺教室）。
 - 前端：`timetablePreview.spec.ts`（行号→课节 id）、`TimetablePreviewGrid.spec.ts`（标黄与提示）、`WorkbookSummaryPanel.spec.ts` / `CommitResultSummary.spec.ts`（清单、计数、原因、改名入口）。
 
 **背景：** 2026-10-25 真实文件：560 行中 14 行教师=「信息技术」、课程=「信息科技」，48 个教师名里混入这一个占位值。

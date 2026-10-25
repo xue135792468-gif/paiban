@@ -495,6 +495,26 @@ class WorkbookImportIntegrationTest extends ApiIntegrationTest {
                 .when().put("/api/teachers/" + placeholder.getId())
                 .then().statusCode(200);
 
+        // The rename changes nothing structural: the only publishing blocker left is the
+        // one the import never fills (no rooms), not a dangling lesson reference.
+        as(admin).when().get("/api/timetable-drafts/" + draftId + "/validation")
+                .then().statusCode(200)
+                .body("blockers.code", org.hamcrest.Matchers.contains("MISSING_ROOMS"));
+
+        // Give the imported lessons a room, then the whole-draft check passes with the
+        // renamed teacher, i.e. nothing was lost when the teacher record changed.
+        long roomId = TestData.room(admin, "101");
+        List<com.paiban.scheduling.domain.DraftLesson> imported = draftLessons.findAll().stream()
+                .filter(lesson -> Long.valueOf(draftId).equals(lesson.getDraftId()))
+                .toList();
+        for (com.paiban.scheduling.domain.DraftLesson lesson : imported) {
+            as(admin).body(Map.of(
+                            "periodId", lesson.getPeriodId(),
+                            "roomId", roomId,
+                            "force", true))
+                    .when().patch("/api/timetable-drafts/" + draftId + "/lessons/" + lesson.getId())
+                    .then().statusCode(200);
+        }
         as(admin).when().get("/api/timetable-drafts/" + draftId + "/validation")
                 .then().statusCode(200)
                 .body("valid", equalTo(true));
