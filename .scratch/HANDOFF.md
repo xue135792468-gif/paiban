@@ -1,6 +1,12 @@
 # 接手说明（2026-10-25 会话交接）
 
+> **2026-10-25 准备复查更新：先读 [准备审查入口](phase11-real-workbook-import/preparation/README.md)。**
+> 用户已暂停本会话修复，改为完成准备材料、交由新的 agent 执行。以下旧路线中的待问与 ready 状态须以新入口为准：六项修复已有补充规格；票 10 已问定并拆成 6 票，先做原型等用户确认；整本后台化另备下一批 3 张草案；14 下一期再 grill。
+> 票 11 有未提交、未通过验证的候选代码留在 `E:\paiban-wt\import-repairs`，不是已完成修复。勿忽略未跟踪的外键迁移或把现有失败测试当作绿色证据。新入口记录了基点、失败原因和接手要求。
+
 新会话先读这份，再按最下面的路线推进。工作仓库 `E:\排课系统`（`main` 已推到 `origin`），线上服务器 `~/paiban`。
+
+准备材料位于主仓库的 `codex/backlog-preparation` 分支；线上状态和下面的数据库数字为原交接快照，执行前重新只读核对。
 
 ## 现在的状态
 
@@ -26,20 +32,22 @@
 | `07-rooms-before-publish` | 发布前没有教室，导入完发布不了；要一键补教室 | ready-for-agent |
 | `08-fill-missing-periods` | 文件里的节次比作息多，只能手工加格子 | ready-for-agent |
 | `09-flag-suspicious-teacher-names` | "信息技术"这类占位名被当成老师 | ready-for-agent |
-| `10-multiple-constraint-targets` | 约束一条只能设一个对象；页面太挤；要 +/− 与折叠 | needs-info（2 个问题待用户答） |
-| `14-natural-language-constraints` | 自然语言生成约束：只有灰开关，功能没实现 | needs-triage（构想） |
-| 票 02 遗留 | 整本导入没有批次进度/停止/重试（同步跑完） | 已记录，未做 |
+| `10-multiple-constraint-targets` | 约束多条、对象覆盖与折叠布局 | 已确认语义并拆 6 票，见 `.scratch/constraint-entries/`；先原型确认 |
+| `14-natural-language-constraints` | 自然语言生成约束：只有灰开关，功能没实现 | 下一期，保留 grill 问题树，本轮不实现 |
+| 票 02 遗留 | 整本导入没有批次进度/停止/重试（同步跑完） | 下一批草案见 `.scratch/workbook-background/`，仍未完成 |
 
 票据都在 `.scratch/phase11-real-workbook-import/issues/`；规格与 ADR 在该目录 `spec.md` 和 `docs/adr/0026-real-workbook-import.md`。
 
 ## 新会话怎么推进（按 ask-matt 的路由）
 
-- **07 / 08 / 09 / 11 / 12 / 13 = 已 agent-ready 的票，不需要 grill，也不要 triage。**
-  直接 `/implement` 逐票（先 11，风险最高），或把这 6 张装成一批用 `/implement-spec` 一次跑完、一条集成分支上一版。每票先写测试；改完跑 `scripts/verify.sh --full`，再走部署脚本。
-- **10 = 需要用户拍板的产品/界面决定。**
-  开工前先答票里那 2 个问题（卡片 vs 表格、阈值覆盖规则）。布局建议先 `/prototype` 出可点的页面小样给用户看，顺眼后再 `/to-spec` → `/to-tickets` → `/implement-spec`。不需要整场 grill，语义已在票里写定。
-- **14 = 新功能，需要先问清楚。**
-  用 `/grill-with-docs`（在 repo 里跑，会沉淀进 GLOSSARY/ADR）把这几点问定：只给建议还是直接改、模型换不换、怎么验收（10–20 句真实说法的 eval）。之后 `/to-spec` → `/to-tickets` → `/implement-spec`。**依赖 10 完成**。
+- **本会话当前只准备，不执行修复。后续 agent 先读 preparation/README，再读 repair-spec。**
+  11 / 12 / 13 是明确缺陷；07 / 08 的产品边界已在本轮问定并补规格；09 沿用只提示和入库后更名。保留六张原票，按 11→12→13→07→08→09 走 `/implement`＋TDD，不再重复 triage。先核对 11 的暂停候选，不能视为已完成。每票完整评审/验证后再按下方门槛交付。
+- **10 的旧问题已答，使用独立规格与六张新票。**
+  读 `.scratch/constraint-entries/spec.md`。第一票 `/prototype` 出可点页面，经用户确认才放行生产实现；其余按 Blocked by 顺序推进。需求准备完成不代表原型已批准。
+- **02 整本后台化为下一批，仅有准备草案。**
+  读 `.scratch/workbook-background/spec.md`；不勾掉原票遗留，不与六项修复混做。
+- **14 下一期再 grill。**
+  先读 `preparation/next-phase-questions.md`。届时用 `/grill-with-docs` 确认范围与语料，再 `/to-spec` → `/to-tickets`。确认应用依赖 10 的稳定保存契约，语料调研与只读建议没有布局完成的硬依赖。
 - **收尾跑一次 `/retro`**：把"保存作息表毁草稿"这类坑变成确定性检查（例如给 `draft_lesson.period_id` 加外键/一致性校验），别只写在文档里。
 
 ## 交差门槛（每票）
@@ -50,8 +58,8 @@
 4. 上线后冒烟：导入 → 补教室 → 发布 → 调代一单（申请 SWAP 必须带 `targetPeriodId`）。
 5. 回写当天日志（`D:\work Buddy-cn\2026-10-11-22-22-40\.workbuddy\memory\`）与 `MEMORY.md`，重跑 `~/ops/state-snapshot.sh`。
 
-## 需要用户先回答
+## 本轮确认与下一道门
 
-1. 先修 6 个坑（11→12→13→07→08→09）再谈约束页，还是先看约束页原型？
-2. 约束页：卡片列表还是表格？
-3. 自然语言约束：记为下一期，还是本期就要？
+用户已确认六项修复的准备、07/08 的补齐方式、10 的布局/阈值/控制层级/组合语义与六票拆分，14 下一期、02 独立下一批。完整记录在 preparation/README。
+
+当前没有阻塞准备材料的未答问题。票 10 的可点击原型尚未制作、尚未经用户确认；这是后续第一票的验收门槛。本轮没有生产修复或部署成果。
