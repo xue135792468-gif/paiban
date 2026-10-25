@@ -25,6 +25,8 @@
 
 差集来源：只用会话已保存的 `preview_json.rows`（工作簿与单目标课表预览同形），经 `SlotText.day` / `SlotText.periodNo` 提取 `(星期, 节次)`，去重后与当前学期 `period` 比较。`SlotText` 读不出的值直接跳过，原行错误保持原样（提交时仍报「无法识别星期/节次」），不猜数字。不重新解析文件、不新增模型调用。
 
+`preview_json` 缺失或无法解析时**不返回空差集**：读接口与写接口都抛 409「预览数据不可用，请重新解析」。空差集会被当成「学期没有缺节」，是把没读到的数据说成没问题，属于静默成功。
+
 推算规则（`PeriodGapPlanner`，纯函数、无 IO、全部 `LocalTime`）：
 
 1. 同日有前面锚点：沿用该节时长与当日课间间隔，接在其后；
@@ -52,9 +54,10 @@
 测试：
 
 - `PeriodGapPlannerTest`（纯函数，12 条）：中间空档、日末追加、跨日同节次参照、参照矛盾、无参照、间隔为负、跨午夜、放不进空档、跨时段边界、已存在跳过、重复槽位去重、单项失败不影响其他项。
-- `MissingPeriodsIntegrationTest`（公开 REST + 受控假 AI，6 条）：缺第 9/10 节的预览返回 3 项 PROPOSED 与推算时间；确认后 `period` 追加 3 行、既有行 id/标签/时间全部不变、随后提交生成草稿；重复确认 `created=0` 且总数不变；预览与确认之间改动作息 → 409 且无写入；已发布学期 → 差集全部转人工并给出原因、写接口 409；补节 → 刷新预览全程假 AI 调用次数不变。
-- `cd backend && ./mvnw -B test` → Tests run: 595, Failures: 0, Errors: 0, Skipped: 5（5 条 skip 是既有默认跳过的 Testcontainers/外部服务用例）。
-- 前端：`npm run lint`、`npm run build`、`npm run test:unit`（29 文件 / 223 条全绿）、`bash scripts/check-sfc-size.sh` 通过。
+- `MissingPeriodsIntegrationTest`（公开 REST + 受控假 AI，8 条）：缺第 9/10 节的预览返回 3 项 PROPOSED 与推算时间；确认后 `period` 追加 3 行、既有行 id/标签/时间全部不变、随后提交生成草稿；重复确认 `created=0` 且总数不变；预览与确认之间改动作息 → 409 且无写入；已发布学期 → 差集全部转人工并给出原因、写接口 409；补节 → 刷新预览全程假 AI 调用次数不变；**提交 MANUAL 项 → 409 且 `period` 一行不写**（没有任何规则能推算的槽位不许经接口写进去）；**`preview_json` 置空 → GET/POST 都 409「预览数据不可用」**（不返回空差集）。
+- `cd backend && ./mvnw -B test` → Tests run: 634, Failures: 0, Errors: 0, Skipped: 5（5 条 skip 是既有默认跳过的 Testcontainers/外部服务用例）。
+- 前端：`MissingPeriodsPanel.spec.ts`（6 条）：列表与勾选、确认提交、已发布只提示、人工项入口，以及**只补可靠子集后剩余差集仍渲染且不出现「全部完成」**。
+- 前端：`npm run lint`、`npm run build`、`npm run test:unit`、`bash scripts/check-sfc-size.sh` 通过。
 
 遗留风险：
 

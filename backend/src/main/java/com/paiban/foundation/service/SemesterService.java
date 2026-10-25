@@ -5,6 +5,7 @@ import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
 import com.paiban.foundation.domain.PeriodSection;
+import com.paiban.foundation.domain.PeriodSlotKey;
 import com.paiban.foundation.domain.Semester;
 import com.paiban.foundation.domain.SemesterRepository;
 import com.paiban.foundation.web.SemesterDtos.GenerateDefaultPeriodsRequest;
@@ -193,7 +194,7 @@ public class SemesterService {
     }
 
     private static String slotKey(int dayOfWeek, int periodNo) {
-        return dayOfWeek + "-" + periodNo;
+        return PeriodSlotKey.of(dayOfWeek, periodNo);
     }
 
     /**
@@ -321,7 +322,7 @@ public class SemesterService {
                 if (day == null || day < 1 || day > 7) {
                     throw ApiException.badRequest("星期取值必须在 1-7 之间");
                 }
-                String key = day + "-" + slot.periodNo();
+                String key = PeriodSlotKey.of(day, slot.periodNo());
                 if (!seen.add(key)) {
                     throw ApiException.badRequest("星期 " + day + " 的第 " + slot.periodNo() + " 节重复配置");
                 }

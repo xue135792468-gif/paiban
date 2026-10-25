@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Pure decision function behind the explicit "fill fixed rooms" action (ticket 07).
@@ -16,9 +17,14 @@ import java.util.Map;
  * read the whole rule set in one screen.
  *
  * <p>Rooms in this system are global (no semester column), so the name is the only
- * stable association between a class and "its" room: {@code 学期名-班名-固定教室}.
- * A room with that exact name is reused only when it is an ordinary room with enough
- * seats; anything else is a person's problem, never silently adopted or enlarged.
+ * stable association between a class and "its" room:
+ * {@code 学期名-年级名班名-固定教室}. The grade is part of the name because two grades
+ * routinely have a class with the same name ("八（1）班" in 八年级 and in 九年级); without it
+ * one class would adopt the other's room.
+ *
+ * <p>A room with that exact name is reused only when it is an ordinary room with enough
+ * seats <em>and</em> the semester does not already put another admin class in it. Anything
+ * else is a person's problem, never silently adopted or enlarged.
  */
 public final class RoomFillPlanner {
 
@@ -41,8 +47,12 @@ public final class RoomFillPlanner {
     public static final String ROOM_NAME_TOO_LONG = "ROOM_NAME_TOO_LONG";
     /** A room with the derived name exists but is not a suitable ordinary room. */
     public static final String ROOM_NAME_CONFLICT = "ROOM_NAME_CONFLICT";
+    /** The room of that name is already in use by another admin class this semester. */
+    public static final String ROOM_IN_USE = "ROOM_IN_USE";
+    /** The caller cannot say who else uses the room, so the association is unverified. */
+    public static final String ROOM_OWNER_UNKNOWN = "ROOM_OWNER_UNKNOWN";
 
-    public record ClassInfo(long id, String name, int studentCount) {}
+    public record ClassInfo(long id, String name, String gradeName, int studentCount) {}
 
     /** One lesson whose room is empty. {@code studentCount} is the lesson's own snapshot. */
     public record LessonGap(
@@ -72,9 +82,14 @@ public final class RoomFillPlanner {
 
     private RoomFillPlanner() {}
 
-    /** The deterministic name that ties a class to its fixed ordinary room. */
-    public static String roomName(String semesterName, String className) {
-        return semesterName + "-" + className + "-固定教室";
+    /**
+     * The deterministic name that ties a class to its fixed ordinary room. The grade is
+     * part of it: class names repeat across grades, and a shared name would let one class
+     * silently adopt another grade's room.
+     */
+    public static String roomName(String semesterName, String gradeName, String className) {
+        String grade = gradeName == null ? "" : gradeName.trim();
+        return semesterName + "-" + grade + className + "-固定教室";
     }
 
     /**
@@ -85,7 +100,8 @@ public final class RoomFillPlanner {
             String semesterName,
             List<ClassInfo> classes,
             List<LessonGap> gaps,
-            List<ExistingRoom> rooms) {
+            List<ExistingRoom> rooms,
+            Map<Long, Set<Long>> roomOccupants) {
         Map<Long, ClassInfo> classById = new HashMap<>();
         classes.forEach(info -> classById.put(info.id(), info));
         Map<String, ExistingRoom> roomByName = new LinkedHashMap<>();
@@ -130,7 +146,7 @@ public final class RoomFillPlanner {
                 continue;
             }
             int requiredCapacity = requiredCapacity(info, classGaps);
-            String name = roomName(semesterName, info.name());
+            String name = roomName(semesterName, info.gradeName(), info.name());
             if (name.length() > MAX_ROOM_NAME_LENGTH) {
                 manualItems.add(new ManualItem(
                         classId, info.name(), ROOM_NAME_TOO_LONG,
@@ -145,9 +161,14 @@ public final class RoomFillPlanner {
                         classGaps.size(), name, null, requiredCapacity, ACTION_CREATE));
             } else if (ROOM_TYPE_NORMAL.equals(existing.type())
                     && existing.capacity() >= requiredCapacity) {
-                plans.add(new ClassPlan(
-                        classId, info.name(), info.studentCount(), requiredCapacity,
-                        classGaps.size(), name, existing.id(), existing.capacity(), ACTION_REUSE));
+                ManualItem occupied = occupancyOf(classId, info, existing, roomOccupants);
+                if (occupied != null) {
+                    manualItems.add(occupied);
+                } else {
+                    plans.add(new ClassPlan(
+                            classId, info.name(), info.studentCount(), requiredCapacity,
+                            classGaps.size(), name, existing.id(), existing.capacity(), ACTION_REUSE));
+                }
             } else {
                 manualItems.add(new ManualItem(
                         classId, info.name(), ROOM_NAME_CONFLICT,
@@ -157,6 +178,29 @@ public final class RoomFillPlanner {
             }
         }
         return new Plan(List.copyOf(plans), List.copyOf(manualItems));
+    }
+
+    /**
+     * A same-named room is only this class's room when the semester does not use it for
+     * another admin class. {@code roomOccupants} is {@code null} when the caller has no
+     * occupancy data at all — then the association cannot be verified and a person decides.
+     */
+    private static ManualItem occupancyOf(
+            long classId, ClassInfo info, ExistingRoom existing, Map<Long, Set<Long>> roomOccupants) {
+        if (roomOccupants == null) {
+            return new ManualItem(
+                    classId, info.name(), ROOM_OWNER_UNKNOWN,
+                    "无法确认教室「" + existing.name() + "」在本学期是否已被其他行政班占用，"
+                            + "不能自动复用；请人工处理");
+        }
+        Set<Long> users = roomOccupants.getOrDefault(existing.id(), Set.of());
+        if (users.stream().anyMatch(user -> user != classId)) {
+            return new ManualItem(
+                    classId, info.name(), ROOM_IN_USE,
+                    "教室「" + existing.name() + "」在本学期已被其他行政班使用，不能作为「"
+                            + info.name() + "」的固定教室；请人工处理");
+        }
+        return null;
     }
 
     /**

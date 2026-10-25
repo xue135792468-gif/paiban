@@ -32,7 +32,8 @@
 - `applicable`：前端「确认」按钮是否可用（有人工项、学期已发基线、会新增冲突时为 `false`）。
 - `createdRooms` / `reusedRooms` / `assignedLessons`：预览给计划数，应用给实际数（第二次调用没有新的空教室时 `assignedLessons` 为 0）。
 - `classes[]`：`classId`、`className`、`studentCount`（容量依据）、`requiredCapacity`（最终座位数）、`lessonCount`、`roomName`、`roomId`（预览中新建教室为 `null`）、`roomCapacity`、`action`（`CREATE` / `REUSE`）。
-- `manualItems[]`：`classId`、`className`、`code`、`message`。`code` 属于 REST 契约：`CLASS_NOT_FOUND`、`CLASS_SIZE_UNKNOWN`、`COURSE_NOT_FOUND`、`SPECIAL_ROOM_REQUIRED`、`ROOM_NAME_TOO_LONG`、`ROOM_NAME_CONFLICT`、`NEW_CONFLICT`、`DRAFT_PUBLISHED`、`SEMESTER_ALREADY_PUBLISHED`。
+- `manualItems[]`：`classId`、`className`、`code`、`message`。`code` 属于 REST 契约：`CLASS_NOT_FOUND`、`CLASS_SIZE_UNKNOWN`、`COURSE_NOT_FOUND`、`SPECIAL_ROOM_REQUIRED`、`ROOM_NAME_TOO_LONG`、`ROOM_NAME_CONFLICT`、`ROOM_IN_USE`（同名教室本学期已被别的行政班使用）、`ROOM_OWNER_UNKNOWN`（拿不到占用数据，无法确认）、`NEW_CONFLICT`、`DRAFT_PUBLISHED`、`SEMESTER_ALREADY_PUBLISHED`。
+- `message`：拒绝时的一句话可读原因（成功时为 `null`）。整份 plan 的字段照旧返回，这个字段只是给前端一个不用自己拼的文案——`serverMessage` 只认 `message`，否则 409 的提示会退化成「补教室失败」。单条人工项时直接用该条的 `message`，多条时为「补教室未执行，有 N 项需要人工处理」。
 - `blockers[]`：补完之后**仍然**阻止发布的项（票 13 的 `DraftPublishReadiness`），不复用「补教室已解决一切」的说法。
 
 拒绝时返回 **409** 并带同一形状（`applied=false` + `manualItems`）；学期已有发布基线、草稿已发布、任何拟变更不安全都属于这一类。草稿不存在为 404，缺任一权限为 403。
@@ -42,12 +43,15 @@
 `room` 表是全库共享、没有 `semesterId`，所以只用可推导的固定名做关联：
 
 ```
-{学期名}-{行政班名}-固定教室        （长度必须 ≤ 100，超长转人工，不截断）
+{学期名}-{年级名}{班名}-固定教室     （长度必须 ≤ 100，超长转人工，不截断）
 ```
 
+年级必须进名字：班级名只在一个学期内唯一（`uk_class_semester_name`），不同年级的同名班（以及历史/导入数据里可能出现的重名）不该共用同一间固定教室。
+
 - 名字不存在 → `CREATE`，`capacity = max(班级 studentCount, 该班拟补课节里最大的 studentCount)`。
-- 名字存在 → 仅当 **类型 `NORMAL` 且容量 ≥ 所需容量** 才 `REUSE`；否则 `ROOM_NAME_CONFLICT` 转人工，**不扩容、不冒用、不建同名第二间**。
-- 幂等：第二次调用复用本动作建的同一间，教室总数不变。
+- 名字存在 → 必须同时满足三条才 `REUSE`：**类型 `NORMAL`**、**容量 ≥ 所需容量**、**本学期没有别的行政班在用它**。前两条不满足 → `ROOM_NAME_CONFLICT`；第三条不满足 → `ROOM_IN_USE`；拿不到占用数据（无法确认）→ `ROOM_OWNER_UNKNOWN`。三种都转人工，**不扩容、不冒用、不建同名第二间**。
+- 占用判定口径：本学期全部草稿课节（含本草稿）与已发布条目里，同一 `roomId` 是否分配给了别的 `adminClassId`。「本学期」用学期维度而非草稿维度，避免另一份草稿已经占着这间教室时被再次分发。
+- 幂等：第二次调用复用本动作建的同一间（占用者就是该班自己），教室总数不变。
 
 ### 其它行为
 
@@ -64,6 +68,8 @@
 
 ### 测试
 
-- `backend/src/test/java/com/paiban/scheduling/DraftRoomFillIntegrationTest.java`（7 个，走公开 REST）：两班预览→应用→2 间 NORMAL 教室、容量 ≥ 各班人数、课节全有教室、`publish` 200；手工填的教室不动；再次调用复用不新建；专用教室整次拒绝且零写入；同名但容量不足拒绝且不扩容不重复；单一权限 403；学期已发基线 409。
-- `backend/src/test/java/com/paiban/scheduling/service/RoomFillPlannerTest.java`（11 个纯函数用例）。
+- `backend/src/test/java/com/paiban/scheduling/DraftRoomFillIntegrationTest.java`（9 个，走公开 REST）：两班预览→应用→2 间 NORMAL 教室、容量 ≥ 各班人数、学期名与教室名逐字相等（含年级）、课节全有教室、`publish` 200；手工填的教室不动；再次调用复用不新建；专用教室整次拒绝且零写入；同名但容量不足拒绝且不扩容不重复；同名教室已被本学期另一份草稿的别班占用 → `ROOM_IN_USE` 409 且零写入；补教室与发布对同一草稿给出同样的拒绝 code 与逐字相同的文案（`DRAFT_PUBLISHED` / `SEMESTER_ALREADY_PUBLISHED`）；单一权限 403；学期已发基线 409。
+- `backend/src/test/java/com/paiban/scheduling/service/RoomFillPlannerTest.java`（15 个纯函数用例，含两个年级同名班各得一间、同名教室被别班占用、占用者是自己可复用、拿不到占用数据转人工）。
+
+跨年级同名班的用例放在纯函数测试：`uk_class_semester_name` 目前不允许同一学期建两个同名班，所以 REST 层造不出这份数据；年级前缀与占用校验就是为了「数据将来/别处出现重名时不被冒用」，规则本身在 `RoomFillPlanner` 里被穷举验证。
 - `frontend/src/components/draft/RoomFillDialog.spec.ts`（5 个）：预览渲染、人工项禁用确认、剩余 blocker 照实展示、成功后 `applied`、服务端拒绝时展示人工项。

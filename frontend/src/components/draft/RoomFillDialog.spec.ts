@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
 import RoomFillDialog from './RoomFillDialog.vue'
 import type { RoomFillPlan } from './roomFill'
 
@@ -21,7 +21,7 @@ function plan(overrides: Partial<RoomFillPlan> = {}): RoomFillPlan {
         studentCount: 45,
         requiredCapacity: 45,
         lessonCount: 2,
-        roomName: '2025-2026学年第一学期-八（1）班-固定教室',
+        roomName: '2025-2026学年第一学期-八年级八（1）班-固定教室',
         roomId: null,
         roomCapacity: 45,
         action: 'CREATE',
@@ -32,7 +32,7 @@ function plan(overrides: Partial<RoomFillPlan> = {}): RoomFillPlan {
         studentCount: 38,
         requiredCapacity: 38,
         lessonCount: 2,
-        roomName: '2025-2026学年第一学期-八（2）班-固定教室',
+        roomName: '2025-2026学年第一学期-八年级八（2）班-固定教室',
         roomId: 9,
         roomCapacity: 38,
         action: 'REUSE',
@@ -66,7 +66,7 @@ describe('RoomFillDialog', () => {
     const rows = wrapper.findAll('[data-testid=room-fill-classes] tbody tr')
     expect(rows).toHaveLength(2)
     expect(rows[0].text()).toContain('八（1）班')
-    expect(rows[0].text()).toContain('2025-2026学年第一学期-八（1）班-固定教室')
+    expect(rows[0].text()).toContain('2025-2026学年第一学期-八年级八（1）班-固定教室')
     expect(rows[0].text()).toContain('新建')
     expect(rows[0].text()).toContain('45 人')
     expect(rows[1].text()).toContain('复用')
@@ -124,19 +124,21 @@ describe('RoomFillDialog', () => {
     expect(wrapper.emitted('update:modelValue')).toContainEqual([false])
   })
 
-  it('服务端拒绝时展示它返回的人工处理项', async () => {
+  it('服务端拒绝时展示它返回的人工处理项与可读原因', async () => {
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => ({}) as never)
     httpMock.post.mockRejectedValue({
       response: {
         data: plan({
           applied: false,
           applicable: false,
           classes: [],
+          message: '该学期课表已发布，基线只读；后续调整请走调代流程',
           manualItems: [
             {
               classId: null,
               className: null,
               code: 'SEMESTER_ALREADY_PUBLISHED',
-              message: '该学期课表已发布，基线只读',
+              message: '该学期课表已发布，基线只读；后续调整请走调代流程',
             },
           ],
         }),
@@ -150,5 +152,7 @@ describe('RoomFillDialog', () => {
 
     expect(wrapper.emitted('applied')).toBeUndefined()
     expect(wrapper.get('[data-testid=room-fill-manual]').text()).toContain('基线只读')
+    // The refusal body's own `message` is what the user sees, not the generic fallback.
+    expect(error).toHaveBeenCalledWith('该学期课表已发布，基线只读；后续调整请走调代流程')
   })
 })

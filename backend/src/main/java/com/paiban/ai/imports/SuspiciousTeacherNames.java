@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
+import org.springframework.util.StringUtils;
 
 /**
  * Flags teacher values that are probably not a person's name: a course name, a fragment
@@ -70,7 +71,7 @@ public final class SuspiciousTeacherNames {
         if (courseNames != null) {
             for (String course : courseNames) {
                 String normalized = normalize(course);
-                if (!normalized.isEmpty()) {
+                if (StringUtils.hasText(normalized)) {
                     courses.add(normalized);
                 }
             }
@@ -83,7 +84,7 @@ public final class SuspiciousTeacherNames {
                 }
                 String raw = occurrence.value().strip();
                 String normalized = normalize(raw);
-                if (normalized.isEmpty()) {
+                if (!StringUtils.hasText(normalized)) {
                     continue;
                 }
                 Aggregate aggregate = aggregated.computeIfAbsent(

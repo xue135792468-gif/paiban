@@ -28,7 +28,16 @@
 - `draft_lesson.student_count`：`ConstraintChecker` 的教室容量规则、草稿网格展示、草稿校验。它是导入/求解当刻的快照，因此源头修好后新草稿自然正确。
 - `frontend/src/components/aiImport/timetablePreview.ts` 里 `studentCount: 0` 是只读预览临时渲染值，从不落库，按规格不动。
 
-历史数据（迁移 `V25__backfill_class_student_counts.sql`）：`V4` 与 `V7` 的列都是 `NOT NULL DEFAULT 45`、没有 CHECK；而 0 无法由任何合法写入产生（手工接口 `@Positive`、Excel 导入显式拒绝 `<= 0`、实体默认 45、求解器兜底 45），所以库里的 0 只可能表示「导入没给人数」，不存在「用户明确填 0」的情况。据此迁移把 `admin_class.student_count = 0` 归一为 45，并把 `draft_lesson.student_count = 0` 同步为该班当前人数（同一次缺陷留下的快照）。迁移文件内写了 preflight 查询、备份建议与按 preflight 记录 id 回滚的方法；两条 UPDATE 都幂等。选择「迁移里改数据」而不是「只留 SQL 注释」的理由：线上 14 个班已经被临时手工改成 45，但任何还有 0 的部署（含本地库、其他环境）都需要同样的修正，放进迁移可以随发布自动执行且可审查。没有加 `CHECK (student_count > 0)`：那会把将来「允许 0 表示未知」的产品选择变成 500，口径应留在 API 层的 400。
+历史数据（迁移 `V25__backfill_class_student_counts.sql`）：`V4` 与 `V7` 的列都是 `NOT NULL DEFAULT 45`、没有 CHECK；而 0 无法由任何合法写入产生（手工接口 `@Positive`、Excel 导入显式拒绝 `<= 0`、实体默认 45、求解器兜底 45），所以库里的 0 只可能表示「导入没给人数」，不存在「用户明确填 0」的情况。
+
+这条迁移的定位是**数据修复，不是改写快照语义**（与本文上一条「已有草稿保留导入当时人数」不冲突）：
+
+- 被修的 0 是缺陷留下的空洞——本该有值却没有，不是「导入当时确实 0 人」的记录；45 是同一时刻手工接口会写下的同一个默认值，所以填 45 是补空缺，而不是改写已记录的人数。
+- `admin_class.student_count` 与 `draft_lesson.student_count` 的 0 值各跑一条 UPDATE；**任何非 0 值一律不动**（真实导入/求解快照不被重算）。
+- 两条 UPDATE 都只命中 0 值，重复执行安全。
+- 迁移注释内附 preflight（`SELECT id, semester_id, grade_id, name FROM admin_class WHERE student_count = 0 ORDER BY id;` 与 `SELECT id, draft_id, admin_class_id FROM draft_lesson WHERE student_count = 0 ORDER BY id;`）、备份建议，以及**按 preflight 记录 id 回滚**的方法（修完以后 0 与 45 无法再区分，不能按值回滚）。
+- 选择「迁移里改数据」而不是「只留 SQL 注释」的理由：线上 14 个班已被临时手工改成 45，但任何还有 0 的部署（含本地库、其他环境）都需要同样的修正，放进迁移可以随发布自动执行且可审查。
+- 没有加 `CHECK (student_count > 0)`：那会把将来「允许 0 表示未知」的产品选择变成 500，口径应留在 API 层的 400。
 
 测试（先红后绿，均走公开 REST）：
 
@@ -38,4 +47,4 @@
 - 手工建班不带人数 → 45；手工保存 0 / -1 → 400 且原值不变（回归）。
 - 前端：人数输入 `min = 1`，清空后仍提交 45。
 
-遗留风险：`admin_class.student_count` 与 `draft_lesson.student_count` 的快照关系不变——修改班级人数只影响之后的草稿，已有草稿保留导入/求解当时的人数（V25 只补 0 值，不改写有值快照）。仍未解决的上游问题：工作簿里若真带「人数」列，当前 `WorkbookPayload.classes` 只传班名，人数不会入库，需另开票。
+遗留风险：`admin_class.student_count` 与 `draft_lesson.student_count` 的快照关系不变——修改班级人数只影响之后的草稿，已有草稿保留导入/求解当时的人数。V25 只填 0 值（缺陷留下的空缺，按班级当前人数补齐，见上），任何有值快照都不改写；若某份草稿仍显示 0 人，说明它的班级行当时也不存在，需要人工重建该草稿（迁移里对不上的行会保留 0，不做猜测）。仍未解决的上游问题：工作簿里若真带「人数」列，当前 `WorkbookPayload.classes` 只传班名，人数不会入库，需另开票。

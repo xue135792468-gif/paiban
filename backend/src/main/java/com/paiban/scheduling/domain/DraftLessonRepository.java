@@ -7,6 +7,9 @@ public interface DraftLessonRepository extends JpaRepository<DraftLesson, Long> 
 
     List<DraftLesson> findByDraftIdOrderByIdAsc(Long draftId);
 
+    /** Every lesson of the given drafts, for semester-wide questions (e.g. room use). */
+    List<DraftLesson> findByDraftIdIn(List<Long> draftIds);
+
     long countByDraftId(Long draftId);
 
     long countByAdminClassId(Long adminClassId);

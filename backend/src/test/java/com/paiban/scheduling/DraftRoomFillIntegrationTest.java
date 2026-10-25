@@ -71,8 +71,10 @@ class DraftRoomFillIntegrationTest extends ApiIntegrationTest {
         List<Map<String, Object>> planned = preview.jsonPath().getList("classes");
         assertThat(planned).hasSize(2);
         assertThat(preview.jsonPath().getList("manualItems")).isEmpty();
+        // The derived name carries the grade as well as the class, so a class of another
+        // grade with the same name can never adopt this room.
         assertThat(preview.jsonPath().getString("classes[0].roomName"))
-                .startsWith(f.semesterName() + "-").endsWith("-固定教室");
+                .isEqualTo(fixedRoomName(f, f.classNameA()));
         assertThat(preview.jsonPath().getString("classes[0].action")).isEqualTo("CREATE");
         assertThat(preview.jsonPath().getInt("classes[0].studentCount")).isEqualTo(45);
         assertThat(preview.jsonPath().getInt("classes[0].lessonCount")).isEqualTo(2);
@@ -197,7 +199,7 @@ class DraftRoomFillIntegrationTest extends ApiIntegrationTest {
         long draftId = seedDraft(f, List.of(
                 lesson(f.classA(), f.courseId(), f.teacherA(), 45, f.periodIds().get(0), null),
                 lesson(f.classB(), f.courseId(), f.teacherB(), 38, f.periodIds().get(0), null)));
-        String clashingName = f.semesterName() + "-" + f.classNameA() + "-固定教室";
+        String clashingName = fixedRoomName(f, f.classNameA());
         long smallRoom = createRoom(f.token(), clashingName, 30, "NORMAL");
         int roomsBefore = rooms(f.token()).size();
 
@@ -259,12 +261,94 @@ class DraftRoomFillIntegrationTest extends ApiIntegrationTest {
         assertThat(draftLessonRooms(draftId)).containsOnlyNulls();
     }
 
+    @Test
+    void aSameNamedRoomAnotherClassAlreadyUsesThisSemesterIsNotReused() {
+        Fixture f = fixture(45, 38);
+        long roomId = createRoom(f.token(), fixedRoomName(f, f.classNameA()), 45, "NORMAL");
+        // Another draft of the same semester already puts class B in that room.
+        seedDraft(f, List.of(
+                lesson(f.classB(), f.courseId(), f.teacherB(), 38, f.periodIds().get(0), roomId)));
+        long draftId = seedDraft(f, List.of(
+                lesson(f.classA(), f.courseId(), f.teacherA(), 45, f.periodIds().get(0), null)));
+        int roomsBefore = rooms(f.token()).size();
+
+        Response refused = as(f.token())
+                .when().post(APPLY_PATH.formatted(draftId))
+                .then().statusCode(409).extract().response();
+
+        assertThat(refused.jsonPath().getBoolean("applied")).isFalse();
+        assertThat(refused.jsonPath().getList("manualItems.code")).containsExactly("ROOM_IN_USE");
+        assertThat(refused.jsonPath().getString("message")).contains("已被其他行政班使用");
+        assertThat(rooms(f.token())).hasSize(roomsBefore);
+        assertThat(draftLessonRooms(draftId)).containsOnlyNulls();
+    }
+
+    @Test
+    void fillingRoomsAndPublishingRefuseTheSameDraftForTheSameReason() {
+        Fixture f = fixture(45, 38);
+        long roomId = createRoom(f.token(), "发布教室" + TestData.suffix(), 60, "NORMAL");
+        long draftId = seedDraft(f, List.of(
+                lesson(f.classA(), f.courseId(), f.teacherA(), 45, f.periodIds().get(0), roomId)));
+        as(f.token()).when().post("/api/timetable-drafts/" + draftId + "/publish")
+                .then().statusCode(200);
+
+        // Published draft: the fill action must give the publishing judgement's own code and
+        // wording, not a locally re-derived "published" rule.
+        String publishedMessage = blockerMessage(f.token(), draftId, "DRAFT_PUBLISHED");
+        Response plan = as(f.token())
+                .when().get(PLAN_PATH.formatted(draftId))
+                .then().statusCode(200).extract().response();
+        assertThat(plan.jsonPath().getBoolean("applicable")).isFalse();
+        assertThat(plan.jsonPath().getList("manualItems.code")).containsExactly("DRAFT_PUBLISHED");
+        assertThat(plan.jsonPath().getString("manualItems[0].message")).isEqualTo(publishedMessage);
+
+        Response refused = as(f.token())
+                .when().post(APPLY_PATH.formatted(draftId))
+                .then().statusCode(409).extract().response();
+        assertThat(refused.jsonPath().getString("message")).isEqualTo(publishedMessage);
+        assertThat(refused.jsonPath().getList("blockers.code")).contains("DRAFT_PUBLISHED");
+        as(f.token()).when().post("/api/timetable-drafts/" + draftId + "/publish")
+                .then().statusCode(409)
+                .body("message", org.hamcrest.Matchers.equalTo(publishedMessage));
+
+        // Same for the semester-wide terminal state: a fresh draft in the published semester.
+        long secondDraftId = seedDraft(f, List.of(
+                lesson(f.classB(), f.courseId(), f.teacherB(), 38, f.periodIds().get(1), roomId)));
+        String semesterMessage = blockerMessage(f.token(), secondDraftId, "SEMESTER_ALREADY_PUBLISHED");
+        Response secondPlan = as(f.token())
+                .when().get(PLAN_PATH.formatted(secondDraftId))
+                .then().statusCode(200).extract().response();
+        assertThat(secondPlan.jsonPath().getList("manualItems.code"))
+                .containsExactly("SEMESTER_ALREADY_PUBLISHED");
+        assertThat(secondPlan.jsonPath().getString("manualItems[0].message")).isEqualTo(semesterMessage);
+
+        as(f.token()).when().post(APPLY_PATH.formatted(secondDraftId))
+                .then().statusCode(409)
+                .body("manualItems[0].code", org.hamcrest.Matchers.equalTo("SEMESTER_ALREADY_PUBLISHED"))
+                .body("message", org.hamcrest.Matchers.equalTo(semesterMessage));
+        // Nothing was written for either draft.
+        assertThat(draftLessonRooms(secondDraftId)).containsOnly(roomId);
+    }
+
+    /** The message the whole-draft check gives for one blocker code, the contract's own text. */
+    private String blockerMessage(String token, long draftId, String code) {
+        return as(token).when().get("/api/timetable-drafts/" + draftId + "/validation")
+                .then().statusCode(200).extract().jsonPath()
+                .getList("blockers").stream()
+                .map(item -> (Map<?, ?>) item)
+                .filter(item -> code.equals(item.get("code")))
+                .map(item -> (String) item.get("message"))
+                .findFirst()
+                .orElseThrow();
+    }
+
     // ---------- fixture ----------
 
     private record Fixture(
             String token,
             long semesterId,
             String semesterName,
+            String gradeName,
             long classA,
             long classB,
             String classNameA,
@@ -286,7 +370,8 @@ class DraftRoomFillIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(200).extract().jsonPath().getList("id", Long.class);
         String semesterName = as(token).when().get("/api/semesters/" + semesterId)
                 .then().statusCode(200).extract().jsonPath().getString("name");
-        long gradeId = TestData.grade(token, semesterId, "八年级" + TestData.suffix());
+        String gradeName = "八年级" + TestData.suffix();
+        long gradeId = TestData.grade(token, semesterId, gradeName);
         String classNameA = "八（1）班" + TestData.suffix();
         String classNameB = "八（2）班" + TestData.suffix();
         long classA = adminClass(token, semesterId, gradeId, classNameA, sizeA);
@@ -295,6 +380,7 @@ class DraftRoomFillIntegrationTest extends ApiIntegrationTest {
                 token,
                 semesterId,
                 semesterName,
+                gradeName,
                 classA,
                 classB,
                 classNameA,
@@ -393,6 +479,11 @@ class DraftRoomFillIntegrationTest extends ApiIntegrationTest {
     private List<Map<String, Object>> rooms(String token) {
         return as(token).when().get("/api/rooms")
                 .then().statusCode(200).extract().jsonPath().getList("$");
+    }
+
+    /** The name this action derives for one of the fixture's classes. */
+    private String fixedRoomName(Fixture f, String className) {
+        return f.semesterName() + "-" + f.gradeName() + className + "-固定教室";
     }
 
     private boolean isFixedRoomOf(Map<String, Object> room, Fixture f) {

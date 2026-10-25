@@ -205,6 +205,7 @@ import RoomFillDialog from '@/components/draft/RoomFillDialog.vue'
 import SwapCandidatePanel from '@/components/draft/SwapCandidatePanel.vue'
 import DualTimetablePreview from '@/components/draft/DualTimetablePreview.vue'
 import { courseColor } from '@/components/draft/colors'
+import { canPublishNow } from '@/components/draft/publishBlockers'
 import { useDraftAdjust } from '@/composables/useDraftAdjust'
 import { useSwapFlow } from '@/composables/useSwapFlow'
 import type {
@@ -226,10 +227,8 @@ const isJunior = computed(() => settings.schoolType === 'junior')
 const draftId = Number(route.params.id)
 const canEdit = computed(() => auth.hasPermission('timetable:edit'))
 const canPublish = computed(() => auth.hasPermission('timetable:publish'))
-// Filling rooms creates main data as well as editing the draft, so the server wants both.
-const canFillRooms = computed(
-  () => auth.hasPermission('timetable:edit') && auth.hasPermission('foundation:manage'),
-)
+// Filling rooms needs two permissions; that pair is defined in the auth store.
+const canFillRooms = computed(() => auth.canFillDraftRooms)
 
 const adjust = useDraftAdjust(draftId)
 const { undoCount, canUndo, undoing, move, undo, loadMoveTargets } = adjust
@@ -287,7 +286,8 @@ const unassigned = computed(() => filteredLessons.value.filter((lesson) => !less
 const hardConflicts = computed(() => validation.value?.hardConflicts ?? 0)
 // The server's whole-draft judgement is the only opinion on whether publishing can work.
 const blockers = computed(() => validation.value?.blockers ?? [])
-const publishable = computed(() => validation.value?.publishable ?? true)
+// The button follows the blockers themselves; an unfinished check keeps it disabled.
+const publishable = computed(() => canPublishNow(validation.value))
 const scoreLabel = computed(
   () => `${detail.value?.draft.scoreHard ?? 0} hard / ${detail.value?.draft.scoreSoft ?? 0} soft`,
 )

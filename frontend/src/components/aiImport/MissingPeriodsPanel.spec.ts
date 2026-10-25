@@ -111,6 +111,36 @@ describe('MissingPeriodsPanel', () => {
     expect(wrapper.find('[data-testid=missing-periods]').exists()).toBe(false)
   })
 
+  it('只补了可靠子集时剩余差集仍显示，不出现全部完成', async () => {
+    const remaining = plan({
+      items: [
+        {
+          dayOfWeek: 6,
+          periodNo: 9,
+          status: 'MANUAL',
+          label: '第9节',
+          section: null,
+          startTime: null,
+          endTime: null,
+          reason: '没有可参照的作息时间，请到作息管理手工设置',
+        },
+      ],
+    })
+    httpMock.post.mockResolvedValue({ data: { created: 2, plan: remaining } })
+    const wrapper = await mountPanel()
+
+    await wrapper.get('[data-testid=missing-periods-apply]').trigger('click')
+    await flushPromises()
+
+    // What could not be derived stays on screen and keeps asking for a person.
+    const table = wrapper.get('[data-testid=missing-periods-table]').text()
+    expect(table).toContain('周六')
+    expect(table).toContain('需人工')
+    expect(wrapper.findAll('[data-testid=missing-periods-manage]')).toHaveLength(1)
+    expect(wrapper.find('[data-testid=missing-periods-apply]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('全部完成')
+  })
+
   it('已发布学期只说明不可补，不给勾选和补齐入口', async () => {
     httpMock.get.mockResolvedValue({ data: plan({ published: true }) })
     const wrapper = await mountPanel()

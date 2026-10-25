@@ -61,6 +61,9 @@ class MissingPeriodsIntegrationTest extends ApiIntegrationTest {
     @Autowired
     private TimetableImportService timetableImports;
 
+    @Autowired
+    private AiImportLogRepository logs;
+
     private final ObjectMapper mapper = new ObjectMapper();
     private final AtomicInteger planRounds = new AtomicInteger();
 
@@ -223,6 +226,65 @@ class MissingPeriodsIntegrationTest extends ApiIntegrationTest {
         as(f.token()).get("/api/ai/import/sessions/" + f.sessionId()).then().statusCode(200);
 
         assertThat(fake.calls).isEqualTo(callsAfterPreview);
+    }
+
+    @Test
+    void aSlotNoRuleCanProposeCannotBeWrittenThroughTheApi() throws Exception {
+        Fixture f = workbookOnWeekdays();
+        Response plan = missingPeriods(f.token(), f.sessionId()).then().statusCode(200).extract().response();
+        assertThat(plan.jsonPath().getList("items", Map.class)).hasSize(1);
+        assertThat(plan.jsonPath().getString("items[0].status")).isEqualTo("MANUAL");
+        int before = periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(f.semesterId()).size();
+
+        // Guessing a time for a slot no rule can derive must be refused, not written.
+        apply(f.token(), f.sessionId(), Map.of(
+                "semesterId", f.semesterId(),
+                "items", List.of(Map.of(
+                        "dayOfWeek", 7, "periodNo", 9,
+                        "startTime", "17:40", "endTime", "18:25"))))
+                .then().statusCode(409);
+
+        assertThat(periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(f.semesterId()))
+                .hasSize(before);
+    }
+
+    @Test
+    void aSessionWithoutPreviewDataReportsAnErrorInsteadOfAnEmptyDiff() throws Exception {
+        Fixture f = workbookSession();
+        AiImportLog log = logs.findById(f.sessionId()).orElseThrow();
+        log.setPreviewJson(null);
+        logs.save(log);
+
+        // "Nothing is missing" would be a silent success on data we never read.
+        missingPeriods(f.token(), f.sessionId())
+                .then().statusCode(409)
+                .body("message", containsString("预览数据不可用"));
+
+        apply(f.token(), f.sessionId(), Map.of(
+                        "semesterId", f.semesterId(),
+                        "items", List.of(Map.of(
+                                "dayOfWeek", 1, "periodNo", 9,
+                                "startTime", "17:40", "endTime", "18:25"))))
+                .then().statusCode(409)
+                .body("message", containsString("预览数据不可用"));
+    }
+
+    /** A workbook that uses Sunday's 9th period, which no day of the semester has. */
+    private Fixture workbookOnWeekdays() throws IOException {
+        String token = adminToken();
+        long semesterId = TestData.semester(token);
+        as(token).body(Map.of(
+                        "morningCount", 4, "afternoonCount", 4, "eveningCount", 0,
+                        "days", List.of(1, 2, 3, 4, 5)))
+                .when().post("/api/semesters/" + semesterId + "/periods/default")
+                .then().statusCode(200);
+        scriptPlan();
+        Response preview = upload(token, workbook(Map.of("数据源", List.of(
+                List.of("八（1）|星期日|9", "语文", "张三"),
+                List.of("八（1）|星期一|1", "数学", "李四"),
+                List.of("八（2）|星期二|2", "英语", "王五")))));
+        preview.then().statusCode(200);
+        return new Fixture(token, semesterId, preview.jsonPath().getLong("sessionId"));
     }
 
     // ------------------------------------------------------------------ fixture

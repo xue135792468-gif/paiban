@@ -37,7 +37,9 @@
 
 message 是人类可读文案且已含条数（API 调用方不必自己拼），action 是稳定标识、不含文案，页面据此选入口。`INVALID_PERIODS` 与 `ConstraintChecker` 的 `PERIOD` 硬冲突是同一事实的两种视角：前者给页面指向作息入口，后者的冲突数照旧计入 `hardConflicts`。
 
-**响应兼容**：`valid`、`hardConflicts`、`conflicts` 字段与语义不变，新增 `publishable`（blockers 为空）与 `blockers`。整草稿检查的 `valid = blockers 为空`（因此缺教室/未排课/引用失效都是 `false`）；`hardConflicts` 仍只数 24 条规则里的排课冲突，缺教室/未排课不进冲突数。
+**响应兼容**：`valid`、`hardConflicts`、`conflicts` 字段与语义不变，新增 `publishable`（blockers 为空）与 `blockers`。
+
+整草稿检查的 `valid` 与 `publishable` 由同一份 `blockers` 推导，区别只有一处：**「已发布」这一终态不使 `valid=false`**。`DRAFT_PUBLISHED`、`SEMESTER_ALREADY_PUBLISHED` 只进 `publishable` 与 `blockers`；其余 blocker（`DRAFT_EMPTY`、`INVALID_PERIODS`、`UNSCHEDULED_LESSONS`、`MISSING_ROOMS`、`HARD_CONFLICTS`）仍然让 `valid=false`——缺教室/未排课/引用失效必须显示为不通过，这是本票的核心断言。理由：刚发布完的草稿如果读回来是「不通过」，就是本票承诺不做的响应破坏；而「已被发布过」是客观状态，不是内容缺陷。`hardConflicts` 仍只数 24 条规则里的排课冲突，缺教室/未排课不进冲突数。
 
 **局部验证不被阻断**：`validate-move`、`validate-moves`、`validate-changes`、swap 场景仍只检查受影响课节，返回 `blockers=[]`、`publishable` 与其 `valid` 相同。专门测试：存在 1 节缺教室的草稿上对另一节 `validate-move` → `valid=true, hardConflicts=0, conflicts=[]`（这个用例在我把判定误接到局部路径上时会立刻红，见 `validate-move` 省略 roomId 的既有用例）。
 
@@ -47,10 +49,11 @@ message 是人类可读文案且已含条数（API 调用方不必自己拼）�
 
 **测试（先红后绿，均走公开 REST）**：
 
-- `DraftPublishReadinessIntegrationTest`（5）：① 求解后的草稿逐节 PATCH 清空 `roomId` → `valid=false`、`publishable=false`、`hardConflicts=0`、`conflicts=[]`、`MISSING_ROOMS.count=12`，发布仍 400 且消息含条数（**红：改动前 `valid=true`**）；② 逐节 PATCH 回房间 → `valid=true`、`publishable=true`、`blockers=[]`，发布 200；③ 1 节缺教室时对另一节 `validate-move` → `valid=true`；④ 空草稿 → 400 且 blockers 有 `DRAFT_EMPTY`（红：之前 `valid=true`）；⑤ 学期已发布后第二份草稿 → blockers 有 `SEMESTER_ALREADY_PUBLISHED`、发布 409（红：之前 `valid=true`）。
+- `DraftPublishReadinessIntegrationTest`（6）：① 求解后的草稿逐节 PATCH 清空 `roomId` → `valid=false`、`publishable=false`、`hardConflicts=0`、`conflicts=[]`、`MISSING_ROOMS.count=12`，发布仍 400 且消息含条数（**红：改动前 `valid=true`**）；② 逐节 PATCH 回房间 → `valid=true`、`publishable=true`、`blockers=[]`，发布 200；③ 1 节缺教室时对另一节 `validate-move` → `valid=true`；④ 空草稿 → 400 且 blockers 有 `DRAFT_EMPTY`（红：之前 `valid=true`）；⑤ 学期已发布后第二份草稿 → blockers 有 `SEMESTER_ALREADY_PUBLISHED`、发布 409，`valid=true`（终态不进 `valid`）；⑥ 发布成功后对同一草稿重新 GET → `valid=true`、`publishable=false`、blockers 含 `DRAFT_PUBLISHED`。
 - `DraftPublishReadinessTest`（4）：纯函数——完整草稿无 blocker、缺教室与未排课分别计数、空草稿 count=0、七种 blocker 的固定顺序。
-- `DraftValidatorTest`（+6）：整草稿缺教室只出 blocker 不进冲突数、未排课与引用失效分开计数、干净草稿 valid=publishable=true、已发布草稿、学期已有基线、局部 validate-moves 不被缺教室课节阻断。
+- `DraftValidatorTest`（+7）：整草稿缺教室只出 blocker 不进冲突数（valid=false）、未排课与引用失效分开计数、干净草稿 valid=publishable=true、已发布草稿 valid=true 但 publishable=false 且只有 `DRAFT_PUBLISHED`、已发布草稿缺教室仍 valid=false、学期已有基线仍 publishable=false、局部 validate-moves 不被缺教室课节阻断。
+- `DraftPublishReadinessIntegrationTest` 另加一条：发布成功后对同一草稿重新 GET validation → `valid=true`、`publishable=false`、`hardConflicts=0`、blockers 含 `DRAFT_PUBLISHED`（证明「已发布」不进 `valid`）。
 - 前端：`publishBlockers.spec.ts`（7）、`DraftPublishBlockers.spec.ts`（6）覆盖动作映射与渲染（缺教室/未排课/引用失效/硬冲突无按钮）。
 - 既有 `TimetablePublishIntegrationTest`（硬冲突 409、已发布 409、发布后可查四视角）未改动且全绿。
 
-**遗留风险**：`ASSIGN_ROOMS` 只有一个跳转，批量补教室仍要等票 07；`publishable` 依赖一次 `TimetablePublishRepository` 查询（每次整草稿检查多一次读，局部验证不查）；`valid` 对已发布草稿现在返回 `false`（此前为 `true`），语义更准但如果将来有调用方把 `valid` 当作「没有排课冲突」会读到不同结果——冲突数请用 `hardConflicts`。
+**遗留风险**：`publishable` 依赖一次 `TimetablePublishRepository` 查询（每次整草稿检查多一次读，局部验证不查）；`valid` 现在回答的是「内容是否完整」（结构/资源缺口 + 排课冲突），不再是「没有排课冲突」，需要冲突数的调用方请读 `hardConflicts`；已发布草稿与已发布学期里的草稿 `valid` 仍为 `true`（终态不进 `valid`），这一点与票 07 的补教室入口共用同一份判定。

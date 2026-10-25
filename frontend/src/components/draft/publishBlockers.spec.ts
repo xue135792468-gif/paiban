@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { blockerTarget, isPublishable } from './publishBlockers'
-import type { DraftPublishBlocker } from './types'
+import { blockerTarget, canPublishNow, isPublishable } from './publishBlockers'
+import type { DraftPublishBlocker, DraftValidation } from './types'
 
 function blocker(overrides: Partial<DraftPublishBlocker> = {}): DraftPublishBlocker {
   return { code: 'MISSING_ROOMS', message: '有 3 节课还没有分配教室', count: 3, action: 'ASSIGN_ROOMS', ...overrides }
@@ -46,3 +46,18 @@ describe('isPublishable', () => {
     expect(isPublishable([blocker()])).toBe(false)
   })
 })
+
+describe('canPublishNow', () => {
+  it('校验还没回来时按钮保持禁用', () => {
+    expect(canPublishNow(null)).toBe(false)
+  })
+
+  it('校验回来且没有阻塞项时才允许发布', () => {
+    expect(canPublishNow(validation([]))).toBe(true)
+    expect(canPublishNow(validation([blocker()]))).toBe(false)
+  })
+})
+
+function validation(blockers: DraftPublishBlocker[]): DraftValidation {
+  return { valid: blockers.length === 0, hardConflicts: 0, conflicts: [], publishable: blockers.length === 0, blockers }
+}

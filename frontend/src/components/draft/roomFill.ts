@@ -39,4 +39,6 @@ export interface RoomFillPlan {
   manualItems: RoomFillManualItem[]
   /** What still stands between the draft and publishing after this action. */
   blockers: DraftPublishBlocker[]
+  /** Readable reason for a refusal (null on success); the plan's own fields stay intact. */
+  message?: string | null
 }

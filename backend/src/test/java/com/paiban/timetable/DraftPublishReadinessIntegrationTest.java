@@ -145,12 +145,30 @@ class DraftPublishReadinessIntegrationTest extends ApiIntegrationTest {
                 draftLessons.findByDraftIdOrderByIdAsc(fixture.draftId()));
 
         Response validation = validation(token, secondDraftId);
-        assertThat(validation.jsonPath().getBoolean("valid")).isFalse();
+        // The content is fine; only the already-published semester stands in the way, and a
+        // terminal state is not what `valid` reports (it stays backward compatible).
+        assertThat(validation.jsonPath().getBoolean("valid")).isTrue();
         assertThat(validation.jsonPath().getBoolean("publishable")).isFalse();
         assertThat(blocker(validation, "SEMESTER_ALREADY_PUBLISHED")).isNotNull();
 
         as(token).when().post("/api/timetable-drafts/" + secondDraftId + "/publish")
                 .then().statusCode(409);
+    }
+
+    @Test
+    void aPublishedDraftReadsBackAsValidButNotPublishable() {
+        String token = adminToken();
+        long draftId = ScheduleFixture.solved(token, 5).draftId();
+        as(token).when().post("/api/timetable-drafts/" + draftId + "/publish")
+                .then().statusCode(200);
+
+        Response validation = validation(token, draftId);
+        // Ticket 13 promised the response stays compatible: publishing a draft does not make
+        // its own content invalid, it only stops a second publish.
+        assertThat(validation.jsonPath().getBoolean("valid")).isTrue();
+        assertThat(validation.jsonPath().getBoolean("publishable")).isFalse();
+        assertThat(validation.jsonPath().getInt("hardConflicts")).isZero();
+        assertThat(blocker(validation, "DRAFT_PUBLISHED")).isNotNull();
     }
 
     private Response validation(String token, long draftId) {

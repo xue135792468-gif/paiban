@@ -50,6 +50,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
@@ -500,7 +501,7 @@ public class WorkbookImportFlow {
         List<SuspiciousTeacherNames.Occurrence> occurrences = new ArrayList<>();
         for (int i = 0; i < rows.size(); i++) {
             String teacher = value(rows.get(i), "teacherName");
-            if (!teacher.isBlank()) {
+            if (StringUtils.hasText(teacher)) {
                 occurrences.add(new SuspiciousTeacherNames.Occurrence(teacher, i + 1));
             }
         }
@@ -512,7 +513,7 @@ public class WorkbookImportFlow {
         }
         List<String> knownCourses = new ArrayList<>(courseNames.values());
         for (CourseDraft course : courses) {
-            if (course.name() != null && !course.name().isBlank()) {
+            if (StringUtils.hasText(course.name())) {
                 knownCourses.add(course.name());
             }
         }

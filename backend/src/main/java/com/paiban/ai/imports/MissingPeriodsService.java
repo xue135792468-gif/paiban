@@ -16,6 +16,7 @@ import com.paiban.ai.imports.PeriodGapPlanner.Status;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
+import com.paiban.foundation.domain.PeriodSlotKey;
 import com.paiban.foundation.service.SemesterService;
 import com.paiban.foundation.web.SemesterDtos.PeriodDto;
 import com.paiban.foundation.web.SemesterDtos.PeriodSlot;
@@ -34,6 +35,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -48,6 +50,11 @@ public class MissingPeriodsService {
     private static final String STALE_PLAN = "方案已过期，请刷新预览";
     private static final String PUBLISHED_REASON = "该学期已发布课表，作息不可补充";
     private static final String NO_SEMESTER = "请先设置当前学期";
+    /**
+     * Without the saved preview there is no gap list to show. Reporting "no gap" would be a
+     * silent success on data we never read, so this is a structured refusal instead.
+     */
+    private static final String PREVIEW_UNAVAILABLE = "预览数据不可用，请重新解析";
 
     private final AiImportLogRepository logs;
     private final ObjectMapper objectMapper;
@@ -183,19 +190,26 @@ public class MissingPeriodsService {
         return List.copyOf(slots);
     }
 
+    /**
+     * The rows of the saved preview. A missing or unreadable {@code preview_json} is an
+     * error, never an empty diff: answering "nothing is missing" would let a caller believe
+     * the semester is complete when the data it should be compared against is gone.
+     */
     private List<RowDto> rows(AiImportLog log) {
         String json = log.getPreviewJson();
-        if (json == null || json.isBlank()) {
-            return List.of();
+        if (!StringUtils.hasText(json)) {
+            throw ApiException.conflict(PREVIEW_UNAVAILABLE);
         }
         try {
             JsonNode rows = objectMapper.readTree(json).path("rows");
             if (!rows.isArray()) {
-                return List.of();
+                throw ApiException.conflict(PREVIEW_UNAVAILABLE);
             }
             return objectMapper.convertValue(rows, new TypeReference<List<RowDto>>() {});
+        } catch (ApiException ex) {
+            throw ex;
         } catch (Exception ex) {
-            return List.of();
+            throw ApiException.conflict(PREVIEW_UNAVAILABLE);
         }
     }
 
@@ -223,7 +237,7 @@ public class MissingPeriodsService {
     }
 
     private static String key(int dayOfWeek, int periodNo) {
-        return dayOfWeek + "-" + periodNo;
+        return PeriodSlotKey.of(dayOfWeek, periodNo);
     }
 
     private static String value(RowDto row, String field) {

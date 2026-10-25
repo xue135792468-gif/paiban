@@ -49,6 +49,14 @@ public class DraftValidator {
      * {@code conflicts} keep their original meaning for existing consumers;
      * {@code publishable} and {@code blockers} are additive.
      *
+     * <p>{@code valid} answers "is this draft complete enough to be a timetable?" — no
+     * scheduling conflict, no unscheduled lesson, no dangling period and no lesson without
+     * a room. It deliberately says nothing about the already-published state
+     * ({@code DRAFT_PUBLISHED}, {@code SEMESTER_ALREADY_PUBLISHED}): those are terminal
+     * states, not defects of the content, so they only show up in {@code publishable} and
+     * {@code blockers}. Otherwise the very draft that was just published would read back as
+     * "invalid", which is the response change ticket 13 promised not to make.
+     *
      * <p>A local check ({@code validate-move}, {@code validate-moves}, swap scenarios) only
      * looks at the lessons it was asked about, so it reports no blockers and
      * {@code publishable} mirrors {@code valid} there. Only the whole-draft check
@@ -199,6 +207,11 @@ public class DraftValidator {
      * Whole-draft check: the 24 conflict rules plus every publishing precondition, from
      * the one judgement publishing itself uses ({@link DraftPublishReadiness}). A draft
      * with lessons but no rooms is therefore not "valid" any more: it cannot be published.
+     *
+     * <p>{@code valid} and {@code publishable} both come from this one list, differing only
+     * in that the two terminal-state blockers ({@code DRAFT_PUBLISHED},
+     * {@code SEMESTER_ALREADY_PUBLISHED}) do not make the content invalid — see
+     * {@link ValidationResult}.
      */
     @Transactional(readOnly = true)
     public ValidationResult validateDraft(Long draftId) {
@@ -206,7 +219,22 @@ public class DraftValidator {
         List<Conflict> conflicts = checkAffected(snapshot, null);
         List<DraftPublishReadiness.Blocker> blockers =
                 DraftPublishReadiness.blockers(factsOf(snapshot, conflicts.size()));
-        return new ValidationResult(blockers.isEmpty(), conflicts.size(), conflicts, blockers.isEmpty(), blockers);
+        return new ValidationResult(
+                contentComplete(blockers), conflicts.size(), conflicts, blockers.isEmpty(), blockers);
+    }
+
+    /**
+     * True when every blocker is about the draft's content; a blocker that only says "this
+     * is already published" is a state of the world, not something the content lacks.
+     */
+    private static boolean contentComplete(List<DraftPublishReadiness.Blocker> blockers) {
+        return blockers.stream().allMatch(blocker -> isTerminalState(blocker.code()));
+    }
+
+    /** The codes that describe a publish state rather than a gap in the draft. */
+    private static boolean isTerminalState(String code) {
+        return DraftPublishReadiness.DRAFT_PUBLISHED.equals(code)
+                || DraftPublishReadiness.SEMESTER_ALREADY_PUBLISHED.equals(code);
     }
 
     /** Counts the structural and resource gaps the publishing preconditions care about. */

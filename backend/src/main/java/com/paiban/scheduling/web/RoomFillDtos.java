@@ -34,6 +34,10 @@ public final class RoomFillDtos {
      * {@code applied} is true only for a successful apply. {@code applicable} tells the
      * page whether confirming can work at all; {@code blockers} is what still stands
      * between the draft and publishing after this action, never a promise that nothing does.
+     *
+     * <p>{@code message} is the one-line reason a refusal is shown to the user (null on
+     * success), so the client has a readable text without rebuilding it from the manual
+     * items — the whole plan keeps its own fields either way.
      */
     public record RoomFillPlanDto(
             boolean applied,
@@ -43,7 +47,8 @@ public final class RoomFillDtos {
             int assignedLessons,
             List<ClassRoomPlanDto> classes,
             List<ManualItemDto> manualItems,
-            List<DraftPublishReadiness.Blocker> blockers) {}
+            List<DraftPublishReadiness.Blocker> blockers,
+            String message) {}
 
     private RoomFillDtos() {}
 }

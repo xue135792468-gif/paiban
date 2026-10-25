@@ -1,4 +1,4 @@
-import type { DraftPublishBlocker } from './types'
+import type { DraftPublishBlocker, DraftValidation } from './types'
 
 /**
  * What the page offers next to one blocker. The server sends the action identifier
@@ -44,4 +44,12 @@ export function blockerTarget(action: string, options: { roomFill?: boolean } = 
 /** True when the whole-draft check says nothing stands between the draft and publishing. */
 export function isPublishable(blockers: DraftPublishBlocker[]): boolean {
   return blockers.length === 0
+}
+
+/**
+ * The publish button's disabled state. A check that has not come back yet is not a green
+ * light: only a validation result with no blockers enables publishing.
+ */
+export function canPublishNow(validation: DraftValidation | null): boolean {
+  return validation !== null && isPublishable(validation.blockers)
 }

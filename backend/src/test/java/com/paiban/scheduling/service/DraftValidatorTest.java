@@ -228,8 +228,26 @@ class DraftValidatorTest {
     }
 
     @Test
-    void publishedDraftIsNeitherValidNorPublishable() {
+    void publishedDraftStaysValidButIsNotPublishable() {
         draft.setStatus("PUBLISHED");
+
+        ValidationResult result = validator.validateDraft(DRAFT_ID);
+
+        // Being published is a terminal state, not a defect of the content: `valid` keeps
+        // its meaning for existing consumers, while publishing twice is refused.
+        assertThat(result.valid()).isTrue();
+        assertThat(result.publishable()).isFalse();
+        assertThat(result.blockers())
+                .extracting(DraftPublishReadiness.Blocker::code)
+                .containsExactly(DraftPublishReadiness.DRAFT_PUBLISHED);
+    }
+
+    @Test
+    void publishedDraftWithAMissingRoomIsStillInvalid() {
+        draft.setStatus("PUBLISHED");
+        useLessons(
+                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1, ROOM_1),
+                lesson(LESSON_2, MATH, TEACHER_2, CLASS_1, P2, null));
 
         ValidationResult result = validator.validateDraft(DRAFT_ID);
 
@@ -237,7 +255,7 @@ class DraftValidatorTest {
         assertThat(result.publishable()).isFalse();
         assertThat(result.blockers())
                 .extracting(DraftPublishReadiness.Blocker::code)
-                .contains(DraftPublishReadiness.DRAFT_PUBLISHED);
+                .contains(DraftPublishReadiness.DRAFT_PUBLISHED, DraftPublishReadiness.MISSING_ROOMS);
     }
 
     @Test
