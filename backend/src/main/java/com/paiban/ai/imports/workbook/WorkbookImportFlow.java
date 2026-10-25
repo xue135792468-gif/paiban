@@ -465,11 +465,17 @@ public class WorkbookImportFlow {
             warnings.add("合并 " + merge.duplicates() + " 行（重复槽位）");
         }
         List<SheetSummary> sheets = sheets(profiles, plan, merge, sheetRows, sheetTeachers, sheetCourses);
+        // "有数据的工作表" means sheets that contributed rows, not sheets without a skip
+        // note: a timetable sheet usually carries one ("跳过空课位 N 个").
+        long contributing = sheets.stream()
+                .filter(sheet -> SheetCategory.TIMETABLE.code().equals(sheet.category())
+                        || SheetCategory.TEACHER.code().equals(sheet.category())
+                        || SheetCategory.COURSE.code().equals(sheet.category()))
+                .count();
         String explanation = (plan.explanation() == null || plan.explanation().isBlank()
                 ? "已读取工作簿"
                 : plan.explanation())
-                + "（" + sheets.stream().filter(sheet -> sheet.skippedReason() == null).count()
-                + " 张有数据的工作表，" + rows.size() + " 节课）";
+                + "（" + contributing + " 张有数据的工作表，" + rows.size() + " 节课）";
         return new WorkbookPayload(
                 rows, sheets, plan.confirmed(), explanation, warnings, merge.errors(),
                 teachers, courses, List.copyOf(classNames.values()), Map.of());
