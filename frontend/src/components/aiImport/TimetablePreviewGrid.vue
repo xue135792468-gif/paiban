@@ -30,6 +30,10 @@
       <span class="hint">只读预览，一次显示一个{{ mode === 'class' ? '班级' : '教师' }}的课表</span>
     </div>
 
+    <div v-if="teacherWarnings.length" class="teacher-hint" data-testid="teacher-warning-hint">
+      疑似教师值：{{ warningNames }}（{{ teacherWarnings.length }} 个，标黄课节，不影响入库）
+    </div>
+
     <DraftGrid
       v-if="grid.periods.length"
       :periods="grid.periods"
@@ -38,6 +42,7 @@
       :draggable="false"
       :highlight-lesson-ids="grid.issueLessonIds"
       :conflict-lesson-ids="grid.conflictLessonIds"
+      :warning-lesson-ids="warningLessonIds"
       compact
     />
     <el-empty v-else description="预览里没有可显示的课表行" />
@@ -45,6 +50,9 @@
     <div class="legend">
       <span class="swatch conflict" /> 红框：同一{{ mode === 'class' ? '班级' : '教师' }}同一节次有多条记录
       <span class="swatch issue" /> 蓝框：该行有未匹配的名称，见下方映射步骤
+      <template v-if="teacherWarnings.length">
+        <span class="swatch warning" /> 黄框：教师值疑似课程名或占位词
+      </template>
     </div>
     <p v-if="grid.unplacedCount" class="unplaced">
       有 {{ grid.unplacedCount }} 行无法识别星期或节次，未画进网格，请在下方映射步骤修正。
@@ -57,10 +65,12 @@ import { computed, ref, watch } from 'vue'
 import DraftGrid from '@/components/draft/DraftGrid.vue'
 import {
   buildTimetableGridFor,
+  teacherWarningLessonIds,
   timetableClasses,
   timetableTeachers,
   type PreviewIssue,
   type PreviewRow,
+  type TeacherWarning,
   type TimetableSummary,
 } from './timetablePreview'
 
@@ -68,7 +78,13 @@ const props = defineProps<{
   rows: PreviewRow[]
   issues?: PreviewIssue[]
   summary?: TimetableSummary | null
+  /** Suspicious teacher values from the backend; their rows are outlined in warning yellow. */
+  teacherWarnings?: TeacherWarning[]
 }>()
+
+const teacherWarnings = computed(() => props.teacherWarnings ?? [])
+const warningLessonIds = computed(() => teacherWarningLessonIds(teacherWarnings.value))
+const warningNames = computed(() => teacherWarnings.value.map((warning) => warning.value).join('、'))
 
 const mode = ref<'class' | 'teacher'>('class')
 const selectedClass = ref('')
@@ -160,6 +176,15 @@ const grid = computed(() =>
 
 .swatch.issue {
   border: 2px solid #409eff;
+}
+
+.swatch.warning {
+  border: 2px solid #e6a23c;
+}
+
+.teacher-hint {
+  color: #b26a00;
+  font-size: 12px;
 }
 
 .unplaced {

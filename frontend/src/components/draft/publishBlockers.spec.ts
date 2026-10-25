@@ -7,8 +7,12 @@ function blocker(overrides: Partial<DraftPublishBlocker> = {}): DraftPublishBloc
 }
 
 describe('blockerTarget', () => {
-  it('缺教室指向教室管理', () => {
-    expect(blockerTarget('ASSIGN_ROOMS')).toEqual({
+  it('缺教室打开按行政班补固定教室的确认框', () => {
+    expect(blockerTarget('ASSIGN_ROOMS')).toEqual({ kind: 'dialog', label: '按行政班补固定教室' })
+  })
+
+  it('没有补教室权限时退回教室管理，不给服务端会拒绝的按钮', () => {
+    expect(blockerTarget('ASSIGN_ROOMS', { roomFill: false })).toEqual({
       kind: 'link',
       label: '去教室管理准备教室',
       to: '/admin/rooms',
