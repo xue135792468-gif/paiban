@@ -151,6 +151,12 @@
 
       <ImportBlockerActions :issues="previewIssues" @reload="reloadPreview" />
 
+      <MissingPeriodsPanel
+        v-if="isWorkbook && !isCommittedPreview && !isParsing && preview"
+        :session-id="preview.sessionId"
+        @applied="reloadPreview"
+      />
+
       <WorkbookSummaryPanel
         v-if="preview.workbook"
         :workbook="preview.workbook"
@@ -256,6 +262,7 @@ import LastImportCard from '@/components/aiImport/LastImportCard.vue'
 import PartialResultPanel from '@/components/aiImport/PartialResultPanel.vue'
 import TimetableMappingStep from '@/components/aiImport/TimetableMappingStep.vue'
 import WorkbookSummaryPanel from '@/components/aiImport/WorkbookSummaryPanel.vue'
+import MissingPeriodsPanel from '@/components/aiImport/MissingPeriodsPanel.vue'
 import CommitResultSummary from '@/components/aiImport/CommitResultSummary.vue'
 import ImportBlockerActions from '@/components/aiImport/ImportBlockerActions.vue'
 import ImportExplanationCard from '@/components/aiImport/ImportExplanationCard.vue'

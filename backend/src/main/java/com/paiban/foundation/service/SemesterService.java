@@ -146,9 +146,7 @@ public class SemesterService {
     @Transactional
     public List<PeriodDto> replacePeriods(Long semesterId, List<PeriodSlot> slots) {
         lockSemester(semesterId);
-        if (timetableEntries.countBySemesterId(semesterId) > 0) {
-            throw ApiException.conflict("该学期已发布课表，不能修改作息表");
-        }
+        requirePeriodsWritable(semesterId);
         validateSlots(slots);
         Map<String, Period> existing = new HashMap<>();
         for (Period period : periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(semesterId)) {
@@ -196,6 +194,68 @@ public class SemesterService {
 
     private static String slotKey(int dayOfWeek, int periodNo) {
         return dayOfWeek + "-" + periodNo;
+    }
+
+    /**
+     * Locks the semester and returns its period rows, refusing a published semester. Used by
+     * the explicit "fill the periods the file uses" action: the caller validates the plan it
+     * is about to append against these rows, while the lock keeps another save from moving
+     * the anchors in between.
+     */
+    @Transactional
+    public List<PeriodDto> lockPeriodsForAppend(Long semesterId) {
+        lockSemester(semesterId);
+        requirePeriodsWritable(semesterId);
+        return periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(semesterId).stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    /**
+     * Appends periods that do not exist yet and skips the rest. Unlike
+     * {@link #replacePeriods}, an existing row is never updated or deleted, so a draft that
+     * points at a period keeps its id, times and label. Callers validate the times first;
+     * {@link #lockPeriodsForAppend} is the read half of the same transaction.
+     */
+    @Transactional
+    public List<PeriodDto> appendPeriods(Long semesterId, List<PeriodSlot> slots) {
+        lockSemester(semesterId);
+        requirePeriodsWritable(semesterId);
+        validateSlots(slots);
+        Set<String> existing = new HashSet<>();
+        for (Period period : periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(semesterId)) {
+            existing.add(slotKey(period.getDayOfWeek(), period.getPeriodNo()));
+        }
+        List<Period> appended = new ArrayList<>();
+        for (PeriodSlot slot : slots) {
+            for (Integer day : slot.days()) {
+                if (!existing.add(slotKey(day, slot.periodNo()))) {
+                    continue;
+                }
+                Period period = new Period();
+                period.setSemesterId(semesterId);
+                period.setDayOfWeek(day);
+                period.setPeriodNo(slot.periodNo());
+                period.setLabel(slot.label());
+                period.setSection(slot.section());
+                period.setStartTime(slot.startTime());
+                period.setEndTime(slot.endTime());
+                appended.add(period);
+            }
+        }
+        return periods.saveAll(appended).stream()
+                .sorted((a, b) -> a.getDayOfWeek() != b.getDayOfWeek()
+                        ? Integer.compare(a.getDayOfWeek(), b.getDayOfWeek())
+                        : Integer.compare(a.getPeriodNo(), b.getPeriodNo()))
+                .map(this::toDto)
+                .toList();
+    }
+
+    /** A published semester's period table is read-only, including appending to it. */
+    private void requirePeriodsWritable(Long semesterId) {
+        if (timetableEntries.countBySemesterId(semesterId) > 0) {
+            throw ApiException.conflict("该学期已发布课表，不能修改作息表");
+        }
     }
 
     /**
