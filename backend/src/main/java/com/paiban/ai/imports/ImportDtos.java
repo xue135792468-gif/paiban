@@ -1,10 +1,15 @@
 package com.paiban.ai.imports;
 
+import com.paiban.foundation.domain.PeriodSection;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 
@@ -140,4 +145,47 @@ public final class ImportDtos {
             List<String> warnings,
             /** Per-category write results; empty for single-target imports. */
             List<CategoryResultDto> categories) {}
+
+    /**
+     * One (day, periodNo) the saved preview references and the semester does not have.
+     * {@code PROPOSED} carries the time the planner derived and may be confirmed;
+     * {@code MANUAL} carries only a {@code reason} and needs the period form.
+     */
+    public record MissingPeriodDto(
+            int dayOfWeek,
+            int periodNo,
+            String status,
+            String label,
+            PeriodSection section,
+            LocalTime startTime,
+            LocalTime endTime,
+            String reason) {}
+
+    /** The gap list for a session: which semester it compares against, and whether it is closed. */
+    public record MissingPeriodsDto(
+            Long semesterId,
+            String semesterName,
+            /** A published semester's period table is read-only, so every item is manual. */
+            boolean published,
+            List<MissingPeriodDto> items) {}
+
+    /** One proposed period the user ticked in the preview. */
+    public record MissingPeriodItem(
+            @NotNull(message = "星期不能为空") @Min(value = 1, message = "星期必须在 1-7 之间")
+                    @Max(value = 7, message = "星期必须在 1-7 之间") Integer dayOfWeek,
+            @NotNull(message = "节次不能为空") @Positive(message = "节次序号必须为正整数") Integer periodNo,
+            @NotNull(message = "开始时间不能为空") LocalTime startTime,
+            @NotNull(message = "结束时间不能为空") LocalTime endTime) {}
+
+    /**
+     * The user's confirmation. {@code semesterId} is the one the preview was computed
+     * against; a different current semester means the plan is stale.
+     */
+    public record ApplyMissingPeriodsRequest(
+            @NotNull(message = "学期不能为空") Long semesterId,
+            @NotEmpty(message = "请至少选择一节要补的课时")
+                    List<@Valid MissingPeriodItem> items) {}
+
+    /** What the confirmation wrote, plus the gap list as it stands afterwards. */
+    public record ApplyMissingPeriodsResult(int created, MissingPeriodsDto plan) {}
 }
