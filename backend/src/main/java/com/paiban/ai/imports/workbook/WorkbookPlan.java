@@ -170,8 +170,10 @@ public record WorkbookPlan(List<SheetPlan> sheets, boolean confirmed, String exp
      */
     private static void positional(
             Map<String, String> columns, ProfiledSheet sheet, SheetCategory category) {
+        // Room stays empty: real exports have no reliable room column, and taking the next
+        // free column would try to match a course/teacher string as a room name.
         List<String> remaining = switch (category) {
-            case TIMETABLE -> List.of("courseName", "teacherName", "roomName");
+            case TIMETABLE -> List.of("courseName", "teacherName");
             case TEACHER -> List.of("name");
             case COURSE -> List.of("name", "subject");
             default -> List.of();

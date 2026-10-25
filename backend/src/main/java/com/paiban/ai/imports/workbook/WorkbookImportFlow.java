@@ -516,7 +516,7 @@ public class WorkbookImportFlow {
                 fresh = 0;
                 skipReason = category == SheetCategory.EXPLANATION
                         ? "判断为说明类，已跳过"
-                        : "未识别的表，已跳过";
+                        : note.isBlank() ? "未识别的表，已跳过" : note;
             }
             sheets.add(new SheetSummary(
                     profile.name(), category.code(), columns, recognized, fresh, skipReason, note));

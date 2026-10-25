@@ -279,6 +279,42 @@ class WorkbookImportIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void aWidePivotSheetDeclaredAsTimetableIsSkippedInsteadOfBlocking() throws Exception {
+        String admin = adminToken();
+        TestData.semester(admin);
+        long semesterId = currentSemester(admin);
+        generateDefaultPeriods(admin, semesterId);
+        // The real workbook's 班级课表 / 教师课表 / 每日考勤表 are wide grids: periods as
+        // rows, weekdays (or classes) as columns. Reading them as slots would block.
+        fake.responder = request -> {
+            if (!isPlanner(request)) {
+                return extractionAnswer(request);
+            }
+            int round = planRounds.incrementAndGet();
+            return round < 2 ? "{\"tool\":\"list_sheets\"}" : widePivotFinishAction();
+        };
+
+        Response preview = upload(admin, workbook(Map.of(
+                "数据源", List.of(
+                        List.of("八（1）|星期一|1", "语文", "金林墨"),
+                        List.of("八（1）|星期一|2", "数学", "周小媚"),
+                        List.of("八（2）|星期二|1", "英语", "虞文茜")),
+                "班级课表", List.of(
+                        List.of("八年级班级课表"),
+                        List.of("请选择班级：", "八（2）"),
+                        List.of("节次", "星期一", "星期二", "星期三", "星期四", "星期五"),
+                        List.of("第一节", "数学  周小媚", "英语  虞文茜", "科学  徐良贵", "语文  金林墨", "历史地理  贾方俊"),
+                        List.of("第二节", "语文  金林墨", "数学  周小媚", "英语  虞文茜", "科学  徐良贵", "语文  金林墨")))));
+
+        preview.then().statusCode(200).body("rows", hasSize(3));
+        assertThat(preview.jsonPath().getList("issues.field", String.class)).isEmpty();
+        JsonNode pivot = sheet(preview, "班级课表");
+        assertThat(pivot.path("category").asText()).isEqualTo("unknown");
+        assertThat(pivot.path("skippedReason").asText()).contains("宽表");
+        assertThat(pivot.path("newRows").asInt()).isZero();
+    }
+
+    @Test
     void missingSemesterIsAPageLevelBlocker() throws Exception {
         String admin = adminToken();
         scriptPlan();
@@ -425,6 +461,23 @@ class WorkbookImportIntegrationTest extends ApiIntegrationTest {
         Map<String, Object> args = new LinkedHashMap<>();
         args.put("sheets", sheets);
         args.put("explanation", "数据源为无表头的查询表，班级课表是透视视图，教师名单提供教师字段。");
+        return json(Map.of("tool", "finish", "args", args));
+    }
+
+    private String widePivotFinishAction() {
+        Map<String, Object> pivotColumns = new LinkedHashMap<>();
+        pivotColumns.put("periodNo", "节次");
+        List<Map<String, Object>> sheets = List.of(
+                sheetPlan("数据源", "timetable", Map.of(
+                        "className", "列1·班级",
+                        "dayOfWeek", "列1·星期",
+                        "periodNo", "列1·节次",
+                        "courseName", "列2",
+                        "teacherName", "列3"), "无表头"),
+                sheetPlan("班级课表", "timetable", pivotColumns, "按班级查询的宽表"));
+        Map<String, Object> args = new LinkedHashMap<>();
+        args.put("sheets", sheets);
+        args.put("explanation", "数据源逐节课；班级课表是宽表。");
         return json(Map.of("tool", "finish", "args", args));
     }
 

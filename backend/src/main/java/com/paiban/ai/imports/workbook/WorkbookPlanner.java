@@ -32,6 +32,8 @@ import org.springframework.stereotype.Component;
 public class WorkbookPlanner {
 
     static final int MAX_ROUNDS = 6;
+    /** Explains why a sheet that calls itself a timetable contributed no rows. */
+    static final String WIDE_SHEET = "宽表（星期为列）或缺少班级/星期/节次列，已跳过";
     static final int MAX_PAGE = 200;
     private static final int DEFAULT_PAGE = 120;
     private static final int PREVIEW_ROWS = 3;
@@ -324,8 +326,17 @@ public class WorkbookPlanner {
                     && category != SheetCategory.UNKNOWN) {
                 columns = WorkbookPlan.columns(sheet, category);
             }
+            String note = item.path("note").asText("");
+            if (category == SheetCategory.TIMETABLE && !hasSlotColumns(columns)) {
+                // A wide pivot (periods as rows, weekdays as columns) is not one row per
+                // lesson. Reading it as slots would produce a row error per row and block
+                // the whole workbook, so it is skipped visibly instead.
+                category = SheetCategory.UNKNOWN;
+                columns = Map.of();
+                note = WIDE_SHEET;
+            }
             planned.put(sheet.name(), new SheetPlan(
-                    sheet.name(), category, columns, item.path("note").asText(""), true));
+                    sheet.name(), category, columns, note, true));
         }
         if (planned.isEmpty()) {
             return null;
@@ -350,6 +361,12 @@ public class WorkbookPlanner {
                 List.copyOf(planned.values()),
                 complete,
                 explanation.isEmpty() ? "模型已确认工作表结构" : explanation);
+    }
+
+    private boolean hasSlotColumns(Map<String, String> columns) {
+        return columns.containsKey("className")
+                && columns.containsKey("dayOfWeek")
+                && columns.containsKey("periodNo");
     }
 
     private Map<String, String> resolveColumns(JsonNode node, ProfiledSheet sheet, SheetCategory category) {
