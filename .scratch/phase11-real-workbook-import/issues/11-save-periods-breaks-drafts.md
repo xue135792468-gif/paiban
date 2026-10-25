@@ -6,7 +6,7 @@
 
 **Blocked by:** None
 
-**Status:** done（已实现，待集成验收）
+**Status:** done（已上线 2026-10-25）
 
 - [x] 保存作息表前检测：同一 (day, periodNo) 保留原 period 行 id；要删除且仍被草稿引用的槽位整次拒绝（409）并回滚
 - [x] 给 `draft_lesson.period_id` 加外键 `fk_lesson_period`（V24），草稿指向不存在课节在写库时被拦住
