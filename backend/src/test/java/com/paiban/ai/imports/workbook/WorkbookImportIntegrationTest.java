@@ -210,6 +210,33 @@ class WorkbookImportIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void classesAutoCreatedByTheWorkbookGetTheDefaultStudentCountAndStayEditable() throws Exception {
+        String admin = adminToken();
+        TestData.semester(admin);
+        long semesterId = currentSemester(admin);
+        generateDefaultPeriods(admin, semesterId);
+        scriptPlan();
+
+        Response preview = upload(admin, workbook(realisticSheets()));
+        long sessionId = preview.jsonPath().getLong("sessionId");
+        as(admin).when().post("/api/ai/import/sessions/" + sessionId + "/commit").then().statusCode(200);
+
+        // The workbook carries no class size, so the manual form's default applies.
+        List<com.paiban.foundation.domain.AdminClass> created =
+                adminClasses.findBySemesterIdOrderByGradeIdAscNameAsc(semesterId);
+        assertThat(created).hasSize(2);
+        assertThat(created).allSatisfy(adminClass -> assertThat(adminClass.getStudentCount()).isEqualTo(45));
+
+        // Editing the imported class must work: a 0 count used to fail the save.
+        com.paiban.foundation.domain.AdminClass first = created.get(0);
+        as(admin).body(Map.of("gradeId", first.getGradeId(), "name", "八年级1班"))
+                .when().put("/api/classes/" + first.getId())
+                .then().statusCode(200)
+                .body("name", equalTo("八年级1班"))
+                .body("studentCount", equalTo(45));
+    }
+
+    @Test
     void existingNamesAreCompletedButNeverOverwritten() throws Exception {
         String admin = adminToken();
         TestData.semester(admin);

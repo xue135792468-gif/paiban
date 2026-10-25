@@ -271,7 +271,11 @@ public class ImportMappingService {
         adminClass.setSemesterId(semesterId);
         adminClass.setGradeId(gradeId);
         adminClass.setName(plan.name());
-        adminClass.setStudentCount(plan.studentCount() == null ? 0 : plan.studentCount());
+        // No count in the request: keep AdminClass's own default (45), exactly what the
+        // manual class form produces. 0 is rejected upstream by the request validation.
+        if (plan.studentCount() != null) {
+            adminClass.setStudentCount(plan.studentCount());
+        }
         return adminClasses.save(adminClass).getName();
     }
 
@@ -530,7 +534,9 @@ public class ImportMappingService {
             adminClass.setSemesterId(semesterId);
             adminClass.setGradeId(gradeId);
             adminClass.setName(name);
-            adminClass.setStudentCount(0);
+            // A timetable sheet carries no class size: leave the entity default (45), the
+            // same count the manual form gives. Writing 0 made every capacity check pass
+            // and made the created class unsaveable in the 行政班 form.
             adminClasses.save(adminClass);
             outcomes.add(new EntityOutcome(name, true, false, null));
         }

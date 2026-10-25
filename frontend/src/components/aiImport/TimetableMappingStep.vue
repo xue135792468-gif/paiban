@@ -33,7 +33,7 @@
         <el-input-number
           v-model="batchStudentCount"
           size="small"
-          :min="0"
+          :min="1"
           :step="1"
           step-strictly
           controls-position="right"
@@ -125,7 +125,7 @@
                   <el-input-number
                     :model-value="studentCountOf(row.key)"
                     size="small"
-                    :min="0"
+                    :min="1"
                     :step="1"
                     step-strictly
                     controls-position="right"
@@ -274,7 +274,9 @@ function studentCountOf(key: string): number {
 }
 
 function setStudentCount(key: string, value: number | null | undefined) {
-  createStudentCounts[key] = value ?? 0
+  // An emptied field falls back to the manual form's default instead of sending 0,
+  // which the class API rejects.
+  createStudentCounts[key] = value ?? DEFAULT_STUDENT_COUNT
 }
 
 /**
@@ -353,7 +355,7 @@ async function batchCreate() {
         group,
         group.value,
         // A per-row count only exists once the user edits it; the batch default covers the rest.
-        createStudentCounts[group.key] ?? batchStudentCount.value,
+        createStudentCounts[group.key] ?? (batchStudentCount.value || DEFAULT_STUDENT_COUNT),
       ),
   )
   if (creates.some((item) => item === null)) {
