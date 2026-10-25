@@ -1,7 +1,9 @@
 package com.paiban.ai.imports;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.Map;
@@ -117,15 +119,19 @@ public final class ImportDtos {
                               @NotBlank(message = "原值不能为空") String source,
                               @NotNull(message = "目标 ID 不能为空") Long targetId) {}
 
-    /** Create one missing entity, then map the source value to its name. */
+    /**
+     * Create one missing entity, then map the source value to its name. A class's
+     * {@code studentCount} is optional (the entity default applies) but, when given, it
+     * must be a positive integer — the same rule the manual class form enforces.
+     */
     public record CreateItem(@NotBlank(message = "字段不能为空") String field,
                              @NotBlank(message = "原值不能为空") String source,
                              String name,
                              Long gradeId,
                              String gradeName,
-                             Integer studentCount) {}
+                             @Positive Integer studentCount) {}
 
-    public record MappingRequest(List<MappingItem> mappings, List<CreateItem> creates) {}
+    public record MappingRequest(List<MappingItem> mappings, List<@Valid CreateItem> creates) {}
 
     public record CommitResultDto(
             int imported,

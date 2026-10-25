@@ -92,6 +92,43 @@ class FoundationIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void aManuallyCreatedClassWithoutAStudentCountKeepsTheDefaultFortyFive() {
+        String token = adminToken();
+        long semesterId = TestData.semester(token);
+        String suffix = TestData.suffix();
+        long gradeId = TestData.grade(token, semesterId, "初二" + suffix);
+
+        as(token).body(Map.of("gradeId", gradeId, "name", "初二1班" + suffix))
+                .queryParam("semesterId", semesterId)
+                .when().post("/api/classes")
+                .then().statusCode(200)
+                .body("studentCount", equalTo(45));
+    }
+
+    @Test
+    void aClassUpdateWithANonPositiveStudentCountIsRejected() {
+        String token = adminToken();
+        long semesterId = TestData.semester(token);
+        String suffix = TestData.suffix();
+        long gradeId = TestData.grade(token, semesterId, "初二" + suffix);
+        long classId = TestData.adminClass(token, semesterId, gradeId, "初二1班" + suffix);
+
+        for (int invalid : new int[] {0, -1}) {
+            as(token).body(Map.of("gradeId", gradeId, "name", "初二1班" + suffix, "studentCount", invalid))
+                    .when().put("/api/classes/" + classId)
+                    .then().statusCode(400)
+                    .body("message", equalTo("参数校验失败"))
+                    .body("fields.studentCount", notNullValue());
+        }
+
+        // The rejected saves changed nothing; the class is still the default count.
+        as(token).queryParam("semesterId", semesterId)
+                .when().get("/api/classes")
+                .then().statusCode(200)
+                .body("find { it.id == " + classId + " }.studentCount", equalTo(45));
+    }
+
+    @Test
     void gradesAndClassesAreIsolatedPerSemester() {
         String token = adminToken();
         long first = TestData.semester(token);
