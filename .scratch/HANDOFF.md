@@ -3,6 +3,8 @@
 > **2026-10-25 准备复查更新：先读 [准备审查入口](phase11-real-workbook-import/preparation/README.md)。**
 > 用户已暂停本会话修复，改为完成准备材料、交由新的 agent 执行。以下旧路线中的待问与 ready 状态须以新入口为准：六项修复已有补充规格；票 10 已问定并拆成 6 票，先做原型等用户确认；整本后台化另备下一批 3 张草案；14 下一期再 grill。
 > 票 11 有未提交、未通过验证的候选代码留在 `E:\paiban-wt\import-repairs`，不是已完成修复。勿忽略未跟踪的外键迁移或把现有失败测试当作绿色证据。新入口记录了基点、失败原因和接手要求。
+>
+> **2026-10-25 执行结果（六项修复已完成，待在用户确认后合并/部署）**：11 → 12 → 13 → 07 → 08 → 09 已全部实现于集成分支 `feature/phase11-repairs`（工作树 `E:\paiban-wt\integration-repairs`），每票独立 worktree + TDD + 独立合并，末轮过 code-review（Standards/Spec 两轴）并集中修复一次。门禁：后端 `./mvnw -B test` 634 绿、前端 lint/build/unit 241 绿、SFC 体积检查通过、`scripts/verify.sh --full` 全绿（Playwright 50 例，含本轮新增 5 例）。新增迁移 V24（`draft_lesson` → `period` 外键）、V25（0 人班级数据修复）。**尚未合并 `main`、尚未部署**；`E:\paiban-wt\import-repairs` 的候选代码已被正式实现取代，可删。
 
 新会话先读这份，再按最下面的路线推进。工作仓库 `E:\排课系统`（`main` 已推到 `origin`），线上服务器 `~/paiban`。
 
@@ -26,12 +28,12 @@
 
 | 票 | 内容（大白话） | 状态 |
 |---|---|---|
-| `11-save-periods-breaks-drafts` | 保存作息表会让所有草稿"找不到课节"，无提示 | ready-for-agent |
-| `12-import-classes-zero-students` | 导入建班人数=0，之后班级改不动；容量约束失效 | ready-for-agent |
-| `13-draft-validation-vs-publish` | 草稿校验说通过、发布却拒绝（两套标准） | ready-for-agent |
-| `07-rooms-before-publish` | 发布前没有教室，导入完发布不了；要一键补教室 | ready-for-agent |
-| `08-fill-missing-periods` | 文件里的节次比作息多，只能手工加格子 | ready-for-agent |
-| `09-flag-suspicious-teacher-names` | "信息技术"这类占位名被当成老师 | ready-for-agent |
+| `11-save-periods-breaks-drafts` | 保存作息表会让所有草稿"找不到课节"，无提示 | 已实现（集成分支，待部署） |
+| `12-import-classes-zero-students` | 导入建班人数=0，之后班级改不动；容量约束失效 | 已实现（集成分支，待部署） |
+| `13-draft-validation-vs-publish` | 草稿校验说通过、发布却拒绝（两套标准） | 已实现（集成分支，待部署） |
+| `07-rooms-before-publish` | 发布前没有教室，导入完发布不了；要一键补教室 | 已实现（集成分支，待部署） |
+| `08-fill-missing-periods` | 文件里的节次比作息多，只能手工加格子 | 已实现（集成分支，待部署） |
+| `09-flag-suspicious-teacher-names` | "信息技术"这类占位名被当成老师 | 已实现（集成分支，待部署） |
 | `10-multiple-constraint-targets` | 约束多条、对象覆盖与折叠布局 | 已确认语义并拆 6 票，见 `.scratch/constraint-entries/`；先原型确认 |
 | `14-natural-language-constraints` | 自然语言生成约束：只有灰开关，功能没实现 | 下一期，保留 grill 问题树，本轮不实现 |
 | 票 02 遗留 | 整本导入没有批次进度/停止/重试（同步跑完） | 下一批草案见 `.scratch/workbook-background/`，仍未完成 |
@@ -40,8 +42,9 @@
 
 ## 新会话怎么推进（按 ask-matt 的路由）
 
-- **本会话当前只准备，不执行修复。后续 agent 先读 preparation/README，再读 repair-spec。**
-  11 / 12 / 13 是明确缺陷；07 / 08 的产品边界已在本轮问定并补规格；09 沿用只提示和入库后更名。保留六张原票，按 11→12→13→07→08→09 走 `/implement`＋TDD，不再重复 triage。先核对 11 的暂停候选，不能视为已完成。每票完整评审/验证后再按下方门槛交付。
+- **六项修复已执行完毕。**
+  11 → 12 → 13 → 07 → 08 → 09 全部实现于 `feature/phase11-repairs`，每票一 worktree、TDD 先红后绿、独立合并，末轮两轴 code-review + 集中修复 + 全量 `verify.sh --full`。下一步是合并/部署决策（见下方「下一道门」），不要重复实现。各票实现说明写在 `.scratch/phase11-real-workbook-import/issues/*.md`。
+  部署前须知：V24 给 `draft_lesson.period_id` 加外键，若线上存在历史悬空引用，迁移会直接失败（有意闸门）；迁移注释里带 preflight 查询，必须先查、按记录修复后再重建。
 - **10 的旧问题已答，使用独立规格与六张新票。**
   读 `.scratch/constraint-entries/spec.md`。第一票 `/prototype` 出可点页面，经用户确认才放行生产实现；其余按 Blocked by 顺序推进。需求准备完成不代表原型已批准。
 - **02 整本后台化为下一批，仅有准备草案。**
@@ -62,4 +65,6 @@
 
 用户已确认六项修复的准备、07/08 的补齐方式、10 的布局/阈值/控制层级/组合语义与六票拆分，14 下一期、02 独立下一批。完整记录在 preparation/README。
 
-当前没有阻塞准备材料的未答问题。票 10 的可点击原型尚未制作、尚未经用户确认；这是后续第一票的验收门槛。本轮没有生产修复或部署成果。
+**六项修复的代码已完成并通过本地全部门禁**（后端 634、前端 unit 241、Playwright 50、SFC 检查），但**未合并 `main`、未部署**。下一道门由用户决定：是否合并 `feature/phase11-repairs` → `main`，以及是否上线上（线上需先做 V24 preflight、备份、Flyway 24/25 到位与四容器 healthy，再按交接门槛冒烟：导入 → 补教室 → 发布 → 调代一单）。
+
+票 10 的可点击原型仍未制作、未经用户确认；这是 10 的第一票验收门槛。14 与 02 仍按上一轮结论排到后续。
