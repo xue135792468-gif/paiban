@@ -2,6 +2,7 @@ import { expect, request, test, type APIRequestContext, type Page } from '@playw
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { apiCall, apiLogin, uiLogin } from './helpers'
+import { capture } from './screenshots'
 import { buildWorkbookXlsx, buildXlsx } from './xlsx'
 
 /**
@@ -41,6 +42,18 @@ let teacherPayload: Record<string, unknown> = {}
 let batchControl: { latencyMs: number; failChunks: number[] } = { latencyMs: 0, failChunks: [] }
 /** One payload per batch, indexed by batch number minus one. */
 let batchPayloads: Record<string, unknown>[] = []
+/**
+ * How many chat completions the stub has answered. Read either side of an action to
+ * prove the action re-used the saved preview instead of paying for another parse.
+ */
+let chatRequests = 0
+/** Toast wording is product copy: one place, and only ever a supporting signal. */
+const TOAST_PERIODS_APPENDED = /已补充 1 节课时/
+
+/** A toast by its own container, so a matching notification title can never win. */
+function toast(page: Page, text: RegExp) {
+  return page.locator('.el-message').filter({ hasText: text })
+}
 
 test.beforeAll(async () => {
   api = await request.newContext()
@@ -506,7 +519,183 @@ test('放弃导入：不生成草稿，?session= 恢复入口不再继续该会�
   })
 })
 
+// ------------------------------------------------- 十一期：可疑教师值 / 作息缺节
+
+test('可疑教师值：标黄列在预览里，正常姓名不受影响，仍可确认入库', async ({ page }) => {
+  const workbook = buildWorkbookXlsx([
+    {
+      name: '数据源',
+      rows: [
+        ['班级', '星期', '节次', '课程', '教师'],
+        [seed.classOne, '星期一', '1', '信息科技', '信息技术'],
+        [seed.classOne, '星期一', '2', seed.courseOne, '张伟'],
+      ],
+    },
+    {
+      name: '教师名单',
+      rows: [
+        ['姓名', '手机'],
+        ['王芳', '13800000012'],
+      ],
+    },
+  ])
+
+  await startWorkbookImport(page, '疑似教师值.xlsx', workbook)
+
+  // The value that is a subject, not a person, is called out; the real-looking names are not.
+  const hint = page.getByTestId('teacher-warning-hint')
+  await expect(hint).toBeVisible()
+  await expect(hint).toContainText('信息技术')
+  await expect(hint).not.toContainText('张伟')
+
+  const warnings = page.getByTestId('teacher-warnings-table')
+  await expect(warnings).toContainText('信息技术')
+  await expect(warnings).toContainText('命中占位词')
+  await expect(warnings).not.toContainText('张伟')
+  await expect(warnings).not.toContainText('王芳')
+
+  // Exactly the lesson carrying that value is outlined in warning yellow, by row.
+  const grid = page.locator('.timetable-preview .grid')
+  await expect(grid.locator('.lesson.warning')).toHaveCount(1)
+  await expect(grid.locator('.lesson.warning')).toContainText('信息科技')
+  await expect(grid.locator('.lesson.warning')).toContainText('信息技术')
+  await capture(page, 'suspicious_teacher_warning')
+
+  // A warning is not a blocker: the confirmed import still writes the draft.
+  const commit = page.locator('.footer-actions').getByRole('button', { name: /确认入库/ })
+  await expect(commit).toBeEnabled()
+  await commit.click()
+  await expect(page.getByTestId('commit-result')).toBeVisible()
+  await expect(page.getByTestId('commit-categories')).toContainText('课表')
+  await page.getByRole('button', { name: '查看草稿' }).click()
+  await page.waitForURL(/\/admin\/drafts\/\d+/)
+  await expect(page.locator('.lesson').first()).toBeVisible()
+
+  const draftId = Number(page.url().match(/\/admin\/drafts\/(\d+)/)?.[1])
+  const token = await apiLogin(api)
+  const detail = await apiCall(api, token, 'get', `/timetable-drafts/${draftId}`)
+  expect(detail.lessons).toHaveLength(2)
+  expect(detail.lessons.map((lesson: { courseName: string }) => lesson.courseName)).toContain(
+    '信息科技',
+  )
+  const teacherNames = (await apiCall(api, token, 'get', '/teachers')).map(
+    (teacher: { name: string }) => teacher.name,
+  )
+  expect(teacherNames).toContain('信息技术')
+  expect(teacherNames).toContain('张伟')
+})
+
+test('作息缺节：可推算项确认补进作息后清单消失并成功入库，全程不重新解析', async ({ page }) => {
+  const workbook = buildWorkbookXlsx([
+    {
+      name: '数据源',
+      rows: [
+        ['班级', '星期', '节次', '课程', '教师'],
+        [seed.classOne, '周一', '第11节', seed.courseOne, seed.teacherOne],
+        [seed.classOne, '周一', '第1节', seed.courseTwo, seed.teacherTwo],
+      ],
+    },
+  ])
+
+  await startWorkbookImport(page, '缺节课表.xlsx', workbook)
+  // Only the rows the workbook has; the 第11节 row cannot be drawn anywhere yet.
+  await expect(page.getByTestId('timetable-summary')).toContainText('共 2 节')
+
+  const panel = page.getByTestId('missing-periods')
+  await expect(panel).toBeVisible()
+  await expect(panel).toContainText('1 项')
+  const item = panel.locator('.el-table__body tr').first()
+  await expect(item).toContainText('周一')
+  await expect(item).toContainText('第11节')
+  await expect(item).toContainText('可自动补')
+  await expect(panel.getByTestId('missing-period-check-1-11')).toBeChecked()
+  await capture(page, 'missing_periods_panel')
+
+  // The gap list comes from the saved preview, so confirming it must not call the model.
+  const callsBefore = chatRequests
+  await panel.getByTestId('missing-periods-apply').click()
+  const confirm = page.locator('.el-message-box')
+  await expect(confirm).toContainText('补齐作息缺少的节次')
+  await expect(confirm).toContainText('周一 第11节')
+  await confirm.getByRole('button', { name: '确认补节' }).click()
+
+  await expect(toast(page, TOAST_PERIODS_APPENDED).first()).toBeVisible()
+  // The one gap is closed: the panel is gone rather than showing a green "all done".
+  await expect(page.getByTestId('missing-periods')).toHaveCount(0)
+  expect(chatRequests).toBe(callsBefore)
+
+  // The appended period really exists, and the import now writes a complete draft.
+  const token = await apiLogin(api)
+  const periods = await apiCall(api, token, 'get', `/semesters/${seed.semesterId}/periods`)
+  expect(
+    periods.some(
+      (period: { dayOfWeek: number; periodNo: number }) =>
+        period.dayOfWeek === 1 && period.periodNo === 11,
+    ),
+  ).toBe(true)
+
+  const commit = page.locator('.footer-actions').getByRole('button', { name: /确认入库/ })
+  await expect(commit).toBeEnabled()
+  await commit.click()
+  await expect(page.getByTestId('commit-result')).toBeVisible()
+  await expect(page.getByTestId('commit-categories')).toContainText('课表')
+  await page.getByRole('button', { name: '查看草稿' }).click()
+  await page.waitForURL(/\/admin\/drafts\/\d+/)
+
+  const draftId = Number(page.url().match(/\/admin\/drafts\/(\d+)/)?.[1])
+  const detail = await apiCall(api, token, 'get', `/timetable-drafts/${draftId}`)
+  expect(detail.lessons).toHaveLength(2)
+  expect(chatRequests).toBe(callsBefore)
+})
+
+test('作息缺节：不可推算的项标注需人工，不提供写入入口', async ({ page }) => {
+  const workbook = buildWorkbookXlsx([
+    {
+      name: '数据源',
+      rows: [
+        ['班级', '星期', '节次', '课程', '教师'],
+        [seed.classOne, '周日', '第20节', seed.courseOne, seed.teacherOne],
+      ],
+    },
+  ])
+
+  await startWorkbookImport(page, '缺节不可推算.xlsx', workbook)
+
+  const panel = page.getByTestId('missing-periods')
+  await expect(panel).toBeVisible()
+  const item = panel.locator('.el-table__body tr').first()
+  await expect(item).toContainText('周日')
+  await expect(item).toContainText('第20节')
+  await expect(item).toContainText('需人工')
+  await expect(item).toContainText('没有可参照的作息时间')
+
+  // Nothing here may be confirmed: no tick, no apply button, only the way to the period form.
+  await expect(panel.getByTestId('missing-period-check-7-20')).toHaveCount(0)
+  await expect(panel.getByTestId('missing-periods-apply')).toHaveCount(0)
+  await expect(panel.getByTestId('missing-periods-manage')).toBeVisible()
+
+  const token = await apiLogin(api)
+  const periods = await apiCall(api, token, 'get', `/semesters/${seed.semesterId}/periods`)
+  expect(
+    periods.some(
+      (period: { dayOfWeek: number; periodNo: number }) =>
+        period.dayOfWeek === 7 && period.periodNo === 20,
+    ),
+  ).toBe(false)
+})
+
 // --------------------------------------------------------------------- fixtures
+
+/** Uploads a whole workbook, parses it and waits for the merged preview. */
+async function startWorkbookImport(page: Page, name: string, workbook: Buffer): Promise<void> {
+  await uiLogin(page, 'admin', 'admin123')
+  await page.goto('/admin/ai-import')
+  await expect(page.getByText('AI 已就绪')).toBeVisible()
+  await uploadExcel(page, name, workbook)
+  await page.getByRole('button', { name: '开始解析' }).click()
+  await expect(page.getByTestId('timetable-summary')).toBeVisible({ timeout: 60_000 })
+  await expect(page).toHaveURL(/session=\d+/)
+}
 
 /** Logs in, opens the import page and selects the timetable target. */
 async function openTimetableImport(page: Page): Promise<void> {
@@ -857,6 +1046,7 @@ async function startStub(
       res.writeHead(404).end()
       return
     }
+    chatRequests++
     const body = JSON.parse(await readBody(req))
     const prompt = (body.messages ?? [])
       .map((message: { content?: unknown }) =>
