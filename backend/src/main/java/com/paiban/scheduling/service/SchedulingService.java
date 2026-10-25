@@ -436,6 +436,11 @@ public class SchedulingService {
         if (!lesson.getDraftId().equals(draftId)) {
             throw ApiException.badRequest("课节不属于该草稿");
         }
+        // A forced move bypasses the "period missing" hard conflict, so the reference is
+        // checked here instead of relying on the draft_lesson.period_id foreign key.
+        if (periodId != null && !periods.existsById(periodId)) {
+            throw ApiException.badRequest("课节对应的作息时段不存在: " + periodId);
+        }
         lesson.setPeriodId(periodId);
         lesson.setRoomId(roomId);
         TimetableDraft draft = requireDraft(draftId);
