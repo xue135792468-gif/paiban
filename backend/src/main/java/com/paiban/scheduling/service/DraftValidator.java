@@ -133,6 +133,69 @@ public class DraftValidator {
     }
 
     /**
+     * A room that does not exist yet, used by a preview that must judge the change
+     * before anything is written. Its id is a negative placeholder.
+     */
+    public record PlannedRoom(long placeholderId, String name, String type, int capacity) {}
+
+    /**
+     * Before and after the same whole-draft judgement. {@code added} holds only the
+     * conflicts the change introduces: pre-existing ones stay visible but never block
+     * a change on their own.
+     */
+    public record ChangeImpact(
+            List<Conflict> before,
+            List<Conflict> after,
+            List<Conflict> added,
+            List<DraftPublishReadiness.Blocker> remainingBlockers) {}
+
+    /**
+     * Impact of filling empty rooms only. Unlike {@link #validateChanges}, nothing but
+     * the room is assigned, so a preview cannot accidentally clear a period or teacher.
+     * Planned rooms are judged through their name, type and capacity before they exist.
+     */
+    @Transactional(readOnly = true)
+    public ChangeImpact previewRoomAssignment(
+            Long draftId, Map<Long, Long> roomIdByLesson, List<PlannedRoom> plannedRooms) {
+        Snapshot snapshot = snapshot(draftId);
+        List<Conflict> before = checkAffected(snapshot, null);
+        Snapshot after = snapshot.withPlannedRooms(plannedRooms);
+        for (L lesson : after.lessons) {
+            Long roomId = roomIdByLesson.get(lesson.id);
+            if (roomId != null) {
+                lesson.roomId = roomId;
+            }
+        }
+        List<Conflict> afterConflicts = checkAffected(after, null);
+        return new ChangeImpact(
+                before,
+                afterConflicts,
+                addedConflicts(before, afterConflicts),
+                DraftPublishReadiness.blockers(factsOf(after, afterConflicts.size())));
+    }
+
+    /** Multiset difference by code, lesson and message: what the change newly breaks. */
+    private List<Conflict> addedConflicts(List<Conflict> before, List<Conflict> after) {
+        Map<String, Integer> remaining = new HashMap<>();
+        before.forEach(conflict -> remaining.merge(keyOf(conflict), 1, Integer::sum));
+        List<Conflict> added = new ArrayList<>();
+        for (Conflict conflict : after) {
+            String key = keyOf(conflict);
+            Integer count = remaining.get(key);
+            if (count == null || count == 0) {
+                added.add(conflict);
+            } else {
+                remaining.put(key, count - 1);
+            }
+        }
+        return added;
+    }
+
+    private static String keyOf(Conflict conflict) {
+        return conflict.type() + "|" + conflict.lessonId() + "|" + conflict.message();
+    }
+
+    /**
      * Whole-draft check: the 24 conflict rules plus every publishing precondition, from
      * the one judgement publishing itself uses ({@link DraftPublishReadiness}). A draft
      * with lessons but no rooms is therefore not "valid" any more: it cannot be published.
@@ -307,6 +370,25 @@ public class DraftValidator {
         /** Same reference data, independent lesson copies, for scenario evaluation. */
         Snapshot withFreshLessons() {
             return new Snapshot(draft, lessons.stream().map(L::copy).toList(), context);
+        }
+
+        /**
+         * Independent lesson copies plus the rooms a preview is about to create, so the
+         * rules can judge assignments to rooms that do not exist yet.
+         */
+        Snapshot withPlannedRooms(List<PlannedRoom> plannedRooms) {
+            if (plannedRooms == null || plannedRooms.isEmpty()) {
+                return withFreshLessons();
+            }
+            Map<Long, ConstraintContext.RoomView> roomMap = new HashMap<>(context.rooms());
+            for (PlannedRoom room : plannedRooms) {
+                roomMap.put(room.placeholderId(), new ConstraintContext.RoomView(
+                        room.placeholderId(), room.name(), room.type(), room.capacity()));
+            }
+            ConstraintContext widened = new ConstraintContext(
+                    context.periods(), Map.copyOf(roomMap), context.courses(),
+                    context.teachers(), context.classes(), context.settings());
+            return new Snapshot(draft, lessons.stream().map(L::copy).toList(), widened);
         }
     }
 

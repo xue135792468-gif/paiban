@@ -8,21 +8,36 @@ import type { DraftPublishBlocker } from './types'
 export type BlockerTarget =
   | { kind: 'link'; label: string; to: string }
   | { kind: 'drawer'; label: string }
+  | { kind: 'dialog'; label: string }
   | { kind: 'none' }
 
 const NONE: BlockerTarget = { kind: 'none' }
 
 const TARGETS: Record<string, BlockerTarget> = {
-  // Ticket 07 turns this into a one-click batch action; until then the room list is
-  // the entry point, next to the per-lesson room picker in the grid.
-  ASSIGN_ROOMS: { kind: 'link', label: '去教室管理准备教室', to: '/admin/rooms' },
+  // Ticket 07: one explicit action gives every class with missing rooms a fixed
+  // ordinary room.
+  ASSIGN_ROOMS: { kind: 'dialog', label: '按行政班补固定教室' },
   EDIT_LESSONS: { kind: 'drawer', label: '查看未排课节' },
   EDIT_PERIODS: { kind: 'link', label: '去学期与作息检查', to: '/admin/semesters' },
   OPEN_SUBSTITUTIONS: { kind: 'link', label: '去调代流程', to: '/substitutions' },
   VIEW_TIMETABLE: { kind: 'link', label: '查看已发布课表', to: '/timetable' },
 }
 
-export function blockerTarget(action: string): BlockerTarget {
+const ROOM_MANAGEMENT: BlockerTarget = {
+  kind: 'link',
+  label: '去教室管理准备教室',
+  to: '/admin/rooms',
+}
+
+/**
+ * Resolves the server's action identifier. Without both permissions the fill action
+ * would be refused, so the room list stays the manual way in instead of offering a
+ * button the server will reject.
+ */
+export function blockerTarget(action: string, options: { roomFill?: boolean } = {}): BlockerTarget {
+  if (action === 'ASSIGN_ROOMS' && options.roomFill === false) {
+    return ROOM_MANAGEMENT
+  }
   return TARGETS[action] ?? NONE
 }
 

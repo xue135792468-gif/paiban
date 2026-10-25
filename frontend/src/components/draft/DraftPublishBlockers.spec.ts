@@ -17,9 +17,9 @@ function blocker(overrides: Partial<DraftPublishBlocker> = {}): DraftPublishBloc
   }
 }
 
-function mountBlockers(blockers: DraftPublishBlocker[]) {
+function mountBlockers(blockers: DraftPublishBlocker[], roomFill?: boolean) {
   return mount(DraftPublishBlockers, {
-    props: { blockers },
+    props: roomFill === undefined ? { blockers } : { blockers, roomFill },
     global: { plugins: [ElementPlus] },
   })
 }
@@ -53,12 +53,22 @@ describe('DraftPublishBlockers', () => {
     expect(rows[1].text()).toContain('还有 2 节课未排课')
   })
 
-  it('缺教室给出教室管理入口', async () => {
+  it('缺教室给出按行政班补固定教室的入口，不跳走', async () => {
     const wrapper = mountBlockers([blocker()])
 
     await wrapper.get('[data-testid=blocker-action-MISSING_ROOMS]').trigger('click')
 
+    expect(wrapper.emitted('fill-rooms')).toHaveLength(1)
+    expect(push).not.toHaveBeenCalled()
+  })
+
+  it('没有补教室权限时仍指向教室管理', async () => {
+    const wrapper = mountBlockers([blocker()], false)
+
+    await wrapper.get('[data-testid=blocker-action-MISSING_ROOMS]').trigger('click')
+
     expect(push).toHaveBeenCalledWith('/admin/rooms')
+    expect(wrapper.emitted('fill-rooms')).toBeUndefined()
   })
 
   it('未排课打开本页的未排课抽屉而不是跳转', async () => {

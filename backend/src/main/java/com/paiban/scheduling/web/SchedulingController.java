@@ -2,6 +2,7 @@ package com.paiban.scheduling.web;
 
 import com.paiban.identity.domain.Permissions;
 import com.paiban.scheduling.service.DraftValidator;
+import com.paiban.scheduling.service.RoomFillService;
 import com.paiban.scheduling.service.SchedulingService;
 import com.paiban.scheduling.web.SchedulingDtos.DraftDetailDto;
 import com.paiban.scheduling.web.SchedulingDtos.DraftDto;
@@ -15,6 +16,7 @@ import com.paiban.scheduling.web.SchedulingDtos.ValidateMovesRequest;
 import jakarta.validation.Valid;
 import java.security.Principal;
 import java.util.List;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,9 +34,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class SchedulingController {
 
     private final SchedulingService service;
+    private final RoomFillService roomFill;
 
-    public SchedulingController(SchedulingService service) {
+    public SchedulingController(SchedulingService service, RoomFillService roomFill) {
         this.service = service;
+        this.roomFill = roomFill;
     }
 
     @PostMapping("/scheduling-jobs")
@@ -119,6 +123,30 @@ public class SchedulingController {
     @PreAuthorize("hasAuthority('" + Permissions.TIMETABLE_EDIT + "')")
     public DraftDto rename(@PathVariable Long id, @Valid @RequestBody RenameDraftRequest request) {
         return service.renameDraft(id, request.name());
+    }
+
+    /**
+     * Preview of the explicit "fill fixed rooms" action: which classes get which room,
+     * create or reuse, and what a person still has to handle. Read-only.
+     */
+    @GetMapping("/timetable-drafts/{id}/room-fill/plan")
+    @PreAuthorize("hasAuthority('" + Permissions.TIMETABLE_EDIT + "') and hasAuthority('"
+            + Permissions.FOUNDATION_MANAGE + "')")
+    public RoomFillDtos.RoomFillPlanDto roomFillPlan(@PathVariable Long id) {
+        return roomFill.preview(id);
+    }
+
+    /**
+     * Applies the plan after the user confirmed it. Editing the timetable and creating
+     * rooms are two different powers, so both are required. A refused plan answers 409
+     * with the same shape, including the manual items, and writes nothing.
+     */
+    @PostMapping("/timetable-drafts/{id}/room-fill")
+    @PreAuthorize("hasAuthority('" + Permissions.TIMETABLE_EDIT + "') and hasAuthority('"
+            + Permissions.FOUNDATION_MANAGE + "')")
+    public ResponseEntity<RoomFillDtos.RoomFillPlanDto> roomFill(@PathVariable Long id) {
+        RoomFillService.Outcome outcome = roomFill.apply(id);
+        return ResponseEntity.status(outcome.status()).body(outcome.plan());
     }
 
     @DeleteMapping("/timetable-drafts/{id}")
