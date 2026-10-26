@@ -98,3 +98,5 @@
 - 前端 `npm run test:unit`：45 文件 / **366 通过**（较本票原记录 +3：`thresholdModel.spec` 的同 id 标签、`templateModel.spec` 的 200/409 同形、`useConstraintDraft.spec` 的「预检条与红点读同一份结果」）；`lint`、`build`、`check-sfc-size.sh`、`check-blank-checks.sh` 全部通过。
 - 后端全量 `./mvnw -B test`：**750 通过 / 0 失败 / 0 错误 / 5 跳过**（较本票原记录 +5，均为本次修复新增）。
 - E2E 单跑：`constraints-closeout.spec.ts` **5 通过**、`constraints-threshold-scopes.spec.ts` **4 通过** —— 证明 upsert 与形状统一没有破坏条目增删、阈值例外与模板往返的交互。
+
+**2026-10-26 上线记录**：页面收口 + 24 类逐类生效验收；两轴评审后集中修复（条目稳定身份 upsert、阈值「无上限」统一、模板引用校验合一、模板错误形状统一为 409+errors、前端对象选项按字段分离、V28 显式五分支、ADR-0025 补差分语义修订记录）。全量闸门：后端 750、前端 unit 366、Playwright 70。线上冒烟 7/7（全局 6 + 教师例外 3 → 再保存 id 不变 → 模板往返恢复）。

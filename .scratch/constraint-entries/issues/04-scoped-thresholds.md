@@ -169,3 +169,5 @@
 - `EngineConstraintTest.thresholdExceptionAppliesPerObjectInTheEngine`：全局 4 + 教师 10 例外 1 → 该教师单日两节扣一份软分、教师 11 两节不扣（此前只有「全局条目」的引擎用例）；`thresholdWithoutGlobalOrExceptionDoesNotLimitTheEngine`：只有别的对象的例外时谁都不受限。
 - `ConstraintEntryMigrationTest.v28WritesEachThresholdItsOwnCatalogueDefault`：五类各写 `{}`/NULL，迁移后分别落 4/8/2/2/3（`COURSE_MAX_PER_DAY` 与 `EVENING_MAX` 同为 2，但由两个独立分支产生）。
 - `ConstraintEntriesIntegrationTest.savingAgainUpdatesInPlaceInsertsAndDeletesByEntryId`：改一条 + 增一条 + 删一条 → 原 id 不变、新条目新 id、被删的行没了，REST 回应与存储一致。
+
+**2026-10-26 上线记录**：五类阈值全局默认 + 对象例外；两轴评审后集中修复（条目稳定身份 upsert、阈值「无上限」统一、模板引用校验合一、模板错误形状统一为 409+errors、前端对象选项按字段分离、V28 显式五分支、ADR-0025 补差分语义修订记录）。全量闸门：后端 750、前端 unit 366、Playwright 70。线上冒烟 7/7（全局 6 + 教师例外 3 → 再保存 id 不变 → 模板往返恢复）。

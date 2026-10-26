@@ -157,3 +157,5 @@
 **测试**
 - `crossSemesterClassReferenceIsRefusedUntilExplicitlyRebound` 新增断言：preview(200) 与 apply(409) 的 `invalidReferences` 逐字段相同、409 的 `errors` 为空数组 —— 形状统一的直接证据。
 - `ConstraintEntriesIntegrationTest.anEntryIdFromAnotherSemesterOrTypeIsRejectedWithoutWriting`：别的学期的 id、别的类型的 id → 400，且两边配置逐字节不变（条目身份的负向用例，与 04 的正向用例配对）。
+
+**2026-10-26 上线记录**：模板完整往返与跨学期重绑；两轴评审后集中修复（条目稳定身份 upsert、阈值「无上限」统一、模板引用校验合一、模板错误形状统一为 409+errors、前端对象选项按字段分离、V28 显式五分支、ADR-0025 补差分语义修订记录）。全量闸门：后端 750、前端 unit 366、Playwright 70。线上冒烟 7/7（全局 6 + 教师例外 3 → 再保存 id 不变 → 模板往返恢复）。
