@@ -114,6 +114,22 @@ class ConstraintTargetEntriesCheckerTest {
     }
 
     @Test
+    void aHardDayLevelRuleAlsoBlocksThroughTheDraftVerdict() {
+        ConstraintSettings settings = settings(ConstraintType.TEACHER_DAY_OFF, true, 30,
+                Map.of("teacherId", TEACHER_1, "dayOfWeek", 2));
+        PlanSnapshot snapshot = base()
+                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 2, 1)
+                .build();
+
+        // Draft validation and publishing both read this verdict, so a hard day-level
+        // rule has to surface here - not only under the published-timetable check.
+        List<ConstraintViolation> draft = ConstraintChecker.check(
+                withSettings(snapshot, settings).context(), viewsOn(snapshot, 2), null);
+
+        assertThat(codes(draft, "TEACHER_DAY_OFF")).hasSize(1);
+    }
+
+    @Test
     void preferredSlotsOfOneTeacherAreAnOrSet() {
         ConstraintSettings settings = settings(ConstraintType.TEACHER_PREFERRED_SLOT, true, 40,
                 Map.of("teacherId", TEACHER_1, "dayOfWeek", 1, "periodNo", 1),
