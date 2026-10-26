@@ -9,7 +9,6 @@
               ? '配置学期排课规则，选择「必须」或「尽量」。'
               : '配置学期排课规则与偏好权重，支持保存与复用为模板。'
           }}
-          已启用 {{ enabledCount }} 条 / 共 {{ visibleRows.length }} 条
         </p>
       </div>
       <div class="actions">
@@ -27,40 +26,14 @@
             :value="s.id"
           />
         </el-select>
-        <el-button
-          v-if="canManage"
-          type="primary"
-          :disabled="!semesterId"
-          :loading="saving"
-          @click="save"
-        >
-          保存配置
-        </el-button>
       </div>
     </div>
 
-    <div v-if="semesters.length > 0" class="sub-toolbar">
-      <div class="summary-area">
-        <el-tag type="info" effect="plain" class="count-tag">
-          已启用 {{ enabledCount }} 条 / 共 {{ visibleRows.length }} 条
-        </el-tag>
-      </div>
-      <div v-if="canManage && !isJunior" class="template-area">
-        <el-button :disabled="!semesterId" @click="saveAsTemplate">
-          存为模板
-        </el-button>
-        <el-select
-          v-model="selectedTemplate"
-          placeholder="选择模板"
-          clearable
-          style="width: 200px"
-        >
-          <el-option
-            v-for="item in templates"
-            :key="item.id"
-            :label="item.name"
-            :value="item.id"
-          />
+    <div v-if="semesters.length > 0 && canManage && !isJunior" class="sub-toolbar">
+      <div class="template-area">
+        <el-button :disabled="!semesterId" @click="saveAsTemplate"> 存为模板 </el-button>
+        <el-select v-model="selectedTemplate" placeholder="选择模板" clearable style="width: 200px">
+          <el-option v-for="item in templates" :key="item.id" :label="item.name" :value="item.id" />
         </el-select>
         <el-button
           :disabled="!semesterId || !selectedTemplate"
@@ -92,195 +65,65 @@
       />
     </el-card>
 
-    <el-card v-else v-loading="loading" shadow="never" class="content-card">
-      <EmptyStateGuide
-        v-if="!loading && groups.length === 0"
-        title="还没有可配置的约束"
-        description="当前学期没有返回任何排课约束。可以查看帮助文档，了解各类约束的作用与配置方式。"
-        help-slug="scheduling"
-        help-anchor="constraints"
+    <template v-else>
+      <ConstraintSummaryBar
+        v-if="semesterId"
+        :counts="counts"
+        :dirty="dirty"
+        :can-manage="canManage"
+        :saving="saving"
+        @save="save"
       />
-      <el-collapse v-else v-model="activeCategories">
-        <el-collapse-item
-          v-for="group in groups"
-          :key="group.categoryLabel"
-          :name="group.categoryLabel"
-        >
-          <template #title>
-            <div class="collapse-header">
-              <span class="group-title">{{ group.categoryLabel }}</span>
-              <span class="group-summary">
-                （已启用 {{ group.rows.filter((r) => r.enabled).length }} / {{ group.rows.length }} 条）
-              </span>
-            </div>
-          </template>
 
-          <div class="constraint-list">
-            <div
-              v-for="row in group.rows"
-              :key="row.type"
-              class="constraint-card"
-              :class="{ 'is-disabled': !row.enabled }"
-            >
-              <div class="constraint-head">
-                <div class="constraint-main">
-                  <el-switch
-                    v-model="row.enabled"
-                    active-text="启用"
-                    :disabled="!canManage"
-                  />
-                  <div class="constraint-info">
-                    <span class="constraint-name">{{ row.name }}</span>
-                    <span class="constraint-desc">{{ row.description }}</span>
-                  </div>
-                </div>
+      <el-alert
+        v-if="saveMessage"
+        type="error"
+        :closable="false"
+        show-icon
+        class="error-bar"
+        data-testid="constraint-save-error"
+      >
+        <template #title>保存失败，已保留当前输入</template>
+        <p class="error-copy">{{ saveMessage }}</p>
+      </el-alert>
 
-                <div class="constraint-controls">
-                  <template v-if="isJunior">
-                    <el-radio-group
-                      v-model="row.hard"
-                      size="small"
-                      :disabled="!canManage || !row.enabled"
-                    >
-                      <el-radio-button :value="true">必须</el-radio-button>
-                      <el-radio-button :value="false">尽量</el-radio-button>
-                    </el-radio-group>
-                    <InfoTooltip field="constraint.hard" />
-                  </template>
+      <el-card v-loading="loading" shadow="never" class="content-card">
+        <EmptyStateGuide
+          v-if="!loading && groups.length === 0"
+          title="还没有可配置的约束"
+          description="当前学期没有返回任何排课约束。可以查看帮助文档，了解各类约束的作用与配置方式。"
+          help-slug="scheduling"
+          help-anchor="constraints"
+        />
 
-                  <template v-else>
-                    <el-radio-group
-                      v-model="row.hard"
-                      size="small"
-                      :disabled="!canManage || !row.enabled"
-                    >
-                      <el-radio-button :value="true">硬约束</el-radio-button>
-                      <el-radio-button :value="false">软约束</el-radio-button>
-                    </el-radio-group>
-                    <InfoTooltip field="constraint.hard" />
+        <div v-else class="split" data-testid="constraint-split">
+          <ConstraintTypeNav
+            :groups="groups"
+            :selected="selectedCode"
+            :error-types="errorCodes"
+            @select="select"
+          />
 
-                    <div class="weight-box">
-                      <span class="weight-label">
-                        权重 {{ row.weight }}
-                        <InfoTooltip field="constraint.weight" />
-                      </span>
-                      <el-slider
-                        v-model="row.weight"
-                        :min="0"
-                        :max="100"
-                        :disabled="row.hard || !canManage || !row.enabled"
-                        style="width: 130px"
-                      />
-                    </div>
-                  </template>
-                </div>
-              </div>
-
-              <div v-if="row.params.length > 0" class="params-box">
-                <div
-                  v-for="param in row.params"
-                  :key="param.name"
-                  class="param-field"
-                >
-                  <span class="param-label">
-                    <span v-if="param.required" class="required-star">*</span>
-                    {{ param.label }}：
-                    <InfoTooltip field="constraint.param" />
-                  </span>
-
-                  <el-select
-                    v-if="param.type === 'ID'"
-                    v-model="row.values[param.name]"
-                    filterable
-                    clearable
-                    :placeholder="`请选择${param.label}`"
-                    :disabled="!canManage || !row.enabled"
-                    style="width: 180px"
-                  >
-                    <el-option
-                      v-for="opt in idOptions(param)"
-                      :key="opt.id"
-                      :label="opt.name"
-                      :value="opt.id"
-                    />
-                  </el-select>
-
-                  <el-select
-                    v-else-if="param.type === 'DAY'"
-                    v-model="row.values[param.name]"
-                    placeholder="选择星期"
-                    clearable
-                    :disabled="!canManage || !row.enabled"
-                    style="width: 130px"
-                  >
-                    <el-option
-                      v-for="day in dayOptions"
-                      :key="day.value"
-                      :label="day.label"
-                      :value="day.value"
-                    />
-                  </el-select>
-
-                  <el-input-number
-                    v-else-if="param.type === 'PERIOD'"
-                    v-model="row.values[param.name]"
-                    :min="1"
-                    :max="20"
-                    controls-position="right"
-                    :disabled="!canManage || !row.enabled"
-                    style="width: 120px"
-                  />
-
-                  <el-input-number
-                    v-else-if="param.type === 'INT'"
-                    v-model="row.values[param.name]"
-                    :min="param.min ?? 0"
-                    :max="param.max ?? 100"
-                    controls-position="right"
-                    :disabled="!canManage || !row.enabled"
-                    style="width: 120px"
-                  />
-
-                  <el-select
-                    v-else-if="param.type === 'ROOM_TYPE'"
-                    v-model="row.values[param.name]"
-                    placeholder="选择教室类型"
-                    clearable
-                    :disabled="!canManage || !row.enabled"
-                    style="width: 160px"
-                  >
-                    <el-option
-                      v-for="opt in roomTypeOptions"
-                      :key="opt.value"
-                      :label="opt.label"
-                      :value="opt.value"
-                    />
-                  </el-select>
-
-                  <el-input
-                    v-else-if="param.type === 'TEXT'"
-                    v-model="row.values[param.name]"
-                    :placeholder="`请输入${param.label}`"
-                    clearable
-                    :disabled="!canManage || !row.enabled"
-                    style="width: 180px"
-                  />
-
-                  <el-input
-                    v-else
-                    v-model="row.values[param.name]"
-                    :placeholder="`请输入${param.label}`"
-                    clearable
-                    :disabled="!canManage || !row.enabled"
-                    style="width: 180px"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </el-collapse-item>
-      </el-collapse>
-    </el-card>
+          <ConstraintTypePanel
+            v-if="selected"
+            :row="selected"
+            :can-manage="canManage"
+            :is-junior="isJunior"
+            :teachers="teachers"
+            :courses="courses"
+            :entry-errors="entryErrors"
+            :type-errors="typeErrors"
+            @toggle-enabled="onToggleEnabled"
+            @set-hard="onSetHard"
+            @set-weight="onSetWeight"
+            @update-value="onUpdateValue"
+            @update-entry="onUpdateEntry"
+            @add-entry="onAddEntry"
+            @remove-entry="onRemoveEntry"
+          />
+        </div>
+      </el-card>
+    </template>
   </div>
 </template>
 
@@ -289,53 +132,19 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
+import ConstraintSummaryBar from '@/components/constraints/ConstraintSummaryBar.vue'
+import ConstraintTypeNav from '@/components/constraints/ConstraintTypeNav.vue'
+import ConstraintTypePanel from '@/components/constraints/ConstraintTypePanel.vue'
+import { useConstraintDraft } from '@/components/constraints/useConstraintDraft'
+import { emptySaveErrors, parseSaveErrors, type SaveErrorReport } from '@/components/constraints/saveErrors'
+import type {
+  ConstraintConfigDto,
+  ConstraintTypeDef,
+  OptionItem,
+} from '@/components/constraints/types'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
-import InfoTooltip from '@/components/InfoTooltip.vue'
 import { serverMessage } from '@/api/errors'
-
-interface ParamDef {
-  name: string
-  label: string
-  type: string
-  required: boolean
-  min?: number | null
-  max?: number | null
-  defaultValue?: unknown
-  options?: string[]
-}
-
-interface ConstraintType {
-  code: string
-  name: string
-  category: string
-  categoryLabel: string
-  description: string
-  defaultHard: boolean
-  defaultWeight: number
-  params: ParamDef[]
-}
-
-interface ConstraintConfig {
-  type: string
-  params: Record<string, unknown>
-  weight: number
-  hard: boolean
-  enabled: boolean
-}
-
-interface Row {
-  type: string
-  name: string
-  category: string
-  categoryLabel: string
-  description: string
-  params: ParamDef[]
-  values: Record<string, any>
-  weight: number
-  hard: boolean
-  enabled: boolean
-}
 
 interface Semester {
   id: number
@@ -350,26 +159,16 @@ interface TemplateItem {
   configCount?: number
 }
 
-interface OptionItem {
-  id: number
-  name: string
-}
-
-interface CategoryGroup {
-  category: string
-  categoryLabel: string
-  rows: Row[]
-}
-
 const auth = useAuthStore()
 const settings = useSettingsStore()
 const canManage = computed(() => auth.hasPermission('constraint:manage'))
-const isJunior = computed(() => settings.schoolType === 'junior')
+const isJunior = computed(() => settings.isJunior)
+
+const draft = useConstraintDraft()
+const { counts, groups, selected, selectedCode, dirty } = draft
 
 const semesters = ref<Semester[]>([])
 const semesterId = ref<number | null>(null)
-const types = ref<ConstraintType[]>([])
-const rows = ref<Row[]>([])
 const teachers = ref<OptionItem[]>([])
 const courses = ref<OptionItem[]>([])
 const templates = ref<TemplateItem[]>([])
@@ -378,62 +177,43 @@ const loading = ref(false)
 const saving = ref(false)
 const applyingTemplate = ref(false)
 const deletingTemplate = ref(false)
-const activeCategories = ref<string[]>([])
+const saveMessage = ref<string | null>(null)
+const saveReport = ref<SaveErrorReport>(emptySaveErrors())
 
-const dayOptions = [
-  { value: 1, label: '周一' },
-  { value: 2, label: '周二' },
-  { value: 3, label: '周三' },
-  { value: 4, label: '周四' },
-  { value: 5, label: '周五' },
-  { value: 6, label: '周六' },
-  { value: 7, label: '周日' },
-]
+const errorCodes = computed(() => saveReport.value.codes)
+const entryErrors = computed(() => saveReport.value.byEntry[selectedCode.value ?? ''] ?? {})
+const typeErrors = computed(() => saveReport.value.byType[selectedCode.value ?? ''] ?? [])
 
-const roomTypeOptions = [
-  { value: 'NORMAL', label: '普通教室' },
-  { value: 'LAB', label: '实验室' },
-  { value: 'PLAYGROUND', label: '操场' },
-  { value: 'MULTIMEDIA', label: '多媒体' },
-  { value: 'OTHER', label: '其他' },
-]
+function select(code: string) {
+  draft.select(code)
+}
 
-// ADR-0018: junior mode hides senior-only constraints from the editor. Hidden
-// rows stay in `rows` so saving in junior mode does not erase a senior config.
-const visibleRows = computed(() =>
-  isJunior.value
-    ? rows.value.filter((row) => row.type !== 'TEACHER_MEETING_BLOCKED')
-    : rows.value,
-)
+function onToggleEnabled(value: boolean) {
+  if (selected.value) draft.setEnabled(selected.value.code, value)
+}
 
-const enabledCount = computed(() => visibleRows.value.filter((row) => row.enabled).length)
+function onSetHard(value: boolean) {
+  if (selected.value) draft.setHard(selected.value.code, value)
+}
 
-const groups = computed<CategoryGroup[]>(() => {
-  const map = new Map<string, CategoryGroup>()
-  visibleRows.value.forEach((row) => {
-    let group = map.get(row.categoryLabel)
-    if (!group) {
-      group = {
-        category: row.category,
-        categoryLabel: row.categoryLabel,
-        rows: [],
-      }
-      map.set(row.categoryLabel, group)
-    }
-    group.rows.push(row)
-  })
-  return Array.from(map.values())
-})
+function onSetWeight(value: number) {
+  if (selected.value) draft.setWeight(selected.value.code, value)
+}
 
-function idOptions(param: ParamDef): OptionItem[] {
-  const lower = param.name.toLowerCase()
-  if (lower.includes('teacher')) {
-    return teachers.value
-  }
-  if (lower.includes('course')) {
-    return courses.value
-  }
-  return []
+function onUpdateValue(name: string, value: unknown) {
+  if (selected.value) draft.updateValue(selected.value.code, name, value)
+}
+
+function onUpdateEntry(key: string, name: string, value: unknown) {
+  if (selected.value) draft.updateEntryValue(selected.value.code, key, name, value)
+}
+
+function onAddEntry() {
+  if (selected.value) draft.addEntry(selected.value.code)
+}
+
+function onRemoveEntry(key: string) {
+  if (selected.value) draft.removeEntry(selected.value.code, key)
 }
 
 async function loadSemesters() {
@@ -476,42 +256,20 @@ async function loadTeachersAndCourses() {
 
 async function loadConstraints() {
   if (!semesterId.value) {
-    rows.value = []
+    draft.hydrate([], [], { isJunior: isJunior.value })
     return
   }
   loading.value = true
   try {
     const [typeRes, configRes] = await Promise.all([
-      http.get<ConstraintType[]>('/constraint-types'),
-      http.get<ConstraintConfig[]>('/constraints', { params: { semesterId: semesterId.value } }),
+      http.get<ConstraintTypeDef[]>('/constraint-types'),
+      http.get<ConstraintConfigDto[]>('/constraints', {
+        params: { semesterId: semesterId.value },
+      }),
     ])
-    types.value = typeRes.data ?? []
-    const configs = configRes.data ?? []
-
-    rows.value = types.value.map((type) => {
-      const saved = configs.find((config) => config.type === type.code)
-      const values: Record<string, any> = {}
-      type.params.forEach((param) => {
-        const savedValue = saved?.params?.[param.name]
-        values[param.name] = savedValue !== undefined ? savedValue : (param.defaultValue ?? null)
-      })
-      return {
-        type: type.code,
-        name: type.name,
-        category: type.category,
-        categoryLabel: type.categoryLabel,
-        description: type.description,
-        params: type.params,
-        values,
-        weight: saved?.weight !== undefined ? saved.weight : type.defaultWeight,
-        hard: saved?.hard !== undefined ? saved.hard : type.defaultHard,
-        enabled: saved?.enabled !== undefined ? saved.enabled : false,
-      }
-    })
-
-    if (activeCategories.value.length === 0) {
-      activeCategories.value = Array.from(new Set(rows.value.map((r) => r.categoryLabel)))
-    }
+    draft.hydrate(typeRes.data ?? [], configRes.data ?? [], { isJunior: isJunior.value })
+    saveMessage.value = null
+    saveReport.value = emptySaveErrors()
   } catch (e: any) {
     ElMessage.error(serverMessage(e, '加载约束配置失败'))
   } finally {
@@ -526,49 +284,30 @@ async function onSemesterChange() {
 async function save() {
   if (!semesterId.value) return
 
-  const missing = visibleRows.value
-    .filter((row) => row.enabled)
-    .flatMap((row) =>
-      row.params
-        .filter((param) => param.required && (row.values[param.name] === null || row.values[param.name] === undefined || row.values[param.name] === ''))
-        .map((param) => `「${row.name}」的「${param.label}」`),
+  const warnings = draft.warnings()
+  if (warnings.length > 0) {
+    ElMessage.warning(
+      `请先填写必填参数：${warnings.slice(0, 3).join('、')}${warnings.length > 3 ? ' 等' : ''}`,
     )
-  if (missing.length > 0) {
-    ElMessage.warning(`请先填写必填参数：${missing.slice(0, 3).join('、')}${missing.length > 3 ? ' 等' : ''}`)
     return
   }
 
   saving.value = true
+  saveMessage.value = null
+  saveReport.value = emptySaveErrors()
   try {
-    const configs = rows.value.map((row) => {
-      const cleanParams: Record<string, any> = {}
-      if (row.enabled) {
-        row.params.forEach((param) => {
-          const val = row.values[param.name]
-          if (val !== null && val !== undefined && val !== '') {
-            cleanParams[param.name] = val
-          }
-        })
-      }
-      return {
-        type: row.type,
-        params: cleanParams,
-        // Junior mode only exposes "must / prefer": must = weight 100, prefer = 50.
-        weight: isJunior.value ? (row.hard ? 100 : 50) : row.weight,
-        hard: row.hard,
-        enabled: row.enabled,
-      }
-    })
-
     await http.put(
       '/constraints',
-      { configs },
+      { configs: draft.payload() },
       { params: { semesterId: semesterId.value } },
     )
     ElMessage.success('约束配置已保存')
     await loadConstraints()
   } catch (e: any) {
-    ElMessage.error(serverMessage(e, '保存约束配置失败'))
+    // Keep the user's input and point at the offending type/entry.
+    saveMessage.value = serverMessage(e, '保存约束配置失败')
+    saveReport.value = parseSaveErrors(saveMessage.value, draft.rows.value)
+    ElMessage.error(saveMessage.value)
   } finally {
     saving.value = false
   }
@@ -625,11 +364,7 @@ async function applyTemplate() {
     await ElMessageBox.confirm(
       `确定要应用模板「${name}」吗？当前学期的约束配置将被覆盖。`,
       '应用模板',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning',
-      },
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' },
     )
   } catch {
     return
@@ -682,11 +417,7 @@ async function deleteTemplate() {
 onMounted(async () => {
   loading.value = true
   try {
-    await Promise.all([
-      loadSemesters(),
-      loadTeachersAndCourses(),
-      loadTemplates(),
-    ])
+    await Promise.all([loadSemesters(), loadTeachersAndCourses(), loadTemplates()])
     if (semesterId.value) {
       await loadConstraints()
     }
@@ -706,7 +437,7 @@ onMounted(async () => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 h2 {
@@ -729,21 +460,11 @@ h2 {
 
 .sub-toolbar {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   flex-wrap: wrap;
   gap: 12px;
-}
-
-.summary-area {
-  display: flex;
-  align-items: center;
-}
-
-.count-tag {
-  font-size: 13px;
-  padding: 6px 12px;
 }
 
 .template-area {
@@ -753,133 +474,31 @@ h2 {
   flex-wrap: wrap;
 }
 
+.error-bar {
+  margin-bottom: 14px;
+}
+
+.error-copy {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
 .content-card {
   border-radius: var(--paiban-radius, 8px);
 }
 
-.collapse-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 15px;
-}
-
-.group-title {
-  font-weight: 600;
-  color: var(--paiban-ink);
-}
-
-.group-summary {
-  font-size: 13px;
-  color: var(--paiban-muted);
-  font-weight: normal;
-}
-
-.constraint-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 8px 0;
-}
-
-.constraint-card {
-  padding: 14px 16px;
-  border-radius: 8px;
-  background: #ffffff;
-  border: 1px solid #ebeef5;
-  transition: all 0.2s ease;
-}
-
-.constraint-card:hover {
-  border-color: #dcdfe6;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.constraint-card.is-disabled {
-  background: #fafafa;
-  opacity: 0.75;
-}
-
-.constraint-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.split {
+  display: grid;
+  grid-template-columns: 268px minmax(0, 1fr);
   gap: 16px;
-  flex-wrap: wrap;
+  align-items: start;
 }
 
-.constraint-main {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex: 1;
-  min-width: 280px;
-}
-
-.constraint-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.constraint-name {
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--paiban-ink);
-}
-
-.constraint-desc {
-  font-size: 12px;
-  color: var(--paiban-muted);
-  line-height: 1.4;
-}
-
-.constraint-controls {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  flex-shrink: 0;
-}
-
-.weight-box {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.weight-label {
-  display: inline-flex;
-  align-items: center;
-  font-size: 12px;
-  color: var(--paiban-muted);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.params-box {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px dashed #ebeef5;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  align-items: center;
-}
-
-.param-field {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.param-label {
-  font-size: 13px;
-  color: #4b5563;
-}
-
-.required-star {
-  color: var(--el-color-danger, #f56c6c);
-  margin-right: 2px;
-  font-weight: bold;
+@media (max-width: 900px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>
