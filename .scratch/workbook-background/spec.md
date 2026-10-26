@@ -1,6 +1,6 @@
 # 整本工作簿后台解析：下一批草案（原票 02 遗留）
 
-Status: draft
+Status: ready-for-agent（2026-10-26 批次启动复核通过）
 Execution: 下一批候选；本轮只准备，不进入六项修复。
 2026-10-25 用户已同意准备三张草案。由下一批启动时复核接口和范围后执行。
 
@@ -57,3 +57,14 @@ Execution: 下一批候选；本轮只准备，不进入六项修复。
 
 本草案复用 .scratch/phase8-import-background/spec.md 的产品边界；原票 02 的遗留仍未完成。
 三张文件在 draft-tickets/：01 后台与进度、02 停止与放弃、03 失败重试。02/03 都依赖 01 的运行身份及计划，不把“推荐先做停止”伪造成重试的硬代码依赖。
+
+## 批次启动复核（2026-10-26）
+
+按 2026-10-25 的约定，在启动本批前对照当时的 `main` 复核了接口与范围：
+
+- 代码事实仍成立：`common/config/AsyncConfig` 有独立的 `importExecutor`（与求解线程分离）；`ai_import_log` 保留 `status`（含 `PARSING` / `PARTIAL` / `ABANDONED` / `FAILED` / `PREVIEW` / `COMMITTED`）、`total_batches` / `completed_batches`、`preview_json` / `confirmed_json` / `result_json` / `ai_raw_response` / `tool_trace_json`、`batches_json`（V20/V21）。
+- 期间上线了约束条目（V26–V29）与六项导入后修复，**均未改动导入状态机**；唯一相关漂移是 `POST /api/ai/import/text|image` 的 `target` 默认改为 `workbook`（不传即 400，要求显式 `target=teacher|timetable`）。本批的「旧单目标路径保持兼容」仍成立，但接口/E2E 断言必须显式带 `?target=`。
+- 三张草案与规格一致，执行顺序 **01 → 02 → 03**（03 建议在 02 之后串行集成，以覆盖停止后重试与晚响应的联合回归）。
+- 交付形式：三张票都按纵向切片做（后端状态机 + REST + 页面 + E2E），不按前后端拆；每票独立评审与 `scripts/verify.sh --full`。
+- 建议在**新会话**里以 `/implement-spec` 执行本批（本批与约束条目批次无代码重叠，但会话上下文应保持单一主题）。
+
