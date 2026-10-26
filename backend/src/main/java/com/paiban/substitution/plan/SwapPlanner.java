@@ -438,12 +438,7 @@ public final class SwapPlanner {
             return false;
         }
         if (blocked(settings, ConstraintType.TEACHER_UNAVAILABLE)
-                && Objects.equals(settings.longParam(ConstraintType.TEACHER_UNAVAILABLE, "teacherId"),
-                        lesson.teacherId())
-                && Objects.equals(settings.intParam(ConstraintType.TEACHER_UNAVAILABLE, "dayOfWeek"),
-                        target.dayOfWeek())
-                && Objects.equals(settings.intParam(ConstraintType.TEACHER_UNAVAILABLE, "periodNo"),
-                        target.periodNo())) {
+                && unavailableAt(settings, lesson.teacherId(), target)) {
             reasons.add(new PlanDiagnosis("TEACHER_UNAVAILABLE",
                     teacherName(snapshot, lesson.teacherId()) + " 在 " + label + " 不排课",
                     lesson.entryId(), target.id()));
@@ -488,6 +483,21 @@ public final class SwapPlanner {
 
     private static boolean blocked(ConstraintSettings settings, ConstraintType type) {
         return settings.enabled(type) && settings.hard(type);
+    }
+
+    /** Union of every teacher-unavailable entry, matching how the solver reads them. */
+    private static boolean unavailableAt(
+            ConstraintSettings settings, long teacherId, PeriodView target) {
+        for (Map<String, Object> entry : settings.entries(ConstraintType.TEACHER_UNAVAILABLE)) {
+            if (Objects.equals(ConstraintSettings.longValue(entry.get("teacherId")), teacherId)
+                    && Objects.equals(ConstraintSettings.intValue(entry.get("dayOfWeek")),
+                    target.dayOfWeek())
+                    && Objects.equals(ConstraintSettings.intValue(entry.get("periodNo")),
+                    target.periodNo())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String teacherName(PlanSnapshot snapshot, long teacherId) {

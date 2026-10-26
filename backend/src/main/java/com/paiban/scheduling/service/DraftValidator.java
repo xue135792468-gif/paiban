@@ -1,6 +1,5 @@
 package com.paiban.scheduling.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.AdminClassRepository;
 import com.paiban.foundation.domain.CourseRepository;
@@ -11,7 +10,6 @@ import com.paiban.scheduling.constraint.ConstraintChecker;
 import com.paiban.scheduling.constraint.ConstraintContext;
 import com.paiban.scheduling.constraint.ConstraintViolation;
 import com.paiban.scheduling.constraint.LessonView;
-import com.paiban.scheduling.domain.ConstraintConfig;
 import com.paiban.scheduling.domain.ConstraintType;
 import com.paiban.scheduling.domain.DraftLesson;
 import com.paiban.scheduling.domain.DraftLessonRepository;
@@ -78,7 +76,6 @@ public class DraftValidator {
     private final AdminClassRepository adminClasses;
     private final ConstraintService constraints;
     private final SemesterBaselineQuery baselines;
-    private final ObjectMapper objectMapper;
 
     public DraftValidator(
             TimetableDraftRepository drafts,
@@ -89,8 +86,7 @@ public class DraftValidator {
             TeacherRepository teachers,
             AdminClassRepository adminClasses,
             ConstraintService constraints,
-            SemesterBaselineQuery baselines,
-            ObjectMapper objectMapper) {
+            SemesterBaselineQuery baselines) {
         this.drafts = drafts;
         this.draftLessons = draftLessons;
         this.periods = periods;
@@ -100,7 +96,6 @@ public class DraftValidator {
         this.adminClasses = adminClasses;
         this.constraints = constraints;
         this.baselines = baselines;
-        this.objectMapper = objectMapper;
     }
 
     /**
@@ -383,10 +378,9 @@ public class DraftValidator {
                                 adminClass.getStudentCount(),
                                 adminClass.getHeadTeacherId())));
 
-        List<ConstraintConfig> active = constraints.active(draft.getSemesterId());
-        ConstraintSettings settings = constraints.hasConfigs(draft.getSemesterId())
-                ? ConstraintSettings.from(active, objectMapper)
-                : ConstraintSettings.defaults();
+        // One snapshot builder for every entry point: the same type rows and entry
+        // rows the solver and the substitution verifier read.
+        ConstraintSettings settings = constraints.settings(draft.getSemesterId());
         ConstraintContext context =
                 new ConstraintContext(periodMap, roomMap, courseMap, teacherMap, classMap, settings);
         List<L> copies = lessons.stream().map(L::of).toList();

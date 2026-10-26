@@ -10,6 +10,7 @@ import com.paiban.scheduling.constraint.ConstraintContext.PeriodView;
 import com.paiban.scheduling.constraint.ConstraintContext.RoomView;
 import com.paiban.scheduling.constraint.ConstraintContext.TeacherView;
 import com.paiban.scheduling.domain.ConstraintConfig;
+import com.paiban.scheduling.domain.ConstraintEntry;
 import com.paiban.scheduling.solver.ConstraintSettings;
 import com.paiban.substitution.plan.CandidatePlan;
 import com.paiban.substitution.plan.PlanDiagnosis;
@@ -246,6 +247,8 @@ public final class SubstitutionCli {
         ConstraintSettings settings = ConstraintSettings.defaults();
         if (json.constraints != null && !json.constraints.isEmpty()) {
             List<ConstraintConfig> configs = new ArrayList<>();
+            List<ConstraintEntry> entries = new ArrayList<>();
+            long order = 0;
             for (ConstraintJson constraint : json.constraints) {
                 ConstraintConfig config = new ConstraintConfig();
                 config.setType(constraint.type);
@@ -255,8 +258,16 @@ public final class SubstitutionCli {
                 config.setParamsJson(MAPPER.writeValueAsString(
                         constraint.params == null ? Map.of() : constraint.params));
                 configs.add(config);
+                for (EntryJson entry : safe(constraint.entries)) {
+                    ConstraintEntry row = new ConstraintEntry();
+                    row.setId(entry.id == null ? ++order : entry.id);
+                    row.setType(constraint.type);
+                    row.setParamsJson(MAPPER.writeValueAsString(
+                            entry.params == null ? Map.of() : entry.params));
+                    entries.add(row);
+                }
             }
-            settings = ConstraintSettings.from(configs, MAPPER);
+            settings = ConstraintSettings.from(configs, entries, MAPPER);
         }
         return new PlanSnapshot(
                 json.semesterId == null ? 0 : json.semesterId, json.semesterStart, json.semesterEnd,
@@ -454,6 +465,15 @@ public final class SubstitutionCli {
         public Boolean enabled;
         public Boolean hard;
         public Integer weight;
+        /** Legacy single-entry form. */
+        public Map<String, Object> params;
+        /** Multi-entry form (ADR-0028); wins over {@link #params} when present. */
+        public List<EntryJson> entries;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class EntryJson {
+        public Long id;
         public Map<String, Object> params;
     }
 

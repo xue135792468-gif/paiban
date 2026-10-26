@@ -16,16 +16,26 @@ public final class ConstraintDtos {
                                     String description, boolean defaultHard, int defaultWeight,
                                     List<ParamDefDto> params) {}
 
+    /** One parameter entry with its stable identity. */
+    public record ConstraintEntryDto(Long id, Map<String, Object> params) {}
+
     public record ConstraintConfigDto(Long id, String type, String name, String category,
                                       String categoryLabel, String description,
                                       Map<String, Object> params, int weight, boolean hard,
-                                      boolean enabled) {}
+                                      boolean enabled, List<ConstraintEntryDto> entries) {}
+
+    /**
+     * {@code params} is the legacy single-entry form: when {@code entries} is null
+     * it becomes the only entry. {@code entries} carries the multi-entry form.
+     */
+    public record ConstraintEntryRequest(Long id, Map<String, Object> params) {}
 
     public record ConstraintConfigRequest(String type,
                                           Map<String, Object> params,
                                           Integer weight,
                                           Boolean hard,
-                                          Boolean enabled) {}
+                                          Boolean enabled,
+                                          List<ConstraintEntryRequest> entries) {}
 
     public record SaveConstraintsRequest(List<ConstraintConfigRequest> configs) {}
 

@@ -4,7 +4,6 @@ import ai.timefold.solver.core.api.score.buildin.hardsoft.HardSoftScore;
 import ai.timefold.solver.core.api.solver.Solver;
 import ai.timefold.solver.core.api.solver.SolverFactory;
 import ai.timefold.solver.core.config.solver.SolverConfig;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.AdminClass;
 import com.paiban.foundation.domain.AdminClassRepository;
@@ -73,7 +72,6 @@ public class SchedulingService {
     private final ConstraintService constraints;
     private final TimetableProblemBuilder problemBuilder;
     private final DraftValidator validator;
-    private final ObjectMapper objectMapper;
     private final TaskExecutor executor;
     private final int defaultSolveSeconds;
     private final Map<Long, Solver<TimetableSolution>> runningSolvers = new ConcurrentHashMap<>();
@@ -93,7 +91,6 @@ public class SchedulingService {
             ConstraintService constraints,
             TimetableProblemBuilder problemBuilder,
             DraftValidator validator,
-            ObjectMapper objectMapper,
             @Qualifier("schedulingExecutor") TaskExecutor executor,
             @Value("${paiban.scheduling.max-solve-seconds:60}") int defaultSolveSeconds) {
         this.jobs = jobs;
@@ -109,7 +106,6 @@ public class SchedulingService {
         this.constraints = constraints;
         this.problemBuilder = problemBuilder;
         this.validator = validator;
-        this.objectMapper = objectMapper;
         this.executor = executor;
         this.defaultSolveSeconds = defaultSolveSeconds;
     }
@@ -159,8 +155,9 @@ public class SchedulingService {
         }
         long startedAt = System.currentTimeMillis();
         try {
-            ConstraintSettings settings =
-                    ConstraintSettings.from(constraints.active(job.getSemesterId()), objectMapper);
+            // Same snapshot builder as the draft check and the substitution verifier,
+            // so the solver cannot read a different rule set.
+            ConstraintSettings settings = constraints.settings(job.getSemesterId());
             ConstraintSettingsHolder.set(settings);
             TimetableSolution problem = problemBuilder.build(job.getSemesterId());
             if (problem.getLessons().isEmpty()) {

@@ -125,4 +125,29 @@ class SubstitutionCliTest {
         assertThat(run.code()).isZero();
         assertThat(run.out()).contains("方案 1").contains("环长 3");
     }
+
+    @Test
+    void plannerReadsEveryTeacherUnavailableEntry() throws Exception {
+        // Two entries: teacher 3 may not teach in Mon-1, which is the only slot the
+        // three-teacher cycle would hand back, so the plan disappears.
+        Run run = run("plan", "--snapshot", DIR + "snapshot-unavailable.json",
+                "--request", DIR + "request.json");
+
+        assertThat(run.code()).isEqualTo(2);
+        JsonNode json = MAPPER.readTree(run.out());
+        assertThat(json.get("status").asText()).isEqualTo("NO_SOLUTION");
+        assertThat(json.get("diagnoses").toString()).contains("TEACHER_UNAVAILABLE");
+    }
+
+    @Test
+    void verifierRejectsTheSameEntryThePlannerRefused() throws Exception {
+        // after.json moves teacher 3 into Mon-1, exactly what the entry forbids.
+        Run run = run("verify", "--before", DIR + "snapshot-unavailable.json",
+                "--after", DIR + "after.json");
+
+        assertThat(run.code()).isEqualTo(1);
+        JsonNode json = MAPPER.readTree(run.out());
+        assertThat(json.get("status").asText()).isEqualTo("FAIL");
+        assertThat(json.get("issues").toString()).contains("TEACHER_UNAVAILABLE");
+    }
 }

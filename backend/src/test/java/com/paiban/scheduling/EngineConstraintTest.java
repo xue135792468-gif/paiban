@@ -473,9 +473,59 @@ class EngineConstraintTest {
     }
 
     @Test
+    void multipleUnavailableEntriesAllScoreHard() {
+        ConstraintSettingsHolder.set(ConstraintSettings.from(
+                List.of(config(ConstraintType.TEACHER_UNAVAILABLE, true, 100, Map.of())),
+                List.of(entry(ConstraintType.TEACHER_UNAVAILABLE,
+                                Map.of("teacherId", 10, "dayOfWeek", 1, "periodNo", 1)),
+                        entry(ConstraintType.TEACHER_UNAVAILABLE,
+                                Map.of("teacherId", 10, "dayOfWeek", 1, "periodNo", 2))),
+                new com.fasterxml.jackson.databind.ObjectMapper()));
+        Lesson first = lesson(1, 10, 100, 1000, MON1, ROOM);
+        Lesson second = lesson(2, 10, 200, 1001, MON2, ROOM_B);
+        TimetableSolution solution = new TimetableSolution(
+                List.of(first, second), List.of(MON1, MON2, MON5), List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isEqualTo(-2);
+    }
+
+    @Test
+    void anUnavailableEntryForAnotherTeacherDoesNotScore() {
+        ConstraintSettingsHolder.set(ConstraintSettings.from(
+                List.of(config(ConstraintType.TEACHER_UNAVAILABLE, true, 100, Map.of())),
+                List.of(entry(ConstraintType.TEACHER_UNAVAILABLE,
+                        Map.of("teacherId", 11, "dayOfWeek", 1, "periodNo", 1))),
+                new com.fasterxml.jackson.databind.ObjectMapper()));
+        Lesson lesson = lesson(1, 10, 100, 1000, MON1, ROOM);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+    }
+
+    @Test
     void customConstraintPluginsAreDiscovered() {
         assertThat(com.paiban.scheduling.solver.plugin.PluginConstraintLoader.load())
                 .anyMatch(plugin -> plugin.name().equals("test-plugin"));
+    }
+
+    private com.paiban.scheduling.domain.ConstraintEntry entry(
+            ConstraintType type, Map<String, Object> params) {
+        com.paiban.scheduling.domain.ConstraintEntry entry =
+                new com.paiban.scheduling.domain.ConstraintEntry();
+        entry.setType(type.name());
+        entry.setCreatedAt(java.time.Instant.EPOCH);
+        try {
+            entry.setParamsJson(
+                    new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(params));
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
+        return entry;
     }
 
     private com.paiban.scheduling.domain.ConstraintConfig config(

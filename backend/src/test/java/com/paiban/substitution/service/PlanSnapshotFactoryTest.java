@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paiban.common.settings.SettingsService;
 import com.paiban.foundation.domain.AdminClass;
 import com.paiban.foundation.domain.AdminClassRepository;
@@ -160,10 +159,11 @@ class PlanSnapshotFactoryTest {
         when(substitutions.findBySemesterIdAndStatus(SEMESTER, Substitution.EFFECTIVE))
                 .thenReturn(List.of(substitution));
 
-        when(constraints.hasConfigs(SEMESTER)).thenReturn(false);
+        when(constraints.settings(SEMESTER))
+                .thenReturn(com.paiban.scheduling.solver.ConstraintSettings.defaults());
 
         return new PlanSnapshotFactory(semesters, periods, rooms, courses, teachers, adminClasses,
-                entries, substitutions, constraints, settings, new ObjectMapper());
+                entries, substitutions, constraints, settings);
     }
 
     private static Period period(long id, int periodNo) {

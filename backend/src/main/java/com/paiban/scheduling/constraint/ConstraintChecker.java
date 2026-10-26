@@ -206,17 +206,10 @@ public final class ConstraintChecker {
         }
 
         ConstraintType unavailable = ConstraintType.TEACHER_UNAVAILABLE;
-        if (include.test(unavailable)) {
-            Long teacherId = settings.longParam(unavailable, "teacherId");
-            Integer day = settings.intParam(unavailable, "dayOfWeek");
-            Integer periodNo = settings.intParam(unavailable, "periodNo");
-            if (Objects.equals(teacherId, lesson.teacherId())
-                    && Objects.equals(day, period.dayOfWeek())
-                    && Objects.equals(periodNo, period.periodNo())) {
-                out.add(new ConstraintViolation("TEACHER_UNAVAILABLE",
-                        teacherName(ctx, lesson.teacherId()) + " 在 " + periodLabel(period) + " 不排课",
-                        lesson.id(), hardResult));
-            }
+        if (include.test(unavailable) && unavailableAt(settings, lesson.teacherId(), period)) {
+            out.add(new ConstraintViolation("TEACHER_UNAVAILABLE",
+                    teacherName(ctx, lesson.teacherId()) + " 在 " + periodLabel(period) + " 不排课",
+                    lesson.id(), hardResult));
         }
 
         ConstraintType meeting = ConstraintType.TEACHER_MEETING_BLOCKED;
@@ -633,6 +626,29 @@ public final class ConstraintChecker {
 
     private static boolean isHard(ConstraintSettings settings, ConstraintType type) {
         return settings.enabled(type) && settings.hard(type);
+    }
+
+    /**
+     * Union of every {@code TEACHER_UNAVAILABLE} entry: the first entry matching
+     * (teacher, weekday, period) blocks the lesson. Entries target one teacher each,
+     * so two teachers never affect each other.
+     */
+    private static boolean unavailableAt(
+            ConstraintSettings settings, Long teacherId, PeriodView period) {
+        if (teacherId == null) {
+            return false;
+        }
+        for (Map<String, Object> entry : settings.entries(ConstraintType.TEACHER_UNAVAILABLE)) {
+            Long configuredTeacher = ConstraintSettings.longValue(entry.get("teacherId"));
+            Integer day = ConstraintSettings.intValue(entry.get("dayOfWeek"));
+            Integer periodNo = ConstraintSettings.intValue(entry.get("periodNo"));
+            if (teacherId.equals(configuredTeacher)
+                    && Objects.equals(day, period.dayOfWeek())
+                    && Objects.equals(periodNo, period.periodNo())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static PeriodView periodOf(ConstraintContext ctx, LessonView lesson) {
