@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -127,6 +128,23 @@ class ConstraintTargetEntriesCheckerTest {
                 withSettings(snapshot, settings).context(), viewsOn(snapshot, 2), null);
 
         assertThat(codes(draft, "TEACHER_DAY_OFF")).hasSize(1);
+    }
+
+    @Test
+    void aLocalMoveOnlyAnswersForTheLessonsItTouched() {
+        ConstraintSettings settings = settings(ConstraintType.TEACHER_DAY_OFF, true, 30,
+                Map.of("teacherId", TEACHER_1, "dayOfWeek", 2));
+        PlanSnapshot snapshot = base()
+                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 2, 1)
+                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_3, ROOM_NORMAL, 2, 2)
+                .build();
+        ConstraintContext context = withSettings(snapshot, settings).context();
+        List<LessonView> views = viewsOn(snapshot, 2);
+
+        // The whole draft still shows teacher 1's day off, but a move of teacher 3's
+        // lesson must not report somebody else's conflict (ticket 13's local promise).
+        assertThat(codes(ConstraintChecker.check(context, views, null), "TEACHER_DAY_OFF")).hasSize(1);
+        assertThat(codes(ConstraintChecker.check(context, views, Set.of(1001L)), "TEACHER_DAY_OFF")).isEmpty();
     }
 
     @Test
