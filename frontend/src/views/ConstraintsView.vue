@@ -30,28 +30,11 @@
     </div>
 
     <div v-if="semesters.length > 0 && canManage && !isJunior" class="sub-toolbar">
-      <div class="template-area">
-        <el-button :disabled="!semesterId" @click="saveAsTemplate"> 存为模板 </el-button>
-        <el-select v-model="selectedTemplate" placeholder="选择模板" clearable style="width: 200px">
-          <el-option v-for="item in templates" :key="item.id" :label="item.name" :value="item.id" />
-        </el-select>
-        <el-button
-          :disabled="!semesterId || !selectedTemplate"
-          :loading="applyingTemplate"
-          @click="applyTemplate"
-        >
-          应用模板
-        </el-button>
-        <el-button
-          type="danger"
-          plain
-          :disabled="!selectedTemplate"
-          :loading="deletingTemplate"
-          @click="deleteTemplate"
-        >
-          删除模板
-        </el-button>
-      </div>
+      <ConstraintTemplateBar
+        :semester-id="semesterId"
+        :classes="classes"
+        :reload="loadConstraints"
+      />
     </div>
 
     <el-card v-if="semesters.length === 0 && !loading" shadow="never">
@@ -151,12 +134,13 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { http } from '@/api/http'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ConstraintSummaryBar from '@/components/constraints/ConstraintSummaryBar.vue'
 import ConstraintTypeNav from '@/components/constraints/ConstraintTypeNav.vue'
 import ConstraintTypePanel from '@/components/constraints/ConstraintTypePanel.vue'
+import ConstraintTemplateBar from '@/components/constraints/ConstraintTemplateBar.vue'
 import { useConstraintDraft } from '@/components/constraints/useConstraintDraft'
 import { useConstraintSave } from '@/components/constraints/useConstraintSave'
 import type {
@@ -172,13 +156,6 @@ interface Semester {
   id: number
   name: string
   current: boolean
-}
-
-interface TemplateItem {
-  id: number
-  name: string
-  createdAt?: string
-  configCount?: number
 }
 
 const auth = useAuthStore()
@@ -210,11 +187,7 @@ const objectNames = computed(
       ...courseNames.value.entries(),
     ]),
 )
-const templates = ref<TemplateItem[]>([])
-const selectedTemplate = ref<number | null>(null)
 const loading = ref(false)
-const applyingTemplate = ref(false)
-const deletingTemplate = ref(false)
 
 // 互斥条件与重复阈值在保存前就暴露出来；输入保持原样，由用户决定改哪条。
 const conflicts = computed(() => draft.conflicts(courseNames.value, objectNames.value))
@@ -360,111 +333,10 @@ async function onSemesterChange() {
   await loadConstraints()
 }
 
-async function loadTemplates() {
-  try {
-    const { data } = await http.get<TemplateItem[]>('/constraint-templates')
-    templates.value = data ?? []
-  } catch (e: any) {
-    ElMessage.error(serverMessage(e, '加载约束模板失败'))
-  }
-}
-
-async function saveAsTemplate() {
-  if (!semesterId.value) {
-    ElMessage.warning('请先选择学期')
-    return
-  }
-  try {
-    const { value } = await ElMessageBox.prompt('请输入模板名称', '存为模板', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      inputPattern: /\S+/,
-      inputErrorMessage: '模板名称不能为空',
-    })
-    if (!value || !value.trim()) return
-    await http.post(
-      '/constraint-templates',
-      { name: value.trim() },
-      { params: { semesterId: semesterId.value } },
-    )
-    ElMessage.success('模板保存成功')
-    await loadTemplates()
-  } catch (e: any) {
-    if (e !== 'cancel') {
-      ElMessage.error(serverMessage(e, '保存模板失败'))
-    }
-  }
-}
-
-async function applyTemplate() {
-  if (!semesterId.value) {
-    ElMessage.warning('请先选择学期')
-    return
-  }
-  if (!selectedTemplate.value) {
-    ElMessage.warning('请选择要应用的模板')
-    return
-  }
-  const tpl = templates.value.find((t) => t.id === selectedTemplate.value)
-  const name = tpl?.name ?? '所选模板'
-  try {
-    await ElMessageBox.confirm(
-      `确定要应用模板「${name}」吗？当前学期的约束配置将被覆盖。`,
-      '应用模板',
-      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' },
-    )
-  } catch {
-    return
-  }
-
-  applyingTemplate.value = true
-  try {
-    await http.post(`/constraint-templates/${selectedTemplate.value}/apply`, null, {
-      params: { semesterId: semesterId.value },
-    })
-    ElMessage.success('模板已应用')
-    await loadConstraints()
-  } catch (e: any) {
-    ElMessage.error(serverMessage(e, '应用模板失败'))
-  } finally {
-    applyingTemplate.value = false
-  }
-}
-
-async function deleteTemplate() {
-  if (!selectedTemplate.value) {
-    ElMessage.warning('请选择要删除的模板')
-    return
-  }
-  const tpl = templates.value.find((t) => t.id === selectedTemplate.value)
-  const name = tpl?.name ?? '所选模板'
-  try {
-    await ElMessageBox.confirm(`确定要删除模板「${name}」吗？此操作不可撤销。`, '删除模板', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-  } catch {
-    return
-  }
-
-  deletingTemplate.value = true
-  try {
-    await http.delete(`/constraint-templates/${selectedTemplate.value}`)
-    ElMessage.success('模板已删除')
-    selectedTemplate.value = null
-    await loadTemplates()
-  } catch (e: any) {
-    ElMessage.error(serverMessage(e, '删除模板失败'))
-  } finally {
-    deletingTemplate.value = false
-  }
-}
-
 onMounted(async () => {
   loading.value = true
   try {
-    await Promise.all([loadSemesters(), loadTeachersAndCourses(), loadTemplates()])
+    await Promise.all([loadSemesters(), loadTeachersAndCourses()])
     if (semesterId.value) {
       await loadConstraints()
     }
@@ -506,19 +378,7 @@ h2 {
 }
 
 .sub-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
   margin-bottom: 12px;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.template-area {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
 }
 
 .error-bar {

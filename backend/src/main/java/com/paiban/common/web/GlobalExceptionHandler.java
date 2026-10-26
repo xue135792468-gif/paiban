@@ -17,7 +17,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<Map<String, Object>> handleApi(ApiException ex) {
-        return body(ex.getStatus(), ex.getMessage());
+        Map<String, Object> payload = errorPayload(ex.getStatus(), ex.getMessage());
+        payload.putAll(ex.getDetails());
+        return ResponseEntity.status(ex.getStatus()).body(payload);
     }
 
     @ExceptionHandler(ImportValidationException.class)

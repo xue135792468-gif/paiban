@@ -176,6 +176,25 @@ class ConstraintEntryMigrationTest {
         }
     }
 
+    @Test
+    void v29WidensTheTemplateTextBeyondTheOldEightThousandCharacters() throws Exception {
+        migrateTo("28");
+        migrateTo(null);
+
+        // A 200-entry template is ~12k characters, so anything past 8000 must round trip.
+        String wide = "x".repeat(60_000);
+        try (Connection connection = DriverManager.getConnection(url, "sa", "");
+                Statement statement = connection.createStatement()) {
+            statement.executeUpdate("insert into constraint_template (name, configs_json, created_at)"
+                    + " values ('宽模板', '" + wide + "', CURRENT_TIMESTAMP)");
+            try (ResultSet row = statement.executeQuery(
+                    "select length(configs_json) from constraint_template where name = '宽模板'")) {
+                assertThat(row.next()).isTrue();
+                assertThat(row.getInt(1)).isEqualTo(60_000);
+            }
+        }
+    }
+
     private List<String> entriesOfType(Statement statement, long semesterId, String type)
             throws Exception {
         List<String> rows = new ArrayList<>();
