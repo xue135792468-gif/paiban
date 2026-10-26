@@ -12,6 +12,10 @@ const TEACHER_PARAMS: ParamDef[] = [
 
 const COURSE_PARAMS: ParamDef[] = [{ name: 'courseId', label: '课程', type: 'ID', required: true }]
 
+const THRESHOLD_PARAMS: ParamDef[] = [
+  { name: 'maxPerDay', label: '每天最多节数', type: 'INT', required: true, min: 1, max: 12 },
+]
+
 function row(overrides: Partial<TypeDraft> & { code: string }): TypeDraft {
   return {
     name: overrides.code,
@@ -39,7 +43,7 @@ function mountPanel(props: Record<string, unknown>, rowValue: TypeDraft) {
         { id: 1, name: '张伟' },
         { id: 2, name: '李娜' },
       ],
-      courses: [],
+      courses: [{ id: 9, name: '数学' }],
       entryErrors: {},
       typeErrors: [],
       ...props,
@@ -101,13 +105,30 @@ describe('ConstraintTypePanel', () => {
     expect(wrapper.emitted('add-entry')).toBeTruthy()
   })
 
-  it('单参数类型沿用旧表单，不出现条目加减', () => {
+  it('其余目标型也是条目列表，不再用单值表单', () => {
     const wrapper = mountPanel(
       {},
-      row({ code: 'COURSE_NOT_IN_EVENING', name: '课程不排晚自习', params: COURSE_PARAMS, values: {} }),
+      row({ code: 'COURSE_NOT_IN_EVENING', name: '课程不排晚自习', params: COURSE_PARAMS }),
     )
-    expect(wrapper.get('[data-testid="constraint-param-form"]').text()).toContain('课程')
+    expect(wrapper.find('[data-testid="constraint-entry-list"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="constraint-param-form"]').exists()).toBe(false)
+  })
+
+  it('阈值仍用单值表单，不出现条目加减', () => {
+    const wrapper = mountPanel(
+      {},
+      row({ code: 'TEACHER_MAX_PER_DAY', name: '教师一天最多 N 节', params: THRESHOLD_PARAMS }),
+    )
+    expect(wrapper.get('[data-testid="constraint-param-form"]').text()).toContain('每天最多节数')
     expect(wrapper.find('[data-testid="constraint-entry-add"]').exists()).toBe(false)
+  })
+
+  it('偏好时段说明同教师多条按「或」聚合', () => {
+    const wrapper = mountPanel(
+      {},
+      row({ code: 'TEACHER_PREFERRED_SLOT', name: '教师偏好时段', params: TEACHER_PARAMS }),
+    )
+    expect(wrapper.get('[data-testid="constraint-slot-note"]').text()).toContain('命中任一时段即满足')
   })
 
   it('开关型说明启用即一条规则，不出现条目区', () => {

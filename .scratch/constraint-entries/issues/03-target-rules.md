@@ -128,3 +128,87 @@
 - 保存仍是整学期替换，条目 `id` 只做稳定回传（与 02 相同）；删除/新增的审计粒度不在本票。
 - `COURSE_NOT_IN_EVENING` 等硬默认类型被设为软规则时，`softPenalty` 仍不计分（既有口径，本票未扩大）。
 - 真实 PostgreSQL 上 V27 尚未实跑（本地 H2 覆盖）；部署时按 runbook 先备份再随 V1..V27 顺序验证。
+
+### 实现说明（前端，2026-10-26）
+
+**形态判定（不硬编码 13 类名单）**
+- `entryModel.typeShape(row)` 只看目录 `params` 形态，把 24 类分成三段：无参数＝`SWITCH`、
+  单个 `INT`＝`THRESHOLD`、其余＝`ENTRY`。与后端 `ConstraintType.ENTRY_BACKED`（13 类）逐一对齐；
+  04 把阈值扩成多条目时，只要目录形态变化，前端自动跟着变。
+- 唯一显式的码表是 `SLOT_SET_TYPES = ['TEACHER_PREFERRED_SLOT']`：它与 `TEACHER_UNAVAILABLE`
+  参数声明完全相同（教师/星期/节次），但语义是「任一时段即满足」而非「这些时段都禁排」，
+  目录表达不了这层差别。`allTargetLabel()` 则从目录标签自带的「（留空表示…）」里读词，不再另写一份。
+
+**组件与纯函数清单（行数）**
+| 文件 | 行 | 职责 |
+|---|---|---|
+| `paramValues.ts` | 115 | 值裁剪（`filledValues`/`hasValue`）、星期/教室类型文案、`fieldTestId`、ID 参数对应哪张目录 |
+| `entryModel.ts` | 219 | 形态判定、`allTargetLabel`/`declaresAllTarget`、`plannedEntries`（卡片 → 请求条目，含位置与 id）、`draftEntryCount` |
+| `entrySummary.ts` | 100 | `formatEntrySummary`/`formatSlot`/`slotCardSummary`：每条一行摘要 |
+| `entryChecks.ts` | 233 | `duplicateMessages`、`missingParamWarnings`、`scalarConflicts`（镜像后端 `SCALAR_SPECS`）、`entryErrorsOf`（服务端位置 → 卡片） |
+| `draftRules.ts` | 128 | `countsOf`（唯一计数口径）、`groupRows`、`buildSavePayload` |
+| `useConstraintDraft.ts` | 327 | hydrate（偏好时段按教师合并成一条卡片）、增删改条目/时段、`conflicts()` |
+| `useConstraintSave.ts` | 72 | 保存前预检（互斥 → 必填）+ 单次 PUT + 错误回填（视图瘦身用） |
+| `ParamField.vue` | 137 | 按目录 `type` 渲染一个参数控件（条目卡片与阈值表单共用） |
+| `ConstraintEntryList.vue` | 100 | 条目列表：空状态、卡片、底部添加 |
+| `ConstraintEntryCard.vue` | 225 | 一条卡片：摘要、删除二次确认、错误/重复提示、「全部」勾选、偏好时段时段区 |
+| `ConstraintSlotRow.vue` | 92 | 偏好时段里的一个（星期, 节次）行 |
+| `ConstraintParamForm.vue` | 70 | 阈值单值表单（改用 ParamField） |
+| `ConstraintTypePanel.vue` | 259 | 类型级控制 + 三种形态分派 + 偏好时段「或」说明 |
+| `ConstraintsView.vue` | 493（≤ 504） | 页面装配；保存逻辑移入 `useConstraintSave` |
+
+**「全部」入口形式：勾选框（不是「全部课程」下拉项）**
+- 可空对象参数上出现 `el-checkbox`「适用于全部课程 / 适用于全部学科 / 适用于体育类」，
+  勾上时对象下拉禁用（不允许同时表达两种目标）；新卡片默认勾上，所以「全部」永远是**显式勾选**，
+  绝不由「留空输入框」表达。
+- 勾选状态由 `EntryDraft.allTarget` 承载（不是「值为空」推导）：取消勾选后下拉可编辑、卡片显示
+  「未选课程」，保存前提示补选；此前「值为空」与「点了全部」在 DTO 里无法区分。
+- 「全部学科」（`TEACHER_MEETING_BLOCKED`）仍要求星期/节次，与后端一致。
+
+**12 类摘要样式**
+`张伟 · 周三 第2节`（教师禁排）、`全部学科 · 周三 第2节`／`数学 · 周三 第2节`（教研禁排）、
+`数学 · 普通教室`（教室类型）、`数学`（不排晚自习）、`全部课程`／`数学`（同课每日一次）、
+`体育类`／`数学`（体育两类）、`数学 · 连排2节`（连排）、`数学 · 上午截止第4节`（主科上午）、
+`张伟 · 周一第1节 或 周三第2节（命中任一即满足）`（偏好时段）、`张伟`（不排第一节）、
+`张伟 · 周三`（无课日）。缺失必填项显示 `未选教师/未选星期/未选节次`，未知 id 显示 `课程#99`，不留空白。
+
+**payload 形状**
+- 13 类条目型：`{type, entries:[{id, params}], weight, hard, enabled}`，**不带 `params`**；
+  `entries` 为空数组＝该类型未配置（清空即清空，不隐式补规则）。
+- 「全部」条目参数为 `{}`（后端存成一条显式空条目）；偏好时段一张卡片展开成**每个时段一条**：
+  `entries: [{id, params:{teacherId, dayOfWeek, periodNo}} × N]`，服务器按教师聚合成「或」。
+- 5 类阈值与 6 个开关仍走兼容路径发 `params`（关闭且从未配置的阈值不发）。
+
+**计数口径（一处定义、两处共用）**
+- `draftRules.entryCountOf(row)`：开关型 0；条目型＝`entryModel.draftEntryCount`（＝将要落库的条目数，
+  偏好时段按时段计）；阈值有值＝1。
+- 顶部「具体条目 M 条」与左侧每类「N 条」都走 `countsOf`（`draftEntryCount` 同一函数），
+  E2E 断言「顶部总数＝各类导航之和」。
+
+**Playwright（`frontend/e2e/constraints-target-entries.spec.ts`，4 用例，串行共用一学期）**
+1. `两门课程各加一条「不排晚自习」，保存后两条都在且重复保存不增删` — 断言卡片摘要、左侧 2 条、接口两条、刷新后仍在、原样再保存仍 2 条。
+2. `同课每日一次加一条显式「全部课程」，刷新后仍显示全部课程` — 勾选框可见且已勾、摘要 `全部课程`、接口 `params:{}`、刷新后不变。
+3. `同一教师偏好时段一条里加两个时段，摘要保持「或」` — 摘要 `张伟 · 周一第1节 或 周三第2节（命中任一即满足）`、接口 2 条同教师、刷新后 1 卡 2 时段。
+4. `同一课程两个教室类型：保存被拒，错误落在对应条目，不产生部分写入` — 保存前预检告警可见、未发请求（接口该类型无条目）、输入保留。
+- 下拉选择按 `aria-controls` 锁定当前 select 的 popper，避免多卡片并存时命中上一张卡片残留的下拉。
+- 第 5 个用例 `十二类目标型逐一打开并截图（人工复核用，不作断言）`：逐类打开并 `capture()` 到
+  `E:/paiban-wt/screenshots/phase11/constraint-entry-<码>.png`（初中模式隐藏的教研禁排跳过），
+  2026-10-26 实跑 11 张，人工看过 `SAME_COURSE_ONCE_PER_DAY`（勾选「适用于全部课程」+ 下拉禁用）与
+  `TEACHER_PREFERRED_SLOT`（一卡两时段、摘要「或」）。
+- 组件单测：`frontend/src/components/constraints/` 共 10 个 spec / 82 用例；全仓 `npm run test:unit` 41 文件 / 323 用例。
+
+**与规格/后端的差异与风险**
+- 目录 `GET /api/constraint-types` 没有 `entryBacked`/`allowsEmptyTarget` 字段，前端只能从 `params`
+  形态推断（单个 `INT` 视为阈值）。若将来出现「单参数条目型」或阈值改为多条目以外的形态，需同步调整
+  `typeShape`；建议后端在目录 DTO 上补 `entryBacked` 一劳永逸。
+- 偏好时段的多时段是**前端聚合**：一条卡片 ↔ N 条后端条目。若后端将来支持一个条目内多时段，
+  这里要改回直传。删除整张卡片＝删除该教师的全部时段条目（与服务器「整学期替换」一致）。
+- 同一目标的互斥条件（教室类型/连排节数/上午截止）前端**只提示不修改**：顶部预检条列出整体结论
+  （`constraint-precheck-error`），同时 `scalarConflictsByCard` 把同一条提示落到涉及的每张卡片
+  （`constraint-entry-conflict`），保存被阻止且不发请求；服务端 400 的「第N条」仍会落回对应卡片
+  （`entryErrorsOf` 按请求位置映射，偏好时段一卡多位置也能定位）。
+- 取消勾选「全部」又没选对象时，`targetUnresolved` 让该卡片既不计数也不落库，并提示「请选择目标，
+  或勾选「全部课程」」，避免被服务端把 `{}` 存成一条「全部」条目。
+- 本轮 `scripts/check-blank-checks.sh` 在**未改动的后端**上失败：`ConstraintService.java` 实际 6 处
+  `isBlank(`，`scripts/blank-check-baseline.txt` 仍记 3（03 后端提交新增 3 处未同步基线）。
+  前端不涉及该文件，未擅自修改后端或抬基线，留给 03 后端作者处理。

@@ -62,16 +62,25 @@
       <div class="switch-fact">{{ row.enabled ? '当前：1 条生效规则' : '当前：0 条生效规则' }}</div>
     </div>
 
-    <ConstraintEntryList
-      v-else-if="isMultiEntryType(row)"
-      :row="row"
-      :editable="canManage"
-      :teachers="teachers"
-      :entry-errors="entryErrors"
-      @add="emit('add-entry')"
-      @remove="(key: string) => emit('remove-entry', key)"
-      @update="(key: string, name: string, value: unknown) => emit('update-entry', key, name, value)"
-    />
+    <template v-else-if="isEntryType(row)">
+      <p v-if="isSlotSetType(row)" class="panel-hint" data-testid="constraint-slot-note">
+        同一教师的多个时段按「或」聚合：命中任一时段即满足，不必为同一教师重复添加条目。
+      </p>
+      <ConstraintEntryList
+        :row="row"
+        :editable="canManage"
+        :teachers="teachers"
+        :courses="courses"
+        :entry-errors="entryErrors"
+        @add="emit('add-entry')"
+        @remove="(key: string) => emit('remove-entry', key)"
+        @update="(key: string, name: string, value: unknown) => emit('update-entry', key, name, value)"
+        @all-target="(key: string, name: string, all: boolean) => emit('set-all-target', key, name, all)"
+        @add-slot="(key: string) => emit('add-slot', key)"
+        @remove-slot="(key: string, slotKey: string) => emit('remove-slot', key, slotKey)"
+        @update-slot="(key: string, slotKey: string, field: string, value: unknown) => emit('update-slot', key, slotKey, field, value)"
+      />
+    </template>
 
     <ConstraintParamForm
       v-else
@@ -90,7 +99,7 @@ import { ElRadioButton, ElRadioGroup, ElSlider, ElSwitch } from 'element-plus'
 import InfoTooltip from '@/components/InfoTooltip.vue'
 import ConstraintEntryList from './ConstraintEntryList.vue'
 import ConstraintParamForm from './ConstraintParamForm.vue'
-import { isMultiEntryType, isSwitchType } from './draftRules'
+import { isEntryType, isSlotSetType, isSwitchType } from './entryModel'
 import type { OptionItem, TypeDraft } from './types'
 
 defineProps<{
@@ -111,6 +120,10 @@ const emit = defineEmits<{
   'update-entry': [key: string, name: string, value: unknown]
   'add-entry': []
   'remove-entry': [key: string]
+  'set-all-target': [key: string, name: string, all: boolean]
+  'add-slot': [key: string]
+  'remove-slot': [key: string, slotKey: string]
+  'update-slot': [key: string, slotKey: string, field: string, value: unknown]
 }>()
 
 function onWeight(value: number | number[]) {

@@ -1,79 +1,28 @@
 <template>
   <div class="entry-list" data-testid="constraint-entry-list">
     <p v-if="row.entries.length === 0" class="entry-empty" data-testid="constraint-entry-empty">
-      空列表＝该类型没有生效条目，不会自动补一条规则。
+      空列表＝该类型未配置（不会自动补一条规则）
     </p>
 
-    <article
+    <ConstraintEntryCard
       v-for="(entry, index) in row.entries"
       :key="entry.key"
-      class="entry-card"
-      data-testid="constraint-entry"
-      :data-index="index"
-    >
-      <header class="entry-card-head">
-        <span class="entry-index">#{{ index + 1 }}</span>
-        <span class="entry-summary" data-testid="constraint-entry-summary">{{ summaryOf(entry) }}</span>
-        <el-button
-          link
-          type="danger"
-          :disabled="!editable"
-          data-testid="constraint-entry-remove"
-          @click="remove(entry)"
-        >
-          删除
-        </el-button>
-      </header>
-
-      <p v-if="entryErrors[index + 1]" class="entry-error" data-testid="constraint-entry-error">
-        {{ entryErrors[index + 1].join('；') }}
-      </p>
-      <p
-        v-else-if="duplicates[index] !== undefined"
-        class="entry-error"
-        data-testid="constraint-entry-duplicate"
-      >
-        与第 {{ duplicates[index] + 1 }} 条完全相同，保存会被拒绝。
-      </p>
-
-      <div class="entry-fields">
-        <el-select
-          :model-value="selectValue(entry.values, 'teacherId')"
-          filterable
-          clearable
-          placeholder="请选择教师"
-          :disabled="!editable"
-          data-testid="constraint-entry-teacher"
-          class="field-teacher"
-          @update:model-value="(value: unknown) => emit('update', entry.key, 'teacherId', value)"
-        >
-          <el-option v-for="teacher in teachers" :key="teacher.id" :label="teacher.name" :value="teacher.id" />
-        </el-select>
-
-        <el-select
-          :model-value="selectValue(entry.values, 'dayOfWeek')"
-          placeholder="选择星期"
-          clearable
-          :disabled="!editable"
-          data-testid="constraint-entry-day"
-          class="field-day"
-          @update:model-value="(value: unknown) => emit('update', entry.key, 'dayOfWeek', value)"
-        >
-          <el-option v-for="day in DAY_OPTIONS" :key="day.value" :label="day.label" :value="day.value" />
-        </el-select>
-
-        <el-input-number
-          :model-value="numberValue(entry.values, 'periodNo')"
-          :min="1"
-          :max="20"
-          controls-position="right"
-          :disabled="!editable"
-          data-testid="constraint-entry-period"
-          class="field-period"
-          @update:model-value="(value: number | null | undefined) => emit('update', entry.key, 'periodNo', value)"
-        />
-      </div>
-    </article>
+      :row="row"
+      :entry="entry"
+      :index="index"
+      :editable="editable"
+      :teachers="teachers"
+      :courses="courses"
+      :server-errors="entryErrorsOf(row, index, entryErrors)"
+      :duplicates="duplicates[index] ?? []"
+      :conflicts="conflicts[index] ?? []"
+      @update="(name: string, value: unknown) => emit('update', entry.key, name, value)"
+      @all-target="(name: string, all: boolean) => emit('all-target', entry.key, name, all)"
+      @remove="emit('remove', entry.key)"
+      @add-slot="emit('add-slot', entry.key)"
+      @remove-slot="(slotKey: string) => emit('remove-slot', entry.key, slotKey)"
+      @update-slot="(slotKey: string, field: string, value: unknown) => emit('update-slot', entry.key, slotKey, field, value)"
+    />
 
     <el-button
       class="add-entry"
@@ -88,20 +37,21 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ElButton, ElInputNumber, ElMessageBox, ElOption, ElSelect } from 'element-plus'
-import {
-  DAY_OPTIONS,
-  duplicateEntryIndexes,
-  entrySummary,
-  numberValue,
-  selectValue,
-} from './draftRules'
-import type { EntryDraft, OptionItem, TypeDraft } from './types'
+import { ElButton } from 'element-plus'
+import ConstraintEntryCard from './ConstraintEntryCard.vue'
+import { duplicateMessages, entryErrorsOf, scalarConflictsByCard } from './entryChecks'
+import type { OptionItem, TypeDraft } from './types'
 
+/**
+ * The entry list of one constraint type: one card per object/condition, an explicit
+ * empty state, and the bottom "add" action. Duplicates and server errors are located
+ * per card here, so the view never has to know how entries map to request positions.
+ */
 const props = defineProps<{
   row: TypeDraft
   editable: boolean
   teachers: OptionItem[]
+  courses: OptionItem[]
   entryErrors: Record<number, string[]>
 }>()
 
@@ -109,28 +59,21 @@ const emit = defineEmits<{
   add: []
   remove: [key: string]
   update: [key: string, name: string, value: unknown]
+  'all-target': [key: string, name: string, all: boolean]
+  'add-slot': [key: string]
+  'remove-slot': [key: string, slotKey: string]
+  'update-slot': [key: string, slotKey: string, field: string, value: unknown]
 }>()
 
-const teacherNames = computed(() => new Map(props.teachers.map((teacher) => [teacher.id, teacher.name])))
+const duplicates = computed(() => duplicateMessages(props.row))
 
-const duplicates = computed(() => duplicateEntryIndexes(props.row.entries, props.row.params))
-
-function summaryOf(entry: EntryDraft): string {
-  return entrySummary(entry.values, teacherNames.value)
-}
-
-async function remove(entry: EntryDraft) {
-  try {
-    await ElMessageBox.confirm('删除后该条不再生效，确定删除？', '删除条目', {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-  } catch {
-    return
-  }
-  emit('remove', entry.key)
-}
+// 互斥条件（同一课程两个教室类型等）也落在卡片上，用户一眼看到该改哪一条。
+const conflicts = computed(() =>
+  scalarConflictsByCard(props.row, {
+    teacherNames: new Map(),
+    courseNames: new Map(props.courses.map((course) => [course.id, course.name])),
+  }),
+)
 </script>
 
 <style scoped>
@@ -149,58 +92,6 @@ async function remove(entry: EntryDraft) {
   border: 1px dashed #dcdfe6;
   font-size: 12px;
   color: var(--paiban-muted);
-}
-
-.entry-card {
-  padding: 12px 14px;
-  border-radius: 8px;
-  background: #fbfcfe;
-  border: 1px solid #eef1f6;
-}
-
-.entry-card-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.entry-index {
-  font-size: 11px;
-  color: #9ca3af;
-  font-variant-numeric: tabular-nums;
-}
-
-.entry-summary {
-  flex: 1;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--paiban-ink);
-}
-
-.entry-error {
-  margin: 0 0 8px;
-  font-size: 12px;
-  color: var(--el-color-danger, #f56c6c);
-}
-
-.entry-fields {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.field-teacher {
-  width: 180px;
-}
-
-.field-day {
-  width: 130px;
-}
-
-.field-period {
-  width: 130px;
 }
 
 .add-entry {

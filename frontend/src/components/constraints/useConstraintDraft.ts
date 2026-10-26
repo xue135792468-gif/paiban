@@ -1,5 +1,8 @@
 import { computed, ref } from 'vue'
-import { buildSavePayload, countsOf, groupRows, isMultiEntryType, missingParamWarnings } from './draftRules'
+import { buildSavePayload, countsOf, groupRows } from './draftRules'
+import { missingParamWarnings, scalarConflicts } from './entryChecks'
+import { isEntryType, isSlotSetType, optionalTargetParam } from './entryModel'
+import { hasValue } from './paramValues'
 import type {
   ConstraintConfigDto,
   ConstraintConfigRequest,
@@ -7,46 +10,78 @@ import type {
   ConstraintTypeDef,
   EntryDraft,
   NavGroup,
+  SlotDraft,
   TypeDraft,
 } from './types'
 
 /** ADR-0018: junior mode hides senior-only constraints from the editor. */
 const HIDDEN_IN_JUNIOR = ['TEACHER_MEETING_BLOCKED']
 
-let entryKeySeed = 0
+let keySeed = 0
 
-function nextEntryKey(): string {
-  entryKeySeed += 1
-  return `entry-${entryKeySeed}`
+function nextKey(prefix: string): string {
+  keySeed += 1
+  return `${prefix}-${keySeed}`
+}
+
+function emptySlot(): SlotDraft {
+  return { key: nextKey('slot'), id: null, dayOfWeek: null, periodNo: null }
 }
 
 function valuesFrom(params: unknown): Record<string, unknown> {
   return params && typeof params === 'object' ? { ...(params as Record<string, unknown>) } : {}
 }
 
+/**
+ * The saved entries of one type as editable cards. Entry-backed types only: an empty
+ * list means "not configured" and is never turned into an implicit rule, so the old
+ * `params` value is deliberately ignored for them (V26/V27 moved it into entries).
+ *
+ * A slot-set card (teacher preference) owns several slots, so the server's one-entry-
+ * per-slot rows are grouped back into one card per teacher: the "or" lives in the card.
+ */
 function entriesOf(type: ConstraintTypeDef, saved: ConstraintConfigDto | undefined): EntryDraft[] {
-  const savedEntries = saved?.entries ?? []
-  if (savedEntries.length > 0) {
-    return savedEntries.map((entry) => ({
-      key: nextEntryKey(),
-      id: entry.id ?? null,
-      values: valuesFrom(entry.params),
-    }))
+  if (!isEntryType(type)) {
+    return []
   }
-  // Legacy single `params` is the first (and only) entry.
-  const legacy = valuesFrom(saved?.params)
-  const filled = type.params.filter((param) => {
-    const value = legacy[param.name]
-    return value !== null && value !== undefined && value !== ''
-  })
-  return filled.length > 0
-    ? [{ key: nextEntryKey(), id: null, values: legacy }]
-    : []
+  const savedEntries = saved?.entries ?? []
+  if (savedEntries.length === 0) {
+    return []
+  }
+  if (isSlotSetType(type)) {
+    const cards = new Map<string, EntryDraft>()
+    savedEntries.forEach((entry) => {
+      const params = valuesFrom(entry.params)
+      const group = hasValue(params.teacherId) ? `teacher-${params.teacherId}` : nextKey('loose')
+      let card = cards.get(group)
+      if (!card) {
+        card = {
+          key: nextKey('entry'),
+          id: null,
+          values: { teacherId: params.teacherId ?? null },
+          slots: [],
+        }
+        cards.set(group, card)
+      }
+      card.slots!.push({
+        key: nextKey('slot'),
+        id: entry.id ?? null,
+        dayOfWeek: (params.dayOfWeek as number | undefined) ?? null,
+        periodNo: (params.periodNo as number | undefined) ?? null,
+      })
+    })
+    return Array.from(cards.values())
+  }
+  return savedEntries.map((entry) => ({
+    key: nextKey('entry'),
+    id: entry.id ?? null,
+    values: valuesFrom(entry.params),
+  }))
 }
 
 function buildRow(type: ConstraintTypeDef, saved: ConstraintConfigDto | undefined): TypeDraft {
   const values: Record<string, unknown> = {}
-  if (!isMultiEntryType(type)) {
+  if (!isEntryType(type)) {
     type.params.forEach((param) => {
       const savedValue = saved?.params?.[param.name]
       values[param.name] = savedValue !== undefined ? savedValue : (param.defaultValue ?? null)
@@ -122,9 +157,9 @@ export function useConstraintDraft() {
 
     const stillVisible = visibleRows.value.some((row) => row.code === selectedCode.value)
     if (!stillVisible) {
-      // Default to the type this ticket expands, so the main view opens on entries.
+      // Default to a type that shows entries, so the main view opens on the lists.
       selectedCode.value =
-        visibleRows.value.find((row) => isMultiEntryType(row))?.code ??
+        visibleRows.value.find((row) => isEntryType(row))?.code ??
         visibleRows.value[0]?.code ??
         null
     }
@@ -170,9 +205,21 @@ export function useConstraintDraft() {
 
   function addEntry(code: string) {
     const row = find(code)
-    if (row) {
-      row.entries.push({ key: nextEntryKey(), id: null, values: {} })
+    if (!row) {
+      return
     }
+    // A preference-slot card starts with one empty slot; without a slot it has
+    // nothing to store. Every other type stores the card itself, and a type whose
+    // object may be blank starts on the explicit "every …" target (visible as a
+    // ticked box, never as an empty dropdown).
+    const target = isSlotSetType(row) ? null : optionalTargetParam(row.params)
+    row.entries.push({
+      key: nextKey('entry'),
+      id: null,
+      values: {},
+      slots: isSlotSetType(row) ? [emptySlot()] : undefined,
+      allTarget: target ? [target.name] : undefined,
+    })
   }
 
   function removeEntry(code: string, key: string) {
@@ -183,15 +230,72 @@ export function useConstraintDraft() {
   }
 
   function updateEntryValue(code: string, key: string, name: string, value: unknown) {
-    const row = find(code)
-    const entry = row?.entries.find((item) => item.key === key)
+    const entry = find(code)?.entries.find((item) => item.key === key)
     if (entry) {
       entry.values[name] = value
+      // Picking an object cancels an earlier "every …" choice for that parameter.
+      if (hasValue(value) && entry.allTarget?.includes(name)) {
+        entry.allTarget = entry.allTarget.filter((item) => item !== name)
+      }
+    }
+  }
+
+  /**
+   * The explicit "every course / every subject / sport class" switch. Ticking it
+   * clears the object value; unticking keeps the card empty so the user has to pick
+   * one — the choice is never inferred from a blank dropdown.
+   */
+  function setAllTarget(code: string, entryKey: string, name: string, all: boolean) {
+    const entry = find(code)?.entries.find((item) => item.key === entryKey)
+    if (!entry) {
+      return
+    }
+    const names = new Set(entry.allTarget ?? [])
+    if (all) {
+      names.add(name)
+      entry.values[name] = null
+    } else {
+      names.delete(name)
+    }
+    entry.allTarget = Array.from(names)
+  }
+
+  function addSlot(code: string, entryKey: string) {
+    const entry = find(code)?.entries.find((item) => item.key === entryKey)
+    if (entry) {
+      entry.slots = [...(entry.slots ?? []), emptySlot()]
+    }
+  }
+
+  function removeSlot(code: string, entryKey: string, slotKey: string) {
+    const entry = find(code)?.entries.find((item) => item.key === entryKey)
+    if (entry) {
+      entry.slots = (entry.slots ?? []).filter((slot) => slot.key !== slotKey)
+    }
+  }
+
+  function updateSlot(
+    code: string,
+    entryKey: string,
+    slotKey: string,
+    field: 'dayOfWeek' | 'periodNo',
+    value: unknown,
+  ) {
+    const slot = find(code)
+      ?.entries.find((item) => item.key === entryKey)
+      ?.slots?.find((item) => item.key === slotKey)
+    if (slot) {
+      slot[field] = value === null || value === undefined ? null : Number(value)
     }
   }
 
   function warnings(): string[] {
     return missingParamWarnings(visibleRows.value)
+  }
+
+  /** Contradictory scalar conditions for one object, checked before the request. */
+  function conflicts(courseNames?: Map<number, string>): string[] {
+    return scalarConflicts(rows.value, { teacherNames: new Map(), courseNames: courseNames ?? new Map() })
   }
 
   return {
@@ -212,7 +316,12 @@ export function useConstraintDraft() {
     addEntry,
     removeEntry,
     updateEntryValue,
+    setAllTarget,
+    addSlot,
+    removeSlot,
+    updateSlot,
     warnings,
+    conflicts,
     payload,
   }
 }

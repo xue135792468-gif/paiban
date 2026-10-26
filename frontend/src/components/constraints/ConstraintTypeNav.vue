@@ -34,7 +34,7 @@
 </template>
 
 <script setup lang="ts">
-import { draftEntryCount, isSwitchType } from './draftRules'
+import { draftEntryCount, isSwitchType } from './entryModel'
 import type { NavGroup, TypeDraft } from './types'
 
 const props = defineProps<{

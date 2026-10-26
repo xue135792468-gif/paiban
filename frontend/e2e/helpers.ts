@@ -77,12 +77,13 @@ export interface SeedResult {
 export interface ConstraintSeed {
   semesterId: number
   teachers: { id: number; name: string }[]
+  courses: { id: number; name: string }[]
 }
 
 /**
- * Semester + timetable + two teachers for the constraint page. The constraint
- * specs assert entry cards by teacher name, so the seeded names are returned
- * (synthetic names only — never a real teacher).
+ * Semester + timetable + two teachers and two courses for the constraint page.
+ * The constraint specs assert entry cards by teacher/course name, so the seeded
+ * names are returned (synthetic names only — never a real person).
  */
 export async function seedConstraintScenario(context: APIRequestContext): Promise<ConstraintSeed> {
   const token = await apiLogin(context)
@@ -109,7 +110,19 @@ export async function seedConstraintScenario(context: APIRequestContext): Promis
     })
     teachers.push({ id: teacher.id, name })
   }
-  return { semesterId: semester.id, teachers }
+
+  // Courses are global assets (not semester-scoped); the target-type specs pick
+  // them by the suffixed name so a previous run's courses cannot be matched.
+  const courses: { id: number; name: string }[] = []
+  for (const base of ['数学', '语文']) {
+    const course = await apiCall(context, token, 'post', '/courses', {
+      name: `${base}${suffix}`,
+      subject: base,
+      allowConsecutive: false,
+    })
+    courses.push({ id: course.id, name: `${base}${suffix}` })
+  }
+  return { semesterId: semester.id, teachers, courses }
 }
 
 /** Seeds a minimal, solvable school through the public API. */
