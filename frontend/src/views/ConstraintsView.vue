@@ -199,7 +199,12 @@ const { saving, saveMessage, saveReport, save, clearErrors } = useConstraintSave
   reload: () => loadConstraints(),
 })
 
-const errorCodes = computed(() => saveReport.value.codes)
+// 红点覆盖两类问题：服务端拒收的类型，以及页面在保存前就发现的重复/互斥输入。
+const errorCodes = computed(() => {
+  const codes = new Set(saveReport.value.codes)
+  draft.conflictCodes(courseNames.value, objectNames.value).forEach((code) => codes.add(code))
+  return Array.from(codes)
+})
 const entryErrors = computed(() => saveReport.value.byEntry[selectedCode.value ?? ''] ?? {})
 const typeErrors = computed(() => saveReport.value.byType[selectedCode.value ?? ''] ?? [])
 
