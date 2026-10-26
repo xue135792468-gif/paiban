@@ -148,7 +148,19 @@ public final class ConstraintChecker {
         // Day-level rules gate themselves on "hard" inside checkOptionalHard, so the
         // draft verdict needs them too: publishing reads this verdict, and a hard rule
         // that only appeared under checkHard could never refuse anything a user creates.
+        int beforeOptional = out.size();
         checkOptionalHard(ctx, lessons, out);
+        if (!whole) {
+            // A local move still only answers for the lessons it touched; day-level rules
+            // are evaluated over the whole draft, so keep just the rows that point at an
+            // affected lesson (aggregated rows carry no lesson id and stay).
+            for (int i = out.size() - 1; i >= beforeOptional; i--) {
+                Long lessonId = out.get(i).lessonId();
+                if (lessonId != null && !affectedLessonIds.contains(lessonId)) {
+                    out.remove(i);
+                }
+            }
+        }
         return out;
     }
 
