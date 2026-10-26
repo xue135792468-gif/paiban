@@ -30,6 +30,7 @@
 - 迁移编号固定；实体列与迁移在 `ddl-auto=validate` 下必须一致。
 - E2E 断言按行或按容器作用域：姓名、状态文案这类会重复出现的文本用 `row.filter()` 或容器 locator，整页 `getByText` 只用于唯一文案。
 - E2E 断言稳定的可观察状态（表格行、URL、课表标记、API 结果）；toast 文案会随产品措辞变化，只作辅助，确需断言时集中一处常量。
+- 用户可见的新交互随票提供 Playwright 用例；组件单测与后端集成测试不能替代。
 
 ## 前端
 
@@ -40,5 +41,5 @@
 
 ## Java 代码风格
 
-- 空白判断统一用 Spring 的 `StringUtils.hasText`，不在模块内重复定义 `isBlank` / `notBlank`。
+- 空白判断：新增代码使用 `StringUtils.hasText`；存量清单在 `scripts/blank-check-baseline.txt`，只允许缩小，由 `scripts/check-blank-checks.sh` 强制。
 

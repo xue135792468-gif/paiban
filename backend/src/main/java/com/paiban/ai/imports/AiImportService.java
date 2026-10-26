@@ -170,7 +170,13 @@ public class AiImportService {
     }
 
     public PreviewDto startText(String text, String username, ImportTarget target) {
-        ImportTarget effective = target == null ? ImportTarget.TEACHER : target;
+        ImportTarget effective = target == null ? ImportTarget.WORKBOOK : target;
+        if (effective == ImportTarget.WORKBOOK) {
+            // Nobody named a shape: a paste is either a teacher list or a timetable, and
+            // the workbook flow that lets the model decide needs a spreadsheet to browse.
+            // Guessing teacher is how timetable text used to end up as teacher master data.
+            throw ApiException.badRequest("请指定导入目标：文本导入需要 target=teacher 或 target=timetable");
+        }
         requireConfigured();
         String source = text == null ? "" : text.trim();
         if (source.isEmpty()) {
@@ -192,8 +198,12 @@ public class AiImportService {
     }
 
     public PreviewDto startImage(MultipartFile file, String username, ImportTarget target) {
-        ImportTarget effective = target == null ? ImportTarget.TEACHER : target;
-        // Image import is out of scope for this phase beyond the teacher list.
+        ImportTarget effective = target == null ? ImportTarget.WORKBOOK : target;
+        // Image import is out of scope for this phase beyond the teacher list, and there is
+        // no workbook flow for images, so an unnamed target is rejected rather than guessed.
+        if (effective == ImportTarget.WORKBOOK) {
+            throw ApiException.badRequest("请指定导入目标：图片导入目前只支持 target=teacher");
+        }
         if (effective != ImportTarget.TEACHER) {
             throw ApiException.badRequest("图片导入暂只支持教师");
         }

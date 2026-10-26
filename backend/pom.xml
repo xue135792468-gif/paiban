@@ -171,6 +171,9 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
+          <!-- Several worktrees run tests at once; without an explicit heap the JVM
+               picks a share of total RAM and Timefold's Chunk::new fails on native memory. -->
+          <argLine>-Xmx2g -XX:MaxMetaspaceSize=512m</argLine>
           <includes>
             <include>**/*Test.java</include>
             <include>**/*Tests.java</include>

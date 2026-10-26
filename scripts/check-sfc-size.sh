@@ -13,6 +13,10 @@ declare -A baseline=()
 
 if [ -f "$BASELINE" ]; then
   while read -r path max; do
+    # A Windows checkout hands this file CRLF endings; a trailing \r would stop
+    # the path from matching and turn the numeric test into a syntax error.
+    path=${path%$'\r'}
+    max=${max%$'\r'}
     [ -z "${path:-}" ] && continue
     case "$path" in \#*) continue ;; esac
     baseline["$path"]=$max
