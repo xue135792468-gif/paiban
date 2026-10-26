@@ -155,3 +155,40 @@ export interface OptionItem {
   id: number
   name: string
 }
+
+/** A saved template as `GET /api/constraint-templates` lists it. */
+export interface TemplateItem {
+  id: number
+  name: string
+  createdAt?: string
+  /** Type rows the template holds. */
+  configCount: number
+  /** Parameter entries it will restore. */
+  entryCount: number
+}
+
+/**
+ * One template reference the target semester cannot take. `classId` rows can be
+ * rebound to a class of the target semester; teachers and courses are global assets,
+ * so a missing one has to be restored before the template can be applied.
+ */
+export interface TemplateReferenceIssue {
+  type: string
+  typeName: string
+  /** 1-based entry inside the type; 0 when the template carries a single params map. */
+  position: number
+  field: string
+  fieldLabel: string
+  objectId: number
+  name: string | null
+  reason: string
+}
+
+/** `POST /api/constraint-templates/{id}/preview` — a dry run, nothing is written. */
+export interface TemplateApplyPreview {
+  configCount: number
+  entryCount: number
+  invalidReferences: TemplateReferenceIssue[]
+  /** Other reasons the apply would be refused (slots outside the timetable, …). */
+  errors: string[]
+}

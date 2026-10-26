@@ -6,6 +6,8 @@ import com.paiban.scheduling.web.ConstraintDtos.ConstraintConfigDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintTypeDto;
 import com.paiban.scheduling.web.ConstraintDtos.SaveConstraintsRequest;
 import com.paiban.scheduling.web.ConstraintDtos.SaveTemplateRequest;
+import com.paiban.scheduling.web.ConstraintDtos.TemplateApplyPreview;
+import com.paiban.scheduling.web.ConstraintDtos.TemplateApplyRequest;
 import com.paiban.scheduling.web.ConstraintDtos.TemplateDto;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -61,11 +63,28 @@ public class ConstraintController {
         return service.saveTemplate(request.name(), semesterId);
     }
 
+    /**
+     * Applies a template to a semester. The optional body names the class ids the
+     * template carries so a class of another semester can be rebound explicitly; without
+     * it an invalid class reference refuses the whole apply (409).
+     */
     @PostMapping("/constraint-templates/{id}/apply")
     @PreAuthorize("hasAuthority('" + Permissions.CONSTRAINT_MANAGE + "')")
     public List<ConstraintConfigDto> apply(
-            @PathVariable Long id, @RequestParam(required = false) Long semesterId) {
-        return service.applyTemplate(id, semesterId);
+            @PathVariable Long id,
+            @RequestParam(required = false) Long semesterId,
+            @RequestBody(required = false) TemplateApplyRequest request) {
+        return service.applyTemplate(id, semesterId, request);
+    }
+
+    /** Dry run for the template panel: nothing is written. */
+    @PostMapping("/constraint-templates/{id}/preview")
+    @PreAuthorize("hasAuthority('" + Permissions.CONSTRAINT_MANAGE + "')")
+    public TemplateApplyPreview preview(
+            @PathVariable Long id,
+            @RequestParam(required = false) Long semesterId,
+            @RequestBody(required = false) TemplateApplyRequest request) {
+        return service.previewTemplate(id, semesterId, request);
     }
 
     @DeleteMapping("/constraint-templates/{id}")
