@@ -145,9 +145,10 @@ public final class ConstraintChecker {
         if (groupRulesConfigured(ctx.settings(), groupInclude)) {
             checkGroups(ctx, lessons, out, whole ? null : affectedLessonIds, groupInclude, hardResult);
         }
-        if (hardResult) {
-            checkOptionalHard(ctx, lessons, out);
-        }
+        // Day-level rules gate themselves on "hard" inside checkOptionalHard, so the
+        // draft verdict needs them too: publishing reads this verdict, and a hard rule
+        // that only appeared under checkHard could never refuse anything a user creates.
+        checkOptionalHard(ctx, lessons, out);
         return out;
     }
 
