@@ -19,12 +19,10 @@ import java.util.Objects;
  * <p>Since ADR-0028 a type may own several parameter entries (teacher A on Monday
  * first period, teacher B on Tuesday third). The type-level {@code enabled},
  * {@code hard} and {@code weight} stay shared; {@link #entries(ConstraintType)}
- * exposes the whole list. The original single-value accessors
- * ({@link #params}, {@link #longParam}, {@link #intParam}, {@link #textParam})
- * keep reading the first entry, which is exactly the old value for a legacy
- * configuration and keeps the still single-valued types behaving as before.
- * {@link #matchesCourse} and the {@code courseScalar}/{@code courseText} helpers
- * read the whole list so multi-entry types combine by union.
+ * exposes the whole list, and every reader goes through it: {@link #matchesCourse}
+ * and the {@code courseScalar}/{@code courseText} helpers combine entries by union,
+ * and {@link #threshold} is the one place that turns the entry list of a threshold
+ * type into "this object's limit" (exception, else global default, else none).
  */
 public final class ConstraintSettings {
 
@@ -65,12 +63,10 @@ public final class ConstraintSettings {
     /**
      * Builds the snapshot from the type-level rows plus their entry rows.
      *
-     * <p>For a type that is <em>not</em> entry-backed yet (the five thresholds, the
-     * six switches) a type with no entry rows falls back to its legacy single
-     * {@code params_json}, so a configuration written before V26 keeps its exact
-     * meaning. For an entry-backed type that fallback is gone on purpose: V26/V27
-     * migrated every old value into an entry row, so "no rows" means "not
-     * configured" and never "every target" (ticket-10 spec, empty-entry rule).
+     * <p>An entry-backed type has no legacy fallback: V26/V27/V28 migrated every old
+     * value into an entry row, so "no rows" means "not configured" and never "every
+     * target" (ticket-10 spec, empty-entry rule). That holds for the five thresholds
+     * too since ticket 10/04 — V28 turned each old single value into one global entry.
      */
     public static ConstraintSettings from(
             List<ConstraintConfig> configs, List<ConstraintEntry> entries, ObjectMapper mapper) {
@@ -160,26 +156,6 @@ public final class ConstraintSettings {
         return rule == null ? List.of() : rule.entries();
     }
 
-    /** The first entry, i.e. the pre-ADR-0028 single value. */
-    public Map<String, Object> params(ConstraintType type) {
-        List<Map<String, Object>> entries = entries(type);
-        return entries.isEmpty() ? Map.of() : entries.get(0);
-    }
-
-    public Long longParam(ConstraintType type, String name) {
-        return longValue(params(type).get(name));
-    }
-
-    public Integer intParam(ConstraintType type, String name) {
-        Long value = longParam(type, name);
-        return value == null ? null : value.intValue();
-    }
-
-    public String textParam(ConstraintType type, String name) {
-        Object value = params(type).get(name);
-        return value == null ? null : value.toString();
-    }
-
     /**
      * True when any entry of the type targets the given course: the union of every
      * {@code courseId} entry, where a missing/blank {@code courseId} means "every
@@ -216,6 +192,58 @@ public final class ConstraintSettings {
             }
         }
         return null;
+    }
+
+    /**
+     * The effective threshold for one object of a scoped threshold type — the single
+     * selection policy every evaluation path uses (draft check, publication readiness,
+     * solver score, substitution planner/verifier, read-only CLI):
+     *
+     * <pre>
+     * the object's own exception, else the global default, else no limit at all
+     * </pre>
+     *
+     * <p>"No limit at all" is a real answer: an exceptions-only configuration never
+     * invents a default for the objects it did not list (ticket-10 spec, threshold
+     * paragraph). A global entry carries no object field; save-time validation allows
+     * at most one per scope, so the last matching entry can never silently win.
+     *
+     * <p>This method and {@link #withinLimit} are the only two ways to ask about a
+     * limit: "no upper bound" is always the missing limit (null), never a sentinel such
+     * as {@code Integer.MAX_VALUE} invented by a caller.
+     *
+     * @return the limit, or null when this object is not limited by this type
+     */
+    public Integer limitOrNull(ConstraintType type, Long objectId) {
+        ConstraintType.ThresholdScope scope = type.thresholdScope();
+        if (scope == null) {
+            return null;
+        }
+        Integer global = null;
+        for (Map<String, Object> entry : entries(type)) {
+            Integer value = intValue(entry.get(scope.valueField()));
+            if (value == null) {
+                continue;
+            }
+            Long target = longValue(entry.get(scope.objectField()));
+            if (target == null) {
+                global = value;
+            } else if (objectId != null && target.equals(objectId)) {
+                return value;
+            }
+        }
+        return global;
+    }
+
+    /**
+     * True when {@code count} still respects this object's limit: an object the
+     * configuration does not limit is always within it. Both evaluation paths compare
+     * through this method (the rule checker reports the excess, the solver filters on
+     * it), so "unlimited" cannot mean different things in different places.
+     */
+    public boolean withinLimit(ConstraintType type, Long objectId, int count) {
+        Integer limit = limitOrNull(type, objectId);
+        return limit == null || count <= limit;
     }
 
     /** Reads an entry's numeric field, tolerating both numbers and numeric text. */

@@ -31,7 +31,10 @@ const CONSECUTIVE_PARAMS: ParamDef[] = [
   { name: 'minConsecutive', label: '连排节数', type: 'INT', required: true, min: 2, max: 4 },
 ]
 
+// Since ticket 10/04 a threshold declares its scope object first, and the catalogue
+// also says which of the two fields is the object and which is the number.
 const THRESHOLD_PARAMS: ParamDef[] = [
+  { name: 'teacherId', label: '教师（留空表示全局默认）', type: 'ID', required: false },
   { name: 'maxPerDay', label: '每天最多节数', type: 'INT', required: true, min: 1, max: 12 },
 ]
 
@@ -56,28 +59,37 @@ function row(overrides: Partial<TypeDraft> & { code: string }): TypeDraft {
     category: 'PEDAGOGY',
     categoryLabel: '教学规律',
     params: [],
-    values: {},
     entries: [],
     enabled: true,
     hard: true,
     weight: 100,
-    touched: false,
     ...overrides,
   }
 }
 
+const THRESHOLD_ROW = {
+  code: 'TEACHER_MAX_PER_DAY',
+  params: THRESHOLD_PARAMS,
+  thresholdObjectField: 'teacherId',
+  thresholdValueField: 'maxPerDay',
+}
+
 describe('类型形态由目录参数推断', () => {
-  it('无参数＝开关型，单个整数＝阈值，其余＝条目型', () => {
+  it('无参数＝开关型，声明了阈值作用域＝阈值，其余＝条目型', () => {
     expect(typeShape(row({ code: 'TEACHER_CONFLICT' }))).toBe('SWITCH')
-    expect(typeShape(row({ code: 'TEACHER_MAX_PER_DAY', params: THRESHOLD_PARAMS }))).toBe('THRESHOLD')
+    expect(typeShape(row(THRESHOLD_ROW))).toBe('THRESHOLD')
     expect(typeShape(row({ code: 'COURSE_NOT_IN_EVENING', params: SAME_COURSE_PARAMS }))).toBe('ENTRY')
     expect(typeShape(row({ code: 'TEACHER_UNAVAILABLE', params: SLOT_PARAMS }))).toBe('ENTRY')
     expect(typeShape(row({ code: 'CONSECUTIVE_LESSONS', params: CONSECUTIVE_PARAMS }))).toBe('ENTRY')
 
     expect(isSwitchType(row({ code: 'TEACHER_CONFLICT' }))).toBe(true)
-    expect(isThresholdType(row({ code: 'TEACHER_MAX_PER_DAY', params: THRESHOLD_PARAMS }))).toBe(true)
+    expect(isThresholdType(row(THRESHOLD_ROW))).toBe(true)
     expect(isEntryType(row({ code: 'CONSECUTIVE_LESSONS', params: CONSECUTIVE_PARAMS }))).toBe(true)
-    expect(isEntryType(row({ code: 'TEACHER_MAX_PER_DAY', params: THRESHOLD_PARAMS }))).toBe(false)
+    expect(isEntryType(row(THRESHOLD_ROW))).toBe(false)
+  })
+
+  it('没有作用域声明的两参数类型仍是条目型：形态只认目录，不猜参数个数', () => {
+    expect(typeShape(row({ code: 'X', params: THRESHOLD_PARAMS }))).toBe('ENTRY')
   })
 
   it('十二条目标型全部按条目型渲染，阈值与开关不在此列', () => {
@@ -102,7 +114,7 @@ describe('类型形态由目录参数推断', () => {
         : CONSECUTIVE_PARAMS
       expect(isEntryType(row({ code, params }))).toBe(true)
     })
-    expect(isEntryType(row({ code: 'EVENING_MAX', params: THRESHOLD_PARAMS }))).toBe(false)
+    expect(isEntryType(row({ ...THRESHOLD_ROW, code: 'EVENING_MAX' }))).toBe(false)
     expect(isEntryType(row({ code: 'ROOM_CONFLICT' }))).toBe(false)
   })
 

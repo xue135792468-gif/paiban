@@ -157,10 +157,12 @@ class ConstraintTargetEntriesIntegrationTest extends ApiIntegrationTest {
         assertThat(constraintService.settings(semesterId)
                 .entries(ConstraintType.TEACHER_NO_FIRST_PERIOD)).isEmpty();
 
-        // Threshold types still read their legacy single value (ticket 04 moves them).
+        // Threshold types joined the same registry in ticket 10/04: their legacy single
+        // value is what V28 migrated into one global entry, so an unmigrated row is
+        // equally "not configured".
         seedLegacyRow(semesterId, "TEACHER_MAX_PER_DAY", "{\"maxPerDay\":3}");
         assertThat(constraintService.settings(semesterId)
-                .entries(ConstraintType.TEACHER_MAX_PER_DAY)).hasSize(1);
+                .entries(ConstraintType.TEACHER_MAX_PER_DAY)).isEmpty();
     }
 
     @Test

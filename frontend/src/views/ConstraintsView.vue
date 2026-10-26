@@ -30,28 +30,11 @@
     </div>
 
     <div v-if="semesters.length > 0 && canManage && !isJunior" class="sub-toolbar">
-      <div class="template-area">
-        <el-button :disabled="!semesterId" @click="saveAsTemplate"> 存为模板 </el-button>
-        <el-select v-model="selectedTemplate" placeholder="选择模板" clearable style="width: 200px">
-          <el-option v-for="item in templates" :key="item.id" :label="item.name" :value="item.id" />
-        </el-select>
-        <el-button
-          :disabled="!semesterId || !selectedTemplate"
-          :loading="applyingTemplate"
-          @click="applyTemplate"
-        >
-          应用模板
-        </el-button>
-        <el-button
-          type="danger"
-          plain
-          :disabled="!selectedTemplate"
-          :loading="deletingTemplate"
-          @click="deleteTemplate"
-        >
-          删除模板
-        </el-button>
-      </div>
+      <ConstraintTemplateBar
+        :semester-id="semesterId"
+        :classes="classes"
+        :reload="loadConstraints"
+      />
     </div>
 
     <el-card v-if="semesters.length === 0 && !loading" shadow="never">
@@ -123,12 +106,12 @@
             :is-junior="isJunior"
             :teachers="teachers"
             :courses="courses"
+            :object-options="objectOptions"
             :entry-errors="entryErrors"
             :type-errors="typeErrors"
             @toggle-enabled="onToggleEnabled"
             @set-hard="onSetHard"
             @set-weight="onSetWeight"
-            @update-value="onUpdateValue"
             @update-entry="onUpdateEntry"
             @add-entry="onAddEntry"
             @remove-entry="onRemoveEntry"
@@ -136,6 +119,12 @@
             @add-slot="onAddSlot"
             @remove-slot="onRemoveSlot"
             @update-slot="onUpdateSlot"
+            @set-threshold-global="onSetThresholdGlobal"
+            @add-threshold-global="onAddThresholdGlobal"
+            @add-threshold-exception="onAddThresholdException"
+            @remove-threshold-exception="onRemoveThresholdException"
+            @set-threshold-object="onSetThresholdObject"
+            @set-threshold-value="onSetThresholdValue"
           />
         </div>
       </el-card>
@@ -145,17 +134,20 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { http } from '@/api/http'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ConstraintSummaryBar from '@/components/constraints/ConstraintSummaryBar.vue'
 import ConstraintTypeNav from '@/components/constraints/ConstraintTypeNav.vue'
 import ConstraintTypePanel from '@/components/constraints/ConstraintTypePanel.vue'
+import ConstraintTemplateBar from '@/components/constraints/ConstraintTemplateBar.vue'
 import { useConstraintDraft } from '@/components/constraints/useConstraintDraft'
 import { useConstraintSave } from '@/components/constraints/useConstraintSave'
 import type {
   ConstraintConfigDto,
   ConstraintTypeDef,
+  ObjectNames,
+  ObjectOptions,
   OptionItem,
 } from '@/components/constraints/types'
 import { useAuthStore } from '@/stores/auth'
@@ -166,13 +158,6 @@ interface Semester {
   id: number
   name: string
   current: boolean
-}
-
-interface TemplateItem {
-  id: number
-  name: string
-  createdAt?: string
-  configCount?: number
 }
 
 const auth = useAuthStore()
@@ -187,15 +172,33 @@ const semesters = ref<Semester[]>([])
 const semesterId = ref<number | null>(null)
 const teachers = ref<OptionItem[]>([])
 const courses = ref<OptionItem[]>([])
-const courseNames = computed(() => new Map(courses.value.map((course) => [course.id, course.name])))
-const templates = ref<TemplateItem[]>([])
-const selectedTemplate = ref<number | null>(null)
+const classes = ref<OptionItem[]>([])
 const loading = ref(false)
-const applyingTemplate = ref(false)
-const deletingTemplate = ref(false)
 
-// 互斥条件在保存前就暴露出来（同一课程两个教室类型等）；输入保持原样，由用户决定改哪条。
-const conflicts = computed(() => draft.conflicts(courseNames.value))
+function nameMapOf(options: OptionItem[]): Map<number, string> {
+  return new Map(options.map((item) => [item.id, item.name]))
+}
+
+/**
+ * The option lists and their name lookups, one entry per object field. Teachers,
+ * administrative classes and courses are three separate id spaces, so nothing is merged:
+ * a threshold row is always labelled from the list its own field names, and two objects
+ * that happen to share an id can never be mistaken for each other.
+ */
+const objectOptions = computed<ObjectOptions>(() => ({
+  teacherId: teachers.value,
+  classId: classes.value,
+  courseId: courses.value,
+}))
+const objectNames = computed<ObjectNames>(() => ({
+  teacherId: nameMapOf(teachers.value),
+  classId: nameMapOf(classes.value),
+  courseId: nameMapOf(courses.value),
+}))
+
+// 互斥条件与重复阈值在保存前就暴露出来；输入保持原样，由用户决定改哪条。
+const conflictReport = computed(() => draft.conflictsOf(objectNames.value))
+const conflicts = computed(() => conflictReport.value.messages)
 
 const { saving, saveMessage, saveReport, save, clearErrors } = useConstraintSave({
   draft,
@@ -204,7 +207,13 @@ const { saving, saveMessage, saveReport, save, clearErrors } = useConstraintSave
   reload: () => loadConstraints(),
 })
 
-const errorCodes = computed(() => saveReport.value.codes)
+// 红点覆盖两类问题：服务端拒收的类型，以及页面在保存前就发现的重复/互斥输入。
+// 后者与上面的预检条读的是同一份 conflictReport，不再各跑一遍校验。
+const errorCodes = computed(() => {
+  const codes = new Set(saveReport.value.codes)
+  conflictReport.value.codes.forEach((code) => codes.add(code))
+  return Array.from(codes)
+})
 const entryErrors = computed(() => saveReport.value.byEntry[selectedCode.value ?? ''] ?? {})
 const typeErrors = computed(() => saveReport.value.byType[selectedCode.value ?? ''] ?? [])
 
@@ -220,8 +229,6 @@ function withSelected(action: (code: string) => void) {
 const onToggleEnabled = (value: boolean) => withSelected((code) => draft.setEnabled(code, value))
 const onSetHard = (value: boolean) => withSelected((code) => draft.setHard(code, value))
 const onSetWeight = (value: number) => withSelected((code) => draft.setWeight(code, value))
-const onUpdateValue = (name: string, value: unknown) =>
-  withSelected((code) => draft.updateValue(code, name, value))
 const onUpdateEntry = (key: string, name: string, value: unknown) =>
   withSelected((code) => draft.updateEntryValue(code, key, name, value))
 const onAddEntry = () => withSelected((code) => draft.addEntry(code))
@@ -237,6 +244,24 @@ const onUpdateSlot = (key: string, slotKey: string, field: string, value: unknow
       draft.updateSlot(code, key, slotKey, field, value)
     }
   })
+
+const onSetThresholdGlobal = (value: number | null) =>
+  withSelected((code) => draft.setThresholdGlobal(code, value))
+const onAddThresholdGlobal = () =>
+  withSelected((code) => {
+    // The catalogue default is the number the type means when someone switches it on.
+    const value = selected.value?.params.find(
+      (param) => param.name === selected.value?.thresholdValueField,
+    )?.defaultValue
+    draft.setThresholdGlobal(code, typeof value === 'number' ? value : 1)
+  })
+const onAddThresholdException = () => withSelected((code) => draft.addThresholdException(code))
+const onRemoveThresholdException = (key: string) =>
+  withSelected((code) => draft.removeThresholdException(code, key))
+const onSetThresholdObject = (key: string, value: unknown) =>
+  withSelected((code) => draft.setThresholdExceptionObject(code, key, value))
+const onSetThresholdValue = (key: string, value: unknown) =>
+  withSelected((code) => draft.setThresholdExceptionValue(code, key, value))
 
 async function loadSemesters() {
   try {
@@ -276,6 +301,25 @@ async function loadTeachersAndCourses() {
   }
 }
 
+/**
+ * The administrative classes of the selected semester: the only objects the class and
+ * evening limits may name. A class belongs to one semester, so this reloads with it.
+ */
+async function loadClasses() {
+  if (!semesterId.value) {
+    classes.value = []
+    return
+  }
+  try {
+    const { data } = await http.get<OptionItem[]>('/classes', {
+      params: { semesterId: semesterId.value },
+    })
+    classes.value = (data ?? []).map((item) => ({ id: item.id, name: item.name }))
+  } catch (e: any) {
+    ElMessage.error(serverMessage(e, '加载班级数据失败'))
+  }
+}
+
 async function loadConstraints() {
   if (!semesterId.value) {
     draft.hydrate([], [], { isJunior: isJunior.value })
@@ -288,6 +332,7 @@ async function loadConstraints() {
       http.get<ConstraintConfigDto[]>('/constraints', {
         params: { semesterId: semesterId.value },
       }),
+      loadClasses(),
     ])
     draft.hydrate(typeRes.data ?? [], configRes.data ?? [], { isJunior: isJunior.value })
     clearErrors()
@@ -302,111 +347,10 @@ async function onSemesterChange() {
   await loadConstraints()
 }
 
-async function loadTemplates() {
-  try {
-    const { data } = await http.get<TemplateItem[]>('/constraint-templates')
-    templates.value = data ?? []
-  } catch (e: any) {
-    ElMessage.error(serverMessage(e, '加载约束模板失败'))
-  }
-}
-
-async function saveAsTemplate() {
-  if (!semesterId.value) {
-    ElMessage.warning('请先选择学期')
-    return
-  }
-  try {
-    const { value } = await ElMessageBox.prompt('请输入模板名称', '存为模板', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      inputPattern: /\S+/,
-      inputErrorMessage: '模板名称不能为空',
-    })
-    if (!value || !value.trim()) return
-    await http.post(
-      '/constraint-templates',
-      { name: value.trim() },
-      { params: { semesterId: semesterId.value } },
-    )
-    ElMessage.success('模板保存成功')
-    await loadTemplates()
-  } catch (e: any) {
-    if (e !== 'cancel') {
-      ElMessage.error(serverMessage(e, '保存模板失败'))
-    }
-  }
-}
-
-async function applyTemplate() {
-  if (!semesterId.value) {
-    ElMessage.warning('请先选择学期')
-    return
-  }
-  if (!selectedTemplate.value) {
-    ElMessage.warning('请选择要应用的模板')
-    return
-  }
-  const tpl = templates.value.find((t) => t.id === selectedTemplate.value)
-  const name = tpl?.name ?? '所选模板'
-  try {
-    await ElMessageBox.confirm(
-      `确定要应用模板「${name}」吗？当前学期的约束配置将被覆盖。`,
-      '应用模板',
-      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' },
-    )
-  } catch {
-    return
-  }
-
-  applyingTemplate.value = true
-  try {
-    await http.post(`/constraint-templates/${selectedTemplate.value}/apply`, null, {
-      params: { semesterId: semesterId.value },
-    })
-    ElMessage.success('模板已应用')
-    await loadConstraints()
-  } catch (e: any) {
-    ElMessage.error(serverMessage(e, '应用模板失败'))
-  } finally {
-    applyingTemplate.value = false
-  }
-}
-
-async function deleteTemplate() {
-  if (!selectedTemplate.value) {
-    ElMessage.warning('请选择要删除的模板')
-    return
-  }
-  const tpl = templates.value.find((t) => t.id === selectedTemplate.value)
-  const name = tpl?.name ?? '所选模板'
-  try {
-    await ElMessageBox.confirm(`确定要删除模板「${name}」吗？此操作不可撤销。`, '删除模板', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-  } catch {
-    return
-  }
-
-  deletingTemplate.value = true
-  try {
-    await http.delete(`/constraint-templates/${selectedTemplate.value}`)
-    ElMessage.success('模板已删除')
-    selectedTemplate.value = null
-    await loadTemplates()
-  } catch (e: any) {
-    ElMessage.error(serverMessage(e, '删除模板失败'))
-  } finally {
-    deletingTemplate.value = false
-  }
-}
-
 onMounted(async () => {
   loading.value = true
   try {
-    await Promise.all([loadSemesters(), loadTeachersAndCourses(), loadTemplates()])
+    await Promise.all([loadSemesters(), loadTeachersAndCourses()])
     if (semesterId.value) {
       await loadConstraints()
     }
@@ -448,19 +392,7 @@ h2 {
 }
 
 .sub-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
   margin-bottom: 12px;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.template-area {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
 }
 
 .error-bar {

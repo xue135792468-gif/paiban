@@ -522,6 +522,52 @@ class EngineConstraintTest {
         assertThat(solution.getScore().softScore()).isEqualTo(40);
     }
 
+    /**
+     * The engine resolves the limit per object, like every other evaluation path: the
+     * global default covers the teachers it lists no exception for, and one teacher's
+     * exception replaces it for that teacher only. Teacher 10 has an exception of 1 and
+     * two Monday lessons (one violation), teacher 11 keeps the global 4 and is fine.
+     */
+    @Test
+    void thresholdExceptionAppliesPerObjectInTheEngine() {
+        ConstraintSettingsHolder.set(ConstraintSettings.from(
+                List.of(config(ConstraintType.TEACHER_MAX_PER_DAY, false, 60, Map.of())),
+                List.of(entry(ConstraintType.TEACHER_MAX_PER_DAY, Map.of("maxPerDay", 4)),
+                        entry(ConstraintType.TEACHER_MAX_PER_DAY,
+                                Map.of("teacherId", 10, "maxPerDay", 1))),
+                new com.fasterxml.jackson.databind.ObjectMapper()));
+        Lesson first = lesson(1, 10, 100, 1000, MON1, ROOM);
+        Lesson second = lesson(2, 10, 200, 1001, MON2, ROOM_B);
+        Lesson third = lesson(3, 11, 300, 1002, MON1, ROOM);
+        Lesson fourth = lesson(4, 11, 400, 1003, MON2, ROOM_B);
+        TimetableSolution solution = new TimetableSolution(
+                List.of(first, second, third, fourth), List.of(MON1, MON2, MON5),
+                List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().softScore()).isEqualTo(-60);
+    }
+
+    /** An object nobody configured an exception for and no global default exists for is unlimited. */
+    @Test
+    void thresholdWithoutGlobalOrExceptionDoesNotLimitTheEngine() {
+        ConstraintSettingsHolder.set(ConstraintSettings.from(
+                List.of(config(ConstraintType.TEACHER_MAX_PER_DAY, false, 60, Map.of())),
+                List.of(entry(ConstraintType.TEACHER_MAX_PER_DAY,
+                        Map.of("teacherId", 99, "maxPerDay", 1))),
+                new com.fasterxml.jackson.databind.ObjectMapper()));
+        Lesson first = lesson(1, 10, 100, 1000, MON1, ROOM);
+        Lesson second = lesson(2, 10, 200, 1001, MON2, ROOM_B);
+        TimetableSolution solution = new TimetableSolution(
+                List.of(first, second), List.of(MON1, MON2, MON5), List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().softScore()).isZero();
+    }
+
     @Test
     void customConstraintPluginsAreDiscovered() {
         assertThat(com.paiban.scheduling.solver.plugin.PluginConstraintLoader.load())

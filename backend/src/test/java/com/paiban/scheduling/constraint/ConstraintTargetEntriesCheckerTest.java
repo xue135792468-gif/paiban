@@ -38,12 +38,12 @@ class ConstraintTargetEntriesCheckerTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Test
-    void registryMarksExactlyTheThirteenTargetTypes() {
+    void registryMarksTheEighteenEntryBackedTypes() {
         List<ConstraintType> entryBacked = java.util.Arrays.stream(ConstraintType.values())
                 .filter(ConstraintType::isEntryBacked)
                 .toList();
 
-        assertThat(entryBacked).hasSize(13).contains(
+        assertThat(entryBacked).hasSize(18).contains(
                 ConstraintType.TEACHER_UNAVAILABLE,
                 ConstraintType.TEACHER_MEETING_BLOCKED,
                 ConstraintType.COURSE_REQUIRED_ROOM_TYPE,
@@ -56,14 +56,15 @@ class ConstraintTargetEntriesCheckerTest {
                 ConstraintType.TEACHER_PREFERRED_SLOT,
                 ConstraintType.TEACHER_NO_FIRST_PERIOD,
                 ConstraintType.TEACHER_DAY_OFF,
-                ConstraintType.PE_LAST_PERIOD_AVOID);
-        assertThat(entryBacked).doesNotContain(
+                ConstraintType.PE_LAST_PERIOD_AVOID,
                 ConstraintType.TEACHER_MAX_PER_DAY,
                 ConstraintType.CLASS_MAX_PER_DAY,
                 ConstraintType.COURSE_MAX_PER_DAY,
                 ConstraintType.EVENING_MAX,
-                ConstraintType.TEACHER_MAX_CONSECUTIVE,
+                ConstraintType.TEACHER_MAX_CONSECUTIVE);
+        assertThat(entryBacked).doesNotContain(
                 ConstraintType.TEACHER_CONFLICT,
+                ConstraintType.CLASS_GAP_MINIMIZED,
                 ConstraintType.HEAD_TEACHER_FIRST_PERIOD);
     }
 
@@ -339,8 +340,8 @@ class ConstraintTargetEntriesCheckerTest {
 
         assertThat(violations(legacyParamsOnly, snapshot, 1)).isEmpty();
 
-        // The threshold types still fall back to their legacy params (ticket 04 will
-        // move them into the registry).
+        // The threshold types joined the registry in ticket 10/04, so their legacy
+        // params are equally inert — V28 turns each old value into one global entry.
         ConstraintSettings threshold = ConstraintSettings.from(
                 List.of(config(ConstraintType.TEACHER_MAX_PER_DAY, true, 60,
                         Map.of("maxPerDay", 1))), MAPPER);
@@ -348,7 +349,7 @@ class ConstraintTargetEntriesCheckerTest {
                 .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 1, 1)
                 .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 1, 2)
                 .build();
-        assertThat(codes(violations(threshold, twoLessons, 1), "TEACHER_MAX_PER_DAY")).hasSize(1);
+        assertThat(codes(violations(threshold, twoLessons, 1), "TEACHER_MAX_PER_DAY")).isEmpty();
     }
 
     // ------------------------------------------------------------------ helpers

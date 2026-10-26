@@ -335,61 +335,74 @@ public final class ConstraintChecker {
 
         ConstraintType teacherMax = ConstraintType.TEACHER_MAX_PER_DAY;
         if (include.test(teacherMax)) {
-            int max = settings.intParam(teacherMax, "maxPerDay") == null
-                    ? 4 : settings.intParam(teacherMax, "maxPerDay");
             for (Map.Entry<String, Integer> entry : teacherPerDay.entrySet()) {
-                if (entry.getValue() > max && (!filter || relevantKeys.contains(entry.getKey()))) {
-                    Long teacherId = Long.parseLong(cutSuffix(entry.getKey()));
-                    out.add(new ConstraintViolation("TEACHER_MAX_PER_DAY",
-                            teacherName(ctx, teacherId) + " 单日排了 " + entry.getValue()
-                                    + " 节，超过上限 " + max,
-                            null, hardResult));
+                if (filter && !relevantKeys.contains(entry.getKey())) {
+                    continue;
                 }
+                Long teacherId = objectIdOf(entry.getKey());
+                Integer max = settings.limitOrNull(teacherMax, teacherId);
+                if (max == null || entry.getValue() <= max) {
+                    continue;
+                }
+                out.add(new ConstraintViolation("TEACHER_MAX_PER_DAY",
+                        teacherName(ctx, teacherId) + " 单日排了 " + entry.getValue()
+                                + " 节，超过上限 " + max,
+                        null, hardResult));
             }
         }
         ConstraintType classMax = ConstraintType.CLASS_MAX_PER_DAY;
         if (include.test(classMax)) {
-            int max = settings.intParam(classMax, "maxPerDay") == null
-                    ? 8 : settings.intParam(classMax, "maxPerDay");
             for (Map.Entry<String, Integer> entry : classPerDay.entrySet()) {
-                if (entry.getValue() > max && (!filter || relevantKeys.contains(entry.getKey()))) {
-                    Long classId = Long.parseLong(cutSuffix(entry.getKey()));
-                    out.add(new ConstraintViolation("CLASS_MAX_PER_DAY",
-                            className(ctx, classId) + " 单日排了 " + entry.getValue()
-                                    + " 节，超过上限 " + max,
-                            null, hardResult));
+                if (filter && !relevantKeys.contains(entry.getKey())) {
+                    continue;
                 }
+                Long classId = objectIdOf(entry.getKey());
+                Integer max = settings.limitOrNull(classMax, classId);
+                if (max == null || entry.getValue() <= max) {
+                    continue;
+                }
+                out.add(new ConstraintViolation("CLASS_MAX_PER_DAY",
+                        className(ctx, classId) + " 单日排了 " + entry.getValue()
+                                + " 节，超过上限 " + max,
+                        null, hardResult));
             }
         }
         ConstraintType courseMax = ConstraintType.COURSE_MAX_PER_DAY;
         if (include.test(courseMax)) {
-            int max = settings.intParam(courseMax, "maxPerDay") == null
-                    ? 2 : settings.intParam(courseMax, "maxPerDay");
+            // The bucket stays "class + course + day"; the entry that decides the limit
+            // names the course only.
             for (Map.Entry<String, Integer> entry : coursePerDay.entrySet()) {
-                if (entry.getValue() > max && (!filter || relevantKeys.contains(entry.getKey()))) {
-                    String key = entry.getKey();
-                    int second = key.indexOf('-', key.indexOf('-') + 1);
-                    Long classId = Long.parseLong(key.substring(0, key.indexOf('-')));
-                    Long courseId = Long.parseLong(key.substring(key.indexOf('-') + 1, second));
-                    out.add(new ConstraintViolation("COURSE_MAX_PER_DAY",
-                            className(ctx, classId) + " 的 " + courseName(ctx, courseId)
-                                    + " 单日排了 " + entry.getValue() + " 节，超过上限 " + max,
-                            null, hardResult));
+                if (filter && !relevantKeys.contains(entry.getKey())) {
+                    continue;
                 }
+                String key = entry.getKey();
+                Long classId = objectIdOf(key);
+                Long courseId = courseIdOf(key);
+                Integer max = settings.limitOrNull(courseMax, courseId);
+                if (max == null || entry.getValue() <= max) {
+                    continue;
+                }
+                out.add(new ConstraintViolation("COURSE_MAX_PER_DAY",
+                        className(ctx, classId) + " 的 " + courseName(ctx, courseId)
+                                + " 单日排了 " + entry.getValue() + " 节，超过上限 " + max,
+                        null, hardResult));
             }
         }
         ConstraintType eveningMax = ConstraintType.EVENING_MAX;
         if (include.test(eveningMax)) {
-            int max = settings.intParam(eveningMax, "maxPerDay") == null
-                    ? 2 : settings.intParam(eveningMax, "maxPerDay");
             for (Map.Entry<String, Integer> entry : eveningPerClass.entrySet()) {
-                if (entry.getValue() > max && (!filter || relevantKeys.contains(entry.getKey()))) {
-                    Long classId = Long.parseLong(cutSuffix(entry.getKey()));
-                    out.add(new ConstraintViolation("EVENING_MAX",
-                            className(ctx, classId) + " 晚自习排了 " + entry.getValue()
-                                    + " 节，超过上限 " + max,
-                            null, hardResult));
+                if (filter && !relevantKeys.contains(entry.getKey())) {
+                    continue;
                 }
+                Long classId = objectIdOf(entry.getKey());
+                Integer max = settings.limitOrNull(eveningMax, classId);
+                if (max == null || entry.getValue() <= max) {
+                    continue;
+                }
+                out.add(new ConstraintViolation("EVENING_MAX",
+                        className(ctx, classId) + " 晚自习排了 " + entry.getValue()
+                                + " 节，超过上限 " + max,
+                        null, hardResult));
             }
         }
         ConstraintType sport = ConstraintType.SPORT_NOT_FIRST_AFTERNOON;
@@ -414,9 +427,21 @@ public final class ConstraintChecker {
         }
     }
 
-    /** Key format "{id}-{suffix}"; the id is everything before the first dash. */
-    private static String cutSuffix(String key) {
-        return key.substring(0, key.indexOf('-'));
+    /**
+     * The object id a counting key starts with ({@code "{id}-{suffix}"}), or null when
+     * the key has no numeric head — an unassigned lesson is simply not judged by a
+     * per-object rule instead of failing the whole check.
+     */
+    private static Long objectIdOf(String key) {
+        int dash = key.indexOf('-');
+        if (dash < 0) {
+            return null;
+        }
+        try {
+            return Long.parseLong(key.substring(0, dash));
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     private static boolean isFirstAfternoon(PeriodView period, ConstraintContext ctx) {
@@ -518,8 +543,6 @@ public final class ConstraintChecker {
 
         ConstraintType maxConsecutive = ConstraintType.TEACHER_MAX_CONSECUTIVE;
         if (isHard(s, maxConsecutive)) {
-            int max = s.intParam(maxConsecutive, "maxConsecutive") == null
-                    ? 3 : s.intParam(maxConsecutive, "maxConsecutive");
             Map<String, List<Integer>> slots = new HashMap<>();
             for (LessonView lesson : lessons) {
                 PeriodView period = periodOf(ctx, lesson);
@@ -529,6 +552,12 @@ public final class ConstraintChecker {
                 }
             }
             for (Map.Entry<String, List<Integer>> entry : slots.entrySet()) {
+                // Each teacher has its own limit: an exception on one teacher never
+                // changes what another teacher may do.
+                Integer max = s.limitOrNull(maxConsecutive, objectIdOf(entry.getKey()));
+                if (max == null) {
+                    continue;
+                }
                 List<Integer> periodNos = entry.getValue();
                 periodNos.sort(Integer::compareTo);
                 int run = 1;
@@ -793,13 +822,18 @@ public final class ConstraintChecker {
         }
 
         total += weight(settings, ConstraintType.TEACHER_MAX_PER_DAY)
-                * excess(teacherDay, settings.intParam(ConstraintType.TEACHER_MAX_PER_DAY, "maxPerDay"), 4);
+                * excess(teacherDay, key -> settings.limitOrNull(ConstraintType.TEACHER_MAX_PER_DAY,
+                        objectIdOf(key)));
         total += weight(settings, ConstraintType.CLASS_MAX_PER_DAY)
-                * excess(classDay, settings.intParam(ConstraintType.CLASS_MAX_PER_DAY, "maxPerDay"), 8);
+                * excess(classDay, key -> settings.limitOrNull(ConstraintType.CLASS_MAX_PER_DAY,
+                        objectIdOf(key)));
+        // The course bucket is "class + course + day" while the entry names the course.
         total += weight(settings, ConstraintType.COURSE_MAX_PER_DAY)
-                * excess(classCourseDay, settings.intParam(ConstraintType.COURSE_MAX_PER_DAY, "maxPerDay"), 2);
+                * excess(classCourseDay, key -> settings.limitOrNull(ConstraintType.COURSE_MAX_PER_DAY,
+                        courseIdOf(key)));
         total += weight(settings, ConstraintType.EVENING_MAX)
-                * excess(classEvening, settings.intParam(ConstraintType.EVENING_MAX, "maxPerDay"), 2);
+                * excess(classEvening, key -> settings.limitOrNull(ConstraintType.EVENING_MAX,
+                        objectIdOf(key)));
 
         for (LessonView lesson : lessons) {
             if (lesson.periodId() == null) {
@@ -931,8 +965,6 @@ public final class ConstraintChecker {
 
         ConstraintType maxConsecutive = ConstraintType.TEACHER_MAX_CONSECUTIVE;
         if (settings.enabled(maxConsecutive) && !settings.hard(maxConsecutive)) {
-            int max = settings.intParam(maxConsecutive, "maxConsecutive") == null
-                    ? 3 : settings.intParam(maxConsecutive, "maxConsecutive");
             Map<String, List<Integer>> slots = new HashMap<>();
             for (LessonView lesson : lessons) {
                 if (lesson.periodId() == null) {
@@ -945,7 +977,12 @@ public final class ConstraintChecker {
                             .add(period.periodNo());
                 }
             }
-            for (List<Integer> periodNos : slots.values()) {
+            for (Map.Entry<String, List<Integer>> entry : slots.entrySet()) {
+                Integer max = settings.limitOrNull(maxConsecutive, objectIdOf(entry.getKey()));
+                if (max == null) {
+                    continue;
+                }
+                List<Integer> periodNos = entry.getValue();
                 periodNos.sort(Integer::compareTo);
                 int run = 1;
                 for (int i = 1; i < periodNos.size(); i++) {
@@ -987,11 +1024,18 @@ public final class ConstraintChecker {
         return settings.enabled(type) && !settings.hard(type) ? settings.weight(type) : 0;
     }
 
-    private static int excess(Map<String, Integer> counts, Integer configuredMax, int fallback) {
-        int max = configuredMax == null ? fallback : configuredMax;
+    /**
+     * Sums how far each counting bucket exceeds its own limit. The limit is resolved
+     * per bucket through the one scoped-threshold policy, so one bucket can never be
+     * charged twice for having several entries and an unlimited bucket costs nothing.
+     */
+    private static int excess(Map<String, Integer> counts, java.util.function.Function<String, Integer> limitOf) {
         int total = 0;
-        for (int count : counts.values()) {
-            total += Math.max(0, count - max);
+        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+            Integer max = limitOf.apply(entry.getKey());
+            if (max != null) {
+                total += Math.max(0, entry.getValue() - max);
+            }
         }
         return total;
     }

@@ -1,5 +1,5 @@
 import { draftEntryCount, isEntryType, isThresholdType, plannedEntries } from './entryModel'
-import { filledValues } from './paramValues'
+import { thresholdEntries, thresholdEntryCount } from './thresholdModel'
 import type {
   ConstraintConfigRequest,
   ConstraintCounts,
@@ -11,29 +11,17 @@ import type {
 const CATEGORY_ORDER = ['CONFLICT', 'RESOURCE', 'PEDAGOGY', 'PREFERENCE']
 
 /**
- * What a single-value (threshold) type sends as `params`. A row that is switched on
- * or was configured sends its values; a closed, never-touched row sends `{}` so the
- * catalogue defaults on screen do not become a stored value by accident.
- */
-function singleParams(row: TypeDraft): Record<string, unknown> {
-  if (!row.enabled && !row.touched) {
-    return {}
-  }
-  return filledValues(row.values, row.params)
-}
-
-/**
  * How many entries one type contributes to `具体条目 M 条`:
  * - switch types never have entries;
  * - entry-backed types count the cards they will store;
- * - a threshold is one entry once it carries a value (and keeps it when switched off).
+ * - a threshold counts one per scope (the global default and each complete exception).
  */
-function entryCountOf(row: TypeDraft): number {
+export function entryCountOf(row: TypeDraft): number {
   if (isEntryType(row)) {
     return draftEntryCount(row)
   }
   if (isThresholdType(row)) {
-    return Object.keys(singleParams(row)).length > 0 ? 1 : 0
+    return thresholdEntryCount(row)
   }
   return 0
 }
@@ -84,14 +72,14 @@ export function groupRows(rows: TypeDraft[]): NavGroup[] {
 }
 
 /**
- * `PUT /api/constraints` body. Entry-backed types send `entries` (never `params`);
- * thresholds and switches keep the legacy `params` field so their meaning cannot
- * drift. An empty entry list is meaningful: "this type is not configured".
+ * `PUT /api/constraints` body. Entry-backed types and thresholds send `entries` (never
+ * `params`): one card per entry, one entry per threshold scope. An empty entry list is
+ * meaningful — "this type is not configured".
  *
- * A switched-off threshold that was never configured is left out of the request:
- * the server rejects any config whose required parameters are empty, and leaving the
- * row out is exactly what "no configuration" means. Rows with values, and rows the
- * school mode hides, are always sent so a save never erases a condition that exists.
+ * A switched-off type that carries no entry at all is left out of the request: the
+ * server rejects any config whose required parameters are empty, and leaving the row
+ * out is exactly what "no configuration" means. Rows with entries, and rows the school
+ * mode hides, are always sent so a save never erases a condition that exists.
  */
 export function buildSavePayload(
   rows: TypeDraft[],
@@ -100,25 +88,31 @@ export function buildSavePayload(
   return rows.flatMap<ConstraintConfigRequest>((row) => {
     // Junior mode only exposes "must / prefer": must = weight 100, prefer = 50.
     const weight = options.isJunior ? (row.hard ? 100 : 50) : row.weight
-    if (isEntryType(row)) {
+    if (isEntryType(row) || isThresholdType(row)) {
+      const entries = isThresholdType(row)
+        ? thresholdEntries(row)
+        : plannedEntries(row)
+      if (!row.enabled && entries.length === 0) {
+        return []
+      }
       return [
         {
           type: row.code,
-          entries: plannedEntries(row).map((entry) => ({ id: entry.id, params: entry.params })),
+          entries: entries.map((entry) => ({ id: entry.id, params: entry.params })),
           weight,
           hard: row.hard,
           enabled: row.enabled,
         },
       ]
     }
-    const params = singleParams(row)
-    if (!row.enabled && Object.keys(params).length === 0) {
+    // The six switch types carry no parameters at all; their row is the whole state.
+    if (!row.enabled) {
       return []
     }
     return [
       {
         type: row.code,
-        params,
+        params: {},
         weight,
         hard: row.hard,
         enabled: row.enabled,

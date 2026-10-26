@@ -25,7 +25,12 @@ public class ConstraintTemplate {
     @Column(nullable = false, unique = true, length = 100)
     private String name;
 
-    @Column(name = "configs_json", nullable = false, length = 8000)
+    /**
+     * The whole snapshot as JSON. Widened to VARCHAR(65535) in V29 because a template
+     * carries every entry of a semester; {@code ConstraintService.TEMPLATE_JSON_LIMIT}
+     * refuses anything bigger instead of truncating.
+     */
+    @Column(name = "configs_json", nullable = false, length = 65535)
     private String configsJson;
 
     @Column(name = "created_at", nullable = false)

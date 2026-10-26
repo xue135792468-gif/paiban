@@ -23,6 +23,12 @@ export interface ConstraintTypeDef {
   description: string
   defaultHard: boolean
   defaultWeight: number
+  /** True when the type stores its parameters as entry rows (empty list = unconfigured). */
+  entryBacked?: boolean
+  /** Threshold types only: the entry field that names the object (`teacherId`, `classId`, `courseId`). */
+  thresholdObjectField?: string | null
+  /** Threshold types only: the entry field that carries the number. */
+  thresholdValueField?: string | null
   params: ParamDef[]
 }
 
@@ -70,8 +76,34 @@ export interface EntryDraft {
 }
 
 /**
- * A whole constraint type as the page edits it: type-level controls, the legacy
- * single-parameter values and, for entry-backed types, the entry list.
+ * One per-object exception of a threshold type: "this teacher may teach at most N a
+ * day" while every other object keeps the global default.
+ */
+export interface ThresholdExceptionDraft {
+  key: string
+  id: number | null
+  objectId: number | null
+  value: number | null
+}
+
+/**
+ * A threshold type as the page edits it. A threshold stores one entry per scope: the
+ * global default (no object field) plus one exception per object, so these two pieces
+ * are the whole state — no card list, because a card list would let the page express
+ * two global defaults that the server refuses.
+ */
+export interface ThresholdDraft {
+  globalId: number | null
+  /** The global default; null means "no global default is configured". */
+  globalValue: number | null
+  exceptions: ThresholdExceptionDraft[]
+}
+
+/**
+ * A whole constraint type as the page edits it: the type-level controls plus the
+ * parameters in the shape the catalogue declares — an entry list for the 13
+ * entry-backed types, a global default plus exceptions for the 5 thresholds, and
+ * nothing but the switch for the 6 single-switch types.
  */
 export interface TypeDraft {
   code: string
@@ -80,17 +112,14 @@ export interface TypeDraft {
   category: string
   categoryLabel: string
   params: ParamDef[]
-  values: Record<string, unknown>
+  /** Threshold types only: the same fields the catalogue declares, copied for convenience. */
+  thresholdObjectField?: string | null
+  thresholdValueField?: string | null
   entries: EntryDraft[]
+  threshold?: ThresholdDraft
   enabled: boolean
   hard: boolean
   weight: number
-  /**
-   * Whether a single-parameter type carries a condition the user or the server put
-   * there. A form pre-filled with catalogue defaults is not an entry by itself, so
-   * a closed, untouched row must not be saved (or counted) as one.
-   */
-  touched: boolean
 }
 
 export interface ConstraintCounts {
@@ -125,4 +154,56 @@ export interface ConstraintConfigRequest {
 export interface OptionItem {
   id: number
   name: string
+}
+
+/**
+ * The objects a constraint entry may name, kept per field. Teachers, administrative
+ * classes and courses live in three separate id spaces, so they are never merged into
+ * one lookup: the field the entry uses decides which list applies, and two objects that
+ * happen to share an id can never be confused for each other.
+ */
+export interface ObjectOptions {
+  teacherId: OptionItem[]
+  classId: OptionItem[]
+  courseId: OptionItem[]
+}
+
+/** The same three fields as id → name maps, for labelling one row. */
+export type ObjectNames = { [Key in keyof ObjectOptions]: Map<number, string> }
+
+/** A saved template as `GET /api/constraint-templates` lists it. */
+export interface TemplateItem {
+  id: number
+  name: string
+  createdAt?: string
+  /** Type rows the template holds. */
+  configCount: number
+  /** Parameter entries it will restore. */
+  entryCount: number
+}
+
+/**
+ * One template reference the target semester cannot take. `classId` rows can be
+ * rebound to a class of the target semester; teachers and courses are global assets,
+ * so a missing one has to be restored before the template can be applied.
+ */
+export interface TemplateReferenceIssue {
+  type: string
+  typeName: string
+  /** 1-based entry inside the type; 0 when the template carries a single params map. */
+  position: number
+  field: string
+  fieldLabel: string
+  objectId: number
+  name: string | null
+  reason: string
+}
+
+/** `POST /api/constraint-templates/{id}/preview` — a dry run, nothing is written. */
+export interface TemplateApplyPreview {
+  configCount: number
+  entryCount: number
+  invalidReferences: TemplateReferenceIssue[]
+  /** Other reasons the apply would be refused (slots outside the timetable, …). */
+  errors: string[]
 }

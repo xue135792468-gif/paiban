@@ -82,32 +82,40 @@
       />
     </template>
 
-    <ConstraintParamForm
-      v-else
-      :params="row.params"
-      :values="row.values"
-      :teachers="teachers"
-      :courses="courses"
-      :disabled="!canManage"
-      @update="(name: string, value: unknown) => emit('update-value', name, value)"
+    <ConstraintThresholdPanel
+      v-else-if="isThresholdType(row)"
+      :row="row"
+      :editable="canManage"
+      :object-options="thresholdOptions"
+      :errors="entryErrors"
+      @set-global="(value: number | null) => emit('set-threshold-global', value)"
+      @add-global="emit('add-threshold-global')"
+      @add-exception="emit('add-threshold-exception')"
+      @remove-exception="(key: string) => emit('remove-threshold-exception', key)"
+      @set-exception-object="(key: string, value: unknown) => emit('set-threshold-object', key, value)"
+      @set-exception-value="(key: string, value: unknown) => emit('set-threshold-value', key, value)"
     />
   </section>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { ElRadioButton, ElRadioGroup, ElSlider, ElSwitch } from 'element-plus'
 import InfoTooltip from '@/components/InfoTooltip.vue'
 import ConstraintEntryList from './ConstraintEntryList.vue'
-import ConstraintParamForm from './ConstraintParamForm.vue'
-import { isEntryType, isSlotSetType, isSwitchType } from './entryModel'
-import type { OptionItem, TypeDraft } from './types'
+import ConstraintThresholdPanel from './ConstraintThresholdPanel.vue'
+import { isEntryType, isSlotSetType, isSwitchType, isThresholdType } from './entryModel'
+import { thresholdShape } from './thresholdModel'
+import type { ObjectOptions, OptionItem, TypeDraft } from './types'
 
-defineProps<{
+const props = defineProps<{
   row: TypeDraft
   canManage: boolean
   isJunior: boolean
   teachers: OptionItem[]
   courses: OptionItem[]
+  /** The objects each entry field may name, kept per field (never merged into one list). */
+  objectOptions: ObjectOptions
   entryErrors: Record<number, string[]>
   typeErrors: string[]
 }>()
@@ -124,7 +132,27 @@ const emit = defineEmits<{
   'add-slot': [key: string]
   'remove-slot': [key: string, slotKey: string]
   'update-slot': [key: string, slotKey: string, field: string, value: unknown]
+  'set-threshold-global': [value: number | null]
+  'add-threshold-global': []
+  'add-threshold-exception': []
+  'remove-threshold-exception': [key: string]
+  'set-threshold-object': [key: string, value: unknown]
+  'set-threshold-value': [key: string, value: unknown]
 }>()
+
+/**
+ * The objects a threshold type may name: only the applicable catalogue. A teacher
+ * limit offers teachers, a class limit offers the semester's administrative classes,
+ * a course limit offers courses — never a list the type cannot use, and never a merged
+ * list in which a course and a teacher could share an id.
+ */
+const thresholdOptions = computed<OptionItem[]>(() => {
+  const field = thresholdShape(props.row)?.objectField
+  if (field === 'teacherId' || field === 'courseId' || field === 'classId') {
+    return props.objectOptions[field]
+  }
+  return []
+})
 
 function onWeight(value: number | number[]) {
   emit('set-weight', Array.isArray(value) ? value[0] : value)

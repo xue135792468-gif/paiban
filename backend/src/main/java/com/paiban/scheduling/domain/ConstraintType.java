@@ -2,6 +2,7 @@ package com.paiban.scheduling.domain;
 
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -44,16 +45,20 @@ public enum ConstraintType {
 
     TEACHER_MAX_PER_DAY("教师一天最多 N 节", Category.PEDAGOGY, false, 60,
             "限制教师单日授课节数，避免过度集中",
-            List.of(Param.integer("maxPerDay", "每天最多节数", 1, 12, 4))),
+            List.of(Param.idOptional("teacherId", "教师（留空表示全局默认）"),
+                    Param.integer("maxPerDay", "每天最多节数", 1, 12, 4))),
     CLASS_MAX_PER_DAY("班级一天最多 N 节", Category.PEDAGOGY, false, 50,
             "限制班级单日课程总数",
-            List.of(Param.integer("maxPerDay", "每天最多节数", 1, 12, 8))),
+            List.of(Param.idOptional("classId", "行政班（留空表示全局默认）"),
+                    Param.integer("maxPerDay", "每天最多节数", 1, 12, 8))),
     COURSE_MAX_PER_DAY("课程一天最多 N 节", Category.PEDAGOGY, false, 50,
             "限制同一班级某课程的单日节数",
-            List.of(Param.integer("maxPerDay", "每天最多节数", 1, 8, 2))),
+            List.of(Param.idOptional("courseId", "课程（留空表示全局默认）"),
+                    Param.integer("maxPerDay", "每天最多节数", 1, 8, 2))),
     EVENING_MAX("晚自习最多 N 节", Category.PEDAGOGY, false, 40,
             "限制每天晚自习的课程节数",
-            List.of(Param.integer("maxPerDay", "每天最多节数", 0, 6, 2))),
+            List.of(Param.idOptional("classId", "行政班（留空表示全局默认）"),
+                    Param.integer("maxPerDay", "每天最多节数", 0, 6, 2))),
 
     SPORT_NOT_FIRST_AFTERNOON("体育不在下午第一节", Category.PEDAGOGY, false, 70,
             "体育课避免安排在午休后的第一节",
@@ -74,7 +79,8 @@ public enum ConstraintType {
                     Param.period("periodNo", "第几节"))),
     TEACHER_MAX_CONSECUTIVE("教师连续上课上限", Category.PREFERENCE, false, 45,
             "同一教师连续授课不超过 N 节",
-            List.of(Param.integer("maxConsecutive", "最多连续节数", 1, 8, 3))),
+            List.of(Param.idOptional("teacherId", "教师（留空表示全局默认）"),
+                    Param.integer("maxConsecutive", "最多连续节数", 1, 8, 3))),
     TEACHER_NO_FIRST_PERIOD("教师不排第一节", Category.PREFERENCE, false, 35,
             "尽量不把指定教师的课排在每天第一节",
             List.of(Param.id("teacherId", "教师"))),
@@ -94,11 +100,12 @@ public enum ConstraintType {
     /**
      * The single registry that decides which types read their configuration from
      * entry rows. Every type listed here ignores {@code constraint_config.params_json}
-     * during evaluation (V26/V27 migrated the old single value into one entry row),
+     * during evaluation (V26/V27/V28 migrated the old single value into one entry row),
      * so "no rows" means "not configured".
      *
-     * <p>Ticket 10/04 adds the five thresholds to this set when it gives them global
-     * defaults plus per-object exceptions; the six single-switch types never join it.
+     * <p>Ticket 10/04 added the five thresholds: one entry per scope, i.e. a global
+     * default (no object field) plus per-object exceptions. The six single-switch
+     * types never join it.
      */
     private static final Set<ConstraintType> ENTRY_BACKED = EnumSet.of(
             TEACHER_UNAVAILABLE,
@@ -113,7 +120,27 @@ public enum ConstraintType {
             TEACHER_PREFERRED_SLOT,
             TEACHER_NO_FIRST_PERIOD,
             TEACHER_DAY_OFF,
-            PE_LAST_PERIOD_AVOID);
+            PE_LAST_PERIOD_AVOID,
+            TEACHER_MAX_PER_DAY,
+            CLASS_MAX_PER_DAY,
+            COURSE_MAX_PER_DAY,
+            EVENING_MAX,
+            TEACHER_MAX_CONSECUTIVE);
+
+    /**
+     * Where a threshold type reads its scope and its number from: the object field is
+     * blank for the global default and filled for that object's exception, the value
+     * field carries the number. Declared once so validation, evaluation and the UI
+     * cannot disagree about which field means what.
+     */
+    public record ThresholdScope(String objectField, String valueField) {}
+
+    private static final Map<ConstraintType, ThresholdScope> THRESHOLDS = Map.of(
+            TEACHER_MAX_PER_DAY, new ThresholdScope("teacherId", "maxPerDay"),
+            CLASS_MAX_PER_DAY, new ThresholdScope("classId", "maxPerDay"),
+            COURSE_MAX_PER_DAY, new ThresholdScope("courseId", "maxPerDay"),
+            EVENING_MAX, new ThresholdScope("classId", "maxPerDay"),
+            TEACHER_MAX_CONSECUTIVE, new ThresholdScope("teacherId", "maxConsecutive"));
 
     public enum Category {
         CONFLICT("冲突类"),
@@ -228,6 +255,20 @@ public enum ConstraintType {
      */
     public boolean isEntryBacked() {
         return ENTRY_BACKED.contains(this);
+    }
+
+    /**
+     * The scope fields of a threshold type, or null for every other type. A threshold
+     * stores one entry per scope: no object field is the global default, a filled one
+     * is that object's exception (which replaces the default for that object only).
+     */
+    public ThresholdScope thresholdScope() {
+        return THRESHOLDS.get(this);
+    }
+
+    /** True for the five numeric-limit types that support a global default plus exceptions. */
+    public boolean isScopedThreshold() {
+        return THRESHOLDS.containsKey(this);
     }
 
     /**

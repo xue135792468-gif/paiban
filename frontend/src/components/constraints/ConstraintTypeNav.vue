@@ -34,7 +34,8 @@
 </template>
 
 <script setup lang="ts">
-import { draftEntryCount, isSwitchType } from './entryModel'
+import { entryCountOf } from './draftRules'
+import { isSwitchType } from './entryModel'
 import type { NavGroup, TypeDraft } from './types'
 
 const props = defineProps<{
@@ -58,8 +59,9 @@ function dotState(row: TypeDraft): 'on' | 'off' | 'error' {
   return row.enabled ? 'on' : 'off'
 }
 
+/** Same single counting rule as the summary bar (`draftRules.entryCountOf`). */
 function countLabel(row: TypeDraft): string {
-  return isSwitchType(row) ? '开关' : `${draftEntryCount(row)} 条`
+  return isSwitchType(row) ? '开关' : `${entryCountOf(row)} 条`
 }
 </script>
 

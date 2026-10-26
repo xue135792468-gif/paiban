@@ -1,7 +1,9 @@
 import { computed, ref } from 'vue'
+import { conflictReport, type ConflictReport } from './conflictModel'
 import { buildSavePayload, countsOf, groupRows } from './draftRules'
-import { missingParamWarnings, scalarConflicts } from './entryChecks'
-import { isEntryType, isSlotSetType, optionalTargetParam } from './entryModel'
+import { missingParamWarnings } from './entryChecks'
+import { isEntryType, isSlotSetType, isThresholdType, optionalTargetParam } from './entryModel'
+import { emptyObjectNames, emptyThreshold, thresholdWarnings } from './thresholdModel'
 import { hasValue } from './paramValues'
 import type {
   ConstraintConfigDto,
@@ -10,7 +12,9 @@ import type {
   ConstraintTypeDef,
   EntryDraft,
   NavGroup,
+  ObjectNames,
   SlotDraft,
+  ThresholdDraft,
   TypeDraft,
 } from './types'
 
@@ -80,14 +84,7 @@ function entriesOf(type: ConstraintTypeDef, saved: ConstraintConfigDto | undefin
 }
 
 function buildRow(type: ConstraintTypeDef, saved: ConstraintConfigDto | undefined): TypeDraft {
-  const values: Record<string, unknown> = {}
-  if (!isEntryType(type)) {
-    type.params.forEach((param) => {
-      const savedValue = saved?.params?.[param.name]
-      values[param.name] = savedValue !== undefined ? savedValue : (param.defaultValue ?? null)
-    })
-  }
-  const savedValues = saved?.params ?? {}
+  const threshold = isThresholdType(type) ? thresholdDraftOf(type, saved) : undefined
   return {
     code: type.code,
     name: type.name,
@@ -95,14 +92,61 @@ function buildRow(type: ConstraintTypeDef, saved: ConstraintConfigDto | undefine
     category: type.category,
     categoryLabel: type.categoryLabel,
     params: type.params,
-    values,
+    thresholdObjectField: type.thresholdObjectField ?? null,
+    thresholdValueField: type.thresholdValueField ?? null,
     entries: entriesOf(type, saved),
+    threshold,
     enabled: saved?.enabled ?? false,
     hard: saved?.hard ?? type.defaultHard,
     weight: saved?.weight ?? type.defaultWeight,
-    // Catalogue defaults alone are not a configured condition.
-    touched: Object.keys(valuesFrom(savedValues)).length > 0,
   }
+}
+
+/**
+ * The saved entries of a threshold type as the two pieces the editor shows: the global
+ * default (the entry without an object field) and one row per object exception.
+ *
+ * A response that only carries the legacy `params` map — an older server, or a template
+ * written before ticket 04 — is read as the global default, which is exactly what V28
+ * migrated it into. A `params` map that already names an object is read as that
+ * object's exception.
+ */
+function thresholdDraftOf(
+  type: ConstraintTypeDef,
+  saved: ConstraintConfigDto | undefined,
+): ThresholdDraft {
+  const draft: ThresholdDraft = emptyThreshold()
+  const objectField = type.thresholdObjectField
+  const valueField = type.thresholdValueField
+  if (!objectField || !valueField) {
+    return draft
+  }
+  const sources = (saved?.entries ?? []).map((entry) => ({
+    id: entry.id ?? null,
+    params: valuesFrom(entry.params),
+  }))
+  if (sources.length === 0 && saved?.params) {
+    sources.push({ id: null, params: valuesFrom(saved.params) })
+  }
+  sources.forEach((source) => {
+    const objectId = hasValue(source.params[objectField]) ? Number(source.params[objectField]) : null
+    const value = hasValue(source.params[valueField]) ? Number(source.params[valueField]) : null
+    if (objectId === null) {
+      // The server allows one global default; read the first and ignore a duplicate.
+      if (draft.globalValue === null) {
+        draft.globalId = source.id
+        draft.globalValue = value
+      }
+      return
+    }
+    draft.exceptions.push({
+      key: nextKey('exception'),
+      id: source.id,
+      objectId,
+      value,
+    })
+  })
+  return draft
 }
 
 /**
@@ -195,14 +239,6 @@ export function useConstraintDraft() {
     }
   }
 
-  function updateValue(code: string, name: string, value: unknown) {
-    const row = find(code)
-    if (row) {
-      row.values[name] = value
-      row.touched = true
-    }
-  }
-
   function addEntry(code: string) {
     const row = find(code)
     if (!row) {
@@ -290,12 +326,78 @@ export function useConstraintDraft() {
   }
 
   function warnings(): string[] {
-    return missingParamWarnings(visibleRows.value)
+    return visibleRows.value.flatMap((row) =>
+      isThresholdType(row) ? thresholdWarnings(row) : missingParamWarnings([row]),
+    )
   }
 
-  /** Contradictory scalar conditions for one object, checked before the request. */
-  function conflicts(courseNames?: Map<number, string>): string[] {
-    return scalarConflicts(rows.value, { teacherNames: new Map(), courseNames: courseNames ?? new Map() })
+  /**
+   * Conditions the server would refuse, checked before the request: identical entries,
+   * contradictory scalars for one object and duplicate threshold scopes. Computed once
+   * per change and read twice — the pre-check bar shows `messages`, the left navigation
+   * turns `codes` red — so neither reader can disagree with the other.
+   *
+   * `names` is keyed by entry field (`teacherId` / `classId` / `courseId`), so an
+   * exception is labelled from the list its own type uses.
+   */
+  function conflictsOf(names: ObjectNames = emptyObjectNames()): ConflictReport {
+    return conflictReport(rows.value, names)
+  }
+
+  // ----------------------------------------------------------- thresholds (ticket 04)
+
+  function thresholdOf(code: string): ThresholdDraft | undefined {
+    const row = find(code)
+    if (!row) {
+      return undefined
+    }
+    if (!row.threshold) {
+      row.threshold = emptyThreshold()
+    }
+    return row.threshold
+  }
+
+  /** The global default. `null` removes it, which leaves the unlisted objects unlimited. */
+  function setThresholdGlobal(code: string, value: number | null) {
+    const draft = thresholdOf(code)
+    if (!draft) {
+      return
+    }
+    draft.globalValue = value === null || Number.isNaN(value) ? null : Number(value)
+    if (draft.globalValue === null) {
+      draft.globalId = null
+    }
+  }
+
+  function addThresholdException(code: string) {
+    thresholdOf(code)?.exceptions.push({
+      key: nextKey('exception'),
+      id: null,
+      objectId: null,
+      value: null,
+    })
+  }
+
+  function removeThresholdException(code: string, key: string) {
+    const draft = thresholdOf(code)
+    if (draft) {
+      draft.exceptions = draft.exceptions.filter((exception) => exception.key !== key)
+    }
+  }
+
+  function setThresholdExceptionObject(code: string, key: string, objectId: unknown) {
+    const exception = thresholdOf(code)?.exceptions.find((item) => item.key === key)
+    if (exception) {
+      exception.objectId = hasValue(objectId) ? Number(objectId) : null
+    }
+  }
+
+  function setThresholdExceptionValue(code: string, key: string, value: unknown) {
+    const exception = thresholdOf(code)?.exceptions.find((item) => item.key === key)
+    if (exception) {
+      exception.value =
+        value === null || value === undefined || value === '' ? null : Number(value)
+    }
   }
 
   return {
@@ -312,7 +414,6 @@ export function useConstraintDraft() {
     setEnabled,
     setHard,
     setWeight,
-    updateValue,
     addEntry,
     removeEntry,
     updateEntryValue,
@@ -320,8 +421,13 @@ export function useConstraintDraft() {
     addSlot,
     removeSlot,
     updateSlot,
+    setThresholdGlobal,
+    addThresholdException,
+    removeThresholdException,
+    setThresholdExceptionObject,
+    setThresholdExceptionValue,
     warnings,
-    conflicts,
+    conflictsOf,
     payload,
   }
 }

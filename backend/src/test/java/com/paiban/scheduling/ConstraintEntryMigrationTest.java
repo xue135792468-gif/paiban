@@ -109,6 +109,139 @@ class ConstraintEntryMigrationTest {
         }
     }
 
+    @Test
+    void v28TurnsEveryThresholdValueIntoOneEntry() throws Exception {
+        migrateTo("27");
+        long semesterId;
+        try (Connection connection = DriverManager.getConnection(url, "sa", "");
+                Statement statement = connection.createStatement()) {
+            statement.executeUpdate("insert into semester (name, start_date, end_date, is_current, created_at)"
+                    + " values ('阈值学期', DATE '2025-09-01', DATE '2026-01-20', false, CURRENT_TIMESTAMP)");
+            try (ResultSet keys = statement.executeQuery("select max(id) from semester")) {
+                keys.next();
+                semesterId = keys.getLong(1);
+            }
+            insertConfig(statement, semesterId, "TEACHER_MAX_PER_DAY", "{\"maxPerDay\":6}", false, 60);
+            // `{}` used to evaluate as the catalogue default (2) once the type was on,
+            // so the upgrade has to keep exactly that number.
+            insertConfig(statement, semesterId, "EVENING_MAX", "{}", false, 40);
+            // An object field in the old value becomes that object's exception.
+            insertConfig(statement, semesterId, "CLASS_MAX_PER_DAY",
+                    "{\"classId\":9,\"maxPerDay\":5}", false, 50);
+            insertConfig(statement, semesterId, "TEACHER_MAX_CONSECUTIVE", null, false, 45);
+        }
+        migrateTo(null);
+
+        try (Connection connection = DriverManager.getConnection(url, "sa", "");
+                Statement statement = connection.createStatement()) {
+            assertThat(entriesOfType(statement, semesterId, "TEACHER_MAX_PER_DAY"))
+                    .containsExactly("{\"maxPerDay\":6}");
+            assertThat(entriesOfType(statement, semesterId, "EVENING_MAX"))
+                    .containsExactly("{\"maxPerDay\":2}");
+            assertThat(entriesOfType(statement, semesterId, "CLASS_MAX_PER_DAY"))
+                    .containsExactly("{\"classId\":9,\"maxPerDay\":5}");
+            assertThat(entriesOfType(statement, semesterId, "TEACHER_MAX_CONSECUTIVE"))
+                    .containsExactly("{\"maxConsecutive\":3}");
+            // A type nobody configured still gets nothing.
+            assertThat(entriesOfType(statement, semesterId, "COURSE_MAX_PER_DAY")).isEmpty();
+        }
+    }
+
+    /**
+     * V28 names all five thresholds explicitly instead of falling back to an `ELSE`, so
+     * a sixth type added later has to bring its own branch. This test is the guard: each
+     * of the five writes its own catalogue default, and no two share a number by accident
+     * (4 / 8 / 2 / 2 / 3 — the `COURSE_MAX_PER_DAY` and `EVENING_MAX` pair is the one the
+     * two files must keep in step).
+     */
+    @Test
+    void v28WritesEachThresholdItsOwnCatalogueDefault() throws Exception {
+        migrateTo("27");
+        long semesterId;
+        try (Connection connection = DriverManager.getConnection(url, "sa", "");
+                Statement statement = connection.createStatement()) {
+            statement.executeUpdate("insert into semester (name, start_date, end_date, is_current, created_at)"
+                    + " values ('五类默认', DATE '2025-09-01', DATE '2026-01-20', false, CURRENT_TIMESTAMP)");
+            try (ResultSet keys = statement.executeQuery("select max(id) from semester")) {
+                keys.next();
+                semesterId = keys.getLong(1);
+            }
+            insertConfig(statement, semesterId, "TEACHER_MAX_PER_DAY", "{}", false, 60);
+            insertConfig(statement, semesterId, "CLASS_MAX_PER_DAY", null, false, 50);
+            insertConfig(statement, semesterId, "COURSE_MAX_PER_DAY", "{}", false, 50);
+            insertConfig(statement, semesterId, "EVENING_MAX", null, false, 40);
+            insertConfig(statement, semesterId, "TEACHER_MAX_CONSECUTIVE", "{}", false, 45);
+        }
+        migrateTo(null);
+
+        try (Connection connection = DriverManager.getConnection(url, "sa", "");
+                Statement statement = connection.createStatement()) {
+            assertThat(entriesOfType(statement, semesterId, "TEACHER_MAX_PER_DAY"))
+                    .as("teacher day limit defaults to 4")
+                    .containsExactly("{\"maxPerDay\":4}");
+            assertThat(entriesOfType(statement, semesterId, "CLASS_MAX_PER_DAY"))
+                    .as("class day limit defaults to 8")
+                    .containsExactly("{\"maxPerDay\":8}");
+            assertThat(entriesOfType(statement, semesterId, "COURSE_MAX_PER_DAY"))
+                    .as("course day limit defaults to 2")
+                    .containsExactly("{\"maxPerDay\":2}");
+            assertThat(entriesOfType(statement, semesterId, "EVENING_MAX"))
+                    .as("evening limit defaults to 2")
+                    .containsExactly("{\"maxPerDay\":2}");
+            assertThat(entriesOfType(statement, semesterId, "TEACHER_MAX_CONSECUTIVE"))
+                    .as("consecutive limit defaults to 3, never maxPerDay")
+                    .containsExactly("{\"maxConsecutive\":3}");
+        }
+    }
+
+    @Test
+    void v28BackfillIsIdempotent() throws Exception {
+        migrateTo("27");
+        long semesterId;
+        try (Connection connection = DriverManager.getConnection(url, "sa", "");
+                Statement statement = connection.createStatement()) {
+            statement.executeUpdate("insert into semester (name, start_date, end_date, is_current, created_at)"
+                    + " values ('阈值幂等', DATE '2025-09-01', DATE '2026-01-20', false, CURRENT_TIMESTAMP)");
+            try (ResultSet keys = statement.executeQuery("select max(id) from semester")) {
+                keys.next();
+                semesterId = keys.getLong(1);
+            }
+            insertConfig(statement, semesterId, "TEACHER_MAX_PER_DAY", "{\"maxPerDay\":6}", false, 60);
+        }
+        migrateTo(null);
+
+        try (Connection connection = DriverManager.getConnection(url, "sa", "");
+                Statement statement = connection.createStatement()) {
+            // Re-running the same statement must not add a second global default.
+            statement.executeUpdate("insert into constraint_entry (semester_id, type, params_json, created_at)"
+                    + " select c.semester_id, c.type, c.params_json, CURRENT_TIMESTAMP"
+                    + " from constraint_config c where c.type = 'TEACHER_MAX_PER_DAY'"
+                    + " and not exists (select 1 from constraint_entry e"
+                    + " where e.semester_id = c.semester_id and e.type = c.type)");
+            assertThat(entriesOfType(statement, semesterId, "TEACHER_MAX_PER_DAY"))
+                    .containsExactly("{\"maxPerDay\":6}");
+        }
+    }
+
+    @Test
+    void v29WidensTheTemplateTextBeyondTheOldEightThousandCharacters() throws Exception {
+        migrateTo("28");
+        migrateTo(null);
+
+        // A 200-entry template is ~12k characters, so anything past 8000 must round trip.
+        String wide = "x".repeat(60_000);
+        try (Connection connection = DriverManager.getConnection(url, "sa", "");
+                Statement statement = connection.createStatement()) {
+            statement.executeUpdate("insert into constraint_template (name, configs_json, created_at)"
+                    + " values ('宽模板', '" + wide + "', CURRENT_TIMESTAMP)");
+            try (ResultSet row = statement.executeQuery(
+                    "select length(configs_json) from constraint_template where name = '宽模板'")) {
+                assertThat(row.next()).isTrue();
+                assertThat(row.getInt(1)).isEqualTo(60_000);
+            }
+        }
+    }
+
     private List<String> entriesOfType(Statement statement, long semesterId, String type)
             throws Exception {
         List<String> rows = new ArrayList<>();
@@ -151,9 +284,12 @@ class ConstraintEntryMigrationTest {
 
     private void insertConfig(Statement statement, long semesterId, String type, String params,
                               boolean hard, int weight) throws Exception {
+        // A NULL params column is a real pre-upgrade state: the old form never wrote one
+        // for a type the school had switched on without touching its number.
+        String paramsSql = params == null ? "NULL" : "'" + params.replace("'", "''") + "'";
         statement.executeUpdate("insert into constraint_config"
                 + " (semester_id, type, params_json, weight, hard, enabled) values ("
-                + semesterId + ", '" + type + "', '" + params.replace("'", "''") + "', "
+                + semesterId + ", '" + type + "', " + paramsSql + ", "
                 + weight + ", " + hard + ", true)");
     }
 
