@@ -84,6 +84,8 @@ jobs:
         run: npm run test:unit
       - name: SFC size
         run: bash scripts/check-sfc-size.sh
+      - name: isBlank ratchet
+        run: bash scripts/check-blank-checks.sh
 
   deploy-scripts:
     runs-on: ubuntu-latest

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 本地闸门。默认：后端全量测试 + 前端 lint/build/unit/SFC；--full 追加 Playwright；
-# --quick 只做后端编译 + 前端 lint/build/unit/SFC，迭代期用。
+# 本地闸门。默认：后端全量测试 + 前端 lint/build/unit/SFC + 后端 isBlank 棘轮；--full 追加 Playwright；
+# --quick 只做后端编译 + 前端 lint/build/unit/SFC + isBlank，迭代期用。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -42,6 +42,9 @@ echo "==> frontend: unit tests"
 
 echo "==> frontend: SFC size"
 bash scripts/check-sfc-size.sh
+
+echo "==> backend: isBlank ratchet"
+bash scripts/check-blank-checks.sh
 
 if [[ $MODE == full ]]; then
   echo "==> e2e: Playwright（隔离端口 28080/25173，不复用本地 dev 服务）"

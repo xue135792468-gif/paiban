@@ -40,5 +40,5 @@
 
 ## Java 代码风格
 
-- 空白判断统一用 Spring 的 `StringUtils.hasText`，不在模块内重复定义 `isBlank` / `notBlank`。
+- 空白判断：新增代码使用 `StringUtils.hasText`；存量清单在 `scripts/blank-check-baseline.txt`，只允许缩小，由 `scripts/check-blank-checks.sh` 强制。
 
