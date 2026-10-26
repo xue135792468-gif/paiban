@@ -425,9 +425,10 @@ public final class SwapPlanner {
         CourseView course = snapshot.course(lesson.courseId());
         String requiredType = course == null ? null : course.requiredRoomType();
         if (blocked(settings, ConstraintType.COURSE_REQUIRED_ROOM_TYPE)) {
-            Long configuredCourse = settings.longParam(ConstraintType.COURSE_REQUIRED_ROOM_TYPE, "courseId");
-            if (Objects.equals(configuredCourse, lesson.courseId())) {
-                requiredType = settings.textParam(ConstraintType.COURSE_REQUIRED_ROOM_TYPE, "roomType");
+            String configured = settings.courseText(
+                    ConstraintType.COURSE_REQUIRED_ROOM_TYPE, lesson.courseId(), "roomType");
+            if (configured != null) {
+                requiredType = configured;
             }
         }
         if (blocked(settings, ConstraintType.COURSE_REQUIRED_ROOM_TYPE)
@@ -445,15 +446,8 @@ public final class SwapPlanner {
             return false;
         }
         if (blocked(settings, ConstraintType.TEACHER_MEETING_BLOCKED)) {
-            String subject = settings.textParam(ConstraintType.TEACHER_MEETING_BLOCKED, "subject");
             var teacher = snapshot.teacher(lesson.teacherId());
-            boolean subjectMatches = subject == null || subject.isBlank()
-                    || (teacher != null && subject.equalsIgnoreCase(teacher.subject()));
-            if (subjectMatches
-                    && Objects.equals(settings.intParam(ConstraintType.TEACHER_MEETING_BLOCKED, "dayOfWeek"),
-                            target.dayOfWeek())
-                    && Objects.equals(settings.intParam(ConstraintType.TEACHER_MEETING_BLOCKED, "periodNo"),
-                            target.periodNo())) {
+            if (meetingBlockedAt(settings, teacher == null ? null : teacher.subject(), target)) {
                 reasons.add(new PlanDiagnosis("TEACHER_MEETING",
                         teacherName(snapshot, lesson.teacherId()) + " 在 " + label + " 参加教研",
                         lesson.entryId(), target.id()));
@@ -494,6 +488,25 @@ public final class SwapPlanner {
                     target.dayOfWeek())
                     && Objects.equals(ConstraintSettings.intValue(entry.get("periodNo")),
                     target.periodNo())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Union of every meeting-blocked entry: a blank subject covers all subjects. */
+    private static boolean meetingBlockedAt(
+            ConstraintSettings settings, String teacherSubject, PeriodView target) {
+        for (Map<String, Object> entry : settings.entries(ConstraintType.TEACHER_MEETING_BLOCKED)) {
+            if (!Objects.equals(ConstraintSettings.intValue(entry.get("dayOfWeek")), target.dayOfWeek())
+                    || !Objects.equals(ConstraintSettings.intValue(entry.get("periodNo")),
+                    target.periodNo())) {
+                continue;
+            }
+            Object raw = entry.get("subject");
+            String configured = raw == null ? null : raw.toString();
+            if (configured == null || configured.isBlank()
+                    || (teacherSubject != null && configured.equalsIgnoreCase(teacherSubject))) {
                 return true;
             }
         }

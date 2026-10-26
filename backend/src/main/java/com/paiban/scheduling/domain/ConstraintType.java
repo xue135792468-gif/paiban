@@ -1,10 +1,17 @@
 package com.paiban.scheduling.domain;
 
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * The preset constraint catalogue. Each entry declares its parameter schema so
  * the UI can render a form and the API can validate input without per-type code.
+ *
+ * <p>Since ADR-0028 a type is either <em>entry-backed</em> (one row per target in
+ * {@code constraint_entry}) or single-valued. Entry-backed types have no legacy
+ * fallback: an empty entry list means "not configured", never "every target"
+ * (see the empty-entry rule in the ticket-10 spec).
  */
 public enum ConstraintType {
 
@@ -83,6 +90,30 @@ public enum ConstraintType {
     HEAD_TEACHER_FIRST_PERIOD("班主任课优先第一节", Category.PREFERENCE, false, 20,
             "班主任所带课程尽量安排在本班第一节",
             List.of());
+
+    /**
+     * The single registry that decides which types read their configuration from
+     * entry rows. Every type listed here ignores {@code constraint_config.params_json}
+     * during evaluation (V26/V27 migrated the old single value into one entry row),
+     * so "no rows" means "not configured".
+     *
+     * <p>Ticket 10/04 adds the five thresholds to this set when it gives them global
+     * defaults plus per-object exceptions; the six single-switch types never join it.
+     */
+    private static final Set<ConstraintType> ENTRY_BACKED = EnumSet.of(
+            TEACHER_UNAVAILABLE,
+            TEACHER_MEETING_BLOCKED,
+            COURSE_REQUIRED_ROOM_TYPE,
+            COURSE_NOT_IN_EVENING,
+            SAME_COURSE_ONCE_PER_DAY,
+            SPORT_NOT_FIRST_AFTERNOON,
+            CONSECUTIVE_LESSONS,
+            COURSE_SPREAD,
+            MAIN_SUBJECT_MORNING,
+            TEACHER_PREFERRED_SLOT,
+            TEACHER_NO_FIRST_PERIOD,
+            TEACHER_DAY_OFF,
+            PE_LAST_PERIOD_AVOID);
 
     public enum Category {
         CONFLICT("冲突类"),
@@ -188,5 +219,23 @@ public enum ConstraintType {
 
     public List<Param> getParams() {
         return params;
+    }
+
+    /**
+     * True when this type is configured by entry rows only. Such a type never
+     * synthesises an entry from {@code params_json} and its objectives are combined
+     * across entries (union / any-of), never "last one wins".
+     */
+    public boolean isEntryBacked() {
+        return ENTRY_BACKED.contains(this);
+    }
+
+    /**
+     * True when every parameter is optional, i.e. an entry may carry no object
+     * condition at all. That single entry is the explicit "every course / the sport
+     * class" target; an empty <em>list</em> still means "not configured".
+     */
+    public boolean allowsEmptyTarget() {
+        return params.stream().noneMatch(Param::required);
     }
 }

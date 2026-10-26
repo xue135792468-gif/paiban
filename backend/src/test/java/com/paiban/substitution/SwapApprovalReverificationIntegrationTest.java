@@ -89,6 +89,60 @@ class SwapApprovalReverificationIntegrationTest extends ApiIntegrationTest {
                 .body("status", equalTo("PENDING_APPROVAL"));
     }
 
+    @Test
+    void addingATargetEntryAfterGenerationRejectsTheWholePlan() {
+        // Same safety net for the rules ticket 10/03 made multi-entry: the plan moves
+        // teacher C into Monday period 1, which the teacher's first-period rule forbids.
+        String admin = adminToken();
+        String suffix = TestData.suffix();
+        World world = prepare(admin, suffix);
+        String teacherA = teacherUser(admin, "revb_" + suffix, world.teachers().get("A"));
+
+        long requestId = as(teacherA).body(Map.of(
+                        "entryId", world.chineseEntry(),
+                        "effectiveDate", MONDAY.toString(),
+                        "reason", "临时有事",
+                        "type", "SWAP",
+                        "targetPeriodId", world.periodByNo().get(2)))
+                .when().post("/api/substitution-requests")
+                .then().statusCode(200)
+                .extract().jsonPath().getLong("id");
+
+        long planId = as(admin).when().post("/api/substitution-requests/" + requestId + "/plans")
+                .then().statusCode(200)
+                .body("plans[0].cycleLength", equalTo(3))
+                .extract().jsonPath().getLong("plans[0].id");
+
+        as(admin).queryParam("semesterId", world.semesterId())
+                .body(Map.of("configs", List.of(
+                        Map.of("type", "TEACHER_CONFLICT", "params", Map.of(),
+                                "weight", 100, "hard", true, "enabled", true),
+                        Map.of("type", "CLASS_CONFLICT", "params", Map.of(),
+                                "weight", 100, "hard", true, "enabled", true),
+                        Map.of("type", "ROOM_CONFLICT", "params", Map.of(),
+                                "weight", 100, "hard", true, "enabled", true),
+                        Map.of("type", "TEACHER_NO_FIRST_PERIOD", "weight", 35, "hard", true,
+                                "enabled", true,
+                                "entries", List.of(
+                                        Map.of("params", Map.of(
+                                                "teacherId", world.teachers().get("C"))),
+                                        Map.of("params", Map.of(
+                                                "teacherId", world.teachers().get("B"))))))))
+                .when().put("/api/constraints")
+                .then().statusCode(200);
+
+        as(admin).when().post("/api/substitution-plans/" + planId + "/approve")
+                .then().statusCode(409);
+
+        as(admin).queryParam("type", "SWAP")
+                .when().get("/api/substitutions")
+                .then().statusCode(200)
+                .body("$", org.hamcrest.Matchers.empty());
+        as(admin).when().get("/api/substitution-requests/" + requestId)
+                .then().statusCode(200)
+                .body("status", equalTo("PENDING_APPROVAL"));
+    }
+
     private record World(long semesterId, long class1, long class2,
                          Map<Integer, Long> periodByNo, Map<String, Long> teachers,
                          long chineseEntry) {}

@@ -5,8 +5,11 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paiban.common.event.SemesterCreatedEvent;
 import com.paiban.common.web.ApiException;
+import com.paiban.foundation.domain.Course;
+import com.paiban.foundation.domain.CourseRepository;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
+import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.foundation.service.SemesterService;
 import com.paiban.scheduling.domain.ConstraintConfig;
@@ -57,6 +60,7 @@ public class ConstraintService {
     private final ConstraintTemplateRepository templates;
     private final SemesterService semesters;
     private final TeacherRepository teachers;
+    private final CourseRepository courses;
     private final PeriodRepository periods;
     private final ObjectMapper objectMapper;
 
@@ -66,6 +70,7 @@ public class ConstraintService {
             ConstraintTemplateRepository templates,
             SemesterService semesters,
             TeacherRepository teachers,
+            CourseRepository courses,
             PeriodRepository periods,
             ObjectMapper objectMapper) {
         this.configs = configs;
@@ -73,6 +78,7 @@ public class ConstraintService {
         this.templates = templates;
         this.semesters = semesters;
         this.teachers = teachers;
+        this.courses = courses;
         this.periods = periods;
         this.objectMapper = objectMapper;
     }
@@ -265,6 +271,25 @@ public class ConstraintService {
     private record PlannedConfig(ConstraintType type, int weight, boolean hard, boolean enabled,
                                  List<Map<String, Object>> entries) {}
 
+    /** One accepted entry with the 1-based position it had in the request. */
+    private record PlannedEntry(Map<String, Object> params, Integer position) {}
+
+    /**
+     * The scalar conditions a type attaches to one object. Two entries for the same
+     * object with different values are contradictory (one course cannot be in both a
+     * lab and a playground), so the request is rejected instead of silently keeping
+     * whichever row happens to be read first.
+     */
+    private record ScalarSpec(String objectField, List<String> scalarFields) {}
+
+    private static final Map<ConstraintType, ScalarSpec> SCALAR_SPECS = Map.of(
+            ConstraintType.COURSE_REQUIRED_ROOM_TYPE,
+            new ScalarSpec("courseId", List.of("roomType")),
+            ConstraintType.CONSECUTIVE_LESSONS,
+            new ScalarSpec("courseId", List.of("minConsecutive")),
+            ConstraintType.MAIN_SUBJECT_MORNING,
+            new ScalarSpec("courseId", List.of("beforePeriodNo")));
+
     /** Periods that exist in the semester, so an entry can be located exactly. */
     private record SemesterTimetable(Set<String> slots) {
 
@@ -286,17 +311,31 @@ public class ConstraintService {
             return dayOfWeek != null && periodNo != null
                     && slots.contains(key(dayOfWeek, periodNo));
         }
+
+        /** True when any day of the semester has this period number. */
+        boolean hasPeriodNo(Integer periodNo) {
+            if (periodNo == null) {
+                return false;
+            }
+            for (String slot : slots) {
+                if (slot.endsWith("-" + periodNo)) {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 
     /**
      * Validates every entry of one type and returns the ones to persist. Fully
      * identical entries are rejected: the union would otherwise count the same
-     * fact twice and hide a duplicate row in the editor.
+     * fact twice and hide a duplicate row in the editor. Contradictory scalar
+     * conditions for the same object are rejected too.
      */
     private List<Map<String, Object>> planEntries(
             ConstraintType type, ConstraintConfigRequest request, SemesterTimetable timetable,
             List<String> errors) {
-        List<Map<String, Object>> planned = new ArrayList<>();
+        List<PlannedEntry> planned = new ArrayList<>();
         Map<Map<String, Object>, Integer> seen = new HashMap<>();
         List<ConstraintEntryRequest> requested = request.entries();
         if (requested == null) {
@@ -304,11 +343,11 @@ public class ConstraintService {
             // pre-ADR wording.
             Map<String, Object> params = validateParams(type, request.params(), null, errors);
             accept(type, null, params, planned, seen, timetable, errors);
-            return planned;
+            return planned.stream().map(PlannedEntry::params).toList();
         }
         if (type.getParams().isEmpty() && !requested.isEmpty()) {
             errors.add(type.getDisplayName() + "(" + type.name() + "): 该类型没有参数，不能配置条目");
-            return planned;
+            return List.of();
         }
         for (int index = 0; index < requested.size(); index++) {
             ConstraintEntryRequest raw = requested.get(index);
@@ -317,16 +356,19 @@ public class ConstraintService {
                     type, raw == null ? null : raw.params(), position, errors);
             accept(type, position, params, planned, seen, timetable, errors);
         }
-        return planned;
+        rejectContradictoryScalars(type, planned, errors);
+        return planned.stream().map(PlannedEntry::params).toList();
     }
 
     private void accept(
             ConstraintType type, Integer position, Map<String, Object> params,
-            List<Map<String, Object>> planned, Map<Map<String, Object>, Integer> seen,
+            List<PlannedEntry> planned, Map<Map<String, Object>, Integer> seen,
             SemesterTimetable timetable, List<String> errors) {
-        if (params.isEmpty()) {
+        if (params.isEmpty() && !type.isEntryBacked()) {
             // Nothing to store: no object condition. `{}` means "no extra
-            // condition" and is kept in the legacy params column only.
+            // condition" and is kept in the legacy params column only. For an
+            // entry-backed type whose target is optional `{}` is a real entry: the
+            // explicit "every course / the sport class" row.
             return;
         }
         Integer first = seen.putIfAbsent(params, position);
@@ -335,26 +377,155 @@ public class ConstraintService {
             return;
         }
         validateObjects(type, position, params, timetable, errors);
-        planned.add(params);
+        planned.add(new PlannedEntry(params, position));
     }
 
     /**
-     * Object-level checks for the type being expanded in this ticket. The other 23
-     * types keep their old schema-only validation so their behaviour cannot drift.
+     * Rejects two entries that target the same object with different scalar
+     * conditions (a course in two room types, two consecutive-run lengths, two
+     * morning cut-offs). Only entry-backed types carry such a spec.
+     */
+    private void rejectContradictoryScalars(
+            ConstraintType type, List<PlannedEntry> planned, List<String> errors) {
+        ScalarSpec spec = SCALAR_SPECS.get(type);
+        if (spec == null) {
+            return;
+        }
+        Map<Long, PlannedEntry> byObject = new LinkedHashMap<>();
+        for (PlannedEntry entry : planned) {
+            Long objectId = ConstraintSettings.longValue(entry.params().get(spec.objectField()));
+            if (objectId == null) {
+                continue;
+            }
+            PlannedEntry previous = byObject.putIfAbsent(objectId, entry);
+            if (previous == null) {
+                continue;
+            }
+            for (String field : spec.scalarFields()) {
+                String before = scalarText(previous.params().get(field));
+                String after = scalarText(entry.params().get(field));
+                if (!java.util.Objects.equals(before, after)) {
+                    errors.add(location(type, entry.position()) + ": 与第" + previous.position()
+                            + " 条针对同一目标但参数「" + paramLabel(type, field) + "」不一致（"
+                            + before + " ≠ " + after + "）；同一目标不能并存互相冲突的条件");
+                    break;
+                }
+            }
+        }
+    }
+
+    private String scalarText(Object value) {
+        return value == null ? "" : value.toString();
+    }
+
+    private String paramLabel(ConstraintType type, String field) {
+        return type.getParams().stream()
+                .filter(param -> param.name().equals(field))
+                .map(Param::label)
+                .findFirst()
+                .orElse(field);
+    }
+
+    /**
+     * Object-level checks for the entry-backed types: teachers and courses are
+     * global assets, semester timetables decide which slots exist. Everything else
+     * keeps its old schema-only validation so its behaviour cannot drift.
      */
     private void validateObjects(
             ConstraintType type, Integer position, Map<String, Object> params,
             SemesterTimetable timetable, List<String> errors) {
-        if (type != ConstraintType.TEACHER_UNAVAILABLE) {
+        if (!type.isEntryBacked()) {
             return;
         }
         String location = location(type, position);
+        switch (type) {
+            case TEACHER_UNAVAILABLE, TEACHER_PREFERRED_SLOT -> {
+                requireTeacher(location, params, errors);
+                requireSlot(location, params, timetable, errors);
+            }
+            case TEACHER_MEETING_BLOCKED -> {
+                requireSubject(location, params, errors);
+                requireSlot(location, params, timetable, errors);
+            }
+            case TEACHER_NO_FIRST_PERIOD -> requireTeacher(location, params, errors);
+            case TEACHER_DAY_OFF -> requireTeacher(location, params, errors);
+            case COURSE_REQUIRED_ROOM_TYPE, COURSE_NOT_IN_EVENING, CONSECUTIVE_LESSONS,
+                 MAIN_SUBJECT_MORNING -> {
+                requireCourse(location, params, errors);
+                if (type == ConstraintType.MAIN_SUBJECT_MORNING) {
+                    requirePeriodNo(location, params, "beforePeriodNo", "上午截止节次", timetable, errors);
+                }
+            }
+            case SAME_COURSE_ONCE_PER_DAY, SPORT_NOT_FIRST_AFTERNOON, COURSE_SPREAD,
+                 PE_LAST_PERIOD_AVOID -> requireCourseIfPresent(location, params, errors);
+            default -> {
+                // Single-switch and threshold types keep their legacy validation.
+            }
+        }
+    }
+
+    private void requireTeacher(String location, Map<String, Object> params, List<String> errors) {
         Long teacherId = ConstraintSettings.longValue(params.get("teacherId"));
         if (teacherId == null) {
             errors.add(location + ": 参数「教师」必须是教师");
         } else if (!teachers.existsById(teacherId)) {
             errors.add(location + ": 参数「教师」指向不存在的教师: " + teacherId);
         }
+    }
+
+    private void requireCourse(String location, Map<String, Object> params, List<String> errors) {
+        Long courseId = ConstraintSettings.longValue(params.get("courseId"));
+        if (courseId == null) {
+            errors.add(location + ": 参数「课程」必须是课程");
+        } else if (!courses.existsById(courseId)) {
+            errors.add(location + ": 参数「课程」指向不存在的课程: " + courseId);
+        }
+    }
+
+    private void requireCourseIfPresent(
+            String location, Map<String, Object> params, List<String> errors) {
+        Long courseId = ConstraintSettings.longValue(params.get("courseId"));
+        if (courseId != null && !courses.existsById(courseId)) {
+            errors.add(location + ": 参数「课程」指向不存在的课程: " + courseId);
+        }
+    }
+
+    /**
+     * A subject entry must name a subject the school actually uses. The catalogue is
+     * the union of teacher subjects and course subjects; when the school has not
+     * filled any in yet there is nothing to check against, so the entry is accepted.
+     */
+    private void requireSubject(String location, Map<String, Object> params, List<String> errors) {
+        Object raw = params.get("subject");
+        if (raw == null || raw.toString().isBlank()) {
+            return;
+        }
+        String subject = raw.toString();
+        Set<String> known = knownSubjects();
+        if (!known.isEmpty() && known.stream().noneMatch(subject::equalsIgnoreCase)) {
+            errors.add(location + ": 参数「学科」不存在: " + subject);
+        }
+    }
+
+    private Set<String> knownSubjects() {
+        Set<String> known = new LinkedHashSet<>();
+        for (Teacher teacher : teachers.findAll()) {
+            if (teacher.getSubject() != null && !teacher.getSubject().isBlank()) {
+                known.add(teacher.getSubject().trim());
+            }
+        }
+        for (Course course : courses.findAll()) {
+            if (course.getSubject() != null && !course.getSubject().isBlank()) {
+                known.add(course.getSubject().trim());
+            }
+        }
+        return known;
+    }
+
+    /** A (weekday, period) entry must name a slot the semester timetable really has. */
+    private void requireSlot(
+            String location, Map<String, Object> params, SemesterTimetable timetable,
+            List<String> errors) {
         if (timetable.isEmpty()) {
             errors.add(location + ": 该学期还没有作息安排，无法校验节次；请先配置作息");
             return;
@@ -363,6 +534,20 @@ public class ConstraintService {
         Integer periodNo = ConstraintSettings.intValue(params.get("periodNo"));
         if (!timetable.contains(day, periodNo)) {
             errors.add(location + ": 星期" + day + "第" + periodNo + "节不在本学期作息范围内");
+        }
+    }
+
+    /** A period number (a cut-off, not a slot) must exist somewhere in the timetable. */
+    private void requirePeriodNo(
+            String location, Map<String, Object> params, String field, String label,
+            SemesterTimetable timetable, List<String> errors) {
+        if (timetable.isEmpty()) {
+            errors.add(location + ": 该学期还没有作息安排，无法校验「" + label + "」；请先配置作息");
+            return;
+        }
+        Integer periodNo = ConstraintSettings.intValue(params.get(field));
+        if (periodNo == null || !timetable.hasPeriodNo(periodNo)) {
+            errors.add(location + ": 参数「" + label + "」第" + periodNo + "节不在本学期作息范围内");
         }
     }
 
@@ -466,6 +651,11 @@ public class ConstraintService {
         Category category = type == null ? Category.PEDAGOGY : type.getCategory();
         String description = type == null ? "" : type.getDescription();
         List<ConstraintEntryDto> entryDtos = entryDtos(config, entryRows);
+        // `params` stays the pre-ADR single-value view: the first entry for an
+        // entry-backed type, the legacy column for the types that still use it.
+        Map<String, Object> legacyParams = entryDtos.isEmpty()
+                ? (isEntryBacked(config.getType()) ? Map.of() : paramsFromJson(config.getParamsJson()))
+                : entryDtos.get(0).params();
         return new ConstraintConfigDto(
                 config.getId(),
                 config.getType(),
@@ -473,7 +663,7 @@ public class ConstraintService {
                 category.name(),
                 category.getLabel(),
                 description,
-                entryDtos.isEmpty() ? paramsFromJson(config.getParamsJson()) : entryDtos.get(0).params(),
+                legacyParams,
                 config.getWeight(),
                 config.isHard(),
                 config.isEnabled(),
@@ -482,8 +672,11 @@ public class ConstraintService {
 
     /**
      * Entry DTOs of one config row. A row that still only has the legacy
-     * {@code params_json} (pre-V26 data written outside the migration) is shown as
-     * one implicit entry with no id, so the reader never has to special-case it.
+     * {@code params_json} is shown as one implicit entry for the types that are not
+     * entry-backed yet (the thresholds), so old readers keep working. For an
+     * entry-backed type the legacy column is ignored on purpose: V26/V27 moved every
+     * value into a row, so an un-migrated row means "not configured" — showing it as
+     * an entry would promise evaluation the checker does not perform.
      */
     private List<ConstraintEntryDto> entryDtos(ConstraintConfig config, List<ConstraintEntry> entryRows) {
         List<ConstraintEntryDto> dtos = new ArrayList<>();
@@ -494,7 +687,7 @@ public class ConstraintService {
                     .map(entry -> new ConstraintEntryDto(entry.getId(), paramsFromJson(entry.getParamsJson())))
                     .forEach(dtos::add);
         }
-        if (dtos.isEmpty()) {
+        if (dtos.isEmpty() && !isEntryBacked(config.getType())) {
             Map<String, Object> legacy = paramsFromJson(config.getParamsJson());
             if (!legacy.isEmpty()) {
                 dtos.add(new ConstraintEntryDto(null, legacy));
@@ -503,19 +696,31 @@ public class ConstraintService {
         return dtos;
     }
 
+    private boolean isEntryBacked(String typeCode) {
+        try {
+            return ConstraintType.valueOf(typeCode).isEntryBacked();
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
+    }
+
     private ConstraintConfigRequest toSnapshotRequest(
             ConstraintConfig config, List<ConstraintEntry> entryRows) {
         List<ConstraintEntryDto> entryDtos = entryDtos(config, entryRows);
-        List<ConstraintEntryRequest> snapshotEntries = entryDtos.isEmpty()
-                ? null
-                : entryDtos.stream()
+        boolean entryBacked = isEntryBacked(config.getType());
+        // An entry-backed type always travels as an entry list — possibly empty, which
+        // round-trips as "not configured" — so applying the template cannot resurrect
+        // a legacy params map or fail on its required parameters.
+        List<ConstraintEntryRequest> snapshotEntries = entryBacked || !entryDtos.isEmpty()
+                ? entryDtos.stream()
                         .map(entry -> new ConstraintEntryRequest(null, entry.params()))
-                        .toList();
+                        .toList()
+                : null;
         // With entries present the snapshot does not repeat the first entry in the
         // legacy field: one copy is enough, and the template stays small.
-        Map<String, Object> legacyParams = entryDtos.isEmpty()
-                ? paramsFromJson(config.getParamsJson())
-                : null;
+        Map<String, Object> legacyParams = entryBacked || !entryDtos.isEmpty()
+                ? null
+                : paramsFromJson(config.getParamsJson());
         return new ConstraintConfigRequest(
                 config.getType(), legacyParams, config.getWeight(), config.isHard(), config.isEnabled(),
                 snapshotEntries);

@@ -46,18 +46,19 @@ public class PaibanConstraintProvider implements ConstraintProvider {
             constraints.add(teacherUnavailable(factory, s));
         }
         if (s.enabled(ConstraintType.TEACHER_MEETING_BLOCKED)
-                && s.intParam(ConstraintType.TEACHER_MEETING_BLOCKED, "dayOfWeek") != null) {
+                && !s.entries(ConstraintType.TEACHER_MEETING_BLOCKED).isEmpty()) {
             constraints.add(teacherMeetingBlocked(factory, s));
         }
         if (s.enabled(ConstraintType.COURSE_REQUIRED_ROOM_TYPE)
-                && s.longParam(ConstraintType.COURSE_REQUIRED_ROOM_TYPE, "courseId") != null) {
+                && !s.entries(ConstraintType.COURSE_REQUIRED_ROOM_TYPE).isEmpty()) {
             constraints.add(courseRequiredRoomType(factory, s));
         }
         if (s.enabled(ConstraintType.COURSE_NOT_IN_EVENING)
-                && s.longParam(ConstraintType.COURSE_NOT_IN_EVENING, "courseId") != null) {
+                && !s.entries(ConstraintType.COURSE_NOT_IN_EVENING).isEmpty()) {
             constraints.add(courseNotInEvening(factory, s));
         }
-        if (s.enabled(ConstraintType.SAME_COURSE_ONCE_PER_DAY)) {
+        if (s.enabled(ConstraintType.SAME_COURSE_ONCE_PER_DAY)
+                && !s.entries(ConstraintType.SAME_COURSE_ONCE_PER_DAY).isEmpty()) {
             constraints.add(sameCourseOncePerDay(factory, s));
         }
         if (s.enabled(ConstraintType.TEACHER_MAX_PER_DAY)) {
@@ -72,38 +73,42 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         if (s.enabled(ConstraintType.EVENING_MAX)) {
             constraints.add(eveningMax(factory, s));
         }
-        if (s.enabled(ConstraintType.SPORT_NOT_FIRST_AFTERNOON)) {
+        if (s.enabled(ConstraintType.SPORT_NOT_FIRST_AFTERNOON)
+                && !s.entries(ConstraintType.SPORT_NOT_FIRST_AFTERNOON).isEmpty()) {
             constraints.add(sportNotFirstAfternoon(factory, s));
         }
-        if (s.enabled(ConstraintType.CONSECUTIVE_LESSONS)) {
+        if (s.enabled(ConstraintType.CONSECUTIVE_LESSONS)
+                && !s.entries(ConstraintType.CONSECUTIVE_LESSONS).isEmpty()) {
             constraints.add(consecutiveLessons(factory, s));
         }
-        if (s.enabled(ConstraintType.COURSE_SPREAD)) {
+        if (s.enabled(ConstraintType.COURSE_SPREAD)
+                && !s.entries(ConstraintType.COURSE_SPREAD).isEmpty()) {
             constraints.add(courseSpread(factory, s));
         }
         if (s.enabled(ConstraintType.MAIN_SUBJECT_MORNING)
-                && s.longParam(ConstraintType.MAIN_SUBJECT_MORNING, "courseId") != null) {
+                && !s.entries(ConstraintType.MAIN_SUBJECT_MORNING).isEmpty()) {
             constraints.add(mainSubjectMorning(factory, s));
         }
         if (s.enabled(ConstraintType.TEACHER_PREFERRED_SLOT)
-                && s.longParam(ConstraintType.TEACHER_PREFERRED_SLOT, "teacherId") != null) {
+                && !s.entries(ConstraintType.TEACHER_PREFERRED_SLOT).isEmpty()) {
             constraints.add(teacherPreferredSlot(factory, s));
         }
         if (s.enabled(ConstraintType.TEACHER_MAX_CONSECUTIVE)) {
             constraints.add(teacherMaxConsecutive(factory, s));
         }
         if (s.enabled(ConstraintType.TEACHER_NO_FIRST_PERIOD)
-                && s.longParam(ConstraintType.TEACHER_NO_FIRST_PERIOD, "teacherId") != null) {
+                && !s.entries(ConstraintType.TEACHER_NO_FIRST_PERIOD).isEmpty()) {
             constraints.add(teacherNoFirstPeriod(factory, s));
         }
         if (s.enabled(ConstraintType.TEACHER_DAY_OFF)
-                && s.longParam(ConstraintType.TEACHER_DAY_OFF, "teacherId") != null) {
+                && !s.entries(ConstraintType.TEACHER_DAY_OFF).isEmpty()) {
             constraints.add(teacherDayOff(factory, s));
         }
         if (s.enabled(ConstraintType.CLASS_GAP_MINIMIZED)) {
             constraints.add(classGapMinimized(factory, s));
         }
-        if (s.enabled(ConstraintType.PE_LAST_PERIOD_AVOID)) {
+        if (s.enabled(ConstraintType.PE_LAST_PERIOD_AVOID)
+                && !s.entries(ConstraintType.PE_LAST_PERIOD_AVOID).isEmpty()) {
             constraints.add(peLastPeriodAvoid(factory, s));
         }
         if (s.enabled(ConstraintType.HEAD_TEACHER_FIRST_PERIOD)) {
@@ -218,36 +223,74 @@ public class PaibanConstraintProvider implements ConstraintProvider {
 
     private Constraint teacherMeetingBlocked(ConstraintFactory f, ConstraintSettings s) {
         ConstraintType type = ConstraintType.TEACHER_MEETING_BLOCKED;
-        String subject = s.textParam(type, "subject");
-        Integer day = s.intParam(type, "dayOfWeek");
-        Integer periodNo = s.intParam(type, "periodNo");
+        // key "day-period" -> subjects blocked there; "" means every subject.
+        Map<String, List<String>> bySlot = new HashMap<>();
+        for (Map<String, Object> entry : s.entries(type)) {
+            Integer day = ConstraintSettings.intValue(entry.get("dayOfWeek"));
+            Integer periodNo = ConstraintSettings.intValue(entry.get("periodNo"));
+            if (day == null || periodNo == null) {
+                continue;
+            }
+            Object rawSubject = entry.get("subject");
+            String subject = rawSubject == null || rawSubject.toString().isBlank()
+                    ? "" : rawSubject.toString();
+            bySlot.computeIfAbsent(day + "-" + periodNo, key -> new ArrayList<>()).add(subject);
+        }
         return f.forEach(Lesson.class)
                 .filter(lesson -> lesson.getPeriod() != null
-                        && (subject == null || subject.isBlank()
-                        || subject.equalsIgnoreCase(lesson.getTeacherSubject()))
-                        && lesson.getPeriod().getDayOfWeek() == day
-                        && lesson.getPeriod().getPeriodNo() == periodNo)
+                        && blockedByMeeting(bySlot, lesson.getPeriod().getDayOfWeek(),
+                        lesson.getPeriod().getPeriodNo(), lesson.getTeacherSubject()))
                 .penalize(penalty(s, type))
                 .asConstraint(type.getDisplayName());
     }
 
+    /** Union of the meeting entries: any entry whose subject matches (or is blank) blocks. */
+    private boolean blockedByMeeting(Map<String, List<String>> bySlot, int day, int periodNo,
+                                     String teacherSubject) {
+        List<String> subjects = bySlot.get(day + "-" + periodNo);
+        if (subjects == null) {
+            return false;
+        }
+        for (String subject : subjects) {
+            if (subject.isEmpty() || subject.equalsIgnoreCase(teacherSubject)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private Constraint courseRequiredRoomType(ConstraintFactory f, ConstraintSettings s) {
         ConstraintType type = ConstraintType.COURSE_REQUIRED_ROOM_TYPE;
-        Long courseId = s.longParam(type, "courseId");
-        String roomType = s.textParam(type, "roomType");
+        // Different courses never interfere; one entry per course (a second, different
+        // room type for the same course is rejected at save time).
+        Map<Long, String> byCourse = new HashMap<>();
+        for (Map<String, Object> entry : s.entries(type)) {
+            Long courseId = ConstraintSettings.longValue(entry.get("courseId"));
+            Object roomType = entry.get("roomType");
+            if (courseId != null && roomType != null) {
+                byCourse.putIfAbsent(courseId, roomType.toString());
+            }
+        }
         return f.forEach(Lesson.class)
-                .filter(lesson -> Objects.equals(lesson.getCourseId(), courseId)
-                        && lesson.getRoom() != null
-                        && !Objects.equals(lesson.getRoom().getType(), roomType))
+                .filter(lesson -> lesson.getRoom() != null
+                        && byCourse.containsKey(lesson.getCourseId())
+                        && !Objects.equals(lesson.getRoom().getType(),
+                        byCourse.get(lesson.getCourseId())))
                 .penalize(penalty(s, type))
                 .asConstraint(type.getDisplayName());
     }
 
     private Constraint courseNotInEvening(ConstraintFactory f, ConstraintSettings s) {
         ConstraintType type = ConstraintType.COURSE_NOT_IN_EVENING;
-        Long courseId = s.longParam(type, "courseId");
+        List<Long> courses = new ArrayList<>();
+        for (Map<String, Object> entry : s.entries(type)) {
+            Long courseId = ConstraintSettings.longValue(entry.get("courseId"));
+            if (courseId != null) {
+                courses.add(courseId);
+            }
+        }
         return f.forEach(Lesson.class)
-                .filter(lesson -> Objects.equals(lesson.getCourseId(), courseId)
+                .filter(lesson -> courses.contains(lesson.getCourseId())
                         && lesson.getPeriod() != null
                         && lesson.getPeriod().getSection() == com.paiban.foundation.domain.PeriodSection.EVENING)
                 .penalize(penalty(s, type))
@@ -341,18 +384,29 @@ public class PaibanConstraintProvider implements ConstraintProvider {
 
     private Constraint consecutiveLessons(ConstraintFactory f, ConstraintSettings s) {
         ConstraintType type = ConstraintType.CONSECUTIVE_LESSONS;
-        Long courseId = s.longParam(type, "courseId");
-        int minConsecutive = s.intParam(type, "minConsecutive") == null
-                ? 2 : s.intParam(type, "minConsecutive");
+        // One entry per course, so each course is judged by its own minimum and
+        // courses never interfere.
+        Map<Long, Integer> minByCourse = new HashMap<>();
+        for (Map<String, Object> entry : s.entries(type)) {
+            Long courseId = ConstraintSettings.longValue(entry.get("courseId"));
+            Integer min = ConstraintSettings.intValue(entry.get("minConsecutive"));
+            if (courseId != null) {
+                minByCourse.putIfAbsent(courseId, min == null ? 2 : min);
+            }
+        }
         return f.forEach(Lesson.class)
                 .filter(lesson -> lesson.getPeriod() != null
                         && lesson.isAllowConsecutive()
-                        && Objects.equals(lesson.getCourseId(), courseId))
+                        && minByCourse.containsKey(lesson.getCourseId()))
                 .groupBy(
                         Lesson::getAdminClassId,
                         lesson -> lesson.getPeriod().getDayOfWeek(),
+                        Lesson::getCourseId,
                         ConstraintCollectors.toList())
-                .filter((classId, day, lessons) -> longestRun(lessons) < minConsecutive)
+                .filter((classId, day, courseId, lessons) -> {
+                    Integer min = minByCourse.get(courseId);
+                    return min != null && longestRun(lessons) < min;
+                })
                 .penalize(penalty(s, type))
                 .asConstraint(type.getDisplayName());
     }
@@ -375,28 +429,60 @@ public class PaibanConstraintProvider implements ConstraintProvider {
 
     private Constraint mainSubjectMorning(ConstraintFactory f, ConstraintSettings s) {
         ConstraintType type = ConstraintType.MAIN_SUBJECT_MORNING;
-        Long courseId = s.longParam(type, "courseId");
-        int before = s.intParam(type, "beforePeriodNo") == null ? 4 : s.intParam(type, "beforePeriodNo");
+        // Each course carries its own cut-off; the union of entries decides which
+        // courses are constrained at all.
+        Map<Long, Integer> beforeByCourse = new HashMap<>();
+        for (Map<String, Object> entry : s.entries(type)) {
+            Long courseId = ConstraintSettings.longValue(entry.get("courseId"));
+            Integer before = ConstraintSettings.intValue(entry.get("beforePeriodNo"));
+            if (courseId != null) {
+                beforeByCourse.putIfAbsent(courseId, before == null ? 4 : before);
+            }
+        }
         return f.forEach(Lesson.class)
                 .filter(lesson -> lesson.getPeriod() != null
-                        && Objects.equals(lesson.getCourseId(), courseId)
-                        && lesson.getPeriod().getPeriodNo() > before)
+                        && beforeByCourse.containsKey(lesson.getCourseId())
+                        && lesson.getPeriod().getPeriodNo() > beforeByCourse.get(lesson.getCourseId()))
                 .penalize(penalty(s, type))
                 .asConstraint(type.getDisplayName());
     }
 
     private Constraint teacherPreferredSlot(ConstraintFactory f, ConstraintSettings s) {
         ConstraintType type = ConstraintType.TEACHER_PREFERRED_SLOT;
-        Long teacherId = s.longParam(type, "teacherId");
-        Integer day = s.intParam(type, "dayOfWeek");
-        Integer periodNo = s.intParam(type, "periodNo");
+        // One teacher may list several slots: they are an OR set, a lesson in any one
+        // of them satisfies the preference.
+        Map<Long, List<int[]>> slotsByTeacher = new HashMap<>();
+        for (Map<String, Object> entry : s.entries(type)) {
+            Long teacherId = ConstraintSettings.longValue(entry.get("teacherId"));
+            Integer day = ConstraintSettings.intValue(entry.get("dayOfWeek"));
+            Integer periodNo = ConstraintSettings.intValue(entry.get("periodNo"));
+            if (teacherId == null || day == null || periodNo == null) {
+                continue;
+            }
+            slotsByTeacher.computeIfAbsent(teacherId, key -> new ArrayList<>())
+                    .add(new int[] {day, periodNo});
+        }
         return f.forEach(Lesson.class)
                 .filter(lesson -> lesson.getPeriod() != null
-                        && Objects.equals(lesson.getTeacherId(), teacherId)
-                        && lesson.getPeriod().getDayOfWeek() == day
-                        && lesson.getPeriod().getPeriodNo() == periodNo)
+                        && isPreferred(slotsByTeacher, lesson.getTeacherId(),
+                        lesson.getPeriod().getDayOfWeek(), lesson.getPeriod().getPeriodNo()))
                 .reward(HardSoftScore.ofSoft(Math.max(1, s.weight(type))))
                 .asConstraint(type.getDisplayName());
+    }
+
+    /** True when the slot is one of the teacher's preferred slots (any entry). */
+    private boolean isPreferred(Map<Long, List<int[]>> slotsByTeacher, Long teacherId,
+                                int dayOfWeek, int periodNo) {
+        List<int[]> slots = teacherId == null ? null : slotsByTeacher.get(teacherId);
+        if (slots == null) {
+            return false;
+        }
+        for (int[] slot : slots) {
+            if (slot[0] == dayOfWeek && slot[1] == periodNo) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Constraint teacherMaxConsecutive(ConstraintFactory f, ConstraintSettings s) {
@@ -415,10 +501,16 @@ public class PaibanConstraintProvider implements ConstraintProvider {
 
     private Constraint teacherNoFirstPeriod(ConstraintFactory f, ConstraintSettings s) {
         ConstraintType type = ConstraintType.TEACHER_NO_FIRST_PERIOD;
-        Long teacherId = s.longParam(type, "teacherId");
+        List<Long> teacherIds = new ArrayList<>();
+        for (Map<String, Object> entry : s.entries(type)) {
+            Long teacherId = ConstraintSettings.longValue(entry.get("teacherId"));
+            if (teacherId != null) {
+                teacherIds.add(teacherId);
+            }
+        }
         return f.forEach(Lesson.class)
                 .filter(lesson -> lesson.getPeriod() != null
-                        && Objects.equals(lesson.getTeacherId(), teacherId)
+                        && teacherIds.contains(lesson.getTeacherId())
                         && lesson.getPeriod().isFirstOfDay())
                 .penalize(penalty(s, type))
                 .asConstraint(type.getDisplayName());
@@ -426,14 +518,27 @@ public class PaibanConstraintProvider implements ConstraintProvider {
 
     private Constraint teacherDayOff(ConstraintFactory f, ConstraintSettings s) {
         ConstraintType type = ConstraintType.TEACHER_DAY_OFF;
-        Long teacherId = s.longParam(type, "teacherId");
-        Integer day = s.intParam(type, "dayOfWeek");
+        // Union of the (teacher, day) pairs: a teacher may have several days off.
+        Map<Long, List<Integer>> daysByTeacher = new HashMap<>();
+        for (Map<String, Object> entry : s.entries(type)) {
+            Long teacherId = ConstraintSettings.longValue(entry.get("teacherId"));
+            Integer day = ConstraintSettings.intValue(entry.get("dayOfWeek"));
+            if (teacherId == null || day == null) {
+                continue;
+            }
+            daysByTeacher.computeIfAbsent(teacherId, key -> new ArrayList<>()).add(day);
+        }
         return f.forEach(Lesson.class)
                 .filter(lesson -> lesson.getPeriod() != null
-                        && Objects.equals(lesson.getTeacherId(), teacherId)
-                        && lesson.getPeriod().getDayOfWeek() == day)
+                        && isDayOff(daysByTeacher, lesson.getTeacherId(),
+                        lesson.getPeriod().getDayOfWeek()))
                 .penalize(penalty(s, type))
                 .asConstraint(type.getDisplayName());
+    }
+
+    private boolean isDayOff(Map<Long, List<Integer>> daysByTeacher, Long teacherId, int dayOfWeek) {
+        List<Integer> days = teacherId == null ? null : daysByTeacher.get(teacherId);
+        return days != null && days.contains(dayOfWeek);
     }
 
     private Constraint classGapMinimized(ConstraintFactory f, ConstraintSettings s) {
@@ -478,12 +583,24 @@ public class PaibanConstraintProvider implements ConstraintProvider {
                 : HardSoftScore.ofSoft(Math.max(1, settings.weight(type)));
     }
 
+    /**
+     * Union of the sport-flavoured entries: an entry with a course matches that
+     * course, an entry without one matches the school's sport-class courses. A
+     * lesson that both an "all sport" entry and a concrete one match is still a
+     * single violation, because this returns one boolean per lesson.
+     */
     private boolean isSport(Lesson lesson, ConstraintSettings settings, ConstraintType type) {
-        Long configured = settings.longParam(type, "courseId");
-        if (configured != null) {
-            return configured.equals(lesson.getCourseId());
+        for (Map<String, Object> entry : settings.entries(type)) {
+            Long configured = ConstraintSettings.longValue(entry.get("courseId"));
+            if (configured != null) {
+                if (configured.equals(lesson.getCourseId())) {
+                    return true;
+                }
+            } else if (lesson.getCourseName() != null && lesson.getCourseName().contains("体育")) {
+                return true;
+            }
         }
-        return lesson.getCourseName() != null && lesson.getCourseName().contains("体育");
+        return false;
     }
 
     private int maxConsecutive(List<Lesson> lessons) {        List<Integer> periodNos = lessons.stream()

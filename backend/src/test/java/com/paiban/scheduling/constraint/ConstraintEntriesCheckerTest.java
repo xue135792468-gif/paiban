@@ -115,7 +115,9 @@ class ConstraintEntriesCheckerTest {
     }
 
     @Test
-    void legacySingleParamsAndOneExplicitEntryGiveTheSameVerdict() {
+    void legacyParamsOnlyRowIsNotConfiguredForAnEntryBackedType() {
+        // Ticket 10/03: the legacy row only carries a value that V26/V27 moved into
+        // an entry. Reading it back would resurrect a rule the editor no longer shows.
         ConstraintConfig legacy = config(ConstraintType.TEACHER_UNAVAILABLE, true, 100, Map.of(
                 "teacherId", TEACHER_1, "dayOfWeek", 1, "periodNo", 1));
         ConstraintSettings legacySettings = ConstraintSettings.from(List.of(legacy), MAPPER);
@@ -124,24 +126,20 @@ class ConstraintEntriesCheckerTest {
                 entry(ConstraintType.TEACHER_UNAVAILABLE, Map.of(
                         "teacherId", TEACHER_1, "dayOfWeek", 1, "periodNo", 1)));
 
-        assertThat(verdict(legacySettings)).isEqualTo(verdict(entriesSettings));
-        assertThat(verdict(legacySettings))
+        assertThat(verdict(legacySettings)).isEmpty();
+        assertThat(verdict(entriesSettings))
                 .anyMatch(row -> row.startsWith("TEACHER_UNAVAILABLE@"));
     }
 
     @Test
-    void courseNotInEveningKeepsItsLegacyMeaning() {
-        ConstraintSettings legacy = ConstraintSettings.from(
-                List.of(config(ConstraintType.COURSE_NOT_IN_EVENING, true, 100,
-                        Map.of("courseId", COURSE_1))), MAPPER);
+    void courseNotInEveningReadsItsEntry() {
         ConstraintSettings entries = settings(
                 config(ConstraintType.COURSE_NOT_IN_EVENING, true, 100, Map.of()),
                 entry(ConstraintType.COURSE_NOT_IN_EVENING, Map.of("courseId", COURSE_1)));
 
-        List<String> legacyVerdict = verdictForNightLesson(legacy);
-        assertThat(legacyVerdict).hasSize(1);
-        assertThat(legacyVerdict.get(0)).startsWith("COURSE_NOT_IN_EVENING@");
-        assertThat(verdictForNightLesson(entries)).isEqualTo(legacyVerdict);
+        List<String> verdict = verdictForNightLesson(entries);
+        assertThat(verdict).hasSize(1);
+        assertThat(verdict.get(0)).startsWith("COURSE_NOT_IN_EVENING@");
     }
 
     @Test

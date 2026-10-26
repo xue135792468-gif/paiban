@@ -150,4 +150,44 @@ class SubstitutionCliTest {
         assertThat(json.get("status").asText()).isEqualTo("FAIL");
         assertThat(json.get("issues").toString()).contains("TEACHER_UNAVAILABLE");
     }
+
+    @Test
+    void plannerReadsEveryPreferredSlotEntry() throws Exception {
+        // The only cycle hands Mon-1 back to teacher 3, whose preferred slots are
+        // Mon-3 and Mon-4: the OR set cannot be satisfied there, so no plan survives.
+        Run run = run("plan", "--snapshot", DIR + "snapshot-target-entries.json",
+                "--request", DIR + "request.json");
+
+        assertThat(run.code()).isEqualTo(2);
+        assertThat(MAPPER.readTree(run.out()).get("status").asText()).isEqualTo("NO_SOLUTION");
+    }
+
+    @Test
+    void verifierReadsEveryPreferredSlotEntry() throws Exception {
+        // after.json moves teacher 3 into Mon-1, outside both preferred slots.
+        Run run = run("verify", "--before", DIR + "snapshot-target-entries.json",
+                "--after", DIR + "after.json");
+
+        assertThat(run.code()).isEqualTo(1);
+        JsonNode json = MAPPER.readTree(run.out());
+        assertThat(json.get("status").asText()).isEqualTo("FAIL");
+        assertThat(json.get("issues").toString()).contains("TEACHER_PREFERRED_SLOT");
+    }
+
+    @Test
+    void legacyParamsSnapshotKeepsItsTargetRule() throws Exception {
+        // A pre-ADR snapshot carries one `params` map per type: it is that type's single
+        // entry, so the rule still judges the plan it produces.
+        Run rejected = run("verify", "--before", DIR + "snapshot-legacy-no-first.json",
+                "--after", DIR + "after.json");
+        assertThat(rejected.code()).isEqualTo(1);
+        assertThat(MAPPER.readTree(rejected.out()).get("issues").toString())
+                .contains("TEACHER_NO_FIRST_PERIOD");
+
+        Run accepted = run("verify", "--before", DIR + "snapshot-legacy-no-first.json",
+                "--after", DIR + "after-later-slot.json");
+        assertThat(accepted.err()).isEmpty();
+        assertThat(accepted.code()).isZero();
+        assertThat(MAPPER.readTree(accepted.out()).get("status").asText()).isEqualTo("PASS");
+    }
 }

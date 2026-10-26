@@ -41,8 +41,12 @@ class ConstraintEntryMigrationTest {
 
         try (Connection connection = DriverManager.getConnection(url, "sa", "");
                 Statement statement = connection.createStatement()) {
+            // V26 copies the real value; V27 adds the explicit "sport class" entry the
+            // old blank course meant (see the next test).
             assertThat(entries(statement, semesterId))
-                    .containsExactly("TEACHER_UNAVAILABLE|{\"teacherId\":7,\"dayOfWeek\":1,\"periodNo\":2}");
+                    .containsExactly(
+                            "TEACHER_UNAVAILABLE|{\"teacherId\":7,\"dayOfWeek\":1,\"periodNo\":2}",
+                            "SPORT_NOT_FIRST_AFTERNOON|{}");
             // The type-level row is untouched.
             try (ResultSet row = statement.executeQuery(
                     "select enabled, hard, weight from constraint_config"
@@ -56,22 +60,66 @@ class ConstraintEntryMigrationTest {
     }
 
     @Test
-    void emptyJsonDoesNotCreateAnEntry() throws Exception {
+    void emptyTargetOfAnOptionalTypeBecomesOneExplicitEntry() throws Exception {
         migrateTo("25");
         long semesterId = seedLegacyConfiguration();
         migrateTo(null);
 
         try (Connection connection = DriverManager.getConnection(url, "sa", "");
-                Statement statement = connection.createStatement();
-                ResultSet rows = statement.executeQuery(
-                        "select type from constraint_entry where type in ('TEACHER_CONFLICT',"
-                                + " 'SPORT_NOT_FIRST_AFTERNOON')")) {
-            List<String> types = new ArrayList<>();
-            while (rows.next()) {
-                types.add(rows.getString(1));
-            }
-            assertThat(types).isEmpty();
+                Statement statement = connection.createStatement()) {
+            // A blank target used to mean "every course / the sport class". Since
+            // ticket 10/03 an empty list means "not configured", so V27 turns each of
+            // those old rows into one explicit entry without an object condition.
+            assertThat(entriesOfType(statement, semesterId, "SPORT_NOT_FIRST_AFTERNOON"))
+                    .containsExactly("{}");
+            // A switch type has no entries at all, before or after.
+            assertThat(entriesOfType(statement, semesterId, "TEACHER_CONFLICT")).isEmpty();
+            // Nothing is invented for a type nobody configured.
+            assertThat(entriesOfType(statement, semesterId, "COURSE_SPREAD")).isEmpty();
         }
+    }
+
+    @Test
+    void v27BackfillsEveryOptionalTargetTypeOnce() throws Exception {
+        migrateTo("25");
+        long semesterId;
+        try (Connection connection = DriverManager.getConnection(url, "sa", "");
+                Statement statement = connection.createStatement()) {
+            statement.executeUpdate("insert into semester (name, start_date, end_date, is_current, created_at)"
+                    + " values ('回填学期', DATE '2025-09-01', DATE '2026-01-20', false, CURRENT_TIMESTAMP)");
+            try (ResultSet keys = statement.executeQuery("select max(id) from semester")) {
+                keys.next();
+                semesterId = keys.getLong(1);
+            }
+            for (String type : List.of("SAME_COURSE_ONCE_PER_DAY", "SPORT_NOT_FIRST_AFTERNOON",
+                    "COURSE_SPREAD", "PE_LAST_PERIOD_AVOID")) {
+                insertConfig(statement, semesterId, type, "{}", false, 50);
+            }
+        }
+        migrateTo(null);
+
+        try (Connection connection = DriverManager.getConnection(url, "sa", "");
+                Statement statement = connection.createStatement()) {
+            for (String type : List.of("SAME_COURSE_ONCE_PER_DAY", "SPORT_NOT_FIRST_AFTERNOON",
+                    "COURSE_SPREAD", "PE_LAST_PERIOD_AVOID")) {
+                assertThat(entriesOfType(statement, semesterId, type))
+                        .as(type + " gets exactly one explicit all-target entry")
+                        .containsExactly("{}");
+            }
+        }
+    }
+
+    private List<String> entriesOfType(Statement statement, long semesterId, String type)
+            throws Exception {
+        List<String> rows = new ArrayList<>();
+        try (ResultSet result = statement.executeQuery(
+                "select params_json from constraint_entry where semester_id = " + semesterId
+                        + " and type = '" + type + "' order by id")) {
+            while (result.next()) {
+                rows.add(result.getString(1));
+            }
+        }
+        return rows;
     }
 
     private void migrateTo(String version) {
