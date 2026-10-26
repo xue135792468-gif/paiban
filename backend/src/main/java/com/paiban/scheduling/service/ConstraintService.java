@@ -42,6 +42,7 @@ import java.util.Map;
 import java.util.Set;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -497,7 +498,7 @@ public class ConstraintService {
      */
     private void requireSubject(String location, Map<String, Object> params, List<String> errors) {
         Object raw = params.get("subject");
-        if (raw == null || raw.toString().isBlank()) {
+        if (raw == null || !StringUtils.hasText(raw.toString())) {
             return;
         }
         String subject = raw.toString();
@@ -510,12 +511,12 @@ public class ConstraintService {
     private Set<String> knownSubjects() {
         Set<String> known = new LinkedHashSet<>();
         for (Teacher teacher : teachers.findAll()) {
-            if (teacher.getSubject() != null && !teacher.getSubject().isBlank()) {
+            if (StringUtils.hasText(teacher.getSubject())) {
                 known.add(teacher.getSubject().trim());
             }
         }
         for (Course course : courses.findAll()) {
-            if (course.getSubject() != null && !course.getSubject().isBlank()) {
+            if (StringUtils.hasText(course.getSubject())) {
                 known.add(course.getSubject().trim());
             }
         }
@@ -552,7 +553,7 @@ public class ConstraintService {
     }
 
     private ConstraintType resolveType(String code, List<String> errors) {
-        if (code == null || code.isBlank()) {
+        if (!StringUtils.hasText(code)) {
             errors.add("约束类型不能为空");
             return null;
         }
@@ -571,7 +572,7 @@ public class ConstraintService {
         Map<String, Object> normalized = new LinkedHashMap<>();
         for (Param param : type.getParams()) {
             Object value = source.get(param.name());
-            if (value == null || (value instanceof String text && text.isBlank())) {
+            if (value == null || (value instanceof String text && !StringUtils.hasText(text))) {
                 if (param.required()) {
                     errors.add(prefix + "参数「" + param.label() + "」不能为空");
                 }
@@ -747,7 +748,7 @@ public class ConstraintService {
     }
 
     private Map<String, Object> paramsFromJson(String json) {
-        if (json == null || json.isBlank()) {
+        if (!StringUtils.hasText(json)) {
             return Map.of();
         }
         try {

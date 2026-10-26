@@ -48,7 +48,6 @@ backend/src/main/java/com/paiban/integration/web/FeishuIntegrationController.jav
 backend/src/main/java/com/paiban/integration/web/IntegrationController.java	3
 backend/src/main/java/com/paiban/onboarding/service/OnboardingService.java	1
 backend/src/main/java/com/paiban/scheduling/constraint/ConstraintChecker.java	2
-backend/src/main/java/com/paiban/scheduling/service/ConstraintService.java	3
 backend/src/main/java/com/paiban/scheduling/service/SchedulingService.java	1
 backend/src/main/java/com/paiban/scheduling/service/SubjectMatch.java	2
 backend/src/main/java/com/paiban/scheduling/solver/ConstraintSettings.java	2
