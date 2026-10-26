@@ -25,3 +25,8 @@ Docker 一律 `sudo -n`。代码变更才需要重建；纯文档变更只要 `u
 6. 失败回退：`cd ~/paiban && git reset --hard <上一个已知良好的 commit>`（**不要加 `--build` 去重建回滚镜像**），重跑第 3–5 步；数据库迁移不会自动回滚，先看 `flyway_schema_history` 和第 1 步的备份再决定是否手工恢复。
 
 一键：`bash ~/ops/paiban-deploy.sh`（做第 2–4 步并打印 Flyway 版本与容器状态；备份仍需手工做第 1 步）。
+
+## 导入冒烟配方（文本导入）
+导课表必须带 `?target=timetable`（不传 target 会被 400 拒绝：默认值 `workbook` 表示「未指定」，文本管道不猜形状）；
+AI 可能把节次写成「上午第1节」，与作息 label（「第1节」）严格匹配会失败，先 `PUT /api/ai/import/sessions/{id}/rows` 改回作息 label 再提交；
+入库后 room-fill → publish → SWAP（调课申请必须带 `targetPeriodId`，否则 400「调课必须选择目标节次」）。

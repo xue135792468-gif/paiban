@@ -58,7 +58,7 @@ public class AiImportController {
     /**
      * Spreadsheets do not need a target: without one the whole workbook is read and the
      * model decides what each sheet is. An explicit target keeps the single-target parse
-     * available (text and images still require one).
+     * available.
      */
     @PostMapping(value = "/excel", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public PreviewDto excel(
@@ -71,10 +71,15 @@ public class AiImportController {
         return service.startExcel(file, principal.getName(), effective);
     }
 
+    /**
+     * No target means "nobody named a shape". The workbook flow is spreadsheet-only, so
+     * {@link AiImportService#startText} refuses to guess instead of reading a pasted
+     * timetable into teacher master data.
+     */
     @PostMapping("/text")
     public PreviewDto text(
             @Valid @RequestBody TextImportRequest request,
-            @RequestParam(value = "target", required = false, defaultValue = "teacher") String target,
+            @RequestParam(value = "target", required = false, defaultValue = "workbook") String target,
             Principal principal) {
         return service.startText(request.text(), principal.getName(), targetOf(target));
     }
@@ -82,7 +87,7 @@ public class AiImportController {
     @PostMapping(value = "/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public PreviewDto image(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "target", required = false, defaultValue = "teacher") String target,
+            @RequestParam(value = "target", required = false, defaultValue = "workbook") String target,
             Principal principal) {
         return service.startImage(file, principal.getName(), targetOf(target));
     }

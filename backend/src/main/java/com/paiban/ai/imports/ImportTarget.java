@@ -9,7 +9,8 @@ import java.util.List;
  * hook in {@link AiImportService}, leaving the AI prompt and preview format unchanged.
  * <p>{@link #WORKBOOK} is the phase-11 entry: the upload does not name a target, the
  * model decides which sheets are timetables, teacher lists or course lists, and one
- * confirmed commit writes every category.
+ * confirmed commit writes every category. Only spreadsheets have that flow, so text and
+ * image uploads reject it and have to name their target.
  */
 public enum ImportTarget {
 
@@ -70,10 +71,13 @@ public enum ImportTarget {
         return fields.stream().map(Field::field).toList();
     }
 
-    /** Resolves the API's target code; blank means the teacher target. */
+    /**
+     * Resolves the API's target code. Absent or blank means nobody named a shape, which is
+     * the same thing as {@link #WORKBOOK}: the caller left the decision to the pipeline.
+     */
     public static ImportTarget fromCode(String code) {
         if (code == null || code.isBlank()) {
-            return TEACHER;
+            return WORKBOOK;
         }
         String normalized = code.trim();
         for (ImportTarget target : values()) {

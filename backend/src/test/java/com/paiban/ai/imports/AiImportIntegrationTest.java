@@ -1419,7 +1419,7 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         fake.response = aiResponse(List.of(teacherRow("张三", "语文", "", 0.99)));
 
         as(admin).body(Map.of("text", "张三老师教语文"))
-                .when().post("/api/ai/import/text")
+                .when().post("/api/ai/import/text?target=teacher")
                 .then().statusCode(200)
                 .body("issues", hasSize(0))
                 .body("suggestedTarget", org.hamcrest.Matchers.nullValue())
@@ -1604,7 +1604,7 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         String admin = adminToken();
         fake.response = aiResponse(List.of(teacherRow("张三", "语文", "", 0.99)));
         Response preview = as(admin).body(Map.of("text", "张三老师教语文"))
-                .when().post("/api/ai/import/text");
+                .when().post("/api/ai/import/text?target=teacher");
         long sessionId = preview.jsonPath().getLong("sessionId");
 
         as(admin).body(Map.of("mappings", List.of(Map.of(
@@ -2054,10 +2054,30 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         fake.response = aiResponse(List.of(teacherRow("张三", "语文", "", 0.99)), "timetable");
 
         as(admin).body(Map.of("text", "一年级1班 周一 第1节 语文 张三"))
-                .when().post("/api/ai/import/text")
+                .when().post("/api/ai/import/text?target=teacher")
                 .then().statusCode(200)
                 .body("targetType", equalTo("teacher"))
                 .body("suggestedTarget", equalTo("timetable"));
+    }
+
+    @Test
+    void textImportWithoutATargetIsTreatedAsWorkbookAndRefused() {
+        String admin = adminToken();
+
+        // Nobody named a shape. The workbook flow is spreadsheet-only, so the request stops
+        // before any model call instead of reading timetable text into teacher master data.
+        as(admin).body(Map.of("text", "一年级1班 周一 第1节 语文 张三 101"))
+                .when().post("/api/ai/import/text")
+                .then().statusCode(400)
+                .body("message", containsString("target=teacher"));
+
+        // Naming workbook explicitly is the same request, not a separate one.
+        as(admin).body(Map.of("text", "一年级1班 周一 第1节 语文 张三 101"))
+                .when().post("/api/ai/import/text?target=workbook")
+                .then().statusCode(400)
+                .body("message", containsString("target=timetable"));
+
+        assertThat(fake.calls).isZero();
     }
 
     @Test
@@ -2135,6 +2155,16 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void imageImportWithoutATargetAsksForOne() throws Exception {
+        String admin = adminToken();
+
+        upload(admin, "/api/ai/import/image", "课表照片.png", pngBytes(), "image/png")
+                .then().statusCode(400)
+                .body("message", containsString("target=teacher"));
+        assertThat(fake.calls).isZero();
+    }
+
+    @Test
     void anEmptyMappingRequestOnlyRevalidatesThePreview() {
         String admin = adminToken();
         timetableFixture(admin);
@@ -2189,7 +2219,7 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
                 teacherRow("李四", "数学", "13800000002", 0.98)));
 
         Response preview = as(admin).body(Map.of("text", "张老师教语文，电话 13800000001；李老师教数学"))
-                .when().post("/api/ai/import/text");
+                .when().post("/api/ai/import/text?target=teacher");
         preview.then().statusCode(200)
                 .body("rows", hasSize(2))
                 .body("explanation", containsString("映射"))
@@ -2210,7 +2240,7 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         byte[] image = pngBytes();
         fake.response = aiResponse(List.of(teacherRow("王五", "英语", "13800000003", 0.9)));
 
-        Response preview = upload(admin, "/api/ai/import/image", "课表照片.png", image, "image/png");
+        Response preview = upload(admin, "/api/ai/import/image?target=teacher", "课表照片.png", image, "image/png");
         preview.then().statusCode(200).body("rows", hasSize(1));
 
         assertThat(fake.lastRequest).isNotNull();
@@ -2246,7 +2276,7 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         fake.response = aiResponse(List.of(missingName, teacherRow("孙七", "物理", "", 0.9)));
 
         Response preview = as(admin).body(Map.of("text", "某老师没写名字"))
-                .when().post("/api/ai/import/text");
+                .when().post("/api/ai/import/text?target=teacher");
         preview.then().statusCode(200);
         long sessionId = preview.jsonPath().getLong("sessionId");
 
@@ -2265,7 +2295,7 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         fake.response = aiResponse(List.of(teacherRow("张三", "", "", 0.4)));
 
         Response preview = as(admin).body(Map.of("text", "张三老师"))
-                .when().post("/api/ai/import/text");
+                .when().post("/api/ai/import/text?target=teacher");
         long sessionId = preview.jsonPath().getLong("sessionId");
 
         List<Map<String, Object>> rows = preview.jsonPath().getList("rows");
@@ -2310,7 +2340,7 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         fake.available = false;
 
         as(admin).body(Map.of("text", "张老师教语文"))
-                .when().post("/api/ai/import/text")
+                .when().post("/api/ai/import/text?target=teacher")
                 .then().statusCode(400)
                 .body("message", containsString("配置 AI 供应商"));
     }
