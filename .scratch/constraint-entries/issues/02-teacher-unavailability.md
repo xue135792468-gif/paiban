@@ -110,3 +110,53 @@
 - 节次范围校验只作用于 `TEACHER_UNAVAILABLE`（其余 23 类保持原 schema 校验），
   避免本票改变它们「可保存但可能无意义」的既有行为。
 - 模板容量仍是 8000 字符上限（明确报错）；若后续要存上百条条目，需要一次专门的加宽迁移。
+
+### 实现说明（前端 B 布局，2026-10-26）
+
+**组件拆分与行数**（`ConstraintsView.vue` 885 → 504 行，`scripts/sfc-size-baseline.txt` 里本文件的基线已删除）
+
+| 文件 | 行数 | 职责 |
+|---|---|---|
+| `views/ConstraintsView.vue` | 504 | 学期切换、模板区、空学期/空目录引导、加载与保存、错误分发 |
+| `components/constraints/ConstraintSummaryBar.vue` | 88 | 吸顶汇总带：三个计数 + 未保存提示 + 保存按钮（无权限时显示只读） |
+| `components/constraints/ConstraintTypeNav.vue` | 159 | 左侧四组导航：状态点、条目数或「开关」、错误红点、组头类型数/条目数 |
+| `components/constraints/ConstraintTypePanel.vue` | 246 | 右侧当前类型面板：启用/软硬/权重（硬约束隐藏权重），按类型派发三种主体 |
+| `components/constraints/ConstraintEntryList.vue` | 209 | 多条目卡片：摘要、行内错误/重复提示、增删（删除二次确认） |
+| `components/constraints/ConstraintParamForm.vue` | 153 | 其余 23 类沿用的单参数表单（ID/DAY/PERIOD/INT/ROOM_TYPE/TEXT） |
+| `components/constraints/draftRules.ts` | 298 | 纯函数：计数、分组、摘要、重复判定、保存前提示、`PUT` payload |
+| `components/constraints/useConstraintDraft.ts` | 218 | 页面状态 composable：目录＋已存配置合并、条目增删改、dirty 快照；不发 HTTP |
+| `components/constraints/saveErrors.ts` | 90 | 服务端错误分句与定位（类型级 / 第N条 / 整句） |
+| `components/constraints/types.ts` | 106 | 目录、DTO、草稿与 payload 的类型 |
+
+单测与组件一一对应（6 个 `*.spec.ts`，43 条）。
+
+**计数口径（单一定义处）**
+- `draftRules.draftEntryCount(row)` 给出单类条目数，`draftRules.countsOf(rows)` 汇总三个计数；顶部汇总带与左侧组头都调用同一函数，不在别处再算一套。
+- 开关型（目录 `params` 为空）恒为 0；多条目类型只计「会落库」的卡片（空卡片不计）；单参数类型有值即 1 条。
+- 顶部 `/24 类` 的分母取**全部目录类型**，初中模式隐藏的 `TEACHER_MEETING_BLOCKED` 仍计入，也不从提交里删除。
+- 计数读的就是 payload 将要提交的数据：不会再出现「卡上 12 条、服务端一条没有」。
+
+**payload 形状**（`buildSavePayload`）
+```json
+{ "configs": [
+  { "type": "TEACHER_UNAVAILABLE", "entries": [{ "id": 12, "params": { "teacherId": 3, "dayOfWeek": 4, "periodNo": 5 } }],
+    "weight": 100, "hard": true, "enabled": true },
+  { "type": "COURSE_NOT_IN_EVENING", "params": { "courseId": 9 }, "weight": 60, "hard": false, "enabled": true }
+] }
+```
+- 只有 `TEACHER_UNAVAILABLE` 发 `entries`（不发 `params`），`id` 原样回传；空卡片不提交。
+- 其余类型仍发 legacy `params`。**关闭的类型保留其参数**（开关只决定是否评估）；关闭且从未配置的行整条不发——
+  后端对「必填参数为空」的配置一律 400，不发才是「没有配置」，也避免把目录默认值写成条目。
+- 初中模式把软硬折成权重 100/50；请求始终包含隐藏类型（有值即发），不抹掉高中配置。
+
+**Playwright**（`e2e/constraints-entries.spec.ts`，4 条串行用例，合成教师 张伟/李娜）
+1. `添加两位教师各一条禁排，保存后刷新仍在` — 断言两条卡片摘要、顶部/左侧计数为 2、接口里两条条目带 id。
+2. `删除其中一条后保存，刷新只剩一条` — 删除二次确认，刷新后只剩李娜那条，计数为 1。
+3. `顶部「具体条目」与左侧「条目数」始终一致，开关型不计数` — 顶部=左侧求和、`/24 类`、开关型标「开关」。
+4. `重复条目保存被拒：错误落在第 2 条，输入原样保留` — 前端重复提示 + 服务端 400 后错误落到第 2 张卡片。
+
+**与原型 B 的差异 / 取舍**
+- 原型「生效条目」把关闭类型算 0；本实现按用户确认的口径叫「具体条目」，计已配置（会落库）的条目，关闭但已配置的仍计 1 条。
+- 条目在类型关闭时仍可编辑（原型如此，规格「关闭＝不评估、不删除」）；旧页面关闭时会清空参数，本页改为保留。
+  配套把必填校验从「只看启用类型」放宽到「只看会提交的行」：空白卡片不提示，填了一半照样提示。
+- 阈值「全局＋对象例外」卡片属于 04 票，本票其余类型仍是原单参数表单。

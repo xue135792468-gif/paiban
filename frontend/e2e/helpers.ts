@@ -74,6 +74,44 @@ export interface SeedResult {
   password: string
 }
 
+export interface ConstraintSeed {
+  semesterId: number
+  teachers: { id: number; name: string }[]
+}
+
+/**
+ * Semester + timetable + two teachers for the constraint page. The constraint
+ * specs assert entry cards by teacher name, so the seeded names are returned
+ * (synthetic names only — never a real teacher).
+ */
+export async function seedConstraintScenario(context: APIRequestContext): Promise<ConstraintSeed> {
+  const token = await apiLogin(context)
+  const suffix = Math.random().toString(36).slice(2, 8)
+  const semester = await apiCall(context, token, 'post', '/semesters', {
+    name: `E2E约束-${suffix}`,
+    startDate: '2025-09-01',
+    endDate: '2026-01-20',
+  })
+  await apiCall(context, token, 'post', `/semesters/${semester.id}/set-current`)
+  await apiCall(context, token, 'post', `/semesters/${semester.id}/periods/default`, {
+    morningCount: 4,
+    afternoonCount: 4,
+    eveningCount: 2,
+    days: [1, 2, 3, 4, 5],
+  })
+
+  const teachers: { id: number; name: string }[] = []
+  for (const [index, base] of ['张伟', '李娜'].entries()) {
+    const name = `${base}${suffix}`
+    const teacher = await apiCall(context, token, 'post', '/teachers', {
+      name,
+      employeeNo: `C${index + 1}-${suffix}`,
+    })
+    teachers.push({ id: teacher.id, name })
+  }
+  return { semesterId: semester.id, teachers }
+}
+
 /** Seeds a minimal, solvable school through the public API. */
 export async function seedSchool(context: APIRequestContext): Promise<SeedResult> {
   const token = await apiLogin(context)
