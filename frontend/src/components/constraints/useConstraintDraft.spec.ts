@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest'
+import { entryCountOf } from './draftRules'
 import { useConstraintDraft } from './useConstraintDraft'
-import type { ConstraintConfigDto, ConstraintTypeDef, ParamDef } from './types'
+import type { ConstraintConfigDto, ConstraintTypeDef, ObjectNames, ParamDef } from './types'
+
+function names(
+  overrides: Partial<Record<keyof ObjectNames, Map<number, string>>> = {},
+): ObjectNames {
+  return {
+    teacherId: new Map(),
+    classId: new Map(),
+    courseId: new Map(),
+    ...overrides,
+  }
+}
 
 const TEACHER_SLOT_PARAMS: ParamDef[] = [
   { name: 'teacherId', label: '教师', type: 'ID', required: true },
@@ -257,7 +269,7 @@ describe('useConstraintDraft', () => {
         entries: [{ id: 1, params: { courseId: 9 } }],
       },
     ])
-    expect(draft.conflicts()).toEqual([])
+    expect(draft.conflictsOf().messages).toEqual([])
   })
 
   it('初中模式隐藏教研活动禁排，但它仍在提交范围内', () => {
@@ -373,7 +385,7 @@ describe('useConstraintDraft', () => {
     draft.setThresholdExceptionObject('TEACHER_MAX_PER_DAY', exceptions[1].key, 7)
     draft.setThresholdExceptionValue('TEACHER_MAX_PER_DAY', exceptions[1].key, 4)
 
-    expect(draft.conflicts(undefined, new Map([[7, '张伟']]))).toEqual([
+    expect(draft.conflictsOf(names({ teacherId: new Map([[7, '张伟']]) })).messages).toEqual([
       expect.stringContaining('同一作用域最多一条阈值'),
     ])
     expect(draft.warnings()).toEqual([])
@@ -416,9 +428,14 @@ describe('useConstraintDraft', () => {
     expect(groups.reduce((sum, group) => sum + group.counts.entries, 0)).toBe(
       draft.counts.value.entries,
     )
-    // 每类自己的条数加起来也等于总数（左导航逐项标签用的就是它）。
-    expect(draft.visibleRows.value.reduce((sum, row) => sum + row.entries.length, 0)).toBe(
-      draft.counts.value.entries,
+    // 每类自己的条数加起来也等于总数：左导航逐项标签用的就是同一个 entryCountOf，
+    // 不是 row.entries.length（那会把阈值和开关型算错）。
+    expect(
+      draft.visibleRows.value.reduce((sum, row) => sum + entryCountOf(row), 0),
+    ).toBe(draft.counts.value.entries)
+    // 顶部＝各分组之和＝每类之和，三者同源。
+    expect(draft.visibleRows.value.reduce((sum, row) => sum + entryCountOf(row), 0)).toBe(
+      groups.reduce((sum, group) => sum + group.counts.entries, 0),
     )
   })
 
@@ -443,7 +460,7 @@ describe('useConstraintDraft', () => {
 
   it('重复条目在保存前就给对应类型亮红点（不用等服务器拒绝）', () => {
     const draft = hydrated()
-    expect(draft.conflictCodes()).toEqual([])
+    expect(draft.conflictsOf().codes).toEqual([])
 
     draft.select('TEACHER_UNAVAILABLE')
     draft.addEntry('TEACHER_UNAVAILABLE')
@@ -452,7 +469,31 @@ describe('useConstraintDraft', () => {
     draft.updateEntryValue('TEACHER_UNAVAILABLE', duplicate.key, 'dayOfWeek', 3)
     draft.updateEntryValue('TEACHER_UNAVAILABLE', duplicate.key, 'periodNo', 2)
 
-    expect(draft.conflictCodes()).toEqual(['TEACHER_UNAVAILABLE'])
+    // 重复条目自己已经在卡片上标出，只让左侧亮红点，不重复进预检条。
+    expect(draft.conflictsOf().codes).toEqual(['TEACHER_UNAVAILABLE'])
+    expect(draft.conflictsOf().messages).toEqual([])
+  })
+
+  it('预检条与红点读同一份结果：阈值标签按对象字段取名，不会被同 id 的课程冒充', () => {
+    const draft = hydrated()
+    draft.setThresholdGlobal('TEACHER_MAX_PER_DAY', 6)
+    draft.addThresholdException('TEACHER_MAX_PER_DAY')
+    draft.addThresholdException('TEACHER_MAX_PER_DAY')
+    const exceptions = draft.rows.value.find(
+      (item) => item.code === 'TEACHER_MAX_PER_DAY',
+    )!.threshold!.exceptions
+    draft.setThresholdExceptionObject('TEACHER_MAX_PER_DAY', exceptions[0].key, 5)
+    draft.setThresholdExceptionValue('TEACHER_MAX_PER_DAY', exceptions[0].key, 3)
+    draft.setThresholdExceptionObject('TEACHER_MAX_PER_DAY', exceptions[1].key, 5)
+    draft.setThresholdExceptionValue('TEACHER_MAX_PER_DAY', exceptions[1].key, 4)
+
+    const report = draft.conflictsOf(
+      names({ teacherId: new Map([[5, '张伟']]), courseId: new Map([[5, '数学']]) }),
+    )
+    expect(report.messages).toHaveLength(1)
+    expect(report.messages[0]).toContain('张伟')
+    expect(report.messages[0]).not.toContain('数学')
+    expect(report.codes).toEqual(['TEACHER_MAX_PER_DAY'])
   })
 
   it('模板套用后重新加载：条目与计数完整恢复，且不残留未保存状态', () => {

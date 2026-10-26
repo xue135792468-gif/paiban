@@ -114,12 +114,33 @@ describe('阈值作用域模型', () => {
         globalValue: 6,
         exceptions: [exception(3, 3), exception(3, 5)],
       }),
-      new Map([[3, '张伟']]),
+      { teacherId: new Map([[3, '张伟']]), classId: new Map(), courseId: new Map() },
     )
     expect(conflicts).toHaveLength(1)
     expect(conflicts[0].message).toContain('张伟')
     expect(conflicts[0].message).toContain('同一作用域最多一条阈值')
     expect(conflicts[0].cardIndexes).toEqual([1, 2])
+  })
+
+  it('例外标签只按该类型自己的对象字段取名，同一 id 的课程不会冒充教师', () => {
+    // Teacher 3 and course 3 both exist; a teacher limit must label its exception with
+    // the teacher, never with the course that happens to share the id.
+    const conflicts = thresholdConflicts(
+      row({
+        globalId: null,
+        globalValue: 6,
+        exceptions: [exception(3, 3), exception(3, 5)],
+      }),
+      {
+        teacherId: new Map([[3, '张伟']]),
+        classId: new Map([[3, '高一1班']]),
+        courseId: new Map([[3, '数学']]),
+      },
+    )
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0].message).toContain('张伟')
+    expect(conflicts[0].message).not.toContain('数学')
+    expect(conflicts[0].message).not.toContain('高一1班')
   })
 
   it('把一条条目的参数还原成对象与数值', () => {

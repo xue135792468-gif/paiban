@@ -106,7 +106,7 @@
             :is-junior="isJunior"
             :teachers="teachers"
             :courses="courses"
-            :classes="classes"
+            :object-options="objectOptions"
             :entry-errors="entryErrors"
             :type-errors="typeErrors"
             @toggle-enabled="onToggleEnabled"
@@ -146,6 +146,8 @@ import { useConstraintSave } from '@/components/constraints/useConstraintSave'
 import type {
   ConstraintConfigDto,
   ConstraintTypeDef,
+  ObjectNames,
+  ObjectOptions,
   OptionItem,
 } from '@/components/constraints/types'
 import { useAuthStore } from '@/stores/auth'
@@ -171,26 +173,32 @@ const semesterId = ref<number | null>(null)
 const teachers = ref<OptionItem[]>([])
 const courses = ref<OptionItem[]>([])
 const classes = ref<OptionItem[]>([])
-const courseNames = computed(() => new Map(courses.value.map((course) => [course.id, course.name])))
-/**
- * Names for the threshold exception rows. Teachers, classes and courses live in
- * separate id spaces, so this map is only ever used to *label* one row — never to look
- * an object up. Courses win a collision because they cannot be confused with the
- * entities a threshold names in practice (a class and a course can share an id, but the
- * row's own type says which one it is).
- */
-const objectNames = computed(
-  () =>
-    new Map<number, string>([
-      ...teachers.value.map((teacher) => [teacher.id, teacher.name] as [number, string]),
-      ...classes.value.map((item) => [item.id, item.name] as [number, string]),
-      ...courseNames.value.entries(),
-    ]),
-)
 const loading = ref(false)
 
+function nameMapOf(options: OptionItem[]): Map<number, string> {
+  return new Map(options.map((item) => [item.id, item.name]))
+}
+
+/**
+ * The option lists and their name lookups, one entry per object field. Teachers,
+ * administrative classes and courses are three separate id spaces, so nothing is merged:
+ * a threshold row is always labelled from the list its own field names, and two objects
+ * that happen to share an id can never be mistaken for each other.
+ */
+const objectOptions = computed<ObjectOptions>(() => ({
+  teacherId: teachers.value,
+  classId: classes.value,
+  courseId: courses.value,
+}))
+const objectNames = computed<ObjectNames>(() => ({
+  teacherId: nameMapOf(teachers.value),
+  classId: nameMapOf(classes.value),
+  courseId: nameMapOf(courses.value),
+}))
+
 // 互斥条件与重复阈值在保存前就暴露出来；输入保持原样，由用户决定改哪条。
-const conflicts = computed(() => draft.conflicts(courseNames.value, objectNames.value))
+const conflictReport = computed(() => draft.conflictsOf(objectNames.value))
+const conflicts = computed(() => conflictReport.value.messages)
 
 const { saving, saveMessage, saveReport, save, clearErrors } = useConstraintSave({
   draft,
@@ -200,9 +208,10 @@ const { saving, saveMessage, saveReport, save, clearErrors } = useConstraintSave
 })
 
 // 红点覆盖两类问题：服务端拒收的类型，以及页面在保存前就发现的重复/互斥输入。
+// 后者与上面的预检条读的是同一份 conflictReport，不再各跑一遍校验。
 const errorCodes = computed(() => {
   const codes = new Set(saveReport.value.codes)
-  draft.conflictCodes(courseNames.value, objectNames.value).forEach((code) => codes.add(code))
+  conflictReport.value.codes.forEach((code) => codes.add(code))
   return Array.from(codes)
 })
 const entryErrors = computed(() => saveReport.value.byEntry[selectedCode.value ?? ''] ?? {})

@@ -126,9 +126,10 @@ public class ConstraintService {
     @Transactional
     public List<ConstraintConfigDto> save(Long semesterId, List<ConstraintConfigRequest> requests) {
         Long resolved = resolveSemester(semesterId);
-        Planning planning = plan(resolved, requests, true);
-        if (!planning.errors().isEmpty()) {
-            throw ApiException.badRequest(String.join("; ", planning.errors()));
+        Planning planning = plan(resolved, requests, existingEntries(resolved));
+        List<String> errors = refusalErrors(planning);
+        if (!errors.isEmpty()) {
+            throw ApiException.badRequest(String.join("; ", errors));
         }
         return persist(resolved, planning.configs());
     }
@@ -138,14 +139,17 @@ public class ConstraintService {
      * save would write. Nothing is persisted, which is what lets a template preview
      * report the same refusals before anything is replaced.
      *
-     * <p>{@code checkReferences} is false for the preview: it already lists missing or
-     * foreign objects as a structured, actionable report, and repeating them as plain
-     * errors would show the same problem twice.
+     * <p>{@code existingEntries} is the id → row index of the semester being saved: an
+     * entry that carries an id claims one of those rows, and an id that names nothing
+     * (or names another type) is refused. The preview passes an empty index because a
+     * template is a value snapshot and never carries ids.
      */
     private Planning plan(Long resolved, List<ConstraintConfigRequest> requests,
-                          boolean checkReferences) {
+                          Map<Long, ConstraintEntry> existingEntries) {
         List<String> errors = new ArrayList<>();
+        List<TemplateReferenceIssue> references = new ArrayList<>();
         List<PlannedConfig> planned = new ArrayList<>();
+        Map<String, Set<Long>> claimedEntries = new HashMap<>();
         Set<String> seenTypes = new HashSet<>();
         SemesterScope timetable = semesterScope(resolved);
         for (ConstraintConfigRequest request : requests) {
@@ -162,16 +166,49 @@ public class ConstraintService {
             if (weight < 0 || weight > 100) {
                 errors.add(type.getDisplayName() + ": 权重必须在 0-100 之间");
             }
-            List<Map<String, Object>> plannedEntries =
-                    planEntries(type, request, timetable, errors, checkReferences);
+            EntryPlan entries = planEntries(
+                    type, request, timetable, existingEntries, claimedEntries, errors);
+            references.addAll(entries.references());
             planned.add(new PlannedConfig(
                     type,
                     weight,
                     request.hard() == null ? type.isDefaultHard() : request.hard(),
                     request.enabled() == null || request.enabled(),
-                    plannedEntries));
+                    entries.entries()));
         }
-        return new Planning(planned, errors);
+        return new Planning(planned, errors, references);
+    }
+
+    /** Every reason a planning would be refused, in request order. */
+    private List<String> refusalErrors(Planning planning) {
+        List<String> errors = new ArrayList<>(planning.errors());
+        planning.references().stream().map(this::describeReference).forEach(errors::add);
+        return errors;
+    }
+
+    /** `类型(CODE) 第N 条: 参数「字段」对象名#id 原因` — one saved/template row per line. */
+    private String describeReference(TemplateReferenceIssue issue) {
+        String where = issue.position() > 0
+                ? issue.typeName() + "(" + issue.type() + ") 第" + issue.position() + " 条"
+                : issue.typeName() + "(" + issue.type() + ")";
+        String object = issue.name() == null
+                ? "#" + issue.objectId()
+                : issue.name() + "#" + issue.objectId();
+        return where + ": 参数「" + plainLabel(issue.fieldLabel()) + "」" + object
+                + " " + issue.reason();
+    }
+
+    /** The catalogue label without its parenthetical hint (`教师（留空表示全局默认）` → `教师`). */
+    private String plainLabel(String label) {
+        return label.replaceAll("（[^）]*）", "");
+    }
+
+    private Map<Long, ConstraintEntry> existingEntries(Long semesterId) {
+        Map<Long, ConstraintEntry> byId = new LinkedHashMap<>();
+        for (ConstraintEntry entry : entries.findBySemesterId(semesterId)) {
+            byId.put(entry.getId(), entry);
+        }
+        return byId;
     }
 
     private SemesterScope semesterScope(Long semesterId) {
@@ -180,39 +217,81 @@ public class ConstraintService {
                 adminClasses.findBySemesterIdOrderByGradeIdAscNameAsc(semesterId));
     }
 
+    /**
+     * Writes exactly the planned configuration. Entry rows are upserted by the id the
+     * request carried (spec: 按条增删改须有稳定身份, ticket 04 review): a row with an id
+     * of this type is updated in place and keeps that id, a row without one is inserted,
+     * and rows of that type the request did not name are deleted. A type the request
+     * does not mention at all is still removed — the request is the whole semester
+     * configuration, only entry identity survives inside a type.
+     */
     private List<ConstraintConfigDto> persist(Long resolved, List<PlannedConfig> planned) {
         Instant now = Instant.now();
-        List<ConstraintConfig> rows = new ArrayList<>();
-        List<ConstraintEntry> entryRows = new ArrayList<>();
+        Map<String, ConstraintConfig> existingConfigs = new LinkedHashMap<>();
+        for (ConstraintConfig config : configs.findBySemesterId(resolved)) {
+            existingConfigs.put(config.getType(), config);
+        }
+        Map<String, Map<Long, ConstraintEntry>> existingEntries = new LinkedHashMap<>();
+        for (ConstraintEntry entry : entries.findBySemesterId(resolved)) {
+            existingEntries.computeIfAbsent(entry.getType(), key -> new LinkedHashMap<>())
+                    .put(entry.getId(), entry);
+        }
+
+        List<ConstraintConfigDto> result = new ArrayList<>();
+        Set<String> plannedTypes = new HashSet<>();
         for (PlannedConfig plan : planned) {
-            ConstraintConfig config = new ConstraintConfig();
-            config.setSemesterId(resolved);
-            config.setType(plan.type().name());
+            String type = plan.type().name();
+            plannedTypes.add(type);
+            ConstraintConfig config = existingConfigs.get(type);
+            if (config == null) {
+                config = new ConstraintConfig();
+                config.setSemesterId(resolved);
+                config.setType(type);
+            }
             // The legacy column keeps the first entry so older readers and raw SQL
             // still see a meaningful single value.
-            config.setParamsJson(toJson(plan.entries().isEmpty() ? Map.of() : plan.entries().get(0)));
+            config.setParamsJson(toJson(
+                    plan.entries().isEmpty() ? Map.of() : plan.entries().get(0).params()));
             config.setWeight(plan.weight());
             config.setHard(plan.hard());
             config.setEnabled(plan.enabled());
-            rows.add(config);
-            for (Map<String, Object> params : plan.entries()) {
-                ConstraintEntry entry = new ConstraintEntry();
-                entry.setSemesterId(resolved);
-                entry.setType(plan.type().name());
-                entry.setParamsJson(toJson(params));
-                entry.setCreatedAt(now);
-                entryRows.add(entry);
+            ConstraintConfig savedConfig = configs.save(config);
+
+            Map<Long, ConstraintEntry> current = existingEntries.getOrDefault(type, Map.of());
+            List<ConstraintEntry> rows = new ArrayList<>();
+            Set<Long> kept = new HashSet<>();
+            for (PlannedEntry entry : plan.entries()) {
+                ConstraintEntry row = entry.id() == null ? null : current.get(entry.id());
+                if (row == null) {
+                    row = new ConstraintEntry();
+                    row.setSemesterId(resolved);
+                    row.setType(type);
+                    row.setCreatedAt(now);
+                } else {
+                    kept.add(row.getId());
+                }
+                row.setParamsJson(toJson(entry.params()));
+                rows.add(row);
             }
+            List<ConstraintEntry> savedRows = entries.saveAll(rows);
+            List<ConstraintEntryDto> entryDtos = new ArrayList<>();
+            for (int index = 0; index < savedRows.size(); index++) {
+                entryDtos.add(new ConstraintEntryDto(
+                        savedRows.get(index).getId(), plan.entries().get(index).params()));
+            }
+            current.values().stream()
+                    .filter(row -> !kept.contains(row.getId()))
+                    .forEach(entries::delete);
+            result.add(toDtoWithEntries(savedConfig, entryDtos));
         }
-        entries.deleteBySemesterId(resolved);
-        configs.deleteBySemesterId(resolved);
-        configs.flush();
-        List<ConstraintConfig> saved = configs.saveAll(rows);
-        List<ConstraintEntry> savedEntries = entries.saveAll(entryRows);
-        Map<String, List<ConstraintEntry>> byType = entriesByType(savedEntries);
-        return saved.stream()
-                .map(config -> toDto(config, byType.get(config.getType())))
-                .toList();
+        existingConfigs.values().stream()
+                .filter(config -> !plannedTypes.contains(config.getType()))
+                .forEach(configs::delete);
+        existingEntries.entrySet().stream()
+                .filter(byType -> !plannedTypes.contains(byType.getKey()))
+                .flatMap(byType -> byType.getValue().values().stream())
+                .forEach(entries::delete);
+        return result;
     }
 
     @Transactional(readOnly = true)
@@ -279,19 +358,25 @@ public class ConstraintService {
      * the old → new ids) or the apply is refused with every offending row listed.
      * Teachers and courses are global assets and stay as they are when they still
      * exist. Nothing is ever matched by name and no invalid id reaches the database.
+     *
+     * <p>The refusal is one 409 whose body carries the same two lists the preview
+     * returns ({@code errors} and {@code invalidReferences}), so the page parses one
+     * shape no matter which of the two it called (see the controller).
      */
     @Transactional
     public List<ConstraintConfigDto> applyTemplate(
             Long templateId, Long semesterId, TemplateApplyRequest request) {
         Long resolved = resolveSemester(semesterId);
-        List<ConstraintConfigRequest> snapshot = rebindClasses(
+        List<ConstraintConfigRequest> snapshot = prepareSnapshot(
                 readSnapshot(requireTemplate(templateId)), request);
-        List<TemplateReferenceIssue> invalid = invalidReferences(resolved, snapshot);
-        if (!invalid.isEmpty()) {
-            throw ApiException.conflict(describeInvalid(invalid),
-                    Map.of("invalidReferences", invalid));
+        Planning planning = plan(resolved, snapshot, Map.of());
+        List<String> errors = refusalErrors(planning);
+        if (!errors.isEmpty()) {
+            throw ApiException.conflict(
+                    "模板无法套用到当前学期：" + String.join("；", errors),
+                    refusalBody(planning));
         }
-        return save(resolved, snapshot);
+        return persist(resolved, planning.configs());
     }
 
     /**
@@ -303,14 +388,21 @@ public class ConstraintService {
     public TemplateApplyPreview previewTemplate(
             Long templateId, Long semesterId, TemplateApplyRequest request) {
         Long resolved = resolveSemester(semesterId);
-        List<ConstraintConfigRequest> snapshot = rebindClasses(
+        List<ConstraintConfigRequest> snapshot = prepareSnapshot(
                 readSnapshot(requireTemplate(templateId)), request);
-        Planning planning = plan(resolved, snapshot, false);
+        Planning planning = plan(resolved, snapshot, Map.of());
         int entryCount = planning.configs().stream()
                 .mapToInt(config -> config.entries().size())
                 .sum();
         return new TemplateApplyPreview(snapshot.size(), entryCount,
-                invalidReferences(resolved, snapshot), planning.errors());
+                planning.references(), planning.errors());
+    }
+
+    /** The 409 body: the two lists a preview also returns, plus the rows they point at. */
+    private Map<String, Object> refusalBody(Planning planning) {
+        return Map.of(
+                "errors", planning.errors(),
+                "invalidReferences", planning.references());
     }
 
     @Transactional
@@ -350,13 +442,23 @@ public class ConstraintService {
     private static final List<String> REFERENCE_FIELDS = List.of("teacherId", "courseId", "classId");
 
     private record PlannedConfig(ConstraintType type, int weight, boolean hard, boolean enabled,
-                                 List<Map<String, Object>> entries) {}
+                                 List<PlannedEntry> entries) {}
 
-    /** What a save would write, plus every reason it would be refused. */
-    private record Planning(List<PlannedConfig> configs, List<String> errors) {}
+    /**
+     * What a save would write, plus every reason it would be refused: {@code errors} is
+     * everything the request itself gets wrong, {@code references} the object pointers
+     * that no longer resolve. The save path (400) and both template paths (200 for the
+     * dry run, 409 for the apply) read this one result, so they can never disagree about
+     * which rows are at fault.
+     */
+    private record Planning(List<PlannedConfig> configs, List<String> errors,
+                            List<TemplateReferenceIssue> references) {}
 
-    /** One accepted entry with the 1-based position it had in the request. */
-    private record PlannedEntry(Map<String, Object> params, Integer position) {}
+    /** One accepted entry with the id it came in with and its 1-based request position. */
+    private record PlannedEntry(Long id, Map<String, Object> params, Integer position) {}
+
+    /** The entries of one type, plus the object references of those entries that do not resolve. */
+    private record EntryPlan(List<PlannedEntry> entries, List<TemplateReferenceIssue> references) {}
 
     /**
      * The scalar conditions a type attaches to one object. Two entries for the same
@@ -422,33 +524,37 @@ public class ConstraintService {
      * fact twice and hide a duplicate row in the editor. Contradictory scalar
      * conditions for the same object are rejected too.
      */
-    private List<Map<String, Object>> planEntries(
+    private EntryPlan planEntries(
             ConstraintType type, ConstraintConfigRequest request, SemesterScope timetable,
-            List<String> errors, boolean checkReferences) {
+            Map<Long, ConstraintEntry> existingEntries, Map<String, Set<Long>> claimedEntries,
+            List<String> errors) {
         List<PlannedEntry> planned = new ArrayList<>();
+        List<TemplateReferenceIssue> references = new ArrayList<>();
         Map<Map<String, Object>, Integer> seen = new HashMap<>();
         List<ConstraintEntryRequest> requested = request.entries();
         if (requested == null) {
             // Legacy shape: `params` is the single entry, and its messages keep the
             // pre-ADR wording.
             Map<String, Object> params = validateParams(type, request.params(), null, errors);
-            accept(type, null, params, planned, seen, timetable, errors, checkReferences);
-            return planned.stream().map(PlannedEntry::params).toList();
+            accept(type, 1, null, params, planned, seen, timetable, existingEntries,
+                    claimedEntries, references, errors);
+            return new EntryPlan(planned, references);
         }
         if (type.getParams().isEmpty() && !requested.isEmpty()) {
             errors.add(type.getDisplayName() + "(" + type.name() + "): 该类型没有参数，不能配置条目");
-            return List.of();
+            return new EntryPlan(List.of(), List.of());
         }
         for (int index = 0; index < requested.size(); index++) {
             ConstraintEntryRequest raw = requested.get(index);
             int position = index + 1;
             Map<String, Object> params = validateParams(
                     type, raw == null ? null : raw.params(), position, errors);
-            accept(type, position, params, planned, seen, timetable, errors, checkReferences);
+            accept(type, position, raw == null ? null : raw.id(), params, planned, seen, timetable,
+                    existingEntries, claimedEntries, references, errors);
         }
         rejectContradictoryScalars(type, planned, errors);
         rejectDuplicateThresholdScopes(type, planned, errors);
-        return planned.stream().map(PlannedEntry::params).toList();
+        return new EntryPlan(planned, references);
     }
 
     /**
@@ -483,9 +589,11 @@ public class ConstraintService {
     }
 
     private void accept(
-            ConstraintType type, Integer position, Map<String, Object> params,
+            ConstraintType type, Integer position, Long id, Map<String, Object> params,
             List<PlannedEntry> planned, Map<Map<String, Object>, Integer> seen,
-            SemesterScope timetable, List<String> errors, boolean checkReferences) {
+            SemesterScope timetable, Map<Long, ConstraintEntry> existingEntries,
+            Map<String, Set<Long>> claimedEntries, List<TemplateReferenceIssue> references,
+            List<String> errors) {
         if (params.isEmpty() && !type.isEntryBacked()) {
             // Nothing to store: no object condition. `{}` means "no extra
             // condition" and is kept in the legacy params column only. For an
@@ -498,8 +606,39 @@ public class ConstraintService {
             errors.add(location(type, position) + ": 与第" + first + " 条完全相同，重复条目已拒绝");
             return;
         }
-        validateObjects(type, position, params, timetable, errors, checkReferences);
-        planned.add(new PlannedEntry(params, position));
+        if (id != null) {
+            claimEntry(type, position, id, existingEntries, claimedEntries, errors);
+        }
+        validateTimetableConditions(type, position, params, timetable, errors);
+        references.addAll(referencesOf(type, position, params, timetable));
+        planned.add(new PlannedEntry(id, params, position));
+    }
+
+    /**
+     * An entry that carries an id asks to update that row, so the id has to name a row
+     * of this type in this semester and may appear only once per request. Anything else
+     * is refused before a single write: a rejected save never leaves a partial
+     * configuration (spec: 按条增删改须有稳定身份).
+     */
+    private void claimEntry(
+            ConstraintType type, Integer position, Long id,
+            Map<Long, ConstraintEntry> existingEntries,
+            Map<String, Set<Long>> claimedEntries, List<String> errors) {
+        String where = location(type, position);
+        ConstraintEntry existing = existingEntries.get(id);
+        if (existing == null) {
+            errors.add(where + ": 条目 id " + id + " 不属于当前学期的约束配置");
+            return;
+        }
+        if (!type.name().equals(existing.getType())) {
+            errors.add(where + ": 条目 id " + id + " 属于 " + existing.getType()
+                    + "，不能用来更新 " + type.name() + " 的条目");
+            return;
+        }
+        Set<Long> claimed = claimedEntries.computeIfAbsent(type.name(), key -> new HashSet<>());
+        if (!claimed.add(id)) {
+            errors.add(where + ": 条目 id " + id + " 在同一请求中出现多次");
+        }
     }
 
     /**
@@ -549,111 +688,113 @@ public class ConstraintService {
     }
 
     /**
-     * Object-level checks for the entry-backed types: teachers and courses are
-     * global assets, semester timetables decide which slots exist. Everything else
-     * keeps its old schema-only validation so its behaviour cannot drift.
+     * Conditions only the semester's own timetable can judge: a (weekday, period) entry
+     * must name a slot the semester has, a cut-off must exist somewhere in it, and a
+     * subject must be one the school actually uses. Object existence is not judged here
+     * — {@link #referencesOf} is the one resolver for that, shared by every entry point.
      */
-    private void validateObjects(
+    private void validateTimetableConditions(
             ConstraintType type, Integer position, Map<String, Object> params,
-            SemesterScope timetable, List<String> errors, boolean checkReferences) {
+            SemesterScope timetable, List<String> errors) {
         if (!type.isEntryBacked()) {
             return;
         }
         String location = location(type, position);
         switch (type) {
-            case TEACHER_UNAVAILABLE, TEACHER_PREFERRED_SLOT -> {
-                if (checkReferences) {
-                    requireTeacher(location, params, errors);
-                }
-                requireSlot(location, params, timetable, errors);
-            }
+            case TEACHER_UNAVAILABLE, TEACHER_PREFERRED_SLOT ->
+                    requireSlot(location, params, timetable, errors);
             case TEACHER_MEETING_BLOCKED -> {
                 requireSubject(location, params, errors);
                 requireSlot(location, params, timetable, errors);
             }
-            case TEACHER_NO_FIRST_PERIOD, TEACHER_DAY_OFF -> {
-                if (checkReferences) {
-                    requireTeacher(location, params, errors);
-                }
-            }
-            case COURSE_REQUIRED_ROOM_TYPE, COURSE_NOT_IN_EVENING, CONSECUTIVE_LESSONS,
-                 MAIN_SUBJECT_MORNING -> {
-                if (checkReferences) {
-                    requireCourse(location, params, errors);
-                }
-                if (type == ConstraintType.MAIN_SUBJECT_MORNING) {
+            case MAIN_SUBJECT_MORNING ->
                     requirePeriodNo(location, params, "beforePeriodNo", "上午截止节次", timetable, errors);
-                }
-            }
-            case SAME_COURSE_ONCE_PER_DAY, SPORT_NOT_FIRST_AFTERNOON, COURSE_SPREAD,
-                 PE_LAST_PERIOD_AVOID -> {
-                if (checkReferences) {
-                    requireCourseIfPresent(location, params, errors);
-                }
-            }
-            // Threshold entries name their object only in the exception form; a blank
-            // object is the global default and needs no lookup.
-            case TEACHER_MAX_PER_DAY, TEACHER_MAX_CONSECUTIVE -> {
-                if (checkReferences) {
-                    requireTeacherIfPresent(location, params, errors);
-                }
-            }
-            case COURSE_MAX_PER_DAY -> {
-                if (checkReferences) {
-                    requireCourseIfPresent(location, params, errors);
-                }
-            }
-            case CLASS_MAX_PER_DAY, EVENING_MAX -> {
-                if (checkReferences) {
-                    requireClassIfPresent(location, params, timetable, errors);
-                }
-            }
             default -> {
-                // Single-switch types keep their legacy validation.
+                // The other entry-backed types carry no timetable condition of their own;
+                // their objects are judged by the reference resolver.
             }
         }
     }
 
-    private void requireTeacherIfPresent(
-            String location, Map<String, Object> params, List<String> errors) {
-        Long teacherId = ConstraintSettings.longValue(params.get("teacherId"));
-        if (teacherId != null && !teachers.existsById(teacherId)) {
-            errors.add(location + ": 参数「教师」指向不存在的教师: " + teacherId);
+    /** One object reference, looked up exactly once: present (with its name) or missing (with the reason). */
+    private record ResolvedObject(String name, String problem) {
+
+        static ResolvedObject present(String name) {
+            return new ResolvedObject(name, null);
+        }
+
+        static ResolvedObject missing(String problem) {
+            return new ResolvedObject(null, problem);
+        }
+
+        /** Missing but still nameable (a class of another semester still has a name). */
+        static ResolvedObject missing(String name, String problem) {
+            return new ResolvedObject(name, problem);
         }
     }
 
-    /** Threshold classes belong to the semester being configured, never to another one. */
-    private void requireClassIfPresent(
-            String location, Map<String, Object> params, SemesterScope semester, List<String> errors) {
-        Long classId = ConstraintSettings.longValue(params.get("classId"));
-        if (classId != null && !semester.hasClass(classId)) {
-            errors.add(location + ": 参数「班级」不属于当前学期: " + classId);
+    /**
+     * Every object reference of one entry that does not resolve, one issue per field, so
+     * a card in the template dialog points at exactly the row the user has to fix.
+     * Teachers and courses are global assets (a missing one means it was deleted); a
+     * class belongs to one semester and has to be rebound explicitly.
+     */
+    private List<TemplateReferenceIssue> referencesOf(
+            ConstraintType type, Integer position, Map<String, Object> params,
+            SemesterScope timetable) {
+        List<TemplateReferenceIssue> issues = new ArrayList<>();
+        for (String field : REFERENCE_FIELDS) {
+            Long objectId = ConstraintSettings.longValue(params.get(field));
+            if (objectId == null) {
+                continue;
+            }
+            ResolvedObject resolved = resolveReference(field, objectId, timetable);
+            if (resolved.problem() == null) {
+                continue;
+            }
+            issues.add(new TemplateReferenceIssue(
+                    type.name(),
+                    type.getDisplayName(),
+                    position == null ? 0 : position,
+                    field,
+                    paramLabel(type, field),
+                    objectId,
+                    resolved.name(),
+                    resolved.problem()));
+        }
+        return issues;
+    }
+
+    /** One lookup per reference: a present object also carries the name the report shows. */
+    private ResolvedObject resolveReference(String field, Long objectId, SemesterScope timetable) {
+        switch (field) {
+            case "teacherId":
+                return teachers.findById(objectId)
+                        .map(teacher -> ResolvedObject.present(teacher.getName()))
+                        .orElseGet(() -> ResolvedObject.missing("教师不存在或已被删除"));
+            case "courseId":
+                return courses.findById(objectId)
+                        .map(course -> ResolvedObject.present(course.getName()))
+                        .orElseGet(() -> ResolvedObject.missing("课程不存在或已被删除"));
+            case "classId":
+                if (timetable.hasClass(objectId)) {
+                    return ResolvedObject.present(null);
+                }
+                return adminClasses.findById(objectId)
+                        .map(row -> ResolvedObject.missing(row.getName(), "行政班属于其他学期（"
+                                + semesterName(row.getSemesterId()) + "），需显式指定当前学期的班级"))
+                        .orElseGet(() -> ResolvedObject.missing("行政班不存在或已被删除"));
+            default:
+                return ResolvedObject.present(null);
         }
     }
 
-    private void requireTeacher(String location, Map<String, Object> params, List<String> errors) {
-        Long teacherId = ConstraintSettings.longValue(params.get("teacherId"));
-        if (teacherId == null) {
-            errors.add(location + ": 参数「教师」必须是教师");
-        } else if (!teachers.existsById(teacherId)) {
-            errors.add(location + ": 参数「教师」指向不存在的教师: " + teacherId);
-        }
-    }
-
-    private void requireCourse(String location, Map<String, Object> params, List<String> errors) {
-        Long courseId = ConstraintSettings.longValue(params.get("courseId"));
-        if (courseId == null) {
-            errors.add(location + ": 参数「课程」必须是课程");
-        } else if (!courses.existsById(courseId)) {
-            errors.add(location + ": 参数「课程」指向不存在的课程: " + courseId);
-        }
-    }
-
-    private void requireCourseIfPresent(
-            String location, Map<String, Object> params, List<String> errors) {
-        Long courseId = ConstraintSettings.longValue(params.get("courseId"));
-        if (courseId != null && !courses.existsById(courseId)) {
-            errors.add(location + ": 参数「课程」指向不存在的课程: " + courseId);
+    /** The semester name behind a foreign class id, for the report's reason column. */
+    private String semesterName(Long semesterId) {
+        try {
+            return semesters.require(semesterId).getName();
+        } catch (ApiException ex) {
+            return "未知学期";
         }
     }
 
@@ -661,8 +802,7 @@ public class ConstraintService {
      * A subject entry must name a subject the school actually uses. The catalogue is
      * the union of teacher subjects and course subjects; when the school has not
      * filled any in yet there is nothing to check against, so the entry is accepted.
-     */
-    private void requireSubject(String location, Map<String, Object> params, List<String> errors) {
+     */    private void requireSubject(String location, Map<String, Object> params, List<String> errors) {
         Object raw = params.get("subject");
         if (raw == null || !StringUtils.hasText(raw.toString())) {
             return;
@@ -808,6 +948,12 @@ public class ConstraintService {
     }
 
     private ConstraintConfigDto toDto(ConstraintConfig config, List<ConstraintEntry> entryRows) {
+        return toDtoWithEntries(config, entryDtos(config, entryRows));
+    }
+
+    /** Same DTO from the entry rows a save just wrote, so the response is its own receipt. */
+    private ConstraintConfigDto toDtoWithEntries(
+            ConstraintConfig config, List<ConstraintEntryDto> entryDtos) {
         ConstraintType type;
         try {
             type = ConstraintType.valueOf(config.getType());
@@ -817,7 +963,6 @@ public class ConstraintService {
         String name = type == null ? config.getType() : type.getDisplayName();
         Category category = type == null ? Category.PEDAGOGY : type.getCategory();
         String description = type == null ? "" : type.getDescription();
-        List<ConstraintEntryDto> entryDtos = entryDtos(config, entryRows);
         // `params` stays the pre-ADR single-value view: the first entry for an
         // entry-backed type, the legacy column for the types that still use it.
         Map<String, Object> legacyParams = entryDtos.isEmpty()
@@ -915,30 +1060,32 @@ public class ConstraintService {
     }
 
     /**
-     * Rewrites class ids with the caller's explicit old → new mapping. Anything the
-     * caller did not name keeps its original id, so it is reported as invalid instead of
-     * being guessed from a same-named class of the target semester.
+     * The snapshot as the apply/insert path needs it: entry ids are dropped and class
+     * ids are rewritten with the caller's explicit old → new mapping.
+     *
+     * <p>A template is a value snapshot, not an identity — its entry ids name rows of
+     * the semester it was taken from, so the apply inserts fresh rows instead of trying
+     * to update rows of another semester. A class id the caller did not name keeps its
+     * original value, so it is reported as invalid instead of being guessed from a
+     * same-named class of the target semester.
      */
-    private List<ConstraintConfigRequest> rebindClasses(
+    private List<ConstraintConfigRequest> prepareSnapshot(
             List<ConstraintConfigRequest> snapshot, TemplateApplyRequest request) {
         Map<Long, Long> mapping = request == null || request.classMapping() == null
                 ? Map.of() : request.classMapping();
-        if (mapping.isEmpty()) {
-            return snapshot;
-        }
-        List<ConstraintConfigRequest> rebound = new ArrayList<>();
+        List<ConstraintConfigRequest> prepared = new ArrayList<>();
         for (ConstraintConfigRequest config : snapshot) {
             List<ConstraintEntryRequest> entries = config.entries() == null
                     ? null
                     : config.entries().stream()
                             .map(entry -> new ConstraintEntryRequest(
-                                    entry.id(), rebindClass(mapping, entry.params())))
+                                    null, rebindClass(mapping, entry.params())))
                             .toList();
-            rebound.add(new ConstraintConfigRequest(config.type(),
+            prepared.add(new ConstraintConfigRequest(config.type(),
                     rebindClass(mapping, config.params()), config.weight(), config.hard(),
                     config.enabled(), entries));
         }
-        return rebound;
+        return prepared;
     }
 
     private Map<String, Object> rebindClass(Map<Long, Long> mapping, Map<String, Object> params) {
@@ -953,126 +1100,6 @@ public class ConstraintService {
         Map<String, Object> copy = new LinkedHashMap<>(params);
         copy.put("classId", mapped);
         return copy;
-    }
-
-    /**
-     * Object references a template cannot carry into the target semester, one row per
-     * offending entry so the page can point at the exact card. Teachers and courses are
-     * global assets (a missing one means it was deleted); a class belongs to one
-     * semester and must be rebound explicitly.
-     */
-    private List<TemplateReferenceIssue> invalidReferences(
-            Long semesterId, List<ConstraintConfigRequest> snapshot) {
-        SemesterScope scope = semesterScope(semesterId);
-        List<TemplateReferenceIssue> issues = new ArrayList<>();
-        for (ConstraintConfigRequest config : snapshot) {
-            ConstraintType type = typeOrNull(config.type());
-            List<Map<String, Object>> rows = entryParamsOf(config);
-            for (int index = 0; index < rows.size(); index++) {
-                Map<String, Object> params = rows.get(index);
-                for (String field : REFERENCE_FIELDS) {
-                    Long objectId = ConstraintSettings.longValue(params.get(field));
-                    if (objectId == null) {
-                        continue;
-                    }
-                    String reason = referenceProblem(field, objectId, scope);
-                    if (reason == null) {
-                        continue;
-                    }
-                    issues.add(new TemplateReferenceIssue(
-                            config.type(),
-                            type == null ? config.type() : type.getDisplayName(),
-                            index + 1,
-                            field,
-                            type == null ? field : paramLabel(type, field),
-                            objectId,
-                            referenceName(field, objectId),
-                            reason));
-                }
-            }
-        }
-        return issues;
-    }
-
-    /** The parameters of a snapshot config, whether it came as entries or as one map. */
-    private List<Map<String, Object>> entryParamsOf(ConstraintConfigRequest config) {
-        if (config.entries() != null) {
-            List<Map<String, Object>> rows = new ArrayList<>();
-            for (ConstraintEntryRequest entry : config.entries()) {
-                rows.add(entry == null || entry.params() == null ? Map.of() : entry.params());
-            }
-            return rows;
-        }
-        if (config.params() == null || config.params().isEmpty()) {
-            return List.of();
-        }
-        return List.of(config.params());
-    }
-
-    private String referenceProblem(String field, Long objectId, SemesterScope scope) {
-        switch (field) {
-            case "teacherId":
-                return teachers.existsById(objectId) ? null : "教师不存在或已被删除";
-            case "courseId":
-                return courses.existsById(objectId) ? null : "课程不存在或已被删除";
-            case "classId":
-                if (scope.hasClass(objectId)) {
-                    return null;
-                }
-                return adminClasses.findById(objectId)
-                        .map(row -> "行政班属于其他学期（" + semesterName(row.getSemesterId())
-                                + "），请显式指定替代班级")
-                        .orElse("行政班不存在或已被删除");
-            default:
-                return null;
-        }
-    }
-
-    private String referenceName(String field, Long objectId) {
-        switch (field) {
-            case "teacherId":
-                return teachers.findById(objectId).map(Teacher::getName).orElse(null);
-            case "courseId":
-                return courses.findById(objectId).map(Course::getName).orElse(null);
-            case "classId":
-                return adminClasses.findById(objectId).map(AdminClass::getName).orElse(null);
-            default:
-                return null;
-        }
-    }
-
-    private String semesterName(Long semesterId) {
-        try {
-            return semesters.require(semesterId).getName();
-        } catch (ApiException ex) {
-            return "未知学期";
-        }
-    }
-
-    private String describeInvalid(List<TemplateReferenceIssue> invalid) {
-        StringBuilder message = new StringBuilder("模板中有 " + invalid.size()
-                + " 处对象引用在当前学期无效：");
-        for (int index = 0; index < invalid.size(); index++) {
-            TemplateReferenceIssue issue = invalid.get(index);
-            if (index > 0) {
-                message.append("；");
-            }
-            message.append(issue.typeName()).append(" 第").append(issue.position()).append(" 条「")
-                    .append(issue.fieldLabel()).append("」")
-                    .append(issue.name() == null ? "#" + issue.objectId()
-                            : issue.name() + "#" + issue.objectId())
-                    .append("，").append(issue.reason());
-        }
-        message.append("。行政班可指定新旧映射后重新套用；教师/课程需先恢复对象。");
-        return message.toString();
-    }
-
-    private ConstraintType typeOrNull(String code) {
-        try {
-            return ConstraintType.valueOf(code);
-        } catch (IllegalArgumentException | NullPointerException ex) {
-            return null;
-        }
     }
 
     private ConstraintTemplate requireTemplate(Long templateId) {

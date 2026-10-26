@@ -340,7 +340,7 @@ public final class ConstraintChecker {
                     continue;
                 }
                 Long teacherId = objectIdOf(entry.getKey());
-                Integer max = settings.threshold(teacherMax, teacherId);
+                Integer max = settings.limitOrNull(teacherMax, teacherId);
                 if (max == null || entry.getValue() <= max) {
                     continue;
                 }
@@ -357,7 +357,7 @@ public final class ConstraintChecker {
                     continue;
                 }
                 Long classId = objectIdOf(entry.getKey());
-                Integer max = settings.threshold(classMax, classId);
+                Integer max = settings.limitOrNull(classMax, classId);
                 if (max == null || entry.getValue() <= max) {
                     continue;
                 }
@@ -378,7 +378,7 @@ public final class ConstraintChecker {
                 String key = entry.getKey();
                 Long classId = objectIdOf(key);
                 Long courseId = courseIdOf(key);
-                Integer max = settings.threshold(courseMax, courseId);
+                Integer max = settings.limitOrNull(courseMax, courseId);
                 if (max == null || entry.getValue() <= max) {
                     continue;
                 }
@@ -395,7 +395,7 @@ public final class ConstraintChecker {
                     continue;
                 }
                 Long classId = objectIdOf(entry.getKey());
-                Integer max = settings.threshold(eveningMax, classId);
+                Integer max = settings.limitOrNull(eveningMax, classId);
                 if (max == null || entry.getValue() <= max) {
                     continue;
                 }
@@ -554,7 +554,7 @@ public final class ConstraintChecker {
             for (Map.Entry<String, List<Integer>> entry : slots.entrySet()) {
                 // Each teacher has its own limit: an exception on one teacher never
                 // changes what another teacher may do.
-                Integer max = s.threshold(maxConsecutive, objectIdOf(entry.getKey()));
+                Integer max = s.limitOrNull(maxConsecutive, objectIdOf(entry.getKey()));
                 if (max == null) {
                     continue;
                 }
@@ -822,17 +822,17 @@ public final class ConstraintChecker {
         }
 
         total += weight(settings, ConstraintType.TEACHER_MAX_PER_DAY)
-                * excess(teacherDay, key -> settings.threshold(ConstraintType.TEACHER_MAX_PER_DAY,
+                * excess(teacherDay, key -> settings.limitOrNull(ConstraintType.TEACHER_MAX_PER_DAY,
                         objectIdOf(key)));
         total += weight(settings, ConstraintType.CLASS_MAX_PER_DAY)
-                * excess(classDay, key -> settings.threshold(ConstraintType.CLASS_MAX_PER_DAY,
+                * excess(classDay, key -> settings.limitOrNull(ConstraintType.CLASS_MAX_PER_DAY,
                         objectIdOf(key)));
         // The course bucket is "class + course + day" while the entry names the course.
         total += weight(settings, ConstraintType.COURSE_MAX_PER_DAY)
-                * excess(classCourseDay, key -> settings.threshold(ConstraintType.COURSE_MAX_PER_DAY,
+                * excess(classCourseDay, key -> settings.limitOrNull(ConstraintType.COURSE_MAX_PER_DAY,
                         courseIdOf(key)));
         total += weight(settings, ConstraintType.EVENING_MAX)
-                * excess(classEvening, key -> settings.threshold(ConstraintType.EVENING_MAX,
+                * excess(classEvening, key -> settings.limitOrNull(ConstraintType.EVENING_MAX,
                         objectIdOf(key)));
 
         for (LessonView lesson : lessons) {
@@ -978,7 +978,7 @@ public final class ConstraintChecker {
                 }
             }
             for (Map.Entry<String, List<Integer>> entry : slots.entrySet()) {
-                Integer max = settings.threshold(maxConsecutive, objectIdOf(entry.getKey()));
+                Integer max = settings.limitOrNull(maxConsecutive, objectIdOf(entry.getKey()));
                 if (max == null) {
                     continue;
                 }

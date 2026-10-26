@@ -321,12 +321,12 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         ConstraintType type = ConstraintType.TEACHER_MAX_PER_DAY;
         return f.forEach(Lesson.class)
                 .filter(lesson -> lesson.getPeriod() != null
-                        && s.threshold(type, lesson.getTeacherId()) != null)
+                        && s.limitOrNull(type, lesson.getTeacherId()) != null)
                 .groupBy(
                         Lesson::getTeacherId,
                         lesson -> lesson.getPeriod().getDayOfWeek(),
                         ConstraintCollectors.count())
-                .filter((teacherId, day, count) -> count > limit(s, type, teacherId))
+                .filter((teacherId, day, count) -> !s.withinLimit(type, teacherId, count))
                 .penalize(penalty(s, type))
                 .asConstraint(type.getDisplayName());
     }
@@ -335,12 +335,12 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         ConstraintType type = ConstraintType.CLASS_MAX_PER_DAY;
         return f.forEach(Lesson.class)
                 .filter(lesson -> lesson.getPeriod() != null
-                        && s.threshold(type, lesson.getAdminClassId()) != null)
+                        && s.limitOrNull(type, lesson.getAdminClassId()) != null)
                 .groupBy(
                         Lesson::getAdminClassId,
                         lesson -> lesson.getPeriod().getDayOfWeek(),
                         ConstraintCollectors.count())
-                .filter((classId, day, count) -> count > limit(s, type, classId))
+                .filter((classId, day, count) -> !s.withinLimit(type, classId, count))
                 .penalize(penalty(s, type))
                 .asConstraint(type.getDisplayName());
     }
@@ -350,13 +350,13 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         // The bucket stays "class + course + day"; the limit comes from the course.
         return f.forEach(Lesson.class)
                 .filter(lesson -> lesson.getPeriod() != null
-                        && s.threshold(type, lesson.getCourseId()) != null)
+                        && s.limitOrNull(type, lesson.getCourseId()) != null)
                 .groupBy(
                         Lesson::getAdminClassId,
                         Lesson::getCourseId,
                         lesson -> lesson.getPeriod().getDayOfWeek(),
                         ConstraintCollectors.count())
-                .filter((classId, courseId, day, count) -> count > limit(s, type, courseId))
+                .filter((classId, courseId, day, count) -> !s.withinLimit(type, courseId, count))
                 .penalize(penalty(s, type))
                 .asConstraint(type.getDisplayName());
     }
@@ -367,12 +367,12 @@ public class PaibanConstraintProvider implements ConstraintProvider {
                 .filter(lesson -> lesson.getPeriod() != null
                         && lesson.getPeriod().getSection()
                         == com.paiban.foundation.domain.PeriodSection.EVENING
-                        && s.threshold(type, lesson.getAdminClassId()) != null)
+                        && s.limitOrNull(type, lesson.getAdminClassId()) != null)
                 .groupBy(
                         Lesson::getAdminClassId,
                         lesson -> lesson.getPeriod().getDayOfWeek(),
                         ConstraintCollectors.count())
-                .filter((classId, day, count) -> count > limit(s, type, classId))
+                .filter((classId, day, count) -> !s.withinLimit(type, classId, count))
                 .penalize(penalty(s, type))
                 .asConstraint(type.getDisplayName());
     }
@@ -494,12 +494,12 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         ConstraintType type = ConstraintType.TEACHER_MAX_CONSECUTIVE;
         return f.forEach(Lesson.class)
                 .filter(lesson -> lesson.getPeriod() != null
-                        && s.threshold(type, lesson.getTeacherId()) != null)
+                        && s.limitOrNull(type, lesson.getTeacherId()) != null)
                 .groupBy(
                         Lesson::getTeacherId,
                         lesson -> lesson.getPeriod().getDayOfWeek(),
                         ConstraintCollectors.toList())
-                .filter((teacherId, day, lessons) -> maxConsecutive(lessons) > limit(s, type, teacherId))
+                .filter((teacherId, day, lessons) -> !s.withinLimit(type, teacherId, maxConsecutive(lessons)))
                 .penalize(penalty(s, type))
                 .asConstraint(type.getDisplayName());
     }
@@ -586,16 +586,6 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         return settings.hard(type)
                 ? HardSoftScore.ONE_HARD
                 : HardSoftScore.ofSoft(Math.max(1, settings.weight(type)));
-    }
-
-    /**
-     * The day limit this object has to respect. An object the configuration does not
-     * cover (no exception, no global default) is unlimited: the bucketed count can
-     * never exceed {@code Integer.MAX_VALUE}, so the constraint silently ignores it.
-     */
-    private long limit(ConstraintSettings settings, ConstraintType type, Long objectId) {
-        Integer value = settings.threshold(type, objectId);
-        return value == null ? Integer.MAX_VALUE : value;
     }
 
     /**

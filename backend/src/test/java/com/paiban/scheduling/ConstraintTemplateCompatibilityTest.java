@@ -250,26 +250,32 @@ class ConstraintTemplateCompatibilityTest extends ApiIntegrationTest {
         long targetClass = adminClass(token, target, className);
         String before = rawConstraints(token, target);
 
-        as(token).queryParam("semesterId", target)
+        Response refused = as(token).queryParam("semesterId", target)
                 .when().post("/api/constraint-templates/" + templateId + "/apply")
                 .then().statusCode(409)
+                .body("errors", hasSize(0))
                 .body("invalidReferences", hasSize(1))
                 .body("invalidReferences[0].type", equalTo("CLASS_MAX_PER_DAY"))
                 .body("invalidReferences[0].field", equalTo("classId"))
                 .body("invalidReferences[0].objectId", equalTo((int) sourceClass))
                 .body("invalidReferences[0].name", equalTo(className))
-                .body("invalidReferences[0].position", equalTo(2));
+                .body("invalidReferences[0].position", equalTo(2))
+                .extract().response();
         assertThat(rawConstraints(token, target)).isEqualTo(before);
         assertThat(entryRows(target, "CLASS_MAX_PER_DAY")).isZero();
 
-        // The preview reports the same list without writing anything.
-        as(token).queryParam("semesterId", target)
+        // The preview reports the same list without writing anything — same body shape,
+        // same rows: 200 + errors/invalidReferences here, 409 + the same two lists there.
+        Response preview = as(token).queryParam("semesterId", target)
                 .when().post("/api/constraint-templates/" + templateId + "/preview")
                 .then().statusCode(200)
                 .body("configCount", equalTo(3))
                 .body("entryCount", equalTo(4))
                 .body("invalidReferences", hasSize(1))
-                .body("errors", hasSize(0));
+                .body("errors", hasSize(0))
+                .extract().response();
+        assertThat(preview.jsonPath().getList("invalidReferences").toString())
+                .isEqualTo(refused.jsonPath().getList("invalidReferences").toString());
         assertThat(rawConstraints(token, target)).isEqualTo(before);
 
         // An explicit mapping rebinds the class; teachers and courses stay global.
@@ -336,9 +342,14 @@ class ConstraintTemplateCompatibilityTest extends ApiIntegrationTest {
                 "[{\"type\":\"TEACHER_UNAVAILABLE\",\"params\":{\"teacherId\":" + teacher
                         + ",\"dayOfWeek\":6,\"periodNo\":2},\"weight\":100,\"hard\":true,"
                         + "\"enabled\":true}]");
+        // The apply reports every refusal in the same body shape the preview returns:
+        // 409 with `errors` (a slot the timetable does not have) and an empty
+        // `invalidReferences` (no object is missing).
         as(token).queryParam("semesterId", semesterId)
                 .when().post("/api/constraint-templates/" + outsideTimetable + "/apply")
-                .then().statusCode(400);
+                .then().statusCode(409)
+                .body("errors", hasSize(1))
+                .body("invalidReferences", hasSize(0));
         assertThat(rawConstraints(token, semesterId)).isEqualTo(before);
         assertThat(entryRows(semesterId, "TEACHER_UNAVAILABLE")).isEqualTo(1);
     }

@@ -104,7 +104,7 @@
   需要单独改 PlanVerifier 语义（会影响既有已违规学期的历史方案），不在本票范围。
 - V28 的默认值以 SQL 字面量写了 4/8/2/2/3，与 `ConstraintType` 的 `defaultValue` 是两份；
   改目录默认值时必须同步迁移（迁移测试断言了这五个数字，可作为防线）。
-- 阈值条目的 `id` 仍是整学期替换式回传（与 02/03 相同），不做按条增量更新。
+- 阈值条目的 `id` 曾是整学期替换式回传（与 02/03 相同），不做按条增量更新 —— **该限制已在下方「评审修复」中消除**。
 - 真实 PostgreSQL 上 V28 尚未实跑（本地 H2 覆盖），部署时按 runbook 先备份。
 
 ### 实现说明（前端，2026-10-26）
@@ -152,3 +152,20 @@
   3. 同一教师两条例外 → 保存前被拦下、不发请求、服务端无变化；
   4. 五类逐一打开并截图（`E:/paiban-wt/screenshots/phase11/constraint-threshold-<码>.png`）。
 - 既有约束 E2E（`constraints-entries`、`constraints-target-entries`、`zz-junior-mode`）一并复跑通过。
+
+### 评审修复（2026-10-26，集成分支 `feature/constraint-phase`）
+
+双轴评审对 04–06 的发现里有四条落在本票。行为与文档各半：
+
+**行为**
+- 「无上限」只有一个表达。`ConstraintSettings.threshold(...)` 改名为 `limitOrNull(...)`，并新增 `withinLimit(type, objectId, count)`；`ConstraintChecker`（null → 跳过）与 `PaibanConstraintProvider` 都调这两个方法，provider 里的 `Integer.MAX_VALUE` 哨兵与那层「额外 filter」删掉。判定语义没变，只是不再存在两种写法。
+- 阈值条目有了真正的稳定身份：`ConstraintService` 保存改为按条 upsert（带 id 更新、不带 id 插入、未出现的旧行删除），面板重新保存后全局默认与例外的条目 id 不再整批重建。上文「阈值条目的 id 仍是整学期替换式回传…」随之作废。
+- V28 的 `CASE` 从「ELSE 兜底成 `maxConsecutive`」改成按五类各写一个显式分支：某个类型自己的 key 缺失时补该类默认值 4/8/2/2/3，将来新增第 6 类阈值不会悄悄继承别人的数字。没有新增迁移编号，改的是同一条 V28（本阶段尚未部署）。
+
+**文档**
+- ADR-0025 与 spec 的调代审批描述按实现改正（差分判定），详见 `docs/adr/0025` 末尾「2026-10-26 修订记录」。`PlanVerifier` 行为未改。
+
+**测试**
+- `EngineConstraintTest.thresholdExceptionAppliesPerObjectInTheEngine`：全局 4 + 教师 10 例外 1 → 该教师单日两节扣一份软分、教师 11 两节不扣（此前只有「全局条目」的引擎用例）；`thresholdWithoutGlobalOrExceptionDoesNotLimitTheEngine`：只有别的对象的例外时谁都不受限。
+- `ConstraintEntryMigrationTest.v28WritesEachThresholdItsOwnCatalogueDefault`：五类各写 `{}`/NULL，迁移后分别落 4/8/2/2/3（`COURSE_MAX_PER_DAY` 与 `EVENING_MAX` 同为 2，但由两个独立分支产生）。
+- `ConstraintEntriesIntegrationTest.savingAgainUpdatesInPlaceInsertsAndDeletesByEntryId`：改一条 + 增一条 + 删一条 → 原 id 不变、新条目新 id、被删的行没了，REST 回应与存储一致。

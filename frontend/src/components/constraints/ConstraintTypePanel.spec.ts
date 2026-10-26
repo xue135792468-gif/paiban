@@ -48,7 +48,14 @@ function mountPanel(props: Record<string, unknown>, rowValue: TypeDraft) {
         { id: 2, name: '李娜' },
       ],
       courses: [{ id: 9, name: '数学' }],
-      classes: [{ id: 5, name: '高一1班' }],
+      objectOptions: {
+        teacherId: [
+          { id: 1, name: '张伟' },
+          { id: 2, name: '李娜' },
+        ],
+        classId: [{ id: 5, name: '高一1班' }],
+        courseId: [{ id: 9, name: '数学' }],
+      },
       entryErrors: {},
       typeErrors: [],
       ...props,

@@ -1,6 +1,23 @@
-import type { ParamDef, ThresholdDraft, TypeDraft } from './types'
+import type { ObjectNames, ParamDef, ThresholdDraft, TypeDraft } from './types'
 import { hasValue } from './paramValues'
 import type { PlannedEntry } from './entryModel'
+
+/** No names known (e.g. a unit test that only checks the message shape). */
+export function emptyObjectNames(): ObjectNames {
+  return { teacherId: new Map(), classId: new Map(), courseId: new Map() }
+}
+
+/**
+ * The name lookup for one entry field. A threshold names exactly one kind of object, so
+ * asking for its own field can never return a same-id teacher, class or course by
+ * accident — which is what a single merged map used to do.
+ */
+export function namesForField(names: ObjectNames, field: string | null | undefined): Map<number, string> {
+  if (field === 'teacherId' || field === 'classId' || field === 'courseId') {
+    return names[field]
+  }
+  return new Map()
+}
 
 /**
  * What a threshold type's entries mean. A threshold stores one entry per scope:
@@ -120,14 +137,21 @@ export function thresholdWarnings(row: TypeDraft): string[] {
  * Two rows for the same scope (two global defaults, or two exceptions for the same
  * object) would leave "which value applies" to the read order, so the server refuses
  * the whole request. Predict exactly that here.
+ *
+ * `names` is keyed by entry field, so the label of an exception always comes from the
+ * list that type actually uses (a teacher limit never labels its row with a course).
  */
-export function thresholdConflicts(row: TypeDraft, objectNames: Map<number, string> = new Map()): Array<{ message: string; cardIndexes: number[] }> {
+export function thresholdConflicts(
+  row: TypeDraft,
+  names: ObjectNames = emptyObjectNames(),
+): Array<{ message: string; cardIndexes: number[] }> {
   const draft = row.threshold
   if (!draft) {
     return []
   }
   const conflicts: Array<{ message: string; cardIndexes: number[] }> = []
   const seen = new Map<string, number>()
+  const objectNames = namesForField(names, thresholdShape(row)?.objectField)
   thresholdEntries(row).forEach((entry, cardIndex) => {
     const shape = thresholdShape(row)
     const objectId = shape ? entry.params[shape.objectField] : null

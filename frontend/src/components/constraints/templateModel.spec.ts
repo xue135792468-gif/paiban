@@ -7,7 +7,8 @@ import {
   classMappingOf,
   issueRow,
   issueRows,
-  previewBlockedReason,
+  blockedReasonOf,
+  templateReportOf,
   templateOptionLabel,
 } from './templateModel'
 import type { ConstraintConfigDto, TemplateApplyPreview, TemplateReferenceIssue } from './types'
@@ -104,11 +105,38 @@ describe('templateModel', () => {
       invalidReferences: [],
       errors: ['教师禁排时段(TEACHER_UNAVAILABLE) 第1 条: 星期6第2节不在本学期作息范围内'],
     }
-    expect(previewBlockedReason(blocked)).toContain('不在本学期作息范围内')
-    expect(
-      previewBlockedReason({ ...blocked, errors: [] }),
-    ).toBeNull()
-    expect(previewBlockedReason(null)).toBeNull()
+    expect(blockedReasonOf(templateReportOf(blocked))).toContain('不在本学期作息范围内')
+    expect(blockedReasonOf(templateReportOf({ ...blocked, errors: [] }))).toBeNull()
+    expect(blockedReasonOf(null)).toBeNull()
+  })
+
+  it('预览的 200 与套用拒绝的 409 读成同一份报告', () => {
+    const preview = templateReportOf({
+      configCount: 3,
+      entryCount: 4,
+      invalidReferences: [issue()],
+      errors: [],
+    })
+    // The refusal body carries the same two lists plus a message and no counts.
+    const refusal = templateReportOf({
+      message: '模板无法套用到当前学期：…',
+      invalidReferences: [issue()],
+      errors: ['星期6第2节不在本学期作息范围内'],
+    })
+
+    expect(preview.invalidReferences).toEqual(refusal.invalidReferences)
+    expect(preview.errors).toEqual([])
+    expect(refusal.errors).toHaveLength(1)
+    expect(preview.configCount).toBe(3)
+    expect(refusal.configCount).toBeNull()
+    expect(blockedReasonOf(refusal)).toContain('不在本学期作息范围内')
+    // A body with no business shape at all still reads as "nothing structured".
+    expect(templateReportOf(undefined)).toEqual({
+      configCount: null,
+      entryCount: null,
+      errors: [],
+      invalidReferences: [],
+    })
   })
 
   it('多行失效引用按顺序渲染', () => {

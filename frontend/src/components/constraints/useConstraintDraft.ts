@@ -1,8 +1,9 @@
 import { computed, ref } from 'vue'
+import { conflictReport, type ConflictReport } from './conflictModel'
 import { buildSavePayload, countsOf, groupRows } from './draftRules'
-import { duplicateMessages, missingParamWarnings, scalarConflicts, scalarConflictsByCard } from './entryChecks'
+import { missingParamWarnings } from './entryChecks'
 import { isEntryType, isSlotSetType, isThresholdType, optionalTargetParam } from './entryModel'
-import { emptyThreshold, thresholdConflicts, thresholdWarnings } from './thresholdModel'
+import { emptyObjectNames, emptyThreshold, thresholdWarnings } from './thresholdModel'
 import { hasValue } from './paramValues'
 import type {
   ConstraintConfigDto,
@@ -11,6 +12,7 @@ import type {
   ConstraintTypeDef,
   EntryDraft,
   NavGroup,
+  ObjectNames,
   SlotDraft,
   ThresholdDraft,
   TypeDraft,
@@ -330,48 +332,16 @@ export function useConstraintDraft() {
   }
 
   /**
-   * Conditions the server would refuse, checked before the request: contradictory
-   * scalars for one course and duplicate threshold scopes. `objectNames` labels the
-   * threshold exception rows (teacher/class/course names).
+   * Conditions the server would refuse, checked before the request: identical entries,
+   * contradictory scalars for one object and duplicate threshold scopes. Computed once
+   * per change and read twice — the pre-check bar shows `messages`, the left navigation
+   * turns `codes` red — so neither reader can disagree with the other.
+   *
+   * `names` is keyed by entry field (`teacherId` / `classId` / `courseId`), so an
+   * exception is labelled from the list its own type uses.
    */
-  function conflicts(
-    courseNames?: Map<number, string>,
-    objectNames?: Map<number, string>,
-  ): string[] {
-    return [
-      ...scalarConflicts(rows.value, {
-        teacherNames: new Map(),
-        courseNames: courseNames ?? new Map(),
-      }),
-      ...thresholdConflictsOf(objectNames ?? courseNames),
-    ]
-  }
-
-  /**
-   * The types whose current input the server would refuse: duplicate entries,
-   * contradictory scalars for one object, two rows for one threshold scope. The left
-   * navigation marks these red before any save attempt, so a conflict the page already
-   * knows about is never only discoverable after pressing 保存 and hunting the message.
-   */
-  function conflictCodes(
-    courseNames?: Map<number, string>,
-    objectNames?: Map<number, string>,
-  ): string[] {
-    const ctx = {
-      teacherNames: new Map<number, string>(),
-      courseNames: courseNames ?? new Map<number, string>(),
-    }
-    return rows.value
-      .filter((row) => {
-        if (Object.keys(duplicateMessages(row)).length > 0) {
-          return true
-        }
-        if (Object.keys(scalarConflictsByCard(row, ctx)).length > 0) {
-          return true
-        }
-        return isThresholdType(row) && thresholdConflicts(row, objectNames ?? new Map()).length > 0
-      })
-      .map((row) => row.code)
+  function conflictsOf(names: ObjectNames = emptyObjectNames()): ConflictReport {
+    return conflictReport(rows.value, names)
   }
 
   // ----------------------------------------------------------- thresholds (ticket 04)
@@ -430,15 +400,6 @@ export function useConstraintDraft() {
     }
   }
 
-  /** Duplicate scopes (two global defaults, two rows for one object) the server refuses. */
-  function thresholdConflictsOf(objectNames?: Map<number, string>): string[] {
-    return rows.value.flatMap((row) =>
-      isThresholdType(row)
-        ? thresholdConflicts(row, objectNames ?? new Map()).map((conflict) => conflict.message)
-        : [],
-    )
-  }
-
   return {
     rows,
     selectedCode,
@@ -465,10 +426,8 @@ export function useConstraintDraft() {
     removeThresholdException,
     setThresholdExceptionObject,
     setThresholdExceptionValue,
-    thresholdConflictsOf,
     warnings,
-    conflicts,
-    conflictCodes,
+    conflictsOf,
     payload,
   }
 }

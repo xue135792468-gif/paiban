@@ -133,11 +133,11 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useConstraintTemplates } from './useConstraintTemplates'
 import {
   applyResultText,
+  blockedReasonOf,
   blockingIssues,
   blockingSummary,
   classMappingOf,
   issueRows as rowsOf,
-  previewBlockedReason,
   templateOptionLabel,
 } from './templateModel'
 import type { OptionItem } from './types'
@@ -161,7 +161,7 @@ const {
   result,
   errorMessage,
   issues,
-  preview,
+  report,
   load,
   saveAs,
   runPreview,
@@ -182,7 +182,10 @@ const blockingCount = computed(() => blockingIssues(issues.value, selections.val
 const resultText = computed(() =>
   result.value ? applyResultText(result.value.name, result.value.counts) : '',
 )
-const blockedText = computed(() => previewBlockedReason(preview.value) ?? errorMessage.value)
+// Both the dry run and the refusal fill `report`, so the bar has one source and one
+// wording for "this cannot be applied": the structured errors first, the server
+// message only when the refusal carried nothing structured.
+const blockedText = computed(() => blockedReasonOf(report.value) ?? errorMessage.value)
 
 // A fresh template or semester starts with an empty mapping: never reuse a class
 // choice from a previous refusal.
@@ -236,7 +239,7 @@ async function onApply() {
   if (!run) {
     return
   }
-  if (previewBlockedReason(run)) {
+  if (blockedReasonOf(run)) {
     ElMessage.error('模板无法套用到当前学期')
     return
   }
@@ -257,13 +260,19 @@ async function onReboundApply() {
   const applied = await apply(mapping)
   if (applied) {
     ElMessage.success('模板已套用')
+    return
+  }
+  // A refusal that names rows reopens the dialog on the new list instead of leaving
+  // the user with an error bar and no next step.
+  if (issues.value.length > 0) {
+    dialogVisible.value = true
   }
 }
 
 async function confirmAndApply(mapping: Record<string, number>) {
   const name = selected.value?.name ?? '所选模板'
-  const counts = preview.value
-    ? `将恢复 ${preview.value.configCount} 类配置、${preview.value.entryCount} 条条目，`
+  const counts = report.value && report.value.configCount !== null
+    ? `将恢复 ${report.value.configCount} 类配置、${report.value.entryCount ?? 0} 条条目，`
     : ''
   try {
     await ElMessageBox.confirm(

@@ -142,3 +142,18 @@
 - 模板区在初中模式仍隐藏（沿用既有可见性），因此初中学校用不到模板；若产品要开放，需要单独确认折叠口径。
 - 失效清单一次最多展示模板里的全部行；条目极多（上百条引用）时对话框会很长，暂未分页。
 - 模板不可重命名（沿用原有 save-by-name 覆盖语义），与「删除/新建」等价。
+
+### 评审修复（2026-10-26，集成分支 `feature/constraint-phase`）
+
+**行为**
+- 对象引用校验合成一处：`invalidReferences` / `referenceProblem` / `referenceName` 与 `requireTeacherIfPresent` / `requireClassIfPresent` 两套代码、两套文案合并成 `referencesOf(...)` + `resolveReference(...)`，一个对象只查一次（原来 `existsById` 与 `findById` 查两遍，现在一次 `findById` 同时给出名字与原因）。穿透五层的布尔参数 `checkReferences` 删除：save、preview、apply 读同一份 `Planning`（`errors` + `references`）。
+- 模板错误形状统一：preview 的 200 body 与 apply 拒绝的 409 body 现在由同一个 `Planning` 生成，都带 `errors` 与 `invalidReferences`；前端只保留一套解析（`templateModel.templateReportOf`），删掉 `refusalIssues` / `previewBlockedReason` 的双形状分支。409 仍带业务 body，理由写在 `ConstraintController.apply` 的注释里。
+- 随之而来的行为变化：模板 apply 的所有拒绝统一为 **409**（此前「节次不在作息内」这类 plan 错误走 400、只有引用错误走 409）。`aFailedApplyLeavesTheConfigurationByteForByteUntouched` 的期望从 400 改成 409 + `errors`；「逐字节不变」的断言一条未动。
+- 套用模板时清空快照里的条目 id（`prepareSnapshot`）：模板是值快照不是身份，跨学期沿用源学期的行 id 会误更新目标学期的行或直接被拒。
+
+**文档**
+- 无（本票自己的说明文字保持原样）。
+
+**测试**
+- `crossSemesterClassReferenceIsRefusedUntilExplicitlyRebound` 新增断言：preview(200) 与 apply(409) 的 `invalidReferences` 逐字段相同、409 的 `errors` 为空数组 —— 形状统一的直接证据。
+- `ConstraintEntriesIntegrationTest.anEntryIdFromAnotherSemesterOrTypeIsRejectedWithoutWriting`：别的学期的 id、别的类型的 id → 400，且两边配置逐字节不变（条目身份的负向用例，与 04 的正向用例配对）。

@@ -156,6 +156,21 @@ export interface OptionItem {
   name: string
 }
 
+/**
+ * The objects a constraint entry may name, kept per field. Teachers, administrative
+ * classes and courses live in three separate id spaces, so they are never merged into
+ * one lookup: the field the entry uses decides which list applies, and two objects that
+ * happen to share an id can never be confused for each other.
+ */
+export interface ObjectOptions {
+  teacherId: OptionItem[]
+  classId: OptionItem[]
+  courseId: OptionItem[]
+}
+
+/** The same three fields as id → name maps, for labelling one row. */
+export type ObjectNames = { [Key in keyof ObjectOptions]: Map<number, string> }
+
 /** A saved template as `GET /api/constraint-templates` lists it. */
 export interface TemplateItem {
   id: number

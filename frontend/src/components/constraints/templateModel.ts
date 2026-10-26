@@ -114,10 +114,39 @@ export function blockingSummary(
   return `${parts.join('；')}。`
 }
 
-/** The preview's blocking reason, or null when the apply can proceed. */
-export function previewBlockedReason(preview: TemplateApplyPreview | null): string | null {
-  if (!preview || preview.errors.length === 0) {
+/**
+ * The one report shape both template calls produce. The dry run returns it in a 200
+ * body; an apply refusal returns the same two lists in its 409 body (plus a `message`
+ * the page only uses when there is nothing structured to show). The page therefore
+ * parses one shape and renders one way, whichever call produced it.
+ */
+export interface TemplateReport {
+  /** How much the dry run would restore; null on a refusal, which restores nothing. */
+  configCount: number | null
+  entryCount: number | null
+  /** Reasons the save would be refused that are not object references (slots, ranges…). */
+  errors: string[]
+  /** Object references the target semester cannot take, row by row. */
+  invalidReferences: TemplateReferenceIssue[]
+}
+
+/** Reads either body (preview 200 or apply 409) into the one report shape. */
+export function templateReportOf(body: unknown): TemplateReport {
+  const source = (body ?? {}) as Partial<TemplateApplyPreview>
+  return {
+    configCount: typeof source.configCount === 'number' ? source.configCount : null,
+    entryCount: typeof source.entryCount === 'number' ? source.entryCount : null,
+    errors: Array.isArray(source.errors)
+      ? source.errors.filter((message): message is string => typeof message === 'string')
+      : [],
+    invalidReferences: Array.isArray(source.invalidReferences) ? source.invalidReferences : [],
+  }
+}
+
+/** The blocking reason of a report, or null when the apply can proceed. */
+export function blockedReasonOf(report: TemplateReport | null): string | null {
+  if (!report || report.errors.length === 0) {
     return null
   }
-  return `模板无法套用到当前学期：${preview.errors.join('；')}`
+  return `模板无法套用到当前学期：${report.errors.join('；')}`
 }

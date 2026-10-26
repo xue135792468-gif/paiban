@@ -12,18 +12,31 @@
 -- silently dropping the limit. Nothing is invented for a type that has no
 -- constraint_config row at all — "no row" still means "not configured".
 --
+-- The `CASE` lists all five types explicitly instead of leaning on an `ELSE`: a sixth
+-- threshold added to ConstraintType must come with its own branch here (and will not
+-- silently inherit `TEACHER_MAX_CONSECUTIVE`'s number). `ConstraintEntryMigrationTest`
+-- asserts each of the five defaults, so that omission cannot pass unnoticed.
+--
 -- `NOT EXISTS` keeps the statement idempotent, matching V27.
 INSERT INTO constraint_entry (semester_id, type, params_json, created_at)
 SELECT c.semester_id,
        c.type,
-       CASE
-           WHEN c.params_json LIKE '%maxPerDay%' THEN c.params_json
-           WHEN c.params_json LIKE '%maxConsecutive%' THEN c.params_json
-           WHEN c.type = 'TEACHER_MAX_PER_DAY' THEN '{"maxPerDay":4}'
-           WHEN c.type = 'CLASS_MAX_PER_DAY' THEN '{"maxPerDay":8}'
-           WHEN c.type = 'COURSE_MAX_PER_DAY' THEN '{"maxPerDay":2}'
-           WHEN c.type = 'EVENING_MAX' THEN '{"maxPerDay":2}'
-           ELSE '{"maxConsecutive":3}'
+       CASE c.type
+           WHEN 'TEACHER_MAX_PER_DAY' THEN
+               CASE WHEN c.params_json LIKE '%maxPerDay%' THEN c.params_json
+                    ELSE '{"maxPerDay":4}' END
+           WHEN 'CLASS_MAX_PER_DAY' THEN
+               CASE WHEN c.params_json LIKE '%maxPerDay%' THEN c.params_json
+                    ELSE '{"maxPerDay":8}' END
+           WHEN 'COURSE_MAX_PER_DAY' THEN
+               CASE WHEN c.params_json LIKE '%maxPerDay%' THEN c.params_json
+                    ELSE '{"maxPerDay":2}' END
+           WHEN 'EVENING_MAX' THEN
+               CASE WHEN c.params_json LIKE '%maxPerDay%' THEN c.params_json
+                    ELSE '{"maxPerDay":2}' END
+           WHEN 'TEACHER_MAX_CONSECUTIVE' THEN
+               CASE WHEN c.params_json LIKE '%maxConsecutive%' THEN c.params_json
+                    ELSE '{"maxConsecutive":3}' END
        END,
        CURRENT_TIMESTAMP
 FROM constraint_config c

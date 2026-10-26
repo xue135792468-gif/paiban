@@ -161,6 +161,90 @@ class ConstraintEntriesIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void savingAgainUpdatesInPlaceInsertsAndDeletesByEntryId() {
+        String token = adminToken();
+        long semesterId = semesterWithPeriods(token);
+        long first = TestData.teacher(token, "稳定甲" + TestData.suffix());
+        long second = TestData.teacher(token, "稳定乙" + TestData.suffix());
+        long third = TestData.teacher(token, "稳定丙" + TestData.suffix());
+
+        Response initial = save(token, semesterId, List.of(unavailable(
+                entry(first, 1, 1), entry(second, 2, 2)))).then().statusCode(200).extract().response();
+        List<Long> ids = entryIds(initial, "TEACHER_UNAVAILABLE");
+        assertThat(ids).hasSize(2);
+
+        // Second save: change one entry's parameters, add one, drop one.
+        Response second2 = save(token, semesterId, List.of(unavailable(
+                entry(ids.get(0), first, 1, 3), entry(null, third, 3, 4))))
+                .then().statusCode(200).extract().response();
+        List<Map<String, Object>> saved =
+                second2.jsonPath().getList("find { it.type == 'TEACHER_UNAVAILABLE' }.entries");
+        assertThat(saved).hasSize(2);
+        assertThat(number(saved.get(0).get("id"))).as("the edited entry keeps its id")
+                .isEqualTo(ids.get(0));
+        assertThat(paramsOf(saved.get(0)).get("periodNo")).isEqualTo(3);
+        Long insertedId = number(saved.get(1).get("id"));
+        assertThat(insertedId).isNotNull().isNotEqualTo(ids.get(0)).isNotEqualTo(ids.get(1));
+        assertThat(number(paramsOf(saved.get(1)).get("teacherId"))).isEqualTo(third);
+
+        // Storage agrees: the dropped row is gone, the kept one was updated in place.
+        List<ConstraintEntry> rows = unavailableEntries(semesterId);
+        assertThat(rows).extracting(ConstraintEntry::getId)
+                .containsExactlyInAnyOrder(ids.get(0), insertedId);
+        assertThat(rows.stream().filter(row -> row.getId().equals(ids.get(0))).findFirst().orElseThrow()
+                .getParamsJson()).contains("\"periodNo\":3");
+
+        List<Map<String, Object>> reloaded = as(token).queryParam("semesterId", semesterId)
+                .when().get("/api/constraints").then().statusCode(200).extract().jsonPath()
+                .getList("find { it.type == 'TEACHER_UNAVAILABLE' }.entries");
+        assertThat(reloaded).extracting(row -> number(row.get("id")))
+                .containsExactly(ids.get(0), insertedId);
+    }
+
+    @Test
+    void anEntryIdFromAnotherSemesterOrTypeIsRejectedWithoutWriting() {
+        String token = adminToken();
+        long source = semesterWithPeriods(token);
+        long teacher = TestData.teacher(token, "跨学期条目" + TestData.suffix());
+        // One request carries both types, because a save replaces the whole semester.
+        Response seeded = save(token, source, List.of(
+                unavailable(entry(teacher, 1, 1)),
+                Map.of("type", "TEACHER_MAX_PER_DAY", "weight", 60, "hard", false, "enabled", true,
+                        "entries", List.of(Map.of("params", Map.of("maxPerDay", 6))))))
+                .then().statusCode(200).extract().response();
+        Long seededEntryId = entryIds(seeded, "TEACHER_UNAVAILABLE").get(0);
+        Long thresholdEntryId = entryRepository.findBySemesterIdAndTypeOrderByIdAsc(
+                source, "TEACHER_MAX_PER_DAY").get(0).getId();
+        String sourceBefore = as(token).queryParam("semesterId", source)
+                .when().get("/api/constraints").then().statusCode(200).extract().asString();
+
+        // Same id, different semester: the id names no row of the target semester.
+        long target = semesterWithPeriods(token);
+        Response foreignSemester = save(token, target, List.of(unavailable(
+                entry(seededEntryId, teacher, 1, 1))));
+        foreignSemester.then().statusCode(400);
+        assertThat(foreignSemester.asString()).contains("不属于当前学期");
+        assertThat(unavailableEntries(target)).isEmpty();
+        assertThat(entryRowCount(target)).isEqualTo(0);
+
+        // Same semester, another type: a threshold id is not an unavailable-entry id.
+        Response foreignType = save(token, source, List.of(unavailable(
+                entry(thresholdEntryId, teacher, 1, 1))));
+        foreignType.then().statusCode(400);
+        assertThat(foreignType.asString()).contains("TEACHER_MAX_PER_DAY");
+
+        // Zero writes: both types keep their rows, values and ids.
+        assertThat(as(token).queryParam("semesterId", source)
+                .when().get("/api/constraints").then().statusCode(200).extract().asString())
+                .isEqualTo(sourceBefore);
+        assertThat(entryRepository.findBySemesterIdAndTypeOrderByIdAsc(source, "TEACHER_MAX_PER_DAY"))
+                .hasSize(1)
+                .allMatch(row -> row.getParamsJson().contains("\"maxPerDay\":6"));
+        assertThat(unavailableEntries(source)).hasSize(1);
+        assertThat(unavailableEntries(source).get(0).getId()).isEqualTo(seededEntryId);
+    }
+
+    @Test
     void otherTypesKeepTheirLegacyParamsMeaning() {
         String token = adminToken();
         long semesterId = semesterWithPeriods(token);
@@ -338,6 +422,40 @@ class ConstraintEntriesIntegrationTest extends ApiIntegrationTest {
     private Map<String, Object> entry(long teacherId, int dayOfWeek, int periodNo) {
         return Map.of("params", Map.of(
                 "teacherId", teacherId, "dayOfWeek", dayOfWeek, "periodNo", periodNo));
+    }
+
+    /** An entry that asks to update one existing row (`id` null means "insert"). */
+    private Map<String, Object> entry(Long id, long teacherId, int dayOfWeek, int periodNo) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", id);
+        row.put("params", Map.of(
+                "teacherId", teacherId, "dayOfWeek", dayOfWeek, "periodNo", periodNo));
+        return row;
+    }
+
+    private List<Long> entryIds(Response response, String type) {
+        List<Map<String, Object>> rows = response.jsonPath()
+                .getList("find { it.type == '" + type + "' }.entries");
+        return rows.stream().map(row -> number(row.get("id"))).toList();
+    }
+
+    private Map<String, Object> paramsOf(Map<String, Object> entry) {
+        Object params = entry.get("params");
+        return params instanceof Map<?, ?> map ? castParams(map) : Map.of();
+    }
+
+    private Map<String, Object> castParams(Map<?, ?> params) {
+        Map<String, Object> copy = new LinkedHashMap<>();
+        params.forEach((key, value) -> copy.put(String.valueOf(key), value));
+        return copy;
+    }
+
+    private Long number(Object value) {
+        return value == null ? null : ((Number) value).longValue();
+    }
+
+    private int entryRowCount(long semesterId) {
+        return entryRepository.findBySemesterId(semesterId).size();
     }
 
     private List<ConstraintEntry> unavailableEntries(long semesterId) {

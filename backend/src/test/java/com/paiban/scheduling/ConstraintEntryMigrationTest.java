@@ -147,6 +147,53 @@ class ConstraintEntryMigrationTest {
         }
     }
 
+    /**
+     * V28 names all five thresholds explicitly instead of falling back to an `ELSE`, so
+     * a sixth type added later has to bring its own branch. This test is the guard: each
+     * of the five writes its own catalogue default, and no two share a number by accident
+     * (4 / 8 / 2 / 2 / 3 — the `COURSE_MAX_PER_DAY` and `EVENING_MAX` pair is the one the
+     * two files must keep in step).
+     */
+    @Test
+    void v28WritesEachThresholdItsOwnCatalogueDefault() throws Exception {
+        migrateTo("27");
+        long semesterId;
+        try (Connection connection = DriverManager.getConnection(url, "sa", "");
+                Statement statement = connection.createStatement()) {
+            statement.executeUpdate("insert into semester (name, start_date, end_date, is_current, created_at)"
+                    + " values ('五类默认', DATE '2025-09-01', DATE '2026-01-20', false, CURRENT_TIMESTAMP)");
+            try (ResultSet keys = statement.executeQuery("select max(id) from semester")) {
+                keys.next();
+                semesterId = keys.getLong(1);
+            }
+            insertConfig(statement, semesterId, "TEACHER_MAX_PER_DAY", "{}", false, 60);
+            insertConfig(statement, semesterId, "CLASS_MAX_PER_DAY", null, false, 50);
+            insertConfig(statement, semesterId, "COURSE_MAX_PER_DAY", "{}", false, 50);
+            insertConfig(statement, semesterId, "EVENING_MAX", null, false, 40);
+            insertConfig(statement, semesterId, "TEACHER_MAX_CONSECUTIVE", "{}", false, 45);
+        }
+        migrateTo(null);
+
+        try (Connection connection = DriverManager.getConnection(url, "sa", "");
+                Statement statement = connection.createStatement()) {
+            assertThat(entriesOfType(statement, semesterId, "TEACHER_MAX_PER_DAY"))
+                    .as("teacher day limit defaults to 4")
+                    .containsExactly("{\"maxPerDay\":4}");
+            assertThat(entriesOfType(statement, semesterId, "CLASS_MAX_PER_DAY"))
+                    .as("class day limit defaults to 8")
+                    .containsExactly("{\"maxPerDay\":8}");
+            assertThat(entriesOfType(statement, semesterId, "COURSE_MAX_PER_DAY"))
+                    .as("course day limit defaults to 2")
+                    .containsExactly("{\"maxPerDay\":2}");
+            assertThat(entriesOfType(statement, semesterId, "EVENING_MAX"))
+                    .as("evening limit defaults to 2")
+                    .containsExactly("{\"maxPerDay\":2}");
+            assertThat(entriesOfType(statement, semesterId, "TEACHER_MAX_CONSECUTIVE"))
+                    .as("consecutive limit defaults to 3, never maxPerDay")
+                    .containsExactly("{\"maxConsecutive\":3}");
+        }
+    }
+
     @Test
     void v28BackfillIsIdempotent() throws Exception {
         migrateTo("27");

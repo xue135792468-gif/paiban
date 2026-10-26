@@ -208,9 +208,13 @@ public final class ConstraintSettings {
      * paragraph). A global entry carries no object field; save-time validation allows
      * at most one per scope, so the last matching entry can never silently win.
      *
+     * <p>This method and {@link #withinLimit} are the only two ways to ask about a
+     * limit: "no upper bound" is always the missing limit (null), never a sentinel such
+     * as {@code Integer.MAX_VALUE} invented by a caller.
+     *
      * @return the limit, or null when this object is not limited by this type
      */
-    public Integer threshold(ConstraintType type, Long objectId) {
+    public Integer limitOrNull(ConstraintType type, Long objectId) {
         ConstraintType.ThresholdScope scope = type.thresholdScope();
         if (scope == null) {
             return null;
@@ -229,6 +233,17 @@ public final class ConstraintSettings {
             }
         }
         return global;
+    }
+
+    /**
+     * True when {@code count} still respects this object's limit: an object the
+     * configuration does not limit is always within it. Both evaluation paths compare
+     * through this method (the rule checker reports the excess, the solver filters on
+     * it), so "unlimited" cannot mean different things in different places.
+     */
+    public boolean withinLimit(ConstraintType type, Long objectId, int count) {
+        Integer limit = limitOrNull(type, objectId);
+        return limit == null || count <= limit;
     }
 
     /** Reads an entry's numeric field, tolerating both numbers and numeric text. */

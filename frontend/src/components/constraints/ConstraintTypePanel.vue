@@ -106,7 +106,7 @@ import ConstraintEntryList from './ConstraintEntryList.vue'
 import ConstraintThresholdPanel from './ConstraintThresholdPanel.vue'
 import { isEntryType, isSlotSetType, isSwitchType, isThresholdType } from './entryModel'
 import { thresholdShape } from './thresholdModel'
-import type { OptionItem, TypeDraft } from './types'
+import type { ObjectOptions, OptionItem, TypeDraft } from './types'
 
 const props = defineProps<{
   row: TypeDraft
@@ -114,7 +114,8 @@ const props = defineProps<{
   isJunior: boolean
   teachers: OptionItem[]
   courses: OptionItem[]
-  classes: OptionItem[]
+  /** The objects each entry field may name, kept per field (never merged into one list). */
+  objectOptions: ObjectOptions
   entryErrors: Record<number, string[]>
   typeErrors: string[]
 }>()
@@ -142,18 +143,13 @@ const emit = defineEmits<{
 /**
  * The objects a threshold type may name: only the applicable catalogue. A teacher
  * limit offers teachers, a class limit offers the semester's administrative classes,
- * a course limit offers courses — never a list the type cannot use.
+ * a course limit offers courses — never a list the type cannot use, and never a merged
+ * list in which a course and a teacher could share an id.
  */
 const thresholdOptions = computed<OptionItem[]>(() => {
   const field = thresholdShape(props.row)?.objectField
-  if (field === 'teacherId') {
-    return props.teachers
-  }
-  if (field === 'courseId') {
-    return props.courses
-  }
-  if (field === 'classId') {
-    return props.classes
+  if (field === 'teacherId' || field === 'courseId' || field === 'classId') {
+    return props.objectOptions[field]
   }
   return []
 })

@@ -1,13 +1,8 @@
 import { computed, ref, type Ref } from 'vue'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
-import { applyResultOf, type ApplyResult } from './templateModel'
-import type {
-  ConstraintConfigDto,
-  TemplateApplyPreview,
-  TemplateItem,
-  TemplateReferenceIssue,
-} from './types'
+import { applyResultOf, templateReportOf, type ApplyResult, type TemplateReport } from './templateModel'
+import type { ConstraintConfigDto, TemplateItem, TemplateReferenceIssue } from './types'
 
 /**
  * The template half of the constraint page: the saved list, the dry run, the apply
@@ -34,7 +29,8 @@ export function useConstraintTemplates(options: {
   const errorMessage = ref<string | null>(null)
   /** References of the last preview/refusal that the target semester cannot take. */
   const issues = ref<TemplateReferenceIssue[]>([])
-  const preview = ref<TemplateApplyPreview | null>(null)
+  /** The last report, preview or refusal — one shape for both (see `templateReportOf`). */
+  const report = ref<TemplateReport | null>(null)
 
   const selected = computed(
     () => templates.value.find((item) => item.id === selectedId.value) ?? null,
@@ -83,14 +79,14 @@ export function useConstraintTemplates(options: {
     previewing.value = true
     errorMessage.value = null
     try {
-      const { data } = await http.post<TemplateApplyPreview>(
+      const { data } = await http.post<TemplateReport>(
         `/constraint-templates/${selectedId.value}/preview`,
         { classMapping },
         { params: { semesterId: options.semesterId.value } },
       )
-      preview.value = data ?? null
-      issues.value = data?.invalidReferences ?? []
-      return preview.value
+      report.value = templateReportOf(data)
+      issues.value = report.value.invalidReferences
+      return report.value
     } catch (e: any) {
       errorMessage.value = serverMessage(e, '预览模板套用结果失败')
       return null
@@ -123,9 +119,11 @@ export function useConstraintTemplates(options: {
       await options.reload()
       return counts
     } catch (e: any) {
-      const refused = refusalIssues(e)
-      if (refused.length > 0) {
-        issues.value = refused
+      // The 409 carries the same two lists the dry run returns, so one parse covers both.
+      const refused = templateReportOf(refusalBody(e))
+      if (refused.invalidReferences.length > 0 || refused.errors.length > 0) {
+        report.value = refused
+        issues.value = refused.invalidReferences
       }
       errorMessage.value = serverMessage(e, '套用模板失败')
       return null
@@ -159,7 +157,7 @@ export function useConstraintTemplates(options: {
     result.value = null
     errorMessage.value = null
     issues.value = []
-    preview.value = null
+    report.value = null
   }
 
   return {
@@ -174,7 +172,7 @@ export function useConstraintTemplates(options: {
     result,
     errorMessage,
     issues,
-    preview,
+    report,
     load,
     saveAs,
     runPreview,
@@ -184,9 +182,7 @@ export function useConstraintTemplates(options: {
   }
 }
 
-/** The structured refusal list of a 409 apply, when the body carries one. */
-function refusalIssues(error: unknown): TemplateReferenceIssue[] {
-  const body = (error as { response?: { data?: { invalidReferences?: unknown } } })?.response?.data
-  const rows = body?.invalidReferences
-  return Array.isArray(rows) ? (rows as TemplateReferenceIssue[]) : []
+/** The body of a refused apply, when the server sent a business shape with it. */
+function refusalBody(error: unknown): unknown {
+  return (error as { response?: { data?: unknown } })?.response?.data
 }
