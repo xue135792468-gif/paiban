@@ -40,7 +40,14 @@ class ConstraintIntegrationTest extends ApiIntegrationTest {
         as(adminToken()).when().get("/api/constraint-types")
                 .then().statusCode(200)
                 .body("size()", greaterThanOrEqualTo(20))
-                .body("find { it.code == 'TEACHER_MAX_PER_DAY' }.params[0].name", equalTo("maxPerDay"))
+                // Since ticket 10/04 a threshold declares its scope object first, so the
+                // same form can express a global default and per-object exceptions.
+                .body("find { it.code == 'TEACHER_MAX_PER_DAY' }.params[0].name", equalTo("teacherId"))
+                .body("find { it.code == 'TEACHER_MAX_PER_DAY' }.params[1].name", equalTo("maxPerDay"))
+                .body("find { it.code == 'TEACHER_MAX_PER_DAY' }.thresholdObjectField", equalTo("teacherId"))
+                .body("find { it.code == 'TEACHER_MAX_PER_DAY' }.thresholdValueField", equalTo("maxPerDay"))
+                .body("find { it.code == 'TEACHER_MAX_PER_DAY' }.entryBacked", equalTo(true))
+                .body("find { it.code == 'TEACHER_CONFLICT' }.thresholdObjectField", equalTo(null))
                 .body("find { it.code == 'TEACHER_UNAVAILABLE' }.params.size()", equalTo(3))
                 .body("categoryLabel", hasItem("冲突类"));
     }

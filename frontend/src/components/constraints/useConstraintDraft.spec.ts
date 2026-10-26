@@ -15,6 +15,7 @@ const SAME_COURSE_PARAMS: ParamDef[] = [
 ]
 
 const THRESHOLD_PARAMS: ParamDef[] = [
+  { name: 'teacherId', label: '教师（留空表示全局默认）', type: 'ID', required: false },
   { name: 'maxPerDay', label: '每天最多节数', type: 'INT', required: true, min: 1, max: 12 },
 ]
 
@@ -69,6 +70,8 @@ const CATALOG: ConstraintTypeDef[] = [
     defaultHard: false,
     defaultWeight: 60,
     params: THRESHOLD_PARAMS,
+    thresholdObjectField: 'teacherId',
+    thresholdValueField: 'maxPerDay',
   }),
   typeDef({
     code: 'TEACHER_MEETING_BLOCKED',
@@ -292,6 +295,102 @@ describe('useConstraintDraft', () => {
       hardTypes: 1,
       entries: 1,
     })
+  })
+
+  it('阈值：全局默认与对象例外分别还原，并各自带稳定 id', () => {
+    const draft = hydrated([
+      {
+        type: 'TEACHER_MAX_PER_DAY',
+        params: { maxPerDay: 6 },
+        weight: 60,
+        hard: false,
+        enabled: true,
+        entries: [
+          { id: 31, params: { maxPerDay: 6 } },
+          { id: 32, params: { teacherId: 3, maxPerDay: 3 } },
+        ],
+      },
+    ])
+    const row = draft.rows.value.find((item) => item.code === 'TEACHER_MAX_PER_DAY')!
+    expect(row.threshold?.globalValue).toBe(6)
+    expect(row.threshold?.globalId).toBe(31)
+    expect(row.threshold?.exceptions).toEqual([
+      { key: expect.any(String), id: 32, objectId: 3, value: 3 },
+    ])
+    expect(draft.counts.value.entries).toBe(2)
+  })
+
+  it('阈值：只有旧 params 的响应按全局默认读取，超集不丢东西', () => {
+    const draft = hydrated([
+      { type: 'TEACHER_MAX_PER_DAY', params: { maxPerDay: 5 }, weight: 60, hard: false, enabled: true },
+    ])
+    const row = draft.rows.value.find((item) => item.code === 'TEACHER_MAX_PER_DAY')!
+    expect(row.threshold?.globalValue).toBe(5)
+    expect(row.threshold?.exceptions).toEqual([])
+  })
+
+  it('阈值：改全局、加例外、删例外都反映在 payload 与计数里', () => {
+    const draft = hydrated()
+    const row = () => draft.rows.value.find((item) => item.code === 'TEACHER_MAX_PER_DAY')!
+
+    expect(draft.payload().find((config) => config.type === 'TEACHER_MAX_PER_DAY')).toBeUndefined()
+
+    draft.setEnabled('TEACHER_MAX_PER_DAY', true)
+    draft.setThresholdGlobal('TEACHER_MAX_PER_DAY', 6)
+    expect(draft.counts.value.entries).toBe(3)
+
+    draft.addThresholdException('TEACHER_MAX_PER_DAY')
+    const exception = row().threshold!.exceptions[0]
+    // 例句外没有对象也没有数值：不落库、不计数。
+    expect(draft.counts.value.entries).toBe(3)
+
+    draft.setThresholdExceptionObject('TEACHER_MAX_PER_DAY', exception.key, 7)
+    draft.setThresholdExceptionValue('TEACHER_MAX_PER_DAY', exception.key, 3)
+    expect(draft.counts.value.entries).toBe(4)
+
+    const config = draft.payload().find((item) => item.type === 'TEACHER_MAX_PER_DAY')!
+    expect(config.entries).toEqual([
+      { id: null, params: { maxPerDay: 6 } },
+      { id: null, params: { teacherId: 7, maxPerDay: 3 } },
+    ])
+
+    draft.removeThresholdException('TEACHER_MAX_PER_DAY', exception.key)
+    expect(draft.counts.value.entries).toBe(3)
+    draft.setThresholdGlobal('TEACHER_MAX_PER_DAY', null)
+    expect(draft.counts.value.entries).toBe(2)
+  })
+
+  it('阈值：同一对象两条例外在保存前就被指出', () => {
+    const draft = hydrated()
+    draft.setThresholdGlobal('TEACHER_MAX_PER_DAY', 6)
+    draft.addThresholdException('TEACHER_MAX_PER_DAY')
+    draft.addThresholdException('TEACHER_MAX_PER_DAY')
+    const exceptions = draft.rows.value.find(
+      (item) => item.code === 'TEACHER_MAX_PER_DAY',
+    )!.threshold!.exceptions
+    draft.setThresholdExceptionObject('TEACHER_MAX_PER_DAY', exceptions[0].key, 7)
+    draft.setThresholdExceptionValue('TEACHER_MAX_PER_DAY', exceptions[0].key, 3)
+    draft.setThresholdExceptionObject('TEACHER_MAX_PER_DAY', exceptions[1].key, 7)
+    draft.setThresholdExceptionValue('TEACHER_MAX_PER_DAY', exceptions[1].key, 4)
+
+    expect(draft.conflicts(undefined, new Map([[7, '张伟']]))).toEqual([
+      expect.stringContaining('同一作用域最多一条阈值'),
+    ])
+    expect(draft.warnings()).toEqual([])
+  })
+
+  it('阈值：例外缺对象时给出提示，不静默存成第二条全局默认', () => {
+    const draft = hydrated()
+    draft.addThresholdException('TEACHER_MAX_PER_DAY')
+    const exception = draft.rows.value.find(
+      (item) => item.code === 'TEACHER_MAX_PER_DAY',
+    )!.threshold!.exceptions[0]
+    draft.setThresholdExceptionValue('TEACHER_MAX_PER_DAY', exception.key, 4)
+
+    expect(draft.warnings()).toEqual(['「教师一天最多 N 节」有例外没有选择教师'])
+    expect(
+      draft.payload().find((item) => item.type === 'TEACHER_MAX_PER_DAY')?.entries ?? [],
+    ).toEqual([])
   })
 
   it('默认选中第一个条目型，且选择可切换', () => {

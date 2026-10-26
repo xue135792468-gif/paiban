@@ -56,12 +56,10 @@ function row(overrides: Partial<TypeDraft> & { code: string }): TypeDraft {
     category: 'PEDAGOGY',
     categoryLabel: '教学规律',
     params: [],
-    values: {},
     entries: [],
     enabled: true,
     hard: true,
     weight: 100,
-    touched: false,
     ...overrides,
   }
 }
@@ -165,13 +163,14 @@ describe('保存前必填提示', () => {
     ])
   })
 
-  it('阈值（单值）仍在类型层提示，空卡片不提示', () => {
+  it('阈值不在这里提示：它的全局默认与例外由 thresholdModel 自己校验', () => {
     const rows = [
       row({
         code: 'TEACHER_MAX_PER_DAY',
         name: '教师一天最多 N 节',
         params: THRESHOLD_PARAMS,
-        values: {},
+        thresholdObjectField: 'teacherId',
+        thresholdValueField: 'maxPerDay',
         enabled: true,
       }),
       row({
@@ -182,7 +181,7 @@ describe('保存前必填提示', () => {
         entries: [entry('e1', {})],
       }),
     ]
-    expect(missingParamWarnings(rows)).toEqual(['「教师一天最多 N 节」的「每天最多节数」'])
+    expect(missingParamWarnings(rows)).toEqual([])
   })
 })
 

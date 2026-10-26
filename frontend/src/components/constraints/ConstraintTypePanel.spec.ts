@@ -13,8 +13,14 @@ const TEACHER_PARAMS: ParamDef[] = [
 const COURSE_PARAMS: ParamDef[] = [{ name: 'courseId', label: '课程', type: 'ID', required: true }]
 
 const THRESHOLD_PARAMS: ParamDef[] = [
+  { name: 'teacherId', label: '教师（留空表示全局默认）', type: 'ID', required: false },
   { name: 'maxPerDay', label: '每天最多节数', type: 'INT', required: true, min: 1, max: 12 },
 ]
+
+const THRESHOLD_SCOPE = {
+  thresholdObjectField: 'teacherId',
+  thresholdValueField: 'maxPerDay',
+}
 
 function row(overrides: Partial<TypeDraft> & { code: string }): TypeDraft {
   return {
@@ -23,12 +29,10 @@ function row(overrides: Partial<TypeDraft> & { code: string }): TypeDraft {
     category: 'PEDAGOGY',
     categoryLabel: '教学规律',
     params: [],
-    values: {},
     entries: [],
     enabled: true,
     hard: true,
     weight: 100,
-    touched: false,
     ...overrides,
   }
 }
@@ -44,6 +48,7 @@ function mountPanel(props: Record<string, unknown>, rowValue: TypeDraft) {
         { id: 2, name: '李娜' },
       ],
       courses: [{ id: 9, name: '数学' }],
+      classes: [{ id: 5, name: '高一1班' }],
       entryErrors: {},
       typeErrors: [],
       ...props,
@@ -114,13 +119,34 @@ describe('ConstraintTypePanel', () => {
     expect(wrapper.find('[data-testid="constraint-param-form"]').exists()).toBe(false)
   })
 
-  it('阈值仍用单值表单，不出现条目加减', () => {
+  it('阈值渲染全局默认 + 对象例外面板，不出现通用条目卡片', () => {
     const wrapper = mountPanel(
       {},
-      row({ code: 'TEACHER_MAX_PER_DAY', name: '教师一天最多 N 节', params: THRESHOLD_PARAMS }),
+      row({
+        code: 'TEACHER_MAX_PER_DAY',
+        name: '教师一天最多 N 节',
+        params: THRESHOLD_PARAMS,
+        ...THRESHOLD_SCOPE,
+        threshold: { globalId: null, globalValue: 6, exceptions: [] },
+      }),
     )
-    expect(wrapper.get('[data-testid="constraint-param-form"]').text()).toContain('每天最多节数')
+    expect(wrapper.find('[data-testid="constraint-threshold-panel"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="constraint-threshold-global"]').text()).toContain('全局默认')
     expect(wrapper.find('[data-testid="constraint-entry-add"]').exists()).toBe(false)
+  })
+
+  it('阈值面板的「添加例外」回传给页面', async () => {
+    const wrapper = mountPanel(
+      {},
+      row({
+        code: 'TEACHER_MAX_PER_DAY',
+        params: THRESHOLD_PARAMS,
+        ...THRESHOLD_SCOPE,
+        threshold: { globalId: null, globalValue: null, exceptions: [] },
+      }),
+    )
+    await wrapper.get('[data-testid="constraint-threshold-add-exception"]').trigger('click')
+    expect(wrapper.emitted('add-threshold-exception')).toBeTruthy()
   })
 
   it('偏好时段说明同教师多条按「或」聚合', () => {

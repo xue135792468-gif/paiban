@@ -4,21 +4,24 @@ import type { EntryDraft, ParamDef, TypeDraft } from './types'
 /**
  * What a constraint type's entry model is, read off the catalogue alone:
  * - no parameters at all → a single switch (the six conflict/pedagogy switches);
- * - exactly one integer parameter → a single-value threshold, still one number per
- *   type (ticket 04 widens these to defaults plus per-object exceptions);
+ * - a declared scope pair (`thresholdObjectField`/`thresholdValueField`) → a threshold:
+ *   one global default plus per-object exceptions (ticket 04);
  * - anything else → entry-backed: one card per object/condition.
  *
- * The backend registry is `ConstraintType.ENTRY_BACKED`; this partition is the
- * front-end mirror of it, derived from the parameter schemas so the page cannot
- * drift when a type changes shape.
+ * The backend registry is `ConstraintType.ENTRY_BACKED` and its `thresholdScope()`;
+ * this partition is the front-end mirror of those two facts, so the page cannot drift
+ * when a type changes shape.
  */
 export type TypeShape = 'SWITCH' | 'THRESHOLD' | 'ENTRY'
 
-export function typeShape(row: { params: ParamDef[] }): TypeShape {
+export function typeShape(row: {
+  params: ParamDef[]
+  thresholdObjectField?: string | null
+}): TypeShape {
   if (row.params.length === 0) {
     return 'SWITCH'
   }
-  if (row.params.length === 1 && row.params[0].type === 'INT') {
+  if (row.thresholdObjectField) {
     return 'THRESHOLD'
   }
   return 'ENTRY'

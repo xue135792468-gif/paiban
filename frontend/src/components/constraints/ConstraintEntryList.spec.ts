@@ -36,12 +36,10 @@ function row(overrides: Partial<TypeDraft> & { code: string }): TypeDraft {
     category: 'PEDAGOGY',
     categoryLabel: '教学规律',
     params: [],
-    values: {},
     entries: [],
     enabled: true,
     hard: true,
     weight: 100,
-    touched: false,
     ...overrides,
   }
 }

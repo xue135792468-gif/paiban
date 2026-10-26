@@ -12,9 +12,17 @@ public final class ConstraintDtos {
     public record ParamDefDto(String name, String label, String type, boolean required,
                               Integer min, Integer max, Object defaultValue, List<String> options) {}
 
+    /**
+     * A catalogue entry. {@code entryBacked} says whether the type stores its
+     * parameters as entry rows (so an empty list means "not configured"), and the two
+     * threshold fields name the entry parameters that scope a threshold: a blank
+     * {@code thresholdObjectField} is the global default, a filled one is that
+     * object's exception. Both are null for every other type.
+     */
     public record ConstraintTypeDto(String code, String name, String category, String categoryLabel,
                                     String description, boolean defaultHard, int defaultWeight,
-                                    List<ParamDefDto> params) {}
+                                    boolean entryBacked, String thresholdObjectField,
+                                    String thresholdValueField, List<ParamDefDto> params) {}
 
     /** One parameter entry with its stable identity. */
     public record ConstraintEntryDto(Long id, Map<String, Object> params) {}

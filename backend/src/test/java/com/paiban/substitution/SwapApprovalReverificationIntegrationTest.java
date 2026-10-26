@@ -143,6 +143,81 @@ class SwapApprovalReverificationIntegrationTest extends ApiIntegrationTest {
                 .body("status", equalTo("PENDING_APPROVAL"));
     }
 
+    @Test
+    void aScopedThresholdTightenedAfterGenerationRejectsTheWholePlan() {
+        // Ticket 10/04: the day-level limit exception is re-read at approval time. The
+        // swap hands teacher A period 2, right next to A's period-3 lesson in the other
+        // class, so a "no more than 1 consecutive" exception now forbids the plan while
+        // the untouched global 3 would not.
+        String admin = adminToken();
+        String suffix = TestData.suffix();
+        World world = prepare(admin, suffix);
+        String teacherA = teacherUser(admin, "revc_" + suffix, world.teachers().get("A"));
+        long planId = planFor(admin, teacherA, world);
+
+        saveWithThreshold(admin, world, List.of(
+                Map.of("params", Map.of("maxConsecutive", 3)),
+                Map.of("params", Map.of("teacherId", world.teachers().get("A"), "maxConsecutive", 1))));
+
+        as(admin).when().post("/api/substitution-plans/" + planId + "/approve")
+                .then().statusCode(409);
+
+        as(admin).queryParam("type", "SWAP")
+                .when().get("/api/substitutions")
+                .then().statusCode(200)
+                .body("$", org.hamcrest.Matchers.empty());
+    }
+
+    @Test
+    void aThresholdExceptionForAnotherTeacherLeavesThePlanApprovable() {
+        // Same threshold, but the exception names teacher C (one lesson on Monday, never
+        // adjacent to anything). Untouched objects keep the global 3.
+        String admin = adminToken();
+        String suffix = TestData.suffix();
+        World world = prepare(admin, suffix);
+        String teacherA = teacherUser(admin, "revd_" + suffix, world.teachers().get("A"));
+        long planId = planFor(admin, teacherA, world);
+
+        saveWithThreshold(admin, world, List.of(
+                Map.of("params", Map.of("maxConsecutive", 3)),
+                Map.of("params", Map.of("teacherId", world.teachers().get("C"), "maxConsecutive", 1))));
+
+        as(admin).when().post("/api/substitution-plans/" + planId + "/approve")
+                .then().statusCode(200);
+    }
+
+    private long planFor(String admin, String teacherA, World world) {
+        long requestId = as(teacherA).body(Map.of(
+                        "entryId", world.chineseEntry(),
+                        "effectiveDate", MONDAY.toString(),
+                        "reason", "临时有事",
+                        "type", "SWAP",
+                        "targetPeriodId", world.periodByNo().get(2)))
+                .when().post("/api/substitution-requests")
+                .then().statusCode(200)
+                .extract().jsonPath().getLong("id");
+        return as(admin).when().post("/api/substitution-requests/" + requestId + "/plans")
+                .then().statusCode(200)
+                .body("plans[0].cycleLength", equalTo(3))
+                .extract().jsonPath().getLong("plans[0].id");
+    }
+
+    private void saveWithThreshold(String admin, World world,
+                                   List<Map<String, Object>> entries) {
+        as(admin).queryParam("semesterId", world.semesterId())
+                .body(Map.of("configs", List.of(
+                        Map.of("type", "TEACHER_CONFLICT", "params", Map.of(),
+                                "weight", 100, "hard", true, "enabled", true),
+                        Map.of("type", "CLASS_CONFLICT", "params", Map.of(),
+                                "weight", 100, "hard", true, "enabled", true),
+                        Map.of("type", "ROOM_CONFLICT", "params", Map.of(),
+                                "weight", 100, "hard", true, "enabled", true),
+                        Map.of("type", "TEACHER_MAX_CONSECUTIVE", "weight", 45, "hard", true,
+                                "enabled", true, "entries", entries))))
+                .when().put("/api/constraints")
+                .then().statusCode(200);
+    }
+
     private record World(long semesterId, long class1, long class2,
                          Map<Integer, Long> periodByNo, Map<String, Long> teachers,
                          long chineseEntry) {}
@@ -193,6 +268,9 @@ class SwapApprovalReverificationIntegrationTest extends ApiIntegrationTest {
         place(draftId, class1, courses.get("英语"), teachers.get("C"), periodByNo.get(3), rooms.get("R3"));
         // Teacher B is busy on Monday period 1, forcing a three-teacher cycle.
         place(draftId, class2, courses.get("数学"), teachers.get("B"), periodByNo.get(1), rooms.get("R4"));
+        // Teacher A also teaches period 3 in the other class: after the swap A sits in
+        // periods 2 and 3, which is what a consecutive-lesson threshold can forbid.
+        place(draftId, class2, courses.get("语文"), teachers.get("A"), periodByNo.get(3), rooms.get("R4"));
 
         as(token).when().post("/api/timetable-drafts/" + draftId + "/publish").then().statusCode(200);
 

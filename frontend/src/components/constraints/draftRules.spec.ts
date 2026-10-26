@@ -14,9 +14,32 @@ const SAME_COURSE_PARAMS: ParamDef[] = [
   { name: 'courseId', label: '课程（留空表示全部）', type: 'ID', required: false },
 ]
 
+// Ticket 10/04: a threshold declares the object field plus the number field.
 const THRESHOLD_PARAMS: ParamDef[] = [
+  { name: 'teacherId', label: '教师（留空表示全局默认）', type: 'ID', required: false },
   { name: 'maxPerDay', label: '每天最多节数', type: 'INT', required: true, min: 1, max: 12 },
 ]
+
+const THRESHOLD_SCOPE = {
+  thresholdObjectField: 'teacherId',
+  thresholdValueField: 'maxPerDay',
+}
+
+function thresholdDraft(
+  globalValue: number | null,
+  exceptions: Array<{ objectId: number | null; value: number | null }> = [],
+): TypeDraft['threshold'] {
+  return {
+    globalId: null,
+    globalValue,
+    exceptions: exceptions.map((item, index) => ({
+      key: `x${index}`,
+      id: null,
+      objectId: item.objectId,
+      value: item.value,
+    })),
+  }
+}
 
 function entry(
   key: string,
@@ -33,12 +56,10 @@ function row(overrides: Partial<TypeDraft> & { code: string }): TypeDraft {
     category: 'PEDAGOGY',
     categoryLabel: '教学规律',
     params: [],
-    values: {},
     entries: [],
     enabled: false,
     hard: true,
     weight: 100,
-    touched: false,
     ...overrides,
   }
 }
@@ -75,9 +96,9 @@ function sampleRows(): TypeDraft[] {
       category: 'PEDAGOGY',
       categoryLabel: '教学规律',
       params: THRESHOLD_PARAMS,
-      values: { maxPerDay: 6 },
+      ...THRESHOLD_SCOPE,
+      threshold: thresholdDraft(6, [{ objectId: 3, value: 3 }]),
       enabled: false,
-      touched: true,
       hard: false,
       weight: 60,
     }),
@@ -102,8 +123,8 @@ describe('约束计数口径', () => {
       totalTypes: 6,
       // 两个开关型是硬约束；课程不排晚自习、教师禁排、同课一次、阈值都是软约束。
       hardTypes: 2,
-      // 1 条课程 + 2 条教师禁排 + 1 条阈值（关闭但仍保留条件）+ 2 条同课一次。
-      entries: 6,
+      // 1 条课程 + 2 条教师禁排 + 2 条阈值（全局默认 + 一条例外，关闭但仍保留）+ 2 条同课一次。
+      entries: 7,
     })
   })
 
@@ -172,13 +193,14 @@ describe('分组', () => {
       '教师偏好',
     ])
     expect(groups[0].counts).toEqual({ enabledTypes: 1, totalTypes: 1, hardTypes: 1, entries: 0 })
-    expect(groups[2].counts).toEqual({ enabledTypes: 2, totalTypes: 3, hardTypes: 0, entries: 4 })
+    // 教学规律组：1 条课程 + 2 条阈值（全局默认 + 一条例外）+ 2 条同课一次。
+    expect(groups[2].counts).toEqual({ enabledTypes: 2, totalTypes: 3, hardTypes: 0, entries: 5 })
     expect(groups[3].counts).toEqual({ enabledTypes: 1, totalTypes: 1, hardTypes: 0, entries: 2 })
   })
 })
 
 describe('保存 payload', () => {
-  it('条目型一律发 entries，阈值与开关仍发 params', () => {
+  it('条目型与阈值一律发 entries，开关发空 params', () => {
     const payload = buildSavePayload(sampleRows(), { isJunior: false })
     const byType = new Map(payload.map((config) => [config.type, config]))
 
@@ -197,9 +219,13 @@ describe('保存 payload', () => {
       hard: false,
       enabled: true,
     })
+    // 一条阈值 = 一条条目：全局默认（无对象字段）在前，对象例外在后。
     expect(byType.get('TEACHER_MAX_PER_DAY')).toEqual({
       type: 'TEACHER_MAX_PER_DAY',
-      params: { maxPerDay: 6 },
+      entries: [
+        { id: null, params: { maxPerDay: 6 } },
+        { id: null, params: { teacherId: 3, maxPerDay: 3 } },
+      ],
       weight: 60,
       hard: false,
       enabled: false,
@@ -211,9 +237,9 @@ describe('保存 payload', () => {
       hard: true,
       enabled: true,
     })
-    // 条目型不能同时带 params：后端以 entries 为准，两个字段并存会让人以为有两条来源。
+    // 条目型与阈值都不能同时带 params：后端以 entries 为准，两个字段并存会让人以为有两条来源。
     expect(byType.get('COURSE_NOT_IN_EVENING')).not.toHaveProperty('params')
-    expect(byType.get('TEACHER_MAX_PER_DAY')).not.toHaveProperty('entries')
+    expect(byType.get('TEACHER_MAX_PER_DAY')).not.toHaveProperty('params')
   })
 
   it('偏好时段一条卡片展开成多条条目，各自带稳定 id', () => {
@@ -271,33 +297,49 @@ describe('保存 payload', () => {
     expect(config.entries).toHaveLength(1)
   })
 
-  it('关闭且没人动过的阈值不因目录默认值凭空变成一条条目，也不提交', () => {
+  it('目录默认值不算配置：没人动过的阈值不提交', () => {
     const rows = [
       row({
         code: 'TEACHER_MAX_PER_DAY',
         name: '教师每日上限',
-        params: [
-          { name: 'maxPerDay', label: '上限', type: 'INT', required: true, defaultValue: 6 },
-        ],
-        values: { maxPerDay: 6 },
+        params: THRESHOLD_PARAMS,
+        ...THRESHOLD_SCOPE,
+        threshold: thresholdDraft(null),
         enabled: false,
       }),
     ]
     expect(buildSavePayload(rows, { isJunior: false })).toEqual([])
   })
 
-  it('关闭的阈值也保留参数：开关只决定是否评估，不删除条件', () => {
+  it('关闭的阈值也保留条目：开关只决定是否评估，不删除条件', () => {
     const rows = [
       row({
         code: 'TEACHER_MAX_PER_DAY',
         params: THRESHOLD_PARAMS,
-        values: { maxPerDay: 3 },
+        ...THRESHOLD_SCOPE,
+        threshold: thresholdDraft(3),
         enabled: false,
-        touched: true,
       }),
     ]
     const [config] = buildSavePayload(rows, { isJunior: false })
-    expect(config).toMatchObject({ params: { maxPerDay: 3 }, enabled: false })
+    expect(config).toMatchObject({
+      entries: [{ id: null, params: { maxPerDay: 3 } }],
+      enabled: false,
+    })
+  })
+
+  it('只有例外没有全局：只发例外，未列出的对象不设上限', () => {
+    const rows = [
+      row({
+        code: 'TEACHER_MAX_PER_DAY',
+        params: THRESHOLD_PARAMS,
+        ...THRESHOLD_SCOPE,
+        threshold: thresholdDraft(null, [{ objectId: 5, value: 2 }]),
+        enabled: true,
+      }),
+    ]
+    const [config] = buildSavePayload(rows, { isJunior: false })
+    expect(config.entries).toEqual([{ id: null, params: { teacherId: 5, maxPerDay: 2 } }])
   })
 
   it('初中模式把必须/尽量换算成 100/50 权重', () => {
