@@ -192,10 +192,10 @@ public final class ConstraintChecker {
 
         String requiredRoomType = course == null ? null : course.requiredRoomType();
         ConstraintType roomTypeConstraint = ConstraintType.COURSE_REQUIRED_ROOM_TYPE;
-        if (include.test(roomTypeConstraint)) {
-            Long configuredCourse = settings.longParam(roomTypeConstraint, "courseId");
-            if (Objects.equals(configuredCourse, lesson.courseId())) {
-                requiredRoomType = settings.textParam(roomTypeConstraint, "roomType");
+        if (include.test(roomTypeConstraint) && lesson.courseId() != null) {
+            String configured = settings.courseText(roomTypeConstraint, lesson.courseId(), "roomType");
+            if (configured != null) {
+                requiredRoomType = configured;
             }
         }
         if (requiredRoomType != null && !requiredRoomType.isBlank()
@@ -213,20 +213,10 @@ public final class ConstraintChecker {
         }
 
         ConstraintType meeting = ConstraintType.TEACHER_MEETING_BLOCKED;
-        if (include.test(meeting)) {
-            String subject = settings.textParam(meeting, "subject");
-            Integer day = settings.intParam(meeting, "dayOfWeek");
-            Integer periodNo = settings.intParam(meeting, "periodNo");
-            TeacherView teacher = lesson.teacherId() == null ? null : ctx.teachers().get(lesson.teacherId());
-            boolean subjectMatches = subject == null || subject.isBlank()
-                    || (teacher != null && subject.equalsIgnoreCase(teacher.subject()));
-            if (subjectMatches
-                    && Objects.equals(day, period.dayOfWeek())
-                    && Objects.equals(periodNo, period.periodNo())) {
-                out.add(new ConstraintViolation("TEACHER_MEETING",
-                        teacherName(ctx, lesson.teacherId()) + " 在 " + periodLabel(period) + " 参加教研活动",
-                        lesson.id(), hardResult));
-            }
+        if (include.test(meeting) && meetingBlocked(settings, lesson, ctx, period)) {
+            out.add(new ConstraintViolation("TEACHER_MEETING",
+                    teacherName(ctx, lesson.teacherId()) + " 在 " + periodLabel(period) + " 参加教研活动",
+                    lesson.id(), hardResult));
         }
 
         ConstraintType notEvening = ConstraintType.COURSE_NOT_IN_EVENING;
@@ -400,11 +390,8 @@ public final class ConstraintChecker {
                 }
                 PeriodView period = ctx.periods().get(lesson.periodId());
                 CourseView course = lesson.courseId() == null ? null : ctx.courses().get(lesson.courseId());
-                Long configured = settings.longParam(sport, "courseId");
-                boolean isSport = configured != null
-                        ? Objects.equals(configured, lesson.courseId())
-                        : course != null && course.name() != null && course.name().contains("体育");
-                if (isSport && period != null && period.section() == PeriodSection.AFTERNOON
+                if (targetsSport(settings, sport, lesson, course)
+                        && period != null && period.section() == PeriodSection.AFTERNOON
                         && isFirstAfternoon(period, ctx)) {
                     out.add(new ConstraintViolation("SPORT_NOT_FIRST_AFTERNOON",
                             courseName(ctx, lesson.courseId()) + " 不应排在下午第一节",
@@ -439,23 +426,29 @@ public final class ConstraintChecker {
 
         ConstraintType consecutive = ConstraintType.CONSECUTIVE_LESSONS;
         if (isHard(s, consecutive)) {
-            Long courseId = s.longParam(consecutive, "courseId");
-            Map<String, List<Integer>> slots = new HashMap<>();
-            for (LessonView lesson : lessons) {
-                PeriodView period = periodOf(ctx, lesson);
-                if (period == null || (courseId != null && !courseId.equals(lesson.courseId()))) {
+            // One entry per course (a second, different "consecutive" condition for
+            // the same course is rejected at save time), so courses never interfere.
+            for (Map<String, Object> entry : s.entries(consecutive)) {
+                Long courseId = ConstraintSettings.longValue(entry.get("courseId"));
+                if (courseId == null) {
                     continue;
                 }
-                slots.computeIfAbsent(lessonKey(lesson.classId(), period.dayOfWeek()),
-                        key -> new ArrayList<>()).add(period.periodNo());
-            }
-            for (Map.Entry<String, List<Integer>> entry : slots.entrySet()) {
-                List<Integer> periodNos = entry.getValue();
-                periodNos.sort(Integer::compareTo);
-                for (int i = 1; i < periodNos.size(); i++) {
-                    if (periodNos.get(i) - periodNos.get(i - 1) > 1) {
-                        out.add(new ConstraintViolation("CONSECUTIVE_LESSONS",
-                                "连堂课没有安排在相邻节次", null, true));
+                Map<String, List<Integer>> slots = new HashMap<>();
+                for (LessonView lesson : lessons) {
+                    PeriodView period = periodOf(ctx, lesson);
+                    if (period == null || !courseId.equals(lesson.courseId())) {
+                        continue;
+                    }
+                    slots.computeIfAbsent(lessonKey(lesson.classId(), period.dayOfWeek()),
+                            key -> new ArrayList<>()).add(period.periodNo());
+                }
+                for (List<Integer> periodNos : slots.values()) {
+                    periodNos.sort(Integer::compareTo);
+                    for (int i = 1; i < periodNos.size(); i++) {
+                        if (periodNos.get(i) - periodNos.get(i - 1) > 1) {
+                            out.add(new ConstraintViolation("CONSECUTIVE_LESSONS",
+                                    "连堂课没有安排在相邻节次", null, true));
+                        }
                     }
                 }
             }
@@ -463,18 +456,20 @@ public final class ConstraintChecker {
 
         ConstraintType spread = ConstraintType.COURSE_SPREAD;
         if (isHard(s, spread)) {
-            Long courseId = s.longParam(spread, "courseId");
             Map<String, Integer> counts = new HashMap<>();
             for (LessonView lesson : lessons) {
                 PeriodView period = periodOf(ctx, lesson);
-                if (period == null || (courseId != null && !courseId.equals(lesson.courseId()))) {
+                if (period == null) {
                     continue;
                 }
                 counts.merge(lessonKey(lesson.classId(), lesson.courseId(), period.dayOfWeek()),
                         1, Integer::sum);
             }
+            // Union of the entries: one violation per (class, course, day) fact, no
+            // matter how many entries happen to match it.
             for (Map.Entry<String, Integer> entry : counts.entrySet()) {
-                if (entry.getValue() > 1) {
+                if (entry.getValue() > 1
+                        && s.matchesCourse(spread, courseIdOf(entry.getKey()))) {
                     out.add(new ConstraintViolation("COURSE_SPREAD",
                             "同一课程没有分散到不同天（当天 " + entry.getValue() + " 节）", null, true));
                 }
@@ -483,13 +478,13 @@ public final class ConstraintChecker {
 
         ConstraintType morning = ConstraintType.MAIN_SUBJECT_MORNING;
         if (isHard(s, morning)) {
-            int before = s.intParam(morning, "beforePeriodNo") == null
-                    ? 4 : s.intParam(morning, "beforePeriodNo");
-            Long courseId = s.longParam(morning, "courseId");
             for (LessonView lesson : lessons) {
                 PeriodView period = periodOf(ctx, lesson);
-                if (period != null && (courseId == null || courseId.equals(lesson.courseId()))
-                        && period.periodNo() > before) {
+                if (period == null || lesson.courseId() == null) {
+                    continue;
+                }
+                Integer before = s.courseScalar(morning, lesson.courseId(), "beforePeriodNo");
+                if (before != null && period.periodNo() > before) {
                     out.add(new ConstraintViolation("MAIN_SUBJECT_MORNING",
                             courseName(ctx, lesson.courseId()) + " 没有排在上午", lesson.id(), true));
                 }
@@ -498,14 +493,9 @@ public final class ConstraintChecker {
 
         ConstraintType preferred = ConstraintType.TEACHER_PREFERRED_SLOT;
         if (isHard(s, preferred)) {
-            Long teacherId = s.longParam(preferred, "teacherId");
-            Integer day = s.intParam(preferred, "dayOfWeek");
-            Integer periodNo = s.intParam(preferred, "periodNo");
             for (LessonView lesson : lessons) {
                 PeriodView period = periodOf(ctx, lesson);
-                if (period != null && Objects.equals(teacherId, lesson.teacherId())
-                        && !(Objects.equals(day, period.dayOfWeek())
-                        && Objects.equals(periodNo, period.periodNo()))) {
+                if (period != null && preferredSlotViolated(s, lesson.teacherId(), period)) {
                     out.add(new ConstraintViolation("TEACHER_PREFERRED_SLOT",
                             teacherName(ctx, lesson.teacherId()) + " 的课不在偏好时段",
                             lesson.id(), true));
@@ -545,10 +535,9 @@ public final class ConstraintChecker {
 
         ConstraintType noFirst = ConstraintType.TEACHER_NO_FIRST_PERIOD;
         if (isHard(s, noFirst)) {
-            Long teacherId = s.longParam(noFirst, "teacherId");
             for (LessonView lesson : lessons) {
                 PeriodView period = periodOf(ctx, lesson);
-                if (period != null && Objects.equals(teacherId, lesson.teacherId())
+                if (period != null && targetsTeacher(s, noFirst, lesson.teacherId())
                         && isFirstOfDay(period, ctx)) {
                     out.add(new ConstraintViolation("TEACHER_NO_FIRST_PERIOD",
                             teacherName(ctx, lesson.teacherId()) + " 被排在第一节", lesson.id(), true));
@@ -558,12 +547,9 @@ public final class ConstraintChecker {
 
         ConstraintType dayOff = ConstraintType.TEACHER_DAY_OFF;
         if (isHard(s, dayOff)) {
-            Long teacherId = s.longParam(dayOff, "teacherId");
-            Integer day = s.intParam(dayOff, "dayOfWeek");
             for (LessonView lesson : lessons) {
                 PeriodView period = periodOf(ctx, lesson);
-                if (period != null && Objects.equals(teacherId, lesson.teacherId())
-                        && Objects.equals(day, period.dayOfWeek())) {
+                if (period != null && targetsTeacherDay(s, lesson.teacherId(), period.dayOfWeek())) {
                     out.add(new ConstraintViolation("TEACHER_DAY_OFF",
                             teacherName(ctx, lesson.teacherId()) + " 的无课日被排了课",
                             lesson.id(), true));
@@ -595,14 +581,10 @@ public final class ConstraintChecker {
 
         ConstraintType peLast = ConstraintType.PE_LAST_PERIOD_AVOID;
         if (isHard(s, peLast)) {
-            Long courseId = s.longParam(peLast, "courseId");
             for (LessonView lesson : lessons) {
                 PeriodView period = periodOf(ctx, lesson);
                 CourseView course = lesson.courseId() == null ? null : ctx.courses().get(lesson.courseId());
-                boolean isSport = courseId != null
-                        ? courseId.equals(lesson.courseId())
-                        : course != null && course.name() != null && course.name().contains("体育");
-                if (period != null && isSport && isLastOfDay(period, ctx)) {
+                if (period != null && targetsSport(s, peLast, lesson, course) && isLastOfDay(period, ctx)) {
                     out.add(new ConstraintViolation("PE_LAST_PERIOD_AVOID",
                             "体育被排在当天最后一节", lesson.id(), true));
                 }
@@ -649,6 +631,115 @@ public final class ConstraintChecker {
             }
         }
         return false;
+    }
+
+    /**
+     * Union of every {@code TEACHER_MEETING_BLOCKED} entry: an entry with a blank
+     * subject covers every subject, an entry with a subject covers that subject's
+     * teachers. Any single matching entry blocks the lesson, and the caller reports
+     * at most one violation for it.
+     */
+    private static boolean meetingBlocked(
+            ConstraintSettings settings, LessonView lesson, ConstraintContext ctx, PeriodView period) {
+        TeacherView teacher = lesson.teacherId() == null ? null : ctx.teachers().get(lesson.teacherId());
+        for (Map<String, Object> entry : settings.entries(ConstraintType.TEACHER_MEETING_BLOCKED)) {
+            Integer day = ConstraintSettings.intValue(entry.get("dayOfWeek"));
+            Integer periodNo = ConstraintSettings.intValue(entry.get("periodNo"));
+            if (!Objects.equals(day, period.dayOfWeek()) || !Objects.equals(periodNo, period.periodNo())) {
+                continue;
+            }
+            Object rawSubject = entry.get("subject");
+            String subject = rawSubject == null ? null : rawSubject.toString();
+            if (subject == null || subject.isBlank()
+                    || (teacher != null && subject.equalsIgnoreCase(teacher.subject()))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Union of the course targets of a sport-flavoured type ({@code SPORT_NOT_FIRST_AFTERNOON},
+     * {@code PE_LAST_PERIOD_AVOID}): an entry with a course matches that course, an
+     * entry without one matches the school's sport-class courses. Any entry matching
+     * is enough, so an "all sport" entry overlapping a concrete one scores once.
+     */
+    private static boolean targetsSport(
+            ConstraintSettings settings, ConstraintType type, LessonView lesson, CourseView course) {
+        for (Map<String, Object> entry : settings.entries(type)) {
+            Long configured = ConstraintSettings.longValue(entry.get("courseId"));
+            if (configured != null) {
+                if (configured.equals(lesson.courseId())) {
+                    return true;
+                }
+            } else if (isSportClass(course)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isSportClass(CourseView course) {
+        return course != null && course.name() != null && course.name().contains("体育");
+    }
+
+    /** Union of the teachers named by {@code TEACHER_NO_FIRST_PERIOD} entries. */
+    private static boolean targetsTeacher(
+            ConstraintSettings settings, ConstraintType type, Long teacherId) {
+        if (teacherId == null) {
+            return false;
+        }
+        for (Map<String, Object> entry : settings.entries(type)) {
+            if (teacherId.equals(ConstraintSettings.longValue(entry.get("teacherId")))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Union of the (teacher, weekday) pairs named by {@code TEACHER_DAY_OFF} entries. */
+    private static boolean targetsTeacherDay(
+            ConstraintSettings settings, Long teacherId, int dayOfWeek) {
+        if (teacherId == null) {
+            return false;
+        }
+        for (Map<String, Object> entry : settings.entries(ConstraintType.TEACHER_DAY_OFF)) {
+            if (teacherId.equals(ConstraintSettings.longValue(entry.get("teacherId")))
+                    && Objects.equals(ConstraintSettings.intValue(entry.get("dayOfWeek")), dayOfWeek)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * True when the lesson's slot satisfies the teacher's preferred slots: the entries
+     * of one teacher are an OR set, so any of them is enough. A teacher with no entry
+     * is not judged at all, which also reads as "satisfied".
+     */
+    private static boolean preferredSlotSatisfied(
+            ConstraintSettings settings, Long teacherId, PeriodView period) {
+        boolean hasEntry = false;
+        for (Map<String, Object> entry : settings.entries(ConstraintType.TEACHER_PREFERRED_SLOT)) {
+            if (!Objects.equals(ConstraintSettings.longValue(entry.get("teacherId")), teacherId)) {
+                continue;
+            }
+            hasEntry = true;
+            if (Objects.equals(ConstraintSettings.intValue(entry.get("dayOfWeek")), period.dayOfWeek())
+                    && Objects.equals(ConstraintSettings.intValue(entry.get("periodNo")), period.periodNo())) {
+                return true;
+            }
+        }
+        return !hasEntry;
+    }
+
+    /** True only when the teacher has preferred slots and this slot is outside all of them. */
+    private static boolean preferredSlotViolated(
+            ConstraintSettings settings, Long teacherId, PeriodView period) {
+        if (teacherId == null) {
+            return false;
+        }
+        return !preferredSlotSatisfied(settings, teacherId, period);
     }
 
     private static PeriodView periodOf(ConstraintContext ctx, LessonView lesson) {
@@ -708,48 +799,41 @@ public final class ConstraintChecker {
             CourseView course = lesson.courseId() == null ? null : ctx.courses().get(lesson.courseId());
 
             ConstraintType sportFirst = ConstraintType.SPORT_NOT_FIRST_AFTERNOON;
-            if (isSport(settings, sportFirst, lesson, course)
+            if (isSportSoft(settings, sportFirst, lesson, course)
                     && period.section() == PeriodSection.AFTERNOON
                     && isFirstAfternoon(period, ctx)) {
                 total += weight(settings, sportFirst);
             }
 
             ConstraintType peLast = ConstraintType.PE_LAST_PERIOD_AVOID;
-            if (isSport(settings, peLast, lesson, course) && isLastOfDay(period, ctx)) {
+            if (isSportSoft(settings, peLast, lesson, course) && isLastOfDay(period, ctx)) {
                 total += weight(settings, peLast);
             }
 
             ConstraintType morning = ConstraintType.MAIN_SUBJECT_MORNING;
-            if (settings.enabled(morning) && !settings.hard(morning)
-                    && settings.matchesCourse(morning, lesson.courseId())) {
-                int before = settings.intParam(morning, "beforePeriodNo") == null
-                        ? 4 : settings.intParam(morning, "beforePeriodNo");
-                if (period.periodNo() > before) {
+            if (settings.enabled(morning) && !settings.hard(morning) && lesson.courseId() != null) {
+                Integer before = settings.courseScalar(morning, lesson.courseId(), "beforePeriodNo");
+                if (before != null && period.periodNo() > before) {
                     total += weight(settings, morning);
                 }
             }
 
             ConstraintType preferred = ConstraintType.TEACHER_PREFERRED_SLOT;
             if (settings.enabled(preferred) && !settings.hard(preferred)
-                    && Objects.equals(settings.longParam(preferred, "teacherId"), lesson.teacherId())) {
-                boolean matches = Objects.equals(settings.intParam(preferred, "dayOfWeek"), period.dayOfWeek())
-                        && Objects.equals(settings.intParam(preferred, "periodNo"), period.periodNo());
-                if (!matches) {
-                    total += weight(settings, preferred);
-                }
+                    && preferredSlotViolated(settings, lesson.teacherId(), period)) {
+                total += weight(settings, preferred);
             }
 
             ConstraintType noFirst = ConstraintType.TEACHER_NO_FIRST_PERIOD;
             if (settings.enabled(noFirst) && !settings.hard(noFirst)
-                    && Objects.equals(settings.longParam(noFirst, "teacherId"), lesson.teacherId())
+                    && targetsTeacher(settings, noFirst, lesson.teacherId())
                     && isFirstOfDay(period, ctx)) {
                 total += weight(settings, noFirst);
             }
 
             ConstraintType dayOff = ConstraintType.TEACHER_DAY_OFF;
             if (settings.enabled(dayOff) && !settings.hard(dayOff)
-                    && Objects.equals(settings.longParam(dayOff, "teacherId"), lesson.teacherId())
-                    && Objects.equals(settings.intParam(dayOff, "dayOfWeek"), period.dayOfWeek())) {
+                    && targetsTeacherDay(settings, lesson.teacherId(), period.dayOfWeek())) {
                 total += weight(settings, dayOff);
             }
 
@@ -766,24 +850,29 @@ public final class ConstraintChecker {
 
         ConstraintType consecutive = ConstraintType.CONSECUTIVE_LESSONS;
         if (settings.enabled(consecutive) && !settings.hard(consecutive)) {
-            Long courseId = settings.longParam(consecutive, "courseId");
-            Map<String, List<Integer>> slots = new HashMap<>();
-            for (LessonView lesson : lessons) {
-                if (courseId == null || !courseId.equals(lesson.courseId()) || lesson.periodId() == null) {
+            for (Map<String, Object> entry : settings.entries(consecutive)) {
+                Long courseId = ConstraintSettings.longValue(entry.get("courseId"));
+                if (courseId == null) {
                     continue;
                 }
-                PeriodView period = ctx.periods().get(lesson.periodId());
-                if (period != null) {
-                    slots.computeIfAbsent(lessonKey(lesson.classId(), period.dayOfWeek()),
-                                    key -> new ArrayList<>())
-                            .add(period.periodNo());
+                Map<String, List<Integer>> slots = new HashMap<>();
+                for (LessonView lesson : lessons) {
+                    if (!courseId.equals(lesson.courseId()) || lesson.periodId() == null) {
+                        continue;
+                    }
+                    PeriodView period = ctx.periods().get(lesson.periodId());
+                    if (period != null) {
+                        slots.computeIfAbsent(lessonKey(lesson.classId(), period.dayOfWeek()),
+                                        key -> new ArrayList<>())
+                                .add(period.periodNo());
+                    }
                 }
-            }
-            for (List<Integer> periodNos : slots.values()) {
-                periodNos.sort(Integer::compareTo);
-                for (int i = 1; i < periodNos.size(); i++) {
-                    if (periodNos.get(i) - periodNos.get(i - 1) > 1) {
-                        total += weight(settings, consecutive);
+                for (List<Integer> periodNos : slots.values()) {
+                    periodNos.sort(Integer::compareTo);
+                    for (int i = 1; i < periodNos.size(); i++) {
+                        if (periodNos.get(i) - periodNos.get(i - 1) > 1) {
+                            total += weight(settings, consecutive);
+                        }
                     }
                 }
             }
@@ -791,11 +880,9 @@ public final class ConstraintChecker {
 
         ConstraintType spread = ConstraintType.COURSE_SPREAD;
         if (settings.enabled(spread) && !settings.hard(spread)) {
-            Long spreadCourse = settings.longParam(spread, "courseId");
             for (Map.Entry<String, Integer> entry : classCourseDay.entrySet()) {
-                String[] parts = entry.getKey().split("-");
-                if (spreadCourse != null
-                        && !spreadCourse.equals(Long.parseLong(parts[1]))) {
+                Long courseId = courseIdOf(entry.getKey());
+                if (courseId == null || !settings.matchesCourse(spread, courseId)) {
                     continue;
                 }
                 total += weight(settings, spread) * Math.max(0, entry.getValue() - 1);
@@ -862,15 +949,25 @@ public final class ConstraintChecker {
         return total;
     }
 
-    private static boolean isSport(
+    private static boolean isSportSoft(
             ConstraintSettings settings, ConstraintType type, LessonView lesson, CourseView course) {
         if (!settings.enabled(type) || settings.hard(type)) {
             return false;
         }
-        Long configured = settings.longParam(type, "courseId");
-        return configured != null
-                ? configured.equals(lesson.courseId())
-                : course != null && course.name() != null && course.name().contains("体育");
+        return targetsSport(settings, type, lesson, course);
+    }
+
+    /** The course component of a {@code class-course-day} counting key. */
+    private static Long courseIdOf(String key) {
+        String[] parts = key.split("-");
+        if (parts.length < 2) {
+            return null;
+        }
+        try {
+            return Long.parseLong(parts[1]);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     private static int weight(ConstraintSettings settings, ConstraintType type) {

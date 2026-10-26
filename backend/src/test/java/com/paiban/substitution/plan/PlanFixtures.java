@@ -104,6 +104,16 @@ public final class PlanFixtures {
             return entryId;
         }
 
+        /**
+         * Copies another snapshot's baseline lessons verbatim (same entry ids), so a
+         * test can judge one timetable under a second rule set. Settings are not
+         * copied: that is the point.
+         */
+        public Builder replay(PlanSnapshot snapshot) {
+            baseline.addAll(snapshot.baseline());
+            return this;
+        }
+
         public Builder substitution(long entryId, LocalDate effectiveDate, Long newPeriodId,
                                     int newDayOfWeek, int newPeriodNo, Long newRoomId,
                                     Long substituteTeacherId, String type) {

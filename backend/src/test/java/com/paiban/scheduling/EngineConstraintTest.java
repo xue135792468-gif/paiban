@@ -114,10 +114,8 @@ class EngineConstraintTest {
 
     @Test
     void courseRequiredRoomTypeIsHard() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(config(ConstraintType.COURSE_REQUIRED_ROOM_TYPE, true, 100,
-                        Map.of("courseId", 1000, "roomType", "PLAYGROUND"))),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
+        ConstraintSettingsHolder.set(settings(ConstraintType.COURSE_REQUIRED_ROOM_TYPE, true, 100,
+                Map.of("courseId", 1000, "roomType", "PLAYGROUND")));
         Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
         TimetableSolution solution = new TimetableSolution(List.of(a), List.of(MON1, MON2, MON5), List.of(ROOM));
 
@@ -128,9 +126,7 @@ class EngineConstraintTest {
 
     @Test
     void softConstraintProducesSoftPenalty() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(config(ConstraintType.TEACHER_MAX_PER_DAY, false, 60, Map.of("maxPerDay", 1))),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
+        ConstraintSettingsHolder.set(settings(ConstraintType.TEACHER_MAX_PER_DAY, false, 60, Map.of("maxPerDay", 1)));
         Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
         Lesson b = lesson(2, 10, 200, 1001, MON2, ROOM);
         TimetableSolution solution = new TimetableSolution(List.of(a, b), List.of(MON1, MON2, MON5), List.of(ROOM));
@@ -191,10 +187,8 @@ class EngineConstraintTest {
 
     @Test
     void teacherUnavailableSlotIsHard() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(config(ConstraintType.TEACHER_UNAVAILABLE, true, 100,
-                        Map.of("teacherId", 10, "dayOfWeek", 1, "periodNo", 1))),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
+        ConstraintSettingsHolder.set(settings(ConstraintType.TEACHER_UNAVAILABLE, true, 100,
+                Map.of("teacherId", 10, "dayOfWeek", 1, "periodNo", 1)));
         Lesson lesson = lesson(1, 10, 100, 1000, MON1, ROOM);
         TimetableSolution solution =
                 new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM));
@@ -206,9 +200,7 @@ class EngineConstraintTest {
 
     @Test
     void courseNotInEveningIsHard() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(config(ConstraintType.COURSE_NOT_IN_EVENING, true, 100, Map.of("courseId", 1000))),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
+        ConstraintSettingsHolder.set(settings(ConstraintType.COURSE_NOT_IN_EVENING, true, 100, Map.of("courseId", 1000)));
         Lesson lesson = lesson(1, 10, 100, 1000, EVEN1, ROOM);
         TimetableSolution solution =
                 new TimetableSolution(List.of(lesson), List.of(MON1, EVEN1), List.of(ROOM));
@@ -220,9 +212,7 @@ class EngineConstraintTest {
 
     @Test
     void sameCourseOncePerDayIsHard() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(config(ConstraintType.SAME_COURSE_ONCE_PER_DAY, true, 100, Map.of())),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
+        ConstraintSettingsHolder.set(settings(ConstraintType.SAME_COURSE_ONCE_PER_DAY, true, 100, Map.of()));
         Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
         Lesson b = lesson(2, 10, 100, 1000, MON2, ROOM_B);
         TimetableSolution solution =
@@ -235,9 +225,7 @@ class EngineConstraintTest {
 
     @Test
     void eveningMaxIsHard() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(config(ConstraintType.EVENING_MAX, true, 100, Map.of("maxPerDay", 0))),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
+        ConstraintSettingsHolder.set(settings(ConstraintType.EVENING_MAX, true, 100, Map.of("maxPerDay", 0)));
         Lesson lesson = lesson(1, 10, 100, 1000, EVEN1, ROOM);
         TimetableSolution solution =
                 new TimetableSolution(List.of(lesson), List.of(MON1, EVEN1), List.of(ROOM));
@@ -249,10 +237,8 @@ class EngineConstraintTest {
 
     @Test
     void teacherMeetingBlockedIsHard() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(config(ConstraintType.TEACHER_MEETING_BLOCKED, true, 100,
-                        Map.of("dayOfWeek", 1, "periodNo", 1))),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
+        ConstraintSettingsHolder.set(settings(ConstraintType.TEACHER_MEETING_BLOCKED, true, 100,
+                Map.of("dayOfWeek", 1, "periodNo", 1)));
         Lesson lesson = lesson(1, 10, 100, 1000, MON1, ROOM);
         TimetableSolution solution =
                 new TimetableSolution(List.of(lesson), List.of(MON1, MON2), List.of(ROOM));
@@ -264,9 +250,7 @@ class EngineConstraintTest {
 
     @Test
     void sportFirstAfternoonIsPenalized() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(config(ConstraintType.SPORT_NOT_FIRST_AFTERNOON, true, 100, Map.of())),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
+        ConstraintSettingsHolder.set(settings(ConstraintType.SPORT_NOT_FIRST_AFTERNOON, true, 100, Map.of()));
         Lesson lesson = new Lesson(1L, 1L, 1000L, "体育", 10L, 100L, null, "体育", null, false, 40, 0);
         lesson.setPeriod(MON5);
         lesson.setRoom(ROOM);
@@ -280,10 +264,8 @@ class EngineConstraintTest {
 
     @Test
     void teacherDayOffIsPenalized() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(config(ConstraintType.TEACHER_DAY_OFF, true, 100,
-                        Map.of("teacherId", 10, "dayOfWeek", 1))),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
+        ConstraintSettingsHolder.set(settings(ConstraintType.TEACHER_DAY_OFF, true, 100,
+                Map.of("teacherId", 10, "dayOfWeek", 1)));
         Lesson lesson = lesson(1, 10, 100, 1000, MON1, ROOM);
         TimetableSolution solution =
                 new TimetableSolution(List.of(lesson), List.of(MON1, MON2), List.of(ROOM));
@@ -295,9 +277,7 @@ class EngineConstraintTest {
 
     @Test
     void classMaxPerDayIsPenalized() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(config(ConstraintType.CLASS_MAX_PER_DAY, false, 50, Map.of("maxPerDay", 1))),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
+        ConstraintSettingsHolder.set(settings(ConstraintType.CLASS_MAX_PER_DAY, false, 50, Map.of("maxPerDay", 1)));
         Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
         Lesson b = lesson(2, 11, 100, 1001, MON2, ROOM_B);
         TimetableSolution solution =
@@ -311,9 +291,7 @@ class EngineConstraintTest {
 
     @Test
     void courseMaxPerDayIsPenalized() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(config(ConstraintType.COURSE_MAX_PER_DAY, false, 50, Map.of("maxPerDay", 2))),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
+        ConstraintSettingsHolder.set(settings(ConstraintType.COURSE_MAX_PER_DAY, false, 50, Map.of("maxPerDay", 2)));
         Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
         Lesson b = lesson(2, 11, 100, 1000, MON2, ROOM_B);
         Lesson c = lesson(3, 12, 100, 1000, MON3, ROOM);
@@ -328,10 +306,8 @@ class EngineConstraintTest {
 
     @Test
     void consecutiveLessonsNotMetIsPenalized() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(config(ConstraintType.CONSECUTIVE_LESSONS, false, 60,
-                        Map.of("courseId", 1000, "minConsecutive", 2))),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
+        ConstraintSettingsHolder.set(settings(ConstraintType.CONSECUTIVE_LESSONS, false, 60,
+                Map.of("courseId", 1000, "minConsecutive", 2)));
         Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM, null, true);
         Lesson b = lesson(2, 11, 100, 1000, MON5, ROOM_B, null, true);
         TimetableSolution solution =
@@ -345,9 +321,7 @@ class EngineConstraintTest {
 
     @Test
     void courseSpreadIsPenalized() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(config(ConstraintType.COURSE_SPREAD, false, 50, Map.of())),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
+        ConstraintSettingsHolder.set(settings(ConstraintType.COURSE_SPREAD, false, 50, Map.of()));
         Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
         Lesson b = lesson(2, 11, 100, 1000, MON2, ROOM_B);
         TimetableSolution solution =
@@ -361,10 +335,8 @@ class EngineConstraintTest {
 
     @Test
     void mainSubjectAfterMorningIsPenalized() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(config(ConstraintType.MAIN_SUBJECT_MORNING, false, 55,
-                        Map.of("courseId", 1000, "beforePeriodNo", 4))),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
+        ConstraintSettingsHolder.set(settings(ConstraintType.MAIN_SUBJECT_MORNING, false, 55,
+                Map.of("courseId", 1000, "beforePeriodNo", 4)));
         Lesson lesson = lesson(1, 10, 100, 1000, MON5, ROOM);
         TimetableSolution solution =
                 new TimetableSolution(List.of(lesson), List.of(MON1, MON5), List.of(ROOM));
@@ -377,10 +349,8 @@ class EngineConstraintTest {
 
     @Test
     void teacherPreferredSlotIsRewarded() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(config(ConstraintType.TEACHER_PREFERRED_SLOT, false, 40,
-                        Map.of("teacherId", 10, "dayOfWeek", 1, "periodNo", 1))),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
+        ConstraintSettingsHolder.set(settings(ConstraintType.TEACHER_PREFERRED_SLOT, false, 40,
+                Map.of("teacherId", 10, "dayOfWeek", 1, "periodNo", 1)));
         Lesson lesson = lesson(1, 10, 100, 1000, MON1, ROOM);
         TimetableSolution solution =
                 new TimetableSolution(List.of(lesson), List.of(MON1, MON2), List.of(ROOM));
@@ -393,10 +363,8 @@ class EngineConstraintTest {
 
     @Test
     void teacherMaxConsecutiveIsPenalized() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(config(ConstraintType.TEACHER_MAX_CONSECUTIVE, false, 45,
-                        Map.of("maxConsecutive", 2))),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
+        ConstraintSettingsHolder.set(settings(ConstraintType.TEACHER_MAX_CONSECUTIVE, false, 45,
+                Map.of("maxConsecutive", 2)));
         Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
         Lesson b = lesson(2, 10, 200, 1001, MON2, ROOM);
         Lesson c = lesson(3, 10, 300, 1002, MON3, ROOM);
@@ -411,10 +379,8 @@ class EngineConstraintTest {
 
     @Test
     void teacherNoFirstPeriodIsPenalized() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(config(ConstraintType.TEACHER_NO_FIRST_PERIOD, false, 35,
-                        Map.of("teacherId", 10))),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
+        ConstraintSettingsHolder.set(settings(ConstraintType.TEACHER_NO_FIRST_PERIOD, false, 35,
+                Map.of("teacherId", 10)));
         Lesson lesson = lesson(1, 10, 100, 1000, MON1, ROOM);
         TimetableSolution solution =
                 new TimetableSolution(List.of(lesson), List.of(MON1, MON2), List.of(ROOM));
@@ -427,9 +393,7 @@ class EngineConstraintTest {
 
     @Test
     void classGapIsPenalized() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(config(ConstraintType.CLASS_GAP_MINIMIZED, false, 30, Map.of())),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
+        ConstraintSettingsHolder.set(settings(ConstraintType.CLASS_GAP_MINIMIZED, false, 30, Map.of()));
         Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
         Lesson b = lesson(2, 11, 100, 1001, MON5, ROOM_B);
         TimetableSolution solution =
@@ -443,9 +407,7 @@ class EngineConstraintTest {
 
     @Test
     void sportLastPeriodIsPenalized() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(config(ConstraintType.PE_LAST_PERIOD_AVOID, false, 35, Map.of())),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
+        ConstraintSettingsHolder.set(settings(ConstraintType.PE_LAST_PERIOD_AVOID, false, 35, Map.of()));
         Lesson sport = new Lesson(1L, 1L, 1000L, "体育", 10L, 100L, null, "体育", null, false, 40, 0);
         sport.setPeriod(EVEN1);
         sport.setRoom(ROOM);
@@ -459,9 +421,7 @@ class EngineConstraintTest {
 
     @Test
     void headTeacherFirstPeriodIsRewarded() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(config(ConstraintType.HEAD_TEACHER_FIRST_PERIOD, false, 20, Map.of())),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
+        ConstraintSettingsHolder.set(settings(ConstraintType.HEAD_TEACHER_FIRST_PERIOD, false, 20, Map.of()));
         Lesson lesson = lesson(1, 10, 100, 1000, MON1, ROOM, 10L, false);
         TimetableSolution solution =
                 new TimetableSolution(List.of(lesson), List.of(MON1, MON2), List.of(ROOM));
@@ -508,14 +468,83 @@ class EngineConstraintTest {
     }
 
     @Test
+    void twoCourseTargetEntriesBothScoreHard() {
+        ConstraintSettingsHolder.set(ConstraintSettings.from(
+                List.of(config(ConstraintType.COURSE_NOT_IN_EVENING, true, 100, Map.of())),
+                List.of(entry(ConstraintType.COURSE_NOT_IN_EVENING, Map.of("courseId", 1000)),
+                        entry(ConstraintType.COURSE_NOT_IN_EVENING, Map.of("courseId", 1001))),
+                new com.fasterxml.jackson.databind.ObjectMapper()));
+        Lesson first = lesson(1, 10, 100, 1000, EVEN1, ROOM);
+        Lesson second = lesson(2, 11, 200, 1001, EVEN1, ROOM_B);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(first, second), List.of(MON1, EVEN1), List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isEqualTo(-2);
+    }
+
+    @Test
+    void anAllCoursesEntryOverlappingASpecificOneScoresOnce() {
+        ConstraintSettingsHolder.set(ConstraintSettings.from(
+                List.of(config(ConstraintType.SAME_COURSE_ONCE_PER_DAY, true, 100, Map.of())),
+                List.of(entry(ConstraintType.SAME_COURSE_ONCE_PER_DAY, Map.of()),
+                        entry(ConstraintType.SAME_COURSE_ONCE_PER_DAY, Map.of("courseId", 1000))),
+                new com.fasterxml.jackson.databind.ObjectMapper()));
+        Lesson first = lesson(1, 10, 100, 1000, MON1, ROOM);
+        Lesson second = lesson(2, 10, 100, 1000, MON2, ROOM_B);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(first, second), List.of(MON1, MON2), List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isEqualTo(-1);
+    }
+
+    @Test
+    void preferredSlotEntriesAreAnOrSetInTheEngine() {
+        ConstraintSettingsHolder.set(ConstraintSettings.from(
+                List.of(config(ConstraintType.TEACHER_PREFERRED_SLOT, false, 40, Map.of())),
+                List.of(entry(ConstraintType.TEACHER_PREFERRED_SLOT,
+                                Map.of("teacherId", 10, "dayOfWeek", 1, "periodNo", 1)),
+                        entry(ConstraintType.TEACHER_PREFERRED_SLOT,
+                                Map.of("teacherId", 10, "dayOfWeek", 1, "periodNo", 2))),
+                new com.fasterxml.jackson.databind.ObjectMapper()));
+        // Monday period 2 is the second entry: matching it is enough, the teacher does
+        // not have to sit in every preferred slot at once.
+        Lesson lesson = lesson(1, 10, 100, 1000, MON2, ROOM);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().softScore()).isEqualTo(40);
+    }
+
+    @Test
     void customConstraintPluginsAreDiscovered() {
         assertThat(com.paiban.scheduling.solver.plugin.PluginConstraintLoader.load())
                 .anyMatch(plugin -> plugin.name().equals("test-plugin"));
     }
 
+    /**
+     * Builds the snapshot the way the service does: for an entry-backed type the
+     * parameters live in one entry row, so the engine reads exactly what a saved
+     * configuration would produce (ticket 10/03 moved the catalogue to that shape).
+     */
+    private ConstraintSettings settings(
+            ConstraintType type, boolean hard, int weight, Map<String, Object> params) {
+        if (type.isEntryBacked()) {
+            return ConstraintSettings.from(List.of(config(type, hard, weight, Map.of())),
+                    List.of(entry(type, params)), new com.fasterxml.jackson.databind.ObjectMapper());
+        }
+        return ConstraintSettings.from(List.of(config(type, hard, weight, params)),
+                new com.fasterxml.jackson.databind.ObjectMapper());
+    }
+
     private com.paiban.scheduling.domain.ConstraintEntry entry(
-            ConstraintType type, Map<String, Object> params) {
-        com.paiban.scheduling.domain.ConstraintEntry entry =
+            ConstraintType type, Map<String, Object> params) {        com.paiban.scheduling.domain.ConstraintEntry entry =
                 new com.paiban.scheduling.domain.ConstraintEntry();
         entry.setType(type.name());
         entry.setCreatedAt(java.time.Instant.EPOCH);

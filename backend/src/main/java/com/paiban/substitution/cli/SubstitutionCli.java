@@ -258,12 +258,25 @@ public final class SubstitutionCli {
                 config.setParamsJson(MAPPER.writeValueAsString(
                         constraint.params == null ? Map.of() : constraint.params));
                 configs.add(config);
+                boolean hasEntries = false;
                 for (EntryJson entry : safe(constraint.entries)) {
                     ConstraintEntry row = new ConstraintEntry();
                     row.setId(entry.id == null ? ++order : entry.id);
                     row.setType(constraint.type);
                     row.setParamsJson(MAPPER.writeValueAsString(
                             entry.params == null ? Map.of() : entry.params));
+                    entries.add(row);
+                    hasEntries = true;
+                }
+                // A pre-ADR-0028 snapshot carries one `params` map per type. For a type
+                // that is now entry-backed the map is exactly its single entry, so the
+                // old file keeps meaning what it meant (an empty list still means
+                // "not configured").
+                if (!hasEntries && constraint.params != null && isEntryBacked(constraint.type)) {
+                    ConstraintEntry row = new ConstraintEntry();
+                    row.setId(++order);
+                    row.setType(constraint.type);
+                    row.setParamsJson(MAPPER.writeValueAsString(constraint.params));
                     entries.add(row);
                 }
             }
@@ -276,6 +289,15 @@ public final class SubstitutionCli {
 
     private static <T> List<T> safe(List<T> value) {
         return value == null ? List.of() : value;
+    }
+
+    /** Same registry the settings snapshot uses, so CLI and server agree on shapes. */
+    private static boolean isEntryBacked(String typeCode) {
+        try {
+            return com.paiban.scheduling.domain.ConstraintType.valueOf(typeCode).isEntryBacked();
+        } catch (RuntimeException ex) {
+            return false;
+        }
     }
 
     private static CandidateOut candidateOut(CandidatePlan plan) {

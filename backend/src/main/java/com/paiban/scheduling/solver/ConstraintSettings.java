@@ -11,6 +11,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Immutable snapshot of the enabled constraints for one solve or validation.
@@ -19,10 +20,11 @@ import java.util.Map;
  * first period, teacher B on Tuesday third). The type-level {@code enabled},
  * {@code hard} and {@code weight} stay shared; {@link #entries(ConstraintType)}
  * exposes the whole list. The original single-value accessors
- * ({@link #params}, {@link #longParam}, {@link #intParam}, {@link #textParam},
- * {@link #matchesCourse}) keep reading the first entry, which is exactly the old
- * value for a legacy configuration and keeps the 23 not-yet-expanded types
- * behaving as before.
+ * ({@link #params}, {@link #longParam}, {@link #intParam}, {@link #textParam})
+ * keep reading the first entry, which is exactly the old value for a legacy
+ * configuration and keeps the still single-valued types behaving as before.
+ * {@link #matchesCourse} and the {@code courseScalar}/{@code courseText} helpers
+ * read the whole list so multi-entry types combine by union.
  */
 public final class ConstraintSettings {
 
@@ -61,11 +63,14 @@ public final class ConstraintSettings {
     }
 
     /**
-     * Builds the snapshot from the type-level rows plus their entry rows. A type
-     * with no entry rows falls back to its legacy single {@code params_json}, so a
-     * configuration written before V26 keeps its exact meaning; an empty
-     * {@code params_json} yields no entries, which matches the old "empty params"
-     * verdict.
+     * Builds the snapshot from the type-level rows plus their entry rows.
+     *
+     * <p>For a type that is <em>not</em> entry-backed yet (the five thresholds, the
+     * six switches) a type with no entry rows falls back to its legacy single
+     * {@code params_json}, so a configuration written before V26 keeps its exact
+     * meaning. For an entry-backed type that fallback is gone on purpose: V26/V27
+     * migrated every old value into an entry row, so "no rows" means "not
+     * configured" and never "every target" (ticket-10 spec, empty-entry rule).
      */
     public static ConstraintSettings from(
             List<ConstraintConfig> configs, List<ConstraintEntry> entries, ObjectMapper mapper) {
@@ -82,7 +87,10 @@ public final class ConstraintSettings {
                 continue;
             }
             List<Map<String, Object>> typeEntries = entriesByType.get(type.name());
-            if (typeEntries == null || typeEntries.isEmpty()) {
+            if (typeEntries == null) {
+                typeEntries = List.of();
+            }
+            if (typeEntries.isEmpty() && !type.isEntryBacked()) {
                 Map<String, Object> legacy = readParams(config.getParamsJson(), mapper);
                 typeEntries = legacy.isEmpty() ? List.of() : List.of(legacy);
             }
@@ -102,12 +110,23 @@ public final class ConstraintSettings {
                 continue;
             }
             Map<String, Object> params = readParams(entry.getParamsJson(), mapper);
-            if (params.isEmpty()) {
+            // An empty parameter map is a real entry only for an entry-backed type
+            // whose target is optional: it is the explicit "every course / the sport
+            // class" row. Everywhere else `{}` still means "no condition to store".
+            if (params.isEmpty() && !isEntryBacked(entry.getType())) {
                 continue;
             }
             byType.computeIfAbsent(entry.getType(), key -> new ArrayList<>()).add(params);
         }
         return byType;
+    }
+
+    private static boolean isEntryBacked(String typeCode) {
+        try {
+            return ConstraintType.valueOf(typeCode).isEntryBacked();
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
     }
 
     private static Map<String, Object> readParams(String json, ObjectMapper mapper) {
@@ -161,10 +180,42 @@ public final class ConstraintSettings {
         return value == null ? null : value.toString();
     }
 
-    /** True when the constraint targets every course, or the given course. */
+    /**
+     * True when any entry of the type targets the given course: the union of every
+     * {@code courseId} entry, where a missing/blank {@code courseId} means "every
+     * course". Entries are combined with OR, so an "all courses" entry overlapping a
+     * specific one still matches the course exactly once — callers count one
+     * violation per matched fact, never one per entry.
+     */
     public boolean matchesCourse(ConstraintType type, Long courseId) {
-        Long configured = longParam(type, "courseId");
-        return configured == null || configured.equals(courseId);
+        for (Map<String, Object> entry : entries(type)) {
+            Long configured = longValue(entry.get("courseId"));
+            if (configured == null || configured.equals(courseId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The scoped value of one field for a course-targeted type; null when no entry matches. */
+    public Integer courseScalar(ConstraintType type, Long courseId, String field) {
+        for (Map<String, Object> entry : entries(type)) {
+            if (Objects.equals(longValue(entry.get("courseId")), courseId)) {
+                return intValue(entry.get(field));
+            }
+        }
+        return null;
+    }
+
+    /** The text value of one field for a course-targeted type; null when no entry matches. */
+    public String courseText(ConstraintType type, Long courseId, String field) {
+        for (Map<String, Object> entry : entries(type)) {
+            if (Objects.equals(longValue(entry.get("courseId")), courseId)) {
+                Object value = entry.get(field);
+                return value == null ? null : value.toString();
+            }
+        }
+        return null;
     }
 
     /** Reads an entry's numeric field, tolerating both numbers and numeric text. */
