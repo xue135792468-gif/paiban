@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { buildSavePayload, countsOf, groupRows } from './draftRules'
-import { missingParamWarnings, scalarConflicts } from './entryChecks'
+import { duplicateMessages, missingParamWarnings, scalarConflicts, scalarConflictsByCard } from './entryChecks'
 import { isEntryType, isSlotSetType, isThresholdType, optionalTargetParam } from './entryModel'
 import { emptyThreshold, thresholdConflicts, thresholdWarnings } from './thresholdModel'
 import { hasValue } from './paramValues'
@@ -347,6 +347,33 @@ export function useConstraintDraft() {
     ]
   }
 
+  /**
+   * The types whose current input the server would refuse: duplicate entries,
+   * contradictory scalars for one object, two rows for one threshold scope. The left
+   * navigation marks these red before any save attempt, so a conflict the page already
+   * knows about is never only discoverable after pressing 保存 and hunting the message.
+   */
+  function conflictCodes(
+    courseNames?: Map<number, string>,
+    objectNames?: Map<number, string>,
+  ): string[] {
+    const ctx = {
+      teacherNames: new Map<number, string>(),
+      courseNames: courseNames ?? new Map<number, string>(),
+    }
+    return rows.value
+      .filter((row) => {
+        if (Object.keys(duplicateMessages(row)).length > 0) {
+          return true
+        }
+        if (Object.keys(scalarConflictsByCard(row, ctx)).length > 0) {
+          return true
+        }
+        return isThresholdType(row) && thresholdConflicts(row, objectNames ?? new Map()).length > 0
+      })
+      .map((row) => row.code)
+  }
+
   // ----------------------------------------------------------- thresholds (ticket 04)
 
   function thresholdOf(code: string): ThresholdDraft | undefined {
@@ -441,6 +468,7 @@ export function useConstraintDraft() {
     thresholdConflictsOf,
     warnings,
     conflicts,
+    conflictCodes,
     payload,
   }
 }

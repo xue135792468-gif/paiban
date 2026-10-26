@@ -399,4 +399,94 @@ describe('useConstraintDraft', () => {
     draft.select('TEACHER_CONFLICT')
     expect(draft.selected.value?.code).toBe('TEACHER_CONFLICT')
   })
+
+  it('顶部计数与左侧分组、每类条目数出自同一份状态', () => {
+    const draft = hydrated()
+    draft.addEntry('TEACHER_UNAVAILABLE')
+    const added = draft.rows.value[1].entries[2]
+    draft.updateEntryValue('TEACHER_UNAVAILABLE', added.key, 'teacherId', 3)
+    draft.updateEntryValue('TEACHER_UNAVAILABLE', added.key, 'dayOfWeek', 5)
+    draft.updateEntryValue('TEACHER_UNAVAILABLE', added.key, 'periodNo', 1)
+    draft.setEnabled('COURSE_NOT_IN_EVENING', true)
+
+    const groups = draft.groups.value
+    expect(groups.reduce((sum, group) => sum + group.counts.enabledTypes, 0)).toBe(
+      draft.counts.value.enabledTypes,
+    )
+    expect(groups.reduce((sum, group) => sum + group.counts.entries, 0)).toBe(
+      draft.counts.value.entries,
+    )
+    // 每类自己的条数加起来也等于总数（左导航逐项标签用的就是它）。
+    expect(draft.visibleRows.value.reduce((sum, row) => sum + row.entries.length, 0)).toBe(
+      draft.counts.value.entries,
+    )
+  })
+
+  it('一类 20 条以上仍逐条计数，不截断也不合并', () => {
+    const draft = useConstraintDraft()
+    draft.hydrate(CATALOG, [], { isJunior: false })
+    draft.select('TEACHER_UNAVAILABLE')
+    for (let index = 0; index < 22; index += 1) {
+      draft.addEntry('TEACHER_UNAVAILABLE')
+      const entry = draft.rows.value[1].entries[index]
+      draft.updateEntryValue('TEACHER_UNAVAILABLE', entry.key, 'teacherId', 100 + index)
+      draft.updateEntryValue('TEACHER_UNAVAILABLE', entry.key, 'dayOfWeek', (index % 5) + 1)
+      draft.updateEntryValue('TEACHER_UNAVAILABLE', entry.key, 'periodNo', (index % 8) + 1)
+    }
+    const row = draft.rows.value.find((item) => item.code === 'TEACHER_UNAVAILABLE')!
+    expect(row.entries).toHaveLength(22)
+    expect(draft.counts.value.entries).toBe(22)
+    expect(
+      draft.payload().find((item) => item.type === 'TEACHER_UNAVAILABLE')?.entries,
+    ).toHaveLength(22)
+  })
+
+  it('重复条目在保存前就给对应类型亮红点（不用等服务器拒绝）', () => {
+    const draft = hydrated()
+    expect(draft.conflictCodes()).toEqual([])
+
+    draft.select('TEACHER_UNAVAILABLE')
+    draft.addEntry('TEACHER_UNAVAILABLE')
+    const duplicate = draft.rows.value[1].entries[2]
+    draft.updateEntryValue('TEACHER_UNAVAILABLE', duplicate.key, 'teacherId', 1)
+    draft.updateEntryValue('TEACHER_UNAVAILABLE', duplicate.key, 'dayOfWeek', 3)
+    draft.updateEntryValue('TEACHER_UNAVAILABLE', duplicate.key, 'periodNo', 2)
+
+    expect(draft.conflictCodes()).toEqual(['TEACHER_UNAVAILABLE'])
+  })
+
+  it('模板套用后重新加载：条目与计数完整恢复，且不残留未保存状态', () => {
+    const draft = hydrated()
+    for (let index = 0; index < 3; index += 1) {
+      draft.addEntry('TEACHER_UNAVAILABLE')
+      const entry = draft.rows.value[1].entries[index + 2]
+      draft.updateEntryValue('TEACHER_UNAVAILABLE', entry.key, 'teacherId', 7 + index)
+      draft.updateEntryValue('TEACHER_UNAVAILABLE', entry.key, 'dayOfWeek', 2)
+      draft.updateEntryValue('TEACHER_UNAVAILABLE', entry.key, 'periodNo', index + 1)
+    }
+    const before = draft.counts.value
+
+    // 套用模板＝服务端写入后页面重新拉取并 hydrate 一次。
+    const applied: ConstraintConfigDto[] = [
+      CONFIGS[0],
+      {
+        type: 'TEACHER_UNAVAILABLE',
+        params: {},
+        weight: 100,
+        hard: true,
+        enabled: true,
+        entries: [
+          { id: 101, params: { teacherId: 1, dayOfWeek: 3, periodNo: 2 } },
+          { id: 102, params: { teacherId: 2, dayOfWeek: 4, periodNo: 5 } },
+          { id: 103, params: { teacherId: 7, dayOfWeek: 2, periodNo: 1 } },
+          { id: 104, params: { teacherId: 8, dayOfWeek: 2, periodNo: 2 } },
+          { id: 105, params: { teacherId: 9, dayOfWeek: 2, periodNo: 3 } },
+        ],
+      },
+    ]
+    draft.hydrate(CATALOG, applied, { isJunior: false })
+
+    expect(draft.counts.value).toEqual(before)
+    expect(draft.dirty.value).toBe(false)
+  })
 })
