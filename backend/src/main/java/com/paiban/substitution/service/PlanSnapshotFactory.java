@@ -1,6 +1,5 @@
 package com.paiban.substitution.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paiban.common.settings.SettingsService;
 import com.paiban.foundation.domain.AdminClassRepository;
 import com.paiban.foundation.domain.CourseRepository;
@@ -14,7 +13,6 @@ import com.paiban.scheduling.constraint.ConstraintContext.CourseView;
 import com.paiban.scheduling.constraint.ConstraintContext.PeriodView;
 import com.paiban.scheduling.constraint.ConstraintContext.RoomView;
 import com.paiban.scheduling.constraint.ConstraintContext.TeacherView;
-import com.paiban.scheduling.domain.ConstraintConfig;
 import com.paiban.scheduling.service.ConstraintService;
 import com.paiban.scheduling.solver.ConstraintSettings;
 import com.paiban.substitution.domain.Substitution;
@@ -48,7 +46,6 @@ public class PlanSnapshotFactory {
     private final SubstitutionRepository substitutions;
     private final ConstraintService constraints;
     private final SettingsService settings;
-    private final ObjectMapper objectMapper;
 
     public PlanSnapshotFactory(
             SemesterService semesters,
@@ -60,8 +57,7 @@ public class PlanSnapshotFactory {
             TimetableEntryRepository entries,
             SubstitutionRepository substitutions,
             ConstraintService constraints,
-            SettingsService settings,
-            ObjectMapper objectMapper) {
+            SettingsService settings) {
         this.semesters = semesters;
         this.periods = periods;
         this.rooms = rooms;
@@ -72,7 +68,6 @@ public class PlanSnapshotFactory {
         this.substitutions = substitutions;
         this.constraints = constraints;
         this.settings = settings;
-        this.objectMapper = objectMapper;
     }
 
     @Transactional(readOnly = true)
@@ -109,10 +104,9 @@ public class PlanSnapshotFactory {
                         item.getNewPeriodId(), item.getNewDayOfWeek(), item.getNewPeriodNo(),
                         item.getNewRoomId(), item.getSubstituteTeacherId(), item.getType()))
                 .toList();
-        List<ConstraintConfig> active = constraints.active(semesterId);
-        ConstraintSettings settingsData = constraints.hasConfigs(semesterId)
-                ? ConstraintSettings.from(active, objectMapper)
-                : ConstraintSettings.defaults();
+        // The same settings snapshot the solver and the draft check use, so the
+        // planner, the verifier and the CLI judge a plan by one rule set.
+        ConstraintSettings settingsData = constraints.settings(semesterId);
         return new PlanSnapshot(
                 semesterId, semester.getStartDate(), semester.getEndDate(),
                 periodMap, roomMap, courseMap, teacherMap, classMap,

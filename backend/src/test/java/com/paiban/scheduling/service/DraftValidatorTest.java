@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paiban.foundation.domain.AdminClass;
 import com.paiban.foundation.domain.AdminClassRepository;
 import com.paiban.foundation.domain.Course;
@@ -75,6 +74,8 @@ class DraftValidatorTest {
         AdminClassRepository adminClasses = mock(AdminClassRepository.class);
         ConstraintService constraints = mock(ConstraintService.class);
         baselines = mock(SemesterBaselineQuery.class);
+        when(constraints.settings(SEMESTER_ID))
+                .thenReturn(com.paiban.scheduling.solver.ConstraintSettings.defaults());
 
         draft = new TimetableDraft();
         draft.setId(DRAFT_ID);
@@ -104,7 +105,7 @@ class DraftValidatorTest {
 
         validator = new DraftValidator(
                 drafts, draftLessons, periods, rooms, courses, teachers, adminClasses, constraints,
-                baselines, new ObjectMapper());
+                baselines);
     }
 
     /** Re-stubs the lesson list for the whole-draft check on the same snapshot fixtures. */

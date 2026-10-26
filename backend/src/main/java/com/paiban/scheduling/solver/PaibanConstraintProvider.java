@@ -7,7 +7,10 @@ import ai.timefold.solver.core.api.score.stream.ConstraintFactory;
 import ai.timefold.solver.core.api.score.stream.ConstraintProvider;
 import ai.timefold.solver.core.api.score.stream.Joiners;
 import com.paiban.scheduling.domain.ConstraintType;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -39,7 +42,7 @@ public class PaibanConstraintProvider implements ConstraintProvider {
             constraints.add(roomCapacity(factory, s));
         }
         if (s.enabled(ConstraintType.TEACHER_UNAVAILABLE)
-                && s.longParam(ConstraintType.TEACHER_UNAVAILABLE, "teacherId") != null) {
+                && !s.entries(ConstraintType.TEACHER_UNAVAILABLE).isEmpty()) {
             constraints.add(teacherUnavailable(factory, s));
         }
         if (s.enabled(ConstraintType.TEACHER_MEETING_BLOCKED)
@@ -179,16 +182,38 @@ public class PaibanConstraintProvider implements ConstraintProvider {
 
     private Constraint teacherUnavailable(ConstraintFactory f, ConstraintSettings s) {
         ConstraintType type = ConstraintType.TEACHER_UNAVAILABLE;
-        Long teacherId = s.longParam(type, "teacherId");
-        Integer day = s.intParam(type, "dayOfWeek");
-        Integer periodNo = s.intParam(type, "periodNo");
+        Map<Long, List<int[]>> blockedSlots = new HashMap<>();
+        for (Map<String, Object> entry : s.entries(type)) {
+            Long teacherId = ConstraintSettings.longValue(entry.get("teacherId"));
+            Integer day = ConstraintSettings.intValue(entry.get("dayOfWeek"));
+            Integer periodNo = ConstraintSettings.intValue(entry.get("periodNo"));
+            if (teacherId == null || day == null || periodNo == null) {
+                continue;
+            }
+            blockedSlots.computeIfAbsent(teacherId, key -> new ArrayList<>())
+                    .add(new int[] {day, periodNo});
+        }
         return f.forEach(Lesson.class)
                 .filter(lesson -> lesson.getPeriod() != null
-                        && Objects.equals(lesson.getTeacherId(), teacherId)
-                        && lesson.getPeriod().getDayOfWeek() == day
-                        && lesson.getPeriod().getPeriodNo() == periodNo)
+                        && isBlocked(blockedSlots, lesson.getTeacherId(),
+                        lesson.getPeriod().getDayOfWeek(), lesson.getPeriod().getPeriodNo()))
                 .penalize(penalty(s, type))
                 .asConstraint(type.getDisplayName());
+    }
+
+    /** True when any entry of this teacher forbids the slot: the union of all entries. */
+    private boolean isBlocked(Map<Long, List<int[]>> blockedSlots, Long teacherId,
+                              int dayOfWeek, int periodNo) {
+        List<int[]> slots = teacherId == null ? null : blockedSlots.get(teacherId);
+        if (slots == null) {
+            return false;
+        }
+        for (int[] slot : slots) {
+            if (slot[0] == dayOfWeek && slot[1] == periodNo) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Constraint teacherMeetingBlocked(ConstraintFactory f, ConstraintSettings s) {
