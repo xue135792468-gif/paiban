@@ -40,16 +40,38 @@ export interface ConstraintConfigDto {
   entries?: ConstraintEntryDto[] | null
 }
 
+/**
+ * One (weekday, period) inside a preference-slot card. The server stores one entry
+ * per slot and combines the slots of a teacher with "or", so a card owns several of
+ * these while a card of any other type owns none.
+ */
+export interface SlotDraft {
+  key: string
+  id: number | null
+  dayOfWeek: number | null
+  periodNo: number | null
+}
+
 /** One editable row of a multi-entry type, with a client-side stable key. */
 export interface EntryDraft {
   key: string
   id: number | null
+  /** Object-level values (`teacherId` for a slot-set card, the object otherwise). */
   values: Record<string, unknown>
+  /** Only the slot-set types use this; empty for every other entry-backed type. */
+  slots?: SlotDraft[]
+  /**
+   * Parameters this card explicitly targets with "every course / every subject /
+   * sport class". Absent means the choice follows the value: no value → the whole
+   * target, a value → that one object. Keeping the choice explicit is what lets the
+   * card show a ticked box instead of an empty dropdown.
+   */
+  allTarget?: string[]
 }
 
 /**
  * A whole constraint type as the page edits it: type-level controls, the legacy
- * single-parameter values and, for multi-entry types, the entry list.
+ * single-parameter values and, for entry-backed types, the entry list.
  */
 export interface TypeDraft {
   code: string

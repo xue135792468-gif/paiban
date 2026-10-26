@@ -76,6 +76,18 @@
       />
 
       <el-alert
+        v-if="conflicts.length > 0"
+        type="warning"
+        :closable="false"
+        show-icon
+        class="error-bar"
+        data-testid="constraint-precheck-error"
+      >
+        <template #title>保存前检查：同一目标存在互斥条件</template>
+        <p v-for="(message, index) in conflicts" :key="index" class="error-copy">{{ message }}</p>
+      </el-alert>
+
+      <el-alert
         v-if="saveMessage"
         type="error"
         :closable="false"
@@ -120,6 +132,10 @@
             @update-entry="onUpdateEntry"
             @add-entry="onAddEntry"
             @remove-entry="onRemoveEntry"
+            @set-all-target="onSetAllTarget"
+            @add-slot="onAddSlot"
+            @remove-slot="onRemoveSlot"
+            @update-slot="onUpdateSlot"
           />
         </div>
       </el-card>
@@ -136,7 +152,7 @@ import ConstraintSummaryBar from '@/components/constraints/ConstraintSummaryBar.
 import ConstraintTypeNav from '@/components/constraints/ConstraintTypeNav.vue'
 import ConstraintTypePanel from '@/components/constraints/ConstraintTypePanel.vue'
 import { useConstraintDraft } from '@/components/constraints/useConstraintDraft'
-import { emptySaveErrors, parseSaveErrors, type SaveErrorReport } from '@/components/constraints/saveErrors'
+import { useConstraintSave } from '@/components/constraints/useConstraintSave'
 import type {
   ConstraintConfigDto,
   ConstraintTypeDef,
@@ -171,14 +187,22 @@ const semesters = ref<Semester[]>([])
 const semesterId = ref<number | null>(null)
 const teachers = ref<OptionItem[]>([])
 const courses = ref<OptionItem[]>([])
+const courseNames = computed(() => new Map(courses.value.map((course) => [course.id, course.name])))
 const templates = ref<TemplateItem[]>([])
 const selectedTemplate = ref<number | null>(null)
 const loading = ref(false)
-const saving = ref(false)
 const applyingTemplate = ref(false)
 const deletingTemplate = ref(false)
-const saveMessage = ref<string | null>(null)
-const saveReport = ref<SaveErrorReport>(emptySaveErrors())
+
+// 互斥条件在保存前就暴露出来（同一课程两个教室类型等）；输入保持原样，由用户决定改哪条。
+const conflicts = computed(() => draft.conflicts(courseNames.value))
+
+const { saving, saveMessage, saveReport, save, clearErrors } = useConstraintSave({
+  draft,
+  semesterId,
+  conflicts,
+  reload: () => loadConstraints(),
+})
 
 const errorCodes = computed(() => saveReport.value.codes)
 const entryErrors = computed(() => saveReport.value.byEntry[selectedCode.value ?? ''] ?? {})
@@ -188,33 +212,31 @@ function select(code: string) {
   draft.select(code)
 }
 
-function onToggleEnabled(value: boolean) {
-  if (selected.value) draft.setEnabled(selected.value.code, value)
+/** 所有条目/类型级编辑都作用在左侧当前选中的类型上。 */
+function withSelected(action: (code: string) => void) {
+  if (selected.value) action(selected.value.code)
 }
 
-function onSetHard(value: boolean) {
-  if (selected.value) draft.setHard(selected.value.code, value)
-}
-
-function onSetWeight(value: number) {
-  if (selected.value) draft.setWeight(selected.value.code, value)
-}
-
-function onUpdateValue(name: string, value: unknown) {
-  if (selected.value) draft.updateValue(selected.value.code, name, value)
-}
-
-function onUpdateEntry(key: string, name: string, value: unknown) {
-  if (selected.value) draft.updateEntryValue(selected.value.code, key, name, value)
-}
-
-function onAddEntry() {
-  if (selected.value) draft.addEntry(selected.value.code)
-}
-
-function onRemoveEntry(key: string) {
-  if (selected.value) draft.removeEntry(selected.value.code, key)
-}
+const onToggleEnabled = (value: boolean) => withSelected((code) => draft.setEnabled(code, value))
+const onSetHard = (value: boolean) => withSelected((code) => draft.setHard(code, value))
+const onSetWeight = (value: number) => withSelected((code) => draft.setWeight(code, value))
+const onUpdateValue = (name: string, value: unknown) =>
+  withSelected((code) => draft.updateValue(code, name, value))
+const onUpdateEntry = (key: string, name: string, value: unknown) =>
+  withSelected((code) => draft.updateEntryValue(code, key, name, value))
+const onAddEntry = () => withSelected((code) => draft.addEntry(code))
+const onRemoveEntry = (key: string) => withSelected((code) => draft.removeEntry(code, key))
+const onSetAllTarget = (key: string, name: string, all: boolean) =>
+  withSelected((code) => draft.setAllTarget(code, key, name, all))
+const onAddSlot = (key: string) => withSelected((code) => draft.addSlot(code, key))
+const onRemoveSlot = (key: string, slotKey: string) =>
+  withSelected((code) => draft.removeSlot(code, key, slotKey))
+const onUpdateSlot = (key: string, slotKey: string, field: string, value: unknown) =>
+  withSelected((code) => {
+    if (field === 'dayOfWeek' || field === 'periodNo') {
+      draft.updateSlot(code, key, slotKey, field, value)
+    }
+  })
 
 async function loadSemesters() {
   try {
@@ -268,8 +290,7 @@ async function loadConstraints() {
       }),
     ])
     draft.hydrate(typeRes.data ?? [], configRes.data ?? [], { isJunior: isJunior.value })
-    saveMessage.value = null
-    saveReport.value = emptySaveErrors()
+    clearErrors()
   } catch (e: any) {
     ElMessage.error(serverMessage(e, '加载约束配置失败'))
   } finally {
@@ -279,38 +300,6 @@ async function loadConstraints() {
 
 async function onSemesterChange() {
   await loadConstraints()
-}
-
-async function save() {
-  if (!semesterId.value) return
-
-  const warnings = draft.warnings()
-  if (warnings.length > 0) {
-    ElMessage.warning(
-      `请先填写必填参数：${warnings.slice(0, 3).join('、')}${warnings.length > 3 ? ' 等' : ''}`,
-    )
-    return
-  }
-
-  saving.value = true
-  saveMessage.value = null
-  saveReport.value = emptySaveErrors()
-  try {
-    await http.put(
-      '/constraints',
-      { configs: draft.payload() },
-      { params: { semesterId: semesterId.value } },
-    )
-    ElMessage.success('约束配置已保存')
-    await loadConstraints()
-  } catch (e: any) {
-    // Keep the user's input and point at the offending type/entry.
-    saveMessage.value = serverMessage(e, '保存约束配置失败')
-    saveReport.value = parseSaveErrors(saveMessage.value, draft.rows.value)
-    ElMessage.error(saveMessage.value)
-  } finally {
-    saving.value = false
-  }
 }
 
 async function loadTemplates() {

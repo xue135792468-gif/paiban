@@ -6,102 +6,30 @@
         {{ param.label }}：
         <InfoTooltip field="constraint.param" />
       </span>
-
-      <el-select
-        v-if="param.type === 'ID'"
-        :model-value="selectValue(values, param.name)"
-        filterable
-        clearable
-        :placeholder="`请选择${param.label}`"
+      <ParamField
+        :param="param"
+        :values="values"
+        :teachers="teachers"
+        :courses="courses"
         :disabled="disabled"
-        style="width: 180px"
-        @update:model-value="(value: unknown) => emit('update', param.name, value)"
-      >
-        <el-option
-          v-for="option in idOptions(param)"
-          :key="option.id"
-          :label="option.name"
-          :value="option.id"
-        />
-      </el-select>
-
-      <el-select
-        v-else-if="param.type === 'DAY'"
-        :model-value="selectValue(values, param.name)"
-        placeholder="选择星期"
-        clearable
-        :disabled="disabled"
-        style="width: 130px"
-        @update:model-value="(value: unknown) => emit('update', param.name, value)"
-      >
-        <el-option v-for="day in DAY_OPTIONS" :key="day.value" :label="day.label" :value="day.value" />
-      </el-select>
-
-      <el-input-number
-        v-else-if="param.type === 'PERIOD'"
-        :model-value="numberValue(values, param.name)"
-        :min="1"
-        :max="20"
-        controls-position="right"
-        :disabled="disabled"
-        style="width: 120px"
-        @update:model-value="(value: number | null | undefined) => emit('update', param.name, value)"
-      />
-
-      <el-input-number
-        v-else-if="param.type === 'INT'"
-        :model-value="numberValue(values, param.name)"
-        :min="param.min ?? 0"
-        :max="param.max ?? 100"
-        controls-position="right"
-        :disabled="disabled"
-        style="width: 120px"
-        @update:model-value="(value: number | null | undefined) => emit('update', param.name, value)"
-      />
-
-      <el-select
-        v-else-if="param.type === 'ROOM_TYPE'"
-        :model-value="selectValue(values, param.name)"
-        placeholder="选择教室类型"
-        clearable
-        :disabled="disabled"
-        style="width: 160px"
-        @update:model-value="(value: unknown) => emit('update', param.name, value)"
-      >
-        <el-option
-          v-for="option in ROOM_TYPE_OPTIONS"
-          :key="option.value"
-          :label="option.label"
-          :value="option.value"
-        />
-      </el-select>
-
-      <el-input
-        v-else
-        :model-value="textValue(values, param.name)"
-        :placeholder="`请输入${param.label}`"
-        clearable
-        :disabled="disabled"
-        style="width: 180px"
-        @update:model-value="(value: string) => emit('update', param.name, value)"
+        :test-id="`constraint-param-${fieldTestId(param.name)}`"
+        @update="(name: string, value: unknown) => emit('update', name, value)"
       />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ElInput, ElInputNumber, ElOption, ElSelect } from 'element-plus'
 import InfoTooltip from '@/components/InfoTooltip.vue'
-import {
-  DAY_OPTIONS,
-  ROOM_TYPE_OPTIONS,
-  numberValue,
-  selectValue,
-  textValue,
-} from './draftRules'
+import ParamField from './ParamField.vue'
+import { fieldTestId } from './paramValues'
 import type { OptionItem, ParamDef } from './types'
 
-const props = defineProps<{
+/**
+ * The single-value form, kept for the threshold types (one number per type, still
+ * type-level). Entry-backed types render `ConstraintEntryList` instead.
+ */
+defineProps<{
   params: ParamDef[]
   values: Record<string, unknown>
   teachers: OptionItem[]
@@ -110,17 +38,6 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ update: [name: string, value: unknown] }>()
-
-function idOptions(param: ParamDef): OptionItem[] {
-  const lower = param.name.toLowerCase()
-  if (lower.includes('teacher')) {
-    return props.teachers
-  }
-  if (lower.includes('course')) {
-    return props.courses
-  }
-  return []
-}
 </script>
 
 <style scoped>
