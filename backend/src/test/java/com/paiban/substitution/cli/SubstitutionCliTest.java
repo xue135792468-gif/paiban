@@ -175,6 +175,40 @@ class SubstitutionCliTest {
     }
 
     @Test
+    void theCliReadsAGlobalThresholdEntry() throws Exception {
+        // Ticket 10/04: the day limits are entry-backed now, so a snapshot stores the
+        // global default as one entry. Everyone stays inside 6, so nothing changes.
+        Run plan = run("plan", "--snapshot", DIR + "snapshot-threshold-global.json",
+                "--request", DIR + "request.json");
+        assertThat(plan.code()).isZero();
+        assertThat(MAPPER.readTree(plan.out()).get("candidates").get(0).get("cycleLength").asInt())
+                .isEqualTo(3);
+
+        Run verify = run("verify", "--before", DIR + "snapshot-threshold-global.json",
+                "--after", DIR + "after.json");
+        assertThat(verify.code()).isZero();
+        assertThat(MAPPER.readTree(verify.out()).get("status").asText()).isEqualTo("PASS");
+    }
+
+    @Test
+    void aThresholdExceptionOverridesTheGlobalDefaultInTheCli() throws Exception {
+        // The plan turns teacher 2's Monday gap into two consecutive lessons: over the
+        // exception's 1, still inside the untouched objects' global 3.
+        Run rejected = run("verify", "--before", DIR + "snapshot-threshold-scope.json",
+                "--after", DIR + "after-threshold.json");
+        assertThat(rejected.code()).isEqualTo(1);
+        JsonNode rejectedJson = MAPPER.readTree(rejected.out());
+        assertThat(rejectedJson.get("status").asText()).isEqualTo("FAIL");
+        assertThat(rejectedJson.get("issues").toString()).contains("TEACHER_MAX_CONSECUTIVE");
+
+        Run accepted = run("verify", "--before", DIR + "snapshot-threshold-consecutive-global.json",
+                "--after", DIR + "after-threshold.json");
+        assertThat(accepted.err()).isEmpty();
+        assertThat(accepted.code()).isZero();
+        assertThat(MAPPER.readTree(accepted.out()).get("status").asText()).isEqualTo("PASS");
+    }
+
+    @Test
     void legacyParamsSnapshotKeepsItsTargetRule() throws Exception {
         // A pre-ADR snapshot carries one `params` map per type: it is that type's single
         // entry, so the rule still judges the plan it produces.

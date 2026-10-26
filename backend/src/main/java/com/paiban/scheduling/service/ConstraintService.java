@@ -5,6 +5,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paiban.common.event.SemesterCreatedEvent;
 import com.paiban.common.web.ApiException;
+import com.paiban.foundation.domain.AdminClass;
+import com.paiban.foundation.domain.AdminClassRepository;
 import com.paiban.foundation.domain.Course;
 import com.paiban.foundation.domain.CourseRepository;
 import com.paiban.foundation.domain.Period;
@@ -63,6 +65,7 @@ public class ConstraintService {
     private final TeacherRepository teachers;
     private final CourseRepository courses;
     private final PeriodRepository periods;
+    private final AdminClassRepository adminClasses;
     private final ObjectMapper objectMapper;
 
     public ConstraintService(
@@ -73,6 +76,7 @@ public class ConstraintService {
             TeacherRepository teachers,
             CourseRepository courses,
             PeriodRepository periods,
+            AdminClassRepository adminClasses,
             ObjectMapper objectMapper) {
         this.configs = configs;
         this.entries = entries;
@@ -81,6 +85,7 @@ public class ConstraintService {
         this.teachers = teachers;
         this.courses = courses;
         this.periods = periods;
+        this.adminClasses = adminClasses;
         this.objectMapper = objectMapper;
     }
 
@@ -94,6 +99,9 @@ public class ConstraintService {
                         type.getDescription(),
                         type.isDefaultHard(),
                         type.getDefaultWeight(),
+                        type.isEntryBacked(),
+                        type.thresholdScope() == null ? null : type.thresholdScope().objectField(),
+                        type.thresholdScope() == null ? null : type.thresholdScope().valueField(),
                         type.getParams().stream().map(this::toDto).toList()))
                 .toList();
     }
@@ -113,7 +121,9 @@ public class ConstraintService {
         List<String> errors = new ArrayList<>();
         List<PlannedConfig> planned = new ArrayList<>();
         Set<String> seenTypes = new HashSet<>();
-        SemesterTimetable timetable = new SemesterTimetable(periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(resolved));
+        SemesterScope timetable = new SemesterScope(
+                periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(resolved),
+                adminClasses.findBySemesterIdOrderByGradeIdAscNameAsc(resolved));
         for (ConstraintConfigRequest request : requests) {
             ConstraintType type = resolveType(request.type(), errors);
             if (type == null) {
@@ -291,13 +301,15 @@ public class ConstraintService {
             ConstraintType.MAIN_SUBJECT_MORNING,
             new ScalarSpec("courseId", List.of("beforePeriodNo")));
 
-    /** Periods that exist in the semester, so an entry can be located exactly. */
-    private record SemesterTimetable(Set<String> slots) {
+    /** Periods and administrative classes that exist in the semester being saved. */
+    private record SemesterScope(Set<String> slots, Set<Long> classes) {
 
-        SemesterTimetable(List<Period> periods) {
+        SemesterScope(List<Period> periods, List<AdminClass> adminClasses) {
             this(periods.stream()
                     .map(period -> key(period.getDayOfWeek(), period.getPeriodNo()))
-                    .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new)));
+                    .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new)),
+                    adminClasses.stream().map(AdminClass::getId)
+                            .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new)));
         }
 
         static String key(Integer dayOfWeek, Integer periodNo) {
@@ -311,6 +323,10 @@ public class ConstraintService {
         boolean contains(Integer dayOfWeek, Integer periodNo) {
             return dayOfWeek != null && periodNo != null
                     && slots.contains(key(dayOfWeek, periodNo));
+        }
+
+        boolean hasClass(Long classId) {
+            return classId != null && classes.contains(classId);
         }
 
         /** True when any day of the semester has this period number. */
@@ -334,7 +350,7 @@ public class ConstraintService {
      * conditions for the same object are rejected too.
      */
     private List<Map<String, Object>> planEntries(
-            ConstraintType type, ConstraintConfigRequest request, SemesterTimetable timetable,
+            ConstraintType type, ConstraintConfigRequest request, SemesterScope timetable,
             List<String> errors) {
         List<PlannedEntry> planned = new ArrayList<>();
         Map<Map<String, Object>, Integer> seen = new HashMap<>();
@@ -358,13 +374,45 @@ public class ConstraintService {
             accept(type, position, params, planned, seen, timetable, errors);
         }
         rejectContradictoryScalars(type, planned, errors);
+        rejectDuplicateThresholdScopes(type, planned, errors);
         return planned.stream().map(PlannedEntry::params).toList();
+    }
+
+    /**
+     * At most one entry per threshold scope: one global default and one exception per
+     * object. Two entries for the same scope would leave "which value applies" to the
+     * read order, so the whole request is rejected instead (ticket-10 spec: duplicate
+     * or conflicting thresholds are refused, never silently resolved).
+     */
+    private void rejectDuplicateThresholdScopes(
+            ConstraintType type, List<PlannedEntry> planned, List<String> errors) {
+        ConstraintType.ThresholdScope scope = type.thresholdScope();
+        if (scope == null) {
+            return;
+        }
+        Map<Long, PlannedEntry> byScope = new LinkedHashMap<>();
+        for (PlannedEntry entry : planned) {
+            if (ConstraintSettings.intValue(entry.params().get(scope.valueField())) == null) {
+                // Already rejected as a missing required value; not a scope conflict.
+                continue;
+            }
+            Long objectId = ConstraintSettings.longValue(entry.params().get(scope.objectField()));
+            PlannedEntry previous = byScope.putIfAbsent(objectId, entry);
+            if (previous == null) {
+                continue;
+            }
+            String where = objectId == null
+                    ? "全局默认"
+                    : "对象「" + paramLabel(type, scope.objectField()) + "#" + objectId + "」";
+            errors.add(location(type, entry.position()) + ": 与第" + previous.position()
+                    + " 条针对同一作用域（" + where + "），同一作用域最多一条阈值");
+        }
     }
 
     private void accept(
             ConstraintType type, Integer position, Map<String, Object> params,
             List<PlannedEntry> planned, Map<Map<String, Object>, Integer> seen,
-            SemesterTimetable timetable, List<String> errors) {
+            SemesterScope timetable, List<String> errors) {
         if (params.isEmpty() && !type.isEntryBacked()) {
             // Nothing to store: no object condition. `{}` means "no extra
             // condition" and is kept in the legacy params column only. For an
@@ -434,7 +482,7 @@ public class ConstraintService {
      */
     private void validateObjects(
             ConstraintType type, Integer position, Map<String, Object> params,
-            SemesterTimetable timetable, List<String> errors) {
+            SemesterScope timetable, List<String> errors) {
         if (!type.isEntryBacked()) {
             return;
         }
@@ -459,9 +507,33 @@ public class ConstraintService {
             }
             case SAME_COURSE_ONCE_PER_DAY, SPORT_NOT_FIRST_AFTERNOON, COURSE_SPREAD,
                  PE_LAST_PERIOD_AVOID -> requireCourseIfPresent(location, params, errors);
+            // Threshold entries name their object only in the exception form; a blank
+            // object is the global default and needs no lookup.
+            case TEACHER_MAX_PER_DAY, TEACHER_MAX_CONSECUTIVE -> requireTeacherIfPresent(
+                    location, params, errors);
+            case COURSE_MAX_PER_DAY -> requireCourseIfPresent(location, params, errors);
+            case CLASS_MAX_PER_DAY, EVENING_MAX -> requireClassIfPresent(
+                    location, params, timetable, errors);
             default -> {
-                // Single-switch and threshold types keep their legacy validation.
+                // Single-switch types keep their legacy validation.
             }
+        }
+    }
+
+    private void requireTeacherIfPresent(
+            String location, Map<String, Object> params, List<String> errors) {
+        Long teacherId = ConstraintSettings.longValue(params.get("teacherId"));
+        if (teacherId != null && !teachers.existsById(teacherId)) {
+            errors.add(location + ": 参数「教师」指向不存在的教师: " + teacherId);
+        }
+    }
+
+    /** Threshold classes belong to the semester being configured, never to another one. */
+    private void requireClassIfPresent(
+            String location, Map<String, Object> params, SemesterScope semester, List<String> errors) {
+        Long classId = ConstraintSettings.longValue(params.get("classId"));
+        if (classId != null && !semester.hasClass(classId)) {
+            errors.add(location + ": 参数「班级」不属于当前学期: " + classId);
         }
     }
 
@@ -525,7 +597,7 @@ public class ConstraintService {
 
     /** A (weekday, period) entry must name a slot the semester timetable really has. */
     private void requireSlot(
-            String location, Map<String, Object> params, SemesterTimetable timetable,
+            String location, Map<String, Object> params, SemesterScope timetable,
             List<String> errors) {
         if (timetable.isEmpty()) {
             errors.add(location + ": 该学期还没有作息安排，无法校验节次；请先配置作息");
@@ -541,7 +613,7 @@ public class ConstraintService {
     /** A period number (a cut-off, not a slot) must exist somewhere in the timetable. */
     private void requirePeriodNo(
             String location, Map<String, Object> params, String field, String label,
-            SemesterTimetable timetable, List<String> errors) {
+            SemesterScope timetable, List<String> errors) {
         if (timetable.isEmpty()) {
             errors.add(location + ": 该学期还没有作息安排，无法校验「" + label + "」；请先配置作息");
             return;
@@ -672,12 +744,12 @@ public class ConstraintService {
     }
 
     /**
-     * Entry DTOs of one config row. A row that still only has the legacy
-     * {@code params_json} is shown as one implicit entry for the types that are not
-     * entry-backed yet (the thresholds), so old readers keep working. For an
-     * entry-backed type the legacy column is ignored on purpose: V26/V27 moved every
-     * value into a row, so an un-migrated row means "not configured" — showing it as
-     * an entry would promise evaluation the checker does not perform.
+     * Entry DTOs of one config row. A row that only has the legacy
+     * {@code params_json} is shown as one implicit entry for the six single-switch
+     * types, so old readers keep working. For an entry-backed type the legacy column is
+     * ignored on purpose: V26/V27/V28 moved every value into a row, so an un-migrated
+     * row means "not configured" — showing it as an entry would promise evaluation the
+     * checker does not perform.
      */
     private List<ConstraintEntryDto> entryDtos(ConstraintConfig config, List<ConstraintEntry> entryRows) {
         List<ConstraintEntryDto> dtos = new ArrayList<>();

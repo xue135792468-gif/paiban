@@ -123,12 +123,12 @@
             :is-junior="isJunior"
             :teachers="teachers"
             :courses="courses"
+            :classes="classes"
             :entry-errors="entryErrors"
             :type-errors="typeErrors"
             @toggle-enabled="onToggleEnabled"
             @set-hard="onSetHard"
             @set-weight="onSetWeight"
-            @update-value="onUpdateValue"
             @update-entry="onUpdateEntry"
             @add-entry="onAddEntry"
             @remove-entry="onRemoveEntry"
@@ -136,6 +136,12 @@
             @add-slot="onAddSlot"
             @remove-slot="onRemoveSlot"
             @update-slot="onUpdateSlot"
+            @set-threshold-global="onSetThresholdGlobal"
+            @add-threshold-global="onAddThresholdGlobal"
+            @add-threshold-exception="onAddThresholdException"
+            @remove-threshold-exception="onRemoveThresholdException"
+            @set-threshold-object="onSetThresholdObject"
+            @set-threshold-value="onSetThresholdValue"
           />
         </div>
       </el-card>
@@ -187,15 +193,31 @@ const semesters = ref<Semester[]>([])
 const semesterId = ref<number | null>(null)
 const teachers = ref<OptionItem[]>([])
 const courses = ref<OptionItem[]>([])
+const classes = ref<OptionItem[]>([])
 const courseNames = computed(() => new Map(courses.value.map((course) => [course.id, course.name])))
+/**
+ * Names for the threshold exception rows. Teachers, classes and courses live in
+ * separate id spaces, so this map is only ever used to *label* one row — never to look
+ * an object up. Courses win a collision because they cannot be confused with the
+ * entities a threshold names in practice (a class and a course can share an id, but the
+ * row's own type says which one it is).
+ */
+const objectNames = computed(
+  () =>
+    new Map<number, string>([
+      ...teachers.value.map((teacher) => [teacher.id, teacher.name] as [number, string]),
+      ...classes.value.map((item) => [item.id, item.name] as [number, string]),
+      ...courseNames.value.entries(),
+    ]),
+)
 const templates = ref<TemplateItem[]>([])
 const selectedTemplate = ref<number | null>(null)
 const loading = ref(false)
 const applyingTemplate = ref(false)
 const deletingTemplate = ref(false)
 
-// 互斥条件在保存前就暴露出来（同一课程两个教室类型等）；输入保持原样，由用户决定改哪条。
-const conflicts = computed(() => draft.conflicts(courseNames.value))
+// 互斥条件与重复阈值在保存前就暴露出来；输入保持原样，由用户决定改哪条。
+const conflicts = computed(() => draft.conflicts(courseNames.value, objectNames.value))
 
 const { saving, saveMessage, saveReport, save, clearErrors } = useConstraintSave({
   draft,
@@ -220,8 +242,6 @@ function withSelected(action: (code: string) => void) {
 const onToggleEnabled = (value: boolean) => withSelected((code) => draft.setEnabled(code, value))
 const onSetHard = (value: boolean) => withSelected((code) => draft.setHard(code, value))
 const onSetWeight = (value: number) => withSelected((code) => draft.setWeight(code, value))
-const onUpdateValue = (name: string, value: unknown) =>
-  withSelected((code) => draft.updateValue(code, name, value))
 const onUpdateEntry = (key: string, name: string, value: unknown) =>
   withSelected((code) => draft.updateEntryValue(code, key, name, value))
 const onAddEntry = () => withSelected((code) => draft.addEntry(code))
@@ -237,6 +257,24 @@ const onUpdateSlot = (key: string, slotKey: string, field: string, value: unknow
       draft.updateSlot(code, key, slotKey, field, value)
     }
   })
+
+const onSetThresholdGlobal = (value: number | null) =>
+  withSelected((code) => draft.setThresholdGlobal(code, value))
+const onAddThresholdGlobal = () =>
+  withSelected((code) => {
+    // The catalogue default is the number the type means when someone switches it on.
+    const value = selected.value?.params.find(
+      (param) => param.name === selected.value?.thresholdValueField,
+    )?.defaultValue
+    draft.setThresholdGlobal(code, typeof value === 'number' ? value : 1)
+  })
+const onAddThresholdException = () => withSelected((code) => draft.addThresholdException(code))
+const onRemoveThresholdException = (key: string) =>
+  withSelected((code) => draft.removeThresholdException(code, key))
+const onSetThresholdObject = (key: string, value: unknown) =>
+  withSelected((code) => draft.setThresholdExceptionObject(code, key, value))
+const onSetThresholdValue = (key: string, value: unknown) =>
+  withSelected((code) => draft.setThresholdExceptionValue(code, key, value))
 
 async function loadSemesters() {
   try {
@@ -276,6 +314,25 @@ async function loadTeachersAndCourses() {
   }
 }
 
+/**
+ * The administrative classes of the selected semester: the only objects the class and
+ * evening limits may name. A class belongs to one semester, so this reloads with it.
+ */
+async function loadClasses() {
+  if (!semesterId.value) {
+    classes.value = []
+    return
+  }
+  try {
+    const { data } = await http.get<OptionItem[]>('/classes', {
+      params: { semesterId: semesterId.value },
+    })
+    classes.value = (data ?? []).map((item) => ({ id: item.id, name: item.name }))
+  } catch (e: any) {
+    ElMessage.error(serverMessage(e, '加载班级数据失败'))
+  }
+}
+
 async function loadConstraints() {
   if (!semesterId.value) {
     draft.hydrate([], [], { isJunior: isJunior.value })
@@ -288,6 +345,7 @@ async function loadConstraints() {
       http.get<ConstraintConfigDto[]>('/constraints', {
         params: { semesterId: semesterId.value },
       }),
+      loadClasses(),
     ])
     draft.hydrate(typeRes.data ?? [], configRes.data ?? [], { isJunior: isJunior.value })
     clearErrors()

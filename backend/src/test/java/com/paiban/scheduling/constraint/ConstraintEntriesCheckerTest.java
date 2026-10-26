@@ -143,7 +143,10 @@ class ConstraintEntriesCheckerTest {
     }
 
     @Test
-    void teacherMaxPerDayKeepsItsLegacyMeaning() {
+    void teacherMaxPerDayReadsItsGlobalEntryOnly() {
+        // Since ticket 10/04 the thresholds are entry-backed too: V28 moved the legacy
+        // `params_json` value into a global entry, so on its own it is "not configured"
+        // (see ConstraintScopedThresholdsCheckerTest for the scoping rules).
         ConstraintSettings legacy = ConstraintSettings.from(
                 List.of(config(ConstraintType.TEACHER_MAX_PER_DAY, true, 60,
                         Map.of("maxPerDay", 1))), MAPPER);
@@ -151,10 +154,10 @@ class ConstraintEntriesCheckerTest {
                 config(ConstraintType.TEACHER_MAX_PER_DAY, true, 60, Map.of()),
                 entry(ConstraintType.TEACHER_MAX_PER_DAY, Map.of("maxPerDay", 1)));
 
-        List<String> legacyVerdict = verdictForTwoLessonsADay(legacy);
-        assertThat(legacyVerdict).hasSize(1);
-        assertThat(legacyVerdict.get(0)).startsWith("TEACHER_MAX_PER_DAY@");
-        assertThat(verdictForTwoLessonsADay(entries)).isEqualTo(legacyVerdict);
+        assertThat(verdictForTwoLessonsADay(legacy)).isEmpty();
+        List<String> verdictForEntries = verdictForTwoLessonsADay(entries);
+        assertThat(verdictForEntries).hasSize(1);
+        assertThat(verdictForEntries.get(0)).startsWith("TEACHER_MAX_PER_DAY@");
     }
 
     // ------------------------------------------------------------------ helpers

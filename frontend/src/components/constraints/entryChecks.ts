@@ -2,7 +2,6 @@ import {
   allTargetLabel,
   isEntryType,
   isSlotSetType,
-  isThresholdType,
   optionalTargetParam,
   plannedEntries,
   targetUnresolved,
@@ -47,34 +46,19 @@ export function duplicateMessages(row: TypeDraft): Record<number, string[]> {
   return messages
 }
 
-/** What a single-value (threshold) type sends as `params`. */
-function thresholdParams(row: TypeDraft): Record<string, unknown> {
-  if (!row.enabled && !row.touched) {
-    return {}
-  }
-  return filledValues(row.values, row.params)
-}
-
 /**
  * Save-time warnings for required parameters, checked against what the payload will
  * send rather than against whether the type is switched on: a condition survives
  * turning its type off, so a half-filled condition would still be rejected. A fully
  * blank card carries nothing (or is the explicit "every course" entry) and is
  * silently skipped instead of nagging.
+ *
+ * Threshold types are not handled here: they have their own two-piece editor, whose
+ * warnings live in `thresholdModel.thresholdWarnings`.
  */
 export function missingParamWarnings(rows: TypeDraft[]): string[] {
   const warnings: string[] = []
   rows.forEach((row) => {
-    if (isThresholdType(row)) {
-      const sent = thresholdParams(row)
-      if (Object.keys(sent).length === 0 && !row.enabled) {
-        return
-      }
-      row.params
-        .filter((param) => param.required && !hasValue(row.values[param.name]))
-        .forEach((param) => warnings.push(`「${row.name}」的「${param.label}」`))
-      return
-    }
     if (!isEntryType(row)) {
       return
     }

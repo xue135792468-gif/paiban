@@ -84,6 +84,7 @@ export function roomTypeLabel(code: unknown): string {
 const FIELD_IDS: Record<string, string> = {
   teacherId: 'teacher',
   courseId: 'course',
+  classId: 'class',
   subject: 'subject',
   dayOfWeek: 'day',
   periodNo: 'period',
