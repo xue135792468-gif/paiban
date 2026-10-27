@@ -69,15 +69,23 @@ public class AnthropicStrategy implements AiStrategy {
             builder.POST(HttpRequest.BodyPublishers.ofString(
                     body(invocation), StandardCharsets.UTF_8));
             HttpResponse<String> response =
-                    httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+                    AiHttpCalls.send(httpClient, builder.build(), requestTimeout);
             return interpret(response.statusCode(), response.body());
-        } catch (HttpTimeoutException ex) {
+        } catch (java.util.concurrent.TimeoutException ex) {
             return AiStrategyOutcome.failure("TIMEOUT", "AI 调用超时（" + requestTimeout.toSeconds() + " 秒）", null);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             return AiStrategyOutcome.failure("PROVIDER_ERROR", "AI 调用被中断", 499);
-        } catch (ConnectException ex) {
-            return AiStrategyOutcome.failure("PROVIDER_ERROR", "无法连接到 AI 供应商", null);
+        } catch (java.util.concurrent.ExecutionException ex) {
+            Throwable cause = ex.getCause();
+            if (cause instanceof HttpTimeoutException) {
+                return AiStrategyOutcome.failure("TIMEOUT", "AI 调用超时（" + requestTimeout.toSeconds() + " 秒）", null);
+            }
+            if (cause instanceof ConnectException) {
+                return AiStrategyOutcome.failure("PROVIDER_ERROR", "无法连接到 AI 供应商", null);
+            }
+            Exception failure = cause instanceof Exception exception ? exception : ex;
+            return AiStrategyOutcome.failure("PROVIDER_ERROR", describe(failure), null);
         } catch (Exception ex) {
             return AiStrategyOutcome.failure("PROVIDER_ERROR", describe(ex), null);
         }
