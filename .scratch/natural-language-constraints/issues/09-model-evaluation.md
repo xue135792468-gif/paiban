@@ -4,7 +4,7 @@
 
 **Blocked by:** 08 — 在约束页生成只读建议，保留原话与原始结果。
 
-**Status:** done（2026-10-27；真实评测已执行，gemini-3-flash 27/54、9/12 未达标；3.8 短提示可用但长提示挂起，功能未放行）
+**Status:** done（2026-10-27；真实评测已执行，最好的 gemini-3.8-flash-low 为 51/54、10/12，按严格门槛 FAILED，功能未放行）
 
 2026-10-27 用户已确认本轮12票拆分及阻塞关系，正式发布；实现范围与共同约束以[正式规格](../spec.md)为准。
 
@@ -23,7 +23,9 @@
 
 - 提交 `f653a56`。`com.paiban.scheduling.eval` 提供 C01–C22 固定语料、整句判定、最多 2 模型、20 元最坏费用预留与报告（Markdown+JSON）；真实评测只能人工以 `--paiban.eval.enabled=true` 启动。
 - **2026-10-27 真实评测已在服务器执行**（免费渠道，名义单价 0.001/0.002 元每 1K token，预算 20 元）：
-  - `gemini-3-flash`（provider 2/model 8）：**明确支持 27/54、边界 9/12，结论 FAILED**；用量 0.1960 元（免费渠道实际不计费），预留 0.8382 元。
-  - **短提示实测**：`gemini-3.8-flash-low/medium/tiered` 均返回 200（内容 “OK”）；`gemini-3.8-flash` 普通别名与 `gemini-3.1-pro` 返回 404。**长提示不可用**：在 C01–C22 的约 17K 字符提示 + 4096 输出下，`low/medium/tiered` 在 `HttpClient.send` 挂起超过 12 分钟，超出 60 秒任务边界，不能作为该功能的放行证据。
-  - 决策：不打开自然语言约束功能，`NATURAL_LANGUAGE_CONSTRAINTS` 保持未绑定；手动路径不受影响。
-- 证据：`ConstraintEvaluationHarnessTest`、`ConstraintEvaluationRunnerTest`（替身、无单价零请求、预算不足提前停、超过 2 模型拒绝）；原始报告 `docs/reports/constraint-model-evaluation-2026-10-27-gemini-3-flash.md/.json`，汇总 `docs/reports/constraint-model-evaluation-2026-10-27.md`。
+  - **`gemini-3.8-flash-low`（provider 2/model 4）是最接近达标的模型**：**明确支持 51/54、边界 10/12**，66 次全部完成，用时约 12 分钟（每次约 11 秒，低于 60 秒单次上限）；用量 0.3218 元（名义单价，免费渠道实际不计费）。按 52/54 + 12/12 的严格门槛仍为 FAILED，只差 **1 次明确支持 + 2 次边界**。
+  - `gemini-3-flash`（model 8）：27/54、9/12，FAILED；用量 0.1960 元。
+  - `gemini-3.8-flash-medium/tiered` 在早先测试中长时间不返回；`gemini-3.8-flash` 普通别名与 `gemini-3.1-pro` 返回 404。短提示实测 low/medium/tiered 均为 200，说明 low 的完整长提示是可用的，只是慢。
+  - 3.8-low 的 5 次失败：C05×2（模型给显式 HARD，评测期望继承类型默认）、C16×2（同名教师只给原因，没有作为候选列表让用户选择）、C22×1（输出达到 4096 token 被截断）。若修正 C05 的继承/显式 HARD 判定口径并让同名教师输出候选列表，理论上可到 53/54、12/12。
+  - 决策：按规格不打开自然语言约束功能，`NATURAL_LANGUAGE_CONSTRAINTS` 保持未绑定；手动路径不受影响。
+- 证据：`ConstraintEvaluationHarnessTest`、`ConstraintEvaluationRunnerTest`（替身、无单价零请求、预算不足提前停、超过 2 模型拒绝）；原始报告 `docs/reports/constraint-model-evaluation-2026-10-27-gemini-3.8-flash-low.md/.json`、`...-gemini-3-flash.md/.json`，汇总 `docs/reports/constraint-model-evaluation-2026-10-27.md`。

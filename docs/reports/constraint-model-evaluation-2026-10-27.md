@@ -1,14 +1,15 @@
 # 自然语言约束模型评测报告（2026-10-27）
 
-状态：**真实模型评测已于 2026-10-27 在服务器执行；结论 FAILED，未达放行门槛。**
+状态：**真实模型评测已于 2026-10-27 在服务器执行；最好的 `gemini-3.8-flash-low` 为 51/54、10/12，按严格门槛仍为 FAILED（差 1 次明确支持 + 2 次边界），功能未放行。**
 
 ## 结论
 
-- 可用模型只有 `gemini-3-flash`（provider 2）。C01–C22 每句 3 次：**明确支持 27/54，边界 9/12**，未达到 52/54 与 12 次零误转的门槛。
-- 费用：按名义单价 0.001/0.002 元每 1K token 计算，本次用量 0.1960 元（免费渠道，实际不计费）；最坏费用预留 0.8382 元，远低于 20 元上限。
-- **Gemini 3.8 短提示可用，但评测长提示不可用**：直接短提示（“只回复 OK”）实测 `gemini-3.8-flash-low/medium/tiered` 均返回 200；但在 C01–C22 的约 17K 字符提示 + 4096 输出下，`low/medium/tiered` 在 `HttpClient.send` 挂起超过 12 分钟，远超功能要求的 60 秒任务边界。`gemini-3.8-flash` 普通别名 404，`gemini-3.1-pro` 也 404。以上结果不作为模型通过证据。
-- 决策：**不打开自然语言约束功能**；`NATURAL_LANGUAGE_CONSTRAINTS` 保持未绑定，页面按“AI 不可用/未配置”降级，手动配置路径不受影响。
-- 原始报告：[Markdown](constraint-model-evaluation-2026-10-27-gemini-3-flash.md) / [JSON](constraint-model-evaluation-2026-10-27-gemini-3-flash.json)。
+- **最好的模型是 `gemini-3.8-flash-low`**（provider 2/model 4）：C01–C22 每句 3 次，**明确支持 51/54，边界 10/12**；66 次全部完成，用时约 12 分钟（每次约 11 秒，远低于 60 秒单次上限）。按 52/54 与 12/12 的门槛，只差 **1 次明确支持 + 2 次边界**，结论仍是 FAILED。
+- 费用：按名义单价 0.001/0.002 元每 1K token 计算，3.8-low 用量 0.3218 元（免费渠道实际不计费），最坏预留 0.8382 元，远低于 20 元上限。
+- 失败只有 5 次：C05×2（模型输出显式 HARD，评测期望继承类型默认）、C16×2（同名教师只给了原因，没有作为候选列表让用户选择）、C22×1（输出达到 4096 token 被截断）。
+- 其他模型：`gemini-3-flash` 27/54、9/12；`gemini-3.8-flash-medium/tiered` 在早先测试中长时间不返回（low 能完成，说明不是所有 3.8 别名都不可用）；`gemini-3.8-flash` 普通别名与 `gemini-3.1-pro` 404。
+- 决策：**按规格不打开自然语言约束功能**；`NATURAL_LANGUAGE_CONSTRAINTS` 保持未绑定，页面按“AI 不可用/未配置”降级，手动配置路径不受影响。3.8-low 是明确的下一步候选：若修正 C05 的继承/显式 HARD 判定口径，并让同名教师输出候选列表，理论上可达到 53/54、12/12。
+- 原始报告：[3.8-low Markdown](constraint-model-evaluation-2026-10-27-gemini-3.8-flash-low.md) / [JSON](constraint-model-evaluation-2026-10-27-gemini-3.8-flash-low.json)；[3-flash Markdown](constraint-model-evaluation-2026-10-27-gemini-3-flash.md) / [JSON](constraint-model-evaluation-2026-10-27-gemini-3-flash.json)。
 - 评测工具与预算守卫已用替身演练验证（54/54、12/12 只证明管线，不证明任何真实模型）。
 
 ## 如何执行真实评测（人工、一次性）

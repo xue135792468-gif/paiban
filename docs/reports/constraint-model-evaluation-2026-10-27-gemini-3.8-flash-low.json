@@ -1,0 +1,3235 @@
+{
+  "corpusVersion" : "C01-C22-v1",
+  "generatedAt" : "2026-10-27T13:19:32.227479233Z",
+  "runsPerSentence" : 3,
+  "budgetCny" : 20,
+  "priceInPer1k" : 0.001,
+  "priceOutPer1k" : 0.002,
+  "verdict" : "FAILED",
+  "reservedCny" : 0.8382,
+  "actualCny" : 0.3218,
+  "remainingCny" : 19.1618,
+  "models" : [ {
+    "model" : {
+      "providerId" : 2,
+      "modelId" : 4,
+      "label" : "provider 2 / model 4"
+    },
+    "supportedPass" : 51,
+    "supportedTotal" : 54,
+    "boundaryPass" : 10,
+    "boundaryTotal" : 12,
+    "passed" : false,
+    "complete" : true,
+    "reservedCny" : 0.8382,
+    "actualCny" : 0.3218,
+    "runs" : [ {
+      "code" : "C01",
+      "attempt" : 1,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"王老师周三下午不排课\",\n      \"type\": \"TEACHER_UNAVAILABLE\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"王明老师在周三下午（第5、6、7、8节）不排课\",\n      \"reason\": \"\",\n      \"teacherName\": \"王明\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [3],\n      \"periods\": [5, 6, 7, 8],\n      \"section\": \"AFTERNOON\",\n      \"sectionOrdinals\": [1, 2, 3, 4],\n      \"allDays\": false,\n      \"values\": {}\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "王老师周三下午不排课",
+        "type" : "TEACHER_UNAVAILABLE",
+        "typeName" : "教师禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "王明老师在周三下午（第5、6、7、8节）不排课",
+        "reason" : "",
+        "params" : {
+          "teacherId" : 1,
+          "dayOfWeek" : 3,
+          "periodNo" : 5
+        },
+        "entries" : [ {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 3,
+            "periodNo" : 5
+          },
+          "groupKey" : "eval-C01-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 3,
+            "periodNo" : 6
+          },
+          "groupKey" : "eval-C01-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 3,
+            "periodNo" : 7
+          },
+          "groupKey" : "eval-C01-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 3,
+            "periodNo" : 8
+          },
+          "groupKey" : "eval-C01-p1",
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2607,
+      "outputTokens" : 1050,
+      "latencyMs" : 10801
+    }, {
+      "code" : "C01",
+      "attempt" : 2,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"王老师周三下午不排课。\",\n      \"type\": \"TEACHER_UNAVAILABLE\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"王明老师在周三下午（第5至8节）不安排课程\",\n      \"reason\": \"\",\n      \"teacherName\": \"王明\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [3],\n      \"periods\": [5, 6, 7, 8],\n      \"section\": \"AFTERNOON\",\n      \"sectionOrdinals\": [],\n      \"allDays\": false,\n      \"values\": {}\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "王老师周三下午不排课。",
+        "type" : "TEACHER_UNAVAILABLE",
+        "typeName" : "教师禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "王明老师在周三下午（第5至8节）不安排课程",
+        "reason" : "",
+        "params" : {
+          "teacherId" : 1,
+          "dayOfWeek" : 3,
+          "periodNo" : 5
+        },
+        "entries" : [ {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 3,
+            "periodNo" : 5
+          },
+          "groupKey" : "eval-C01-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 3,
+            "periodNo" : 6
+          },
+          "groupKey" : "eval-C01-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 3,
+            "periodNo" : 7
+          },
+          "groupKey" : "eval-C01-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 3,
+            "periodNo" : 8
+          },
+          "groupKey" : "eval-C01-p1",
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2607,
+      "outputTokens" : 1302,
+      "latencyMs" : 12831
+    }, {
+      "code" : "C01",
+      "attempt" : 3,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"王老师周三下午不排课\",\n      \"type\": \"TEACHER_UNAVAILABLE\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"王明老师周三下午（第5、6、7、8节）不排课\",\n      \"reason\": \"\",\n      \"teacherName\": \"王明\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [3],\n      \"periods\": [5, 6, 7, 8],\n      \"section\": \"AFTERNOON\",\n      \"sectionOrdinals\": [],\n      \"allDays\": false,\n      \"values\": {}\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "王老师周三下午不排课",
+        "type" : "TEACHER_UNAVAILABLE",
+        "typeName" : "教师禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "王明老师周三下午（第5、6、7、8节）不排课",
+        "reason" : "",
+        "params" : {
+          "teacherId" : 1,
+          "dayOfWeek" : 3,
+          "periodNo" : 5
+        },
+        "entries" : [ {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 3,
+            "periodNo" : 5
+          },
+          "groupKey" : "eval-C01-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 3,
+            "periodNo" : 6
+          },
+          "groupKey" : "eval-C01-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 3,
+            "periodNo" : 7
+          },
+          "groupKey" : "eval-C01-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 3,
+            "periodNo" : 8
+          },
+          "groupKey" : "eval-C01-p1",
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2607,
+      "outputTokens" : 942,
+      "latencyMs" : 10611
+    }, {
+      "code" : "C02",
+      "attempt" : 1,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"王老师和李老师周二第1、2节都不排\",\n      \"type\": \"TEACHER_UNAVAILABLE\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"王明周二第1节、第2节不排课\",\n      \"reason\": \"\",\n      \"teacherName\": \"王明\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [2],\n      \"periods\": [1, 2],\n      \"section\": \"\",\n      \"sectionOrdinals\": [],\n      \"allDays\": false,\n      \"values\": {}\n    },\n    {\n      \"sourceText\": \"王老师和李老师周二第1、2节都不排\",\n      \"type\": \"TEACHER_UNAVAILABLE\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"李华周二第1节、第2节不排课\",\n      \"reason\": \"\",\n      \"teacherName\": \"李华\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [2],\n      \"periods\": [1, 2],\n      \"section\": \"\",\n      \"sectionOrdinals\": [],\n      \"allDays\": false,\n      \"values\": {}\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "王老师和李老师周二第1、2节都不排",
+        "type" : "TEACHER_UNAVAILABLE",
+        "typeName" : "教师禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "王明周二第1节、第2节不排课",
+        "reason" : "",
+        "params" : {
+          "teacherId" : 1,
+          "dayOfWeek" : 2,
+          "periodNo" : 1
+        },
+        "entries" : [ {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 2,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C02-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 2,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C02-p1",
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "王老师和李老师周二第1、2节都不排",
+        "type" : "TEACHER_UNAVAILABLE",
+        "typeName" : "教师禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "李华周二第1节、第2节不排课",
+        "reason" : "",
+        "params" : {
+          "teacherId" : 2,
+          "dayOfWeek" : 2,
+          "periodNo" : 1
+        },
+        "entries" : [ {
+          "params" : {
+            "teacherId" : 2,
+            "dayOfWeek" : 2,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C02-p2",
+          "enabled" : true
+        }, {
+          "params" : {
+            "teacherId" : 2,
+            "dayOfWeek" : 2,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C02-p2",
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2613,
+      "outputTokens" : 1668,
+      "latencyMs" : 15756
+    }, {
+      "code" : "C02",
+      "attempt" : 2,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"王老师周二第1、2节都不排\",\"type\":\"TEACHER_UNAVAILABLE\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"王明老师在星期二第1、2节不排课\",\"reason\":\"\",\"teacherName\":\"王明\",\"courseName\":\"\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[2],\"periods\":[1,2],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}},{\"sourceText\":\"李老师周二第1、2节都不排\",\"type\":\"TEACHER_UNAVAILABLE\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"李华老师在星期二第1、2节不排课\",\"reason\":\"\",\"teacherName\":\"李华\",\"courseName\":\"\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[2],\"periods\":[1,2],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "王老师周二第1、2节都不排",
+        "type" : "TEACHER_UNAVAILABLE",
+        "typeName" : "教师禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "王明老师在星期二第1、2节不排课",
+        "reason" : "",
+        "params" : {
+          "teacherId" : 1,
+          "dayOfWeek" : 2,
+          "periodNo" : 1
+        },
+        "entries" : [ {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 2,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C02-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 2,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C02-p1",
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "李老师周二第1、2节都不排",
+        "type" : "TEACHER_UNAVAILABLE",
+        "typeName" : "教师禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "李华老师在星期二第1、2节不排课",
+        "reason" : "",
+        "params" : {
+          "teacherId" : 2,
+          "dayOfWeek" : 2,
+          "periodNo" : 1
+        },
+        "entries" : [ {
+          "params" : {
+            "teacherId" : 2,
+            "dayOfWeek" : 2,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C02-p2",
+          "enabled" : true
+        }, {
+          "params" : {
+            "teacherId" : 2,
+            "dayOfWeek" : 2,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C02-p2",
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2613,
+      "outputTokens" : 2163,
+      "latencyMs" : 19959
+    }, {
+      "code" : "C02",
+      "attempt" : 3,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"王老师和李老师周二第1、2节都不排。\",\"type\":\"TEACHER_UNAVAILABLE\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"王明在周二第1、2节不排课\",\"reason\":\"\",\"teacherName\":\"王明\",\"courseName\":\"\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[2],\"periods\":[1,2],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}},{\"sourceText\":\"王老师和李老师周二第1、2节都不排。\",\"type\":\"TEACHER_UNAVAILABLE\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"李华在周二第1、2节不排课\",\"reason\":\"\",\"teacherName\":\"李华\",\"courseName\":\"\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[2],\"periods\":[1,2],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "王老师和李老师周二第1、2节都不排。",
+        "type" : "TEACHER_UNAVAILABLE",
+        "typeName" : "教师禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "王明在周二第1、2节不排课",
+        "reason" : "",
+        "params" : {
+          "teacherId" : 1,
+          "dayOfWeek" : 2,
+          "periodNo" : 1
+        },
+        "entries" : [ {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 2,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C02-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 2,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C02-p1",
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "王老师和李老师周二第1、2节都不排。",
+        "type" : "TEACHER_UNAVAILABLE",
+        "typeName" : "教师禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "李华在周二第1、2节不排课",
+        "reason" : "",
+        "params" : {
+          "teacherId" : 2,
+          "dayOfWeek" : 2,
+          "periodNo" : 1
+        },
+        "entries" : [ {
+          "params" : {
+            "teacherId" : 2,
+            "dayOfWeek" : 2,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C02-p2",
+          "enabled" : true
+        }, {
+          "params" : {
+            "teacherId" : 2,
+            "dayOfWeek" : 2,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C02-p2",
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2613,
+      "outputTokens" : 1636,
+      "latencyMs" : 16683
+    }, {
+      "code" : "C03",
+      "attempt" : 1,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"每周三下午语文组统一教研，不安排课。\",\n      \"type\": \"TEACHER_MEETING_BLOCKED\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"每周三下午（第5至8节）语文组教师统一参加教研活动，不排课\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"语文\",\n      \"roomType\": \"\",\n      \"days\": [3],\n      \"periods\": [5, 6, 7, 8],\n      \"section\": \"AFTERNOON\",\n      \"sectionOrdinals\": [1, 2, 3, 4],\n      \"allDays\": false,\n      \"values\": {}\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "每周三下午语文组统一教研，不安排课。",
+        "type" : "TEACHER_MEETING_BLOCKED",
+        "typeName" : "教研活动禁排",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "每周三下午（第5至8节）语文组教师统一参加教研活动，不排课",
+        "reason" : "",
+        "params" : {
+          "subject" : "语文",
+          "dayOfWeek" : 3,
+          "periodNo" : 5
+        },
+        "entries" : [ {
+          "params" : {
+            "subject" : "语文",
+            "dayOfWeek" : 3,
+            "periodNo" : 5
+          },
+          "groupKey" : "eval-C03-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "subject" : "语文",
+            "dayOfWeek" : 3,
+            "periodNo" : 6
+          },
+          "groupKey" : "eval-C03-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "subject" : "语文",
+            "dayOfWeek" : 3,
+            "periodNo" : 7
+          },
+          "groupKey" : "eval-C03-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "subject" : "语文",
+            "dayOfWeek" : 3,
+            "periodNo" : 8
+          },
+          "groupKey" : "eval-C03-p1",
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2611,
+      "outputTokens" : 1239,
+      "latencyMs" : 11117
+    }, {
+      "code" : "C03",
+      "attempt" : 2,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"每周三下午语文组统一教研，不安排课\",\"type\":\"TEACHER_MEETING_BLOCKED\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"每周三下午（第5至8节）语文教师统一参加教研活动，不排课\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"\",\"className\":\"\",\"subject\":\"语文\",\"roomType\":\"\",\"days\":[3],\"periods\":[5,6,7,8],\"section\":\"AFTERNOON\",\"sectionOrdinals\":[1,2,3,4],\"allDays\":false,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "每周三下午语文组统一教研，不安排课",
+        "type" : "TEACHER_MEETING_BLOCKED",
+        "typeName" : "教研活动禁排",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "每周三下午（第5至8节）语文教师统一参加教研活动，不排课",
+        "reason" : "",
+        "params" : {
+          "subject" : "语文",
+          "dayOfWeek" : 3,
+          "periodNo" : 5
+        },
+        "entries" : [ {
+          "params" : {
+            "subject" : "语文",
+            "dayOfWeek" : 3,
+            "periodNo" : 5
+          },
+          "groupKey" : "eval-C03-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "subject" : "语文",
+            "dayOfWeek" : 3,
+            "periodNo" : 6
+          },
+          "groupKey" : "eval-C03-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "subject" : "语文",
+            "dayOfWeek" : 3,
+            "periodNo" : 7
+          },
+          "groupKey" : "eval-C03-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "subject" : "语文",
+            "dayOfWeek" : 3,
+            "periodNo" : 8
+          },
+          "groupKey" : "eval-C03-p1",
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2611,
+      "outputTokens" : 908,
+      "latencyMs" : 9614
+    }, {
+      "code" : "C03",
+      "attempt" : 3,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"每周三下午语文组统一教研，不安排课。\",\"type\":\"TEACHER_MEETING_BLOCKED\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"每周三下午（第5至8节）语文组教师统一参加教研，不排课\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"\",\"className\":\"\",\"subject\":\"语文\",\"roomType\":\"\",\"days\":[3],\"periods\":[5,6,7,8],\"section\":\"AFTERNOON\",\"sectionOrdinals\":[1,2,3,4],\"allDays\":false,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "每周三下午语文组统一教研，不安排课。",
+        "type" : "TEACHER_MEETING_BLOCKED",
+        "typeName" : "教研活动禁排",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "每周三下午（第5至8节）语文组教师统一参加教研，不排课",
+        "reason" : "",
+        "params" : {
+          "subject" : "语文",
+          "dayOfWeek" : 3,
+          "periodNo" : 5
+        },
+        "entries" : [ {
+          "params" : {
+            "subject" : "语文",
+            "dayOfWeek" : 3,
+            "periodNo" : 5
+          },
+          "groupKey" : "eval-C03-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "subject" : "语文",
+            "dayOfWeek" : 3,
+            "periodNo" : 6
+          },
+          "groupKey" : "eval-C03-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "subject" : "语文",
+            "dayOfWeek" : 3,
+            "periodNo" : 7
+          },
+          "groupKey" : "eval-C03-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "subject" : "语文",
+            "dayOfWeek" : 3,
+            "periodNo" : 8
+          },
+          "groupKey" : "eval-C03-p1",
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2611,
+      "outputTokens" : 984,
+      "latencyMs" : 10244
+    }, {
+      "code" : "C04",
+      "attempt" : 1,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"体育课必须在操场上。\",\"type\":\"COURSE_REQUIRED_ROOM_TYPE\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"体育课必须安排在操场进行\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"体育\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"PLAYGROUND\",\"days\":[],\"periods\":[],\"section\":null,\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "体育课必须在操场上。",
+        "type" : "COURSE_REQUIRED_ROOM_TYPE",
+        "typeName" : "课程指定教室类型",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "体育课必须安排在操场进行",
+        "reason" : "",
+        "params" : {
+          "courseId" : 14,
+          "roomType" : "PLAYGROUND"
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 14,
+            "roomType" : "PLAYGROUND"
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2606,
+      "outputTokens" : 553,
+      "latencyMs" : 6447
+    }, {
+      "code" : "C04",
+      "attempt" : 2,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"体育课必须在操场上\",\"type\":\"COURSE_REQUIRED_ROOM_TYPE\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"体育课必须安排在操场进行\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"体育\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"PLAYGROUND\",\"days\":[],\"periods\":[],\"section\":null,\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "体育课必须在操场上",
+        "type" : "COURSE_REQUIRED_ROOM_TYPE",
+        "typeName" : "课程指定教室类型",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "体育课必须安排在操场进行",
+        "reason" : "",
+        "params" : {
+          "courseId" : 14,
+          "roomType" : "PLAYGROUND"
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 14,
+            "roomType" : "PLAYGROUND"
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2606,
+      "outputTokens" : 522,
+      "latencyMs" : 6252
+    }, {
+      "code" : "C04",
+      "attempt" : 3,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"体育课必须在操场上。\",\"type\":\"COURSE_REQUIRED_ROOM_TYPE\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"体育课必须安排在操场进行\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"体育\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"PLAYGROUND\",\"days\":[],\"periods\":[],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "体育课必须在操场上。",
+        "type" : "COURSE_REQUIRED_ROOM_TYPE",
+        "typeName" : "课程指定教室类型",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "体育课必须安排在操场进行",
+        "reason" : "",
+        "params" : {
+          "courseId" : 14,
+          "roomType" : "PLAYGROUND"
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 14,
+            "roomType" : "PLAYGROUND"
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2606,
+      "outputTokens" : 256,
+      "latencyMs" : 4873
+    }, {
+      "code" : "C05",
+      "attempt" : 1,
+      "supported" : true,
+      "passed" : false,
+      "reason" : "缺少或错误的要求: COURSE_REQUIRED_ROOM_TYPE INHERIT {course=化学, roomType=LAB}",
+      "content" : "{\"proposals\":[{\"sourceText\":\"化学课安排在实验室\",\"type\":\"COURSE_REQUIRED_ROOM_TYPE\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"化学课必须安排在实验室上课\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"化学\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"LAB\",\"days\":[],\"periods\":[],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "化学课安排在实验室",
+        "type" : "COURSE_REQUIRED_ROOM_TYPE",
+        "typeName" : "课程指定教室类型",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "化学课必须安排在实验室上课",
+        "reason" : "",
+        "params" : {
+          "courseId" : 15,
+          "roomType" : "LAB"
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 15,
+            "roomType" : "LAB"
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2604,
+      "outputTokens" : 282,
+      "latencyMs" : 4367
+    }, {
+      "code" : "C05",
+      "attempt" : 2,
+      "supported" : true,
+      "passed" : false,
+      "reason" : "缺少或错误的要求: COURSE_REQUIRED_ROOM_TYPE INHERIT {course=化学, roomType=LAB}",
+      "content" : "{\"proposals\":[{\"sourceText\":\"化学课安排在实验室。\",\"type\":\"COURSE_REQUIRED_ROOM_TYPE\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"化学课必须安排在实验室上课\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"化学\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"LAB\",\"days\":[],\"periods\":[],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "化学课安排在实验室。",
+        "type" : "COURSE_REQUIRED_ROOM_TYPE",
+        "typeName" : "课程指定教室类型",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "化学课必须安排在实验室上课",
+        "reason" : "",
+        "params" : {
+          "courseId" : 15,
+          "roomType" : "LAB"
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 15,
+            "roomType" : "LAB"
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2604,
+      "outputTokens" : 464,
+      "latencyMs" : 5868
+    }, {
+      "code" : "C05",
+      "attempt" : 3,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"化学课安排在实验室。\",\"type\":\"COURSE_REQUIRED_ROOM_TYPE\",\"strength\":\"INHERIT\",\"status\":\"READY\",\"explanation\":\"化学课程安排在实验室上课\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"化学\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"LAB\",\"days\":[],\"periods\":[],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "化学课安排在实验室。",
+        "type" : "COURSE_REQUIRED_ROOM_TYPE",
+        "typeName" : "课程指定教室类型",
+        "strength" : "INHERIT",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "化学课程安排在实验室上课",
+        "reason" : "",
+        "params" : {
+          "courseId" : 15,
+          "roomType" : "LAB"
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 15,
+            "roomType" : "LAB"
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2604,
+      "outputTokens" : 691,
+      "latencyMs" : 8651
+    }, {
+      "code" : "C06",
+      "attempt" : 1,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"体育不排晚自习\",\"type\":\"COURSE_NOT_IN_EVENING\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"体育课不安排在晚自习时段\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"体育\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"EVENING\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}},{\"sourceText\":\"化学不排晚自习\",\"type\":\"COURSE_NOT_IN_EVENING\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"化学课不安排在晚自习时段\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"化学\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"EVENING\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "体育不排晚自习",
+        "type" : "COURSE_NOT_IN_EVENING",
+        "typeName" : "课程不排晚自习",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "体育课不安排在晚自习时段",
+        "reason" : "",
+        "params" : {
+          "courseId" : 14
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 14
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "化学不排晚自习",
+        "type" : "COURSE_NOT_IN_EVENING",
+        "typeName" : "课程不排晚自习",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "化学课不安排在晚自习时段",
+        "reason" : "",
+        "params" : {
+          "courseId" : 15
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 15
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2607,
+      "outputTokens" : 683,
+      "latencyMs" : 7735
+    }, {
+      "code" : "C06",
+      "attempt" : 2,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"体育和化学都不排晚自习。\",\n      \"type\": \"COURSE_NOT_IN_EVENING\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"体育课程不安排在晚自习时段\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"体育\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [9, 10],\n      \"section\": \"EVENING\",\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {}\n    },\n    {\n      \"sourceText\": \"体育和化学都不排晚自习。\",\n      \"type\": \"COURSE_NOT_IN_EVENING\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"化学课程不安排在晚自习时段\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"化学\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [9, 10],\n      \"section\": \"EVENING\",\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {}\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "体育和化学都不排晚自习。",
+        "type" : "COURSE_NOT_IN_EVENING",
+        "typeName" : "课程不排晚自习",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "体育课程不安排在晚自习时段",
+        "reason" : "",
+        "params" : {
+          "courseId" : 14
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 14
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "体育和化学都不排晚自习。",
+        "type" : "COURSE_NOT_IN_EVENING",
+        "typeName" : "课程不排晚自习",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "化学课程不安排在晚自习时段",
+        "reason" : "",
+        "params" : {
+          "courseId" : 15
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 15
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2607,
+      "outputTokens" : 1401,
+      "latencyMs" : 13029
+    }, {
+      "code" : "C06",
+      "attempt" : 3,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"体育和化学都不排晚自习\",\"type\":\"COURSE_NOT_IN_EVENING\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"体育课不安排在晚自习时段\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"体育\",\"className\":\"\",\"subject\":\"体育\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"EVENING\",\"sectionOrdinals\":[],\"allDays\":true,\"values\":{}},{\"sourceText\":\"体育和化学都不排晚自习\",\"type\":\"COURSE_NOT_IN_EVENING\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"化学课不安排在晚自习时段\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"化学\",\"className\":\"\",\"subject\":\"化学\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"EVENING\",\"sectionOrdinals\":[],\"allDays\":true,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "体育和化学都不排晚自习",
+        "type" : "COURSE_NOT_IN_EVENING",
+        "typeName" : "课程不排晚自习",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "体育课不安排在晚自习时段",
+        "reason" : "",
+        "params" : {
+          "courseId" : 14
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 14
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "体育和化学都不排晚自习",
+        "type" : "COURSE_NOT_IN_EVENING",
+        "typeName" : "课程不排晚自习",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "化学课不安排在晚自习时段",
+        "reason" : "",
+        "params" : {
+          "courseId" : 15
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 15
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2607,
+      "outputTokens" : 902,
+      "latencyMs" : 48795
+    }, {
+      "code" : "C07",
+      "attempt" : 1,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"全部课程在同一个班一天最多上一节\",\n      \"type\": \"SAME_COURSE_ONCE_PER_DAY\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"同一班级内所有课程每天最多安排一节\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [],\n      \"section\": \"\",\n      \"sectionOrdinals\": [],\n      \"allDays\": false,\n      \"values\": {}\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "全部课程在同一个班一天最多上一节",
+        "type" : "SAME_COURSE_ONCE_PER_DAY",
+        "typeName" : "同一课程一天最多一节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "同一班级内所有课程每天最多安排一节",
+        "reason" : "",
+        "params" : { },
+        "entries" : [ {
+          "params" : { },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2608,
+      "outputTokens" : 1095,
+      "latencyMs" : 9673
+    }, {
+      "code" : "C07",
+      "attempt" : 2,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"全部课程在同一个班一天最多上一节\",\n      \"type\": \"SAME_COURSE_ONCE_PER_DAY\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"同一班级的全部课程每天最多安排一节\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": null,\n      \"days\": [],\n      \"periods\": [],\n      \"section\": null,\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {}\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "全部课程在同一个班一天最多上一节",
+        "type" : "SAME_COURSE_ONCE_PER_DAY",
+        "typeName" : "同一课程一天最多一节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "同一班级的全部课程每天最多安排一节",
+        "reason" : "",
+        "params" : { },
+        "entries" : [ {
+          "params" : { },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2608,
+      "outputTokens" : 1378,
+      "latencyMs" : 13647
+    }, {
+      "code" : "C07",
+      "attempt" : 3,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"全部课程在同一个班一天最多上一节\",\n      \"type\": \"SAME_COURSE_ONCE_PER_DAY\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"所有课程在同一行政班每天最多安排一节\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [],\n      \"section\": \"\",\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {}\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "全部课程在同一个班一天最多上一节",
+        "type" : "SAME_COURSE_ONCE_PER_DAY",
+        "typeName" : "同一课程一天最多一节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "所有课程在同一行政班每天最多安排一节",
+        "reason" : "",
+        "params" : { },
+        "entries" : [ {
+          "params" : { },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2608,
+      "outputTokens" : 954,
+      "latencyMs" : 10333
+    }, {
+      "code" : "C08",
+      "attempt" : 1,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"所有老师每天最多上4节\",\n      \"type\": \"TEACHER_MAX_PER_DAY\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"所有教师每天授课最多不超过4节\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [],\n      \"section\": \"\",\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {\n        \"maxPerDay\": 4\n      }\n    },\n    {\n      \"sourceText\": \"王老师最多3节\",\n      \"type\": \"TEACHER_MAX_PER_DAY\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"王明老师每天授课最多不超过3节\",\n      \"reason\": \"\",\n      \"teacherName\": \"王明\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [],\n      \"section\": \"\",\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {\n        \"maxPerDay\": 3\n      }\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "所有老师每天最多上4节",
+        "type" : "TEACHER_MAX_PER_DAY",
+        "typeName" : "教师一天最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "所有教师每天授课最多不超过4节",
+        "reason" : "",
+        "params" : {
+          "maxPerDay" : 4
+        },
+        "entries" : [ {
+          "params" : {
+            "maxPerDay" : 4
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "王老师最多3节",
+        "type" : "TEACHER_MAX_PER_DAY",
+        "typeName" : "教师一天最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "王明老师每天授课最多不超过3节",
+        "reason" : "",
+        "params" : {
+          "teacherId" : 1,
+          "maxPerDay" : 3
+        },
+        "entries" : [ {
+          "params" : {
+            "teacherId" : 1,
+            "maxPerDay" : 3
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2612,
+      "outputTokens" : 1293,
+      "latencyMs" : 11349
+    }, {
+      "code" : "C08",
+      "attempt" : 2,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"所有老师每天最多上4节\",\n      \"type\": \"TEACHER_MAX_PER_DAY\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"所有教师每天授课总节数最多不超过4节\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [1, 2, 3, 4, 5],\n      \"periods\": [],\n      \"section\": \"\",\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {\n        \"maxPerDay\": 4\n      }\n    },\n    {\n      \"sourceText\": \"王老师最多3节\",\n      \"type\": \"TEACHER_MAX_PER_DAY\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"教师王明每天授课总节数最多不超过3节\",\n      \"reason\": \"\",\n      \"teacherName\": \"王明\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [1, 2, 3, 4, 5],\n      \"periods\": [],\n      \"section\": \"\",\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {\n        \"maxPerDay\": 3\n      }\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "所有老师每天最多上4节",
+        "type" : "TEACHER_MAX_PER_DAY",
+        "typeName" : "教师一天最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "所有教师每天授课总节数最多不超过4节",
+        "reason" : "",
+        "params" : {
+          "maxPerDay" : 4
+        },
+        "entries" : [ {
+          "params" : {
+            "maxPerDay" : 4
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "王老师最多3节",
+        "type" : "TEACHER_MAX_PER_DAY",
+        "typeName" : "教师一天最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "教师王明每天授课总节数最多不超过3节",
+        "reason" : "",
+        "params" : {
+          "teacherId" : 1,
+          "maxPerDay" : 3
+        },
+        "entries" : [ {
+          "params" : {
+            "teacherId" : 1,
+            "maxPerDay" : 3
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2612,
+      "outputTokens" : 1266,
+      "latencyMs" : 11856
+    }, {
+      "code" : "C08",
+      "attempt" : 3,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"所有老师每天最多上4节\",\"type\":\"TEACHER_MAX_PER_DAY\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"所有教师每天授课节数最多不超过4节\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":true,\"values\":{\"maxPerDay\":4}},{\"sourceText\":\"王老师最多3节\",\"type\":\"TEACHER_MAX_PER_DAY\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"王明老师每天授课节数最多不超过3节\",\"reason\":\"\",\"teacherName\":\"王明\",\"courseName\":\"\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":true,\"values\":{\"maxPerDay\":3}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "所有老师每天最多上4节",
+        "type" : "TEACHER_MAX_PER_DAY",
+        "typeName" : "教师一天最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "所有教师每天授课节数最多不超过4节",
+        "reason" : "",
+        "params" : {
+          "maxPerDay" : 4
+        },
+        "entries" : [ {
+          "params" : {
+            "maxPerDay" : 4
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "王老师最多3节",
+        "type" : "TEACHER_MAX_PER_DAY",
+        "typeName" : "教师一天最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "王明老师每天授课节数最多不超过3节",
+        "reason" : "",
+        "params" : {
+          "teacherId" : 1,
+          "maxPerDay" : 3
+        },
+        "entries" : [ {
+          "params" : {
+            "teacherId" : 1,
+            "maxPerDay" : 3
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2612,
+      "outputTokens" : 713,
+      "latencyMs" : 9406
+    }, {
+      "code" : "C09",
+      "attempt" : 1,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"七年级1班每天最多8节\",\n      \"type\": \"CLASS_MAX_PER_DAY\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"限制七年级1班单日课程总数不超过8节\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"\",\n      \"className\": \"七年级1班\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [],\n      \"section\": \"\",\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {\n        \"maxPerDay\": 8\n      }\n    },\n    {\n      \"sourceText\": \"七年级2班最多7节\",\n      \"type\": \"CLASS_MAX_PER_DAY\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"限制七年级2班单日课程总数不超过7节\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"\",\n      \"className\": \"七年级2班\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [],\n      \"section\": \"\",\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {\n        \"maxPerDay\": 7\n      }\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "七年级1班每天最多8节",
+        "type" : "CLASS_MAX_PER_DAY",
+        "typeName" : "班级一天最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "限制七年级1班单日课程总数不超过8节",
+        "reason" : "",
+        "params" : {
+          "classId" : 21,
+          "maxPerDay" : 8
+        },
+        "entries" : [ {
+          "params" : {
+            "classId" : 21,
+            "maxPerDay" : 8
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "七年级2班最多7节",
+        "type" : "CLASS_MAX_PER_DAY",
+        "typeName" : "班级一天最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "限制七年级2班单日课程总数不超过7节",
+        "reason" : "",
+        "params" : {
+          "classId" : 22,
+          "maxPerDay" : 7
+        },
+        "entries" : [ {
+          "params" : {
+            "classId" : 22,
+            "maxPerDay" : 7
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2617,
+      "outputTokens" : 1001,
+      "latencyMs" : 9766
+    }, {
+      "code" : "C09",
+      "attempt" : 2,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"七年级1班每天最多8节\",\"type\":\"CLASS_MAX_PER_DAY\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"七年级1班每天最多安排8节课\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"\",\"className\":\"七年级1班\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":true,\"values\":{\"maxPerDay\":8}},{\"sourceText\":\"七年级2班最多7节\",\"type\":\"CLASS_MAX_PER_DAY\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"七年级2班每天最多安排7节课\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"\",\"className\":\"七年级2班\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":true,\"values\":{\"maxPerDay\":7}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "七年级1班每天最多8节",
+        "type" : "CLASS_MAX_PER_DAY",
+        "typeName" : "班级一天最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "七年级1班每天最多安排8节课",
+        "reason" : "",
+        "params" : {
+          "classId" : 21,
+          "maxPerDay" : 8
+        },
+        "entries" : [ {
+          "params" : {
+            "classId" : 21,
+            "maxPerDay" : 8
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "七年级2班最多7节",
+        "type" : "CLASS_MAX_PER_DAY",
+        "typeName" : "班级一天最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "七年级2班每天最多安排7节课",
+        "reason" : "",
+        "params" : {
+          "classId" : 22,
+          "maxPerDay" : 7
+        },
+        "entries" : [ {
+          "params" : {
+            "classId" : 22,
+            "maxPerDay" : 7
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2617,
+      "outputTokens" : 706,
+      "latencyMs" : 6550
+    }, {
+      "code" : "C09",
+      "attempt" : 3,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"七年级1班每天最多8节\",\"type\":\"CLASS_MAX_PER_DAY\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"七年级1班每天最多排8节课\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"\",\"className\":\"七年级1班\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":true,\"values\":{\"maxPerDay\":8}},{\"sourceText\":\"七年级2班最多7节\",\"type\":\"CLASS_MAX_PER_DAY\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"七年级2班每天最多排7节课\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"\",\"className\":\"七年级2班\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":true,\"values\":{\"maxPerDay\":7}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "七年级1班每天最多8节",
+        "type" : "CLASS_MAX_PER_DAY",
+        "typeName" : "班级一天最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "七年级1班每天最多排8节课",
+        "reason" : "",
+        "params" : {
+          "classId" : 21,
+          "maxPerDay" : 8
+        },
+        "entries" : [ {
+          "params" : {
+            "classId" : 21,
+            "maxPerDay" : 8
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "七年级2班最多7节",
+        "type" : "CLASS_MAX_PER_DAY",
+        "typeName" : "班级一天最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "七年级2班每天最多排7节课",
+        "reason" : "",
+        "params" : {
+          "classId" : 22,
+          "maxPerDay" : 7
+        },
+        "entries" : [ {
+          "params" : {
+            "classId" : 22,
+            "maxPerDay" : 7
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2617,
+      "outputTokens" : 654,
+      "latencyMs" : 7381
+    }, {
+      "code" : "C10",
+      "attempt" : 1,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"数学在每个班每天最多上2节\",\n      \"type\": \"COURSE_MAX_PER_DAY\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"限制每个班每天的数学课最多安排2节\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"数学\",\n      \"className\": \"\",\n      \"subject\": \"数学\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [],\n      \"section\": \"\",\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {\n        \"maxPerDay\": 2\n      }\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "数学在每个班每天最多上2节",
+        "type" : "COURSE_MAX_PER_DAY",
+        "typeName" : "课程一天最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "限制每个班每天的数学课最多安排2节",
+        "reason" : "",
+        "params" : {
+          "courseId" : 12,
+          "maxPerDay" : 2
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 12,
+            "maxPerDay" : 2
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2608,
+      "outputTokens" : 646,
+      "latencyMs" : 9359
+    }, {
+      "code" : "C10",
+      "attempt" : 2,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"数学在每个班每天最多上2节。\",\"type\":\"COURSE_MAX_PER_DAY\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"限制每个班级每天数学课最多上2节\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"数学\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":true,\"values\":{\"maxPerDay\":2}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "数学在每个班每天最多上2节。",
+        "type" : "COURSE_MAX_PER_DAY",
+        "typeName" : "课程一天最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "限制每个班级每天数学课最多上2节",
+        "reason" : "",
+        "params" : {
+          "courseId" : 12,
+          "maxPerDay" : 2
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 12,
+            "maxPerDay" : 2
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2608,
+      "outputTokens" : 750,
+      "latencyMs" : 8611
+    }, {
+      "code" : "C10",
+      "attempt" : 3,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"数学在每个班每天最多上2节。\",\"type\":\"COURSE_MAX_PER_DAY\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"限制每个班级每天数学课最多安排2节\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"数学\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":true,\"values\":{\"maxPerDay\":2}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "数学在每个班每天最多上2节。",
+        "type" : "COURSE_MAX_PER_DAY",
+        "typeName" : "课程一天最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "限制每个班级每天数学课最多安排2节",
+        "reason" : "",
+        "params" : {
+          "courseId" : 12,
+          "maxPerDay" : 2
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 12,
+            "maxPerDay" : 2
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2608,
+      "outputTokens" : 536,
+      "latencyMs" : 6701
+    }, {
+      "code" : "C11",
+      "attempt" : 1,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"每个班每天晚自习最多2节\",\"type\":\"EVENING_MAX\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"每个班级每天晚自习最多安排2节课\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"EVENING\",\"sectionOrdinals\":[],\"allDays\":true,\"values\":{\"maxPerDay\":2}},{\"sourceText\":\"九年级1班最多1节\",\"type\":\"EVENING_MAX\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"九年级1班每天晚自习最多安排1节课\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"\",\"className\":\"九年级1班\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"EVENING\",\"sectionOrdinals\":[],\"allDays\":true,\"values\":{\"maxPerDay\":1}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "每个班每天晚自习最多2节",
+        "type" : "EVENING_MAX",
+        "typeName" : "晚自习最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "每个班级每天晚自习最多安排2节课",
+        "reason" : "",
+        "params" : {
+          "maxPerDay" : 2
+        },
+        "entries" : [ {
+          "params" : {
+            "maxPerDay" : 2
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "九年级1班最多1节",
+        "type" : "EVENING_MAX",
+        "typeName" : "晚自习最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "九年级1班每天晚自习最多安排1节课",
+        "reason" : "",
+        "params" : {
+          "classId" : 23,
+          "maxPerDay" : 1
+        },
+        "entries" : [ {
+          "params" : {
+            "classId" : 23,
+            "maxPerDay" : 1
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2617,
+      "outputTokens" : 995,
+      "latencyMs" : 9724
+    }, {
+      "code" : "C11",
+      "attempt" : 2,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"每个班每天晚自习最多2节\",\n      \"type\": \"EVENING_MAX\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"所有班级每天晚自习最多排2节课\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [],\n      \"section\": \"EVENING\",\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {\n        \"maxPerDay\": 2\n      }\n    },\n    {\n      \"sourceText\": \"九年级1班最多1节\",\n      \"type\": \"EVENING_MAX\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"九年级1班每天晚自习最多排1节课\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"\",\n      \"className\": \"九年级1班\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [],\n      \"section\": \"EVENING\",\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {\n        \"maxPerDay\": 1\n      }\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "每个班每天晚自习最多2节",
+        "type" : "EVENING_MAX",
+        "typeName" : "晚自习最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "所有班级每天晚自习最多排2节课",
+        "reason" : "",
+        "params" : {
+          "maxPerDay" : 2
+        },
+        "entries" : [ {
+          "params" : {
+            "maxPerDay" : 2
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "九年级1班最多1节",
+        "type" : "EVENING_MAX",
+        "typeName" : "晚自习最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "九年级1班每天晚自习最多排1节课",
+        "reason" : "",
+        "params" : {
+          "classId" : 23,
+          "maxPerDay" : 1
+        },
+        "entries" : [ {
+          "params" : {
+            "classId" : 23,
+            "maxPerDay" : 1
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2617,
+      "outputTokens" : 1746,
+      "latencyMs" : 15450
+    }, {
+      "code" : "C11",
+      "attempt" : 3,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"每个班每天晚自习最多2节\",\n      \"type\": \"EVENING_MAX\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"所有班级每天晚自习最多安排2节课\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [1, 2, 3, 4, 5],\n      \"periods\": [9, 10],\n      \"section\": \"EVENING\",\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {\n        \"maxPerDay\": 2\n      }\n    },\n    {\n      \"sourceText\": \"九年级1班最多1节\",\n      \"type\": \"EVENING_MAX\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"九年级1班每天晚自习最多安排1节课\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"\",\n      \"className\": \"九年级1班\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [1, 2, 3, 4, 5],\n      \"periods\": [9, 10],\n      \"section\": \"EVENING\",\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {\n        \"maxPerDay\": 1\n      }\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "每个班每天晚自习最多2节",
+        "type" : "EVENING_MAX",
+        "typeName" : "晚自习最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "所有班级每天晚自习最多安排2节课",
+        "reason" : "",
+        "params" : {
+          "maxPerDay" : 2
+        },
+        "entries" : [ {
+          "params" : {
+            "maxPerDay" : 2
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "九年级1班最多1节",
+        "type" : "EVENING_MAX",
+        "typeName" : "晚自习最多 N 节",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "九年级1班每天晚自习最多安排1节课",
+        "reason" : "",
+        "params" : {
+          "classId" : 23,
+          "maxPerDay" : 1
+        },
+        "entries" : [ {
+          "params" : {
+            "classId" : 23,
+            "maxPerDay" : 1
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2617,
+      "outputTokens" : 1585,
+      "latencyMs" : 14115
+    }, {
+      "code" : "C12",
+      "attempt" : 1,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"体育尽量不要排下午第一节。\",\"type\":\"SPORT_NOT_FIRST_AFTERNOON\",\"strength\":\"SOFT\",\"status\":\"READY\",\"explanation\":\"体育课尽量不安排在下午第一节\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"体育\",\"className\":\"\",\"subject\":\"体育\",\"roomType\":\"\",\"days\":[],\"periods\":[5],\"section\":\"AFTERNOON\",\"sectionOrdinals\":[1],\"allDays\":true,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "体育尽量不要排下午第一节。",
+        "type" : "SPORT_NOT_FIRST_AFTERNOON",
+        "typeName" : "体育不在下午第一节",
+        "strength" : "SOFT",
+        "effectiveHard" : false,
+        "effectiveWeight" : 70,
+        "status" : "READY",
+        "explanation" : "体育课尽量不安排在下午第一节",
+        "reason" : "",
+        "params" : {
+          "courseId" : 14
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 14
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2606,
+      "outputTokens" : 481,
+      "latencyMs" : 6242
+    }, {
+      "code" : "C12",
+      "attempt" : 2,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"体育尽量不要排下午第一节\",\"type\":\"SPORT_NOT_FIRST_AFTERNOON\",\"strength\":\"SOFT\",\"status\":\"READY\",\"explanation\":\"体育课尽量避免安排在下午第一节\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"体育\",\"className\":\"\",\"subject\":\"体育\",\"roomType\":\"\",\"days\":[1,2,3,4,5],\"periods\":[5],\"section\":\"AFTERNOON\",\"sectionOrdinals\":[1],\"allDays\":true,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "体育尽量不要排下午第一节",
+        "type" : "SPORT_NOT_FIRST_AFTERNOON",
+        "typeName" : "体育不在下午第一节",
+        "strength" : "SOFT",
+        "effectiveHard" : false,
+        "effectiveWeight" : 70,
+        "status" : "READY",
+        "explanation" : "体育课尽量避免安排在下午第一节",
+        "reason" : "",
+        "params" : {
+          "courseId" : 14
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 14
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2606,
+      "outputTokens" : 483,
+      "latencyMs" : 6137
+    }, {
+      "code" : "C12",
+      "attempt" : 3,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"体育尽量不要排下午第一节\",\n      \"type\": \"SPORT_NOT_FIRST_AFTERNOON\",\n      \"strength\": \"SOFT\",\n      \"status\": \"READY\",\n      \"explanation\": \"体育课尽量避免安排在下午第一节\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"体育\",\n      \"className\": \"\",\n      \"subject\": \"体育\",\n      \"roomType\": \"\",\n      \"days\": [1, 2, 3, 4, 5],\n      \"periods\": [5],\n      \"section\": \"AFTERNOON\",\n      \"sectionOrdinals\": [1],\n      \"allDays\": true,\n      \"values\": {}\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "体育尽量不要排下午第一节",
+        "type" : "SPORT_NOT_FIRST_AFTERNOON",
+        "typeName" : "体育不在下午第一节",
+        "strength" : "SOFT",
+        "effectiveHard" : false,
+        "effectiveWeight" : 70,
+        "status" : "READY",
+        "explanation" : "体育课尽量避免安排在下午第一节",
+        "reason" : "",
+        "params" : {
+          "courseId" : 14
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 14
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2606,
+      "outputTokens" : 1031,
+      "latencyMs" : 10215
+    }, {
+      "code" : "C13",
+      "attempt" : 1,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"语文尽量分散到不同天\",\"type\":\"COURSE_SPREAD\",\"strength\":\"SOFT\",\"status\":\"READY\",\"explanation\":\"语文课尽量分散到不同教学日安排\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"语文\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}},{\"sourceText\":\"数学尽量排上午\",\"type\":\"MAIN_SUBJECT_MORNING\",\"strength\":\"SOFT\",\"status\":\"READY\",\"explanation\":\"数学课尽量安排在上午（第4节及之前）\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"数学\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"MORNING\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{\"beforePeriodNo\":4}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "语文尽量分散到不同天",
+        "type" : "COURSE_SPREAD",
+        "typeName" : "同一课程分散到不同天",
+        "strength" : "SOFT",
+        "effectiveHard" : false,
+        "effectiveWeight" : 50,
+        "status" : "READY",
+        "explanation" : "语文课尽量分散到不同教学日安排",
+        "reason" : "",
+        "params" : {
+          "courseId" : 11
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 11
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "数学尽量排上午",
+        "type" : "MAIN_SUBJECT_MORNING",
+        "typeName" : "主科尽量排上午",
+        "strength" : "SOFT",
+        "effectiveHard" : false,
+        "effectiveWeight" : 55,
+        "status" : "READY",
+        "explanation" : "数学课尽量安排在上午（第4节及之前）",
+        "reason" : "",
+        "params" : {
+          "courseId" : 12,
+          "beforePeriodNo" : 4
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 12,
+            "beforePeriodNo" : 4
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2610,
+      "outputTokens" : 1089,
+      "latencyMs" : 10678
+    }, {
+      "code" : "C13",
+      "attempt" : 2,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"语文尽量分散到不同天\",\n      \"type\": \"COURSE_SPREAD\",\n      \"strength\": \"SOFT\",\n      \"status\": \"READY\",\n      \"explanation\": \"同一班级的语文课程尽量分散安排在不同教学日\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"语文\",\n      \"className\": \"\",\n      \"subject\": \"语文\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [],\n      \"section\": \"\",\n      \"sectionOrdinals\": [],\n      \"allDays\": false,\n      \"values\": {}\n    },\n    {\n      \"sourceText\": \"数学尽量排上午\",\n      \"type\": \"MAIN_SUBJECT_MORNING\",\n      \"strength\": \"SOFT\",\n      \"status\": \"READY\",\n      \"explanation\": \"数学课优先安排在上午时段（第4节及之前）\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"数学\",\n      \"className\": \"\",\n      \"subject\": \"数学\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [1, 2, 3, 4],\n      \"section\": \"MORNING\",\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {\n        \"beforePeriodNo\": 4\n      }\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "语文尽量分散到不同天",
+        "type" : "COURSE_SPREAD",
+        "typeName" : "同一课程分散到不同天",
+        "strength" : "SOFT",
+        "effectiveHard" : false,
+        "effectiveWeight" : 50,
+        "status" : "READY",
+        "explanation" : "同一班级的语文课程尽量分散安排在不同教学日",
+        "reason" : "",
+        "params" : {
+          "courseId" : 11
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 11
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "数学尽量排上午",
+        "type" : "MAIN_SUBJECT_MORNING",
+        "typeName" : "主科尽量排上午",
+        "strength" : "SOFT",
+        "effectiveHard" : false,
+        "effectiveWeight" : 55,
+        "status" : "READY",
+        "explanation" : "数学课优先安排在上午时段（第4节及之前）",
+        "reason" : "",
+        "params" : {
+          "courseId" : 12,
+          "beforePeriodNo" : 4
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 12,
+            "beforePeriodNo" : 4
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2610,
+      "outputTokens" : 1102,
+      "latencyMs" : 8997
+    }, {
+      "code" : "C13",
+      "attempt" : 3,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"语文尽量分散到不同天\",\"type\":\"COURSE_SPREAD\",\"strength\":\"SOFT\",\"status\":\"READY\",\"explanation\":\"语文课尽量分散排在不同工作日\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"语文\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}},{\"sourceText\":\"数学尽量排上午\",\"type\":\"MAIN_SUBJECT_MORNING\",\"strength\":\"SOFT\",\"status\":\"READY\",\"explanation\":\"数学课优先安排在上午时段（第4节及之前）\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"数学\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"MORNING\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{\"beforePeriodNo\":4}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "语文尽量分散到不同天",
+        "type" : "COURSE_SPREAD",
+        "typeName" : "同一课程分散到不同天",
+        "strength" : "SOFT",
+        "effectiveHard" : false,
+        "effectiveWeight" : 50,
+        "status" : "READY",
+        "explanation" : "语文课尽量分散排在不同工作日",
+        "reason" : "",
+        "params" : {
+          "courseId" : 11
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 11
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "数学尽量排上午",
+        "type" : "MAIN_SUBJECT_MORNING",
+        "typeName" : "主科尽量排上午",
+        "strength" : "SOFT",
+        "effectiveHard" : false,
+        "effectiveWeight" : 55,
+        "status" : "READY",
+        "explanation" : "数学课优先安排在上午时段（第4节及之前）",
+        "reason" : "",
+        "params" : {
+          "courseId" : 12,
+          "beforePeriodNo" : 4
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 12,
+            "beforePeriodNo" : 4
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2610,
+      "outputTokens" : 1016,
+      "latencyMs" : 11023
+    }, {
+      "code" : "C14",
+      "attempt" : 1,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"王老师每天最多连上2节\",\"type\":\"TEACHER_MAX_CONSECUTIVE\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"王明老师每天连续授课不超过2节\",\"reason\":\"\",\"teacherName\":\"王明\",\"courseName\":\"\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":true,\"values\":{\"maxConsecutive\":2}},{\"sourceText\":\"其他老师最多3节\",\"type\":\"TEACHER_MAX_CONSECUTIVE\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"其他教师每天连续授课全局默认不超过3节\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":true,\"values\":{\"maxConsecutive\":3}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "王老师每天最多连上2节",
+        "type" : "TEACHER_MAX_CONSECUTIVE",
+        "typeName" : "教师连续上课上限",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "王明老师每天连续授课不超过2节",
+        "reason" : "",
+        "params" : {
+          "teacherId" : 1,
+          "maxConsecutive" : 2
+        },
+        "entries" : [ {
+          "params" : {
+            "teacherId" : 1,
+            "maxConsecutive" : 2
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "其他老师最多3节",
+        "type" : "TEACHER_MAX_CONSECUTIVE",
+        "typeName" : "教师连续上课上限",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "其他教师每天连续授课全局默认不超过3节",
+        "reason" : "",
+        "params" : {
+          "maxConsecutive" : 3
+        },
+        "entries" : [ {
+          "params" : {
+            "maxConsecutive" : 3
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2613,
+      "outputTokens" : 1415,
+      "latencyMs" : 12469
+    }, {
+      "code" : "C14",
+      "attempt" : 2,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"王老师每天最多连上2节\",\n      \"type\": \"TEACHER_MAX_CONSECUTIVE\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"王明老师每天连续授课不超过2节\",\n      \"reason\": \"\",\n      \"teacherName\": \"王明\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [],\n      \"section\": \"\",\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {\n        \"maxConsecutive\": 2\n      }\n    },\n    {\n      \"sourceText\": \"其他老师最多3节\",\n      \"type\": \"TEACHER_MAX_CONSECUTIVE\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"全局其他教师每天连续授课不超过3节\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [],\n      \"section\": \"\",\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {\n        \"maxConsecutive\": 3\n      }\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "王老师每天最多连上2节",
+        "type" : "TEACHER_MAX_CONSECUTIVE",
+        "typeName" : "教师连续上课上限",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "王明老师每天连续授课不超过2节",
+        "reason" : "",
+        "params" : {
+          "teacherId" : 1,
+          "maxConsecutive" : 2
+        },
+        "entries" : [ {
+          "params" : {
+            "teacherId" : 1,
+            "maxConsecutive" : 2
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "其他老师最多3节",
+        "type" : "TEACHER_MAX_CONSECUTIVE",
+        "typeName" : "教师连续上课上限",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "全局其他教师每天连续授课不超过3节",
+        "reason" : "",
+        "params" : {
+          "maxConsecutive" : 3
+        },
+        "entries" : [ {
+          "params" : {
+            "maxConsecutive" : 3
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2613,
+      "outputTokens" : 1463,
+      "latencyMs" : 12817
+    }, {
+      "code" : "C14",
+      "attempt" : 3,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"王老师每天最多连上2节\",\n      \"type\": \"TEACHER_MAX_CONSECUTIVE\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"王明老师连续授课最多不超过2节\",\n      \"reason\": \"\",\n      \"teacherName\": \"王明\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [],\n      \"section\": \"\",\n      \"sectionOrdinals\": [],\n      \"allDays\": false,\n      \"values\": {\n        \"maxConsecutive\": 2\n      }\n    },\n    {\n      \"sourceText\": \"其他老师最多3节\",\n      \"type\": \"TEACHER_MAX_CONSECUTIVE\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"全局默认其他教师连续授课最多不超过3节\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [],\n      \"section\": \"\",\n      \"sectionOrdinals\": [],\n      \"allDays\": false,\n      \"values\": {\n        \"maxConsecutive\": 3\n      }\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "王老师每天最多连上2节",
+        "type" : "TEACHER_MAX_CONSECUTIVE",
+        "typeName" : "教师连续上课上限",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "王明老师连续授课最多不超过2节",
+        "reason" : "",
+        "params" : {
+          "teacherId" : 1,
+          "maxConsecutive" : 2
+        },
+        "entries" : [ {
+          "params" : {
+            "teacherId" : 1,
+            "maxConsecutive" : 2
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "其他老师最多3节",
+        "type" : "TEACHER_MAX_CONSECUTIVE",
+        "typeName" : "教师连续上课上限",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "全局默认其他教师连续授课最多不超过3节",
+        "reason" : "",
+        "params" : {
+          "maxConsecutive" : 3
+        },
+        "entries" : [ {
+          "params" : {
+            "maxConsecutive" : 3
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2613,
+      "outputTokens" : 1235,
+      "latencyMs" : 10881
+    }, {
+      "code" : "C15",
+      "attempt" : 1,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"王老师每周三尽量整天无课。\",\"type\":\"TEACHER_DAY_OFF\",\"strength\":\"SOFT\",\"status\":\"READY\",\"explanation\":\"王明老师每周三尽量不安排课程\",\"reason\":\"\",\"teacherName\":\"王明\",\"courseName\":\"\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[3],\"periods\":[],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "王老师每周三尽量整天无课。",
+        "type" : "TEACHER_DAY_OFF",
+        "typeName" : "教师固定无课日",
+        "strength" : "SOFT",
+        "effectiveHard" : false,
+        "effectiveWeight" : 30,
+        "status" : "READY",
+        "explanation" : "王明老师每周三尽量不安排课程",
+        "reason" : "",
+        "params" : {
+          "teacherId" : 1,
+          "dayOfWeek" : 3
+        },
+        "entries" : [ {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 3
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2608,
+      "outputTokens" : 543,
+      "latencyMs" : 6586
+    }, {
+      "code" : "C15",
+      "attempt" : 2,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"王老师每周三尽量整天无课。\",\"type\":\"TEACHER_DAY_OFF\",\"strength\":\"SOFT\",\"status\":\"READY\",\"explanation\":\"尽量为王明老师在每周三安排全天无课\",\"reason\":\"\",\"teacherName\":\"王明\",\"courseName\":\"\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[3],\"periods\":[],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "王老师每周三尽量整天无课。",
+        "type" : "TEACHER_DAY_OFF",
+        "typeName" : "教师固定无课日",
+        "strength" : "SOFT",
+        "effectiveHard" : false,
+        "effectiveWeight" : 30,
+        "status" : "READY",
+        "explanation" : "尽量为王明老师在每周三安排全天无课",
+        "reason" : "",
+        "params" : {
+          "teacherId" : 1,
+          "dayOfWeek" : 3
+        },
+        "entries" : [ {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 3
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2608,
+      "outputTokens" : 481,
+      "latencyMs" : 6814
+    }, {
+      "code" : "C15",
+      "attempt" : 3,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"王老师每周三尽量整天无课。\",\n      \"type\": \"TEACHER_DAY_OFF\",\n      \"strength\": \"SOFT\",\n      \"status\": \"READY\",\n      \"explanation\": \"尽量为王明老师在周三安排整天无课\",\n      \"reason\": \"\",\n      \"teacherName\": \"王明\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [3],\n      \"periods\": [],\n      \"section\": \"\",\n      \"sectionOrdinals\": [],\n      \"allDays\": false,\n      \"values\": {}\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "王老师每周三尽量整天无课。",
+        "type" : "TEACHER_DAY_OFF",
+        "typeName" : "教师固定无课日",
+        "strength" : "SOFT",
+        "effectiveHard" : false,
+        "effectiveWeight" : 30,
+        "status" : "READY",
+        "explanation" : "尽量为王明老师在周三安排整天无课",
+        "reason" : "",
+        "params" : {
+          "teacherId" : 1,
+          "dayOfWeek" : 3
+        },
+        "entries" : [ {
+          "params" : {
+            "teacherId" : 1,
+            "dayOfWeek" : 3
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2608,
+      "outputTokens" : 603,
+      "latencyMs" : 7671
+    }, {
+      "code" : "C16",
+      "attempt" : 1,
+      "supported" : false,
+      "passed" : false,
+      "reason" : "同名教师没有作为候选请用户选择",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"张老师周三下午不排\",\n      \"type\": \"TEACHER_UNAVAILABLE\",\n      \"strength\": \"HARD\",\n      \"status\": \"NEEDS_INPUT\",\n      \"explanation\": \"指定教师周三下午（第5至8节）不排课\",\n      \"reason\": \"存在多位张姓教师（张伟甲、张伟乙），无法确定具体教师\",\n      \"teacherName\": \"\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [3],\n      \"periods\": [5, 6, 7, 8],\n      \"section\": \"AFTERNOON\",\n      \"sectionOrdinals\": [1, 2, 3, 4],\n      \"allDays\": false,\n      \"values\": {}\n    },\n    {\n      \"sourceText\": \"体育不排晚自习\",\n      \"type\": \"COURSE_NOT_IN_EVENING\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"体育课不安排在晚自习时段\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"体育\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [9, 10],\n      \"section\": \"EVENING\",\n      \"sectionOrdinals\": [1, 2],\n      \"allDays\": true,\n      \"values\": {}\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "张老师周三下午不排",
+        "type" : "TEACHER_UNAVAILABLE",
+        "typeName" : "教师禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "NEEDS_INPUT",
+        "explanation" : "指定教师周三下午（第5至8节）不排课",
+        "reason" : "存在多位张姓教师（张伟甲、张伟乙），无法确定具体教师",
+        "params" : { },
+        "entries" : [ ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "体育不排晚自习",
+        "type" : "COURSE_NOT_IN_EVENING",
+        "typeName" : "课程不排晚自习",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "体育课不安排在晚自习时段",
+        "reason" : "",
+        "params" : {
+          "courseId" : 14
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 14
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2613,
+      "outputTokens" : 1607,
+      "latencyMs" : 13960
+    }, {
+      "code" : "C16",
+      "attempt" : 2,
+      "supported" : false,
+      "passed" : false,
+      "reason" : "同名教师没有作为候选请用户选择",
+      "content" : "{\"proposals\":[{\"sourceText\":\"张老师周三下午不排\",\"type\":\"TEACHER_UNAVAILABLE\",\"strength\":\"HARD\",\"status\":\"NEEDS_INPUT\",\"explanation\":\"指定张老师周三下午（第5-8节）不排课\",\"reason\":\"上下文存在多位张姓教师（张伟甲、张伟乙），无法确定具体指代哪一位\",\"teacherName\":\"\",\"courseName\":\"\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[3],\"periods\":[5,6,7,8],\"section\":\"AFTERNOON\",\"sectionOrdinals\":[1,2,3,4],\"allDays\":false,\"values\":{}},{\"sourceText\":\"体育不排晚自习\",\"type\":\"COURSE_NOT_IN_EVENING\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"体育课不安排在晚自习时段\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"体育\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"EVENING\",\"sectionOrdinals\":[],\"allDays\":true,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "张老师周三下午不排",
+        "type" : "TEACHER_UNAVAILABLE",
+        "typeName" : "教师禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "NEEDS_INPUT",
+        "explanation" : "指定张老师周三下午（第5-8节）不排课",
+        "reason" : "上下文存在多位张姓教师（张伟甲、张伟乙），无法确定具体指代哪一位",
+        "params" : { },
+        "entries" : [ ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "体育不排晚自习",
+        "type" : "COURSE_NOT_IN_EVENING",
+        "typeName" : "课程不排晚自习",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "体育课不安排在晚自习时段",
+        "reason" : "",
+        "params" : {
+          "courseId" : 14
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 14
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2613,
+      "outputTokens" : 1563,
+      "latencyMs" : 13860
+    }, {
+      "code" : "C16",
+      "attempt" : 3,
+      "supported" : false,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"张老师周三下午不排\",\n      \"type\": \"TEACHER_UNAVAILABLE\",\n      \"strength\": \"HARD\",\n      \"status\": \"NEEDS_INPUT\",\n      \"explanation\": \"指定教师周三下午不排课\",\n      \"reason\": \"上下文中存在多位姓张的教师（张伟甲、张伟乙），无法确定具体教师\",\n      \"teacherName\": \"张老师\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [3],\n      \"periods\": [5, 6, 7, 8],\n      \"section\": \"AFTERNOON\",\n      \"sectionOrdinals\": [],\n      \"allDays\": false,\n      \"values\": {}\n    },\n    {\n      \"sourceText\": \"体育不排晚自习\",\n      \"type\": \"COURSE_NOT_IN_EVENING\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"体育课程不安排在晚自习时段\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"体育\",\n      \"className\": \"\",\n      \"subject\": \"体育\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [9, 10],\n      \"section\": \"EVENING\",\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {}\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "张老师周三下午不排",
+        "type" : "TEACHER_UNAVAILABLE",
+        "typeName" : "教师禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "NEEDS_INPUT",
+        "explanation" : "指定教师周三下午不排课",
+        "reason" : "上下文中存在多位姓张的教师（张伟甲、张伟乙），无法确定具体教师",
+        "params" : { },
+        "entries" : [ ],
+        "candidates" : [ {
+          "field" : "teacherId",
+          "label" : "教师",
+          "options" : [ {
+            "id" : 4,
+            "name" : "张伟乙"
+          }, {
+            "id" : 3,
+            "name" : "张伟甲"
+          } ]
+        } ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "体育不排晚自习",
+        "type" : "COURSE_NOT_IN_EVENING",
+        "typeName" : "课程不排晚自习",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "体育课程不安排在晚自习时段",
+        "reason" : "",
+        "params" : {
+          "courseId" : 14
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 14
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2613,
+      "outputTokens" : 1487,
+      "latencyMs" : 13743
+    }, {
+      "code" : "C17",
+      "attempt" : 1,
+      "supported" : false,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"王老师最近身体不好，给他少排一点课。\",\n      \"type\": \"TEACHER_MAX_PER_DAY\",\n      \"strength\": \"SOFT\",\n      \"status\": \"NEEDS_INPUT\",\n      \"explanation\": \"限制王明老师单日授课节数上限，减轻教学负担\",\n      \"reason\": \"缺少王明老师每天最多授课节数（maxPerDay），请补充具体数值（范围 1-12）\",\n      \"teacherName\": \"王明\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [],\n      \"section\": \"\",\n      \"sectionOrdinals\": [],\n      \"allDays\": false,\n      \"values\": {}\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "王老师最近身体不好，给他少排一点课。",
+        "type" : "TEACHER_MAX_PER_DAY",
+        "typeName" : "教师一天最多 N 节",
+        "strength" : "SOFT",
+        "effectiveHard" : false,
+        "effectiveWeight" : 60,
+        "status" : "NEEDS_INPUT",
+        "explanation" : "限制王明老师单日授课节数上限，减轻教学负担",
+        "reason" : "缺少王明老师每天最多授课节数（maxPerDay），请补充具体数值（范围 1-12）",
+        "params" : { },
+        "entries" : [ ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2610,
+      "outputTokens" : 3845,
+      "latencyMs" : 37647
+    }, {
+      "code" : "C17",
+      "attempt" : 2,
+      "supported" : false,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"王老师最近身体不好，给他少排一点课\",\"type\":\"TEACHER_MAX_PER_DAY\",\"strength\":\"SOFT\",\"status\":\"NEEDS_INPUT\",\"explanation\":\"限制王明老师每天最多上课节数\",\"reason\":\"缺少每天最多排课节数，请明确具体的单日节数上限\",\"teacherName\":\"王明\",\"courseName\":\"\",\"className\":\"\",\"subject\":\"语文\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":true,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "王老师最近身体不好，给他少排一点课",
+        "type" : "TEACHER_MAX_PER_DAY",
+        "typeName" : "教师一天最多 N 节",
+        "strength" : "SOFT",
+        "effectiveHard" : false,
+        "effectiveWeight" : 60,
+        "status" : "NEEDS_INPUT",
+        "explanation" : "限制王明老师每天最多上课节数",
+        "reason" : "缺少每天最多排课节数，请明确具体的单日节数上限",
+        "params" : { },
+        "entries" : [ ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2610,
+      "outputTokens" : 1020,
+      "latencyMs" : 11833
+    }, {
+      "code" : "C17",
+      "attempt" : 3,
+      "supported" : false,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"王老师最近身体不好，给他少排一点课\",\"type\":\"TEACHER_MAX_PER_DAY\",\"strength\":\"SOFT\",\"status\":\"NEEDS_INPUT\",\"explanation\":\"限制王明老师每天最多授课节数以减轻负担\",\"reason\":\"未指定每天最多排课节数（缺少 maxPerDay 参数）\",\"teacherName\":\"王明\",\"courseName\":\"\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "王老师最近身体不好，给他少排一点课",
+        "type" : "TEACHER_MAX_PER_DAY",
+        "typeName" : "教师一天最多 N 节",
+        "strength" : "SOFT",
+        "effectiveHard" : false,
+        "effectiveWeight" : 60,
+        "status" : "NEEDS_INPUT",
+        "explanation" : "限制王明老师每天最多授课节数以减轻负担",
+        "reason" : "未指定每天最多排课节数（缺少 maxPerDay 参数）",
+        "params" : { },
+        "entries" : [ ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2610,
+      "outputTokens" : 1019,
+      "latencyMs" : 13172
+    }, {
+      "code" : "C18",
+      "attempt" : 1,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"体育不排每天第一节\",\n      \"type\": \"COURSE_UNAVAILABLE\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"体育课不安排在每天第1节\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"体育\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [1, 2, 3, 4, 5],\n      \"periods\": [1],\n      \"section\": \"MORNING\",\n      \"sectionOrdinals\": [1],\n      \"allDays\": true,\n      \"values\": {}\n    },\n    {\n      \"sourceText\": \"语文不排晚自习\",\n      \"type\": \"COURSE_NOT_IN_EVENING\",\n      \"strength\": \"HARD\",\n      \"status\": \"READY\",\n      \"explanation\": \"语文课不安排在晚自习时段\",\n      \"reason\": \"\",\n      \"teacherName\": \"\",\n      \"courseName\": \"语文\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [1, 2, 3, 4, 5],\n      \"periods\": [9, 10],\n      \"section\": \"EVENING\",\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {}\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "体育不排每天第一节",
+        "type" : "COURSE_UNAVAILABLE",
+        "typeName" : "课程禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "体育课不安排在每天第1节",
+        "reason" : "",
+        "params" : {
+          "courseId" : 14,
+          "dayOfWeek" : 1,
+          "periodNo" : 1
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 1,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C18-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 2,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C18-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 3,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C18-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 4,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C18-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 5,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C18-p1",
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "语文不排晚自习",
+        "type" : "COURSE_NOT_IN_EVENING",
+        "typeName" : "课程不排晚自习",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "语文课不安排在晚自习时段",
+        "reason" : "",
+        "params" : {
+          "courseId" : 11
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 11
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2612,
+      "outputTokens" : 1049,
+      "latencyMs" : 9493
+    }, {
+      "code" : "C18",
+      "attempt" : 2,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"体育不排每天第一节\",\"type\":\"COURSE_UNAVAILABLE\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"体育课每天第1节不排课\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"体育\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[1,2,3,4,5],\"periods\":[1],\"section\":\"MORNING\",\"sectionOrdinals\":[1],\"allDays\":true,\"values\":{}},{\"sourceText\":\"语文不排晚自习\",\"type\":\"COURSE_NOT_IN_EVENING\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"语文课不安排在晚自习时段\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"语文\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"EVENING\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "体育不排每天第一节",
+        "type" : "COURSE_UNAVAILABLE",
+        "typeName" : "课程禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "体育课每天第1节不排课",
+        "reason" : "",
+        "params" : {
+          "courseId" : 14,
+          "dayOfWeek" : 1,
+          "periodNo" : 1
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 1,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C18-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 2,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C18-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 3,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C18-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 4,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C18-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 5,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C18-p1",
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "语文不排晚自习",
+        "type" : "COURSE_NOT_IN_EVENING",
+        "typeName" : "课程不排晚自习",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "语文课不安排在晚自习时段",
+        "reason" : "",
+        "params" : {
+          "courseId" : 11
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 11
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2612,
+      "outputTokens" : 577,
+      "latencyMs" : 6602
+    }, {
+      "code" : "C18",
+      "attempt" : 3,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"体育不排每天第一节\",\"type\":\"COURSE_UNAVAILABLE\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"体育课不安排在每天第1节\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"体育\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[1,2,3,4,5],\"periods\":[1],\"section\":\"MORNING\",\"sectionOrdinals\":[1],\"allDays\":true,\"values\":{}},{\"sourceText\":\"语文不排晚自习\",\"type\":\"COURSE_NOT_IN_EVENING\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"语文课不安排在晚自习时段\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"语文\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"EVENING\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "体育不排每天第一节",
+        "type" : "COURSE_UNAVAILABLE",
+        "typeName" : "课程禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "体育课不安排在每天第1节",
+        "reason" : "",
+        "params" : {
+          "courseId" : 14,
+          "dayOfWeek" : 1,
+          "periodNo" : 1
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 1,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C18-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 2,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C18-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 3,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C18-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 4,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C18-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 5,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C18-p1",
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      }, {
+        "proposalId" : "p2",
+        "sourceText" : "语文不排晚自习",
+        "type" : "COURSE_NOT_IN_EVENING",
+        "typeName" : "课程不排晚自习",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "语文课不安排在晚自习时段",
+        "reason" : "",
+        "params" : {
+          "courseId" : 11
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 11
+          },
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2612,
+      "outputTokens" : 1214,
+      "latencyMs" : 10981
+    }, {
+      "code" : "C19",
+      "attempt" : 1,
+      "supported" : false,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"毕业班的数学尽量上午上，其他年级不作要求\",\n      \"type\": \"MAIN_SUBJECT_MORNING\",\n      \"strength\": \"SOFT\",\n      \"status\": \"UNSUPPORTED\",\n      \"explanation\": \"毕业班的数学课尽量安排在上午\",\n      \"reason\": \"当前系统的'主科尽量排上午'约束仅支持对全校课程统一配置，不支持限定到特定年级或行政班，无法精确表达仅限毕业班生效的要求\",\n      \"teacherName\": \"\",\n      \"courseName\": \"数学\",\n      \"className\": \"\",\n      \"subject\": \"数学\",\n      \"roomType\": \"\",\n      \"days\": [],\n      \"periods\": [1, 2, 3, 4],\n      \"section\": \"MORNING\",\n      \"sectionOrdinals\": [],\n      \"allDays\": true,\n      \"values\": {\n        \"beforePeriodNo\": 4\n      }\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "毕业班的数学尽量上午上，其他年级不作要求",
+        "type" : "MAIN_SUBJECT_MORNING",
+        "typeName" : "主科尽量排上午",
+        "strength" : "INHERIT",
+        "effectiveHard" : false,
+        "effectiveWeight" : 55,
+        "status" : "UNSUPPORTED",
+        "explanation" : "毕业班的数学课尽量安排在上午",
+        "reason" : "当前系统的'主科尽量排上午'约束仅支持对全校课程统一配置，不支持限定到特定年级或行政班，无法精确表达仅限毕业班生效的要求",
+        "params" : { },
+        "entries" : [ ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2613,
+      "outputTokens" : 1793,
+      "latencyMs" : 15359
+    }, {
+      "code" : "C19",
+      "attempt" : 2,
+      "supported" : false,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"毕业班的数学尽量上午上，其他年级不作要求。\",\"type\":\"MAIN_SUBJECT_MORNING\",\"strength\":\"SOFT\",\"status\":\"UNSUPPORTED\",\"explanation\":\"毕业班（九年级）的数学课尽量安排在上午\",\"reason\":\"约束类型 MAIN_SUBJECT_MORNING 仅支持按课程全局设置，无法限定特定班级或年级生效\",\"teacherName\":\"\",\"courseName\":\"数学\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[],\"section\":\"MORNING\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{\"beforePeriodNo\":4}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "毕业班的数学尽量上午上，其他年级不作要求。",
+        "type" : "MAIN_SUBJECT_MORNING",
+        "typeName" : "主科尽量排上午",
+        "strength" : "INHERIT",
+        "effectiveHard" : false,
+        "effectiveWeight" : 55,
+        "status" : "UNSUPPORTED",
+        "explanation" : "毕业班（九年级）的数学课尽量安排在上午",
+        "reason" : "约束类型 MAIN_SUBJECT_MORNING 仅支持按课程全局设置，无法限定特定班级或年级生效",
+        "params" : { },
+        "entries" : [ ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2613,
+      "outputTokens" : 1644,
+      "latencyMs" : 14198
+    }, {
+      "code" : "C19",
+      "attempt" : 3,
+      "supported" : false,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"毕业班的数学尽量上午上，其他年级不作要求\",\"type\":\"MAIN_SUBJECT_MORNING\",\"strength\":\"SOFT\",\"status\":\"UNSUPPORTED\",\"explanation\":\"九年级毕业班的数学课尽量安排在上午\",\"reason\":\"MAIN_SUBJECT_MORNING 约束仅支持针对课程进行全局设置，无法限定特定行政班或年级；若直接应用会导致七年级数学也被限制在上午，属于扩大作用范围，现有类型无法精确表达\",\"teacherName\":\"\",\"courseName\":\"数学\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[],\"periods\":[1,2,3,4],\"section\":\"MORNING\",\"sectionOrdinals\":[1,2,3,4],\"allDays\":true,\"values\":{\"beforePeriodNo\":4}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "毕业班的数学尽量上午上，其他年级不作要求",
+        "type" : "MAIN_SUBJECT_MORNING",
+        "typeName" : "主科尽量排上午",
+        "strength" : "INHERIT",
+        "effectiveHard" : false,
+        "effectiveWeight" : 55,
+        "status" : "UNSUPPORTED",
+        "explanation" : "九年级毕业班的数学课尽量安排在上午",
+        "reason" : "MAIN_SUBJECT_MORNING 约束仅支持针对课程进行全局设置，无法限定特定行政班或年级；若直接应用会导致七年级数学也被限制在上午，属于扩大作用范围，现有类型无法精确表达",
+        "params" : { },
+        "entries" : [ ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2613,
+      "outputTokens" : 1877,
+      "latencyMs" : 18140
+    }, {
+      "code" : "C20",
+      "attempt" : 1,
+      "supported" : false,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\n  \"proposals\": [\n    {\n      \"sourceText\": \"王老师周三第99节不排\",\n      \"type\": \"TEACHER_UNAVAILABLE\",\n      \"strength\": \"HARD\",\n      \"status\": \"INVALID\",\n      \"explanation\": \"王明老师周三第99节不排课\",\n      \"reason\": \"课节第99节不在本学期作息时间内且超出系统有效节次范围（1-20）\",\n      \"teacherName\": \"王明\",\n      \"courseName\": \"\",\n      \"className\": \"\",\n      \"subject\": \"\",\n      \"roomType\": \"\",\n      \"days\": [3],\n      \"periods\": [99],\n      \"section\": \"\",\n      \"sectionOrdinals\": [],\n      \"allDays\": false,\n      \"values\": {}\n    }\n  ]\n}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "王老师周三第99节不排",
+        "type" : "TEACHER_UNAVAILABLE",
+        "typeName" : "教师禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "INVALID",
+        "explanation" : "王明老师周三第99节不排课",
+        "reason" : "课节第99节不在本学期作息时间内且超出系统有效节次范围（1-20）",
+        "params" : { },
+        "entries" : [ ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2609,
+      "outputTokens" : 771,
+      "latencyMs" : 8655
+    }, {
+      "code" : "C20",
+      "attempt" : 2,
+      "supported" : false,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"王老师周三第99节不排。\",\"type\":\"TEACHER_UNAVAILABLE\",\"strength\":\"HARD\",\"status\":\"INVALID\",\"explanation\":\"王明老师周三第99节不排课\",\"reason\":\"第99节超出有效节次范围（1-20）且不在当前学期作息内（每天仅1-10节）\",\"teacherName\":\"王明\",\"courseName\":\"\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[3],\"periods\":[99],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "王老师周三第99节不排。",
+        "type" : "TEACHER_UNAVAILABLE",
+        "typeName" : "教师禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "INVALID",
+        "explanation" : "王明老师周三第99节不排课",
+        "reason" : "第99节超出有效节次范围（1-20）且不在当前学期作息内（每天仅1-10节）",
+        "params" : { },
+        "entries" : [ ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2609,
+      "outputTokens" : 717,
+      "latencyMs" : 8124
+    }, {
+      "code" : "C20",
+      "attempt" : 3,
+      "supported" : false,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"王老师周三第99节不排。\",\"type\":\"TEACHER_UNAVAILABLE\",\"strength\":\"HARD\",\"status\":\"INVALID\",\"explanation\":\"王明老师周三第99节禁排\",\"reason\":\"第99节超出本学期作息时间表范围（每日仅1-10节）及课节范围上限\",\"teacherName\":\"王明\",\"courseName\":\"\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[3],\"periods\":[99],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "王老师周三第99节不排。",
+        "type" : "TEACHER_UNAVAILABLE",
+        "typeName" : "教师禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "INVALID",
+        "explanation" : "王明老师周三第99节禁排",
+        "reason" : "第99节超出本学期作息时间表范围（每日仅1-10节）及课节范围上限",
+        "params" : { },
+        "entries" : [ ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2609,
+      "outputTokens" : 903,
+      "latencyMs" : 8838
+    }, {
+      "code" : "C21",
+      "attempt" : 1,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"体育课不排上午第1、2节\",\"type\":\"COURSE_UNAVAILABLE\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"体育课在每天上午第1、2节不排课\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"体育\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[1,2,3,4,5],\"periods\":[1,2],\"section\":\"MORNING\",\"sectionOrdinals\":[1,2],\"allDays\":true,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "体育课不排上午第1、2节",
+        "type" : "COURSE_UNAVAILABLE",
+        "typeName" : "课程禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "体育课在每天上午第1、2节不排课",
+        "reason" : "",
+        "params" : {
+          "courseId" : 14,
+          "dayOfWeek" : 1,
+          "periodNo" : 1
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 1,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 1,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 2,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 2,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 3,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 3,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 4,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 4,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 5,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 5,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2609,
+      "outputTokens" : 650,
+      "latencyMs" : 6544
+    }, {
+      "code" : "C21",
+      "attempt" : 2,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"体育课不排上午第1、2节。\",\"type\":\"COURSE_UNAVAILABLE\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"体育课在每天上午第1、2节不排课\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"体育\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[1,2,3,4,5],\"periods\":[1,2],\"section\":\"MORNING\",\"sectionOrdinals\":[1,2],\"allDays\":true,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "体育课不排上午第1、2节。",
+        "type" : "COURSE_UNAVAILABLE",
+        "typeName" : "课程禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "体育课在每天上午第1、2节不排课",
+        "reason" : "",
+        "params" : {
+          "courseId" : 14,
+          "dayOfWeek" : 1,
+          "periodNo" : 1
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 1,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 1,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 2,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 2,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 3,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 3,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 4,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 4,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 5,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 5,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2609,
+      "outputTokens" : 852,
+      "latencyMs" : 7796
+    }, {
+      "code" : "C21",
+      "attempt" : 3,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"体育课不排上午第1、2节。\",\"type\":\"COURSE_UNAVAILABLE\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"体育课在所有工作日上午第1节和第2节不排课\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"体育\",\"className\":\"\",\"subject\":\"体育\",\"roomType\":\"\",\"days\":[1,2,3,4,5],\"periods\":[1,2],\"section\":\"MORNING\",\"sectionOrdinals\":[1,2],\"allDays\":true,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "体育课不排上午第1、2节。",
+        "type" : "COURSE_UNAVAILABLE",
+        "typeName" : "课程禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "体育课在所有工作日上午第1节和第2节不排课",
+        "reason" : "",
+        "params" : {
+          "courseId" : 14,
+          "dayOfWeek" : 1,
+          "periodNo" : 1
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 1,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 1,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 2,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 2,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 3,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 3,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 4,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 4,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 5,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 14,
+            "dayOfWeek" : 5,
+            "periodNo" : 2
+          },
+          "groupKey" : "eval-C21-p1",
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2609,
+      "outputTokens" : 829,
+      "latencyMs" : 7965
+    }, {
+      "code" : "C22",
+      "attempt" : 1,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"化学周三、周五上午第1节和下午第2节都不排。\",\"type\":\"COURSE_UNAVAILABLE\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"化学在周三、周五上午第1节（第1节）和下午第2节（第6节）不排课\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"化学\",\"className\":\"\",\"subject\":\"化学\",\"roomType\":\"\",\"days\":[3,5],\"periods\":[1,6],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "化学周三、周五上午第1节和下午第2节都不排。",
+        "type" : "COURSE_UNAVAILABLE",
+        "typeName" : "课程禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "化学在周三、周五上午第1节（第1节）和下午第2节（第6节）不排课",
+        "reason" : "",
+        "params" : {
+          "courseId" : 15,
+          "dayOfWeek" : 3,
+          "periodNo" : 1
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 15,
+            "dayOfWeek" : 3,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C22-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 15,
+            "dayOfWeek" : 3,
+            "periodNo" : 6
+          },
+          "groupKey" : "eval-C22-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 15,
+            "dayOfWeek" : 5,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C22-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 15,
+            "dayOfWeek" : 5,
+            "periodNo" : 6
+          },
+          "groupKey" : "eval-C22-p1",
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2616,
+      "outputTokens" : 720,
+      "latencyMs" : 8699
+    }, {
+      "code" : "C22",
+      "attempt" : 2,
+      "supported" : true,
+      "passed" : false,
+      "reason" : "调用失败: TRUNCATED AI 输出被截断（length），请增大模型输出上限或减少单次行数",
+      "proposals" : [ ],
+      "latencyMs" : 35434
+    }, {
+      "code" : "C22",
+      "attempt" : 3,
+      "supported" : true,
+      "passed" : true,
+      "reason" : "",
+      "content" : "{\"proposals\":[{\"sourceText\":\"化学周三、周五上午第1节和下午第2节都不排\",\"type\":\"COURSE_UNAVAILABLE\",\"strength\":\"HARD\",\"status\":\"READY\",\"explanation\":\"化学课在周三、周五上午第1节（第1节）和下午第2节（第6节）不排课\",\"reason\":\"\",\"teacherName\":\"\",\"courseName\":\"化学\",\"className\":\"\",\"subject\":\"\",\"roomType\":\"\",\"days\":[3,5],\"periods\":[1,6],\"section\":\"\",\"sectionOrdinals\":[],\"allDays\":false,\"values\":{}}]}",
+      "proposals" : [ {
+        "proposalId" : "p1",
+        "sourceText" : "化学周三、周五上午第1节和下午第2节都不排",
+        "type" : "COURSE_UNAVAILABLE",
+        "typeName" : "课程禁排时段",
+        "strength" : "HARD",
+        "effectiveHard" : true,
+        "status" : "READY",
+        "explanation" : "化学课在周三、周五上午第1节（第1节）和下午第2节（第6节）不排课",
+        "reason" : "",
+        "params" : {
+          "courseId" : 15,
+          "dayOfWeek" : 3,
+          "periodNo" : 1
+        },
+        "entries" : [ {
+          "params" : {
+            "courseId" : 15,
+            "dayOfWeek" : 3,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C22-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 15,
+            "dayOfWeek" : 3,
+            "periodNo" : 6
+          },
+          "groupKey" : "eval-C22-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 15,
+            "dayOfWeek" : 5,
+            "periodNo" : 1
+          },
+          "groupKey" : "eval-C22-p1",
+          "enabled" : true
+        }, {
+          "params" : {
+            "courseId" : 15,
+            "dayOfWeek" : 5,
+            "periodNo" : 6
+          },
+          "groupKey" : "eval-C22-p1",
+          "enabled" : true
+        } ],
+        "candidates" : [ ]
+      } ],
+      "inputTokens" : 2616,
+      "outputTokens" : 1718,
+      "latencyMs" : 16105
+    } ]
+  } ]
+}
