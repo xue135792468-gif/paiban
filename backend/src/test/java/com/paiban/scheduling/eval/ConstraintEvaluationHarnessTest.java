@@ -7,6 +7,7 @@ import com.paiban.ai.AiResult;
 import com.paiban.scheduling.eval.ConstraintEvaluationCorpus.Sentence;
 import com.paiban.scheduling.service.ConstraintProposalParser;
 import com.paiban.scheduling.service.ConstraintProposalPrompt;
+import com.paiban.scheduling.web.ConstraintProposalDtos.ConstraintProposalDto;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 
@@ -53,6 +54,40 @@ class ConstraintEvaluationHarnessTest {
     }
 
     @Test
+    void c05InheritsTheTypeDefaultWhenTheSentenceHasNoStrengthWord() {
+        Sentence c05 = byCode("C05");
+        String inherited = """
+                {"proposals":[{"sourceText":"化学课安排在实验室",
+                  "type":"COURSE_REQUIRED_ROOM_TYPE","strength":"INHERIT","status":"READY",
+                  "courseName":"化学","roomType":"LAB"}]}""";
+        assertThat(harness.evaluate(c05, success(inherited)).verdict().passed()).isTrue();
+
+        String upgraded = inherited.replace("\"INHERIT\"", "\"HARD\"");
+        assertThat(harness.evaluate(c05, success(upgraded)).verdict().passed()).isFalse();
+    }
+
+    @Test
+    void c16TurnsTheSpokenHomonymIntoConcreteCandidates() {
+        Sentence c16 = byCode("C16");
+        String answer = """
+                {"proposals":[
+                  {"sourceText":"张老师周三下午不排","type":"TEACHER_UNAVAILABLE",
+                   "strength":"HARD","status":"NEEDS_INPUT","teacherName":"张老师",
+                   "reason":"有两位张姓教师","days":[3],"section":"AFTERNOON"},
+                  {"sourceText":"体育不排晚自习","type":"COURSE_NOT_IN_EVENING",
+                   "strength":"HARD","status":"READY","courseName":"体育"}
+                ]}""";
+        ConstraintEvaluationHarness.Attempt attempt = harness.evaluate(c16, success(answer));
+        assertThat(attempt.verdict().passed()).as(attempt.verdict().reason()).isTrue();
+
+        ConstraintProposalDto teacher = attempt.proposals().stream()
+                .filter(proposal -> "TEACHER_UNAVAILABLE".equals(proposal.type()))
+                .findFirst().orElseThrow();
+        assertThat(teacher.candidates()).hasSize(1);
+        assertThat(teacher.candidates().get(0).options()).hasSize(2);
+    }
+
+    @Test
     void aScopeWidenedC19FailsEvenWhenAnotherProposalSaysUnsupported() {
         Sentence c19 = ConstraintEvaluationCorpus.sentences().stream()
                 .filter(sentence -> sentence.code().equals("C19"))
@@ -92,6 +127,12 @@ class ConstraintEvaluationHarnessTest {
         assertThat(ConstraintEvaluationBudget.reliable(null, BigDecimal.ONE)).isFalse();
         assertThat(ConstraintEvaluationBudget.reliable(BigDecimal.ZERO, BigDecimal.ONE)).isFalse();
         assertThat(ConstraintEvaluationBudget.reliable(BigDecimal.ONE, BigDecimal.ONE)).isTrue();
+    }
+
+    private Sentence byCode(String code) {
+        return ConstraintEvaluationCorpus.sentences().stream()
+                .filter(sentence -> sentence.code().equals(code))
+                .findFirst().orElseThrow();
     }
 
     private AiResult answer(Sentence sentence) {

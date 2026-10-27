@@ -55,10 +55,14 @@ public class ConstraintProposalPrompt {
                    不得用相近类型近似，也不得扩大或缩小作用范围。
                 3. 缺少教师/课程/行政班/星期/课节/数量时 status=NEEDS_INPUT，保留已经明确的部分，
                    不得猜测数量或对象。
-                4. 同名对象不要猜：如果上下文中有多个同名对象，status=NEEDS_INPUT 并在 reason 中说明，
-                   不要任选一个。
-                5. 明确禁令（不排、不能、必须、最多）用 strength=HARD；“尽量/优先/最好”用 SOFT；
-                   没有明确强度用 INHERIT。
+                4. 同名对象不要猜：仍把用户说的原称呼填进对应字段（例如 teacherName="张老师"），
+                   status=NEEDS_INPUT 并在 reason 中说明同名；服务端会列出候选，不要任选一个，
+                   也不要把名字只写在 reason 里。
+                5. 只有原句出现明确强度词时才设置强度：不排、不能、不得、必须、最多、至少、
+                   不允许 → strength=HARD；“尽量/优先/最好” → SOFT。
+                   没有这些词的陈述（例如“化学课安排在实验室”）用 strength=INHERIT，
+                   不要因为出现“安排/使用/排到”就升级为 HARD。反例：C04“体育课必须在操场上”有“必须”，
+                   用 HARD；C05“化学课安排在实验室”没有强度词，用 INHERIT。
                 6. 上午/下午/晚自习按上下文真实课节解释。periods 使用当天绝对节次；
                    也可以用 section + sectionOrdinals（如“下午第2节”= section=AFTERNOON, sectionOrdinals=[2]）。
                    allDays=true 表示每个实际上课日。
