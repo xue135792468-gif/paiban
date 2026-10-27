@@ -131,9 +131,7 @@ test.describe.serial('约束配置：跨设备未保存工作', () => {
     await pickOption(card, 'constraint-entry-teacher', teacher)
     const slot = card.getByTestId('constraint-entry-slot').first()
     await pickOption(slot, 'constraint-entry-slot-day', day)
-    const input = slot.getByTestId('constraint-entry-slot-period').locator('input')
-    await input.fill(period)
-    await input.press('Tab')
+    await pickOption(slot, 'constraint-entry-slot-period', `第${period}节`)
   }
 
   async function workspaceExists(): Promise<boolean> {

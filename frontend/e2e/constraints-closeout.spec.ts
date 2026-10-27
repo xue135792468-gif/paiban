@@ -244,9 +244,14 @@ test.describe.serial('约束配置：收尾页面状态与证据', () => {
       .filter({ hasText: '周一' })
       .first()
       .click()
-    const periodInput = slot.getByTestId('constraint-entry-slot-period').locator('input')
-    await periodInput.fill('1')
-    await periodInput.press('Tab')
+    await slot.getByTestId('constraint-entry-slot-period').click()
+    await page
+      .locator('.el-select-dropdown:visible')
+      .last()
+      .locator('.el-select-dropdown__item')
+      .filter({ hasText: '第1节' })
+      .first()
+      .click()
 
     await expect(card.getByTestId('constraint-entry-duplicate')).toContainText('与第 1 条完全相同')
     // 新增：冲突在保存前就让左侧该类型亮起红点。

@@ -68,9 +68,7 @@ test.describe.serial('约束配置：教师禁排多条条目', () => {
     await pickOption(card, 'constraint-entry-teacher', teacherName)
     const slot = card.getByTestId('constraint-entry-slot').first()
     await pickOption(slot, 'constraint-entry-slot-day', dayLabel)
-    const periodInput = slot.getByTestId('constraint-entry-slot-period').locator('input')
-    await periodInput.fill(period)
-    await periodInput.press('Tab')
+    await pickOption(slot, 'constraint-entry-slot-period', `第${period}节`)
   }
 
   function summaryEntries(page: Page) {

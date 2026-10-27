@@ -65,9 +65,7 @@ test.describe.serial('约束配置：课程禁排时段与逐项控制', () => {
     await card.getByTestId('constraint-entry-slot-add').click()
     const slot = card.getByTestId('constraint-entry-slot').last()
     await pickOption(slot, 'constraint-entry-slot-day', dayLabel)
-    const input = slot.getByTestId('constraint-entry-slot-period').locator('input')
-    await input.fill(period)
-    await input.press('Tab')
+    await pickOption(slot, 'constraint-entry-slot-period', `第${period}节`)
   }
 
   async function courseConfig(token: string) {
@@ -91,9 +89,7 @@ test.describe.serial('约束配置：课程禁排时段与逐项控制', () => {
 
     const firstSlot = card.getByTestId('constraint-entry-slot').first()
     await pickOption(firstSlot, 'constraint-entry-slot-day', '周三')
-    const firstPeriod = firstSlot.getByTestId('constraint-entry-slot-period').locator('input')
-    await firstPeriod.fill('1')
-    await firstPeriod.press('Tab')
+    await pickOption(firstSlot, 'constraint-entry-slot-period', '第1节')
 
     await addSlot(card, '周五', '6')
 

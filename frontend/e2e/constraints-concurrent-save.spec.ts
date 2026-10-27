@@ -120,9 +120,7 @@ test.describe.serial('约束配置：两人同时保存', () => {
     const cardB = pageB.getByTestId('constraint-entry').first()
     await pickOption(cardB, 'constraint-entry-teacher', second.name)
     await pickOption(cardB, 'constraint-entry-slot-day', '周四')
-    const period = cardB.getByTestId('constraint-entry-slot-period').locator('input')
-    await period.fill('2')
-    await period.press('Tab')
+    await pickOption(cardB, 'constraint-entry-slot-period', '第2节')
 
     // A saves another type meanwhile.
     await pageA.locator('[data-type="TEACHER_DAY_OFF"]').click()

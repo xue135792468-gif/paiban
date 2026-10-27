@@ -224,9 +224,7 @@ test.describe.serial('约束配置：自然语言只读建议', () => {
     await pickOption(manual, 'constraint-entry-teacher', manualTeacher.name)
     const slot = manual.getByTestId('constraint-entry-slot').first()
     await pickOption(slot, 'constraint-entry-slot-day', '周一')
-    const period = slot.getByTestId('constraint-entry-slot-period').locator('input')
-    await period.fill('1')
-    await period.press('Tab')
+    await pickOption(slot, 'constraint-entry-slot-period', '第1节')
 
     reply = JSON.stringify({
       proposals: [
