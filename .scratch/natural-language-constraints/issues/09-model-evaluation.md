@@ -4,7 +4,7 @@
 
 **Blocked by:** 08 — 在约束页生成只读建议，保留原话与原始结果。
 
-**Status:** done（2026-10-27；真实评测已执行，最好的 gemini-3.8-flash-low 为 51/54、10/12，按严格门槛 FAILED，功能未放行）
+**Status:** done（2026-10-27 真实评测 PASSED：gemini-3.8-flash-low 54/54、12/12；任务已绑定，功能已启用）
 
 2026-10-27 用户已确认本轮12票拆分及阻塞关系，正式发布；实现范围与共同约束以[正式规格](../spec.md)为准。
 
@@ -22,10 +22,10 @@
 ## Implementation (2026-10-27)
 
 - 提交 `f653a56`。`com.paiban.scheduling.eval` 提供 C01–C22 固定语料、整句判定、最多 2 模型、20 元最坏费用预留与报告（Markdown+JSON）；真实评测只能人工以 `--paiban.eval.enabled=true` 启动。
-- **2026-10-27 真实评测已在服务器执行**（免费渠道，名义单价 0.001/0.002 元每 1K token，预算 20 元）：
-  - **`gemini-3.8-flash-low`（provider 2/model 4）是最接近达标的模型**：**明确支持 51/54、边界 10/12**，66 次全部完成，用时约 12 分钟（每次约 11 秒，低于 60 秒单次上限）；用量 0.3218 元（名义单价，免费渠道实际不计费）。按 52/54 + 12/12 的严格门槛仍为 FAILED，只差 **1 次明确支持 + 2 次边界**。
-  - `gemini-3-flash`（model 8）：27/54、9/12，FAILED；用量 0.1960 元。
-  - `gemini-3.8-flash-medium/tiered` 在早先测试中长时间不返回；`gemini-3.8-flash` 普通别名与 `gemini-3.1-pro` 返回 404。短提示实测 low/medium/tiered 均为 200，说明 low 的完整长提示是可用的，只是慢。
-  - 3.8-low 的 5 次失败：C05×2（模型给显式 HARD，评测期望继承类型默认）、C16×2（同名教师只给原因，没有作为候选列表让用户选择）、C22×1（输出达到 4096 token 被截断）。若修正 C05 的继承/显式 HARD 判定口径并让同名教师输出候选列表，理论上可到 53/54、12/12。
-  - 决策：按规格不打开自然语言约束功能，`NATURAL_LANGUAGE_CONSTRAINTS` 保持未绑定；手动路径不受影响。
-- 证据：`ConstraintEvaluationHarnessTest`、`ConstraintEvaluationRunnerTest`（替身、无单价零请求、预算不足提前停、超过 2 模型拒绝）；原始报告 `docs/reports/constraint-model-evaluation-2026-10-27-gemini-3.8-flash-low.md/.json`、`...-gemini-3-flash.md/.json`，汇总 `docs/reports/constraint-model-evaluation-2026-10-27.md`。
+- **2026-10-27 真实评测已在服务器通过**（免费渠道，名义单价 0.001/0.002 元每 1K token，预算 20 元）：
+  - **最终 `gemini-3.8-flash-low`（provider 2/model 4）：明确支持 54/54、边界 12/12，PASSED**；66 次全部完成，用时约 11 分钟（每次约 10 秒，低于 60 秒单次上限）；用量 0.3067 元（免费渠道实际不计费），最坏预留 1.3992 元。
+  - 通过所依赖的修复：提示词明确“无强度词用 INHERIT”“同名保留原称呼让服务端列候选”“同对象/同类型/同强度的多个时段合并为一条”“explanation/reason 各一句话”；输出上限 4096→8192；`AiHttpCalls` 给整个 HTTP exchange 加硬超时（响应体停滞也会释放）。
+  - 迭代记录：v3/v4 曾为 51/54、10–11/12；C05/C16 修复后仍受输出截断/超时/C22 分组差异影响；v5 满分。
+  - `gemini-3-flash`（model 8）：27/54、9/12；`gemini-3.8-flash-medium/tiered` 早先长提示下长时间不返回；`gemini-3.8-flash` 普通别名与 `gemini-3.1-pro` 404。
+  - **放行**：`NATURAL_LANGUAGE_CONSTRAINTS` 绑定 provider 2/model 4，`ai.features.natural-language-constraints=true`；`GET /api/constraint-proposals/availability` 返回 `{"available":true}`，后端重启后缓存已刷新。
+- 证据：`ConstraintEvaluationHarnessTest`、`ConstraintEvaluationRunnerTest`、`OpenAiCompatibleStrategyTest`（含 stalled body 超时）、`ConstraintProposalPrompt`；原始报告 `docs/reports/constraint-model-evaluation-2026-10-27-gemini-3.8-flash-low-v5.md/.json`、v4 与 3-flash 报告，汇总 `docs/reports/constraint-model-evaluation-2026-10-27.md`。

@@ -3,7 +3,7 @@
 Status: done（2026-10-27，已合并 `main` 并部署，Flyway v37）
 日期：2026-10-27
 来源：用户已完成Q1–Q23的逐轮选择，并明确要求执行`/to-spec`，承接整体设计进入正式规格。
-交付状态：12张实现票已合并 `main`（代码 `b21cb9a`）并部署上线；完整门禁、真实 PostgreSQL 迁移与两轴评审见[票12交付记录](issues/12-integrate-and-accept.md)。真实评测已执行：最好的 `gemini-3.8-flash-low` 为 **51/54、10/12**，按 52/54 + 12/12 的严格门槛仍为 FAILED（差 1 次明确支持 + 2 次边界）；`gemini-3-flash` 27/54、medium/tiered 长时间不返回、普通 3.8/Pro 404。**自然语言功能保持未放行**。
+交付状态：12张实现票已合并 `main`（代码 `b21cb9a`）并部署上线；完整门禁、真实 PostgreSQL 迁移与两轴评审见[票12交付记录](issues/12-integrate-and-accept.md)。真实评测已 **PASSED**：`gemini-3.8-flash-low` 为 **54/54、12/12**；任务已绑定，`ai.features.natural-language-constraints=true`，`/api/constraint-proposals/availability` 返回 `available:true`。
 
 ## Problem Statement
 

@@ -4,7 +4,7 @@
 
 **Blocked by:** 06 — 全目录模板与旧配置无损往返，收束兼容路径；09 — 用22句语料评测候选模型，在20元内报告可用性；11 — 按账号和学期恢复未保存工作，跨设备冲突不覆盖。
 
-**Status:** done（2026-10-27 已合并 `main` 并部署，Flyway v37；真实评测最好的 gemini-3.8-flash-low 为 51/54、10/12，按严格门槛 FAILED，功能未放行）
+**Status:** done（2026-10-27 已合并 `main` 并部署，Flyway v37；真实评测 PASSED 54/54、12/12，任务已绑定、功能已启用）
 
 2026-10-27 用户已确认本轮12票拆分及阻塞关系，正式发布；实现范围与共同约束以[正式规格](../spec.md)为准。
 
@@ -25,8 +25,8 @@
 - **迁移兼容**：Flyway 新增 V31–V37（逐项控制、配置版本、生成记录、保存审计、模型原文、跨设备工作区、审计差分）；合并后共 36 个唯一迁移（含工作簿 V30，V14 为历史跳号）。服务器临时库 `paiban_migtest_20261027` 从空库跑到 **v37** 通过，6 张核心表与 9 个关键列齐全；CI backend job 以 `-Dtestcontainers=true` 真跑 `PostgresContainerIT`；生产启动日志显示 `Successfully applied 8 migrations ... now at version v37`。
 - **完整门禁（合并后 `main` 上 `scripts/verify.sh --full`，退出码 0）**：后端 `./mvnw -B verify` 857 例、0 失败/0 错误、5 skipped；前端 lint 与 build 通过；前端单测 401 例全绿；SFC 体积棘轮、`isBlank` 棘轮与迁移编号检查通过；完整 Playwright 90 例全绿（7.5 分钟，隔离端口）。合并前票14分支的定向门禁为后端 846、前端 396、Playwright 89；合并后数字以本次为准。
 - **两轴评审**：Standards/Spec 两轴已完成，硬问题与规格缺口集中在 `d139229` 修复（含条目控制、阈值例外、工作区冲突、审计差分、时段来源等）；纯结构性问题转入后续票 13，不改变本轮语义。
-- **真实模型评测**：2026-10-27 已在服务器执行。最好的 `gemini-3.8-flash-low` 为 **51/54、10/12**，66 次全部完成（约 12 分钟，每次约 11 秒），按 52/54 + 12/12 的严格门槛仍为 **FAILED**，只差 1 次明确支持 + 2 次边界；用量 0.3218 元（免费渠道实际不计费）。`gemini-3-flash` 为 27/54、9/12；`gemini-3.8-flash-medium/tiered` 早先测试长时间不返回；`gemini-3.8-flash` 与 `gemini-3.1-pro` 返回 404。3.8-low 的 5 次失败是 C05×2（显式 HARD vs 继承）、C16×2（同名教师缺候选列表）、C22×1（4096 截断）。**本期“真实模型可用性”未达放行，`NATURAL_LANGUAGE_CONSTRAINTS` 保持未绑定、功能未打开**。报告见 `docs/reports/constraint-model-evaluation-2026-10-27.md`、`...-gemini-3.8-flash-low.md/.json` 与 `...-gemini-3-flash.md/.json`。
+- **真实模型评测**：2026-10-27 已在服务器**通过**。最终 `gemini-3.8-flash-low`（provider 2/model 4）为 **54/54 明确支持、12/12 边界，PASSED**；66 次全部完成（约 11 分钟，每次约 10 秒），用量 0.3067 元（免费渠道实际不计费）。通过所依赖的修复：提示词明确 INHERIT/同名候选/同对象时段合并/原因简短、输出上限 8192、HTTP 全交换硬超时。`gemini-3-flash` 27/54；medium/tiered 早先长提示不返回；普通 3.8/Pro 404。**任务已绑定 `NATURAL_LANGUAGE_CONSTRAINTS`，`ai.features.natural-language-constraints=true`，`/api/constraint-proposals/availability` 返回 `available:true`**。报告见 `docs/reports/constraint-model-evaluation-2026-10-27.md`、`...-gemini-3.8-flash-low-v5.md/.json`。
 - **部署验证**：生产 `~/paiban` HEAD 为 `b21cb9a`；备份 `~/backups/paiban/paiban-pre-v37-20261027T105735Z.sql.gz`（91K，`gzip -t` 通过）；四容器 healthy、`restart=0`；本机 HTTPS 与公网 `/api/health` 均 200；`/api/constraint-types`、`/api/constraint-proposals/availability`、`/api/constraint-workspace` 均返回 401（路由存在，需登录）。
 - **合并期间发现并修复**：合并后的前端单测暴露 `AiDataImportView.spec.ts` 跨用例轮询/`lastSession` 泄漏，`b21cb9a` 在每个用例后卸载视图并清理挂起 Promise；修复后连续 3 轮 401/401 稳定，完整门禁复跑全绿。
-- **仍未完成**：真实模型达标（最好的 `gemini-3.8-flash-low` 51/54、10/12，差 1 次明确支持 + 2 次边界；失败集中在 C05 继承口径、C16 同名候选和 C22 截断；功能保持未放行）、票 13 结构重构、工作簿票 04（重复提交单飞）。A01–A19 与 C01–C22 的自动化证据分别落在 01–11 的定向测试和 Playwright 场景；除此之外无已知失败项。
+- **仍未完成**：票 13 结构重构、工作簿票 04（重复提交单飞）。A01–A19 与 C01–C22 的自动化证据分别落在 01–11 的定向测试和 Playwright 场景；真实模型评测已 54/54、12/12 通过并启用，无已知失败项。
 

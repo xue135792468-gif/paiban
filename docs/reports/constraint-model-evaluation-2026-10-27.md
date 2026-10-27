@@ -1,15 +1,15 @@
 # 自然语言约束模型评测报告（2026-10-27）
 
-状态：**真实模型评测已于 2026-10-27 在服务器执行；最好的 `gemini-3.8-flash-low` 为 51/54、10/12，按严格门槛仍为 FAILED（差 1 次明确支持 + 2 次边界），功能未放行。**
+状态：**真实评测已通过：`gemini-3.8-flash-low` 54/54、12/12（PASSED）；任务已绑定，功能开关已打开。**
 
 ## 结论
 
-- **最好的模型是 `gemini-3.8-flash-low`**（provider 2/model 4）：C01–C22 每句 3 次，**明确支持 51/54，边界 10/12**；66 次全部完成，用时约 12 分钟（每次约 11 秒，远低于 60 秒单次上限）。按 52/54 与 12/12 的门槛，只差 **1 次明确支持 + 2 次边界**，结论仍是 FAILED。
-- 费用：按名义单价 0.001/0.002 元每 1K token 计算，3.8-low 用量 0.3218 元（免费渠道实际不计费），最坏预留 0.8382 元，远低于 20 元上限。
-- 失败只有 5 次：C05×2（模型输出显式 HARD，评测期望继承类型默认）、C16×2（同名教师只给了原因，没有作为候选列表让用户选择）、C22×1（输出达到 4096 token 被截断）。
-- 其他模型：`gemini-3-flash` 27/54、9/12；`gemini-3.8-flash-medium/tiered` 在早先测试中长时间不返回（low 能完成，说明不是所有 3.8 别名都不可用）；`gemini-3.8-flash` 普通别名与 `gemini-3.1-pro` 404。
-- 决策：**按规格不打开自然语言约束功能**；`NATURAL_LANGUAGE_CONSTRAINTS` 保持未绑定，页面按“AI 不可用/未配置”降级，手动配置路径不受影响。3.8-low 是明确的下一步候选：若修正 C05 的继承/显式 HARD 判定口径，并让同名教师输出候选列表，理论上可达到 53/54、12/12。
-- 原始报告：[3.8-low Markdown](constraint-model-evaluation-2026-10-27-gemini-3.8-flash-low.md) / [JSON](constraint-model-evaluation-2026-10-27-gemini-3.8-flash-low.json)；[3-flash Markdown](constraint-model-evaluation-2026-10-27-gemini-3-flash.md) / [JSON](constraint-model-evaluation-2026-10-27-gemini-3-flash.json)。
+- **最终模型 `gemini-3.8-flash-low`（provider 2/model 4）满分达标**：C01–C22 每句 3 次，**明确支持 54/54，边界 12/12**；66 次全部完成，用时约 11 分钟（每次约 10 秒，低于 60 秒单次上限）。按名义单价 0.001/0.002 元每 1K token 计算，用量 0.3067 元（免费渠道实际不计费），最坏预留 1.3992 元，远低于 20 元上限。
+- **通过所依赖的修复**：提示词明确“无强度词用 INHERIT”“同名保留原称呼让服务端列候选”“同对象/同类型/同强度的多个时段合并为一条”“explanation/reason 各一句话”；输出上限从 4096 提到 8192；新增 60 秒硬超时（响应体停滞也会释放，不再永久挂起）。
+- 功能状态：`ai.features.natural-language-constraints=true`；`natural_language_constraints` 任务绑定 provider 2/model 4；`GET /api/constraint-proposals/availability` 返回 `{"available":true}`。
+- 迭代记录：v3/v4 曾为 51/54、10–11/12（C05/C16 已修好，剩余为输出截断/超时/C22 分组差异）；最终 v5 满分。各轮报告都保留在 `docs/reports/`。
+- 其他模型：`gemini-3-flash` 27/54、9/12；`gemini-3.8-flash-medium/tiered` 早先长提示下长时间不返回；`gemini-3.8-flash` 普通别名与 `gemini-3.1-pro` 404。3.8-low 是当前可用的最优选择。
+- 原始报告：[v5 满分 Markdown](constraint-model-evaluation-2026-10-27-gemini-3.8-flash-low-v5.md) / [JSON](constraint-model-evaluation-2026-10-27-gemini-3.8-flash-low-v5.json)；[v4 Markdown](constraint-model-evaluation-2026-10-27-gemini-3.8-flash-low.md) / [JSON](constraint-model-evaluation-2026-10-27-gemini-3.8-flash-low.json)；[3-flash Markdown](constraint-model-evaluation-2026-10-27-gemini-3-flash.md)。
 - 评测工具与预算守卫已用替身演练验证（54/54、12/12 只证明管线，不证明任何真实模型）。
 
 ## 如何执行真实评测（人工、一次性）
