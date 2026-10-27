@@ -16,12 +16,18 @@ import org.springframework.util.StringUtils;
 /**
  * Manual entry point for the real-model evaluation (ticket 14/09).
  *
+ * <p>Only {@code paiban.eval.enabled} is namespaced; the remaining options are read
+ * by their bare names, matching {@link ApplicationArguments#getOptionValues(String)}.
+ *
  * <pre>
  * java -jar paiban-backend.jar --paiban.eval.enabled=true \
- *   --paiban.eval.output=reports/constraint-eval \
- *   --paiban.eval.model=1:2 --paiban.eval.price-in=0.001 --paiban.eval.price-out=0.002 \
- *   --paiban.eval.budget=20 --paiban.eval.stub=true
+ *   --output=reports/constraint-eval \
+ *   --model=1:2 --price-in=0.001 --price-out=0.002 \
+ *   --budget=20
  * </pre>
+ *
+ * <p>Add {@code --stub=true} for the deterministic pipeline check, and
+ * {@code --bind=true} to keep the winning model bound to the task.
  *
  * <p>It is deliberately not an HTTP endpoint: a real round costs money, so it only
  * runs when a person starts the process with the flag, and CI never sets it.
