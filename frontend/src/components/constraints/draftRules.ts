@@ -81,13 +81,11 @@ export function groupRows(rows: TypeDraft[]): NavGroup[] {
  * out is exactly what "no configuration" means. Rows with entries, and rows the school
  * mode hides, are always sent so a save never erases a condition that exists.
  */
-export function buildSavePayload(
-  rows: TypeDraft[],
-  options: { isJunior: boolean },
-): ConstraintConfigRequest[] {
+export function buildSavePayload(rows: TypeDraft[]): ConstraintConfigRequest[] {
   return rows.flatMap<ConstraintConfigRequest>((row) => {
-    // Junior mode only exposes "must / prefer": must = weight 100, prefer = 50.
-    const weight = options.isJunior ? (row.hard ? 100 : 50) : row.weight
+    // The stored weight is sent as-is in both school modes: hiding the type-level
+    // slider in junior mode must not rewrite an existing configuration's meaning.
+    const weight = row.weight
     if (isEntryType(row) || isThresholdType(row)) {
       const entries = isThresholdType(row)
         ? thresholdEntries(row)
@@ -98,7 +96,14 @@ export function buildSavePayload(
       return [
         {
           type: row.code,
-          entries: entries.map((entry) => ({ id: entry.id, params: entry.params })),
+          entries: entries.map((entry) => ({
+            id: entry.id,
+            params: entry.params,
+            enabled: entry.enabled,
+            hard: entry.hard,
+            weight: entry.weight,
+            groupKey: entry.groupKey,
+          })),
           weight,
           hard: row.hard,
           enabled: row.enabled,

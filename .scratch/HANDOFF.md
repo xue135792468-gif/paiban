@@ -1,8 +1,8 @@
 # 接手说明（2026-10-25 会话交接）
 
-> **2026-10-27 票14已在独立分支实现（未合并/未部署）**：12张票在 `feature/natural-language-constraints` 完成，完整门禁与两轴评审见该分支的票12交付记录；真实模型评测受阻（无可靠单价/授权），未调用真实供应商。**本分支不含该规格目录**，合并后再读 `.scratch/natural-language-constraints/` 与票12交付记录。
+> **2026-10-27 票14 已实现并合并到本地 `main`（待推送/部署）**：正式规格与 12 张实现票（`.scratch/natural-language-constraints/`）完成 01→12：课程禁排、25 类逐项控制、配置版本/冲突、AI 只读建议、C01–C22 评测工具、校对加入与审计、跨设备工作区。全量门禁与两轴评审见[票12交付记录](natural-language-constraints/issues/12-integrate-and-accept.md)；结构性问题转入票 13。真实模型评测**受阻**（无可靠单价/授权），未调用真实供应商，报告见 `docs/reports/constraint-model-evaluation-2026-10-27.md`。
 
-> **2026-10-26 执行结果（整本导入后台化，02 遗留）：** 三张草案 01 → 02 → 03 已在工作区实现并提交（分支 `feature/workbook-background-import`，基于 `main`），每票 TDD、独立评审。上传立即返回 `PARSING`，规划/取值在 `importExecutor` 串行；计划与运行身份落库（Flyway **V30**：`plan_json` / `plan_version` / `run_id`）；停止保留已完成范围并把未覆盖范围列为可重试失败；重试只重放失败批次、成功批次不重调模型；晚响应只进审计。闸门：后端 761 例全绿（5 skipped）、前端 lint/build/unit 371 例全绿、SFC 与 isBlank 棘轮通过、Playwright 全量 71 例全绿。**尚未合并 `main`、尚未部署。** 评审遗留的票 04（重复提交单飞）仍未实现；读 `.scratch/workbook-background/spec.md` 与 `issues/`，决策见 `docs/adr/0029-workbook-background-runs.md`。
+> **2026-10-26 整本导入后台化（02 遗留）已实现并合并到本地 `main`（待推送/部署）**：三张草案 01 → 02 → 03 已完成，每票 TDD、独立评审。上传立即返回 `PARSING`，规划/取值在 `importExecutor` 串行；计划与运行身份落库（Flyway **V30**：`plan_json` / `plan_version` / `run_id`）；停止保留已完成范围并把未覆盖范围列为可重试失败；重试只重放失败批次、成功批次不重调模型；晚响应只进审计。闸门：后端 761 例全绿（5 skipped）、前端 lint/build/unit 371 例全绿、SFC 与 isBlank 棘轮通过、Playwright 全量 71 例全绿。**尚未推送、尚未部署。** 评审遗留的票 04（重复提交单飞）仍未实现；读 `.scratch/workbook-background/spec.md` 与 `issues/`，决策见 `docs/adr/0029-workbook-background-runs.md`。
 
 > **2026-10-25 准备复查更新：先读 [准备审查入口](phase11-real-workbook-import/preparation/README.md)。**
 > 用户已暂停本会话修复，改为完成准备材料、交由新的 agent 执行。以下旧路线中的待问与 ready 状态须以新入口为准：六项修复已有补充规格；票 10 已问定并拆成 6 票，先做原型等用户确认；整本后台化另备下一批 3 张草案；14 下一期再 grill。
@@ -39,8 +39,8 @@
 | `08-fill-missing-periods` | 文件里的节次比作息多，只能手工加格子 | 已上线（2026-10-25，main `a8babf5`） |
 | `09-flag-suspicious-teacher-names` | "信息技术"这类占位名被当成老师 | 已上线（2026-10-25，main `a8babf5`） |
 | `10-multiple-constraint-targets` | 约束多条、对象覆盖与折叠布局 | 已确认语义并拆 6 票，见 `.scratch/constraint-entries/`；先原型确认 |
-| `14-natural-language-constraints` | 自然语言生成约束＋课程禁排＋逐项控制 | 已实现于 `feature/natural-language-constraints`（2026-10-27），未合并/未部署；真实模型评测受阻 |
-| 票 02 遗留 | 整本导入没有批次进度/停止/重试（同步跑完） | 已实现未部署（2026-10-26，`feature/workbook-background-import`，见 `.scratch/workbook-background/`） |
+| `14-natural-language-constraints` | 自然语言生成约束＋课程禁排＋逐项控制＋跨设备恢复 | 已实现并合并到本地 `main`（2026-10-27），待推送/部署；真实模型评测受阻 |
+| 票 02 遗留 | 整本导入没有批次进度/停止/重试（同步跑完） | 已实现并合并到本地 `main`（2026-10-26），待推送/部署；见 `.scratch/workbook-background/` |
 
 票据都在 `.scratch/phase11-real-workbook-import/issues/`；规格与 ADR 在该目录 `spec.md` 和 `docs/adr/0026-real-workbook-import.md`。
 
@@ -51,10 +51,10 @@
   部署前须知：V24 给 `draft_lesson.period_id` 加外键，若线上存在历史悬空引用，迁移会直接失败（有意闸门）；迁移注释里带 preflight 查询，必须先查、按记录修复后再重建。
 - **10 的旧问题已答，使用独立规格与六张新票。**
   读 `.scratch/constraint-entries/spec.md`。第一票 `/prototype` 出可点页面，经用户确认才放行生产实现；其余按 Blocked by 顺序推进。需求准备完成不代表原型已批准。
-- **02 整本后台化已实现（2026-10-26），未部署。**
-  读 `.scratch/workbook-background/spec.md` 与 `issues/`；实现说明在各票末尾，决策见 ADR-0029。合并前按常规跑一次全量闸门；部署时 Flyway 到 v30。
-- **14 已在独立分支实现（2026-10-27），待合并。**
-  12张票在 `feature/natural-language-constraints` 完成，证据见该分支的 `.scratch/natural-language-constraints/issues/12-integrate-and-accept.md`；真实模型评测受阻，未执行、未冒充通过。合并后再读规格与票。
+- **02 整本后台化已实现并合并到本地 `main`（2026-10-26），待推送/部署。**
+  读 `.scratch/workbook-background/spec.md` 与 `issues/`；实现说明在各票末尾，决策见 ADR-0029。部署时 Flyway 到 v30。
+- **14 已实现并合并到本地 `main`（2026-10-27），待推送/部署与真实评测。**
+  读 `.scratch/natural-language-constraints/spec.md`、`ticket-plan.md` 与 `issues/01..13`；部署时 Flyway 到 **V37**（V30 工作簿 + V31 逐项控制、V32 配置版本、V33 生成记录、V34 保存审计、V35 模型内容、V36 工作区、V37 审计差分）。真实评测需人工确认单价并授权后用 `--paiban.eval.enabled=true` 运行，不要把替身结果当模型通过。
 - **收尾跑一次 `/retro`**：把"保存作息表毁草稿"这类坑变成确定性检查（例如给 `draft_lesson.period_id` 加外键/一致性校验），别只写在文档里。
 
 ## 交差门槛（每票）

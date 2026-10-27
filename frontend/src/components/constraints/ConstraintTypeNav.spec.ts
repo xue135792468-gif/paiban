@@ -38,8 +38,8 @@ function navRows(): TypeDraft[] {
       params: TEACHER_PARAMS,
       enabled: true,
       entries: [
-        { key: 'e1', id: null, values: { teacherId: 1, dayOfWeek: 3, periodNo: 2 } },
-        { key: 'e2', id: null, values: { teacherId: 2, dayOfWeek: 4, periodNo: 5 } },
+        { key: 'e1', id: null, values: { teacherId: 1 }, slots: [{ key: 's1', id: null, dayOfWeek: 3, periodNo: 2 }] },
+        { key: 'e2', id: null, values: { teacherId: 2 }, slots: [{ key: 's2', id: null, dayOfWeek: 4, periodNo: 5 }] },
       ],
     }),
     row({

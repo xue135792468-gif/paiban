@@ -64,13 +64,16 @@
 
     <template v-else-if="isEntryType(row)">
       <p v-if="isSlotSetType(row)" class="panel-hint" data-testid="constraint-slot-note">
-        同一教师的多个时段按「或」聚合：命中任一时段即满足，不必为同一教师重复添加条目。
+        同一条要求可包含多个时段，整体编辑、暂停或删除；每个时段共用这条要求的必须/尽量与重要程度。
       </p>
       <ConstraintEntryList
         :row="row"
         :editable="canManage"
+        :is-junior="isJunior"
         :teachers="teachers"
         :courses="courses"
+        :day-options="dayOptions"
+        :periods-by-day="periodsByDay"
         :entry-errors="entryErrors"
         @add="emit('add-entry')"
         @remove="(key: string) => emit('remove-entry', key)"
@@ -79,6 +82,10 @@
         @add-slot="(key: string) => emit('add-slot', key)"
         @remove-slot="(key: string, slotKey: string) => emit('remove-slot', key, slotKey)"
         @update-slot="(key: string, slotKey: string, field: string, value: unknown) => emit('update-slot', key, slotKey, field, value)"
+        @set-entry-enabled="(key: string, value: boolean) => emit('set-entry-enabled', key, value)"
+        @set-entry-hard="(key: string, value: boolean | null) => emit('set-entry-hard', key, value)"
+        @set-entry-weight="(key: string, value: number | null) => emit('set-entry-weight', key, value)"
+        @fill-all-days="(key: string, slotKey: string) => emit('fill-all-days', key, slotKey)"
       />
     </template>
 
@@ -94,6 +101,12 @@
       @remove-exception="(key: string) => emit('remove-threshold-exception', key)"
       @set-exception-object="(key: string, value: unknown) => emit('set-threshold-object', key, value)"
       @set-exception-value="(key: string, value: unknown) => emit('set-threshold-value', key, value)"
+      @set-global-enabled="(value: boolean) => emit('set-threshold-global-enabled', value)"
+      @set-global-hard="(value: boolean | null) => emit('set-threshold-global-hard', value)"
+      @set-global-weight="(value: number | null) => emit('set-threshold-global-weight', value)"
+      @set-exception-enabled="(key: string, value: boolean) => emit('set-threshold-exception-enabled', key, value)"
+      @set-exception-hard="(key: string, value: boolean | null) => emit('set-threshold-exception-hard', key, value)"
+      @set-exception-weight="(key: string, value: number | null) => emit('set-threshold-exception-weight', key, value)"
     />
   </section>
 </template>
@@ -114,6 +127,9 @@ const props = defineProps<{
   isJunior: boolean
   teachers: OptionItem[]
   courses: OptionItem[]
+  /** The weekdays and period numbers the semester actually has. */
+  dayOptions?: number[]
+  periodsByDay?: Record<number, number[]>
   /** The objects each entry field may name, kept per field (never merged into one list). */
   objectOptions: ObjectOptions
   entryErrors: Record<number, string[]>
@@ -138,6 +154,16 @@ const emit = defineEmits<{
   'remove-threshold-exception': [key: string]
   'set-threshold-object': [key: string, value: unknown]
   'set-threshold-value': [key: string, value: unknown]
+  'set-entry-enabled': [key: string, value: boolean]
+  'set-entry-hard': [key: string, value: boolean | null]
+  'set-entry-weight': [key: string, value: number | null]
+  'fill-all-days': [key: string, slotKey: string]
+  'set-threshold-global-enabled': [value: boolean]
+  'set-threshold-global-hard': [value: boolean | null]
+  'set-threshold-global-weight': [value: number | null]
+  'set-threshold-exception-enabled': [key: string, value: boolean]
+  'set-threshold-exception-hard': [key: string, value: boolean | null]
+  'set-threshold-exception-weight': [key: string, value: number | null]
 }>()
 
 /**

@@ -11,6 +11,7 @@ import com.lowagie.text.pdf.BaseFont;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
+import com.paiban.ai.AiTaskType;
 import com.paiban.ai.domain.AiCallLog;
 import com.paiban.ai.domain.AiCallLogRepository;
 import com.paiban.ai.history.AiHistoryDtos.CallDetail;
@@ -206,7 +207,17 @@ public class AiHistoryService {
     }
 
     private String callSummary(AiCallLog log) {
-        String task = "substitution_recommend".equals(log.getTaskType()) ? "调代推荐" : "数据导入";
+        AiTaskType taskType;
+        try {
+            taskType = AiTaskType.fromValue(log.getTaskType());
+        } catch (IllegalArgumentException ex) {
+            taskType = null;
+        }
+        String task = taskType == null ? "AI 调用" : switch (taskType) {
+            case SUBSTITUTION_RECOMMEND -> "调代推荐";
+            case NATURAL_LANGUAGE_CONSTRAINTS -> "自然语言约束";
+            case DATA_IMPORT -> "数据导入";
+        };
         return task + " · " + (log.isSuccess() ? "成功" : "失败");
     }
 

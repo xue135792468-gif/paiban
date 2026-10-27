@@ -60,9 +60,10 @@ public class OpenAiCompatibleStrategy implements AiStrategy {
 
     @Override
     public AiStrategyOutcome invoke(AiInvocation invocation) {
+        Duration requestTimeout = AiStrategyParams.requestTimeout(invocation, timeout);
         try {
             HttpRequest.Builder builder = HttpRequest.newBuilder(endpoint(invocation.provider().getBaseUrl()))
-                    .timeout(timeout)
+                    .timeout(requestTimeout)
                     .header("Content-Type", "application/json")
                     .header("Accept", "application/json");
             String apiKey = invocation.apiKey();
@@ -76,7 +77,7 @@ public class OpenAiCompatibleStrategy implements AiStrategy {
             return interpret(response.statusCode(), response.body());
         } catch (HttpTimeoutException ex) {
             return AiStrategyOutcome.failure(
-                    "TIMEOUT", "AI 调用超时（" + timeout.toSeconds() + " 秒）", null);
+                    "TIMEOUT", "AI 调用超时（" + requestTimeout.toSeconds() + " 秒）", null);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             return AiStrategyOutcome.failure("PROVIDER_ERROR", "AI 调用被中断", 499);
@@ -193,4 +194,5 @@ public class OpenAiCompatibleStrategy implements AiStrategy {
         }
         return URI.create(normalized + "/chat/completions");
     }
+
 }

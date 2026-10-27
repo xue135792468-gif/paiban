@@ -143,7 +143,7 @@ describe('ConstraintTemplateBar', () => {
     expect(httpMock.post).toHaveBeenCalledWith(
       '/constraint-templates/4/apply',
       { classMapping: { '31': 77 } },
-      { params: { semesterId: 2 } },
+      { params: { semesterId: 2, baseVersion: 0 } },
     )
     expect(wrapper.get('[data-testid="constraint-template-result"]').text()).toContain(
       '已套用模板「标准学期」：恢复 2 类配置、4 条条目',

@@ -103,15 +103,15 @@ describe('ConstraintTypePanel', () => {
         name: '教师禁排时段',
         params: TEACHER_PARAMS,
         entries: [
-          { key: 'e1', id: null, values: { teacherId: 1, dayOfWeek: 3, periodNo: 2 } },
-          { key: 'e2', id: null, values: { teacherId: 2, dayOfWeek: 4, periodNo: 5 } },
+          { key: 'e1', id: null, values: { teacherId: 1 }, slots: [{ key: 's1', id: null, dayOfWeek: 3, periodNo: 2 }] },
+          { key: 'e2', id: null, values: { teacherId: 2 }, slots: [{ key: 's2', id: null, dayOfWeek: 4, periodNo: 5 }] },
         ],
       }),
     )
     const cards = wrapper.findAll('[data-testid="constraint-entry"]')
     expect(cards).toHaveLength(2)
     expect(cards[0].get('[data-testid="constraint-entry-summary"]').text()).toBe(
-      '张伟 · 周三 第2节',
+      '张伟 · 周三第2节',
     )
     await wrapper.get('[data-testid="constraint-entry-add"]').trigger('click')
     expect(wrapper.emitted('add-entry')).toBeTruthy()
@@ -156,12 +156,12 @@ describe('ConstraintTypePanel', () => {
     expect(wrapper.emitted('add-threshold-exception')).toBeTruthy()
   })
 
-  it('偏好时段说明同教师多条按「或」聚合', () => {
+  it('时段型说明一条要求可整体管理', () => {
     const wrapper = mountPanel(
       {},
       row({ code: 'TEACHER_PREFERRED_SLOT', name: '教师偏好时段', params: TEACHER_PARAMS }),
     )
-    expect(wrapper.get('[data-testid="constraint-slot-note"]').text()).toContain('命中任一时段即满足')
+    expect(wrapper.get('[data-testid="constraint-slot-note"]').text()).toContain('整体编辑、暂停或删除')
   })
 
   it('开关型说明启用即一条规则，不出现条目区', () => {

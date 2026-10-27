@@ -33,9 +33,34 @@
       <ConstraintTemplateBar
         :semester-id="semesterId"
         :classes="classes"
+        :base-version="draft.baseVersion.value"
         :reload="loadConstraints"
       />
     </div>
+
+    <ConstraintAiPanel
+      v-if="semesterId && canManage"
+      ref="aiPanel"
+      :semester-id="semesterId"
+      :types="draft.rows.value"
+      :teachers="teachers"
+      :courses="courses"
+      :can-read-all="canReadAll"
+      :can-manage="canManage"
+      @add="onAiAdd"
+    />
+
+    <ConstraintCollaborationAlerts
+      :stale="workspaceStale"
+      :issues="workspaceIssues"
+      :error="workspaceError"
+      :conflict="workspaceConflict"
+      :outcomes="aiOutcomes"
+      :outcome-type="aiOutcomeType"
+      @keep-local="keepLocalWorkspace"
+      @load-remote="loadRemoteWorkspace"
+      @clear-outcomes="aiOutcomes = []"
+    />
 
     <el-card v-if="semesters.length === 0 && !loading" shadow="never">
       <EmptyStateGuide
@@ -52,7 +77,7 @@
       <ConstraintSummaryBar
         v-if="semesterId"
         :counts="counts"
-        :dirty="dirty"
+        :dirty="dirty || conflict !== null"
         :can-manage="canManage"
         :saving="saving"
         @save="save"
@@ -82,6 +107,31 @@
         <p class="error-copy">{{ saveMessage }}</p>
       </el-alert>
 
+      <el-alert
+        v-if="conflict"
+        type="warning"
+        :closable="false"
+        show-icon
+        class="error-bar"
+        data-testid="constraint-conflict"
+      >
+        <template #title>配置已被他人修改（当前版本 {{ conflict.version }}）</template>
+        <p class="error-copy">{{ conflict.message }}</p>
+        <div class="conflict-actions">
+          <el-button size="small" data-testid="constraint-conflict-take-theirs" @click="takeTheirs">
+            加载最新配置（放弃我的修改）
+          </el-button>
+          <el-button
+            size="small"
+            type="primary"
+            data-testid="constraint-conflict-keep-mine"
+            @click="keepMine"
+          >
+            保留我的修改并合并保存
+          </el-button>
+        </div>
+      </el-alert>
+
       <el-card v-loading="loading" shadow="never" class="content-card">
         <EmptyStateGuide
           v-if="!loading && groups.length === 0"
@@ -106,6 +156,8 @@
             :is-junior="isJunior"
             :teachers="teachers"
             :courses="courses"
+            :day-options="availableDays"
+            :periods-by-day="periodsByDay"
             :object-options="objectOptions"
             :entry-errors="entryErrors"
             :type-errors="typeErrors"
@@ -125,6 +177,16 @@
             @remove-threshold-exception="onRemoveThresholdException"
             @set-threshold-object="onSetThresholdObject"
             @set-threshold-value="onSetThresholdValue"
+            @set-entry-enabled="onSetEntryEnabled"
+            @set-entry-hard="onSetEntryHard"
+            @set-entry-weight="onSetEntryWeight"
+            @set-threshold-global-enabled="onSetThresholdGlobalEnabled"
+            @set-threshold-global-hard="onSetThresholdGlobalHard"
+            @set-threshold-global-weight="onSetThresholdGlobalWeight"
+            @set-threshold-exception-enabled="onSetThresholdExceptionEnabled"
+            @set-threshold-exception-hard="onSetThresholdExceptionHard"
+            @set-threshold-exception-weight="onSetThresholdExceptionWeight"
+            @fill-all-days="onFillAllDays"
           />
         </div>
       </el-card>
@@ -141,8 +203,11 @@ import ConstraintSummaryBar from '@/components/constraints/ConstraintSummaryBar.
 import ConstraintTypeNav from '@/components/constraints/ConstraintTypeNav.vue'
 import ConstraintTypePanel from '@/components/constraints/ConstraintTypePanel.vue'
 import ConstraintTemplateBar from '@/components/constraints/ConstraintTemplateBar.vue'
+import ConstraintCollaborationAlerts from '@/components/constraints/ConstraintCollaborationAlerts.vue'
+import ConstraintAiPanel from '@/components/constraints/ConstraintAiPanel.vue'
 import { useConstraintDraft } from '@/components/constraints/useConstraintDraft'
 import { useConstraintSave } from '@/components/constraints/useConstraintSave'
+import { useConstraintCollaboration } from '@/components/constraints/useConstraintCollaboration'
 import type {
   ConstraintConfigDto,
   ConstraintTypeDef,
@@ -160,9 +225,15 @@ interface Semester {
   current: boolean
 }
 
+interface ConstraintState {
+  version: number
+  configs: ConstraintConfigDto[]
+}
+
 const auth = useAuthStore()
 const settings = useSettingsStore()
 const canManage = computed(() => auth.hasPermission('constraint:manage'))
+const canReadAll = computed(() => auth.hasPermission('settings:manage'))
 const isJunior = computed(() => settings.isJunior)
 
 const draft = useConstraintDraft()
@@ -173,7 +244,11 @@ const semesterId = ref<number | null>(null)
 const teachers = ref<OptionItem[]>([])
 const courses = ref<OptionItem[]>([])
 const classes = ref<OptionItem[]>([])
+const periodsByDay = ref<Record<number, number[]>>({})
 const loading = ref(false)
+const availableDays = computed(() =>
+  Object.keys(periodsByDay.value).map(Number).sort((left, right) => left - right),
+)
 
 function nameMapOf(options: OptionItem[]): Map<number, string> {
   return new Map(options.map((item) => [item.id, item.name]))
@@ -196,16 +271,44 @@ const objectNames = computed<ObjectNames>(() => ({
   courseId: nameMapOf(courses.value),
 }))
 
+// AI proposals and the cross-device workspace are separate concerns from the editor;
+// the composable keeps this view a rendering shell (and under the SFC size ratchet).
+const collaboration = useConstraintCollaboration({
+  draft,
+  semesterId,
+  isJunior,
+  objectNames,
+})
+const {
+  aiPanel,
+  aiOutcomes,
+  aiOutcomeType,
+  workspaceConflict,
+  workspaceError,
+  workspaceStale,
+  workspaceIssues,
+  onAiAdd,
+  onEffectiveSaved,
+  saveMeta,
+  keepLocalWorkspace,
+  loadRemoteWorkspace,
+  loaded,
+} = collaboration
+
 // 互斥条件与重复阈值在保存前就暴露出来；输入保持原样，由用户决定改哪条。
 const conflictReport = computed(() => draft.conflictsOf(objectNames.value))
 const conflicts = computed(() => conflictReport.value.messages)
 
-const { saving, saveMessage, saveReport, save, clearErrors } = useConstraintSave({
-  draft,
-  semesterId,
-  conflicts,
-  reload: () => loadConstraints(),
-})
+const { saving, saveMessage, saveReport, conflict, save, takeTheirs, keepMine, clearErrors } =
+  useConstraintSave({
+    draft,
+    semesterId,
+    conflicts,
+    relaxations: () => draft.relaxations(objectNames.value),
+    meta: saveMeta,
+    onSaved: onEffectiveSaved,
+    reload: () => loadConstraints(),
+  })
 
 // 红点覆盖两类问题：服务端拒收的类型，以及页面在保存前就发现的重复/互斥输入。
 // 后者与上面的预检条读的是同一份 conflictReport，不再各跑一遍校验。
@@ -262,6 +365,27 @@ const onSetThresholdObject = (key: string, value: unknown) =>
   withSelected((code) => draft.setThresholdExceptionObject(code, key, value))
 const onSetThresholdValue = (key: string, value: unknown) =>
   withSelected((code) => draft.setThresholdExceptionValue(code, key, value))
+const onFillAllDays = (key: string, slotKey: string) =>
+  withSelected((code) => draft.fillAllDays(code, key, slotKey, availableDays.value))
+
+const onSetEntryEnabled = (key: string, value: boolean) =>
+  withSelected((code) => draft.setEntryEnabled(code, key, value))
+const onSetEntryHard = (key: string, value: boolean | null) =>
+  withSelected((code) => draft.setEntryHard(code, key, value))
+const onSetEntryWeight = (key: string, value: number | null) =>
+  withSelected((code) => draft.setEntryWeight(code, key, value))
+const onSetThresholdGlobalEnabled = (value: boolean) =>
+  withSelected((code) => draft.setThresholdGlobalEnabled(code, value))
+const onSetThresholdGlobalHard = (value: boolean | null) =>
+  withSelected((code) => draft.setThresholdGlobalHard(code, value))
+const onSetThresholdGlobalWeight = (value: number | null) =>
+  withSelected((code) => draft.setThresholdGlobalWeight(code, value))
+const onSetThresholdExceptionEnabled = (key: string, value: boolean) =>
+  withSelected((code) => draft.setThresholdExceptionEnabled(code, key, value))
+const onSetThresholdExceptionHard = (key: string, value: boolean | null) =>
+  withSelected((code) => draft.setThresholdExceptionHard(code, key, value))
+const onSetThresholdExceptionWeight = (key: string, value: number | null) =>
+  withSelected((code) => draft.setThresholdExceptionWeight(code, key, value))
 
 async function loadSemesters() {
   try {
@@ -320,6 +444,26 @@ async function loadClasses() {
   }
 }
 
+async function loadPeriods() {
+  if (!semesterId.value) {
+    periodsByDay.value = {}
+    return
+  }
+  try {
+    const { data } = await http.get<Array<{ dayOfWeek: number; periodNo: number }>>(
+      `/semesters/${semesterId.value}/periods`,
+    )
+    const map: Record<number, number[]> = {}
+    ;(data ?? []).forEach((period) => {
+      ;(map[period.dayOfWeek] ??= []).push(period.periodNo)
+    })
+    Object.values(map).forEach((list) => list.sort((left, right) => left - right))
+    periodsByDay.value = map
+  } catch (e: any) {
+    ElMessage.error(serverMessage(e, '加载学期作息失败'))
+  }
+}
+
 async function loadConstraints() {
   if (!semesterId.value) {
     draft.hydrate([], [], { isJunior: isJunior.value })
@@ -327,15 +471,20 @@ async function loadConstraints() {
   }
   loading.value = true
   try {
-    const [typeRes, configRes] = await Promise.all([
+    const [typeRes, stateRes] = await Promise.all([
       http.get<ConstraintTypeDef[]>('/constraint-types'),
-      http.get<ConstraintConfigDto[]>('/constraints', {
+      http.get<ConstraintState>('/constraints/state', {
         params: { semesterId: semesterId.value },
       }),
       loadClasses(),
+      loadPeriods(),
     ])
-    draft.hydrate(typeRes.data ?? [], configRes.data ?? [], { isJunior: isJunior.value })
+    draft.hydrate(typeRes.data ?? [], stateRes.data?.configs ?? [], {
+      isJunior: isJunior.value,
+    })
+    draft.setBaseVersion(stateRes.data?.version ?? 0)
     clearErrors()
+    await loaded()
   } catch (e: any) {
     ElMessage.error(serverMessage(e, '加载约束配置失败'))
   } finally {
@@ -344,6 +493,8 @@ async function loadConstraints() {
 }
 
 async function onSemesterChange() {
+  collaboration.reset()
+  clearErrors()
   await loadConstraints()
 }
 
@@ -397,6 +548,12 @@ h2 {
 
 .error-bar {
   margin-bottom: 14px;
+}
+
+.conflict-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .error-copy {

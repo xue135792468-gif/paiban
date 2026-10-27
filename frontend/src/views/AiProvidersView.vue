@@ -164,21 +164,10 @@
         </div>
 
         <div v-else class="task-form custom">
-          <div class="task-line">
-            <span class="task-label">数据导入</span>
-            <el-select v-model="customSelections.data_import" placeholder="选择模型" style="width: 360px">
-              <el-option
-                v-for="option in modelOptions"
-                :key="option.modelId"
-                :label="option.providerName + ' / ' + option.modelName"
-                :value="option.modelId"
-              />
-            </el-select>
-          </div>
-          <div class="task-line">
-            <span class="task-label">调代推荐</span>
+          <div v-for="task in TASK_FORMS" :key="task.type" class="task-line">
+            <span class="task-label">{{ task.label }}</span>
             <el-select
-              v-model="customSelections.substitution_recommend"
+              v-model="customSelections[task.type]"
               placeholder="选择模型"
               style="width: 360px"
             >
@@ -381,7 +370,12 @@ interface ParamDraft {
   maxTokens?: number
 }
 
-const TASK_TYPES = ['data_import', 'substitution_recommend'] as const
+const TASK_FORMS = [
+  { type: 'data_import', label: '数据导入' },
+  { type: 'substitution_recommend', label: '调代推荐' },
+  { type: 'natural_language_constraints', label: '自然语言约束' },
+] as const
+const TASK_TYPES = TASK_FORMS.map((task) => task.type)
 
 const providers = ref<AiProvider[]>([])
 const presets = ref<Preset[]>([])
@@ -404,6 +398,7 @@ const unifiedModelId = ref<number | undefined>()
 const customSelections = reactive<Record<string, number | undefined>>({
   data_import: undefined,
   substitution_recommend: undefined,
+  natural_language_constraints: undefined,
 })
 
 const providerDialogVisible = ref(false)

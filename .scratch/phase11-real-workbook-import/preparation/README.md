@@ -1,5 +1,7 @@
 # 待办准备审查与执行入口（2026-10-25）
 
+> **2026-10-27 票14已实现（集成分支，未合并/未部署）**：用户完成Q1–Q23选择后明确要求`/to-spec`，正式实现依据见 [自然语言约束规格](../../natural-language-constraints/spec.md)；[设计汇总](natural-language-constraints-design.md)与[语料及验收](natural-language-constraint-corpus.md)保留依据。12张实现票已在 `feature/natural-language-constraints` 完成，完整门禁与两轴评审见[票12交付记录](../../natural-language-constraints/issues/12-integrate-and-accept.md)。真实模型评测因无可靠单价/授权受阻，未调用真实供应商；**未合并 `main`、未部署**。下面是2026-10-25准备快照，“14下一期再grill”“同类必须共用”等旧描述不覆盖本轮新规格。
+
 本文件由本轮 ask-matt 复查产生。用户当前授权是**完成准备材料，修复由新的 agent 执行**。本轮仅做代码阅读、需求确认与文档整理；没有继续修代码、重新测试、部署或修改线上数据。
 
 ## 路由结论
@@ -14,7 +16,7 @@
 | 09 可疑教师名 | 不需要整场 grill；原票允许入库后更名 | 保留现票，明确只提示、不扩展工作簿编辑能力 | repair-spec.md 的 09 + 原票 |
 | 10 多条约束与布局 | 本轮决定已确认；视觉仍需原型确认 | 独立 spec + 已获用户认可的 6 张票 | ../../constraint-entries/spec.md |
 | 02 整本导入进度/停止/重试遗留 | 当前需求可复用八期，不重新整场 grill | 独立下一批 spec + 3 张草案；本轮不纳入修复范围 | ../../workbook-background/spec.md |
-| 14 自然语言约束 | **下一期需 grill-with-docs** | 本轮只记录问题树，不发布实现 spec 或 agent-ready 票 | next-phase-questions.md |
+| 14 自然语言约束 | 2026-10-27已完成grill并执行to-spec | 12票已实现于集成分支，待合并/部署；真实模型评测受阻 | ../../natural-language-constraints/issues/12-integrate-and-accept.md |
 
 原始 issue 的状态与历史描述保留，不将它们当作本轮已完成的证据。票 10 原文件的两项待问已由本轮记录解决；新的执行规格以 constraint-entries 为准。票 02 原未完成项仍保持未完成。
 

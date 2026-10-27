@@ -198,16 +198,12 @@ test.describe.serial('约束配置：目标型约束多条目', () => {
     const slots = card.getByTestId('constraint-entry-slot')
     await expect(slots).toHaveCount(1)
     await pickOption(slots.nth(0), 'constraint-entry-slot-day', '周一')
-    const firstPeriod = slots.nth(0).getByTestId('constraint-entry-slot-period').locator('input')
-    await firstPeriod.fill('1')
-    await firstPeriod.press('Tab')
+    await pickOption(slots.nth(0), 'constraint-entry-slot-period', '第1节')
 
     await card.getByTestId('constraint-entry-slot-add').click()
     await expect(slots).toHaveCount(2)
     await pickOption(slots.nth(1), 'constraint-entry-slot-day', '周三')
-    const secondPeriod = slots.nth(1).getByTestId('constraint-entry-slot-period').locator('input')
-    await secondPeriod.fill('2')
-    await secondPeriod.press('Tab')
+    await pickOption(slots.nth(1), 'constraint-entry-slot-period', '第2节')
 
     const expected = `${teacher.name} · 周一第1节 或 周三第2节（命中任一即满足）`
     await expect(card.getByTestId('constraint-entry-summary')).toHaveText(expected)

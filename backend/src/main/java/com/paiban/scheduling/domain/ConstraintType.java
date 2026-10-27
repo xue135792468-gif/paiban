@@ -39,6 +39,10 @@ public enum ConstraintType {
     COURSE_NOT_IN_EVENING("课程不排晚自习", Category.PEDAGOGY, true, 100,
             "指定课程不安排在晚自习时段",
             List.of(Param.id("courseId", "课程"))),
+    COURSE_UNAVAILABLE("课程禁排时段", Category.PEDAGOGY, true, 100,
+            "指定课程在某些课节不排课（如体育不排上午第1、2节）",
+            List.of(Param.id("courseId", "课程"), Param.day("dayOfWeek", "星期"),
+                    Param.period("periodNo", "第几节"))),
     SAME_COURSE_ONCE_PER_DAY("同一课程一天最多一节", Category.PEDAGOGY, true, 100,
             "同一班级的同一课程每天最多安排一节",
             List.of(Param.idOptional("courseId", "课程（留空表示全部）"))),
@@ -112,6 +116,7 @@ public enum ConstraintType {
             TEACHER_MEETING_BLOCKED,
             COURSE_REQUIRED_ROOM_TYPE,
             COURSE_NOT_IN_EVENING,
+            COURSE_UNAVAILABLE,
             SAME_COURSE_ONCE_PER_DAY,
             SPORT_NOT_FIRST_AFTERNOON,
             CONSECUTIVE_LESSONS,
@@ -126,6 +131,18 @@ public enum ConstraintType {
             COURSE_MAX_PER_DAY,
             EVENING_MAX,
             TEACHER_MAX_CONSECUTIVE);
+
+    /**
+     * Types whose one editable card owns several (weekday, period) rows. The card is
+     * the user-managed requirement; the rows are the concrete slots it expands into.
+     * The evaluator never reads this set — it groups by each row's {@code groupKey} —
+     * but the editor uses it to render one card per requirement.
+     */
+    private static final Set<ConstraintType> SLOT_GROUPED = EnumSet.of(
+            TEACHER_UNAVAILABLE,
+            TEACHER_MEETING_BLOCKED,
+            TEACHER_PREFERRED_SLOT,
+            COURSE_UNAVAILABLE);
 
     /**
      * Where a threshold type reads its scope and its number from: the object field is
@@ -255,6 +272,16 @@ public enum ConstraintType {
      */
     public boolean isEntryBacked() {
         return ENTRY_BACKED.contains(this);
+    }
+
+    /**
+     * True when the editor shows this type as a card that owns several weekday/period
+     * slots (one requirement, many stored rows). Purely an editing shape: evaluation
+     * reads {@code groupKey} so a legacy one-row-per-slot configuration still means
+     * exactly what it did.
+     */
+    public boolean isSlotGrouped() {
+        return SLOT_GROUPED.contains(this);
     }
 
     /**

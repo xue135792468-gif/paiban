@@ -108,7 +108,10 @@ public class AiGatewayImpl implements AiGateway {
         }
 
         AiStrategyOutcome outcome = null;
-        int maxAttempts = MAX_ATTEMPTS;
+        Integer attemptOverride = effective.options() == null
+                ? null : effective.options().maxAttempts();
+        int maxAttempts = attemptOverride == null
+                ? MAX_ATTEMPTS : Math.max(1, attemptOverride);
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             outcome = invoke(strategy, new AiInvocation(
                     target.provider(), target.apiKey(), target.model(), effective));

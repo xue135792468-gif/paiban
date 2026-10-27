@@ -7,6 +7,7 @@
       :teachers="teachers"
       :courses="courses"
       :disabled="disabled"
+      :day-options="dayOptions"
       test-id="constraint-entry-slot-day"
       @update="(name: string, value: unknown) => emit('update', name, value)"
     />
@@ -17,9 +18,20 @@
       :teachers="teachers"
       :courses="courses"
       :disabled="disabled"
+      :period-options="periodOptions"
       test-id="constraint-entry-slot-period"
       @update="(name: string, value: unknown) => emit('update', name, value)"
     />
+    <el-button
+      v-if="(dayOptions?.length ?? 0) > 1"
+      link
+      type="primary"
+      :disabled="disabled || draft.periodNo === null"
+      data-testid="constraint-entry-slot-all-days"
+      @click="emit('fill-all-days')"
+    >
+      所有上课日
+    </el-button>
     <el-button
       link
       type="danger"
@@ -50,11 +62,16 @@ const props = defineProps<{
   removable?: boolean
   teachers: OptionItem[]
   courses: OptionItem[]
+  /** The weekdays the semester has; absent falls back to the catalogue default. */
+  dayOptions?: number[]
+  /** Period numbers per weekday, from the current semester timetable. */
+  periodsByDay?: Record<number, number[]>
 }>()
 
 const emit = defineEmits<{
   update: [field: string, value: unknown]
   remove: []
+  'fill-all-days': []
 }>()
 
 const dayParam = computed<ParamDef>(
@@ -75,6 +92,12 @@ const slotValues = computed(() => ({
   dayOfWeek: props.draft.dayOfWeek,
   periodNo: props.draft.periodNo,
 }))
+
+const periodOptions = computed(() =>
+  props.draft.dayOfWeek === null
+    ? []
+    : props.periodsByDay?.[props.draft.dayOfWeek] ?? [],
+)
 </script>
 
 <style scoped>

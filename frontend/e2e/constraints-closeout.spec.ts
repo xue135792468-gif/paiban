@@ -100,7 +100,7 @@ test.describe.serial('约束配置：收尾页面状态与证据', () => {
     await expect(page.getByTestId('constraint-nav-group')).toHaveCount(4)
     await expect(page.getByTestId('constraint-nav-group').first()).toContainText('冲突类')
 
-    await expect(page.getByTestId('constraint-summary-enabled')).toContainText(/已启用 \d+ \/ 24 类/)
+    await expect(page.getByTestId('constraint-summary-enabled')).toContainText(/已启用 \d+ \/ 25 类/)
     await expect(summaryEntries(page)).toContainText('具体条目 3 条')
     // 顶部条目数＝左侧每类条目数之和，两者出自同一份草稿状态。
     expect(await navEntryTotal(page)).toBe(3)
@@ -237,15 +237,21 @@ test.describe.serial('约束配置：收尾页面状态与证据', () => {
     await teacherTrigger.click()
     const dropdown = page.locator('.el-select-dropdown:visible .el-select-dropdown__item')
     await dropdown.filter({ hasText: first.name }).first().click()
-    await card.getByTestId('constraint-entry-day').click()
+    const slot = card.getByTestId('constraint-entry-slot').first()
+    await slot.getByTestId('constraint-entry-slot-day').click()
     await page
       .locator('.el-select-dropdown:visible .el-select-dropdown__item')
       .filter({ hasText: '周一' })
       .first()
       .click()
-    const periodInput = card.getByTestId('constraint-entry-period').locator('input')
-    await periodInput.fill('1')
-    await periodInput.press('Tab')
+    await slot.getByTestId('constraint-entry-slot-period').click()
+    await page
+      .locator('.el-select-dropdown:visible')
+      .last()
+      .locator('.el-select-dropdown__item')
+      .filter({ hasText: '第1节' })
+      .first()
+      .click()
 
     await expect(card.getByTestId('constraint-entry-duplicate')).toContainText('与第 1 条完全相同')
     // 新增：冲突在保存前就让左侧该类型亮起红点。

@@ -3,6 +3,10 @@ package com.paiban.scheduling.web;
 import com.paiban.identity.domain.Permissions;
 import com.paiban.scheduling.service.ConstraintService;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintConfigDto;
+import com.paiban.scheduling.web.ConstraintDtos.ConstraintPreviewDto;
+import com.paiban.scheduling.web.ConstraintDtos.ConstraintPreviewRequest;
+import com.paiban.scheduling.web.ConstraintDtos.ConstraintSaveAuditDto;
+import com.paiban.scheduling.web.ConstraintDtos.ConstraintStateDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintTypeDto;
 import com.paiban.scheduling.web.ConstraintDtos.SaveConstraintsRequest;
 import com.paiban.scheduling.web.ConstraintDtos.SaveTemplateRequest;
@@ -12,6 +16,7 @@ import com.paiban.scheduling.web.ConstraintDtos.TemplateDto;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,12 +47,59 @@ public class ConstraintController {
         return service.list(semesterId);
     }
 
+    /**
+     * The effective configuration plus the version a writer must send back as its base.
+     * The plain {@code /constraints} list stays for readers that only need the rows.
+     */
+    @GetMapping("/constraints/state")
+    public ConstraintStateDto state(@RequestParam(required = false) Long semesterId) {
+        return service.state(semesterId);
+    }
+
+    /**
+     * {@code baseVersion} makes the save conditional: a version that no longer matches
+     * returns 409 with the latest configuration instead of overwriting it. A request
+     * without it is accepted only while the stored data has no per-requirement shape.
+     */
     @PutMapping("/constraints")
     @PreAuthorize("hasAuthority('" + Permissions.CONSTRAINT_MANAGE + "')")
     public List<ConstraintConfigDto> save(
             @RequestParam(required = false) Long semesterId,
-            @Valid @RequestBody SaveConstraintsRequest request) {
-        return service.save(semesterId, request.configs() == null ? List.of() : request.configs());
+            @RequestParam(required = false) Long baseVersion,
+            @Valid @RequestBody SaveConstraintsRequest request,
+            Authentication authentication) {
+        return service.save(
+                semesterId, request.configs() == null ? List.of() : request.configs(), baseVersion,
+                request.runId(), request.decisions(),
+                authentication == null ? null : authentication.getName());
+    }
+
+    /**
+     * Dry run used by "添加到约束表": validates the merged configuration without
+     * writing or advancing the version, so a bad merge is refused before the page's
+     * draft changes.
+     */
+    @PostMapping("/constraints/preview")
+    @PreAuthorize("hasAuthority('" + Permissions.CONSTRAINT_MANAGE + "')")
+    public ConstraintPreviewDto preview(
+            @RequestParam(required = false) Long semesterId,
+            @Valid @RequestBody ConstraintPreviewRequest request) {
+        return service.preview(
+                semesterId, request.configs() == null ? List.of() : request.configs());
+    }
+
+    /**
+     * Saved effective configurations with the proposal decisions that produced them.
+     * {@code scope=all} needs the settings administrator; the default is "mine".
+     */
+    @GetMapping("/constraint-audits")
+    @PreAuthorize("hasAuthority('" + Permissions.CONSTRAINT_MANAGE + "')")
+    public List<ConstraintSaveAuditDto> audits(
+            @RequestParam(required = false) Long semesterId,
+            @RequestParam(defaultValue = "mine") String scope,
+            Authentication authentication) {
+        return service.audits(semesterId, "all".equalsIgnoreCase(scope),
+                authentication == null ? null : authentication.getName());
     }
 
     @GetMapping("/constraint-templates")
@@ -79,8 +131,11 @@ public class ConstraintController {
     public List<ConstraintConfigDto> apply(
             @PathVariable Long id,
             @RequestParam(required = false) Long semesterId,
-            @RequestBody(required = false) TemplateApplyRequest request) {
-        return service.applyTemplate(id, semesterId, request);
+            @RequestParam(required = false) Long baseVersion,
+            @RequestBody(required = false) TemplateApplyRequest request,
+            Authentication authentication) {
+        return service.applyTemplate(id, semesterId, request, baseVersion,
+                authentication == null ? null : authentication.getName());
     }
 
     /**

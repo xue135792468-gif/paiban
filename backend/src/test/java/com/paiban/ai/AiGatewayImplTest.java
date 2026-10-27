@@ -277,13 +277,18 @@ class AiGatewayImplTest {
     }
 
     @Test
-    void configuredRequiresBothTaskConfigs() {
+    void configuredRequiresEveryTaskConfig() {
         assign(AiTaskType.DATA_IMPORT, provider(1L, "一号", "http://x/v1"), model(10L, 1L, "m", false));
 
         assertThat(gateway.configured()).isFalse();
 
         assign(AiTaskType.SUBSTITUTION_RECOMMEND,
                 provider(2L, "二号", "http://y/v1"), model(20L, 2L, "m2", false));
+
+        assertThat(gateway.configured()).isFalse();
+
+        assign(AiTaskType.NATURAL_LANGUAGE_CONSTRAINTS,
+                provider(3L, "三号", "http://z/v1"), model(30L, 3L, "m3", false));
 
         assertThat(gateway.configured()).isTrue();
     }

@@ -354,6 +354,122 @@ class ConstraintTemplateCompatibilityTest extends ApiIntegrationTest {
         assertThat(entryRows(semesterId, "TEACHER_UNAVAILABLE")).isEqualTo(1);
     }
 
+    @Test
+    void theWholeCatalogueRoundTripsWithPerRequirementControlsAndGroups() {
+        String token = adminToken();
+        long source = semesterWithPeriods(token);
+        long target = semesterWithPeriods(token);
+        long teacher = TestData.teacher(token, "全目录师" + TestData.suffix());
+        String courseName = "语文" + TestData.suffix();
+        long course = TestData.course(token, courseName);
+        String className = "全目录班" + TestData.suffix();
+        long sourceClass = adminClass(token, source, className);
+        long targetClass = adminClass(token, target, className);
+
+        List<Map<String, Object>> configs = new ArrayList<>();
+        // 19 entry-backed types, one grouped requirement each with its own soft weight.
+        configs.add(controlled("TEACHER_UNAVAILABLE", 44,
+                Map.of("teacherId", teacher, "dayOfWeek", 1, "periodNo", 1)));
+        configs.add(controlled("TEACHER_MEETING_BLOCKED", 44,
+                Map.of("subject", courseName, "dayOfWeek", 1, "periodNo", 2)));
+        configs.add(controlled("COURSE_REQUIRED_ROOM_TYPE", 44,
+                Map.of("courseId", course, "roomType", "LAB")));
+        configs.add(controlled("COURSE_NOT_IN_EVENING", 44, Map.of("courseId", course)));
+        configs.add(controlled("COURSE_UNAVAILABLE", 44,
+                Map.of("courseId", course, "dayOfWeek", 2, "periodNo", 1)));
+        configs.add(controlled("SAME_COURSE_ONCE_PER_DAY", 44, Map.of()));
+        configs.add(controlled("SPORT_NOT_FIRST_AFTERNOON", 44, Map.of()));
+        configs.add(controlled("CONSECUTIVE_LESSONS", 44,
+                Map.of("courseId", course, "minConsecutive", 2)));
+        configs.add(controlled("COURSE_SPREAD", 44, Map.of()));
+        configs.add(controlled("MAIN_SUBJECT_MORNING", 44,
+                Map.of("courseId", course, "beforePeriodNo", 4)));
+        configs.add(controlled("TEACHER_PREFERRED_SLOT", 44,
+                Map.of("teacherId", teacher, "dayOfWeek", 3, "periodNo", 1)));
+        configs.add(controlled("TEACHER_NO_FIRST_PERIOD", 44, Map.of("teacherId", teacher)));
+        configs.add(controlled("TEACHER_DAY_OFF", 44,
+                Map.of("teacherId", teacher, "dayOfWeek", 5)));
+        configs.add(controlled("PE_LAST_PERIOD_AVOID", 44, Map.of()));
+        configs.add(controlled("TEACHER_MAX_PER_DAY", 44, Map.of("maxPerDay", 4)));
+        configs.add(controlled("CLASS_MAX_PER_DAY", 44,
+                Map.of("classId", sourceClass, "maxPerDay", 8)));
+        configs.add(controlled("COURSE_MAX_PER_DAY", 44,
+                Map.of("courseId", course, "maxPerDay", 2)));
+        configs.add(controlled("EVENING_MAX", 44,
+                Map.of("classId", sourceClass, "maxPerDay", 2)));
+        configs.add(controlled("TEACHER_MAX_CONSECUTIVE", 44,
+                Map.of("teacherId", teacher, "maxConsecutive", 3)));
+        // Six single-switch types: global controls only, no entries.
+        for (String type : List.of("TEACHER_CONFLICT", "CLASS_CONFLICT", "ROOM_CONFLICT",
+                "ROOM_CAPACITY_FIT", "CLASS_GAP_MINIMIZED", "HEAD_TEACHER_FIRST_PERIOD")) {
+            configs.add(Map.of("type", type, "params", Map.of(), "weight", 100,
+                    "hard", true, "enabled", true));
+        }
+        assertThat(configs).hasSize(25);
+        save(token, source, configs).then().statusCode(200);
+
+        long templateId = saveTemplate(token, source, "全目录-" + TestData.suffix())
+                .then().statusCode(200)
+                .body("configCount", equalTo(25))
+                .body("entryCount", equalTo(19))
+                .extract().jsonPath().getLong("id");
+
+        as(token).queryParam("semesterId", target)
+                .body(Map.of("classMapping", Map.of(String.valueOf(sourceClass), targetClass)))
+                .when().post("/api/constraint-templates/" + templateId + "/apply")
+                .then().statusCode(200);
+
+        List<Map<String, Object>> restored = configs(token, target);
+        assertThat(restored).hasSize(25);
+        List<Map<String, Object>> controlledRows = restored.stream()
+                .filter(row -> ((List<?>) row.get("entries")).size() == 1)
+                .filter(row -> !"TEACHER_CONFLICT".equals(row.get("type")))
+                .toList();
+        assertThat(controlledRows).hasSize(19);
+        controlledRows.forEach(row -> {
+            Map<?, ?> entry = (Map<?, ?>) ((List<?>) row.get("entries")).get(0);
+            assertThat(entry.get("groupKey")).as("group key of %s", row.get("type"))
+                    .isEqualTo("g-" + row.get("type"));
+            assertThat(entry.get("hard")).isEqualTo(false);
+            assertThat(((Number) entry.get("weight")).intValue()).isEqualTo(44);
+            assertThat(entry.get("enabled")).isEqualTo(true);
+        });
+        // The class reference was explicitly rebound; the source id never leaked.
+        Map<String, Object> classMax = byType(restored, "CLASS_MAX_PER_DAY");
+        Map<?, ?> classEntry = (Map<?, ?>) ((List<?>) classMax.get("entries")).get(0);
+        assertThat(((Number) ((Map<?, ?>) classEntry.get("params")).get("classId")).longValue())
+                .isEqualTo(targetClass);
+        // Six switches keep being switches: no entries were invented for them.
+        for (String type : List.of("TEACHER_CONFLICT", "CLASS_CONFLICT", "ROOM_CONFLICT",
+                "ROOM_CAPACITY_FIT", "CLASS_GAP_MINIMIZED", "HEAD_TEACHER_FIRST_PERIOD")) {
+            assertThat(byType(restored, type).get("entries")).isEqualTo(List.of());
+        }
+    }
+
+    @Test
+    void aTemplateWithoutControlFieldsInheritsTheTypeDefaults() {
+        String token = adminToken();
+        long semesterId = semesterWithPeriods(token);
+        long teacher = TestData.teacher(token, "旧字段师" + TestData.suffix());
+        long templateId = seedTemplate("旧字段-" + TestData.suffix(),
+                "[{\"type\":\"TEACHER_UNAVAILABLE\",\"weight\":100,\"hard\":true,"
+                        + "\"enabled\":true,\"entries\":[{\"params\":{\"teacherId\":" + teacher
+                        + ",\"dayOfWeek\":1,\"periodNo\":1}}]}]");
+
+        as(token).queryParam("semesterId", semesterId)
+                .when().post("/api/constraint-templates/" + templateId + "/apply")
+                .then().statusCode(200);
+
+        Map<String, Object> restored = byType(configs(token, semesterId), "TEACHER_UNAVAILABLE");
+        Map<?, ?> entry = (Map<?, ?>) ((List<?>) restored.get("entries")).get(0);
+        // Null overrides are omitted from JSON: the entry inherits the type row.
+        assertThat(entry.get("enabled")).isEqualTo(true);
+        assertThat(entry.get("hard")).isNull();
+        assertThat(entry.get("weight")).isNull();
+        assertThat(entry.get("groupKey")).isNull();
+        assertThat(restored.get("hard")).isEqualTo(true);
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private long semesterWithPeriods(String token) {
@@ -400,6 +516,23 @@ class ConstraintTemplateCompatibilityTest extends ApiIntegrationTest {
 
     private Map<String, Object> entry(Map<String, Object> params) {
         return Map.of("params", params);
+    }
+
+    /** One entry-backed type whose single requirement carries a group and controls. */
+    private Map<String, Object> controlled(
+            String type, int weight, Map<String, Object> params) {
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("params", params);
+        entry.put("groupKey", "g-" + type);
+        entry.put("hard", false);
+        entry.put("weight", weight);
+        entry.put("enabled", true);
+        return Map.of(
+                "type", type,
+                "weight", weight,
+                "hard", true,
+                "enabled", true,
+                "entries", List.of(entry));
     }
 
     private List<Map<String, Object>> configs(String token, long semesterId) {

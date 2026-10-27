@@ -14,9 +14,18 @@ import com.paiban.foundation.domain.PeriodRepository;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.foundation.service.SemesterService;
+import com.paiban.identity.domain.Permissions;
+import com.paiban.identity.service.UserService;
 import com.paiban.scheduling.domain.ConstraintConfig;
 import com.paiban.scheduling.domain.ConstraintConfigRepository;
+import com.paiban.scheduling.domain.ConstraintConfigState;
+import com.paiban.scheduling.domain.ConstraintConfigStateRepository;
 import com.paiban.scheduling.domain.ConstraintEntry;
+import com.paiban.scheduling.domain.ConstraintGenerationRun;
+import com.paiban.scheduling.domain.ConstraintGenerationRunRepository;
+import com.paiban.scheduling.domain.ConstraintSaveAudit;
+import com.paiban.scheduling.domain.ConstraintSaveAuditRepository;
+import com.paiban.scheduling.domain.ConstraintWorkspaceRepository;
 import com.paiban.scheduling.domain.ConstraintEntryRepository;
 import com.paiban.scheduling.domain.ConstraintTemplate;
 import com.paiban.scheduling.domain.ConstraintTemplateRepository;
@@ -29,6 +38,10 @@ import com.paiban.scheduling.web.ConstraintDtos.ConstraintConfigDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintConfigRequest;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintEntryDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintEntryRequest;
+import com.paiban.scheduling.web.ConstraintDtos.ConstraintPreviewDto;
+import com.paiban.scheduling.web.ConstraintDtos.ConstraintSaveAuditDto;
+import com.paiban.scheduling.web.ConstraintDtos.ConstraintStateDto;
+import com.paiban.scheduling.web.ConstraintDtos.ProposalDecision;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintTypeDto;
 import com.paiban.scheduling.web.ConstraintDtos.ParamDefDto;
 import com.paiban.scheduling.web.ConstraintDtos.TemplateApplyPreview;
@@ -37,6 +50,7 @@ import com.paiban.scheduling.web.ConstraintDtos.TemplateDto;
 import com.paiban.scheduling.web.ConstraintDtos.TemplateReferenceIssue;
 import java.time.Instant;
 import java.util.ArrayList;
+import org.springframework.dao.DataIntegrityViolationException;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -67,33 +81,48 @@ public class ConstraintService {
     static final int TEMPLATE_JSON_LIMIT = 65535;
 
     private final ConstraintConfigRepository configs;
+    private final ConstraintConfigStateRepository states;
     private final ConstraintEntryRepository entries;
+    private final ConstraintSaveAuditRepository audits;
+    private final ConstraintGenerationRunRepository generationRuns;
+    private final ConstraintWorkspaceRepository workspaces;
     private final ConstraintTemplateRepository templates;
     private final SemesterService semesters;
     private final TeacherRepository teachers;
     private final CourseRepository courses;
     private final PeriodRepository periods;
     private final AdminClassRepository adminClasses;
+    private final UserService users;
     private final ObjectMapper objectMapper;
 
     public ConstraintService(
             ConstraintConfigRepository configs,
+            ConstraintConfigStateRepository states,
             ConstraintEntryRepository entries,
+            ConstraintSaveAuditRepository audits,
+            ConstraintGenerationRunRepository generationRuns,
+            ConstraintWorkspaceRepository workspaces,
             ConstraintTemplateRepository templates,
             SemesterService semesters,
             TeacherRepository teachers,
             CourseRepository courses,
             PeriodRepository periods,
             AdminClassRepository adminClasses,
+            UserService users,
             ObjectMapper objectMapper) {
         this.configs = configs;
+        this.states = states;
         this.entries = entries;
+        this.audits = audits;
+        this.generationRuns = generationRuns;
+        this.workspaces = workspaces;
         this.templates = templates;
         this.semesters = semesters;
         this.teachers = teachers;
         this.courses = courses;
         this.periods = periods;
         this.adminClasses = adminClasses;
+        this.users = users;
         this.objectMapper = objectMapper;
     }
 
@@ -108,6 +137,7 @@ public class ConstraintService {
                         type.isDefaultHard(),
                         type.getDefaultWeight(),
                         type.isEntryBacked(),
+                        type.isSlotGrouped(),
                         type.thresholdScope() == null ? null : type.thresholdScope().objectField(),
                         type.thresholdScope() == null ? null : type.thresholdScope().valueField(),
                         type.getParams().stream().map(this::toDto).toList()))
@@ -123,15 +153,90 @@ public class ConstraintService {
                 .toList();
     }
 
+    /**
+     * The effective configuration plus its version. Every writer sends the version it
+     * read back as {@code baseVersion}; a save that names an older version is refused
+     * instead of overwriting someone else's work.
+     */
+    @Transactional(readOnly = true)
+    public ConstraintStateDto state(Long semesterId) {
+        Long resolved = resolveSemester(semesterId);
+        return new ConstraintStateDto(versionOf(resolved), list(resolved));
+    }
+
     @Transactional
     public List<ConstraintConfigDto> save(Long semesterId, List<ConstraintConfigRequest> requests) {
+        return save(semesterId, requests, null);
+    }
+
+    /**
+     * Saves the whole semester configuration. {@code baseVersion} is required once the
+     * stored data uses the per-requirement shape (groups or overrides), because a legacy
+     * request cannot represent it and would silently erase it.
+     */
+    @Transactional
+    public List<ConstraintConfigDto> save(
+            Long semesterId, List<ConstraintConfigRequest> requests, Long baseVersion) {
+        return save(semesterId, requests, baseVersion, null, List.of(), null);
+    }
+
+    /**
+     * Saves the whole semester configuration and, when the input came from a
+     * generation run, records the user's decisions and the exact final configuration in
+     * the same transaction (ticket 14/10). A cross-user or cross-semester run is
+     * refused before any write.
+     */
+    @Transactional
+    public List<ConstraintConfigDto> save(
+            Long semesterId, List<ConstraintConfigRequest> requests, Long baseVersion,
+            Long runId, List<ProposalDecision> decisions, String actor) {
         Long resolved = resolveSemester(semesterId);
+        AuditContext audit = prepareAudit(resolved, runId, actor);
+        long base = requireVersion(resolved, baseVersion);
         Planning planning = plan(resolved, requests, existingEntries(resolved));
         List<String> errors = refusalErrors(planning);
         if (!errors.isEmpty()) {
             throw ApiException.badRequest(String.join("; ", errors));
         }
-        return persist(resolved, planning.configs());
+        List<ConstraintConfigDto> previous = list(resolved);
+        // The version moves before the rows so a losing race writes nothing at all; a
+        // later failure rolls the bump back with the rest of the transaction.
+        advanceState(resolved, base);
+        List<ConstraintConfigDto> result = persist(resolved, planning.configs());
+        recordAudit(resolved, base + 1, audit, decisions, previous, result);
+        // The successful save is the new truth: this account's unsaved draft must not
+        // resurrect afterwards, on this device or another.
+        if (audit.userId() != null) {
+            workspaces.deleteByUserIdAndSemesterId(audit.userId(), resolved);
+        }
+        return result;
+    }
+
+    /**
+     * Dry run for "添加到约束表": the exact refusals a save would produce, with no
+     * writes and no version advance. The page can therefore reject an invalid merge
+     * before it touches the borrowed draft.
+     */
+    @Transactional(readOnly = true)
+    public ConstraintPreviewDto preview(
+            Long semesterId, List<ConstraintConfigRequest> requests) {
+        Long resolved = resolveSemester(semesterId);
+        Planning planning = plan(resolved, requests, existingEntries(resolved));
+        return new ConstraintPreviewDto(planning.errors(), planning.references());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConstraintSaveAuditDto> audits(Long semesterId, boolean all, String actor) {
+        Long resolved = resolveSemester(semesterId);
+        Long userId = userIdOf(actor);
+        if (all && !isAdmin()) {
+            throw ApiException.forbidden("只有设置管理员可以查看全部保存记录");
+        }
+        var page = org.springframework.data.domain.PageRequest.of(0, 50);
+        List<ConstraintSaveAudit> rows = all
+                ? audits.findBySemesterIdOrderByCreatedAtDesc(resolved, page)
+                : audits.findBySemesterIdAndUserIdOrderByCreatedAtDesc(resolved, userId, page);
+        return rows.stream().map(this::toAuditDto).toList();
     }
 
     /**
@@ -166,13 +271,14 @@ public class ConstraintService {
             if (weight < 0 || weight > 100) {
                 errors.add(type.getDisplayName() + ": 权重必须在 0-100 之间");
             }
+            boolean hard = request.hard() == null ? type.isDefaultHard() : request.hard();
             EntryPlan entries = planEntries(
-                    type, request, timetable, existingEntries, claimedEntries, errors);
+                    type, request, hard, weight, timetable, existingEntries, claimedEntries, errors);
             references.addAll(entries.references());
             planned.add(new PlannedConfig(
                     type,
                     weight,
-                    request.hard() == null ? type.isDefaultHard() : request.hard(),
+                    hard,
                     request.enabled() == null || request.enabled(),
                     entries.entries()));
         }
@@ -271,13 +377,19 @@ public class ConstraintService {
                     kept.add(row.getId());
                 }
                 row.setParamsJson(toJson(entry.params()));
+                row.setEnabled(entry.enabled());
+                row.setHard(entry.hard());
+                row.setWeight(entry.weight());
+                row.setGroupKey(entry.groupKey());
                 rows.add(row);
             }
             List<ConstraintEntry> savedRows = entries.saveAll(rows);
             List<ConstraintEntryDto> entryDtos = new ArrayList<>();
             for (int index = 0; index < savedRows.size(); index++) {
+                PlannedEntry plannedEntry = plan.entries().get(index);
                 entryDtos.add(new ConstraintEntryDto(
-                        savedRows.get(index).getId(), plan.entries().get(index).params()));
+                        savedRows.get(index).getId(), plannedEntry.params(), plannedEntry.enabled(),
+                        plannedEntry.hard(), plannedEntry.weight(), plannedEntry.groupKey()));
             }
             current.values().stream()
                     .filter(row -> !kept.contains(row.getId()))
@@ -304,6 +416,184 @@ public class ConstraintService {
     @Transactional(readOnly = true)
     public boolean hasConfigs(Long semesterId) {
         return !configs.findBySemesterId(semesterId).isEmpty();
+    }
+
+    // ------------------------------------------------------------ save audit
+
+    private record AuditContext(Long userId, String actor, Long runId) {}
+
+    /**
+     * Validates the generation run a save claims to come from before any write: it must
+     * belong to this semester, and a non-admin may only save decisions about their own
+     * run. A manual save (no run) is always allowed.
+     */
+    private AuditContext prepareAudit(Long semesterId, Long runId, String actor) {
+        Long userId = userIdOf(actor);
+        if (runId == null) {
+            return new AuditContext(userId, actor, null);
+        }
+        // A run-linked save must prove who is saving: an unresolved actor cannot be
+        // allowed to skip the ownership check just because the lookup failed.
+        if (userId == null) {
+            throw ApiException.unauthorized("无法确认当前用户，不能关联生成记录");
+        }
+        ConstraintGenerationRun run = generationRuns.findById(runId)
+                .orElseThrow(() -> ApiException.badRequest("生成记录不存在: " + runId));
+        if (!semesterId.equals(run.getSemesterId())) {
+            throw ApiException.badRequest("生成记录属于其他学期，不能用于本次保存");
+        }
+        if (!isAdmin() && !userId.equals(run.getUserId())) {
+            throw ApiException.forbidden("不能保存他人的生成记录");
+        }
+        return new AuditContext(userId, actor, runId);
+    }
+
+    /** The final configuration and the decisions are written in the save transaction. */
+    private void recordAudit(
+            Long semesterId, long version, AuditContext audit,
+            List<ProposalDecision> decisions, List<ConstraintConfigDto> previous,
+            List<ConstraintConfigDto> result) {
+        ConstraintSaveAudit row = new ConstraintSaveAudit();
+        row.setSemesterId(semesterId);
+        row.setVersion(version);
+        row.setUserId(audit.userId());
+        row.setActor(audit.actor());
+        row.setRunId(audit.runId());
+        row.setDecisionsJson(toJson(decisions == null ? List.of() : decisions));
+        row.setPreviousConfigJson(toJson(previous));
+        row.setFinalConfigJson(toJson(result));
+        row.setDiffJson(toJson(ConstraintConfigDiff.diff(previous, result)));
+        row.setCreatedAt(Instant.now());
+        audits.save(row);
+    }
+
+    private ConstraintSaveAuditDto toAuditDto(ConstraintSaveAudit row) {
+        List<ProposalDecision> decisions;
+        List<ConstraintConfigDto> configs;
+        try {
+            decisions = row.getDecisionsJson() == null ? List.of()
+                    : objectMapper.readValue(row.getDecisionsJson(),
+                    new TypeReference<List<ProposalDecision>>() {});
+        } catch (JsonProcessingException ex) {
+            decisions = List.of();
+        }
+        try {
+            configs = objectMapper.readValue(row.getFinalConfigJson(),
+                    new TypeReference<List<ConstraintConfigDto>>() {});
+        } catch (JsonProcessingException ex) {
+            configs = List.of();
+        }
+        List<ConstraintConfigDto> previous;
+        try {
+            previous = row.getPreviousConfigJson() == null ? List.of()
+                    : objectMapper.readValue(row.getPreviousConfigJson(),
+                    new TypeReference<List<ConstraintConfigDto>>() {});
+        } catch (JsonProcessingException ex) {
+            previous = List.of();
+        }
+        Map<String, Object> diff;
+        try {
+            diff = row.getDiffJson() == null ? Map.of()
+                    : objectMapper.readValue(row.getDiffJson(),
+                    new TypeReference<Map<String, Object>>() {});
+        } catch (JsonProcessingException ex) {
+            diff = Map.of();
+        }
+        return new ConstraintSaveAuditDto(row.getId(), row.getSemesterId(), row.getVersion(),
+                row.getRunId(), row.getActor(), row.getCreatedAt(), decisions, configs,
+                previous, diff);
+    }
+
+    private Long userIdOf(String actor) {
+        if (actor == null || !StringUtils.hasText(actor)) {
+            return null;
+        }
+        try {
+            return users.getByUsername(actor).getId();
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
+
+    private boolean isAdmin() {
+        return users.hasPermission(Permissions.SETTINGS_MANAGE);
+    }
+
+    // ------------------------------------------------------------ config version
+
+    /** The current version; a semester that was never saved reads as 0. */
+    private long versionOf(Long semesterId) {
+        Long version = states.findVersionById(semesterId);
+        return version == null ? 0L : version;
+    }
+
+    /**
+     * Enforces the base version of one write and returns the version it is based on.
+     *
+     * <ul>
+     *   <li>a named {@code baseVersion} must equal the current version, otherwise the
+     *       save is refused with the latest configuration in the body;</li>
+     *   <li>an unnamed base is accepted only while no stored entry uses the
+     *       per-requirement shape. A legacy request cannot represent a group or an
+     *       override, so allowing it would silently erase them (ticket 14/07).</li>
+     * </ul>
+     */
+    private long requireVersion(Long semesterId, Long baseVersion) {
+        long current = versionOf(semesterId);
+        if (baseVersion != null) {
+            if (baseVersion != current) {
+                throw versionConflict(semesterId, baseVersion, current);
+            }
+            return current;
+        }
+        if (hasAdvancedEntries(semesterId)) {
+            throw ApiException.badRequest(
+                    "该学期已包含逐项控制或要求分组，保存时必须携带配置版本（baseVersion），"
+                            + "否则旧请求会静默抹掉这些设置；请刷新页面后重试");
+        }
+        return current;
+    }
+
+    private ApiException versionConflict(Long semesterId, Long basedOn, long current) {
+        return ApiException.conflict(
+                "约束配置已被他人修改（你基于版本 " + basedOn + "，当前版本 " + current
+                        + "）。你的修改仍保留在页面上，请核对最新配置后再保存。",
+                Map.of("version", current, "configs", list(semesterId)));
+    }
+
+    /** True when any stored entry uses a shape a legacy request cannot represent. */
+    private boolean hasAdvancedEntries(Long semesterId) {
+        return entries.findBySemesterId(semesterId).stream().anyMatch(entry ->
+                !entry.isEnabled()
+                        || entry.getHard() != null
+                        || entry.getWeight() != null
+                        || (entry.getGroupKey() != null && StringUtils.hasText(entry.getGroupKey())));
+    }
+
+    /**
+     * Advances the semester version from {@code base} to {@code base + 1}. The update is
+     * conditional, so a concurrent writer that already moved it loses here and the whole
+     * transaction (including its configuration rows) is rolled back.
+     */
+    private void advanceState(Long semesterId, long base) {
+        Instant now = Instant.now();
+        if (states.bump(semesterId, base, now) > 0) {
+            return;
+        }
+        if (states.existsById(semesterId)) {
+            throw versionConflict(semesterId, base, versionOf(semesterId));
+        }
+        ConstraintConfigState created = new ConstraintConfigState();
+        created.setSemesterId(semesterId);
+        created.setVersion(1L);
+        created.setUpdatedAt(now);
+        try {
+            // Flush now so a concurrent insert (same primary key) is caught here and
+            // reported as a version conflict rather than as a raw database error.
+            states.saveAndFlush(created);
+        } catch (DataIntegrityViolationException ex) {
+            throw versionConflict(semesterId, base, versionOf(semesterId));
+        }
     }
 
     /**
@@ -366,7 +656,33 @@ public class ConstraintService {
     @Transactional
     public List<ConstraintConfigDto> applyTemplate(
             Long templateId, Long semesterId, TemplateApplyRequest request) {
+        return applyTemplate(templateId, semesterId, request, null);
+    }
+
+    /**
+     * Replaces the whole semester with the template's configuration. Class references
+     * belong to one semester, so they are either rebound explicitly (the caller names
+     * the old → new ids) or the apply is refused with every offending row listed.
+     * Teachers and courses are global assets and stay as they are when they still
+     * exist. Nothing is ever matched by name and no invalid id reaches the database.
+     *
+     * <p>The refusal is one 409 whose body carries the same two lists the preview
+     * returns ({@code errors} and {@code invalidReferences}), so the page parses one
+     * shape no matter which of the two it called (see the controller). Like a manual
+     * save, an apply advances the shared version and honours {@code baseVersion}.
+     */
+    @Transactional
+    public List<ConstraintConfigDto> applyTemplate(
+            Long templateId, Long semesterId, TemplateApplyRequest request, Long baseVersion) {
+        return applyTemplate(templateId, semesterId, request, baseVersion, null);
+    }
+
+    @Transactional
+    public List<ConstraintConfigDto> applyTemplate(
+            Long templateId, Long semesterId, TemplateApplyRequest request, Long baseVersion,
+            String actor) {
         Long resolved = resolveSemester(semesterId);
+        long base = requireVersion(resolved, baseVersion);
         List<ConstraintConfigRequest> snapshot = prepareSnapshot(
                 readSnapshot(requireTemplate(templateId)), request);
         Planning planning = plan(resolved, snapshot, Map.of());
@@ -376,7 +692,15 @@ public class ConstraintService {
                     "模板无法套用到当前学期：" + String.join("；", errors),
                     refusalBody(planning));
         }
-        return persist(resolved, planning.configs());
+        advanceState(resolved, base);
+        List<ConstraintConfigDto> result = persist(resolved, planning.configs());
+        // Applying a template also changes the effective configuration; the caller's
+        // stale unsaved draft must not come back after it.
+        Long userId = userIdOf(actor);
+        if (userId != null) {
+            workspaces.deleteByUserIdAndSemesterId(userId, resolved);
+        }
+        return result;
     }
 
     /**
@@ -454,8 +778,13 @@ public class ConstraintService {
     private record Planning(List<PlannedConfig> configs, List<String> errors,
                             List<TemplateReferenceIssue> references) {}
 
-    /** One accepted entry with the id it came in with and its 1-based request position. */
-    private record PlannedEntry(Long id, Map<String, Object> params, Integer position) {}
+    /**
+     * One accepted entry with the id it came in with, its 1-based request position and
+     * its controls. {@code hard}/{@code weight} null mean "inherit the type default";
+     * {@code groupKey} joins several rows into one user-managed requirement.
+     */
+    private record PlannedEntry(Long id, Map<String, Object> params, Integer position,
+                                boolean enabled, Boolean hard, Integer weight, String groupKey) {}
 
     /** The entries of one type, plus the object references of those entries that do not resolve. */
     private record EntryPlan(List<PlannedEntry> entries, List<TemplateReferenceIssue> references) {}
@@ -504,6 +833,12 @@ public class ConstraintService {
             return classId != null && classes.contains(classId);
         }
 
+        /** True when any day of the semester has at least one period. */
+        boolean hasDay(Integer dayOfWeek) {
+            return dayOfWeek != null
+                    && slots.stream().anyMatch(slot -> slot.startsWith(dayOfWeek + "-"));
+        }
+
         /** True when any day of the semester has this period number. */
         boolean hasPeriodNo(Integer periodNo) {
             if (periodNo == null) {
@@ -520,23 +855,28 @@ public class ConstraintService {
 
     /**
      * Validates every entry of one type and returns the ones to persist. Fully
-     * identical entries are rejected: the union would otherwise count the same
-     * fact twice and hide a duplicate row in the editor. Contradictory scalar
-     * conditions for the same object are rejected too.
+     * identical entries — same parameters <em>and</em> same effective controls — are
+     * rejected: the union would otherwise hide a duplicate row in the editor. The same
+     * parameters under different controls are allowed on purpose: they are overlapping
+     * requirements, and evaluation resolves them once (hard wins, otherwise the higher
+     * weight). Contradictory scalar conditions for the same object are rejected too.
      */
     private EntryPlan planEntries(
-            ConstraintType type, ConstraintConfigRequest request, SemesterScope timetable,
+            ConstraintType type, ConstraintConfigRequest request, boolean defaultHard,
+            int defaultWeight, SemesterScope timetable,
             Map<Long, ConstraintEntry> existingEntries, Map<String, Set<Long>> claimedEntries,
             List<String> errors) {
         List<PlannedEntry> planned = new ArrayList<>();
         List<TemplateReferenceIssue> references = new ArrayList<>();
-        Map<Map<String, Object>, Integer> seen = new HashMap<>();
+        Map<EntrySignature, Integer> seen = new HashMap<>();
         List<ConstraintEntryRequest> requested = request.entries();
         if (requested == null) {
             // Legacy shape: `params` is the single entry, and its messages keep the
-            // pre-ADR wording.
+            // pre-ADR wording. It inherits the type controls, so its meaning is the same
+            // as before per-requirement controls existed.
             Map<String, Object> params = validateParams(type, request.params(), null, errors);
-            accept(type, 1, null, params, planned, seen, timetable, existingEntries,
+            accept(type, new PlannedEntry(null, params, 1, true, null, null, null),
+                    planned, seen, defaultHard, defaultWeight, timetable, existingEntries,
                     claimedEntries, references, errors);
             return new EntryPlan(planned, references);
         }
@@ -549,12 +889,77 @@ public class ConstraintService {
             int position = index + 1;
             Map<String, Object> params = validateParams(
                     type, raw == null ? null : raw.params(), position, errors);
-            accept(type, position, raw == null ? null : raw.id(), params, planned, seen, timetable,
-                    existingEntries, claimedEntries, references, errors);
+            Integer weight = raw == null ? null : raw.weight();
+            if (weight != null && (weight < 0 || weight > 100)) {
+                errors.add(location(type, position) + ": 权重必须在 0-100 之间");
+                weight = null;
+            }
+            String groupKey = raw == null ? null
+                    : normalizeGroupKey(raw.groupKey(), type, position, errors);
+            boolean enabled = raw == null || raw.enabled() == null || raw.enabled();
+            accept(type, new PlannedEntry(raw == null ? null : raw.id(), params, position,
+                            enabled, raw == null ? null : raw.hard(), weight, groupKey),
+                    planned, seen, defaultHard, defaultWeight, timetable, existingEntries,
+                    claimedEntries, references, errors);
         }
+        rejectInconsistentGroups(type, planned, defaultHard, defaultWeight, errors);
         rejectContradictoryScalars(type, planned, errors);
         rejectDuplicateThresholdScopes(type, planned, errors);
         return new EntryPlan(planned, references);
+    }
+
+    /** A duplicate is the same parameters with the same effective controls. */
+    private record EntrySignature(Map<String, Object> params, boolean enabled,
+                                  boolean hard, int weight) {}
+
+    private String normalizeGroupKey(
+            String raw, ConstraintType type, int position, List<String> errors) {
+        if (raw == null || !StringUtils.hasText(raw)) {
+            return null;
+        }
+        String key = raw.trim();
+        if (key.length() > 64) {
+            errors.add(location(type, position) + ": 要求分组标识超过 64 个字符");
+            return null;
+        }
+        return key;
+    }
+
+    /**
+     * The rows of one requirement share its controls: the editor pauses or re-strengths
+     * the whole requirement, never half of it. Mixed values are refused rather than
+     * silently normalized, so the page and the stored configuration cannot disagree.
+     */
+    private void rejectInconsistentGroups(
+            ConstraintType type, List<PlannedEntry> planned, boolean defaultHard,
+            int defaultWeight, List<String> errors) {
+        Map<String, PlannedEntry> byGroup = new LinkedHashMap<>();
+        for (PlannedEntry entry : planned) {
+            if (entry.groupKey() == null) {
+                continue;
+            }
+            PlannedEntry previous = byGroup.putIfAbsent(entry.groupKey(), entry);
+            if (previous == null) {
+                continue;
+            }
+            boolean hard = effectiveHard(entry, defaultHard);
+            int weight = effectiveWeight(entry, defaultWeight);
+            if (previous.enabled() != entry.enabled()
+                    || effectiveHard(previous, defaultHard) != hard
+                    || effectiveWeight(previous, defaultWeight) != weight) {
+                errors.add(location(type, entry.position()) + ": 与第" + previous.position()
+                        + " 条属于同一条要求，但启停/必须或尽量/重要程度不一致；"
+                        + "同一条要求展开的课节必须共用这些设置");
+            }
+        }
+    }
+
+    private boolean effectiveHard(PlannedEntry entry, boolean defaultHard) {
+        return entry.hard() == null ? defaultHard : entry.hard();
+    }
+
+    private int effectiveWeight(PlannedEntry entry, int defaultWeight) {
+        return entry.weight() == null ? defaultWeight : entry.weight();
     }
 
     /**
@@ -589,11 +994,12 @@ public class ConstraintService {
     }
 
     private void accept(
-            ConstraintType type, Integer position, Long id, Map<String, Object> params,
-            List<PlannedEntry> planned, Map<Map<String, Object>, Integer> seen,
+            ConstraintType type, PlannedEntry entry, List<PlannedEntry> planned,
+            Map<EntrySignature, Integer> seen, boolean defaultHard, int defaultWeight,
             SemesterScope timetable, Map<Long, ConstraintEntry> existingEntries,
             Map<String, Set<Long>> claimedEntries, List<TemplateReferenceIssue> references,
             List<String> errors) {
+        Map<String, Object> params = entry.params();
         if (params.isEmpty() && !type.isEntryBacked()) {
             // Nothing to store: no object condition. `{}` means "no extra
             // condition" and is kept in the legacy params column only. For an
@@ -601,17 +1007,19 @@ public class ConstraintService {
             // explicit "every course / the sport class" row.
             return;
         }
-        Integer first = seen.putIfAbsent(params, position);
+        EntrySignature signature = new EntrySignature(params, entry.enabled(),
+                effectiveHard(entry, defaultHard), effectiveWeight(entry, defaultWeight));
+        Integer first = seen.putIfAbsent(signature, entry.position());
         if (first != null) {
-            errors.add(location(type, position) + ": 与第" + first + " 条完全相同，重复条目已拒绝");
+            errors.add(location(type, entry.position()) + ": 与第" + first + " 条完全相同，重复条目已拒绝");
             return;
         }
-        if (id != null) {
-            claimEntry(type, position, id, existingEntries, claimedEntries, errors);
+        if (entry.id() != null) {
+            claimEntry(type, entry.position(), entry.id(), existingEntries, claimedEntries, errors);
         }
-        validateTimetableConditions(type, position, params, timetable, errors);
-        references.addAll(referencesOf(type, position, params, timetable));
-        planned.add(new PlannedEntry(id, params, position));
+        validateTimetableConditions(type, entry.position(), params, timetable, errors);
+        references.addAll(referencesOf(type, entry.position(), params, timetable));
+        planned.add(entry);
     }
 
     /**
@@ -701,8 +1109,9 @@ public class ConstraintService {
         }
         String location = location(type, position);
         switch (type) {
-            case TEACHER_UNAVAILABLE, TEACHER_PREFERRED_SLOT ->
+            case TEACHER_UNAVAILABLE, TEACHER_PREFERRED_SLOT, COURSE_UNAVAILABLE ->
                     requireSlot(location, params, timetable, errors);
+            case TEACHER_DAY_OFF -> requireDay(location, params, timetable, errors);
             case TEACHER_MEETING_BLOCKED -> {
                 requireSubject(location, params, errors);
                 requireSlot(location, params, timetable, errors);
@@ -827,6 +1236,20 @@ public class ConstraintService {
             }
         }
         return known;
+    }
+
+    /** A fixed day off must name a weekday that actually has periods. */
+    private void requireDay(
+            String location, Map<String, Object> params, SemesterScope timetable,
+            List<String> errors) {
+        if (timetable.isEmpty()) {
+            errors.add(location + ": 该学期还没有作息安排，无法校验星期；请先配置作息");
+            return;
+        }
+        Integer day = ConstraintSettings.intValue(params.get("dayOfWeek"));
+        if (!timetable.hasDay(day)) {
+            errors.add(location + ": 星期" + day + "不在本学期作息范围内");
+        }
     }
 
     /** A (weekday, period) entry must name a slot the semester timetable really has. */
@@ -996,13 +1419,19 @@ public class ConstraintService {
             entryRows.stream()
                     .sorted(Comparator.comparing(ConstraintEntry::getId,
                             Comparator.nullsLast(Comparator.naturalOrder())))
-                    .map(entry -> new ConstraintEntryDto(entry.getId(), paramsFromJson(entry.getParamsJson())))
+                    .map(entry -> new ConstraintEntryDto(
+                            entry.getId(),
+                            paramsFromJson(entry.getParamsJson()),
+                            entry.isEnabled(),
+                            entry.getHard(),
+                            entry.getWeight(),
+                            entry.getGroupKey()))
                     .forEach(dtos::add);
         }
         if (dtos.isEmpty() && !isEntryBacked(config.getType())) {
             Map<String, Object> legacy = paramsFromJson(config.getParamsJson());
             if (!legacy.isEmpty()) {
-                dtos.add(new ConstraintEntryDto(null, legacy));
+                dtos.add(new ConstraintEntryDto(null, legacy, true, null, null, null));
             }
         }
         return dtos;
@@ -1025,7 +1454,9 @@ public class ConstraintService {
         // a legacy params map or fail on its required parameters.
         List<ConstraintEntryRequest> snapshotEntries = entryBacked || !entryDtos.isEmpty()
                 ? entryDtos.stream()
-                        .map(entry -> new ConstraintEntryRequest(null, entry.params()))
+                        .map(entry -> new ConstraintEntryRequest(
+                                null, entry.params(), entry.enabled(), entry.hard(),
+                                entry.weight(), entry.groupKey()))
                         .toList()
                 : null;
         // With entries present the snapshot does not repeat the first entry in the
@@ -1079,7 +1510,8 @@ public class ConstraintService {
                     ? null
                     : config.entries().stream()
                             .map(entry -> new ConstraintEntryRequest(
-                                    null, rebindClass(mapping, entry.params())))
+                                    null, rebindClass(mapping, entry.params()),
+                                    entry.enabled(), entry.hard(), entry.weight(), entry.groupKey()))
                             .toList();
             prepared.add(new ConstraintConfigRequest(config.type(),
                     rebindClass(mapping, config.params()), config.weight(), config.hard(),

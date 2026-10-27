@@ -129,6 +129,10 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
                         List.of(params("courseId", Course.CHINESE)),
                         List.of(lesson(1, 9, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL)),
                         "COURSE_NOT_IN_EVENING", false)),
+                Arguments.of(new Case("课程禁排时段", "COURSE_UNAVAILABLE", false, true, 100,
+                        List.of(params("courseId", Course.CHINESE, "dayOfWeek", 1, "periodNo", 2)),
+                        List.of(lesson(1, 2, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL)),
+                        "COURSE_UNAVAILABLE", false)),
                 Arguments.of(new Case("同课程一天一节", "SAME_COURSE_ONCE_PER_DAY", false, true, 100,
                         List.of(params("courseId", Course.CHINESE)),
                         List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL),
@@ -254,13 +258,47 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
         }
     }
 
+    /**
+     * Ticket 14: for every entry-backed type the <em>entry</em> override decides the
+     * verdict, in both directions. The type row carries the opposite choice, so a type
+     * that silently kept using its own default would fail here.
+     */
+    @ParameterizedTest(name = "逐项控制：{0}")
+    @MethodSource("catalogue")
+    void perEntryControlDecidesEveryEntryBackedType(Case spec) {
+        if (spec.switchType()) {
+            return;
+        }
+        String token = adminToken();
+        World world = prepare(token);
+        long draftId = draft(world, spec.lessons());
+
+        // Type says soft, entry says hard: the requirement must block.
+        save(token, world, List.of(config(spec, world, false, true))).then().statusCode(200);
+        assertThat(conflictCodes(token, draftId))
+                .as("%s 的条目设为必须后应阻断", spec.type())
+                .contains(spec.code());
+        assertThat(publishStatus(token, draftId))
+                .as("%s 的条目设为必须后应拒绝发布", spec.type())
+                .isEqualTo(409);
+
+        // Type says hard, entry says prefer: nothing blocks, but the fact is scored.
+        save(token, world, List.of(config(spec, world, true, false))).then().statusCode(200);
+        assertThat(conflictCodes(token, draftId))
+                .as("%s 的条目设为尽量后不应阻断", spec.type())
+                .doesNotContain(spec.code());
+        assertThat(softPenalty(world, spec.lessons()))
+                .as("%s 的条目设为尽量后应计入软约束扣分", spec.type())
+                .isPositive();
+    }
+
     /** A 25th type must not silently skip acceptance: the table and the enum move together. */
     @Test
     void theTableCoversTheWholeCatalogue() {
         Set<String> covered = catalogue()
                 .map(arguments -> ((Case) arguments.get()[0]).type())
                 .collect(Collectors.toSet());
-        assertThat(covered).hasSize(24);
+        assertThat(covered).hasSize(25);
         assertThat(covered).containsExactlyInAnyOrderElementsOf(
                 Arrays.stream(ConstraintType.values()).map(Enum::name).toList());
     }
@@ -411,6 +449,18 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
         return config;
     }
 
+    /** The same row with the hard/soft choice written on every entry instead. */
+    private Map<String, Object> config(
+            Case spec, World world, boolean typeHard, boolean entryHard) {
+        Map<String, Object> config = new LinkedHashMap<>();
+        config.put("type", spec.type());
+        config.put("weight", spec.weight());
+        config.put("hard", typeHard);
+        config.put("enabled", true);
+        config.put("entries", entryPayloads(spec, world, entryHard));
+        return config;
+    }
+
     private Map<String, Object> switchConfig(String type, boolean enabled, boolean hard) {
         Map<String, Object> config = new LinkedHashMap<>();
         config.put("type", type);
@@ -429,8 +479,26 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
         return payloads;
     }
 
+    private List<Map<String, Object>> entryPayloads(
+            Case spec, World world, boolean entryHard) {
+        List<Map<String, Object>> payloads = new ArrayList<>();
+        for (Map<String, Object> entry : spec.entries()) {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("params", resolve(world, entry));
+            payload.put("hard", entryHard);
+            payloads.add(payload);
+        }
+        return payloads;
+    }
+
     private Response save(String token, World world, List<Map<String, Object>> configs) {
+        // The page always sends the version it loaded. Tests do the same so the entry
+        // overrides written above can be replaced on the next save.
+        long version = as(token).queryParam("semesterId", world.semesterId())
+                .when().get("/api/constraints/state")
+                .then().statusCode(200).extract().jsonPath().getLong("version");
         return as(token).queryParam("semesterId", world.semesterId())
+                .queryParam("baseVersion", version)
                 .body(Map.of("configs", configs))
                 .when().put("/api/constraints");
     }

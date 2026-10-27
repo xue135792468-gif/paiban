@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { formatEntrySummary, formatSlot, slotCardSummary } from './entrySummary'
-import type { EntryDraft, ParamDef } from './types'
+import type { EntryDraft, ParamDef, TypeDraft } from './types'
 
 const ctx = {
   teacherNames: new Map([
@@ -63,6 +63,22 @@ function entry(values: Record<string, unknown>, slots?: EntryDraft['slots']): En
   return { key: 'e1', id: null, values, slots }
 }
 
+function slotRow(code: string, params: ParamDef[]): TypeDraft {
+  return {
+    code,
+    name: '教师偏好时段',
+    description: '',
+    category: 'PREFERENCE',
+    categoryLabel: '教师偏好',
+    params,
+    entries: [],
+    enabled: true,
+    hard: false,
+    weight: 40,
+    slotGrouped: true,
+  }
+}
+
 describe('条目摘要：十二类各一句话', () => {
   it('教师禁排/教师无课日/教师不排第一节', () => {
     expect(formatEntrySummary(TEACHER_PARAMS, { teacherId: 1, dayOfWeek: 3, periodNo: 2 }, ctx)).toBe(
@@ -109,25 +125,25 @@ describe('偏好时段：一条卡片多个时段按「或」', () => {
     expect(formatSlot(3, 2)).toBe('周三第2节')
 
     const single = entry({ teacherId: 1 }, [{ key: 's1', id: null, dayOfWeek: 1, periodNo: 1 }])
-    expect(slotCardSummary(single, ctx)).toBe('张伟 · 周一第1节')
+    expect(slotCardSummary(slotRow('TEACHER_PREFERRED_SLOT', TEACHER_PARAMS), single, ctx)).toBe('张伟 · 周一第1节')
 
     const multi = entry({ teacherId: 1 }, [
       { key: 's1', id: null, dayOfWeek: 1, periodNo: 1 },
       { key: 's2', id: null, dayOfWeek: 3, periodNo: 2 },
       { key: 's3', id: null, dayOfWeek: 5, periodNo: 4 },
     ])
-    expect(slotCardSummary(multi, ctx)).toBe(
+    expect(slotCardSummary(slotRow('TEACHER_PREFERRED_SLOT', TEACHER_PARAMS), multi, ctx)).toBe(
       '张伟 · 周一第1节 或 周三第2节 或 周五第4节（命中任一即满足）',
     )
   })
 
   it('缺教师或缺时段时如实说明，不留空白', () => {
     expect(
-      slotCardSummary(entry({}, [{ key: 's1', id: null, dayOfWeek: 1, periodNo: 1 }]), ctx),
+      slotCardSummary(slotRow('TEACHER_PREFERRED_SLOT', TEACHER_PARAMS), entry({}, [{ key: 's1', id: null, dayOfWeek: 1, periodNo: 1 }]), ctx),
     ).toBe('未选教师 · 周一第1节')
-    expect(slotCardSummary(entry({ teacherId: 1 }, []), ctx)).toBe('张伟 · 还没有时段')
+    expect(slotCardSummary(slotRow('TEACHER_PREFERRED_SLOT', TEACHER_PARAMS), entry({ teacherId: 1 }, []), ctx)).toBe('张伟 · 还没有时段')
     expect(
-      slotCardSummary(entry({ teacherId: 1 }, [{ key: 's1', id: null, dayOfWeek: 1, periodNo: null }]), ctx),
+      slotCardSummary(slotRow('TEACHER_PREFERRED_SLOT', TEACHER_PARAMS), entry({ teacherId: 1 }, [{ key: 's1', id: null, dayOfWeek: 1, periodNo: null }]), ctx),
     ).toBe('张伟 · 周一未选节次')
   })
 })

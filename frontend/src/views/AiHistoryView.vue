@@ -30,6 +30,7 @@
         <el-select v-model="filters.taskType" clearable placeholder="任务类型" style="width: 160px">
           <el-option label="数据导入" value="data_import" />
           <el-option label="调代推荐" value="substitution_recommend" />
+          <el-option label="自然语言约束" value="natural_language_constraints" />
         </el-select>
         <el-select v-model="filters.providerId" clearable placeholder="供应商" style="width: 160px">
           <el-option v-for="provider in providers" :key="provider.id" :label="provider.name" :value="provider.id" />
@@ -464,6 +465,7 @@ function revokeImage() {
 function taskLabel(task?: string) {
   if (task === 'data_import') return '数据导入'
   if (task === 'substitution_recommend') return '调代推荐'
+  if (task === 'natural_language_constraints') return '自然语言约束'
   return task || '—'
 }
 

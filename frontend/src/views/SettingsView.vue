@@ -205,7 +205,11 @@
       </div>
     </el-card>
 
-    <el-card v-if="aiEnabled" shadow="never">
+    <!--
+      ADR-0003 的票 14 修订：自然语言生成约束的入口在关闭时也要保留，管理员必须先能
+      找到开关才能开启；代课推荐仍按原规则标注即将推出。
+    -->
+    <el-card shadow="never">
       <template #header><span class="card-title">AI 特性</span></template>
       <div class="ai-row">
         <div>
@@ -220,8 +224,11 @@
           <div class="ai-name">自然语言生成约束</div>
           <div class="hint">用一句话描述排课规则，自动转换为约束配置</div>
         </div>
-        <el-switch :model-value="form['ai.features.natural-language-constraints'] === 'true'" disabled />
-        <el-tag size="small" type="info">即将推出</el-tag>
+        <el-switch
+          :model-value="form['ai.features.natural-language-constraints'] === 'true'"
+          data-testid="settings-natural-language-switch"
+          @update:model-value="(value: string | number | boolean) => (form['ai.features.natural-language-constraints'] = value ? 'true' : 'false')"
+        />
       </div>
     </el-card>
 
@@ -318,13 +325,6 @@ function reopenTour() {
   resetTour()
   startTour('basic')
 }
-
-// ADR-0003: AI entry points are hidden entirely while every feature is off.
-const aiEnabled = computed(
-  () =>
-    form.value['ai.features.substitute-recommendation'] === 'true' ||
-    form.value['ai.features.natural-language-constraints'] === 'true',
-)
 
 function formatTime(value: string) {
   return value ? value.replace('T', ' ').slice(0, 16) : ''

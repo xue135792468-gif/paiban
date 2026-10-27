@@ -1,5 +1,10 @@
 <template>
-  <article class="entry-card" data-testid="constraint-entry" :data-index="index">
+  <article
+    class="entry-card"
+    :class="{ 'is-paused': entry.enabled === false }"
+    data-testid="constraint-entry"
+    :data-index="index"
+  >
     <header class="entry-card-head">
       <span class="entry-index">#{{ index + 1 }}</span>
       <span class="entry-summary" data-testid="constraint-entry-summary">{{ summary }}</span>
@@ -13,6 +18,56 @@
         删除
       </el-button>
     </header>
+
+    <div class="entry-controls" data-testid="constraint-entry-controls">
+      <el-switch
+        :model-value="entry.enabled ?? true"
+        size="small"
+        active-text="启用"
+        :disabled="!editable"
+        data-testid="constraint-entry-enabled"
+        @update:model-value="(value: string | number | boolean | undefined) => emit('set-enabled', Boolean(value))"
+      />
+      <el-select
+        :model-value="hardChoice"
+        size="small"
+        :disabled="!editable"
+        class="hard-choice"
+        data-testid="constraint-entry-hard"
+        @update:model-value="onHardChoice"
+      >
+        <el-option value="inherit" :label="`继承类型（${row.hard ? '必须' : '尽量'}）`" />
+        <el-option value="hard" label="必须" />
+        <el-option value="soft" label="尽量" />
+      </el-select>
+      <template v-if="effectiveHard === false">
+        <el-checkbox
+          :model-value="entry.weight !== null && entry.weight !== undefined"
+          :disabled="!editable"
+          data-testid="constraint-entry-weight-override"
+          @update:model-value="(value: string | number | boolean) => emit('set-weight', value ? row.weight : null)"
+        >
+          自定义重要程度
+        </el-checkbox>
+        <template v-if="entry.weight !== null && entry.weight !== undefined">
+          <el-slider
+            :model-value="entry.weight ?? row.weight"
+            :min="0"
+            :max="100"
+            size="small"
+            class="weight-slider"
+            :disabled="!editable"
+            data-testid="constraint-entry-weight"
+            @update:model-value="(value: number | number[]) => emit('set-weight', Array.isArray(value) ? value[0] : value)"
+          />
+          <span class="entry-meta">{{ entry.weight }}</span>
+        </template>
+        <span v-else class="entry-meta" data-testid="constraint-entry-weight-inherited">
+          继承 {{ row.weight }}
+        </span>
+      </template>
+      <span class="entry-effective" data-testid="constraint-entry-effective">{{ effectiveText }}</span>
+    </div>
 
     <p
       v-for="(message, errorIndex) in serverErrors"
@@ -41,12 +96,14 @@
 
     <div v-if="slotSet" class="entry-fields" data-testid="constraint-entry-slot-set">
       <ParamField
-        :param="teacherParam"
+        v-for="param in heads"
+        :key="param.name"
+        :param="param"
         :values="entry.values"
         :teachers="teachers"
         :courses="courses"
         :disabled="!editable"
-        test-id="constraint-entry-teacher"
+        :test-id="`constraint-entry-${fieldTestId(param.name)}`"
         @update="(name: string, value: unknown) => emit('update', name, value)"
       />
       <div class="slot-list">
@@ -60,8 +117,11 @@
           :removable="(entry.slots?.length ?? 0) > 1"
           :teachers="teachers"
           :courses="courses"
+          :day-options="dayOptions"
+          :periods-by-day="periodsByDay"
           @update="(field: string, value: unknown) => emit('update-slot', slot.key, field, value)"
           @remove="emit('remove-slot', slot.key)"
+          @fill-all-days="emit('fill-all-days', slot.key)"
         />
         <el-button
           class="slot-add"
@@ -91,6 +151,7 @@
           :teachers="teachers"
           :courses="courses"
           :disabled="!editable || declaresAllTarget(entry, param)"
+          :day-options="dayOptions"
           :test-id="`constraint-entry-${fieldTestId(param.name)}`"
           @update="(name: string, value: unknown) => emit('update', name, value)"
         />
@@ -101,26 +162,36 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ElButton, ElCheckbox, ElMessageBox } from 'element-plus'
+import { ElButton, ElCheckbox, ElMessageBox, ElOption, ElSelect, ElSlider, ElSwitch } from 'element-plus'
 import ConstraintSlotRow from './ConstraintSlotRow.vue'
 import ParamField from './ParamField.vue'
-import { allTargetLabel, declaresAllTarget, isSlotSetType } from './entryModel'
+import {
+  allTargetLabel,
+  declaresAllTarget,
+  headParams,
+  isSlotSetType,
+} from './entryModel'
 import { formatEntrySummary, slotCardSummary } from './entrySummary'
 import { fieldTestId } from './paramValues'
-import type { EntryDraft, OptionItem, ParamDef, TypeDraft } from './types'
+import type { EntryDraft, OptionItem, TypeDraft } from './types'
 
 /**
- * One editable card of an entry-backed type: a one-line summary plus the object and
- * condition fields the catalogue declares. Enable/hard/weight stay type-level, so a
- * card never carries them.
+ * One editable requirement. Its controls (pause, must/prefer, weight) belong to the
+ * whole requirement; a slot-grouped card stores several rows that all carry them.
+ * Overriding nothing shows the type default in the same line, so the page never hides
+ * which value is in force.
  */
 const props = defineProps<{
   row: TypeDraft
   entry: EntryDraft
   index: number
   editable: boolean
+  isJunior: boolean
   teachers: OptionItem[]
   courses: OptionItem[]
+  /** The weekdays and period numbers the semester actually has. */
+  dayOptions?: number[]
+  periodsByDay?: Record<number, number[]>
   serverErrors: string[]
   duplicates: string[]
   conflicts: string[]
@@ -133,19 +204,45 @@ const emit = defineEmits<{
   'add-slot': []
   'remove-slot': [slotKey: string]
   'update-slot': [slotKey: string, field: string, value: unknown]
+  'fill-all-days': [slotKey: string]
+  'set-enabled': [value: boolean]
+  'set-hard': [value: boolean | null]
+  'set-weight': [value: number | null]
 }>()
 
 const slotSet = computed(() => isSlotSetType(props.row))
+const heads = computed(() => headParams(props.row))
 
-const teacherParam = computed<ParamDef>(
-  () =>
-    props.row.params.find((param) => param.name === 'teacherId') ?? {
-      name: 'teacherId',
-      label: '教师',
-      type: 'ID',
-      required: true,
-    },
-)
+const hardChoice = computed(() => {
+  if (props.entry.hard == null) {
+    return 'inherit'
+  }
+  return props.entry.hard ? 'hard' : 'soft'
+})
+
+const effectiveHard = computed(() => props.entry.hard ?? props.row.hard)
+const effectiveWeight = computed(() => props.entry.weight ?? props.row.weight)
+
+const effectiveText = computed(() => {
+  const strength = effectiveHard.value
+    ? props.isJunior ? '必须' : '硬约束'
+    : props.isJunior ? '尽量' : '软约束'
+  if (effectiveHard.value) {
+    return `实际：${strength}`
+  }
+  const inherited = props.entry.weight == null ? '（继承）' : ''
+  return `实际：${strength} · 重要程度 ${effectiveWeight.value}${inherited}`
+})
+
+function onHardChoice(value: string | number | boolean | undefined) {
+  if (value === 'inherit') {
+    emit('set-hard', null)
+  } else if (value === 'hard') {
+    emit('set-hard', true)
+  } else if (value === 'soft') {
+    emit('set-hard', false)
+  }
+}
 
 const ctx = computed(() => ({
   teacherNames: new Map(props.teachers.map((teacher) => [teacher.id, teacher.name])),
@@ -154,7 +251,7 @@ const ctx = computed(() => ({
 
 const summary = computed(() =>
   slotSet.value
-    ? slotCardSummary(props.entry, ctx.value)
+    ? slotCardSummary(props.row, props.entry, ctx.value)
     : formatEntrySummary(props.row.params, props.entry.values, ctx.value),
 )
 
@@ -180,11 +277,15 @@ async function confirmRemove() {
   border: 1px solid #eef1f6;
 }
 
+.entry-card.is-paused {
+  background: #fafafa;
+}
+
 .entry-card-head {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .entry-index {
@@ -198,6 +299,32 @@ async function confirmRemove() {
   font-size: 13px;
   font-weight: 600;
   color: var(--paiban-ink);
+}
+
+.entry-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.hard-choice {
+  width: 150px;
+}
+
+.weight-slider {
+  width: 110px;
+}
+
+.entry-meta {
+  font-size: 12px;
+  color: var(--paiban-muted);
+}
+
+.entry-effective {
+  font-size: 12px;
+  color: var(--el-color-primary, #4f6ef7);
 }
 
 .entry-error {

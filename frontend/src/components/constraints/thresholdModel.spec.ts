@@ -5,6 +5,7 @@ import {
   thresholdEntries,
   thresholdEntryCount,
   thresholdShape,
+  thresholdRelaxations,
   thresholdWarnings,
   thresholdRowValues,
 } from './thresholdModel'
@@ -40,6 +41,48 @@ function row(
 function exception(objectId: number | null, value: number | null, id: number | null = null) {
   return { key: `x-${objectId}-${value}`, id, objectId, value }
 }
+
+describe('放宽提示', () => {
+  const names = {
+    teacherId: new Map([[3, '王明'], [5, '李华']]),
+    classId: new Map(),
+    courseId: new Map(),
+  }
+
+  it('数值更大或从必须变成尽量时逐条说明实际采用值', () => {
+    const relaxed = row(
+      {
+        globalId: null,
+        globalValue: 4,
+        globalEnabled: true,
+        globalHard: true,
+        globalWeight: null,
+        exceptions: [
+          { key: 'a', id: null, objectId: 3, value: 6, enabled: true, hard: false, weight: 30 },
+          { key: 'b', id: null, objectId: 5, value: 3, enabled: true, hard: null, weight: null },
+        ],
+      },
+      { hard: true },
+    )
+    expect(thresholdRelaxations(relaxed, names)).toEqual([
+      '「教师一天最多 N 节」：王明 放宽为最多 6 节（尽量），不再按全局默认最多 4 节（必须）执行。',
+    ])
+  })
+
+  it('没有全局默认时例外只是在增加限制，不算放宽', () => {
+    const onlyExceptions = row({
+      globalId: null,
+      globalValue: null,
+      globalEnabled: true,
+      globalHard: null,
+      globalWeight: null,
+      exceptions: [
+        { key: 'a', id: null, objectId: 3, value: 6, enabled: true, hard: false, weight: 30 },
+      ],
+    })
+    expect(thresholdRelaxations(onlyExceptions, names)).toEqual([])
+  })
+})
 
 describe('阈值作用域模型', () => {
   it('作用域来自目录声明，不猜参数个数', () => {

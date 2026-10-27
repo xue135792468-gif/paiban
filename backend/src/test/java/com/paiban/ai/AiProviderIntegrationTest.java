@@ -212,7 +212,7 @@ class AiProviderIntegrationTest extends ApiIntegrationTest {
                 .when().put("/api/ai-task-config")
                 .then().statusCode(200)
                 .body("mode", equalTo("unified"))
-                .body("tasks", hasSize(2))
+                .body("tasks", hasSize(3))
                 .body("tasks.find { it.taskType == 'data_import' }.modelId", equalTo((int) firstModel))
                 .body("tasks.find { it.taskType == 'substitution_recommend' }.modelId", equalTo((int) firstModel));
 
@@ -221,13 +221,17 @@ class AiProviderIntegrationTest extends ApiIntegrationTest {
                         "tasks", List.of(
                                 Map.of("taskType", "data_import", "providerId", firstProvider, "modelId", firstModel),
                                 Map.of("taskType", "substitution_recommend", "providerId", secondProvider,
-                                        "modelId", secondModel))))
+                                        "modelId", secondModel),
+                                Map.of("taskType", "natural_language_constraints",
+                                        "providerId", firstProvider, "modelId", firstModel))))
                 .when().put("/api/ai-task-config")
                 .then().statusCode(200)
                 .body("mode", equalTo("custom"))
                 .body("tasks.find { it.taskType == 'data_import' }.providerId", equalTo((int) firstProvider))
                 .body("tasks.find { it.taskType == 'substitution_recommend' }.providerId",
-                        equalTo((int) secondProvider));
+                        equalTo((int) secondProvider))
+                .body("tasks.find { it.taskType == 'natural_language_constraints' }.providerId",
+                        equalTo((int) firstProvider));
 
         as(token).when().get("/api/ai-task-config")
                 .then().statusCode(200)

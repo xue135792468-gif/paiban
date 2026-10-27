@@ -5,12 +5,14 @@ import type { EntryDraft, ParamDef, TypeDraft } from './types'
  * What a constraint type's entry model is, read off the catalogue alone:
  * - no parameters at all → a single switch (the six conflict/pedagogy switches);
  * - a declared scope pair (`thresholdObjectField`/`thresholdValueField`) → a threshold:
- *   one global default plus per-object exceptions (ticket 04);
+ *   one global default plus per-object exceptions;
+ * - a slot-grouped type (`slotGrouped`) → one card with a head object and several
+ *   weekday/period rows;
  * - anything else → entry-backed: one card per object/condition.
  *
- * The backend registry is `ConstraintType.ENTRY_BACKED` and its `thresholdScope()`;
- * this partition is the front-end mirror of those two facts, so the page cannot drift
- * when a type changes shape.
+ * The backend registry is `ConstraintType.ENTRY_BACKED`, `thresholdScope()` and
+ * `isSlotGrouped()`; this partition is the front-end mirror of those facts, so the
+ * page cannot drift when a type changes shape.
  */
 export type TypeShape = 'SWITCH' | 'THRESHOLD' | 'ENTRY'
 
@@ -40,16 +42,29 @@ export function isEntryType(row: { params: ParamDef[] }): boolean {
 }
 
 /**
- * Types whose one card holds a set of slots that the server stores as one entry
- * per slot and combines as "or". The catalogue cannot express this difference:
- * `TEACHER_PREFERRED_SLOT` and `TEACHER_UNAVAILABLE` declare exactly the same three
- * parameters, but the first means "any of these slots satisfies the preference"
- * and the second means "none of these slots may be used".
+ * Types whose one card owns several weekday/period rows. The catalogue flag arrives
+ * from the server; the fallback keeps an older server (that does not send it) working
+ * for the four types this release knows about.
  */
-export const SLOT_SET_TYPES = ['TEACHER_PREFERRED_SLOT']
+export const SLOT_SET_TYPES = [
+  'TEACHER_UNAVAILABLE',
+  'TEACHER_MEETING_BLOCKED',
+  'TEACHER_PREFERRED_SLOT',
+  'COURSE_UNAVAILABLE',
+]
 
-export function isSlotSetType(row: { code: string }): boolean {
-  return SLOT_SET_TYPES.includes(row.code)
+export function isSlotSetType(row: { code: string; slotGrouped?: boolean }): boolean {
+  return row.slotGrouped === true || SLOT_SET_TYPES.includes(row.code)
+}
+
+/** The card-level parameters of a slot-set card (teacher, course, subject…). */
+export function headParams(row: { params: ParamDef[] }): ParamDef[] {
+  return row.params.filter((param) => param.type !== 'DAY' && param.type !== 'PERIOD')
+}
+
+/** The per-row parameters of a slot-set card (weekday + period). */
+export function slotParams(row: { params: ParamDef[] }): ParamDef[] {
+  return row.params.filter((param) => param.type === 'DAY' || param.type === 'PERIOD')
 }
 
 /** The parameter a card may leave blank: "every course / every subject / sport class". */
@@ -142,6 +157,14 @@ export interface PlannedEntry {
   params: Record<string, unknown>
   /** False when a required parameter is missing; such an entry is counted but not saved. */
   complete: boolean
+  /** Paused requirements are stored but not evaluated. */
+  enabled: boolean
+  /** Null inherits the type default. */
+  hard: boolean | null
+  /** Null inherits the type default. */
+  weight: number | null
+  /** Rows of one requirement share this key. */
+  groupKey: string | null
 }
 
 function allRequiredPresent(params: ParamDef[], values: Record<string, unknown>): boolean {
@@ -159,19 +182,25 @@ export function plannedEntries(row: TypeDraft): PlannedEntry[] {
     planned.push({ ...entry, position: planned.length + 1 })
   }
   row.entries.forEach((entry, cardIndex) => {
+    const controls = {
+      enabled: entry.enabled ?? true,
+      hard: entry.hard ?? null,
+      weight: entry.weight ?? null,
+      groupKey: entry.groupKey ?? null,
+    }
     if (isSlotSetType(row)) {
-      const teacherId = entry.values.teacherId
+      const heads = filledValues(effectiveValues(entry), headParams(row))
       ;(entry.slots ?? []).forEach((slot, slotIndex) => {
-        const params: Record<string, unknown> = {}
-        if (hasValue(teacherId)) {
-          params.teacherId = teacherId
-        }
+        const params: Record<string, unknown> = { ...heads }
         if (hasValue(slot.dayOfWeek)) {
           params.dayOfWeek = slot.dayOfWeek
         }
         if (hasValue(slot.periodNo)) {
           params.periodNo = slot.periodNo
         }
+        const slotComplete = slotParams(row).every(
+          (param) => !param.required || hasValue(params[param.name]),
+        )
         if (Object.keys(params).length === 0) {
           return
         }
@@ -180,7 +209,8 @@ export function plannedEntries(row: TypeDraft): PlannedEntry[] {
           slotIndex,
           id: slot.id,
           params,
-          complete: allRequiredPresent(row.params, params),
+          complete: slotComplete && allRequiredPresent(headParams(row), params),
+          ...controls,
         })
       })
       return
@@ -196,7 +226,7 @@ export function plannedEntries(row: TypeDraft): PlannedEntry[] {
       if (unresolved || row.params.some((param) => param.required)) {
         return
       }
-      push({ cardIndex, id: entry.id, params: {}, complete: true })
+      push({ cardIndex, id: entry.id, params: {}, complete: true, ...controls })
       return
     }
     push({
@@ -204,6 +234,7 @@ export function plannedEntries(row: TypeDraft): PlannedEntry[] {
       id: entry.id,
       params,
       complete: !unresolved && allRequiredPresent(row.params, params),
+      ...controls,
     })
   })
   return planned

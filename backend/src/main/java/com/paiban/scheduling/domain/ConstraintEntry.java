@@ -12,9 +12,13 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * One editable parameter set of a constraint type (ADR-0028). The type-level
- * switches stay on {@link ConstraintConfig}; an entry only carries its object and
- * conditions. The id is the stable identity the editor sends back on update.
+ * One editable parameter set of a constraint type (ADR-0028, ticket-14 revision).
+ *
+ * <p>A row can pause itself and override the type's hard/soft choice and soft weight;
+ * a null override means "inherit the type default", which is what keeps an upgraded
+ * configuration meaning exactly what it meant before. {@code groupKey} is the stable
+ * identity of a requirement that spans several rows (one per expanded slot); rows
+ * without one are individual requirements.
  */
 @Entity
 @Table(name = "constraint_entry")
@@ -38,4 +42,19 @@ public class ConstraintEntry {
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
+
+    @Column(nullable = false)
+    private boolean enabled = true;
+
+    /** Null means: inherit the type's hard/soft choice. */
+    @Column(name = "hard")
+    private Boolean hard;
+
+    /** Null means: inherit the type's soft weight. */
+    @Column(name = "weight")
+    private Integer weight;
+
+    /** Stable identity of a multi-row requirement; null means this row is its own. */
+    @Column(name = "group_key", length = 64)
+    private String groupKey;
 }

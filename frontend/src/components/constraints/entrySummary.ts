@@ -1,6 +1,6 @@
-import { allTargetLabel } from './entryModel'
+import { allTargetLabel, headParams } from './entryModel'
 import { dayLabel, hasValue, roomTypeLabel } from './paramValues'
-import type { EntryDraft, ParamDef } from './types'
+import type { EntryDraft, ParamDef, TypeDraft } from './types'
 
 export interface SummaryContext {
   teacherNames: Map<number, string>
@@ -80,21 +80,28 @@ export function formatEntrySummary(
 }
 
 /**
- * A preference-slot card: the teacher plus every slot as alternatives. The server
- * keeps one entry per slot and combines them per teacher with "or", so the summary
- * has to say so instead of looking like a list of requirements.
+ * A slot-grouped card: the head object(s) plus every slot as an alternative or as a
+ * forbidden set. The server keeps one row per slot and ties them with `groupKey`, so
+ * the summary says how the card is managed instead of looking like several rules.
  */
-export function slotCardSummary(entry: EntryDraft, ctx: SummaryContext): string {
-  const teacher = hasValue(entry.values.teacherId)
-    ? (ctx.teacherNames.get(Number(entry.values.teacherId)) ?? `教师#${entry.values.teacherId}`)
-    : '未选教师'
+export function slotCardSummary(
+  row: TypeDraft,
+  entry: EntryDraft,
+  ctx: SummaryContext,
+): string {
+  const heads = headParams(row)
+  const headText = heads.length > 0
+    ? formatEntrySummary(heads, entry.values, ctx)
+    : row.name
   const slots = entry.slots ?? []
   if (slots.length === 0) {
-    return `${teacher} · 还没有时段`
+    return `${headText} · 还没有时段`
   }
   const texts = slots.map((slot) => formatSlot(slot.dayOfWeek, slot.periodNo))
   if (texts.length === 1) {
-    return `${teacher} · ${texts[0]}`
+    return `${headText} · ${texts[0]}`
   }
-  return `${teacher} · ${texts.join(' 或 ')}（命中任一即满足）`
+  const joiner = row.code === 'TEACHER_PREFERRED_SLOT' ? ' 或 ' : '、'
+  const suffix = row.code === 'TEACHER_PREFERRED_SLOT' ? '（命中任一即满足）' : ''
+  return `${headText} · ${texts.join(joiner)}${suffix}`
 }

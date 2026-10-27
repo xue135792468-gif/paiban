@@ -25,6 +25,8 @@ export interface ConstraintTypeDef {
   defaultWeight: number
   /** True when the type stores its parameters as entry rows (empty list = unconfigured). */
   entryBacked?: boolean
+  /** True when one editable card owns several weekday/period rows (one requirement). */
+  slotGrouped?: boolean
   /** Threshold types only: the entry field that names the object (`teacherId`, `classId`, `courseId`). */
   thresholdObjectField?: string | null
   /** Threshold types only: the entry field that carries the number. */
@@ -35,6 +37,14 @@ export interface ConstraintTypeDef {
 export interface ConstraintEntryDto {
   id: number | null
   params: Record<string, unknown>
+  /** A paused requirement stays stored but is not evaluated. */
+  enabled?: boolean
+  /** Null means "inherit the type's hard/soft choice". */
+  hard?: boolean | null
+  /** Null means "inherit the type's soft weight". */
+  weight?: number | null
+  /** Rows sharing this key are one requirement (one expanded slot set). */
+  groupKey?: string | null
 }
 
 export interface ConstraintConfigDto {
@@ -73,6 +83,14 @@ export interface EntryDraft {
    * card show a ticked box instead of an empty dropdown.
    */
   allTarget?: string[]
+  /** Requirement identity shared by every row this card stores. */
+  groupKey?: string | null
+  /** Pausing keeps the requirement but takes it out of evaluation. */
+  enabled?: boolean
+  /** Null (or absent) inherits the type default; true/false override it. */
+  hard?: boolean | null
+  /** Null (or absent) inherits the type default soft weight. */
+  weight?: number | null
 }
 
 /**
@@ -84,6 +102,11 @@ export interface ThresholdExceptionDraft {
   id: number | null
   objectId: number | null
   value: number | null
+  enabled?: boolean
+  /** Null or absent inherits the type default. */
+  hard?: boolean | null
+  /** Null or absent inherits the type default. */
+  weight?: number | null
 }
 
 /**
@@ -96,6 +119,9 @@ export interface ThresholdDraft {
   globalId: number | null
   /** The global default; null means "no global default is configured". */
   globalValue: number | null
+  globalEnabled?: boolean
+  globalHard?: boolean | null
+  globalWeight?: number | null
   exceptions: ThresholdExceptionDraft[]
 }
 
@@ -112,6 +138,8 @@ export interface TypeDraft {
   category: string
   categoryLabel: string
   params: ParamDef[]
+  /** True when one card owns several weekday/period rows. */
+  slotGrouped?: boolean
   /** Threshold types only: the same fields the catalogue declares, copied for convenience. */
   thresholdObjectField?: string | null
   thresholdValueField?: string | null
@@ -139,6 +167,10 @@ export interface NavGroup {
 export interface SaveEntry {
   id?: number | null
   params: Record<string, unknown>
+  enabled?: boolean
+  hard?: boolean | null
+  weight?: number | null
+  groupKey?: string | null
 }
 
 /** One config in `PUT /api/constraints`. `entries` wins when present. */

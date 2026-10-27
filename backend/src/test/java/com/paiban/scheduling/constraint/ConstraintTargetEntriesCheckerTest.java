@@ -38,12 +38,13 @@ class ConstraintTargetEntriesCheckerTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Test
-    void registryMarksTheEighteenEntryBackedTypes() {
+    void registryMarksTheNineteenEntryBackedTypes() {
         List<ConstraintType> entryBacked = java.util.Arrays.stream(ConstraintType.values())
                 .filter(ConstraintType::isEntryBacked)
                 .toList();
 
-        assertThat(entryBacked).hasSize(18).contains(
+        assertThat(entryBacked).hasSize(19).contains(
+                ConstraintType.COURSE_UNAVAILABLE,
                 ConstraintType.TEACHER_UNAVAILABLE,
                 ConstraintType.TEACHER_MEETING_BLOCKED,
                 ConstraintType.COURSE_REQUIRED_ROOM_TYPE,
