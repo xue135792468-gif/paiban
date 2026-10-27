@@ -61,48 +61,15 @@
 
     <template v-if="run">
       <el-alert
-        v-if="run.status === 'FAILED'"
-        type="error"
+        v-if="runNotice"
+        :type="runNotice.type"
         :closable="false"
         show-icon
         class="ai-message"
-        data-testid="constraint-ai-run-failed"
+        :data-testid="runNotice.testId"
       >
-        <template #title>生成失败，原话已保留</template>
-        <p class="ai-copy">{{ run.errorMessage || '供应商暂时不可用' }}；请修改后主动重试。</p>
-      </el-alert>
-      <el-alert
-        v-else-if="run.status === 'TIMEOUT'"
-        type="warning"
-        :closable="false"
-        show-icon
-        class="ai-message"
-        data-testid="constraint-ai-run-timeout"
-      >
-        <template #title>生成超时（最多等待 60 秒）</template>
-        <p class="ai-copy">原话已保留，重试由你发起；本次调用仍会记录。</p>
-      </el-alert>
-      <el-alert
-        v-else-if="run.status === 'CANCELLED'"
-        type="info"
-        :closable="false"
-        show-icon
-        class="ai-message"
-        data-testid="constraint-ai-run-cancelled"
-      >
-        <template #title>已取消等待</template>
-        <p class="ai-copy">已发出的调用仍可能计费；晚到的结果只记录，不会填回页面。</p>
-      </el-alert>
-      <el-alert
-        v-else-if="run.status === 'RUNNING'"
-        type="info"
-        :closable="false"
-        show-icon
-        class="ai-message"
-        data-testid="constraint-ai-run-running"
-      >
-        <template #title>这条记录仍在生成中</template>
-        <p class="ai-copy">请稍后重新打开记录查看结果。</p>
+        <template #title>{{ runNotice.title }}</template>
+        <p class="ai-copy">{{ runNotice.body }}</p>
       </el-alert>
 
       <div v-if="run.status === 'SUCCEEDED'" class="ai-run" data-testid="constraint-ai-run">
@@ -303,6 +270,53 @@ const teacherNames = computed(
 const courseNames = computed(
   () => new Map(props.courses.map((course) => [course.id, course.name])),
 )
+
+interface RunNotice {
+  type: 'error' | 'warning' | 'info'
+  testId: string
+  title: string
+  body: string
+}
+
+/** One mapping instead of four chained v-if branches for the terminal run states. */
+const runNotice = computed<RunNotice | null>(() => {
+  const current = run.value
+  if (!current) {
+    return null
+  }
+  switch (current.status) {
+    case 'FAILED':
+      return {
+        type: 'error',
+        testId: 'constraint-ai-run-failed',
+        title: '生成失败，原话已保留',
+        body: `${current.errorMessage || '供应商暂时不可用'}；请修改后主动重试。`,
+      }
+    case 'TIMEOUT':
+      return {
+        type: 'warning',
+        testId: 'constraint-ai-run-timeout',
+        title: '生成超时（最多等待 60 秒）',
+        body: '原话已保留，重试由你发起；本次调用仍会记录。',
+      }
+    case 'CANCELLED':
+      return {
+        type: 'info',
+        testId: 'constraint-ai-run-cancelled',
+        title: '已取消等待',
+        body: '已发出的调用仍可能计费；晚到的结果只记录，不会填回页面。',
+      }
+    case 'RUNNING':
+      return {
+        type: 'info',
+        testId: 'constraint-ai-run-running',
+        title: '这条记录仍在生成中',
+        body: '请稍后重新打开记录查看结果。',
+      }
+    default:
+      return null
+  }
+})
 
 function statusText(status: string): string {
   switch (status) {
