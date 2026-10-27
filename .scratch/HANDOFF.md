@@ -1,6 +1,6 @@
 # 接手说明（2026-10-25 会话交接）
 
-> **2026-10-27 票14已在独立分支实现（未合并/未部署）**：12张票在 `feature/natural-language-constraints` 完成，后端846例、前端396例与Playwright 89例全绿，两轴评审已修复；真实模型评测受阻（无可靠单价/授权），未调用真实供应商。**本分支不含该规格目录**，合并后再读 `.scratch/natural-language-constraints/` 与票12交付记录。
+> **2026-10-27 票14已在独立分支实现（未合并/未部署）**：12张票在 `feature/natural-language-constraints` 完成，完整门禁与两轴评审见该分支的票12交付记录；真实模型评测受阻（无可靠单价/授权），未调用真实供应商。**本分支不含该规格目录**，合并后再读 `.scratch/natural-language-constraints/` 与票12交付记录。
 
 > **2026-10-26 执行结果（整本导入后台化，02 遗留）：** 三张草案 01 → 02 → 03 已在工作区实现并提交（分支 `feature/workbook-background-import`，基于 `main`），每票 TDD、独立评审。上传立即返回 `PARSING`，规划/取值在 `importExecutor` 串行；计划与运行身份落库（Flyway **V30**：`plan_json` / `plan_version` / `run_id`）；停止保留已完成范围并把未覆盖范围列为可重试失败；重试只重放失败批次、成功批次不重调模型；晚响应只进审计。闸门：后端 761 例全绿（5 skipped）、前端 lint/build/unit 371 例全绿、SFC 与 isBlank 棘轮通过、Playwright 全量 71 例全绿。**尚未合并 `main`、尚未部署。** 评审遗留的票 04（重复提交单飞）仍未实现；读 `.scratch/workbook-background/spec.md` 与 `issues/`，决策见 `docs/adr/0029-workbook-background-runs.md`。
 
