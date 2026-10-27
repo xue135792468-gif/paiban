@@ -3,7 +3,7 @@
 Status: implemented（2026-10-27，集成分支待合并）
 日期：2026-10-27
 来源：用户已完成Q1–Q23的逐轮选择，并明确要求执行`/to-spec`，承接整体设计进入正式规格。
-交付状态：12张实现票已在集成分支 `feature/natural-language-constraints` 完成；后端846例、前端396例与Playwright 89例全绿，两轴评审已完成并修复硬问题。真实模型评测按票09阻塞（无可核实单价与授权，未调用真实模型）；未合并`main`、未部署。证据见[票12交付记录](issues/12-integrate-and-accept.md)。
+交付状态：12张实现票已在集成分支 `feature/natural-language-constraints` 完成；完整门禁与两轴评审见[票12交付记录](issues/12-integrate-and-accept.md)。真实模型评测按票09阻塞（无可核实单价与授权，未调用真实模型）；未合并`main`、未部署。
 
 ## Problem Statement
 
