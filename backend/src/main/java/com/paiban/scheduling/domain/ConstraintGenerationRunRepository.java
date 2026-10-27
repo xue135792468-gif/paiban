@@ -48,6 +48,24 @@ public interface ConstraintGenerationRunRepository
             @Param("latencyMs") Long latencyMs,
             @Param("now") Instant now);
 
+    /** Named completion object used by the service; the query stays positional inside. */
+    default int finishRunning(ConstraintRunCompletion completion) {
+        return finishRunning(
+                completion.runId(),
+                completion.status(),
+                completion.rawResponse(),
+                completion.modelContent(),
+                completion.proposalsJson(),
+                completion.errorCode(),
+                completion.errorMessage(),
+                completion.providerName(),
+                completion.modelName(),
+                completion.inputTokens(),
+                completion.outputTokens(),
+                completion.latencyMs(),
+                Instant.now());
+    }
+
     /** Stores an answer that arrived after the user stopped waiting; never overwrites. */
     @Modifying(clearAutomatically = true)
     @Query("update ConstraintGenerationRun r set r.lateResponse = :raw, "

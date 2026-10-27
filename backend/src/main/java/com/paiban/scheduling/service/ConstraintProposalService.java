@@ -26,6 +26,7 @@ import com.paiban.identity.domain.Permissions;
 import com.paiban.identity.service.UserService;
 import com.paiban.scheduling.domain.ConstraintGenerationRun;
 import com.paiban.scheduling.domain.ConstraintGenerationRunRepository;
+import com.paiban.scheduling.domain.ConstraintRunCompletion;
 import com.paiban.scheduling.service.ConstraintProposalNormalizer.ClassRef;
 import com.paiban.scheduling.service.ConstraintProposalNormalizer.Context;
 import com.paiban.scheduling.service.ConstraintProposalNormalizer.CourseRef;
@@ -194,12 +195,12 @@ public class ConstraintProposalService {
                     || latencyMs > TASK_TIMEOUT_SECONDS * 1000L
                     ? ConstraintGenerationRun.TIMEOUT
                     : ConstraintGenerationRun.FAILED;
-            finish(
+            finish(new ConstraintRunCompletion(
                     runId, status, result.rawResponse(), result.content(), null,
                     result.errorCode() == null ? "AI_ERROR" : result.errorCode(),
                     result.errorMessage() == null ? "AI 调用失败" : result.errorMessage(),
                     result.providerName(), result.modelName(), result.inputTokens(),
-                    result.outputTokens(), latencyMs);
+                    result.outputTokens(), latencyMs));
             return reload(runId);
         }
         List<ConstraintProposalDto> proposals;
@@ -208,42 +209,40 @@ public class ConstraintProposalService {
             proposals = ConstraintProposalNormalizer.normalize(
                     nodes, context, "nl-" + runId);
         } catch (IllegalArgumentException ex) {
-            finish(runId, ConstraintGenerationRun.FAILED, result.rawResponse(), result.content(),
+            finish(new ConstraintRunCompletion(
+                    runId, ConstraintGenerationRun.FAILED, result.rawResponse(), result.content(),
                     null, "INVALID_OUTPUT", ex.getMessage(), result.providerName(),
-                    result.modelName(), result.inputTokens(), result.outputTokens(), latencyMs);
+                    result.modelName(), result.inputTokens(), result.outputTokens(), latencyMs));
             return reload(runId);
         }
         String status = latencyMs > TASK_TIMEOUT_SECONDS * 1000L
                 ? ConstraintGenerationRun.TIMEOUT : ConstraintGenerationRun.SUCCEEDED;
-        finish(runId, status, result.rawResponse(), result.content(), toJson(proposals), null,
-                null, result.providerName(), result.modelName(), result.inputTokens(),
-                result.outputTokens(), latencyMs);
+        finish(new ConstraintRunCompletion(
+                runId, status, result.rawResponse(), result.content(), toJson(proposals),
+                null, null, result.providerName(), result.modelName(), result.inputTokens(),
+                result.outputTokens(), latencyMs));
         return reload(runId);
     }
 
     private void finishFailure(
             Long runId, String code, String message, String raw, String provider, long latencyMs) {
-        finish(runId, ConstraintGenerationRun.FAILED, raw, null, null, code,
-                message == null ? "AI 调用失败" : truncate(message), provider, null, null, null,
-                latencyMs);
+        finish(new ConstraintRunCompletion(
+                runId, ConstraintGenerationRun.FAILED, raw, null, null, code,
+                message == null ? "AI 调用失败" : message, provider, null, null, null,
+                latencyMs));
     }
 
     /**
      * Writes the terminal state only when the run is still RUNNING. A cancelled or
      * timed-out run keeps its status and files the answer as a late response.
      */
-    private void finish(
-            Long runId, String status, String raw, String content, String proposalsJson,
-            String errorCode, String errorMessage, String providerName, String modelName,
-            Integer inputTokens, Integer outputTokens, long latencyMs) {
+    private void finish(ConstraintRunCompletion completion) {
         transactions.executeWithoutResult(tx -> {
-            int updated = runs.finishRunning(
-                    runId, status, raw, content, proposalsJson, errorCode,
-                    truncate(errorMessage), providerName, modelName, inputTokens, outputTokens,
-                    latencyMs, Instant.now());
+            int updated = runs.finishRunning(completion);
             if (updated == 0) {
                 runs.recordLateResponse(
-                        runId, raw, inputTokens, outputTokens, latencyMs, Instant.now());
+                        completion.runId(), completion.rawResponse(), completion.inputTokens(),
+                        completion.outputTokens(), completion.latencyMs(), Instant.now());
             }
         });
     }
@@ -512,13 +511,6 @@ public class ConstraintProposalService {
 
     private long elapsedMs(long startedNanos) {
         return Duration.ofNanos(System.nanoTime() - startedNanos).toMillis();
-    }
-
-    private String truncate(String message) {
-        if (message == null) {
-            return null;
-        }
-        return message.length() <= 1000 ? message : message.substring(0, 1000);
     }
 
     private String toJson(Object value) {
