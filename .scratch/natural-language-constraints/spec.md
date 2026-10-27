@@ -1,9 +1,9 @@
 # 自然语言生成约束、课程禁排与逐项控制（原票14）
 
-Status: ready-for-agent
+Status: implemented（2026-10-27，集成分支待合并）
 日期：2026-10-27
 来源：用户已完成Q1–Q23的逐轮选择，并明确要求执行`/to-spec`，承接整体设计进入正式规格。
-交付状态：规格已发布到本地Markdown tracker；尚未拆实现票、修改业务代码、运行真实模型评测或部署。
+交付状态：12张实现票已在集成分支 `feature/natural-language-constraints` 完成；后端846例、前端396例与Playwright 89例全绿，两轴评审已完成并修复硬问题。真实模型评测按票09阻塞（无可核实单价与授权，未调用真实模型）；未合并`main`、未部署。证据见[票12交付记录](issues/12-integrate-and-accept.md)。
 
 ## Problem Statement
 
