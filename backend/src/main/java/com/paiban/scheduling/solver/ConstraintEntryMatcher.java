@@ -16,32 +16,32 @@ public final class ConstraintEntryMatcher {
 
     /** The entry names exactly this course (entries that require a target course). */
     public static boolean course(Map<String, Object> entry, Long courseId) {
-        return Objects.equals(ConstraintSettings.longValue(entry.get("courseId")), courseId);
+        return Objects.equals(ConstraintParams.courseId(entry), courseId);
     }
 
     /** A blank course means every course; otherwise it must be this one. */
     public static boolean courseOrAll(Map<String, Object> entry, Long courseId) {
-        Long configured = ConstraintSettings.longValue(entry.get("courseId"));
+        Long configured = ConstraintParams.courseId(entry);
         return configured == null || configured.equals(courseId);
     }
 
     /** A blank course means “sport classes”; otherwise the configured course. */
     public static boolean courseOrSport(
             Map<String, Object> entry, Long courseId, boolean lessonIsSport) {
-        Long configured = ConstraintSettings.longValue(entry.get("courseId"));
+        Long configured = ConstraintParams.courseId(entry);
         return configured != null ? configured.equals(courseId) : lessonIsSport;
     }
 
     public static boolean teacher(Map<String, Object> entry, Long teacherId) {
-        return Objects.equals(ConstraintSettings.longValue(entry.get("teacherId")), teacherId);
+        return Objects.equals(ConstraintParams.teacherId(entry), teacherId);
     }
 
     public static boolean day(Map<String, Object> entry, int dayOfWeek) {
-        return Objects.equals(ConstraintSettings.intValue(entry.get("dayOfWeek")), dayOfWeek);
+        return Objects.equals(ConstraintParams.dayOfWeek(entry), dayOfWeek);
     }
 
     public static boolean period(Map<String, Object> entry, int periodNo) {
-        return Objects.equals(ConstraintSettings.intValue(entry.get("periodNo")), periodNo);
+        return Objects.equals(ConstraintParams.periodNo(entry), periodNo);
     }
 
     public static boolean slot(Map<String, Object> entry, int dayOfWeek, int periodNo) {
@@ -64,13 +64,12 @@ public final class ConstraintEntryMatcher {
 
     /** The entry also carries the room type its course must use. */
     public static boolean courseWithRoomType(Map<String, Object> entry, Long courseId) {
-        return course(entry, courseId) && entry.get("roomType") != null;
+        return course(entry, courseId) && ConstraintParams.roomType(entry) != null;
     }
 
     /** A blank subject means every teacher; otherwise the teacher's subject must match. */
     public static boolean meetingSubject(Map<String, Object> entry, String teacherSubject) {
-        Object raw = entry.get("subject");
-        String subject = raw == null ? null : raw.toString();
+        String subject = ConstraintParams.subject(entry);
         if (!StringUtils.hasText(subject)) {
             return true;
         }

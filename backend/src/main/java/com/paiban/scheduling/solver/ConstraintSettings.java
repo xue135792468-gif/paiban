@@ -294,7 +294,7 @@ public final class ConstraintSettings {
      */
     public boolean matchesCourse(ConstraintType type, Long courseId) {
         for (Map<String, Object> entry : entries(type)) {
-            Long configured = longValue(entry.get("courseId"));
+            Long configured = ConstraintParams.courseId(entry);
             if (configured == null || configured.equals(courseId)) {
                 return true;
             }
@@ -305,7 +305,7 @@ public final class ConstraintSettings {
     /** The scoped value of one field for a course-targeted type; null when no entry matches. */
     public Integer courseScalar(ConstraintType type, Long courseId, String field) {
         for (Map<String, Object> entry : entries(type)) {
-            if (Objects.equals(longValue(entry.get("courseId")), courseId)) {
+            if (Objects.equals(ConstraintParams.courseId(entry), courseId)) {
                 return intValue(entry.get(field));
             }
         }
@@ -315,7 +315,7 @@ public final class ConstraintSettings {
     /** The text value of one field for a course-targeted type; null when no entry matches. */
     public String courseText(ConstraintType type, Long courseId, String field) {
         for (Map<String, Object> entry : entries(type)) {
-            if (Objects.equals(longValue(entry.get("courseId")), courseId)) {
+            if (Objects.equals(ConstraintParams.courseId(entry), courseId)) {
                 Object value = entry.get(field);
                 return value == null ? null : value.toString();
             }

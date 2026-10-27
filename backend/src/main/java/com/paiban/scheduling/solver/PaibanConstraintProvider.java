@@ -366,7 +366,7 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         Map<Long, LinkedHashSet<String>> slotsByTeacher = new HashMap<>();
         for (Requirement requirement : s.requirements(type)) {
             for (Map<String, Object> entry : requirement.entries()) {
-                Long teacherId = ConstraintSettings.longValue(entry.get("teacherId"));
+                Long teacherId = ConstraintParams.teacherId(entry);
                 if (teacherId == null) {
                     continue;
                 }
@@ -376,8 +376,8 @@ public class PaibanConstraintProvider implements ConstraintProvider {
                 } else if (current == null || (!current.hard() && requirement.weight() > current.weight())) {
                     controlByTeacher.put(teacherId, new Control(false, requirement.weight()));
                 }
-                Integer day = ConstraintSettings.intValue(entry.get("dayOfWeek"));
-                Integer periodNo = ConstraintSettings.intValue(entry.get("periodNo"));
+                Integer day = ConstraintParams.dayOfWeek(entry);
+                Integer periodNo = ConstraintParams.periodNo(entry);
                 slotsByTeacher.computeIfAbsent(teacherId, ignored -> new LinkedHashSet<>())
                         .add(day + "-" + periodNo);
             }

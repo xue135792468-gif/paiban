@@ -9,6 +9,7 @@ import com.paiban.scheduling.constraint.ConstraintContext.RoomView;
 import com.paiban.scheduling.constraint.ConstraintContext.TeacherView;
 import com.paiban.scheduling.domain.ConstraintType;
 import com.paiban.scheduling.solver.ConstraintEntryMatcher;
+import com.paiban.scheduling.solver.ConstraintParams;
 import com.paiban.scheduling.solver.ConstraintSettings;
 import com.paiban.scheduling.solver.ConstraintSettings.Control;
 import com.paiban.scheduling.solver.ConstraintSettings.Requirement;
@@ -899,13 +900,13 @@ public final class ConstraintChecker {
             boolean owned = false;
             for (Map<String, Object> entry : requirement.entries()) {
                 if (!Objects.equals(
-                        ConstraintSettings.longValue(entry.get("teacherId")), teacherId)) {
+                        ConstraintParams.teacherId(entry), teacherId)) {
                     continue;
                 }
                 owned = true;
-                if (Objects.equals(ConstraintSettings.intValue(entry.get("dayOfWeek")), period.dayOfWeek())
+                if (Objects.equals(ConstraintParams.dayOfWeek(entry), period.dayOfWeek())
                         && Objects.equals(
-                        ConstraintSettings.intValue(entry.get("periodNo")), period.periodNo())) {
+                        ConstraintParams.periodNo(entry), period.periodNo())) {
                     satisfied = true;
                 }
             }
