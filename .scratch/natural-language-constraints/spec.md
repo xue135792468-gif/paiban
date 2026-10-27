@@ -3,7 +3,7 @@
 Status: done（2026-10-27，已合并 `main` 并部署，Flyway v37）
 日期：2026-10-27
 来源：用户已完成Q1–Q23的逐轮选择，并明确要求执行`/to-spec`，承接整体设计进入正式规格。
-交付状态：12张实现票已合并 `main`（代码 `b21cb9a`）并部署上线；完整门禁、真实 PostgreSQL 迁移与两轴评审见[票12交付记录](issues/12-integrate-and-accept.md)。真实模型评测按票09阻塞（无可核实单价与授权，未调用真实模型），能力保留未放行。
+交付状态：12张实现票已合并 `main`（代码 `b21cb9a`）并部署上线；完整门禁、真实 PostgreSQL 迁移与两轴评审见[票12交付记录](issues/12-integrate-and-accept.md)。真实评测已执行：唯一可用的 `gemini-3-flash` 为 27/54、9/12，未达标；3.8/Pro 在当前中转不可用，**自然语言功能保持未放行**。
 
 ## Problem Statement
 

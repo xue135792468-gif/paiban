@@ -4,7 +4,7 @@
 
 **Blocked by:** 08 — 在约束页生成只读建议，保留原话与原始结果。
 
-**Status:** done（2026-10-27；真实模型评测按规格阻塞并出报告，未冒充通过）
+**Status:** done（2026-10-27；真实评测已执行，gemini-3-flash 27/54、9/12 未达标；3.8 不可用，功能未放行）
 
 2026-10-27 用户已确认本轮12票拆分及阻塞关系，正式发布；实现范围与共同约束以[正式规格](../spec.md)为准。
 
@@ -22,5 +22,8 @@
 ## Implementation (2026-10-27)
 
 - 提交 `f653a56`。`com.paiban.scheduling.eval` 提供 C01–C22 固定语料、整句判定、最多 2 模型、20 元最坏费用预留与报告（Markdown+JSON）；真实评测只能人工以 `--paiban.eval.enabled=true` 启动。
-- 真实模型评测**未执行**：没有可核实单价与授权，按规格直接阻塞并出报告；替身演练 54/54 与 12/12 只证明管线。
-- 证据：`ConstraintEvaluationHarnessTest`、`ConstraintEvaluationRunnerTest`（替身、无单价零请求、预算不足提前停、超过 2 模型拒绝）；报告见 `docs/reports/constraint-model-evaluation-2026-10-27.md`。
+- **2026-10-27 真实评测已在服务器执行**（免费渠道，名义单价 0.001/0.002 元每 1K token，预算 20 元）：
+  - `gemini-3-flash`（provider 2/model 8）：**明确支持 27/54、边界 9/12，结论 FAILED**；用量 0.1960 元（免费渠道实际不计费），预留 0.8382 元。
+  - `gemini-3.8-flash` 返回 404 `Upstream request failed`；`gemini-3.8-flash-low/medium/high/tiered` 在 `HttpClient.send` 挂起；`gemini-3.1-pro` 也 404。3.8 当前在中转不可用，不能作为放行证据。
+  - 决策：不打开自然语言约束功能，`NATURAL_LANGUAGE_CONSTRAINTS` 保持未绑定；手动路径不受影响。
+- 证据：`ConstraintEvaluationHarnessTest`、`ConstraintEvaluationRunnerTest`（替身、无单价零请求、预算不足提前停、超过 2 模型拒绝）；原始报告 `docs/reports/constraint-model-evaluation-2026-10-27-gemini-3-flash.md/.json`，汇总 `docs/reports/constraint-model-evaluation-2026-10-27.md`。
