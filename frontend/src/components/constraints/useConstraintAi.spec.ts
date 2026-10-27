@@ -105,7 +105,7 @@ describe('useConstraintAi', () => {
         clientRunId: expect.any(String),
         text: '王老师周三下午不排课',
       }),
-      { params: { semesterId: 1 } },
+      { params: { semesterId: 1 }, timeout: 65000 },
     )
     expect(ai.run.value?.status).toBe('SUCCEEDED')
     expect(ai.counts.value).toEqual({ total: 2, ready: 1, needsInput: 1, unsupported: 0 })

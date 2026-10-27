@@ -72,6 +72,8 @@
         :is-junior="isJunior"
         :teachers="teachers"
         :courses="courses"
+        :day-options="dayOptions"
+        :periods-by-day="periodsByDay"
         :entry-errors="entryErrors"
         @add="emit('add-entry')"
         @remove="(key: string) => emit('remove-entry', key)"
@@ -83,6 +85,7 @@
         @set-entry-enabled="(key: string, value: boolean) => emit('set-entry-enabled', key, value)"
         @set-entry-hard="(key: string, value: boolean | null) => emit('set-entry-hard', key, value)"
         @set-entry-weight="(key: string, value: number | null) => emit('set-entry-weight', key, value)"
+        @fill-all-days="(key: string, slotKey: string) => emit('fill-all-days', key, slotKey)"
       />
     </template>
 
@@ -124,6 +127,9 @@ const props = defineProps<{
   isJunior: boolean
   teachers: OptionItem[]
   courses: OptionItem[]
+  /** The weekdays and period numbers the semester actually has. */
+  dayOptions?: number[]
+  periodsByDay?: Record<number, number[]>
   /** The objects each entry field may name, kept per field (never merged into one list). */
   objectOptions: ObjectOptions
   entryErrors: Record<number, string[]>
@@ -151,6 +157,7 @@ const emit = defineEmits<{
   'set-entry-enabled': [key: string, value: boolean]
   'set-entry-hard': [key: string, value: boolean | null]
   'set-entry-weight': [key: string, value: number | null]
+  'fill-all-days': [key: string, slotKey: string]
   'set-threshold-global-enabled': [value: boolean]
   'set-threshold-global-hard': [value: boolean | null]
   'set-threshold-global-weight': [value: number | null]

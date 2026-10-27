@@ -1,4 +1,5 @@
 package com.paiban.scheduling.constraint;
+import org.springframework.util.StringUtils;
 
 import com.paiban.foundation.domain.PeriodSection;
 import com.paiban.scheduling.constraint.ConstraintContext.ClassView;
@@ -103,7 +104,7 @@ public final class ConstraintChecker {
     }
 
     /** One lesson-scoped conflict, added only when the matched requirement is hard. */
-    private static void hit(
+    private static void addIfHard(
             List<ConstraintViolation> out, String code, String message, Long lessonId, Control control) {
         if (control != null && control.hard()) {
             out.add(new ConstraintViolation(code, message, lessonId, true));
@@ -152,9 +153,9 @@ public final class ConstraintChecker {
                 roomTypeControl = configured;
             }
         }
-        if (requiredRoomType != null && !requiredRoomType.isBlank()
+        if (requiredRoomType != null && StringUtils.hasText(requiredRoomType)
                 && (room == null || !requiredRoomType.equals(room.type()))) {
-            hit(out, "ROOM_TYPE",
+            addIfHard(out, "ROOM_TYPE",
                     courseName + " 需要安排在「" + roomTypeLabel(requiredRoomType) + "」类型的教室",
                     lesson.id(), roomTypeControl);
         }
@@ -163,14 +164,14 @@ public final class ConstraintChecker {
                 entry -> Objects.equals(
                         ConstraintSettings.longValue(entry.get("teacherId")), lesson.teacherId())
                         && day(entry, period) && periodNo(entry, period));
-        hit(out, "TEACHER_UNAVAILABLE",
+        addIfHard(out, "TEACHER_UNAVAILABLE",
                 teacherName(ctx, lesson.teacherId()) + " 在 " + periodLabel(period) + " 不排课",
                 lesson.id(), unavailable);
 
         Control meeting = settings.match(ConstraintType.TEACHER_MEETING_BLOCKED,
                 entry -> day(entry, period) && periodNo(entry, period)
                         && meetingSubjectMatches(entry, ctx, lesson));
-        hit(out, "TEACHER_MEETING",
+        addIfHard(out, "TEACHER_MEETING",
                 teacherName(ctx, lesson.teacherId()) + " 在 " + periodLabel(period) + " 参加教研活动",
                 lesson.id(), meeting);
 
@@ -185,7 +186,7 @@ public final class ConstraintChecker {
                 entry -> Objects.equals(
                         ConstraintSettings.longValue(entry.get("courseId")), lesson.courseId())
                         && day(entry, period) && periodNo(entry, period));
-        hit(out, "COURSE_UNAVAILABLE",
+        addIfHard(out, "COURSE_UNAVAILABLE",
                 courseName + " 在 " + periodLabel(period) + " 不排课", lesson.id(), courseUnavailable);
     }
 
@@ -193,7 +194,7 @@ public final class ConstraintChecker {
             Map<String, Object> entry, ConstraintContext ctx, LessonView lesson) {
         Object raw = entry.get("subject");
         String subject = raw == null ? null : raw.toString();
-        if (subject == null || subject.isBlank()) {
+        if (subject == null || !StringUtils.hasText(subject)) {
             return true;
         }
         TeacherView teacher = lesson.teacherId() == null ? null : ctx.teachers().get(lesson.teacherId());
@@ -334,8 +335,8 @@ public final class ConstraintChecker {
                     Long teacherId = objectIdOf(key);
                     Integer limit = s.limitOrNull(ConstraintType.TEACHER_MAX_PER_DAY, teacherId);
                     return limit != null && count > limit
-                            ? new String[]{"TEACHER_MAX_PER_DAY",
-                            teacherName(ctx, teacherId) + " 单日排了 " + count + " 节，超过上限 " + limit}
+                            ? new ThresholdMessage("TEACHER_MAX_PER_DAY",
+                            teacherName(ctx, teacherId) + " 单日排了 " + count + " 节，超过上限 " + limit)
                             : null;
                 }, out);
         checkThreshold(ctx, s, ConstraintType.CLASS_MAX_PER_DAY, classDay, touched,
@@ -343,8 +344,8 @@ public final class ConstraintChecker {
                     Long classId = objectIdOf(key);
                     Integer limit = s.limitOrNull(ConstraintType.CLASS_MAX_PER_DAY, classId);
                     return limit != null && count > limit
-                            ? new String[]{"CLASS_MAX_PER_DAY",
-                            className(ctx, classId) + " 单日排了 " + count + " 节，超过上限 " + limit}
+                            ? new ThresholdMessage("CLASS_MAX_PER_DAY",
+                            className(ctx, classId) + " 单日排了 " + count + " 节，超过上限 " + limit)
                             : null;
                 }, out);
         checkThreshold(ctx, s, ConstraintType.COURSE_MAX_PER_DAY, classCourseDay, touched,
@@ -353,9 +354,9 @@ public final class ConstraintChecker {
                     Long courseId = courseIdOf(key);
                     Integer limit = s.limitOrNull(ConstraintType.COURSE_MAX_PER_DAY, courseId);
                     return limit != null && count > limit
-                            ? new String[]{"COURSE_MAX_PER_DAY",
+                            ? new ThresholdMessage("COURSE_MAX_PER_DAY",
                             className(ctx, classId) + " 的 " + courseName(ctx, courseId)
-                                    + " 单日排了 " + count + " 节，超过上限 " + limit}
+                                    + " 单日排了 " + count + " 节，超过上限 " + limit)
                             : null;
                 }, out);
         checkThreshold(ctx, s, ConstraintType.EVENING_MAX, classEvening, touched,
@@ -363,8 +364,8 @@ public final class ConstraintChecker {
                     Long classId = objectIdOf(key);
                     Integer limit = s.limitOrNull(ConstraintType.EVENING_MAX, classId);
                     return limit != null && count > limit
-                            ? new String[]{"EVENING_MAX",
-                            className(ctx, classId) + " 晚自习排了 " + count + " 节，超过上限 " + limit}
+                            ? new ThresholdMessage("EVENING_MAX",
+                            className(ctx, classId) + " 晚自习排了 " + count + " 节，超过上限 " + limit)
                             : null;
                 }, out);
 
@@ -378,12 +379,12 @@ public final class ConstraintChecker {
 
             if (relevant && period.section() == PeriodSection.AFTERNOON
                     && isFirstAfternoon(period, ctx)) {
-                hit(out, "SPORT_NOT_FIRST_AFTERNOON",
+                addIfHard(out, "SPORT_NOT_FIRST_AFTERNOON",
                         courseName(ctx, lesson.courseId()) + " 不应排在下午第一节", lesson.id(),
                         sportMatch(s, ConstraintType.SPORT_NOT_FIRST_AFTERNOON, lesson, course));
             }
             if (relevant && isLastOfDay(period, ctx)) {
-                hit(out, "PE_LAST_PERIOD_AVOID",
+                addIfHard(out, "PE_LAST_PERIOD_AVOID",
                         "体育被排在当天最后一节", lesson.id(),
                         sportMatch(s, ConstraintType.PE_LAST_PERIOD_AVOID, lesson, course));
             }
@@ -391,28 +392,28 @@ public final class ConstraintChecker {
                 Integer before = s.courseScalar(
                         ConstraintType.MAIN_SUBJECT_MORNING, lesson.courseId(), "beforePeriodNo");
                 if (before != null && period.periodNo() > before) {
-                    hit(out, "MAIN_SUBJECT_MORNING",
+                    addIfHard(out, "MAIN_SUBJECT_MORNING",
                             courseName(ctx, lesson.courseId()) + " 没有排在上午", lesson.id(),
                             courseStrictMatch(s, ConstraintType.MAIN_SUBJECT_MORNING, lesson.courseId()));
                 }
             }
             if (relevant) {
-                hit(out, "TEACHER_PREFERRED_SLOT",
+                addIfHard(out, "TEACHER_PREFERRED_SLOT",
                         teacherName(ctx, lesson.teacherId()) + " 的课不在偏好时段", lesson.id(),
                         preferredMiss(s, lesson.teacherId(), period));
-                hit(out, "TEACHER_NO_FIRST_PERIOD",
+                addIfHard(out, "TEACHER_NO_FIRST_PERIOD",
                         teacherName(ctx, lesson.teacherId()) + " 被排在第一节", lesson.id(),
                         isFirstOfDay(period, ctx)
                                 ? teacherMatch(s, ConstraintType.TEACHER_NO_FIRST_PERIOD, lesson.teacherId())
                                 : null);
-                hit(out, "TEACHER_DAY_OFF",
+                addIfHard(out, "TEACHER_DAY_OFF",
                         teacherName(ctx, lesson.teacherId()) + " 的无课日被排了课", lesson.id(),
                         teacherDayMatch(s, lesson.teacherId(), period.dayOfWeek()));
                 ClassView adminClass = lesson.classId() == null ? null : ctx.classes().get(lesson.classId());
                 if (adminClass != null
                         && Objects.equals(adminClass.headTeacherId(), lesson.teacherId())
                         && !isFirstOfDay(period, ctx)) {
-                    hit(out, "HEAD_TEACHER_FIRST_PERIOD",
+                    addIfHard(out, "HEAD_TEACHER_FIRST_PERIOD",
                             "班主任的课没有排在本班第一节", lesson.id(),
                             s.control(ConstraintType.HEAD_TEACHER_FIRST_PERIOD));
                 }
@@ -463,8 +464,10 @@ public final class ConstraintChecker {
         checkTeacherMaxConsecutive(ctx, s, teacherPeriods, touched, out);
     }
 
+    private record ThresholdMessage(String code, String message) {}
+
     private interface ThresholdFact {
-        String[] message(String key, int count);
+        ThresholdMessage message(String key, int count);
     }
 
     /**
@@ -491,9 +494,9 @@ public final class ConstraintChecker {
             if (control == null || !control.hard()) {
                 continue;
             }
-            String[] message = fact.message(entry.getKey(), count);
+            ThresholdMessage message = fact.message(entry.getKey(), count);
             if (message != null) {
-                out.add(new ConstraintViolation(message[0], message[1], null, true));
+                out.add(new ConstraintViolation(message.code(), message.message(), null, true));
             }
         }
     }
@@ -647,7 +650,7 @@ public final class ConstraintChecker {
             }
             String configuredType = lesson.courseId() == null ? null : settings.courseText(
                     ConstraintType.COURSE_REQUIRED_ROOM_TYPE, lesson.courseId(), "roomType");
-            if (configuredType != null && !configuredType.isBlank()
+            if (configuredType != null && StringUtils.hasText(configuredType)
                     && (room == null || !configuredType.equals(room.type()))) {
                 total += softHit(settings.match(ConstraintType.COURSE_REQUIRED_ROOM_TYPE,
                         entry -> Objects.equals(ConstraintSettings.longValue(entry.get("courseId")),

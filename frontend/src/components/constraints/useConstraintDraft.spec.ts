@@ -638,6 +638,24 @@ describe('useConstraintDraft', () => {
     expect(draft.dirty.value).toBe(false)
   })
 
+  it('所有上课日把当前时段展开成每一天一条，且不重复', () => {
+    const draft = hydrated()
+    draft.addEntry('TEACHER_UNAVAILABLE')
+    const card = draft.rows.value.find((row) => row.code === 'TEACHER_UNAVAILABLE')!.entries[2]
+    draft.updateEntryValue('TEACHER_UNAVAILABLE', card.key, 'teacherId', 9)
+    draft.updateSlot('TEACHER_UNAVAILABLE', card.key, card.slots![0].key, 'dayOfWeek', 3)
+    draft.updateSlot('TEACHER_UNAVAILABLE', card.key, card.slots![0].key, 'periodNo', 2)
+
+    draft.fillAllDays('TEACHER_UNAVAILABLE', card.key, card.slots![0].key, [1, 2, 3, 4, 5])
+
+    expect(card.slots).toHaveLength(5)
+    expect(card.slots!.map((slot) => slot.dayOfWeek)).toEqual([1, 2, 3, 4, 5])
+    expect(card.slots!.every((slot) => slot.periodNo === 2)).toBe(true)
+    // Running it again is idempotent for the already covered days.
+    draft.fillAllDays('TEACHER_UNAVAILABLE', card.key, card.slots![0].key, [1, 2, 3])
+    expect(card.slots).toHaveLength(5)
+  })
+
   it('建议加入：新增一组、相同条件标为已存在、强度不同需确认后才替换', () => {
     const draft = hydrated()
     const proposal = {

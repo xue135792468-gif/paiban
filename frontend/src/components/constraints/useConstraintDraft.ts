@@ -241,7 +241,7 @@ export function useConstraintDraft() {
   )
 
   function payload(): ConstraintConfigRequest[] {
-    return buildSavePayload(rows.value, { isJunior: isJuniorMode.value })
+    return buildSavePayload(rows.value)
   }
 
   const dirty = computed(() => snapshot.value !== JSON.stringify(payload()))
@@ -439,6 +439,32 @@ export function useConstraintDraft() {
     if (entry) {
       entry.slots = [...(entry.slots ?? []), emptySlot()]
     }
+  }
+
+  /**
+   * Expands one slot into the same period on every teaching day of the semester. The
+   * expansion is explicit and immediate (ticket-14 spec: 每个上课日按确认时展开), so a
+   * later timetable change never widens a saved requirement.
+   */
+  function fillAllDays(code: string, entryKey: string, slotKey: string, days: number[]) {
+    const entry = entryOf(code, entryKey)
+    const slot = entry?.slots?.find((item) => item.key === slotKey)
+    if (!entry || !slot || slot.periodNo === null || days.length === 0) {
+      return
+    }
+    const others = (entry.slots ?? []).filter((item) => item.key !== slotKey)
+    const existing = new Set(others.map((item) => `${item.dayOfWeek}-${item.periodNo}`))
+    const expanded = days
+      .filter((day) => !existing.has(`${day}-${slot.periodNo}`))
+      .map((day) => ({
+        key: nextKey('slot'),
+        id: null,
+        dayOfWeek: day,
+        periodNo: slot.periodNo,
+      }))
+    entry.slots = [...others, ...expanded].sort(
+      (left, right) => Number(left.dayOfWeek ?? 0) - Number(right.dayOfWeek ?? 0),
+    )
   }
 
   function removeSlot(code: string, entryKey: string, slotKey: string) {
@@ -799,6 +825,7 @@ export function useConstraintDraft() {
     setEntryHard,
     setEntryWeight,
     addSlot,
+    fillAllDays,
     removeSlot,
     updateSlot,
     setThresholdGlobal,

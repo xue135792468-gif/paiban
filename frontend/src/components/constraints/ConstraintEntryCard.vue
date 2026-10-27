@@ -117,8 +117,11 @@
           :removable="(entry.slots?.length ?? 0) > 1"
           :teachers="teachers"
           :courses="courses"
+          :day-options="dayOptions"
+          :periods-by-day="periodsByDay"
           @update="(field: string, value: unknown) => emit('update-slot', slot.key, field, value)"
           @remove="emit('remove-slot', slot.key)"
+          @fill-all-days="emit('fill-all-days', slot.key)"
         />
         <el-button
           class="slot-add"
@@ -148,6 +151,7 @@
           :teachers="teachers"
           :courses="courses"
           :disabled="!editable || declaresAllTarget(entry, param)"
+          :day-options="dayOptions"
           :test-id="`constraint-entry-${fieldTestId(param.name)}`"
           @update="(name: string, value: unknown) => emit('update', name, value)"
         />
@@ -185,6 +189,9 @@ const props = defineProps<{
   isJunior: boolean
   teachers: OptionItem[]
   courses: OptionItem[]
+  /** The weekdays and period numbers the semester actually has. */
+  dayOptions?: number[]
+  periodsByDay?: Record<number, number[]>
   serverErrors: string[]
   duplicates: string[]
   conflicts: string[]
@@ -197,6 +204,7 @@ const emit = defineEmits<{
   'add-slot': []
   'remove-slot': [slotKey: string]
   'update-slot': [slotKey: string, field: string, value: unknown]
+  'fill-all-days': [slotKey: string]
   'set-enabled': [value: boolean]
   'set-hard': [value: boolean | null]
   'set-weight': [value: number | null]

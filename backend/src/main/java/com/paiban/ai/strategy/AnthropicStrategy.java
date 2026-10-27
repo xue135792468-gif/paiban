@@ -55,7 +55,7 @@ public class AnthropicStrategy implements AiStrategy {
 
     @Override
     public AiStrategyOutcome invoke(AiInvocation invocation) {
-        Duration requestTimeout = requestTimeout(invocation);
+        Duration requestTimeout = AiStrategyParams.requestTimeout(invocation, timeout);
         try {
             HttpRequest.Builder builder = HttpRequest.newBuilder(endpoint(invocation.provider().getBaseUrl()))
                     .timeout(requestTimeout)
@@ -210,10 +210,4 @@ public class AnthropicStrategy implements AiStrategy {
         return compact.length() <= MAX_ERROR_BODY ? compact : compact.substring(0, MAX_ERROR_BODY);
     }
 
-    /** The task may cap its own call; every other task keeps the gateway default. */
-    private Duration requestTimeout(AiInvocation invocation) {
-        Integer seconds = invocation.request() == null || invocation.request().options() == null
-                ? null : invocation.request().options().timeoutSeconds();
-        return seconds != null && seconds > 0 ? Duration.ofSeconds(seconds) : timeout;
-    }
 }

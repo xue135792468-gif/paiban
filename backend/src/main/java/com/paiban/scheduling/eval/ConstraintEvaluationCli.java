@@ -11,6 +11,7 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 /**
  * Manual entry point for the real-model evaluation (ticket 14/09).
@@ -41,7 +42,6 @@ public class ConstraintEvaluationCli implements ApplicationRunner {
         BigDecimal budget = decimal(option(args, "budget", "20"));
         BigDecimal priceIn = decimal(option(args, "price-in", null));
         BigDecimal priceOut = decimal(option(args, "price-out", null));
-        int runs = Integer.parseInt(option(args, "runs", "3"));
         boolean stub = Boolean.parseBoolean(option(args, "stub", "false"));
         boolean bind = Boolean.parseBoolean(option(args, "bind", "false"));
         List<ModelRef> models = new ArrayList<>();
@@ -57,7 +57,8 @@ public class ConstraintEvaluationCli implements ApplicationRunner {
                     "provider " + providerId + " / model " + modelId));
         }
         Report report = runner.run(new Request(
-                output, budget, priceIn, priceOut, runs, models, stub, bind));
+                output, budget, priceIn, priceOut,
+                ConstraintEvaluationRunner.DEFAULT_RUNS, models, stub, bind));
         System.out.println("约束模型评测结论: " + report.verdict());
         if (report.blockedReason() != null) {
             System.out.println("阻塞原因: " + report.blockedReason());
@@ -77,6 +78,6 @@ public class ConstraintEvaluationCli implements ApplicationRunner {
     }
 
     private BigDecimal decimal(String value) {
-        return value == null || value.isBlank() ? null : new BigDecimal(value.trim());
+        return value == null || !StringUtils.hasText(value) ? null : new BigDecimal(value.trim());
     }
 }

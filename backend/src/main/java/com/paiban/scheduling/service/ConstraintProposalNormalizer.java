@@ -1,4 +1,5 @@
 package com.paiban.scheduling.service;
+import org.springframework.util.StringUtils;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.paiban.foundation.domain.PeriodSection;
@@ -125,14 +126,14 @@ public final class ConstraintProposalNormalizer {
 
         ConstraintType type = null;
         try {
-            type = typeCode.isBlank() ? null : ConstraintType.valueOf(typeCode);
+            type = !StringUtils.hasText(typeCode) ? null : ConstraintType.valueOf(typeCode);
         } catch (IllegalArgumentException ignored) {
             // handled below as UNSUPPORTED
         }
         if (type == null) {
             return proposal(proposalId, sourceText, typeCode, typeCode, "INHERIT", true, null,
                     UNSUPPORTED, explanation,
-                    modelReason.isBlank() ? "现有约束目录不能精确表达这条要求" : modelReason,
+                    !StringUtils.hasText(modelReason) ? "现有约束目录不能精确表达这条要求" : modelReason,
                     Map.of(), List.of(), List.of());
         }
 
@@ -140,7 +141,7 @@ public final class ConstraintProposalNormalizer {
             return proposal(proposalId, sourceText, type.name(), type.getDisplayName(),
                     "INHERIT", type.isDefaultHard(), type.isDefaultHard() ? null : type.getDefaultWeight(),
                     UNSUPPORTED, explanation,
-                    modelReason.isBlank() ? "现有约束目录不能精确表达这条要求" : modelReason,
+                    !StringUtils.hasText(modelReason) ? "现有约束目录不能精确表达这条要求" : modelReason,
                     Map.of(), List.of(), List.of());
         }
         if (INVALID.equals(modelStatus) || NEEDS_INPUT.equals(modelStatus)) {
@@ -153,7 +154,7 @@ public final class ConstraintProposalNormalizer {
             return proposal(proposalId, sourceText, type.name(), type.getDisplayName(),
                     strengthOf(node, type), effectiveHard(node, type),
                     effectiveWeight(node, type), status, explanation,
-                    modelReason.isBlank() ? "这条要求还需要补充信息" : modelReason,
+                    !StringUtils.hasText(modelReason) ? "这条要求还需要补充信息" : modelReason,
                     Map.of(), List.of(), candidates);
         }
 
@@ -194,7 +195,7 @@ public final class ConstraintProposalNormalizer {
                 String subject = text(node, "subject");
                 addSlotEntries(type, node, context, attempt, groupKey,
                         params -> {
-                            if (!subject.isBlank()) {
+                            if (StringUtils.hasText(subject)) {
                                 params.put("subject", subject);
                             }
                         });
@@ -230,7 +231,7 @@ public final class ConstraintProposalNormalizer {
             case COURSE_REQUIRED_ROOM_TYPE -> {
                 Long course = requiredCourse(node, context, attempt);
                 String roomType = text(node, "roomType");
-                if (roomType.isBlank()) {
+                if (!StringUtils.hasText(roomType)) {
                     attempt.needsInput("缺少教室类型");
                 } else if (roomTypeParam(type).map(Param::options)
                         .filter(options -> !options.contains(roomType)).isPresent()) {
@@ -425,17 +426,17 @@ public final class ConstraintProposalNormalizer {
     private static List<ProposalCandidateDto> candidatesFor(JsonNode node, Context context) {
         Attempt attempt = new Attempt();
         String teacher = text(node, "teacherName");
-        if (!teacher.isBlank()) {
+        if (StringUtils.hasText(teacher)) {
             resolve("teacherId", "教师", teacher, context.teachers().stream()
                     .map(ref -> new Named(ref.id(), ref.name())).toList(), attempt, true);
         }
         String course = text(node, "courseName");
-        if (!course.isBlank()) {
+        if (StringUtils.hasText(course)) {
             resolve("courseId", "课程", course, context.courses().stream()
                     .map(ref -> new Named(ref.id(), ref.name())).toList(), attempt, false);
         }
         String className = text(node, "className");
-        if (!className.isBlank()) {
+        if (StringUtils.hasText(className)) {
             resolve("classId", "行政班", className, context.classes().stream()
                     .map(ref -> new Named(ref.id(), ref.name())).toList(), attempt, false);
         }
@@ -444,7 +445,7 @@ public final class ConstraintProposalNormalizer {
 
     private static Long requiredTeacher(JsonNode node, Context context, Attempt attempt) {
         String name = text(node, "teacherName");
-        if (name.isBlank()) {
+        if (!StringUtils.hasText(name)) {
             attempt.needsInput("缺少教师");
             return null;
         }
@@ -455,7 +456,7 @@ public final class ConstraintProposalNormalizer {
 
     private static Long optionalTeacher(JsonNode node, Context context, Attempt attempt) {
         String name = text(node, "teacherName");
-        return name.isBlank() ? null : resolve("teacherId", "教师", name,
+        return !StringUtils.hasText(name) ? null : resolve("teacherId", "教师", name,
                 context.teachers().stream()
                         .map(teacher -> new Named(teacher.id(), teacher.name())).toList(),
                 attempt, true);
@@ -463,7 +464,7 @@ public final class ConstraintProposalNormalizer {
 
     private static Long requiredCourse(JsonNode node, Context context, Attempt attempt) {
         String name = text(node, "courseName");
-        if (name.isBlank()) {
+        if (!StringUtils.hasText(name)) {
             attempt.needsInput("缺少课程");
             return null;
         }
@@ -473,7 +474,7 @@ public final class ConstraintProposalNormalizer {
 
     private static Long optionalCourse(JsonNode node, Context context, Attempt attempt) {
         String name = text(node, "courseName");
-        return name.isBlank() ? null : resolve("courseId", "课程", name,
+        return !StringUtils.hasText(name) ? null : resolve("courseId", "课程", name,
                 context.courses().stream()
                         .map(course -> new Named(course.id(), course.name())).toList(),
                 attempt, false);
@@ -481,7 +482,7 @@ public final class ConstraintProposalNormalizer {
 
     private static Long optionalClass(JsonNode node, Context context, Attempt attempt) {
         String name = text(node, "className");
-        return name.isBlank() ? null : resolve("classId", "行政班", name,
+        return !StringUtils.hasText(name) ? null : resolve("classId", "行政班", name,
                 context.classes().stream()
                         .map(adminClass -> new Named(adminClass.id(), adminClass.name())).toList(),
                 attempt, false);
@@ -535,7 +536,7 @@ public final class ConstraintProposalNormalizer {
 
     private static PeriodSection section(JsonNode node, Attempt attempt) {
         String raw = text(node, "section").toUpperCase(Locale.ROOT);
-        if (raw.isBlank()) {
+        if (!StringUtils.hasText(raw)) {
             return null;
         }
         return switch (raw) {

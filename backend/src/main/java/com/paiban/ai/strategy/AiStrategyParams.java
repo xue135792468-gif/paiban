@@ -3,6 +3,7 @@ package com.paiban.ai.strategy;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paiban.ai.AiOptions;
+import java.time.Duration;
 import com.paiban.ai.domain.AiModel;
 
 /**
@@ -50,5 +51,12 @@ final class AiStrategyParams {
             // A malformed params blob must not fail the call; model defaults apply.
             return null;
         }
+    }
+
+    /** The task may cap its own call; every other task keeps the gateway default. */
+    public static Duration requestTimeout(AiInvocation invocation, Duration fallback) {
+        Integer seconds = invocation.request() == null || invocation.request().options() == null
+                ? null : invocation.request().options().timeoutSeconds();
+        return seconds != null && seconds > 0 ? Duration.ofSeconds(seconds) : fallback;
     }
 }

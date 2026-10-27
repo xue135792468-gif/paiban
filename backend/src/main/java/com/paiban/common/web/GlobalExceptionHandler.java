@@ -11,6 +11,8 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.util.StringUtils;
+import org.springframework.web.ErrorResponseException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,8 +69,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     public ResponseEntity<Map<String, Object>> handleOptimisticLock(
             ObjectOptimisticLockingFailureException ex) {
-        return body(HttpStatus.CONFLICT,
-                "约束配置刚被他人保存，本次修改未写入；请核对最新配置后再保存");
+        return body(HttpStatus.CONFLICT, "数据刚被他人更新，本次修改未写入；请核对后再保存");
+    }
+
+    /** Spring's own 404/405/415 keep their status instead of becoming a 500. */
+    @ExceptionHandler(ErrorResponseException.class)
+    public ResponseEntity<Map<String, Object>> handleErrorResponse(ErrorResponseException ex) {
+        HttpStatus status = HttpStatus.valueOf(ex.getStatusCode().value());
+        String detail = ex.getBody() == null ? null : ex.getBody().getDetail();
+        return body(status, StringUtils.hasText(detail)
+                ? detail : status.getReasonPhrase());
     }
 
     @ExceptionHandler(IllegalStateException.class)

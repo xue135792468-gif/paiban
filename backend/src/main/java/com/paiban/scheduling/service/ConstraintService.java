@@ -60,8 +60,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.context.event.EventListener;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.transaction.annotation.Transactional;
@@ -200,11 +198,12 @@ public class ConstraintService {
         if (!errors.isEmpty()) {
             throw ApiException.badRequest(String.join("; ", errors));
         }
+        List<ConstraintConfigDto> previous = list(resolved);
         // The version moves before the rows so a losing race writes nothing at all; a
         // later failure rolls the bump back with the rest of the transaction.
         advanceState(resolved, base);
         List<ConstraintConfigDto> result = persist(resolved, planning.configs());
-        recordAudit(resolved, base + 1, audit, decisions, result);
+        recordAudit(resolved, base + 1, audit, decisions, previous, result);
         // The successful save is the new truth: this account's unsaved draft must not
         // resurrect afterwards, on this device or another.
         if (audit.userId() != null) {
@@ -433,12 +432,17 @@ public class ConstraintService {
         if (runId == null) {
             return new AuditContext(userId, actor, null);
         }
+        // A run-linked save must prove who is saving: an unresolved actor cannot be
+        // allowed to skip the ownership check just because the lookup failed.
+        if (userId == null) {
+            throw ApiException.unauthorized("无法确认当前用户，不能关联生成记录");
+        }
         ConstraintGenerationRun run = generationRuns.findById(runId)
                 .orElseThrow(() -> ApiException.badRequest("生成记录不存在: " + runId));
         if (!semesterId.equals(run.getSemesterId())) {
             throw ApiException.badRequest("生成记录属于其他学期，不能用于本次保存");
         }
-        if (!isAdmin() && userId != null && !userId.equals(run.getUserId())) {
+        if (!isAdmin() && !userId.equals(run.getUserId())) {
             throw ApiException.forbidden("不能保存他人的生成记录");
         }
         return new AuditContext(userId, actor, runId);
@@ -447,10 +451,8 @@ public class ConstraintService {
     /** The final configuration and the decisions are written in the save transaction. */
     private void recordAudit(
             Long semesterId, long version, AuditContext audit,
-            List<ProposalDecision> decisions, List<ConstraintConfigDto> result) {
-        if (audit == null) {
-            return;
-        }
+            List<ProposalDecision> decisions, List<ConstraintConfigDto> previous,
+            List<ConstraintConfigDto> result) {
         ConstraintSaveAudit row = new ConstraintSaveAudit();
         row.setSemesterId(semesterId);
         row.setVersion(version);
@@ -458,7 +460,9 @@ public class ConstraintService {
         row.setActor(audit.actor());
         row.setRunId(audit.runId());
         row.setDecisionsJson(toJson(decisions == null ? List.of() : decisions));
+        row.setPreviousConfigJson(toJson(previous));
         row.setFinalConfigJson(toJson(result));
+        row.setDiffJson(toJson(ConstraintConfigDiff.diff(previous, result)));
         row.setCreatedAt(Instant.now());
         audits.save(row);
     }
@@ -479,12 +483,29 @@ public class ConstraintService {
         } catch (JsonProcessingException ex) {
             configs = List.of();
         }
+        List<ConstraintConfigDto> previous;
+        try {
+            previous = row.getPreviousConfigJson() == null ? List.of()
+                    : objectMapper.readValue(row.getPreviousConfigJson(),
+                    new TypeReference<List<ConstraintConfigDto>>() {});
+        } catch (JsonProcessingException ex) {
+            previous = List.of();
+        }
+        Map<String, Object> diff;
+        try {
+            diff = row.getDiffJson() == null ? Map.of()
+                    : objectMapper.readValue(row.getDiffJson(),
+                    new TypeReference<Map<String, Object>>() {});
+        } catch (JsonProcessingException ex) {
+            diff = Map.of();
+        }
         return new ConstraintSaveAuditDto(row.getId(), row.getSemesterId(), row.getVersion(),
-                row.getRunId(), row.getActor(), row.getCreatedAt(), decisions, configs);
+                row.getRunId(), row.getActor(), row.getCreatedAt(), decisions, configs,
+                previous, diff);
     }
 
     private Long userIdOf(String actor) {
-        if (actor == null || actor.isBlank()) {
+        if (actor == null || !StringUtils.hasText(actor)) {
             return null;
         }
         try {
@@ -495,9 +516,7 @@ public class ConstraintService {
     }
 
     private boolean isAdmin() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        return authentication != null && authentication.getAuthorities().stream()
-                .anyMatch(authority -> Permissions.SETTINGS_MANAGE.equals(authority.getAuthority()));
+        return users.hasPermission(Permissions.SETTINGS_MANAGE);
     }
 
     // ------------------------------------------------------------ config version
@@ -548,7 +567,7 @@ public class ConstraintService {
                 !entry.isEnabled()
                         || entry.getHard() != null
                         || entry.getWeight() != null
-                        || (entry.getGroupKey() != null && !entry.getGroupKey().isBlank()));
+                        || (entry.getGroupKey() != null && StringUtils.hasText(entry.getGroupKey())));
     }
 
     /**
@@ -814,6 +833,12 @@ public class ConstraintService {
             return classId != null && classes.contains(classId);
         }
 
+        /** True when any day of the semester has at least one period. */
+        boolean hasDay(Integer dayOfWeek) {
+            return dayOfWeek != null
+                    && slots.stream().anyMatch(slot -> slot.startsWith(dayOfWeek + "-"));
+        }
+
         /** True when any day of the semester has this period number. */
         boolean hasPeriodNo(Integer periodNo) {
             if (periodNo == null) {
@@ -889,7 +914,7 @@ public class ConstraintService {
 
     private String normalizeGroupKey(
             String raw, ConstraintType type, int position, List<String> errors) {
-        if (raw == null || raw.isBlank()) {
+        if (raw == null || !StringUtils.hasText(raw)) {
             return null;
         }
         String key = raw.trim();
@@ -1086,6 +1111,7 @@ public class ConstraintService {
         switch (type) {
             case TEACHER_UNAVAILABLE, TEACHER_PREFERRED_SLOT, COURSE_UNAVAILABLE ->
                     requireSlot(location, params, timetable, errors);
+            case TEACHER_DAY_OFF -> requireDay(location, params, timetable, errors);
             case TEACHER_MEETING_BLOCKED -> {
                 requireSubject(location, params, errors);
                 requireSlot(location, params, timetable, errors);
@@ -1210,6 +1236,20 @@ public class ConstraintService {
             }
         }
         return known;
+    }
+
+    /** A fixed day off must name a weekday that actually has periods. */
+    private void requireDay(
+            String location, Map<String, Object> params, SemesterScope timetable,
+            List<String> errors) {
+        if (timetable.isEmpty()) {
+            errors.add(location + ": 该学期还没有作息安排，无法校验星期；请先配置作息");
+            return;
+        }
+        Integer day = ConstraintSettings.intValue(params.get("dayOfWeek"));
+        if (!timetable.hasDay(day)) {
+            errors.add(location + ": 星期" + day + "不在本学期作息范围内");
+        }
     }
 
     /** A (weekday, period) entry must name a slot the semester timetable really has. */

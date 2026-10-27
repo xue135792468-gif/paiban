@@ -512,10 +512,8 @@ public final class SwapPlanner {
         return true;
     }
 
+    /** Only the single-switch types reach this predicate; entry-backed rules match per fact. */
     private static boolean blocked(ConstraintSettings settings, ConstraintType type) {
-        if (type.isEntryBacked()) {
-            return settings.requirements(type).stream().anyMatch(requirement -> requirement.hard());
-        }
         Control control = settings.control(type);
         return control != null && control.hard();
     }

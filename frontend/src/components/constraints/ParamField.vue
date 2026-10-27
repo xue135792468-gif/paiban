@@ -28,7 +28,25 @@
     class="field-day"
     @update:model-value="(value: unknown) => emit('update', param.name, value)"
   >
-    <el-option v-for="day in DAY_OPTIONS" :key="day.value" :label="day.label" :value="day.value" />
+    <el-option v-for="day in dayChoices" :key="day.value" :label="day.label" :value="day.value" />
+  </el-select>
+
+  <el-select
+    v-else-if="param.type === 'PERIOD' && periodChoices.length > 0"
+    :model-value="selectValue(values, param.name)"
+    placeholder="选择节次"
+    clearable
+    :disabled="disabled"
+    :data-testid="testId"
+    class="field-day"
+    @update:model-value="(value: unknown) => emit('update', param.name, value)"
+  >
+    <el-option
+      v-for="period in periodChoices"
+      :key="period"
+      :label="`第${period}节`"
+      :value="period"
+    />
   </el-select>
 
   <el-input-number
@@ -86,10 +104,12 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { ElInput, ElInputNumber, ElOption, ElSelect } from 'element-plus'
 import {
   DAY_OPTIONS,
   ROOM_TYPE_OPTIONS,
+  dayLabel,
   idOptions,
   numberValue,
   plainLabel,
@@ -103,16 +123,28 @@ import type { OptionItem, ParamDef } from './types'
  * single-value (threshold) form and the entry cards, so every type gets the same
  * widget for the same parameter.
  */
-defineProps<{
+const props = defineProps<{
   param: ParamDef
   values: Record<string, unknown>
   teachers: OptionItem[]
   courses: OptionItem[]
   disabled: boolean
   testId: string
+  /** The weekdays the semester actually has; absent falls back to 1–7. */
+  dayOptions?: number[]
+  /** The period numbers the selected day actually has; absent keeps the free number. */
+  periodOptions?: number[]
 }>()
 
 const emit = defineEmits<{ update: [name: string, value: unknown] }>()
+
+const dayChoices = computed(() =>
+  props.dayOptions && props.dayOptions.length > 0
+    ? props.dayOptions.map((value) => ({ value, label: dayLabel(value) }))
+    : DAY_OPTIONS,
+)
+
+const periodChoices = computed(() => props.periodOptions ?? [])
 </script>
 
 <style scoped>

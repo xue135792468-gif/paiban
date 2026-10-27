@@ -242,6 +242,23 @@ class ConstraintRequirementControlsIntegrationTest extends ApiIntegrationTest {
         assertThat(((Number) restored.get(2).get("weight")).intValue()).isEqualTo(70);
     }
 
+    @Test
+    void aDayOffOnADayWithoutPeriodsIsRejected() {
+        String token = adminToken();
+        long semesterId = semesterWithPeriods(token);
+        long teacher = TestData.teacher(token, "无课日" + TestData.suffix());
+
+        Response rejected = save(token, semesterId, List.of(Map.of(
+                "type", "TEACHER_DAY_OFF", "weight", 100, "hard", false, "enabled", true,
+                "entries", List.of(Map.of("params", Map.of(
+                        "teacherId", teacher, "dayOfWeek", 6))))));
+
+        rejected.then().statusCode(400);
+        assertThat(rejected.asString()).contains("星期6");
+        assertThat(entryRepository.findBySemesterIdAndTypeOrderByIdAsc(
+                semesterId, "TEACHER_DAY_OFF")).isEmpty();
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private long draftWithLesson(

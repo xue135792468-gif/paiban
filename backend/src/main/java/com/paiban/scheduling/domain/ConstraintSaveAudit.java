@@ -49,6 +49,13 @@ public class ConstraintSaveAudit {
     @Column(name = "final_config_json", nullable = false, columnDefinition = "TEXT")
     private String finalConfigJson;
 
+    @Column(name = "previous_config_json", columnDefinition = "TEXT")
+    private String previousConfigJson;
+
+    /** The structural effective change, computed server-side from before/after. */
+    @Column(name = "diff_json", columnDefinition = "TEXT")
+    private String diffJson;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 }

@@ -57,6 +57,30 @@ class ConstraintEvaluationRunnerTest {
     }
 
     @Test
+    void changingTheFixedRepetitionCountIsRefused() {
+        Report report = runner.run(new Request(
+                tempDir.resolve("ten-runs"), BigDecimal.valueOf(20),
+                new BigDecimal("0.001"), new BigDecimal("0.002"), 10,
+                List.of(), true, false));
+
+        assertThat(report.verdict()).isEqualTo("INVALID_REQUEST");
+        assertThat(report.blockedReason()).contains("3 次");
+        assertThat(report.models()).isEmpty();
+    }
+
+    @Test
+    void aBudgetAboveTwentyIsRefused() {
+        Report report = runner.run(new Request(
+                tempDir.resolve("big-budget"), BigDecimal.valueOf(21),
+                new BigDecimal("0.001"), new BigDecimal("0.002"), 3,
+                List.of(), true, false));
+
+        assertThat(report.verdict()).isEqualTo("INVALID_REQUEST");
+        assertThat(report.blockedReason()).contains("20 元");
+        assertThat(report.models()).isEmpty();
+    }
+
+    @Test
     void moreThanTwoModelsIsRefused() {
         Report report = runner.run(new Request(
                 tempDir.resolve("too-many"),

@@ -1,4 +1,5 @@
 package com.paiban.scheduling.eval;
+import org.springframework.util.StringUtils;
 
 import com.paiban.scheduling.eval.ConstraintEvaluationCorpus.Boundary;
 import com.paiban.scheduling.eval.ConstraintEvaluationCorpus.Expected;
@@ -215,7 +216,7 @@ public final class ConstraintEvaluationJudge {
         }
         boolean explained = proposals.stream()
                 .anyMatch(proposal -> !"READY".equals(proposal.status())
-                        && proposal.reason() != null && !proposal.reason().isBlank());
+                        && proposal.reason() != null && StringUtils.hasText(proposal.reason()));
         return explained ? Verdict.pass() : Verdict.fail("含糊要求没有说明需要补充什么");
     }
 
@@ -233,7 +234,7 @@ public final class ConstraintEvaluationJudge {
         }
         boolean explained = proposals.stream()
                 .anyMatch(proposal -> !"READY".equals(proposal.status())
-                        && proposal.reason() != null && !proposal.reason().isBlank());
+                        && proposal.reason() != null && StringUtils.hasText(proposal.reason()));
         return explained ? Verdict.pass() : Verdict.fail("范围不支持却没有说明原因");
     }
 

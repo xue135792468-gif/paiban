@@ -1,4 +1,5 @@
 package com.paiban.scheduling.solver;
+import org.springframework.util.StringUtils;
 
 import ai.timefold.solver.core.api.score.buildin.hardsoft.HardSoftScore;
 import ai.timefold.solver.core.api.score.stream.Constraint;
@@ -39,12 +40,12 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         // Structural constraints that are always on: every lesson must be placed and
         // course metadata (required room type) is part of the school's data model.
         constraints.add(unassignedLesson(factory));
-        constraints.add(courseRoomTypeMetadata(factory));
+        constraints.add(courseRoomTypeMetadata(factory, s));
 
-        addSwitch(factory, constraints, s, ConstraintType.TEACHER_CONFLICT, teacherConflict(factory, s));
-        addSwitch(factory, constraints, s, ConstraintType.CLASS_CONFLICT, classConflict(factory, s));
-        addSwitch(factory, constraints, s, ConstraintType.ROOM_CONFLICT, roomConflict(factory, s));
-        addSwitch(factory, constraints, s, ConstraintType.ROOM_CAPACITY_FIT, roomCapacity(factory, s));
+        addSwitch(constraints, s, ConstraintType.TEACHER_CONFLICT, teacherConflict(factory, s));
+        addSwitch(constraints, s, ConstraintType.CLASS_CONFLICT, classConflict(factory, s));
+        addSwitch(constraints, s, ConstraintType.ROOM_CONFLICT, roomConflict(factory, s));
+        addSwitch(constraints, s, ConstraintType.ROOM_CAPACITY_FIT, roomCapacity(factory, s));
 
         addProhibition(factory, constraints, s, ConstraintType.TEACHER_UNAVAILABLE,
                 lesson -> true,
@@ -102,7 +103,7 @@ public class PaibanConstraintProvider implements ConstraintProvider {
                                 ConstraintSettings.longValue(entry.get("teacherId")), lesson.getTeacherId())
                                 && Objects.equals(ConstraintSettings.intValue(entry.get("dayOfWeek")),
                                 lesson.getPeriod().getDayOfWeek())));
-        addSwitch(factory, constraints, s, ConstraintType.CLASS_GAP_MINIMIZED,
+        addSwitch(constraints, s, ConstraintType.CLASS_GAP_MINIMIZED,
                 classGapMinimized(factory, s));
         addProhibition(factory, constraints, s, ConstraintType.PE_LAST_PERIOD_AVOID,
                 lesson -> lesson.getPeriod().isLastOfDay(),
@@ -125,7 +126,7 @@ public class PaibanConstraintProvider implements ConstraintProvider {
     // ------------------------------------------------------------- registration
 
     private void addSwitch(
-            ConstraintFactory factory, List<Constraint> out, ConstraintSettings s,
+            List<Constraint> out, ConstraintSettings s,
             ConstraintType type, Constraint constraint) {
         if (s.control(type) != null) {
             out.add(constraint);
@@ -186,11 +187,19 @@ public class PaibanConstraintProvider implements ConstraintProvider {
                 .asConstraint("课节未排");
     }
 
-    private Constraint courseRoomTypeMetadata(ConstraintFactory f) {
+    /**
+     * The course's own required room type is a hard invariant only while no configured
+     * requirement replaces it. A configured entry carries its own hard/soft control
+     * (see the {@code COURSE_REQUIRED_ROOM_TYPE} prohibition), so the solver, checker and
+     * substitution planner all read the same effective value.
+     */
+    private Constraint courseRoomTypeMetadata(ConstraintFactory f, ConstraintSettings s) {
         return f.forEach(Lesson.class)
                 .filter(lesson -> lesson.getPeriod() != null
                         && lesson.getRequiredRoomType() != null
-                        && !lesson.getRequiredRoomType().isBlank()
+                        && StringUtils.hasText(lesson.getRequiredRoomType())
+                        && s.courseText(ConstraintType.COURSE_REQUIRED_ROOM_TYPE,
+                        lesson.getCourseId(), "roomType") == null
                         && (lesson.getRoom() == null
                         || !lesson.getRequiredRoomType().equals(lesson.getRoom().getType())))
                 .penalize(HardSoftScore.ONE_HARD)
@@ -238,24 +247,17 @@ public class PaibanConstraintProvider implements ConstraintProvider {
     // ---------- entry-backed prohibitions ----------
 
     private void addOncePerDay(ConstraintFactory f, List<Constraint> out, ConstraintSettings s) {
-        ConstraintType type = ConstraintType.SAME_COURSE_ONCE_PER_DAY;
-        for (Control control : controlsOf(s, type)) {
-            out.add(f.forEach(Lesson.class)
-                    .filter(lesson -> lesson.getPeriod() != null
-                            && control.equals(courseLooseControl(s, type, lesson.getCourseId())))
-                    .groupBy(
-                            Lesson::getAdminClassId,
-                            Lesson::getCourseId,
-                            lesson -> lesson.getPeriod().getDayOfWeek(),
-                            ConstraintCollectors.count())
-                    .filter((classId, courseId, day, count) -> count > 1)
-                    .penalize(score(control))
-                    .asConstraint(constraintName(type, control)));
-        }
+        addDailyOverflow(f, out, s, ConstraintType.SAME_COURSE_ONCE_PER_DAY);
     }
 
     private void addSpread(ConstraintFactory f, List<Constraint> out, ConstraintSettings s) {
-        ConstraintType type = ConstraintType.COURSE_SPREAD;
+        addDailyOverflow(f, out, s, ConstraintType.COURSE_SPREAD);
+    }
+
+    /** Both rules count one (class, course, day) bucket and penalise counts above one. */
+    private void addDailyOverflow(
+            ConstraintFactory f, List<Constraint> out, ConstraintSettings s,
+            ConstraintType type) {
         for (Control control : controlsOf(s, type)) {
             out.add(f.forEach(Lesson.class)
                     .filter(lesson -> lesson.getPeriod() != null
@@ -461,7 +463,7 @@ public class PaibanConstraintProvider implements ConstraintProvider {
     private boolean meetingSubjectMatches(Map<String, Object> entry, Lesson lesson) {
         Object raw = entry.get("subject");
         String subject = raw == null ? null : raw.toString();
-        if (subject == null || subject.isBlank()) {
+        if (subject == null || !StringUtils.hasText(subject)) {
             return true;
         }
         return lesson.getTeacherSubject() != null
@@ -471,7 +473,7 @@ public class PaibanConstraintProvider implements ConstraintProvider {
     private boolean roomTypeMismatch(ConstraintSettings s, Lesson lesson) {
         String configured = s.courseText(
                 ConstraintType.COURSE_REQUIRED_ROOM_TYPE, lesson.getCourseId(), "roomType");
-        if (configured == null || configured.isBlank()) {
+        if (configured == null || !StringUtils.hasText(configured)) {
             return false;
         }
         return lesson.getRoom() != null && !configured.equals(lesson.getRoom().getType());

@@ -207,7 +207,7 @@ describe('分组', () => {
 
 describe('保存 payload', () => {
   it('条目型与阈值一律发 entries，开关发空 params', () => {
-    const payload = buildSavePayload(sampleRows(), { isJunior: false })
+    const payload = buildSavePayload(sampleRows())
     const byType = new Map(payload.map((config) => [config.type, config]))
 
     expect(byType.get('COURSE_NOT_IN_EVENING')).toEqual({
@@ -265,7 +265,7 @@ describe('保存 payload', () => {
         ],
       }),
     ]
-    const [config] = buildSavePayload(rows, { isJunior: false })
+    const [config] = buildSavePayload(rows)
     expect(config.entries).toEqual([
       { id: 31, params: { teacherId: 7, dayOfWeek: 1, periodNo: 1 }, ...CONTROLS },
       { id: null, params: { teacherId: 7, dayOfWeek: 3, periodNo: 2 }, ...CONTROLS },
@@ -285,7 +285,7 @@ describe('保存 payload', () => {
         ],
       }),
     ]
-    const [config] = buildSavePayload(rows, { isJunior: false })
+    const [config] = buildSavePayload(rows)
     expect(config.entries).toEqual([
       { id: null, params: { teacherId: 7, dayOfWeek: 3, periodNo: 2 }, ...CONTROLS },
     ])
@@ -300,7 +300,7 @@ describe('保存 payload', () => {
         entries: [entry('e1', { teacherId: 7 }, [{ key: 's1', id: null, dayOfWeek: 3, periodNo: 2 }])],
       }),
     ]
-    const [config] = buildSavePayload(rows, { isJunior: false })
+    const [config] = buildSavePayload(rows)
     expect(config.enabled).toBe(false)
     expect(config.entries).toHaveLength(1)
   })
@@ -316,7 +316,7 @@ describe('保存 payload', () => {
         enabled: false,
       }),
     ]
-    expect(buildSavePayload(rows, { isJunior: false })).toEqual([])
+    expect(buildSavePayload(rows)).toEqual([])
   })
 
   it('关闭的阈值也保留条目：开关只决定是否评估，不删除条件', () => {
@@ -329,7 +329,7 @@ describe('保存 payload', () => {
         enabled: false,
       }),
     ]
-    const [config] = buildSavePayload(rows, { isJunior: false })
+    const [config] = buildSavePayload(rows)
     expect(config).toMatchObject({
       entries: [{ id: null, params: { maxPerDay: 3 }, ...CONTROLS }],
       enabled: false,
@@ -346,11 +346,11 @@ describe('保存 payload', () => {
         enabled: true,
       }),
     ]
-    const [config] = buildSavePayload(rows, { isJunior: false })
+    const [config] = buildSavePayload(rows)
     expect(config.entries).toEqual([{ id: null, params: { teacherId: 5, maxPerDay: 2 }, ...CONTROLS }])
   })
 
-  it('初中模式把必须/尽量换算成 100/50 权重', () => {
+  it('初中模式不重写已有权重：保存保持原值', () => {
     const rows = [
       row({
         code: 'TEACHER_UNAVAILABLE',
@@ -369,8 +369,8 @@ describe('保存 payload', () => {
         entries: [entry('e1', { teacherId: 1, dayOfWeek: 3 })],
       }),
     ]
-    const payload = buildSavePayload(rows, { isJunior: true })
-    expect(payload.map((config) => config.weight)).toEqual([100, 50])
+    const payload = buildSavePayload(rows)
+    expect(payload.map((config) => config.weight)).toEqual([80, 30])
   })
 
   it('教研禁排照样提交（含其条目），初中模式也要能编辑', () => {
@@ -386,7 +386,7 @@ describe('保存 payload', () => {
         entries: [entry('e1', {}, [{ key: 's1', id: null, dayOfWeek: 3, periodNo: 2 }])],
       }),
     ]
-    expect(buildSavePayload(rows, { isJunior: true })).toEqual([
+    expect(buildSavePayload(rows)).toEqual([
       {
         type: 'TEACHER_MEETING_BLOCKED',
         entries: [{ id: null, params: { dayOfWeek: 3, periodNo: 2 }, ...CONTROLS }],

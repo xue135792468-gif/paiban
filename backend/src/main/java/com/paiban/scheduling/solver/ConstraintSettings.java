@@ -1,4 +1,5 @@
 package com.paiban.scheduling.solver;
+import org.springframework.util.StringUtils;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -144,7 +145,7 @@ public final class ConstraintSettings {
             }
             boolean hard = row.getHard() != null ? row.getHard() : config.isHard();
             int weight = row.getWeight() != null ? row.getWeight() : config.getWeight();
-            String group = row.getGroupKey() == null || row.getGroupKey().isBlank()
+            String group = row.getGroupKey() == null || !StringUtils.hasText(row.getGroupKey())
                     ? null : row.getGroupKey().trim();
             active.add(new EntryRule(group, hard, Math.max(0, Math.min(100, weight)), params));
         }
@@ -190,7 +191,7 @@ public final class ConstraintSettings {
     }
 
     private static Map<String, Object> readParams(String json, ObjectMapper mapper) {
-        if (json == null || json.isBlank()) {
+        if (json == null || !StringUtils.hasText(json)) {
             return Map.of();
         }
         try {
@@ -394,7 +395,7 @@ public final class ConstraintSettings {
         if (value instanceof Number number) {
             return number.longValue();
         }
-        if (value instanceof String text && !text.isBlank()) {
+        if (value instanceof String text && StringUtils.hasText(text)) {
             try {
                 return Long.parseLong(text.trim());
             } catch (NumberFormatException ex) {

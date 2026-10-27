@@ -425,11 +425,14 @@ class ConstraintProposalIntegrationTest extends ApiIntegrationTest {
         assertThat(audit.getRunId()).isEqualTo(runId);
         assertThat(audit.getDecisionsJson()).contains("ADDED").contains("用户确认加入");
         assertThat(audit.getFinalConfigJson()).contains("TEACHER_UNAVAILABLE");
+        assertThat(audit.getPreviousConfigJson()).isNotNull();
+        assertThat(audit.getDiffJson()).contains("addedTypes").contains("TEACHER_UNAVAILABLE");
         as(token).queryParam("semesterId", semesterId)
                 .when().get("/api/constraint-audits")
                 .then().statusCode(200)
                 .body("$", hasSize(1))
-                .body("[0].runId", equalTo((int) runId));
+                .body("[0].runId", equalTo((int) runId))
+                .body("[0].diff.addedTypes", hasSize(1));
 
         // Replaying the same base version is a conflict and never writes a second audit.
         saveWithAudit(token, semesterId, 0L, runId, decisions, List.of())

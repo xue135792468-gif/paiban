@@ -46,12 +46,11 @@ import java.util.Map;
 import java.util.TreeMap;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.util.StringUtils;
 
 /**
  * Ticket 14/08: read-only natural-language proposals.
@@ -135,7 +134,7 @@ public class ConstraintProposalService {
         if (text.length() > MAX_INPUT_LENGTH) {
             throw ApiException.badRequest("要求原文最多 " + MAX_INPUT_LENGTH + " 字");
         }
-        AppUser user = currentUser();
+        AppUser user = users.current();
         // A repeated click is the same run: return it instead of paying for a second call.
         var existing = runs.findByUserIdAndClientRunId(user.getId(), request.clientRunId());
         if (existing.isPresent()) {
@@ -258,7 +257,7 @@ public class ConstraintProposalService {
     public ConstraintProposalDto resolve(Long runId, ResolveProposalRequest request) {
         ConstraintGenerationRun run = requireReadable(runId);
         if (!ConstraintGenerationRun.SUCCEEDED.equals(run.getStatus())
-                || run.getModelContent() == null || run.getModelContent().isBlank()) {
+                || run.getModelContent() == null || !StringUtils.hasText(run.getModelContent())) {
             throw ApiException.badRequest("该生成记录没有可重新校验的模型输出，请重新生成");
         }
         JsonNode root;
@@ -306,7 +305,7 @@ public class ConstraintProposalService {
         if (request.classId() != null) {
             node.put("className", className(context, request.classId()));
         }
-        if (request.strength() != null && !request.strength().isBlank()) {
+        if (request.strength() != null && StringUtils.hasText(request.strength())) {
             node.put("strength", request.strength().trim().toUpperCase());
         }
         if (request.days() != null) {
@@ -361,7 +360,7 @@ public class ConstraintProposalService {
      */
     @Transactional
     public RunDto cancelByClientRunId(String clientRunId) {
-        AppUser user = currentUser();
+        AppUser user = users.current();
         ConstraintGenerationRun run = runs
                 .findByUserIdAndClientRunId(user.getId(), clientRunId)
                 .orElseThrow(() -> ApiException.notFound("生成记录不存在: " + clientRunId));
@@ -374,7 +373,7 @@ public class ConstraintProposalService {
     @Transactional(readOnly = true)
     public List<RunSummaryDto> list(Long semesterId, boolean all) {
         Long resolved = semesters.require(semesterId).getId();
-        AppUser user = currentUser();
+        AppUser user = users.current();
         if (all && !isAdmin()) {
             throw ApiException.forbidden("只有设置管理员可以查看全局生成记录");
         }
@@ -398,7 +397,7 @@ public class ConstraintProposalService {
     private ConstraintGenerationRun requireReadable(Long runId) {
         ConstraintGenerationRun run = runs.findById(runId)
                 .orElseThrow(() -> ApiException.notFound("生成记录不存在: " + runId));
-        AppUser user = currentUser();
+        AppUser user = users.current();
         if (!isAdmin() && !user.getId().equals(run.getUserId())) {
             throw ApiException.forbidden("不能查看或操作他人的生成记录");
         }
@@ -431,7 +430,7 @@ public class ConstraintProposalService {
     }
 
     private List<ConstraintProposalDto> proposalsOf(ConstraintGenerationRun run) {
-        if (run.getProposalsJson() == null || run.getProposalsJson().isBlank()) {
+        if (run.getProposalsJson() == null || !StringUtils.hasText(run.getProposalsJson())) {
             return List.of();
         }
         try {
@@ -507,19 +506,8 @@ public class ConstraintProposalService {
 
     // ------------------------------------------------------------------ identity
 
-    private AppUser currentUser() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()
-                || "anonymousUser".equals(authentication.getName())) {
-            throw ApiException.unauthorized("未登录或登录已过期");
-        }
-        return users.getByUsername(authentication.getName());
-    }
-
     private boolean isAdmin() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        return authentication != null && authentication.getAuthorities().stream()
-                .anyMatch(authority -> Permissions.SETTINGS_MANAGE.equals(authority.getAuthority()));
+        return users.hasPermission(Permissions.SETTINGS_MANAGE);
     }
 
     private long elapsedMs(long startedNanos) {

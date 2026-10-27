@@ -1,5 +1,6 @@
 package com.paiban.scheduling.web;
 
+import com.paiban.scheduling.service.ConstraintConfigDiff;
 import jakarta.validation.constraints.NotBlank;
 import java.time.Instant;
 import java.util.List;
@@ -76,11 +77,16 @@ public final class ConstraintDtos {
     public record ConstraintPreviewDto(List<String> errors,
                                        List<TemplateReferenceIssue> invalidReferences) {}
 
-    /** One saved effective configuration with the decisions that produced it. */
+    /**
+     * One saved effective configuration with the decisions that produced it, the
+     * configuration before the save, and the computed diff between the two.
+     */
     public record ConstraintSaveAuditDto(Long id, Long semesterId, Long version, Long runId,
                                          String actor, Instant createdAt,
                                          List<ProposalDecision> decisions,
-                                         List<ConstraintConfigDto> finalConfigs) {}
+                                         List<ConstraintConfigDto> finalConfigs,
+                                         List<ConstraintConfigDto> previousConfigs,
+                                         Map<String, Object> diff) {}
 
     /**
      * The semester's effective configuration together with the version every writer

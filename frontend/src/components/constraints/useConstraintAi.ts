@@ -210,7 +210,7 @@ export function useConstraintAi(options: {
       const { data } = await http.post<GenerationRun>(
         '/constraint-proposals',
         { clientRunId: pending, text: value },
-        { params: { semesterId: options.semesterId.value } },
+        { params: { semesterId: options.semesterId.value }, timeout: 65_000 },
       )
       run.value = data
       resolved.value = {}

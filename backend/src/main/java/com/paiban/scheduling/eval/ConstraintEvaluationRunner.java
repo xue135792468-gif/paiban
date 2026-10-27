@@ -89,8 +89,22 @@ public class ConstraintEvaluationRunner {
     }
 
     public Report run(Request request) {
-        int runs = request.runsPerSentence() <= 0 ? DEFAULT_RUNS : request.runsPerSentence();
+        int runs = DEFAULT_RUNS;
         BigDecimal budget = request.budgetCny() == null ? DEFAULT_BUDGET : request.budgetCny();
+        if (request.runsPerSentence() != DEFAULT_RUNS) {
+            return write(request, new Report(ConstraintEvaluationCorpus.VERSION,
+                    Instant.now().toString(), DEFAULT_RUNS, budget, request.priceInPer1k(),
+                    request.priceOutPer1k(), "INVALID_REQUEST",
+                    "固定语料每句必须重复 3 次；不能改变重复次数来凑门槛",
+                    BigDecimal.ZERO, BigDecimal.ZERO, budget, List.of()));
+        }
+        if (budget.compareTo(DEFAULT_BUDGET) > 0) {
+            return write(request, new Report(ConstraintEvaluationCorpus.VERSION,
+                    Instant.now().toString(), runs, DEFAULT_BUDGET, request.priceInPer1k(),
+                    request.priceOutPer1k(), "INVALID_REQUEST",
+                    "本轮评测总预算不得超过 20 元；不能提高预算来凑评测",
+                    BigDecimal.ZERO, BigDecimal.ZERO, DEFAULT_BUDGET, List.of()));
+        }
         if (!ConstraintEvaluationBudget.reliable(
                 request.priceInPer1k(), request.priceOutPer1k())) {
             return write(request, new Report(ConstraintEvaluationCorpus.VERSION,
@@ -127,9 +141,9 @@ public class ConstraintEvaluationRunner {
             for (int index = 0; index < models.size(); index++) {
                 ModelRef model = models.get(index);
                 original = request.stub() ? null : bind(model);
-                ModelOutcome outcome = evaluateModel(request, guard, model, runs);
-                reports.add(outcome.report());
-                if (outcome.report().passed()) {
+                ModelReport outcome = evaluateModel(request, guard, model, runs);
+                reports.add(outcome);
+                if (outcome.passed()) {
                     verdict = "PASSED";
                     keepBound = request.bindWinner();
                     if (!keepBound && original != null) {
@@ -138,9 +152,9 @@ public class ConstraintEvaluationRunner {
                     }
                     break;
                 }
-                if (!outcome.report().complete()) {
+                if (!outcome.complete()) {
                     verdict = "INCOMPLETE";
-                    blockedReason = outcome.report().blockedReason();
+                    blockedReason = outcome.blockedReason();
                     break;
                 }
                 if (original != null) {
@@ -160,9 +174,7 @@ public class ConstraintEvaluationRunner {
         return write(request, report);
     }
 
-    private record ModelOutcome(ModelReport report) {}
-
-    private ModelOutcome evaluateModel(
+    private ModelReport evaluateModel(
             Request request, ConstraintEvaluationBudget guard, ModelRef model, int runs) {
         List<RunRow> rows = new ArrayList<>();
         int supportedPass = 0;
@@ -213,9 +225,9 @@ public class ConstraintEvaluationRunner {
         }
         boolean passed = complete && supportedPass >= REQUIRED_SUPPORTED_PASSES
                 && boundaryPass >= REQUIRED_BOUNDARY_PASSES;
-        return new ModelOutcome(new ModelReport(model, supportedPass, supportedTotal,
+        return new ModelReport(model, supportedPass, supportedTotal,
                 boundaryPass, boundaryTotal, passed, complete, guard.reserved(),
-                guard.actual(), blockedReason, rows));
+                guard.actual(), blockedReason, rows);
     }
 
     private AiResult stubResult(

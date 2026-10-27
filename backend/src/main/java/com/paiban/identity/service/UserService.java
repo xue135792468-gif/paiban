@@ -14,6 +14,8 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -81,6 +83,25 @@ public class UserService {
     @Transactional(readOnly = true)
     public AppUser get(Long id) {
         return users.findById(id).orElseThrow(() -> ApiException.notFound("用户不存在: " + id));
+    }
+
+    /** The signed-in account; an anonymous or expired principal is a 401, never null. */
+    @Transactional(readOnly = true)
+    public AppUser current() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()
+                || "anonymousUser".equals(authentication.getName())) {
+            throw ApiException.unauthorized("未登录或登录已过期");
+        }
+        return getByUsername(authentication.getName());
+    }
+
+    /** The one permission check for services that do not want to read the context themselves. */
+    public boolean hasPermission(String permission) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.isAuthenticated()
+                && authentication.getAuthorities().stream()
+                .anyMatch(authority -> permission.equals(authority.getAuthority()));
     }
 
     @Transactional(readOnly = true)

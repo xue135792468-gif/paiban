@@ -16,8 +16,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -57,7 +55,7 @@ public class ConstraintWorkspaceService {
     @Transactional(readOnly = true)
     public ConstraintWorkspaceDto get(Long semesterId) {
         Long resolved = semesters.require(semesterId).getId();
-        Long userId = currentUser().getId();
+        Long userId = users.current().getId();
         return workspaces.findByUserIdAndSemesterId(userId, resolved)
                 .map(row -> toDto(row))
                 .orElseGet(() -> new ConstraintWorkspaceDto(
@@ -67,7 +65,7 @@ public class ConstraintWorkspaceService {
     @Transactional
     public ConstraintWorkspaceDto save(Long semesterId, SaveWorkspaceRequest request) {
         Long resolved = semesters.require(semesterId).getId();
-        Long userId = currentUser().getId();
+        Long userId = users.current().getId();
         String payload = toJson(request.payload() == null ? Map.of() : request.payload());
         if (payload.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_PAYLOAD_BYTES) {
             throw ApiException.badRequest("未保存内容过大，无法暂存");
@@ -107,7 +105,7 @@ public class ConstraintWorkspaceService {
     @Transactional
     public void delete(Long semesterId) {
         Long resolved = semesters.require(semesterId).getId();
-        Long userId = currentUser().getId();
+        Long userId = users.current().getId();
         workspaces.deleteByUserIdAndSemesterId(userId, resolved);
     }
 
@@ -170,12 +168,4 @@ public class ConstraintWorkspaceService {
         }
     }
 
-    private AppUser currentUser() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()
-                || "anonymousUser".equals(authentication.getName())) {
-            throw ApiException.unauthorized("未登录或登录已过期");
-        }
-        return users.getByUsername(authentication.getName());
-    }
 }
