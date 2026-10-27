@@ -14,11 +14,17 @@ import com.paiban.foundation.domain.PeriodRepository;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.foundation.service.SemesterService;
+import com.paiban.identity.domain.Permissions;
+import com.paiban.identity.service.UserService;
 import com.paiban.scheduling.domain.ConstraintConfig;
 import com.paiban.scheduling.domain.ConstraintConfigRepository;
 import com.paiban.scheduling.domain.ConstraintConfigState;
 import com.paiban.scheduling.domain.ConstraintConfigStateRepository;
 import com.paiban.scheduling.domain.ConstraintEntry;
+import com.paiban.scheduling.domain.ConstraintGenerationRun;
+import com.paiban.scheduling.domain.ConstraintGenerationRunRepository;
+import com.paiban.scheduling.domain.ConstraintSaveAudit;
+import com.paiban.scheduling.domain.ConstraintSaveAuditRepository;
 import com.paiban.scheduling.domain.ConstraintEntryRepository;
 import com.paiban.scheduling.domain.ConstraintTemplate;
 import com.paiban.scheduling.domain.ConstraintTemplateRepository;
@@ -31,7 +37,10 @@ import com.paiban.scheduling.web.ConstraintDtos.ConstraintConfigDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintConfigRequest;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintEntryDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintEntryRequest;
+import com.paiban.scheduling.web.ConstraintDtos.ConstraintPreviewDto;
+import com.paiban.scheduling.web.ConstraintDtos.ConstraintSaveAuditDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintStateDto;
+import com.paiban.scheduling.web.ConstraintDtos.ProposalDecision;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintTypeDto;
 import com.paiban.scheduling.web.ConstraintDtos.ParamDefDto;
 import com.paiban.scheduling.web.ConstraintDtos.TemplateApplyPreview;
@@ -50,6 +59,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.context.event.EventListener;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.transaction.annotation.Transactional;
@@ -73,34 +84,43 @@ public class ConstraintService {
     private final ConstraintConfigRepository configs;
     private final ConstraintConfigStateRepository states;
     private final ConstraintEntryRepository entries;
+    private final ConstraintSaveAuditRepository audits;
+    private final ConstraintGenerationRunRepository generationRuns;
     private final ConstraintTemplateRepository templates;
     private final SemesterService semesters;
     private final TeacherRepository teachers;
     private final CourseRepository courses;
     private final PeriodRepository periods;
     private final AdminClassRepository adminClasses;
+    private final UserService users;
     private final ObjectMapper objectMapper;
 
     public ConstraintService(
             ConstraintConfigRepository configs,
             ConstraintConfigStateRepository states,
             ConstraintEntryRepository entries,
+            ConstraintSaveAuditRepository audits,
+            ConstraintGenerationRunRepository generationRuns,
             ConstraintTemplateRepository templates,
             SemesterService semesters,
             TeacherRepository teachers,
             CourseRepository courses,
             PeriodRepository periods,
             AdminClassRepository adminClasses,
+            UserService users,
             ObjectMapper objectMapper) {
         this.configs = configs;
         this.states = states;
         this.entries = entries;
+        this.audits = audits;
+        this.generationRuns = generationRuns;
         this.templates = templates;
         this.semesters = semesters;
         this.teachers = teachers;
         this.courses = courses;
         this.periods = periods;
         this.adminClasses = adminClasses;
+        this.users = users;
         this.objectMapper = objectMapper;
     }
 
@@ -155,7 +175,21 @@ public class ConstraintService {
     @Transactional
     public List<ConstraintConfigDto> save(
             Long semesterId, List<ConstraintConfigRequest> requests, Long baseVersion) {
+        return save(semesterId, requests, baseVersion, null, List.of(), null);
+    }
+
+    /**
+     * Saves the whole semester configuration and, when the input came from a
+     * generation run, records the user's decisions and the exact final configuration in
+     * the same transaction (ticket 14/10). A cross-user or cross-semester run is
+     * refused before any write.
+     */
+    @Transactional
+    public List<ConstraintConfigDto> save(
+            Long semesterId, List<ConstraintConfigRequest> requests, Long baseVersion,
+            Long runId, List<ProposalDecision> decisions, String actor) {
         Long resolved = resolveSemester(semesterId);
+        AuditContext audit = prepareAudit(resolved, runId, actor);
         long base = requireVersion(resolved, baseVersion);
         Planning planning = plan(resolved, requests, existingEntries(resolved));
         List<String> errors = refusalErrors(planning);
@@ -165,7 +199,36 @@ public class ConstraintService {
         // The version moves before the rows so a losing race writes nothing at all; a
         // later failure rolls the bump back with the rest of the transaction.
         advanceState(resolved, base);
-        return persist(resolved, planning.configs());
+        List<ConstraintConfigDto> result = persist(resolved, planning.configs());
+        recordAudit(resolved, base + 1, audit, decisions, result);
+        return result;
+    }
+
+    /**
+     * Dry run for "添加到约束表": the exact refusals a save would produce, with no
+     * writes and no version advance. The page can therefore reject an invalid merge
+     * before it touches the borrowed draft.
+     */
+    @Transactional(readOnly = true)
+    public ConstraintPreviewDto preview(
+            Long semesterId, List<ConstraintConfigRequest> requests) {
+        Long resolved = resolveSemester(semesterId);
+        Planning planning = plan(resolved, requests, existingEntries(resolved));
+        return new ConstraintPreviewDto(planning.errors(), planning.references());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConstraintSaveAuditDto> audits(Long semesterId, boolean all, String actor) {
+        Long resolved = resolveSemester(semesterId);
+        Long userId = userIdOf(actor);
+        if (all && !isAdmin()) {
+            throw ApiException.forbidden("只有设置管理员可以查看全部保存记录");
+        }
+        var page = org.springframework.data.domain.PageRequest.of(0, 50);
+        List<ConstraintSaveAudit> rows = all
+                ? audits.findBySemesterIdOrderByCreatedAtDesc(resolved, page)
+                : audits.findBySemesterIdAndUserIdOrderByCreatedAtDesc(resolved, userId, page);
+        return rows.stream().map(this::toAuditDto).toList();
     }
 
     /**
@@ -345,6 +408,87 @@ public class ConstraintService {
     @Transactional(readOnly = true)
     public boolean hasConfigs(Long semesterId) {
         return !configs.findBySemesterId(semesterId).isEmpty();
+    }
+
+    // ------------------------------------------------------------ save audit
+
+    private record AuditContext(Long userId, String actor, Long runId) {}
+
+    /**
+     * Validates the generation run a save claims to come from before any write: it must
+     * belong to this semester, and a non-admin may only save decisions about their own
+     * run. A manual save (no run) is always allowed.
+     */
+    private AuditContext prepareAudit(Long semesterId, Long runId, String actor) {
+        Long userId = userIdOf(actor);
+        if (runId == null) {
+            return new AuditContext(userId, actor, null);
+        }
+        ConstraintGenerationRun run = generationRuns.findById(runId)
+                .orElseThrow(() -> ApiException.badRequest("生成记录不存在: " + runId));
+        if (!semesterId.equals(run.getSemesterId())) {
+            throw ApiException.badRequest("生成记录属于其他学期，不能用于本次保存");
+        }
+        if (!isAdmin() && userId != null && !userId.equals(run.getUserId())) {
+            throw ApiException.forbidden("不能保存他人的生成记录");
+        }
+        return new AuditContext(userId, actor, runId);
+    }
+
+    /** The final configuration and the decisions are written in the save transaction. */
+    private void recordAudit(
+            Long semesterId, long version, AuditContext audit,
+            List<ProposalDecision> decisions, List<ConstraintConfigDto> result) {
+        if (audit == null) {
+            return;
+        }
+        ConstraintSaveAudit row = new ConstraintSaveAudit();
+        row.setSemesterId(semesterId);
+        row.setVersion(version);
+        row.setUserId(audit.userId());
+        row.setActor(audit.actor());
+        row.setRunId(audit.runId());
+        row.setDecisionsJson(toJson(decisions == null ? List.of() : decisions));
+        row.setFinalConfigJson(toJson(result));
+        row.setCreatedAt(Instant.now());
+        audits.save(row);
+    }
+
+    private ConstraintSaveAuditDto toAuditDto(ConstraintSaveAudit row) {
+        List<ProposalDecision> decisions;
+        List<ConstraintConfigDto> configs;
+        try {
+            decisions = row.getDecisionsJson() == null ? List.of()
+                    : objectMapper.readValue(row.getDecisionsJson(),
+                    new TypeReference<List<ProposalDecision>>() {});
+        } catch (JsonProcessingException ex) {
+            decisions = List.of();
+        }
+        try {
+            configs = objectMapper.readValue(row.getFinalConfigJson(),
+                    new TypeReference<List<ConstraintConfigDto>>() {});
+        } catch (JsonProcessingException ex) {
+            configs = List.of();
+        }
+        return new ConstraintSaveAuditDto(row.getId(), row.getSemesterId(), row.getVersion(),
+                row.getRunId(), row.getActor(), row.getCreatedAt(), decisions, configs);
+    }
+
+    private Long userIdOf(String actor) {
+        if (actor == null || actor.isBlank()) {
+            return null;
+        }
+        try {
+            return users.getByUsername(actor).getId();
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
+
+    private boolean isAdmin() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(authority -> Permissions.SETTINGS_MANAGE.equals(authority.getAuthority()));
     }
 
     // ------------------------------------------------------------ config version

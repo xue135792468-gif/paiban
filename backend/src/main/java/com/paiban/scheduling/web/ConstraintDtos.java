@@ -54,7 +54,33 @@ public final class ConstraintDtos {
                                           Boolean enabled,
                                           List<ConstraintEntryRequest> entries) {}
 
-    public record SaveConstraintsRequest(List<ConstraintConfigRequest> configs) {}
+    /**
+     * One proposal decision the final save records for the audit: what the user added,
+     * replaced or deliberately skipped. The entries are the confirmed rows, not the
+     * model's original suggestion.
+     */
+    public record ProposalDecision(String proposalId, String action, String type,
+                                   String reason, List<Map<String, Object>> entries) {}
+
+    /**
+     * The whole semester configuration plus, when the save follows a generation run,
+     * the exact decisions and the run they refer to.
+     */
+    public record SaveConstraintsRequest(List<ConstraintConfigRequest> configs,
+                                         Long runId,
+                                         List<ProposalDecision> decisions) {}
+
+    /** A dry run of a configuration: no writes and no version advance. */
+    public record ConstraintPreviewRequest(List<ConstraintConfigRequest> configs) {}
+
+    public record ConstraintPreviewDto(List<String> errors,
+                                       List<TemplateReferenceIssue> invalidReferences) {}
+
+    /** One saved effective configuration with the decisions that produced it. */
+    public record ConstraintSaveAuditDto(Long id, Long semesterId, Long version, Long runId,
+                                         String actor, Instant createdAt,
+                                         List<ProposalDecision> decisions,
+                                         List<ConstraintConfigDto> finalConfigs) {}
 
     /**
      * The semester's effective configuration together with the version every writer

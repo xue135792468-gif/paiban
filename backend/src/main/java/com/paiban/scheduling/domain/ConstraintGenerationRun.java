@@ -59,9 +59,13 @@ public class ConstraintGenerationRun {
     @Column(name = "context_json", columnDefinition = "TEXT")
     private String contextJson;
 
-    /** The provider's complete answer, never truncated. */
+    /** The provider's complete HTTP body, never truncated. */
     @Column(name = "raw_response", columnDefinition = "TEXT")
     private String rawResponse;
+
+    /** The assistant content the parser read (the JSON answer itself). */
+    @Column(name = "model_content", columnDefinition = "TEXT")
+    private String modelContent;
 
     /** An answer that arrived after the run was cancelled or timed out. */
     @Column(name = "late_response", columnDefinition = "TEXT")

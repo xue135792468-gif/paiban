@@ -637,4 +637,115 @@ describe('useConstraintDraft', () => {
     expect(draft.counts.value).toEqual(before)
     expect(draft.dirty.value).toBe(false)
   })
+
+  it('建议加入：新增一组、相同条件标为已存在、强度不同需确认后才替换', () => {
+    const draft = hydrated()
+    const proposal = {
+      proposalId: 'p1',
+      sourceText: '王老师周三第1、2节不排',
+      type: 'TEACHER_UNAVAILABLE',
+      typeName: '教师禁排时段',
+      strength: 'HARD' as const,
+      effectiveHard: true,
+      effectiveWeight: null,
+      status: 'READY' as const,
+      explanation: '',
+      reason: '',
+      params: {},
+      entries: [
+        { params: { teacherId: 9, dayOfWeek: 3, periodNo: 1 } },
+        { params: { teacherId: 9, dayOfWeek: 3, periodNo: 2 } },
+      ],
+      candidates: [],
+    }
+    expect(draft.applyProposal('TEACHER_UNAVAILABLE', proposal).action).toBe('ADDED')
+    const row = draft.rows.value.find((item) => item.code === 'TEACHER_UNAVAILABLE')!
+    const card = row.entries.find((item) => item.values.teacherId === 9)!
+    expect(card.slots).toHaveLength(2)
+    expect(card.groupKey).toBeTruthy()
+    expect(card.hard).toBe(true)
+
+    expect(draft.applyProposal('TEACHER_UNAVAILABLE', proposal).action).toBe('EXISTS')
+    const soft = { ...proposal, strength: 'SOFT' as const, effectiveHard: false }
+    expect(draft.applyProposal('TEACHER_UNAVAILABLE', soft).action).toBe('CONFLICT')
+    expect(
+      draft.applyProposal('TEACHER_UNAVAILABLE', soft, { replace: true }).action,
+    ).toBe('REPLACED')
+    expect(card.hard).toBe(false)
+  })
+
+  it('阈值建议：全局与例外按作用域比较，放宽必须先确认', () => {
+    const draft = hydrated()
+    draft.setEnabled('TEACHER_MAX_PER_DAY', true)
+    const base = {
+      proposalId: 't1',
+      sourceText: '所有老师每天最多',
+      type: 'TEACHER_MAX_PER_DAY',
+      typeName: '教师一天最多 N 节',
+      strength: 'HARD' as const,
+      effectiveHard: true,
+      effectiveWeight: null,
+      status: 'READY' as const,
+      explanation: '',
+      reason: '',
+      params: {},
+      entries: [{ params: { maxPerDay: 6 } }],
+      candidates: [],
+    }
+    expect(draft.applyProposal('TEACHER_MAX_PER_DAY', base).action).toBe('ADDED')
+    expect(draft.applyProposal('TEACHER_MAX_PER_DAY', base).action).toBe('EXISTS')
+    const different = { ...base, entries: [{ params: { maxPerDay: 5 } }] }
+    expect(draft.applyProposal('TEACHER_MAX_PER_DAY', different).action).toBe('CONFLICT')
+    expect(
+      draft.applyProposal('TEACHER_MAX_PER_DAY', different, { replace: true }).action,
+    ).toBe('REPLACED')
+
+    draft.setThresholdGlobal('TEACHER_MAX_PER_DAY', 4)
+    draft.setThresholdGlobalHard('TEACHER_MAX_PER_DAY', true)
+    const relaxed = {
+      ...base,
+      proposalId: 't2',
+      strength: 'SOFT' as const,
+      effectiveHard: false,
+      entries: [{ params: { teacherId: 9, maxPerDay: 6 } }],
+    }
+    const warns = draft.applyProposal('TEACHER_MAX_PER_DAY', relaxed)
+    expect(warns.action).toBe('RELAXES')
+    expect(warns.message).toContain('放宽')
+    expect(
+      draft.applyProposal('TEACHER_MAX_PER_DAY', relaxed, {
+        replace: true,
+        confirmRelaxation: true,
+        objectName: '王明',
+      }).action,
+    ).toBe('ADDED')
+    expect(
+      draft.rows.value.find((item) => item.code === 'TEACHER_MAX_PER_DAY')!.threshold!.exceptions,
+    ).toHaveLength(1)
+  })
+
+  it('整批加入被服务端拒绝时可用快照精确回滚', () => {
+    const draft = hydrated()
+    const before = draft.snapshotRows()
+    const countBefore = draft.counts.value.entries
+    draft.applyProposal('TEACHER_UNAVAILABLE', {
+      proposalId: 'p1',
+      sourceText: '',
+      type: 'TEACHER_UNAVAILABLE',
+      typeName: '教师禁排时段',
+      strength: 'HARD',
+      effectiveHard: true,
+      effectiveWeight: null,
+      status: 'READY',
+      explanation: '',
+      reason: '',
+      params: {},
+      entries: [{ params: { teacherId: 9, dayOfWeek: 3, periodNo: 1 } }],
+      candidates: [],
+    })
+    expect(draft.counts.value.entries).toBe(countBefore + 1)
+    draft.restoreRows(before)
+    expect(draft.counts.value.entries).toBe(countBefore)
+    expect(draft.dirty.value).toBe(false)
+  })
 })

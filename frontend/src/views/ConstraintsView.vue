@@ -40,12 +40,30 @@
 
     <ConstraintAiPanel
       v-if="semesterId && canManage"
+      ref="aiPanel"
       :semester-id="semesterId"
       :types="draft.rows.value"
       :teachers="teachers"
       :courses="courses"
       :can-read-all="canReadAll"
+      :can-manage="canManage"
+      @add="onAiAdd"
     />
+
+    <el-alert
+      v-if="aiOutcomes.length > 0"
+      :type="aiOutcomeType"
+      :closable="true"
+      show-icon
+      class="error-bar"
+      data-testid="constraint-ai-outcomes"
+      @close="aiOutcomes = []"
+    >
+      <template #title>AI 建议加入结果</template>
+      <p v-for="(outcome, index) in aiOutcomes" :key="index" class="error-copy">
+        {{ outcome.message }}
+      </p>
+    </el-alert>
 
     <el-card v-if="semesters.length === 0 && !loading" shadow="never">
       <EmptyStateGuide
@@ -178,7 +196,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ConstraintSummaryBar from '@/components/constraints/ConstraintSummaryBar.vue'
@@ -195,6 +213,7 @@ import type {
   ObjectOptions,
   OptionItem,
 } from '@/components/constraints/types'
+import type { ConstraintProposal, SaveDecision } from '@/components/constraints/useConstraintAi'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import { serverMessage } from '@/api/errors'
@@ -218,6 +237,11 @@ const isJunior = computed(() => settings.isJunior)
 
 const draft = useConstraintDraft()
 const { counts, groups, selected, selectedCode, dirty } = draft
+
+const aiPanel = ref<InstanceType<typeof ConstraintAiPanel> | null>(null)
+const aiRunId = ref<number | null>(null)
+const aiDecisions = ref<SaveDecision[]>([])
+const aiOutcomes = ref<{ proposalId: string; action: string; message: string }[]>([])
 
 const semesters = ref<Semester[]>([])
 const semesterId = ref<number | null>(null)
@@ -257,6 +281,12 @@ const { saving, saveMessage, saveReport, conflict, save, takeTheirs, keepMine, c
   semesterId,
   conflicts,
   relaxations: () => draft.relaxations(objectNames.value),
+  meta: () => ({ runId: aiRunId.value, decisions: aiDecisions.value }),
+  onSaved: () => {
+    aiDecisions.value = []
+    aiRunId.value = null
+    void aiPanel.value?.loadAudits()
+  },
   reload: () => loadConstraints(),
 })
 
@@ -313,6 +343,111 @@ const onRemoveThresholdException = (key: string) =>
   withSelected((code) => draft.removeThresholdException(code, key))
 const onSetThresholdObject = (key: string, value: unknown) =>
   withSelected((code) => draft.setThresholdExceptionObject(code, key, value))
+const aiOutcomeType = computed(() =>
+  aiOutcomes.value.some((outcome) => outcome.action === 'CONFLICT'
+    || outcome.action === 'SKIPPED' || outcome.action === 'REJECTED')
+    ? 'warning'
+    : 'success',
+)
+
+function objectNameOf(proposal: ConstraintProposal): string {
+  const params = proposal.entries[0]?.params ?? {}
+  if (params.teacherId !== undefined) {
+    return objectNames.value.teacherId.get(Number(params.teacherId)) ?? `教师#${params.teacherId}`
+  }
+  if (params.courseId !== undefined) {
+    return objectNames.value.courseId.get(Number(params.courseId)) ?? `课程#${params.courseId}`
+  }
+  if (params.classId !== undefined) {
+    return objectNames.value.classId.get(Number(params.classId)) ?? `班级#${params.classId}`
+  }
+  return '该对象'
+}
+
+async function onAiAdd(payload: { runId: number; proposals: ConstraintProposal[] }) {
+  if (!semesterId.value) {
+    return
+  }
+  const before = draft.snapshotRows()
+  const outcomes: { proposalId: string; action: string; message: string }[] = []
+  const decisions: SaveDecision[] = []
+  for (const proposal of payload.proposals) {
+    let outcome = draft.applyProposal(proposal.type, proposal, {})
+    if (outcome.action === 'CONFLICT') {
+      try {
+        await ElMessageBox.confirm(outcome.message, '保留旧值还是替换？', {
+          confirmButtonText: '用新建议替换',
+          cancelButtonText: '保留旧值',
+          type: 'warning',
+        })
+        outcome = draft.applyProposal(proposal.type, proposal, { replace: true })
+      } catch {
+        outcome = { action: 'SKIPPED', message: `已保留旧值，未加入「${proposal.typeName}」。` }
+      }
+    } else if (outcome.action === 'RELAXES') {
+      try {
+        await ElMessageBox.confirm(outcome.message, '确认放宽限制', {
+          confirmButtonText: '确认放宽并加入',
+          cancelButtonText: '取消加入',
+          type: 'warning',
+        })
+        outcome = draft.applyProposal(proposal.type, proposal, {
+          replace: true,
+          confirmRelaxation: true,
+          objectName: objectNameOf(proposal),
+        })
+      } catch {
+        outcome = { action: 'SKIPPED', message: '已取消这条放宽要求的加入。' }
+      }
+    }
+    outcomes.push({ proposalId: proposal.proposalId, ...outcome })
+    decisions.push({
+      proposalId: proposal.proposalId,
+      action: outcome.action === 'ADDED' || outcome.action === 'REPLACED'
+        ? outcome.action : outcome.action === 'EXISTS' ? 'EXISTS' : 'SKIPPED',
+      type: proposal.type,
+      reason: outcome.message,
+      entries: proposal.entries.map((entry) => entry.params),
+    })
+  }
+
+  // The server sees the merged configuration before the draft keeps it: invalid
+  // references or an illegal merge reject the whole batch and roll back.
+  try {
+    const { data } = await http.post<{ errors: string[]; invalidReferences: unknown[] }>(
+      '/constraints/preview',
+      { configs: draft.payload() },
+      { params: { semesterId: semesterId.value } },
+    )
+    const errors = [...(data.errors ?? []),
+      ...(data.invalidReferences ?? []).map((issue) => JSON.stringify(issue))]
+    if (errors.length > 0) {
+      draft.restoreRows(before)
+      aiOutcomes.value = [{
+        proposalId: '',
+        action: 'REJECTED',
+        message: `服务端复核未通过，整批未加入：${errors.join('；')}`,
+      }]
+      ElMessage.error('建议未加入：请先修正冲突')
+      return
+    }
+  } catch (e: any) {
+    draft.restoreRows(before)
+    aiOutcomes.value = [{
+      proposalId: '',
+      action: 'REJECTED',
+      message: `服务端复核失败，整批未加入：${serverMessage(e, '预览失败')}`,
+    }]
+    return
+  }
+
+  aiRunId.value = payload.runId
+  aiDecisions.value = decisions
+  aiOutcomes.value = outcomes
+  aiPanel.value?.clearSelection()
+  ElMessage.success('建议已加入当前表格；仍是未保存修改，请检查后统一保存')
+}
+
 const onSetThresholdValue = (key: string, value: unknown) =>
   withSelected((code) => draft.setThresholdExceptionValue(code, key, value))
 const onSetEntryEnabled = (key: string, value: boolean) =>

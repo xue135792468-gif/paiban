@@ -120,9 +120,26 @@
           :types="types"
           :teacher-names="teacherNames"
           :course-names="courseNames"
+          :selected="selectedIds.includes(proposal.proposalId)"
+          :editable="canManage"
+          @select="(value: boolean) => toggleSelected(proposal.proposalId, value)"
+          @resolve="(overrides: Record<string, unknown>) => onResolve(proposal.proposalId, overrides)"
         />
+        <div class="ai-add">
+          <el-button
+            type="primary"
+            :disabled="!canManage || selectedProposals.length === 0"
+            data-testid="constraint-ai-add"
+            @click="onAdd"
+          >
+            添加到约束表（已选 {{ selectedProposals.length }} 条）
+          </el-button>
+          <span class="ai-note-inline">
+            加入后仍是未保存修改；统一「保存配置」后才生效。
+          </span>
+        </div>
         <p class="ai-note" data-testid="constraint-ai-note">
-          当前版本只提供只读建议；校对、勾选和“添加到约束表”将在后续步骤开放。最终保存前不会改变生效配置。
+          建议由模型生成，需要你校对后才会加入；添加和保存都不会调用模型。
         </p>
       </div>
     </template>
@@ -154,6 +171,18 @@
             </el-button>
           </li>
         </ul>
+        <div v-if="audits.length > 0" class="audit-list" data-testid="constraint-ai-audits">
+          <p class="audit-title">已保存的确认记录</p>
+          <p
+            v-for="audit in audits.slice(0, 5)"
+            :key="audit.id"
+            class="ai-copy"
+            data-testid="constraint-ai-audit-item"
+          >
+            {{ formatTime(audit.createdAt) }} · 版本 {{ audit.version }} ·
+            {{ audit.actor || '—' }} · 确认 {{ audit.decisions.length }} 项
+          </p>
+        </div>
         <div v-if="detail" class="history-detail" data-testid="constraint-ai-history-detail">
           <p class="ai-copy">
             原话：{{ detail.run.inputText }}
@@ -175,7 +204,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElAlert, ElButton, ElCard, ElCheckbox, ElCollapse, ElCollapseItem, ElInput, ElTag } from 'element-plus'
 import ConstraintProposalCard from './ConstraintProposalCard.vue'
-import { useConstraintAi } from './useConstraintAi'
+import { useConstraintAi, type ConstraintProposal } from './useConstraintAi'
 import type { OptionItem, TypeDraft } from './types'
 
 /**
@@ -189,6 +218,7 @@ const props = defineProps<{
   teachers: OptionItem[]
   courses: OptionItem[]
   canReadAll: boolean
+  canManage: boolean
 }>()
 
 const {
@@ -197,21 +227,46 @@ const {
   generating,
   run,
   proposals,
+  selectedProposals,
+  selectedIds,
   counts,
   error,
   history,
   detail,
   scopeAll,
+  audits,
   checkAvailability,
   generate,
   cancel,
   loadHistory,
+  loadAudits,
   openRun,
   setScopeAll,
+  toggleSelected,
+  clearSelection,
+  resolveProposal,
 } = useConstraintAi({
   semesterId: computed(() => props.semesterId),
   canReadAll: () => props.canReadAll,
 })
+
+const emit = defineEmits<{
+  add: [payload: { runId: number; proposals: ConstraintProposal[] }]
+}>()
+
+async function onResolve(proposalId: string, overrides: Record<string, unknown>) {
+  await resolveProposal(proposalId, overrides)
+}
+
+function onAdd() {
+  const current = run.value
+  if (!current || selectedProposals.value.length === 0) {
+    return
+  }
+  emit('add', { runId: current.id, proposals: selectedProposals.value })
+}
+
+defineExpose({ loadAudits, clearSelection })
 
 const elapsed = ref(0)
 let timer: ReturnType<typeof setInterval> | null = null
@@ -271,6 +326,7 @@ watch(
   () => {
     checkAvailability()
     loadHistory()
+    loadAudits()
   },
   { immediate: true },
 )
@@ -339,6 +395,30 @@ onBeforeUnmount(stopTimer)
   margin: 0;
   font-size: 12px;
   color: var(--paiban-muted);
+}
+
+.ai-add {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ai-note-inline {
+  font-size: 12px;
+  color: var(--paiban-muted);
+}
+
+.audit-list {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #eef1f6;
+}
+
+.audit-title {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .ai-note {

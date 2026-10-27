@@ -69,8 +69,41 @@ export interface GenerationRunSummary {
 export interface GenerationRunDetail {
   run: GenerationRun
   rawResponse: string | null
+  modelContent: string | null
   lateResponse: string | null
   contextJson: string | null
+}
+
+/** The manual choices the save records next to the final configuration. */
+export interface SaveDecision {
+  proposalId: string
+  action: 'ADDED' | 'REPLACED' | 'SKIPPED' | 'EXISTS'
+  type: string
+  reason: string
+  entries: Record<string, unknown>[]
+}
+
+export interface SaveAudit {
+  id: number
+  semesterId: number
+  version: number
+  runId: number | null
+  actor: string | null
+  createdAt: string
+  decisions: SaveDecision[]
+  finalConfigs: unknown[]
+}
+
+export interface ResolveOverrides {
+  teacherId?: number
+  courseId?: number
+  classId?: number
+  strength?: 'HARD' | 'SOFT' | 'INHERIT'
+  days?: number[]
+  periods?: number[]
+  section?: string
+  sectionOrdinals?: number[]
+  values?: Record<string, unknown>
 }
 
 export interface AiAvailability {
@@ -118,8 +151,18 @@ export function useConstraintAi(options: {
   const historyLoading = ref(false)
   const detail = ref<GenerationRunDetail | null>(null)
   const scopeAll = ref(false)
+  /** Proposals the user resolved manually (a homonym choice or a strength edit). */
+  const resolved = ref<Record<string, ConstraintProposal>>({})
+  const selectedIds = ref<string[]>([])
+  const audits = ref<SaveAudit[]>([])
 
-  const proposals = computed(() => run.value?.proposals ?? [])
+  const proposals = computed(() =>
+    (run.value?.proposals ?? []).map((proposal) => resolved.value[proposal.proposalId] ?? proposal),
+  )
+  const selectedProposals = computed(() =>
+    proposals.value.filter((proposal) => selectedIds.value.includes(proposal.proposalId)
+      && proposal.status === 'READY'),
+  )
   const counts = computed(() => ({
     total: proposals.value.length,
     ready: proposals.value.filter((proposal) => proposal.status === 'READY').length,
@@ -170,6 +213,8 @@ export function useConstraintAi(options: {
         { params: { semesterId: options.semesterId.value } },
       )
       run.value = data
+      resolved.value = {}
+      selectedIds.value = []
       await loadHistory()
     } catch (e: any) {
       // The original text stays in the box: the user retries deliberately.
@@ -235,6 +280,68 @@ export function useConstraintAi(options: {
   function setScopeAll(value: boolean) {
     scopeAll.value = value
     void loadHistory()
+    void loadAudits()
+  }
+
+  function clearSelection() {
+    selectedIds.value = []
+  }
+
+  function toggleSelected(proposalId: string, selected: boolean) {
+    const current = new Set(selectedIds.value)
+    if (selected) {
+      current.add(proposalId)
+    } else {
+      current.delete(proposalId)
+    }
+    selectedIds.value = Array.from(current)
+  }
+
+  /**
+   * Completes/edits one proposal without a model call. The returned suggestion
+   * replaces the displayed one so the user can review it before selecting it.
+   */
+  async function resolveProposal(
+    proposalId: string,
+    overrides: ResolveOverrides,
+  ): Promise<ConstraintProposal | null> {
+    const current = run.value
+    if (!current) {
+      return null
+    }
+    try {
+      const { data } = await http.post<ConstraintProposal>(
+        `/constraint-proposals/${current.id}/resolve`,
+        { proposalId, ...overrides },
+      )
+      resolved.value = { ...resolved.value, [proposalId]: data }
+      if (data.status !== 'READY' && selectedIds.value.includes(proposalId)) {
+        toggleSelected(proposalId, false)
+      }
+      return data
+    } catch (e: any) {
+      error.value = serverMessage(e, '补齐建议失败')
+      return null
+    }
+  }
+
+  /** Saved confirmations: the final configuration and the decisions behind it. */
+  async function loadAudits() {
+    if (!options.semesterId.value) {
+      audits.value = []
+      return
+    }
+    try {
+      const { data } = await http.get<SaveAudit[]>('/constraint-audits', {
+        params: {
+          semesterId: options.semesterId.value,
+          scope: scopeAll.value && canReadAll.value ? 'all' : 'mine',
+        },
+      })
+      audits.value = data ?? []
+    } catch (e: any) {
+      error.value = serverMessage(e, '加载保存记录失败')
+    }
   }
 
   /** Called when the semester changes: a run of another semester is not shown here. */
@@ -244,8 +351,12 @@ export function useConstraintAi(options: {
     text.value = ''
     error.value = null
     history.value = []
+    resolved.value = {}
+    selectedIds.value = []
+    audits.value = []
     void checkAvailability()
     void loadHistory()
+    void loadAudits()
   }
 
   return {
@@ -255,6 +366,7 @@ export function useConstraintAi(options: {
     generating,
     run,
     proposals,
+    selectedProposals,
     counts,
     error,
     history,
@@ -268,6 +380,12 @@ export function useConstraintAi(options: {
     loadHistory,
     openRun,
     setScopeAll,
+    toggleSelected,
+    clearSelection,
+    resolveProposal,
+    selectedIds,
+    loadAudits,
+    audits,
     reset,
   }
 }

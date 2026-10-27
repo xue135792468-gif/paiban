@@ -3,6 +3,7 @@ package com.paiban.scheduling.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.paiban.ai.AiGateway;
 import com.paiban.ai.AiMessage;
 import com.paiban.ai.AiOptions;
@@ -34,6 +35,7 @@ import com.paiban.scheduling.web.ConstraintProposalDtos.ConstraintProposalDto;
 import com.paiban.scheduling.web.ConstraintProposalDtos.GenerateRequest;
 import com.paiban.scheduling.web.ConstraintProposalDtos.RunDetailDto;
 import com.paiban.scheduling.web.ConstraintProposalDtos.RunDto;
+import com.paiban.scheduling.web.ConstraintProposalDtos.ResolveProposalRequest;
 import com.paiban.scheduling.web.ConstraintProposalDtos.RunSummaryDto;
 import java.time.Duration;
 import java.time.Instant;
@@ -194,7 +196,7 @@ public class ConstraintProposalService {
                     ? ConstraintGenerationRun.TIMEOUT
                     : ConstraintGenerationRun.FAILED;
             finish(
-                    runId, status, result.rawResponse(), null,
+                    runId, status, result.rawResponse(), result.content(), null,
                     result.errorCode() == null ? "AI_ERROR" : result.errorCode(),
                     result.errorMessage() == null ? "AI 调用失败" : result.errorMessage(),
                     result.providerName(), result.modelName(), result.inputTokens(),
@@ -207,22 +209,22 @@ public class ConstraintProposalService {
             proposals = ConstraintProposalNormalizer.normalize(
                     nodes, context, "nl-" + runId);
         } catch (IllegalArgumentException ex) {
-            finish(runId, ConstraintGenerationRun.FAILED, result.rawResponse(), null,
-                    "INVALID_OUTPUT", ex.getMessage(), result.providerName(),
+            finish(runId, ConstraintGenerationRun.FAILED, result.rawResponse(), result.content(),
+                    null, "INVALID_OUTPUT", ex.getMessage(), result.providerName(),
                     result.modelName(), result.inputTokens(), result.outputTokens(), latencyMs);
             return reload(runId);
         }
         String status = latencyMs > TASK_TIMEOUT_SECONDS * 1000L
                 ? ConstraintGenerationRun.TIMEOUT : ConstraintGenerationRun.SUCCEEDED;
-        finish(runId, status, result.rawResponse(), toJson(proposals), null, null,
-                result.providerName(), result.modelName(), result.inputTokens(),
+        finish(runId, status, result.rawResponse(), result.content(), toJson(proposals), null,
+                null, result.providerName(), result.modelName(), result.inputTokens(),
                 result.outputTokens(), latencyMs);
         return reload(runId);
     }
 
     private void finishFailure(
             Long runId, String code, String message, String raw, String provider, long latencyMs) {
-        finish(runId, ConstraintGenerationRun.FAILED, raw, null, code,
+        finish(runId, ConstraintGenerationRun.FAILED, raw, null, null, code,
                 message == null ? "AI 调用失败" : truncate(message), provider, null, null, null,
                 latencyMs);
     }
@@ -232,18 +234,115 @@ public class ConstraintProposalService {
      * timed-out run keeps its status and files the answer as a late response.
      */
     private void finish(
-            Long runId, String status, String raw, String proposalsJson, String errorCode,
-            String errorMessage, String providerName, String modelName,
+            Long runId, String status, String raw, String content, String proposalsJson,
+            String errorCode, String errorMessage, String providerName, String modelName,
             Integer inputTokens, Integer outputTokens, long latencyMs) {
         transactions.executeWithoutResult(tx -> {
             int updated = runs.finishRunning(
-                    runId, status, raw, proposalsJson, errorCode, truncate(errorMessage),
-                    providerName, modelName, inputTokens, outputTokens, latencyMs, Instant.now());
+                    runId, status, raw, content, proposalsJson, errorCode,
+                    truncate(errorMessage), providerName, modelName, inputTokens, outputTokens,
+                    latencyMs, Instant.now());
             if (updated == 0) {
                 runs.recordLateResponse(
                         runId, raw, inputTokens, outputTokens, latencyMs, Instant.now());
             }
         });
+    }
+
+    /**
+     * Re-runs one proposal through the same normalization after the user names a
+     * homonym or supplies a missing condition. The model is not called again; the raw
+     * run stays untouched and the returned proposal is what the page adds.
+     */
+    @Transactional(readOnly = true)
+    public ConstraintProposalDto resolve(Long runId, ResolveProposalRequest request) {
+        ConstraintGenerationRun run = requireReadable(runId);
+        if (!ConstraintGenerationRun.SUCCEEDED.equals(run.getStatus())
+                || run.getModelContent() == null || run.getModelContent().isBlank()) {
+            throw ApiException.badRequest("该生成记录没有可重新校验的模型输出，请重新生成");
+        }
+        JsonNode root;
+        try {
+            root = mapper.readTree(run.getModelContent());
+        } catch (Exception ex) {
+            throw ApiException.badRequest("该生成记录的模型输出无法解析，请重新生成");
+        }
+        JsonNode array = root.isArray() ? root : root.path("proposals");
+        int index = proposalIndex(request.proposalId());
+        if (!array.isArray() || index < 0 || index >= array.size()) {
+            throw ApiException.badRequest("建议不存在: " + request.proposalId());
+        }
+        ObjectNode node = array.get(index).deepCopy();
+        applyResolve(run.getSemesterId(), node, request);
+        List<ConstraintProposalDto> normalized = ConstraintProposalNormalizer.normalize(
+                List.of(node), buildContext(run.getSemesterId()), "resolved-" + runId);
+        return normalized.get(0);
+    }
+
+    private int proposalIndex(String proposalId) {
+        if (proposalId == null || !proposalId.startsWith("p")) {
+            return -1;
+        }
+        try {
+            return Integer.parseInt(proposalId.substring(1)) - 1;
+        } catch (NumberFormatException ex) {
+            return -1;
+        }
+    }
+
+    private void applyResolve(
+            Long semesterId, ObjectNode node, ResolveProposalRequest request) {
+        Context context = buildContext(semesterId);
+        // The user supplied the missing piece: let the normalizer validate the whole
+        // proposal again instead of keeping the model's earlier NEEDS_INPUT verdict.
+        node.put("status", "READY");
+        node.remove("reason");
+        if (request.teacherId() != null) {
+            node.put("teacherName", teacherName(context, request.teacherId()));
+        }
+        if (request.courseId() != null) {
+            node.put("courseName", courseName(context, request.courseId()));
+        }
+        if (request.classId() != null) {
+            node.put("className", className(context, request.classId()));
+        }
+        if (request.strength() != null && !request.strength().isBlank()) {
+            node.put("strength", request.strength().trim().toUpperCase());
+        }
+        if (request.days() != null) {
+            node.set("days", mapper.valueToTree(request.days()));
+            node.put("allDays", false);
+        }
+        if (request.periods() != null) {
+            node.set("periods", mapper.valueToTree(request.periods()));
+        }
+        if (request.section() != null) {
+            node.put("section", request.section());
+        }
+        if (request.sectionOrdinals() != null) {
+            node.set("sectionOrdinals", mapper.valueToTree(request.sectionOrdinals()));
+        }
+        if (request.values() != null) {
+            node.set("values", mapper.valueToTree(request.values()));
+        }
+    }
+
+    private String teacherName(Context context, Long id) {
+        return context.teachers().stream().filter(teacher -> teacher.id() == id)
+                .map(teacher -> teacher.name()).findFirst()
+                .orElseThrow(() -> ApiException.badRequest("教师不存在: " + id));
+    }
+
+    private String courseName(Context context, Long id) {
+        return context.courses().stream().filter(course -> course.id() == id)
+                .map(course -> course.name()).findFirst()
+                .orElseThrow(() -> ApiException.badRequest("课程不存在: " + id));
+    }
+
+    private String className(Context context, Long id) {
+        return context.classes().stream().filter(adminClass -> adminClass.id() == id)
+                .map(adminClass -> adminClass.name()).findFirst()
+                .orElseThrow(() -> ApiException.badRequest("行政班不存在: " + id));
     }
 
     @Transactional
@@ -290,8 +389,8 @@ public class ConstraintProposalService {
     @Transactional(readOnly = true)
     public RunDetailDto detail(Long runId) {
         ConstraintGenerationRun run = requireReadable(runId);
-        return new RunDetailDto(toDto(run), run.getRawResponse(), run.getLateResponse(),
-                run.getContextJson());
+        return new RunDetailDto(toDto(run), run.getRawResponse(), run.getModelContent(),
+                run.getLateResponse(), run.getContextJson());
     }
 
     // ------------------------------------------------------------------ records

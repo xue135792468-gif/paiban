@@ -41,6 +41,7 @@ function mountPanel() {
       teachers: [{ id: 1, name: '王明' }],
       courses: [],
       canReadAll: true,
+      canManage: true,
     },
     global: { plugins: [ElementPlus] },
   })
@@ -145,12 +146,17 @@ describe('ConstraintAiPanel', () => {
     expect(cards).toHaveLength(2)
     expect(cards[0].findAll('[data-testid="constraint-proposal-entries"] li')).toHaveLength(2)
     expect(cards[1].get('[data-testid="constraint-proposal-reason"]').text()).toContain('同名教师')
-    expect(cards[1].get('[data-testid="constraint-proposal-candidates"]').text()).toContain('张伟')
-    expect(wrapper.get('[data-testid="constraint-ai-note"]').text()).toContain('只读建议')
-    // No write action exists at this stage: the words only appear in the read-only hint.
-    expect(wrapper.findAll('button').some((button) => button.text().includes('添加到约束表'))).toBe(
-      false,
+    expect(cards[1].get('[data-testid="constraint-proposal-candidates"]').text()).toContain(
+      '同名对象',
     )
+    expect(
+      cards[1].findAll('[data-testid="constraint-proposal-candidate"]'),
+    ).toHaveLength(1)
+    expect(wrapper.get('[data-testid="constraint-ai-note"]').text()).toContain('需要你校对')
+    // Adding needs an explicit selection; nothing is written automatically.
+    const add = wrapper.get('[data-testid="constraint-ai-add"]')
+    expect(add.text()).toContain('添加到约束表')
+    expect(add.attributes('disabled')).toBeDefined()
   })
 
   it('生成记录可重新打开并查看完整原始输出', async () => {

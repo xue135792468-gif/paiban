@@ -6,6 +6,7 @@ import { mergeConfigs } from './conflictMerge'
 import { emptySaveErrors, parseSaveErrors, type SaveErrorReport } from './saveErrors'
 import type { useConstraintDraft } from './useConstraintDraft'
 import type { ConstraintConfigDto } from './types'
+import type { SaveDecision } from './useConstraintAi'
 
 /**
  * What a 409 carries when the configuration moved under the user: the newer version and
@@ -33,6 +34,10 @@ export function useConstraintSave(options: {
   conflicts: Ref<string[]>
   /** Exceptions that loosen a global limit; the user must confirm them explicitly. */
   relaxations?: () => string[]
+  /** The generation run and the user's decisions this save confirms. */
+  meta?: () => { runId: number | null; decisions: SaveDecision[] }
+  /** Called after a successful save, e.g. to clear the pending decisions. */
+  onSaved?: () => void
   reload: () => Promise<void>
 }) {
   const saving = ref(false)
@@ -86,9 +91,14 @@ export function useConstraintSave(options: {
     saveMessage.value = null
     saveReport.value = emptySaveErrors()
     try {
+      const meta = options.meta?.()
       await http.put(
         '/constraints',
-        { configs: options.draft.payload() },
+        {
+          configs: options.draft.payload(),
+          runId: meta?.runId ?? null,
+          decisions: meta?.decisions ?? [],
+        },
         {
           params: {
             semesterId: options.semesterId.value,
@@ -98,6 +108,7 @@ export function useConstraintSave(options: {
       )
       conflict.value = null
       ElMessage.success('约束配置已保存')
+      options.onSaved?.()
       await options.reload()
     } catch (e: any) {
       if (e?.response?.status === 409) {

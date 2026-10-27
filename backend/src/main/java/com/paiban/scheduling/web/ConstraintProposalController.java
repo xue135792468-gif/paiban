@@ -6,6 +6,7 @@ import com.paiban.scheduling.web.ConstraintProposalDtos.AvailabilityDto;
 import com.paiban.scheduling.web.ConstraintProposalDtos.GenerateRequest;
 import com.paiban.scheduling.web.ConstraintProposalDtos.RunDetailDto;
 import com.paiban.scheduling.web.ConstraintProposalDtos.RunDto;
+import com.paiban.scheduling.web.ConstraintProposalDtos.ResolveProposalRequest;
 import com.paiban.scheduling.web.ConstraintProposalDtos.RunSummaryDto;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -70,5 +71,15 @@ public class ConstraintProposalController {
     @GetMapping("/{id}")
     public RunDetailDto detail(@PathVariable Long id) {
         return service.detail(id);
+    }
+
+    /**
+     * Completes one proposal after the user picks a homonym or fills a missing
+     * condition. This is an edit, not a new model call.
+     */
+    @PostMapping("/{id}/resolve")
+    public com.paiban.scheduling.web.ConstraintProposalDtos.ConstraintProposalDto resolve(
+            @PathVariable Long id, @Valid @RequestBody ResolveProposalRequest request) {
+        return service.resolve(id, request);
     }
 }

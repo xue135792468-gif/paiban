@@ -10,6 +10,15 @@ import {
   optionalTargetParam,
 } from './entryModel'
 import { emptyObjectNames, emptyThreshold, thresholdRelaxations, thresholdWarnings } from './thresholdModel'
+import {
+  controlsOf as proposalControls,
+  findSameConditions,
+  proposalThreshold,
+  scalarConflict,
+  sameControls,
+  thresholdRelaxation,
+} from './proposalApply'
+import type { ConstraintProposal } from './useConstraintAi'
 import { hasValue } from './paramValues'
 import type {
   ConstraintConfigDto,
@@ -470,6 +479,188 @@ export function useConstraintDraft() {
     )
   }
 
+  // --------------------------------------------------- proposal confirmation (14/10)
+
+  /** A deep copy of the rows, so a rejected merge can roll back exactly. */
+  function snapshotRows(): TypeDraft[] {
+    return JSON.parse(JSON.stringify(rows.value)) as TypeDraft[]
+  }
+
+  function restoreRows(snapshot: TypeDraft[]) {
+    rows.value = snapshot
+  }
+
+  type ApplyAction = 'ADDED' | 'EXISTS' | 'REPLACED' | 'CONFLICT' | 'RELAXES' | 'SKIPPED'
+
+  interface ApplyOutcome {
+    action: ApplyAction
+    message: string
+  }
+
+  /**
+   * Adds one confirmed proposal to the borrowed draft (ticket 14/10). Nothing is
+   * saved here: duplicates are reported, control changes and scalar conflicts keep
+   * the old value unless `replace` is explicit, and a looser threshold exception
+   * needs `confirmRelaxation`.
+   */
+  function applyProposal(
+    code: string,
+    proposal: ConstraintProposal,
+    options: { replace?: boolean; confirmRelaxation?: boolean; objectName?: string } = {},
+  ): ApplyOutcome {
+    const row = find(code)
+    if (!row) {
+      return { action: 'SKIPPED', message: `未知约束类型 ${code}` }
+    }
+    if (proposal.status !== 'READY' || proposal.entries.length === 0) {
+      return { action: 'SKIPPED', message: '该建议还不能加入约束表' }
+    }
+    const controls = proposalControls(proposal)
+    if (isThresholdType(row)) {
+      return applyThresholdProposal(row, proposal, controls, options)
+    }
+
+    const same = findSameConditions(row, proposal)
+    if (same) {
+      if (sameControls(same.card, row, proposal)) {
+        return { action: 'EXISTS', message: `「${row.name}」已存在相同要求，未重复加入。` }
+      }
+      if (!options.replace) {
+        return {
+          action: 'CONFLICT',
+          message: `「${row.name}」已有相同条件但强度不同；默认保留原设置，确认后才替换。`,
+        }
+      }
+      same.card.hard = controls.hard
+      same.card.weight = controls.weight
+      same.card.enabled = controls.enabled
+      return { action: 'REPLACED', message: `已替换「${row.name}」的控制设置。` }
+    }
+
+    const conflict = scalarConflict(row, proposal)
+    if (conflict && !options.replace) {
+      return { action: 'CONFLICT', message: conflict.message }
+    }
+    if (conflict) {
+      row.entries = row.entries.filter((entry) => entry.key !== conflict.card.key)
+    }
+
+    const entry = cardFromProposal(row, proposal, controls)
+    row.entries.push(entry)
+    return {
+      action: conflict ? 'REPLACED' : 'ADDED',
+      message: conflict
+        ? `已用新建议替换「${row.name}」的旧参数。`
+        : `已加入「${row.name}」：${proposal.entries.length} 个课节。`,
+    }
+  }
+
+  function cardFromProposal(
+    row: TypeDraft,
+    proposal: ConstraintProposal,
+    controls: { hard: boolean | null; weight: number | null; enabled: boolean },
+  ): EntryDraft {
+    if (isSlotSetType(row)) {
+      const first = proposal.entries[0].params
+      const head: Record<string, unknown> = {}
+      Object.keys(first).forEach((key) => {
+        if (key !== 'dayOfWeek' && key !== 'periodNo') {
+          head[key] = first[key]
+        }
+      })
+      return {
+        key: nextKey('entry'),
+        id: null,
+        values: head,
+        slots: proposal.entries.map((entry) => ({
+          key: nextKey('slot'),
+          id: null,
+          dayOfWeek: (entry.params.dayOfWeek as number | undefined) ?? null,
+          periodNo: (entry.params.periodNo as number | undefined) ?? null,
+        })),
+        groupKey: `ai-${proposal.proposalId}-${nextKey('g')}`,
+        ...controls,
+      }
+    }
+    return {
+      key: nextKey('entry'),
+      id: null,
+      values: { ...proposal.entries[0].params },
+      groupKey: null,
+      ...controls,
+    }
+  }
+
+  function applyThresholdProposal(
+    row: TypeDraft,
+    proposal: ConstraintProposal,
+    controls: { hard: boolean | null; weight: number | null; enabled: boolean },
+    options: { replace?: boolean; confirmRelaxation?: boolean; objectName?: string },
+  ): ApplyOutcome {
+    const scope = proposalThreshold(row, proposal)
+    if (!scope || scope.value === null) {
+      return { action: 'CONFLICT', message: `「${row.name}」建议缺少数值，不能加入。` }
+    }
+    const relaxation = thresholdRelaxation(
+      row, proposal, options.objectName ?? `#${scope.objectId ?? '全局'}`)
+    if (relaxation && !options.confirmRelaxation) {
+      return { action: 'RELAXES', message: relaxation }
+    }
+    const draft = thresholdOf(row.code) ?? emptyThreshold()
+    if (scope.objectId === null) {
+      if (draft.globalValue !== null) {
+        const sameControl = (draft.globalHard ?? row.hard) === (controls.hard ?? row.hard)
+        if (Number(draft.globalValue) === scope.value && sameControl) {
+          return { action: 'EXISTS', message: `「${row.name}」已有相同全局默认。` }
+        }
+        if (!options.replace) {
+          return {
+            action: 'CONFLICT',
+            message: `「${row.name}」全局默认已是 ${draft.globalValue}；默认保留旧值，确认后才替换。`,
+          }
+        }
+        draft.globalValue = scope.value
+        draft.globalEnabled = controls.enabled
+        draft.globalHard = controls.hard
+        draft.globalWeight = controls.weight
+        return { action: 'REPLACED', message: `已替换「${row.name}」的全局默认。` }
+      }
+      draft.globalValue = scope.value
+      draft.globalEnabled = controls.enabled
+      draft.globalHard = controls.hard
+      draft.globalWeight = controls.weight
+      return { action: 'ADDED', message: `已加入「${row.name}」全局默认。` }
+    }
+    const existing = draft.exceptions.find((exception) => exception.objectId === scope.objectId)
+    if (existing) {
+      const sameControl = (existing.hard ?? row.hard) === (controls.hard ?? row.hard)
+      if (Number(existing.value) === scope.value && sameControl) {
+        return { action: 'EXISTS', message: `「${row.name}」该对象已有相同例外。` }
+      }
+      if (!options.replace) {
+        return {
+          action: 'CONFLICT',
+          message: `「${row.name}」该对象已有一条例外；默认保留旧值，确认后才替换。`,
+        }
+      }
+      existing.value = scope.value
+      existing.enabled = controls.enabled
+      existing.hard = controls.hard
+      existing.weight = controls.weight
+      return { action: 'REPLACED', message: `已替换「${row.name}」的对象例外。` }
+    }
+    draft.exceptions.push({
+      key: nextKey('exception'),
+      id: null,
+      objectId: scope.objectId,
+      value: scope.value,
+      enabled: controls.enabled,
+      hard: controls.hard,
+      weight: controls.weight,
+    })
+    return { action: 'ADDED', message: `已加入「${row.name}」对象例外。` }
+  }
+
   // ----------------------------------------------------------- thresholds (ticket 04)
 
   function thresholdOf(code: string): ThresholdDraft | undefined {
@@ -586,6 +777,9 @@ export function useConstraintDraft() {
     hydrate,
     rehydrate,
     setBaseVersion,
+    snapshotRows,
+    restoreRows,
+    applyProposal,
     markSaved,
     select,
     setEnabled,

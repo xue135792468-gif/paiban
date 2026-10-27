@@ -27,6 +27,7 @@ public interface ConstraintGenerationRunRepository
      */
     @Modifying(clearAutomatically = true)
     @Query("update ConstraintGenerationRun r set r.status = :status, r.rawResponse = :raw, "
+            + "r.modelContent = :content, "
             + "r.proposalsJson = :proposals, r.errorCode = :errorCode, "
             + "r.errorMessage = :errorMessage, r.providerName = :providerName, "
             + "r.modelName = :modelName, r.inputTokens = :inputTokens, "
@@ -36,6 +37,7 @@ public interface ConstraintGenerationRunRepository
             @Param("id") Long id,
             @Param("status") String status,
             @Param("raw") String rawResponse,
+            @Param("content") String modelContent,
             @Param("proposals") String proposalsJson,
             @Param("errorCode") String errorCode,
             @Param("errorMessage") String errorMessage,

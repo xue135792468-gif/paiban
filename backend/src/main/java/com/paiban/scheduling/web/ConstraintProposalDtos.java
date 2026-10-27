@@ -66,8 +66,25 @@ public final class ConstraintProposalDtos {
             List<ConstraintProposalDto> proposals) {}
 
     /** The run plus the raw answer and the context, for the owner and global admins. */
-    public record RunDetailDto(RunDto run, String rawResponse, String lateResponse,
-                               String contextJson) {}
+    public record RunDetailDto(RunDto run, String rawResponse, String modelContent,
+                               String lateResponse, String contextJson) {}
+
+    /**
+     * Completes one proposal without calling the model again: the user names the
+     * homonym or supplies the missing condition, and the server re-runs the same
+     * normalization against the current semester.
+     */
+    public record ResolveProposalRequest(
+            @NotBlank(message = "建议标识不能为空") String proposalId,
+            Long teacherId,
+            Long courseId,
+            Long classId,
+            String strength,
+            List<Integer> days,
+            List<Integer> periods,
+            String section,
+            List<Integer> sectionOrdinals,
+            Map<String, Object> values) {}
 
     /** List row: enough to reopen the run without shipping every raw answer. */
     public record RunSummaryDto(Long id, String status, String inputText, String errorCode,

@@ -6,11 +6,29 @@
     :data-status="proposal.status"
   >
     <header class="proposal-head">
+      <el-checkbox
+        :model-value="selected"
+        :disabled="!editable || proposal.status !== 'READY'"
+        data-testid="constraint-proposal-select"
+        @update:model-value="(value: string | number | boolean) => emit('select', Boolean(value))"
+      />
       <el-tag size="small" :type="statusType" data-testid="constraint-proposal-status">
         {{ statusLabel }}
       </el-tag>
       <span class="proposal-type">{{ proposal.typeName }}</span>
-      <el-tag size="small" effect="plain" data-testid="constraint-proposal-strength">
+      <el-select
+        v-if="editable"
+        :model-value="proposal.strength"
+        size="small"
+        class="strength-select"
+        data-testid="constraint-proposal-strength"
+        @update:model-value="(value: unknown) => emit('resolve', { strength: value as 'HARD' })"
+      >
+        <el-option value="INHERIT" :label="`继承类型默认（${proposal.effectiveHard ? '必须' : '尽量'}）`" />
+        <el-option value="HARD" label="必须" />
+        <el-option value="SOFT" label="尽量" />
+      </el-select>
+      <el-tag v-else size="small" effect="plain" data-testid="constraint-proposal-strength">
         {{ strengthLabel }}
       </el-tag>
       <span class="proposal-source">“{{ proposal.sourceText }}”</span>
@@ -22,11 +40,28 @@
     </p>
 
     <div v-if="proposal.candidates.length > 0" class="proposal-candidates" data-testid="constraint-proposal-candidates">
-      <span v-for="candidate in proposal.candidates" :key="candidate.field" class="candidate-row">
-        {{ candidate.label }}：
-        <span class="candidate-option">{{ candidate.options.map((option) => option.name).join(' / ') }}</span>
-      </span>
-      <span class="candidate-hint">（请在校对步骤中选择，系统不会猜测）</span>
+      <div v-for="candidate in proposal.candidates" :key="candidate.field" class="candidate-row">
+        <span>{{ candidate.label }}：</span>
+        <el-select
+          v-if="editable"
+          size="small"
+          class="candidate-select"
+          :placeholder="`请选择${candidate.label}`"
+          data-testid="constraint-proposal-candidate"
+          @update:model-value="(id: unknown) => emit('resolve', { [candidate.field]: Number(id) })"
+        >
+          <el-option
+            v-for="option in candidate.options"
+            :key="option.id"
+            :label="option.name"
+            :value="option.id"
+          />
+        </el-select>
+        <span v-else class="candidate-option">
+          {{ candidate.options.map((option) => option.name).join(' / ') }}
+        </span>
+      </div>
+      <span class="candidate-hint">（请选择具体对象；系统不会猜测同名对象）</span>
     </div>
 
     <ul v-if="proposal.entries.length > 0" class="proposal-entries" data-testid="constraint-proposal-entries">
@@ -43,7 +78,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ElTag } from 'element-plus'
+import { ElCheckbox, ElOption, ElSelect, ElTag } from 'element-plus'
 import { formatEntrySummary } from './entrySummary'
 import type { ConstraintProposal, ProposalEntry } from './useConstraintAi'
 import type { ParamDef, TypeDraft } from './types'
@@ -53,6 +88,13 @@ const props = defineProps<{
   types: TypeDraft[]
   teacherNames: Map<number, string>
   courseNames: Map<number, string>
+  selected: boolean
+  editable: boolean
+}>()
+
+const emit = defineEmits<{
+  select: [value: boolean]
+  resolve: [overrides: Record<string, unknown>]
 }>()
 
 const statusLabel = computed(() => {
@@ -162,7 +204,22 @@ function describe(entry: ProposalEntry): string {
   color: var(--paiban-muted);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
+}
+
+.candidate-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.candidate-select,
+.strength-select {
+  width: 160px;
+}
+
+.strength-select {
+  width: 170px;
 }
 
 .candidate-option {

@@ -15,11 +15,13 @@ import com.paiban.identity.domain.Permissions;
 import com.paiban.identity.domain.Role;
 import com.paiban.identity.domain.RoleRepository;
 import com.paiban.scheduling.domain.ConstraintGenerationRunRepository;
+import com.paiban.scheduling.domain.ConstraintSaveAuditRepository;
 import com.paiban.support.ApiIntegrationTest;
 import com.paiban.support.TestData;
 import io.restassured.response.Response;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -54,6 +56,9 @@ class ConstraintProposalIntegrationTest extends ApiIntegrationTest {
 
     @Autowired
     private ConstraintGenerationRunRepository runs;
+
+    @Autowired
+    private ConstraintSaveAuditRepository audits;
 
     @Autowired
     private RoleRepository roles;
@@ -360,6 +365,172 @@ class ConstraintProposalIntegrationTest extends ApiIntegrationTest {
         assertThat(detail.jsonPath().getString("contextJson")).contains("teachers")
                 .doesNotContain("employeeNo");
         assertThat(detail.jsonPath().getString("run.inputText")).isEqualTo("王老师周三不排课");
+    }
+
+    @Test
+    void resolvingAHomonymReusesTheNormalizerWithoutAnotherModelCall() {
+        String token = adminToken();
+        long semesterId = semesterWithPeriods(token);
+        TestData.teacher(token, "张伟甲" + TestData.suffix());
+        TestData.teacher(token, "张伟乙" + TestData.suffix());
+        gateway.respond = ok("""
+                {"proposals":[{"sourceText":"张老师周三下午不排","type":"TEACHER_UNAVAILABLE",
+                "strength":"HARD","status":"READY","teacherName":"张老师","days":[3],
+                "section":"AFTERNOON"}]}""");
+
+        Response run = generate(token, semesterId, "run-resolve", "张老师周三下午不排");
+        long runId = run.jsonPath().getLong("id");
+        long candidateId = run.jsonPath().getLong("proposals[0].candidates[0].options[0].id");
+
+        Response resolved = as(token).body(Map.of(
+                        "proposalId", "p1", "teacherId", candidateId))
+                .when().post("/api/constraint-proposals/" + runId + "/resolve")
+                .then().statusCode(200).extract().response();
+
+        resolved.then()
+                .body("status", equalTo("READY"))
+                .body("entries", hasSize(4));
+        assertThat(resolved.jsonPath().getList("entries.params.teacherId"))
+                .allMatch(value -> ((Number) value).longValue() == candidateId);
+        assertThat(gateway.calls).hasSize(1);
+        assertThat(runs.findById(runId).orElseThrow().getModelContent()).contains("proposals");
+    }
+
+    @Test
+    void savingWithDecisionsRecordsTheAuditAtomicallyAndReplayCannotDoubleIt() {
+        String token = adminToken();
+        long semesterId = semesterWithPeriods(token);
+        String teacherName = "王明" + TestData.suffix();
+        TestData.teacher(token, teacherName);
+        gateway.respond = ok("""
+                {"proposals":[{"sourceText":"王老师周三不排","type":"TEACHER_UNAVAILABLE",
+                "strength":"HARD","status":"READY","teacherName":"%s","days":[3],
+                "periods":[1]}]}""".formatted(teacherName));
+        long runId = generate(token, semesterId, "run-save", "王老师周三不排")
+                .jsonPath().getLong("id");
+
+        List<Map<String, Object>> entries = List.of(Map.of(
+                "params", Map.of("teacherId", 1, "dayOfWeek", 3, "periodNo", 1),
+                "enabled", true, "hard", true));
+        List<Map<String, Object>> decisions = List.of(Map.of(
+                "proposalId", "p1", "action", "ADDED", "type", "TEACHER_UNAVAILABLE",
+                "reason", "用户确认加入", "entries", entries));
+        saveWithAudit(token, semesterId, 0L, runId, decisions, List.of(
+                Map.of("type", "TEACHER_UNAVAILABLE", "weight", 100, "hard", true,
+                        "enabled", true, "entries", entries)))
+                .then().statusCode(200);
+
+        assertThat(audits.count()).isEqualTo(1);
+        var audit = audits.findAll().get(0);
+        assertThat(audit.getRunId()).isEqualTo(runId);
+        assertThat(audit.getDecisionsJson()).contains("ADDED").contains("用户确认加入");
+        assertThat(audit.getFinalConfigJson()).contains("TEACHER_UNAVAILABLE");
+        as(token).queryParam("semesterId", semesterId)
+                .when().get("/api/constraint-audits")
+                .then().statusCode(200)
+                .body("$", hasSize(1))
+                .body("[0].runId", equalTo((int) runId));
+
+        // Replaying the same base version is a conflict and never writes a second audit.
+        saveWithAudit(token, semesterId, 0L, runId, decisions, List.of())
+                .then().statusCode(409);
+        assertThat(audits.count()).isEqualTo(1);
+    }
+
+    @Test
+    void anotherUsersRunCannotBeAttachedToASave() {
+        String admin = adminToken();
+        long semesterId = semesterWithPeriods(admin);
+        String teacherName = "王明" + TestData.suffix();
+        TestData.teacher(admin, teacherName);
+        gateway.respond = ok("""
+                {"proposals":[{"sourceText":"王老师周三不排","type":"TEACHER_UNAVAILABLE",
+                "strength":"HARD","status":"READY","teacherName":"%s","days":[3],
+                "periods":[1]}]}""".formatted(teacherName));
+        long runId = generate(admin, semesterId, "run-private-save", "王老师周三不排")
+                .jsonPath().getLong("id");
+
+        String roleCode = "constraint_save_" + TestData.suffix();
+        Role role = new Role(roleCode, "约束管理员");
+        role.getPermissions().add(permissions.findByCode(Permissions.CONSTRAINT_MANAGE).orElseThrow());
+        roles.save(role);
+        String otherUser = "saver" + TestData.suffix();
+        createUser(admin, otherUser, "other123", role.getCode());
+        String other = login(otherUser, "other123");
+        String before = as(admin).queryParam("semesterId", semesterId)
+                .when().get("/api/constraints/state").then().statusCode(200)
+                .extract().asString();
+
+        saveWithAudit(other, semesterId, 0L, runId, List.of(), List.of())
+                .then().statusCode(403);
+        assertThat(as(admin).queryParam("semesterId", semesterId)
+                .when().get("/api/constraints/state").then().statusCode(200)
+                .extract().asString()).isEqualTo(before);
+        assertThat(audits.count()).isZero();
+    }
+
+    @Test
+    void aPreviewRefusesAnInvalidMergeWithoutWritingOrAdvancingTheVersion() {
+        String token = adminToken();
+        long semesterId = semesterWithPeriods(token);
+        String before = as(token).queryParam("semesterId", semesterId)
+                .when().get("/api/constraints/state").then().statusCode(200)
+                .extract().asString();
+
+        Response preview = as(token).queryParam("semesterId", semesterId)
+                .body(Map.of("configs", List.of(Map.of(
+                        "type", "TEACHER_UNAVAILABLE", "weight", 100, "hard", true,
+                        "enabled", true,
+                        "entries", List.of(Map.of("params", Map.of(
+                                "teacherId", 9_999_999, "dayOfWeek", 1, "periodNo", 1)))))))
+                .when().post("/api/constraints/preview")
+                .then().statusCode(200).extract().response();
+
+        assertThat(preview.jsonPath().getList("invalidReferences")).isNotEmpty();
+        assertThat(as(token).queryParam("semesterId", semesterId)
+                .when().get("/api/constraints/state").then().statusCode(200)
+                .extract().asString()).isEqualTo(before);
+    }
+
+    @Test
+    void auditListingSeparatesMineFromTheGlobalView() {
+        String admin = adminToken();
+        long semesterId = semesterWithPeriods(admin);
+        saveWithAudit(admin, semesterId, 0L, null, List.of(), List.of(
+                Map.of("type", "TEACHER_CONFLICT", "params", Map.of(), "weight", 100,
+                        "hard", true, "enabled", true))).then().statusCode(200);
+
+        String roleCode = "constraint_audit_" + TestData.suffix();
+        Role role = new Role(roleCode, "约束管理员");
+        role.getPermissions().add(permissions.findByCode(Permissions.CONSTRAINT_MANAGE).orElseThrow());
+        roles.save(role);
+        String otherUser = "auditor" + TestData.suffix();
+        createUser(admin, otherUser, "other123", role.getCode());
+        String other = login(otherUser, "other123");
+
+        as(admin).queryParam("semesterId", semesterId)
+                .when().get("/api/constraint-audits").then().statusCode(200)
+                .body("$", hasSize(1));
+        as(other).queryParam("semesterId", semesterId)
+                .when().get("/api/constraint-audits").then().statusCode(200)
+                .body("$", hasSize(0));
+        as(other).queryParam("semesterId", semesterId).queryParam("scope", "all")
+                .when().get("/api/constraint-audits").then().statusCode(403);
+    }
+
+    private Response saveWithAudit(
+            String token, long semesterId, Long baseVersion, Long runId,
+            List<Map<String, Object>> decisions, List<Map<String, Object>> configs) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("configs", configs);
+        body.put("runId", runId);
+        body.put("decisions", decisions);
+        io.restassured.specification.RequestSpecification request = as(token)
+                .queryParam("semesterId", semesterId);
+        if (baseVersion != null) {
+            request = request.queryParam("baseVersion", baseVersion);
+        }
+        return request.body(body).when().put("/api/constraints");
     }
 
     // ------------------------------------------------------------------ helpers
