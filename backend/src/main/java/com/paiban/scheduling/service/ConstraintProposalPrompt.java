@@ -50,7 +50,9 @@ public class ConstraintProposalPrompt {
                 }]}
 
                 规则：
-                1. 一句话或一段话里的多项独立要求分别输出，不要合并成一条。
+                1. 一句话或一段话里的多项独立要求分别输出，不要合并成一条；但同一对象
+                   （教师/课程/行政班）、同一约束类型、同一强度的多个星期/时段要合并为一条建议，
+                   用 days/periods 展开，不要拆成多条。
                 2. 只使用目录内的类型。现有类型无法精确表达时 status=UNSUPPORTED 并说明原因；
                    不得用相近类型近似，也不得扩大或缩小作用范围。
                 3. 缺少教师/课程/行政班/星期/课节/数量时 status=NEEDS_INPUT，保留已经明确的部分，
@@ -68,7 +70,8 @@ public class ConstraintProposalPrompt {
                    allDays=true 表示每个实际上课日。
                 7. 课节不在本学期作息内、数值超出范围时 status=INVALID 并说明，不要截断或自动创建课节。
                 8. “每天/每个班/全部课程”等全体范围要明确表达；不要用空列表表示全体。
-                9. 只输出 JSON，不要 Markdown、不要解释文字。
+                9. 只输出 JSON，不要 Markdown、不要解释文字；explanation 和 reason 各用一句话，
+                   不要展开推理。
                 """.formatted(catalogue);
     }
 
