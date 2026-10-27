@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 本地闸门。默认：后端全量测试 + 前端 lint/build/unit/SFC + 后端 isBlank 棘轮；--full 追加 Playwright；
-# --quick 只做后端编译 + 前端 lint/build/unit/SFC + isBlank，迭代期用。
+# --quick 只做后端编译 + 前端 lint/build/unit/SFC + isBlank，迭代期用；
+# --deploy = --full + 要求 Docker（真跑 PostgresContainerIT），发布前用。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -12,11 +13,13 @@ if [[ -f .tools/env.sh ]]; then
 fi
 
 MODE=default
+REQUIRE_DOCKER=0
 case "${1:-}" in
   --full) MODE=full ;;
+  --deploy) MODE=full; REQUIRE_DOCKER=1 ;;
   --quick) MODE=quick ;;
   "") ;;
-  *) echo "usage: verify.sh [--full|--quick]" >&2; exit 2 ;;
+  *) echo "usage: verify.sh [--full|--deploy|--quick]" >&2; exit 2 ;;
 esac
 
 if [[ $MODE == quick ]]; then
@@ -26,8 +29,12 @@ else
   MVN_ARGS=(-B verify)
   if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     MVN_ARGS+=(-Dtestcontainers=true)
+  elif [[ $REQUIRE_DOCKER -eq 1 ]]; then
+    echo "==> Docker is required for --deploy: PostgresContainerIT must run against real PostgreSQL" >&2
+    echo "    Start Docker, or use --full to skip that test deliberately." >&2
+    exit 1
   else
-    echo "==> 未检测到 Docker：跳过 PostgresContainerIT（CI 会真跑）"
+    echo "==> Docker not found: skipping PostgresContainerIT (CI runs it; --deploy requires Docker)"
   fi
 
   echo "==> backend: ./mvnw ${MVN_ARGS[*]}"
@@ -45,6 +52,9 @@ bash scripts/check-sfc-size.sh
 
 echo "==> backend: isBlank ratchet"
 bash scripts/check-blank-checks.sh
+
+echo "==> backend: migration versions"
+bash scripts/check-migrations.sh
 
 if [[ $MODE == full ]]; then
   echo "==> e2e: Playwright（隔离端口 28080/25173，不复用本地 dev 服务）"

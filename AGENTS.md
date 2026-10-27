@@ -37,7 +37,8 @@
 
 - 构建前 `source .tools/env.sh`：JDK 21、Maven、E 盘仓库；`scripts/verify.sh` 会在 `.tools/env.sh` 存在时自动 source
 - 首次检出后执行 `git config core.hooksPath .githooks`：pre-commit 只对 staged 的 `frontend/**` 跑 eslint（`npm run lint` 覆盖全量，本地钩子只挡增量）；pre-push 在分支未包含 `origin/main` 时阻止推送。
-- `scripts/verify.sh` — 本地闸门，与 CI 同一条路径；`--full` 用隔离端口 28080/25173 跑 Playwright（可用 `PAIBAN_E2E_BACKEND_PORT` / `PAIBAN_E2E_FRONTEND_PORT` 覆盖），`--quick` 只做后端编译 + 前端 lint/build/unit，迭代期用
+- `scripts/verify.sh` — 本地闸门，与 CI 同一条路径；`--full` 用隔离端口 28080/25173 跑 Playwright（可用 `PAIBAN_E2E_BACKEND_PORT` / `PAIBAN_E2E_FRONTEND_PORT` 覆盖），`--quick` 只做后端编译 + 前端 lint/build/unit，迭代期用；`--deploy` 在 `--full` 基础上要求 Docker 真跑 `PostgresContainerIT`，没有 Docker 直接失败
+- 并行分支新增 Flyway 迁移前，先查所有 worktree/分支已占用的最高版本，按合并顺序续号（允许跳号）；`scripts/check-migrations.sh` 在本地闸门与 CI 拦重复版本
 - 单条 E2E 用 `scripts/e2e.sh <spec>`：自动 source `.tools/env.sh`、隔离端口，并把 Git Bash 下的 Maven 路径转成 Windows 绝对路径
 - 多票据 worktree：用 `scripts/worktree-add.sh <name> <branch> [base]` 创建、`scripts/worktree-remove.sh <name>` 清理；脚本会联接 `frontend/node_modules` 和 `.tools`（`--full` 需要），不要直接 `rm -rf`（会顺着 junction 删主仓库依赖）
 - 多票并行时每票只跑定向测试；全量 `verify.sh` 只在集成分支合并完成后跑一次，合并时只跑受影响范围。
