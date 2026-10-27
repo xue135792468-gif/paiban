@@ -7,6 +7,9 @@ import AiDataImportView from './AiDataImportView.vue'
 const httpMock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() }))
 vi.mock('@/api/http', () => ({ http: httpMock, AI_IMPORT_TIMEOUT_MS: 300000 }))
 
+/** Every mounted view is unmounted after the test so its poll timer cannot leak. */
+const mountedWrappers: VueWrapper[] = []
+
 /** The abandon flow asks before it throws the import away; the answer is the test's. */
 const confirmMock = vi.hoisted(() => vi.fn())
 vi.mock('element-plus', async (importOriginal) => {
@@ -56,6 +59,7 @@ async function mountImport(
   await router.push(path)
   await router.isReady()
   const wrapper = mount(AiDataImportView, { global: { plugins: [router, ElementPlus] } })
+  mountedWrappers.push(wrapper)
   await flushPromises()
   return { wrapper, router }
 }
@@ -88,6 +92,17 @@ function button(wrapper: VueWrapper, label: string) {
 }
 
 beforeEach(() => {
+  localStorage.clear()
+})
+
+/**
+ * A parse started in one test can finish after the test ended; drain it and clear the
+ * record before the next test, otherwise a late rememberSession leaks across cases.
+ */
+afterEach(async () => {
+  vi.useRealTimers()
+  mountedWrappers.splice(0).forEach((wrapper) => wrapper.unmount())
+  await flushPromises()
   localStorage.clear()
 })
 
