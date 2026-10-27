@@ -173,7 +173,7 @@ public class ConstraintProposalService {
                     List.of(AiMessage.system(prompt.system()),
                             AiMessage.user(prompt.user(contextJson, text))),
                     List.of(),
-                    new AiOptions(null, 4096, true)
+                    new AiOptions(null, 8192, true)
                             .withLimits(TASK_TIMEOUT_SECONDS, 1))
                     .withSubject("CONSTRAINT_GENERATION", run.getId()));
         } catch (RuntimeException ex) {

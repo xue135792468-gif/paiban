@@ -8,7 +8,7 @@ import java.math.RoundingMode;
  *
  * <p>Every issued call reserves its <em>worst-case</em> cost before it is sent: the
  * input upper bound is the prompt's character count (a conservative token bound for
- * Chinese text) and the output bound is the task's 4096-token cap. The guard never
+ * Chinese text) and the output bound is the task's 8192-token cap. The guard never
  * lets the reserved total exceed the budget, so failures and timeouts — which may
  * still be billed — cannot push the round over it. Actual usage is reported next to
  * the reservation; it never relaxes the guard.
@@ -16,7 +16,7 @@ import java.math.RoundingMode;
 public final class ConstraintEvaluationBudget {
 
     private static final BigDecimal THOUSAND = BigDecimal.valueOf(1000);
-    private static final BigDecimal OUTPUT_TOKEN_CAP = BigDecimal.valueOf(4096);
+    private static final BigDecimal OUTPUT_TOKEN_CAP = BigDecimal.valueOf(8192);
 
     private final BigDecimal budget;
     private final BigDecimal priceInputPer1k;

@@ -202,7 +202,7 @@ public class ConstraintEvaluationRunner {
                                 List.of(AiMessage.system(prompt.system()),
                                         AiMessage.user(prompt.user())),
                                 List.of(),
-                                new AiOptions(null, 4096, true).withLimits(60, 1)));
+                                new AiOptions(null, 8192, true).withLimits(60, 1)));
                 ConstraintEvaluationHarness.Attempt evaluated = harness.evaluate(sentence, result);
                 guard.recordActual(result.inputTokens(), result.outputTokens(), worst);
                 boolean passed = evaluated.verdict().passed();
