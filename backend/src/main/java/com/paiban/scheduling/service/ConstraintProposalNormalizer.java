@@ -145,11 +145,16 @@ public final class ConstraintProposalNormalizer {
         }
         if (INVALID.equals(modelStatus) || NEEDS_INPUT.equals(modelStatus)) {
             String status = INVALID.equals(modelStatus) ? INVALID : NEEDS_INPUT;
+            // Even when the model already says "needs input", the server still offers
+            // the concrete candidates it can see: a homonym must be a choice, not a
+            // sentence the user has to decode.
+            List<ProposalCandidateDto> candidates = NEEDS_INPUT.equals(modelStatus)
+                    ? candidatesFor(node, context) : List.of();
             return proposal(proposalId, sourceText, type.name(), type.getDisplayName(),
                     strengthOf(node, type), effectiveHard(node, type),
                     effectiveWeight(node, type), status, explanation,
                     modelReason.isBlank() ? "这条要求还需要补充信息" : modelReason,
-                    Map.of(), List.of(), List.of());
+                    Map.of(), List.of(), candidates);
         }
 
         String strength = strengthOf(node, type);
@@ -415,6 +420,27 @@ public final class ConstraintProposalNormalizer {
     }
 
     // ------------------------------------------------------------------ names
+
+    /** The choices the server can show for names the model left unresolved. */
+    private static List<ProposalCandidateDto> candidatesFor(JsonNode node, Context context) {
+        Attempt attempt = new Attempt();
+        String teacher = text(node, "teacherName");
+        if (!teacher.isBlank()) {
+            resolve("teacherId", "教师", teacher, context.teachers().stream()
+                    .map(ref -> new Named(ref.id(), ref.name())).toList(), attempt, true);
+        }
+        String course = text(node, "courseName");
+        if (!course.isBlank()) {
+            resolve("courseId", "课程", course, context.courses().stream()
+                    .map(ref -> new Named(ref.id(), ref.name())).toList(), attempt, false);
+        }
+        String className = text(node, "className");
+        if (!className.isBlank()) {
+            resolve("classId", "行政班", className, context.classes().stream()
+                    .map(ref -> new Named(ref.id(), ref.name())).toList(), attempt, false);
+        }
+        return List.copyOf(attempt.candidates);
+    }
 
     private static Long requiredTeacher(JsonNode node, Context context, Attempt attempt) {
         String name = text(node, "teacherName");
