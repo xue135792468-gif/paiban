@@ -13,6 +13,7 @@ Docker 一律 `sudo -n`。代码变更才需要重建；纯文档变更只要 `u
    `sudo -n docker exec paiban-postgres-1 pg_dump -U paiban paiban | gzip > ~/backups/paiban/paiban-pre-$(date -u +%Y%m%dT%H%M%SZ).sql.gz`
    判定：文件非空且 `gzip -t` 通过。
 2. **同步代码**：`cd ~/paiban && git pull --ff-only`。判定：`git log --oneline -1` 与 `origin/main` 一致；**不要用写死的 commit 哈希做验收**。
+   若报 `insufficient permission for adding an object to repository database .git/objects`，说明 `.git` 里有 root 属主对象：先 `sudo -n chown -R ubuntu:ubuntu ~/paiban/.git`，不要用 `sudo git` 跑部署。
 3. **构建（必须后台）**：
    `sudo -n sh -c 'cd /home/ubuntu/paiban && setsid nohup docker compose -f docker-compose.prod.yml -f docker-compose.override.yml build backend frontend > /home/ubuntu/ops/paiban-build.log 2>&1 &'`
    轮询（日志属 root，读取要 `sudo -n`）：`sudo -n tail -n 20 /home/ubuntu/ops/paiban-build.log`
