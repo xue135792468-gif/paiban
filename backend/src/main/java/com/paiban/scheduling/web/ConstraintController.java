@@ -132,8 +132,10 @@ public class ConstraintController {
             @PathVariable Long id,
             @RequestParam(required = false) Long semesterId,
             @RequestParam(required = false) Long baseVersion,
-            @RequestBody(required = false) TemplateApplyRequest request) {
-        return service.applyTemplate(id, semesterId, request, baseVersion);
+            @RequestBody(required = false) TemplateApplyRequest request,
+            Authentication authentication) {
+        return service.applyTemplate(id, semesterId, request, baseVersion,
+                authentication == null ? null : authentication.getName());
     }
 
     /**

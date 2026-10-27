@@ -51,6 +51,71 @@
     />
 
     <el-alert
+      v-if="workspaceStale"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="error-bar"
+      data-testid="constraint-workspace-stale"
+    >
+      <template #title>生效配置已被他人更新</template>
+      <p class="error-copy">
+        恢复的未保存修改仍保留；保存时会要求你核对最新配置后再写入。
+      </p>
+    </el-alert>
+
+    <el-alert
+      v-if="workspaceIssues.length > 0"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="error-bar"
+      data-testid="constraint-workspace-issues"
+    >
+      <template #title>恢复的未保存内容需要复核</template>
+      <p v-for="(issue, index) in workspaceIssues" :key="index" class="error-copy">{{ issue }}</p>
+    </el-alert>
+
+    <el-alert
+      v-if="workspaceError"
+      type="error"
+      :closable="false"
+      show-icon
+      class="error-bar"
+      data-testid="constraint-workspace-error"
+    >
+      <template #title>暂存失败，跨设备恢复尚未更新</template>
+      <p class="error-copy">{{ workspaceError }}</p>
+    </el-alert>
+
+    <el-alert
+      v-if="workspaceConflict"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="error-bar"
+      data-testid="constraint-workspace-conflict"
+    >
+      <template #title>另一台设备更新了未保存工作</template>
+      <p class="error-copy">
+        本地内容仍保留。请选择继续本地版本，或加载另一台设备的未保存版本。
+      </p>
+      <div class="conflict-actions">
+        <el-button size="small" data-testid="constraint-workspace-keep" @click="keepLocalWorkspace">
+          保留我的
+        </el-button>
+        <el-button
+          size="small"
+          type="primary"
+          data-testid="constraint-workspace-remote"
+          @click="loadRemoteWorkspace"
+        >
+          加载另一台设备
+        </el-button>
+      </div>
+    </el-alert>
+
+    <el-alert
       v-if="aiOutcomes.length > 0"
       :type="aiOutcomeType"
       :closable="true"
@@ -80,7 +145,7 @@
       <ConstraintSummaryBar
         v-if="semesterId"
         :counts="counts"
-        :dirty="dirty"
+        :dirty="dirty || conflict !== null"
         :can-manage="canManage"
         :saving="saving"
         @save="save"
@@ -195,7 +260,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
@@ -206,6 +271,11 @@ import ConstraintTemplateBar from '@/components/constraints/ConstraintTemplateBa
 import ConstraintAiPanel from '@/components/constraints/ConstraintAiPanel.vue'
 import { useConstraintDraft } from '@/components/constraints/useConstraintDraft'
 import { useConstraintSave } from '@/components/constraints/useConstraintSave'
+import {
+  useConstraintWorkspace,
+  type WorkspaceDto,
+  type WorkspacePayload,
+} from '@/components/constraints/useConstraintWorkspace'
 import type {
   ConstraintConfigDto,
   ConstraintTypeDef,
@@ -238,10 +308,30 @@ const isJunior = computed(() => settings.isJunior)
 const draft = useConstraintDraft()
 const { counts, groups, selected, selectedCode, dirty } = draft
 
-const aiPanel = ref<InstanceType<typeof ConstraintAiPanel> | null>(null)
+interface AiPanelHandle {
+  loadAudits: () => void | Promise<void>
+  clearSelection: () => void
+  workspaceState: () => {
+    text: string
+    runId: number | null
+    selectedProposalIds: string[]
+    resolved: Record<string, ConstraintProposal>
+  }
+  restoreState: (payload: WorkspacePayload) => Promise<void>
+}
+
+const aiPanel = ref<AiPanelHandle | null>(null)
 const aiRunId = ref<number | null>(null)
 const aiDecisions = ref<SaveDecision[]>([])
 const aiOutcomes = ref<{ proposalId: string; action: string; message: string }[]>([])
+const catalogue = ref<ConstraintTypeDef[]>([])
+const workspaceStale = ref(false)
+const workspaceIssues = ref<string[]>([])
+const restoringWorkspace = ref(false)
+const suppressAutosave = ref(false)
+const effectivePayloadJson = ref('')
+let lastWorkspaceSignature = ''
+let autosaveTimer: ReturnType<typeof setTimeout> | null = null
 
 const semesters = ref<Semester[]>([])
 const semesterId = ref<number | null>(null)
@@ -249,6 +339,9 @@ const teachers = ref<OptionItem[]>([])
 const courses = ref<OptionItem[]>([])
 const classes = ref<OptionItem[]>([])
 const loading = ref(false)
+
+const workspace = useConstraintWorkspace({ semesterId })
+const { conflict: workspaceConflict, error: workspaceError } = workspace
 
 function nameMapOf(options: OptionItem[]): Map<number, string> {
   return new Map(options.map((item) => [item.id, item.name]))
@@ -283,8 +376,12 @@ const { saving, saveMessage, saveReport, conflict, save, takeTheirs, keepMine, c
   relaxations: () => draft.relaxations(objectNames.value),
   meta: () => ({ runId: aiRunId.value, decisions: aiDecisions.value }),
   onSaved: () => {
+    // The successful save is the new truth; the workspace is deleted server-side.
+    suppressAutosave.value = true
+    workspace.reset()
     aiDecisions.value = []
     aiRunId.value = null
+    aiOutcomes.value = []
     void aiPanel.value?.loadAudits()
   },
   reload: () => loadConstraints(),
@@ -469,6 +566,139 @@ const onSetThresholdExceptionHard = (key: string, value: boolean | null) =>
 const onSetThresholdExceptionWeight = (key: string, value: number | null) =>
   withSelected((code) => draft.setThresholdExceptionWeight(code, key, value))
 
+// ------------------------------------------------------- cross-device workspace (14/11)
+
+function workspacePayload(): WorkspacePayload {
+  const ai = aiPanel.value?.workspaceState()
+  return {
+    text: ai?.text ?? '',
+    runId: ai?.runId ?? aiRunId.value,
+    selectedProposalIds: ai?.selectedProposalIds ?? [],
+    resolved: ai?.resolved ?? {},
+    decisions: aiDecisions.value,
+    configs: draft.payload(),
+    isJunior: isJunior.value,
+  }
+}
+
+const workspaceSignature = computed(() =>
+  JSON.stringify({
+    configs: draft.payload(),
+    ai: aiPanel.value?.workspaceState() ?? null,
+    runId: aiRunId.value,
+    decisions: aiDecisions.value,
+  }),
+)
+
+function scheduleAutosave() {
+  if (autosaveTimer) {
+    clearTimeout(autosaveTimer)
+  }
+  autosaveTimer = setTimeout(() => {
+    autosaveTimer = null
+    void autosaveWorkspace()
+  }, 800)
+}
+
+async function autosaveWorkspace() {
+  if (suppressAutosave.value || restoringWorkspace.value || !semesterId.value) {
+    return
+  }
+  const signature = workspaceSignature.value
+  if (signature === lastWorkspaceSignature) {
+    return
+  }
+  const ai = aiPanel.value?.workspaceState()
+  const hasWork = draft.dirty.value || (ai?.text ?? '') !== '' || aiDecisions.value.length > 0
+  if (!hasWork) {
+    return
+  }
+  const result = await workspace.save(workspacePayload(), draft.baseVersion.value)
+  if (result === 'SAVED') {
+    lastWorkspaceSignature = signature
+  }
+}
+
+async function applyWorkspace(
+  restored: WorkspaceDto,
+  currentVersion: number,
+  effectiveSnapshot: string,
+) {
+  draft.hydrate(
+    catalogue.value,
+    (restored.payload.configs ?? []) as unknown as ConstraintConfigDto[],
+    { isJunior: isJunior.value },
+  )
+  draft.setBaseVersion(currentVersion)
+  draft.setSnapshot(effectiveSnapshot)
+  await nextTick()
+  await aiPanel.value?.restoreState(restored.payload)
+  aiRunId.value = restored.payload.runId ?? null
+  aiDecisions.value = restored.payload.decisions ?? []
+  workspaceStale.value = restored.baseVersion !== currentVersion
+  workspaceIssues.value = [
+    ...(restored.errors ?? []),
+    ...(restored.invalidReferences ?? []).map((issue) => JSON.stringify(issue)),
+  ]
+}
+
+async function restoreWorkspace() {
+  const currentVersion = draft.baseVersion.value
+  const effectiveSnapshot = effectivePayloadJson.value
+  restoringWorkspace.value = true
+  try {
+    const restored = await workspace.load()
+    if (!restored) {
+      workspaceStale.value = false
+      workspaceIssues.value = []
+      return
+    }
+    await applyWorkspace(restored, currentVersion, effectiveSnapshot)
+  } finally {
+    restoringWorkspace.value = false
+    await nextTick()
+    lastWorkspaceSignature = workspaceSignature.value
+    suppressAutosave.value = false
+  }
+}
+
+async function keepLocalWorkspace() {
+  workspace.adoptServerRevision()
+  const result = await workspace.save(workspacePayload(), draft.baseVersion.value)
+  if (result === 'SAVED') {
+    lastWorkspaceSignature = workspaceSignature.value
+  }
+}
+
+async function loadRemoteWorkspace() {
+  const remote = workspaceConflict.value
+  if (!remote) {
+    return
+  }
+  const currentVersion = draft.baseVersion.value
+  workspace.adoptServerRevision()
+  restoringWorkspace.value = true
+  try {
+    await applyWorkspace(remote, currentVersion, effectivePayloadJson.value)
+  } finally {
+    restoringWorkspace.value = false
+    await nextTick()
+    lastWorkspaceSignature = workspaceSignature.value
+  }
+}
+
+watch(workspaceSignature, () => {
+  if (!suppressAutosave.value && !restoringWorkspace.value) {
+    scheduleAutosave()
+  }
+})
+
+onBeforeUnmount(() => {
+  if (autosaveTimer) {
+    clearTimeout(autosaveTimer)
+  }
+})
+
 async function loadSemesters() {
   try {
     const [listRes, currentRes] = await Promise.all([
@@ -544,7 +774,10 @@ async function loadConstraints() {
       isJunior: isJunior.value,
     })
     draft.setBaseVersion(stateRes.data?.version ?? 0)
+    catalogue.value = typeRes.data ?? []
+    effectivePayloadJson.value = JSON.stringify(draft.payload())
     clearErrors()
+    await restoreWorkspace()
   } catch (e: any) {
     ElMessage.error(serverMessage(e, '加载约束配置失败'))
   } finally {
@@ -554,6 +787,8 @@ async function loadConstraints() {
 
 async function onSemesterChange() {
   clearErrors()
+  workspace.reset()
+  lastWorkspaceSignature = ''
   await loadConstraints()
 }
 

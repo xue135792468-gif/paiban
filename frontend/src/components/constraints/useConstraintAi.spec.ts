@@ -165,6 +165,70 @@ describe('useConstraintAi', () => {
     await pending
   })
 
+  it('恢复工作区时载入原话、选中项和补齐结果，不调用模型', async () => {
+    httpMock.get.mockResolvedValue({
+      data: {
+        run: run({
+          proposals: [
+            {
+              proposalId: 'p1',
+              sourceText: '张老师周三不排',
+              type: 'TEACHER_UNAVAILABLE',
+              typeName: '教师禁排时段',
+              strength: 'HARD',
+              effectiveHard: true,
+              effectiveWeight: null,
+              status: 'NEEDS_INPUT',
+              explanation: '',
+              reason: '同名',
+              params: {},
+              entries: [],
+              candidates: [],
+            },
+          ],
+        }),
+        rawResponse: '{}',
+        modelContent: '{}',
+        lateResponse: null,
+        contextJson: '{}',
+      },
+    })
+    const ai = useConstraintAi({ semesterId: ref(1) })
+    await ai.restoreState({
+      text: '改过的原话',
+      runId: 7,
+      selectedProposalIds: ['p1'],
+      resolved: {
+        p1: {
+          proposalId: 'p1',
+          sourceText: '张老师周三不排',
+          type: 'TEACHER_UNAVAILABLE',
+          typeName: '教师禁排时段',
+          strength: 'SOFT',
+          effectiveHard: false,
+          effectiveWeight: 40,
+          status: 'READY',
+          explanation: '',
+          reason: '',
+          params: {},
+          entries: [{ params: { teacherId: 3, dayOfWeek: 3, periodNo: 1 } }],
+          candidates: [],
+        },
+      },
+    })
+
+    expect(ai.text.value).toBe('改过的原话')
+    expect(ai.selectedIds.value).toEqual(['p1'])
+    expect(ai.proposals.value[0].status).toBe('READY')
+    expect(ai.selectedProposals.value).toHaveLength(1)
+    expect(httpMock.post).not.toHaveBeenCalled()
+    expect(ai.workspaceState()).toMatchObject({
+      text: '改过的原话',
+      runId: 7,
+      selectedProposalIds: ['p1'],
+    })
+  })
+
   it('打开本人记录时载入原始输出，供核对', async () => {
     httpMock.get.mockResolvedValue({
       data: {

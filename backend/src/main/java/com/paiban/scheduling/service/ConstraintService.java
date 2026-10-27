@@ -25,6 +25,7 @@ import com.paiban.scheduling.domain.ConstraintGenerationRun;
 import com.paiban.scheduling.domain.ConstraintGenerationRunRepository;
 import com.paiban.scheduling.domain.ConstraintSaveAudit;
 import com.paiban.scheduling.domain.ConstraintSaveAuditRepository;
+import com.paiban.scheduling.domain.ConstraintWorkspaceRepository;
 import com.paiban.scheduling.domain.ConstraintEntryRepository;
 import com.paiban.scheduling.domain.ConstraintTemplate;
 import com.paiban.scheduling.domain.ConstraintTemplateRepository;
@@ -86,6 +87,7 @@ public class ConstraintService {
     private final ConstraintEntryRepository entries;
     private final ConstraintSaveAuditRepository audits;
     private final ConstraintGenerationRunRepository generationRuns;
+    private final ConstraintWorkspaceRepository workspaces;
     private final ConstraintTemplateRepository templates;
     private final SemesterService semesters;
     private final TeacherRepository teachers;
@@ -101,6 +103,7 @@ public class ConstraintService {
             ConstraintEntryRepository entries,
             ConstraintSaveAuditRepository audits,
             ConstraintGenerationRunRepository generationRuns,
+            ConstraintWorkspaceRepository workspaces,
             ConstraintTemplateRepository templates,
             SemesterService semesters,
             TeacherRepository teachers,
@@ -114,6 +117,7 @@ public class ConstraintService {
         this.entries = entries;
         this.audits = audits;
         this.generationRuns = generationRuns;
+        this.workspaces = workspaces;
         this.templates = templates;
         this.semesters = semesters;
         this.teachers = teachers;
@@ -201,6 +205,11 @@ public class ConstraintService {
         advanceState(resolved, base);
         List<ConstraintConfigDto> result = persist(resolved, planning.configs());
         recordAudit(resolved, base + 1, audit, decisions, result);
+        // The successful save is the new truth: this account's unsaved draft must not
+        // resurrect afterwards, on this device or another.
+        if (audit.userId() != null) {
+            workspaces.deleteByUserIdAndSemesterId(audit.userId(), resolved);
+        }
         return result;
     }
 
@@ -646,6 +655,13 @@ public class ConstraintService {
     @Transactional
     public List<ConstraintConfigDto> applyTemplate(
             Long templateId, Long semesterId, TemplateApplyRequest request, Long baseVersion) {
+        return applyTemplate(templateId, semesterId, request, baseVersion, null);
+    }
+
+    @Transactional
+    public List<ConstraintConfigDto> applyTemplate(
+            Long templateId, Long semesterId, TemplateApplyRequest request, Long baseVersion,
+            String actor) {
         Long resolved = resolveSemester(semesterId);
         long base = requireVersion(resolved, baseVersion);
         List<ConstraintConfigRequest> snapshot = prepareSnapshot(
@@ -658,7 +674,14 @@ public class ConstraintService {
                     refusalBody(planning));
         }
         advanceState(resolved, base);
-        return persist(resolved, planning.configs());
+        List<ConstraintConfigDto> result = persist(resolved, planning.configs());
+        // Applying a template also changes the effective configuration; the caller's
+        // stale unsaved draft must not come back after it.
+        Long userId = userIdOf(actor);
+        if (userId != null) {
+            workspaces.deleteByUserIdAndSemesterId(userId, resolved);
+        }
+        return result;
     }
 
     /**

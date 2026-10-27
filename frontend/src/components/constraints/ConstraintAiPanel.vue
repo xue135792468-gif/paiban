@@ -245,6 +245,8 @@ const {
   toggleSelected,
   clearSelection,
   resolveProposal,
+  workspaceState,
+  restoreState,
 } = useConstraintAi({
   semesterId: computed(() => props.semesterId),
   canReadAll: () => props.canReadAll,
@@ -266,7 +268,7 @@ function onAdd() {
   emit('add', { runId: current.id, proposals: selectedProposals.value })
 }
 
-defineExpose({ loadAudits, clearSelection })
+defineExpose({ loadAudits, clearSelection, workspaceState, restoreState })
 
 const elapsed = ref(0)
 let timer: ReturnType<typeof setInterval> | null = null

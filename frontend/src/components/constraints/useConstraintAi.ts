@@ -344,6 +344,31 @@ export function useConstraintAi(options: {
     }
   }
 
+  /** The part of the unsaved work this panel owns, for the workspace autosave. */
+  function workspaceState() {
+    return {
+      text: text.value,
+      runId: run.value?.id ?? null,
+      selectedProposalIds: [...selectedIds.value],
+      resolved: resolved.value,
+    }
+  }
+
+  /** Rebuilds the panel from a restored workspace; no model call is made. */
+  async function restoreState(payload: {
+    text?: string
+    runId?: number | null
+    selectedProposalIds?: string[]
+    resolved?: Record<string, ConstraintProposal>
+  }) {
+    selectedIds.value = payload.selectedProposalIds ?? []
+    resolved.value = payload.resolved ?? {}
+    if (payload.runId) {
+      await openRun(payload.runId)
+    }
+    text.value = payload.text ?? ''
+  }
+
   /** Called when the semester changes: a run of another semester is not shown here. */
   function reset() {
     run.value = null
@@ -386,6 +411,8 @@ export function useConstraintAi(options: {
     selectedIds,
     loadAudits,
     audits,
+    workspaceState,
+    restoreState,
     reset,
   }
 }

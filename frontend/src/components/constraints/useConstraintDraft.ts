@@ -280,6 +280,11 @@ export function useConstraintDraft() {
     baseVersion.value = version
   }
 
+  /** Marks the current rows as "dirty relative to this payload" (used after a restore). */
+  function setSnapshot(json: string) {
+    snapshot.value = json
+  }
+
   /**
    * Rebuilds the editor from a merged configuration after a conflict, keeping the
    * catalogue and the selected type. The result is unsaved until the caller succeeds.
@@ -777,6 +782,7 @@ export function useConstraintDraft() {
     hydrate,
     rehydrate,
     setBaseVersion,
+    setSnapshot,
     snapshotRows,
     restoreRows,
     applyProposal,

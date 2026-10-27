@@ -401,7 +401,7 @@ class ConstraintProposalIntegrationTest extends ApiIntegrationTest {
         String token = adminToken();
         long semesterId = semesterWithPeriods(token);
         String teacherName = "王明" + TestData.suffix();
-        TestData.teacher(token, teacherName);
+        long teacherId = TestData.teacher(token, teacherName);
         gateway.respond = ok("""
                 {"proposals":[{"sourceText":"王老师周三不排","type":"TEACHER_UNAVAILABLE",
                 "strength":"HARD","status":"READY","teacherName":"%s","days":[3],
@@ -410,7 +410,7 @@ class ConstraintProposalIntegrationTest extends ApiIntegrationTest {
                 .jsonPath().getLong("id");
 
         List<Map<String, Object>> entries = List.of(Map.of(
-                "params", Map.of("teacherId", 1, "dayOfWeek", 3, "periodNo", 1),
+                "params", Map.of("teacherId", teacherId, "dayOfWeek", 3, "periodNo", 1),
                 "enabled", true, "hard", true));
         List<Map<String, Object>> decisions = List.of(Map.of(
                 "proposalId", "p1", "action", "ADDED", "type", "TEACHER_UNAVAILABLE",
