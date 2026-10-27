@@ -49,11 +49,14 @@ test.describe.serial('约束配置：课程禁排时段与逐项控制', () => {
 
   async function pickOption(scope: Locator, field: string, text: string) {
     await scope.getByTestId(field).click()
-    const option = scope
+    const options = scope
       .page()
-      .locator('.el-select-dropdown:visible .el-select-dropdown__item')
-      .filter({ hasText: text })
-      .first()
+      .locator('.el-select-dropdown:visible')
+      .last()
+      .locator('.el-select-dropdown__item')
+    // No contains-fallback: the retry inside toBeVisible waits for the dropdown to
+    // render instead of silently clicking "继承类型（尽量）" for "尽量".
+    const option = options.filter({ hasText: new RegExp(`^${text}$`) }).first()
     await expect(option).toBeVisible()
     await option.click()
   }
@@ -164,7 +167,7 @@ test.describe.serial('约束配置：课程禁排时段与逐项控制', () => {
     await openCourseUnavailable(page)
     const card = entryCards(page).first()
     await card.getByTestId('constraint-entry-enabled').click()
-    await pickOption(card, 'constraint-entry-hard', '继承类型')
+    await pickOption(card, 'constraint-entry-hard', '继承类型（必须）')
 
     await page.getByTestId('constraint-save').click()
     await expect(page.getByTestId('constraint-unsaved')).toHaveCount(0)

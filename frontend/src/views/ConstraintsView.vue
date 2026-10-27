@@ -128,6 +128,12 @@
             @set-entry-enabled="onSetEntryEnabled"
             @set-entry-hard="onSetEntryHard"
             @set-entry-weight="onSetEntryWeight"
+            @set-threshold-global-enabled="onSetThresholdGlobalEnabled"
+            @set-threshold-global-hard="onSetThresholdGlobalHard"
+            @set-threshold-global-weight="onSetThresholdGlobalWeight"
+            @set-threshold-exception-enabled="onSetThresholdExceptionEnabled"
+            @set-threshold-exception-hard="onSetThresholdExceptionHard"
+            @set-threshold-exception-weight="onSetThresholdExceptionWeight"
           />
         </div>
       </el-card>
@@ -207,6 +213,7 @@ const { saving, saveMessage, saveReport, save, clearErrors } = useConstraintSave
   draft,
   semesterId,
   conflicts,
+  relaxations: () => draft.relaxations(objectNames.value),
   reload: () => loadConstraints(),
 })
 
@@ -271,6 +278,18 @@ const onSetEntryHard = (key: string, value: boolean | null) =>
   withSelected((code) => draft.setEntryHard(code, key, value))
 const onSetEntryWeight = (key: string, value: number | null) =>
   withSelected((code) => draft.setEntryWeight(code, key, value))
+const onSetThresholdGlobalEnabled = (value: boolean) =>
+  withSelected((code) => draft.setThresholdGlobalEnabled(code, value))
+const onSetThresholdGlobalHard = (value: boolean | null) =>
+  withSelected((code) => draft.setThresholdGlobalHard(code, value))
+const onSetThresholdGlobalWeight = (value: number | null) =>
+  withSelected((code) => draft.setThresholdGlobalWeight(code, value))
+const onSetThresholdExceptionEnabled = (key: string, value: boolean) =>
+  withSelected((code) => draft.setThresholdExceptionEnabled(code, key, value))
+const onSetThresholdExceptionHard = (key: string, value: boolean | null) =>
+  withSelected((code) => draft.setThresholdExceptionHard(code, key, value))
+const onSetThresholdExceptionWeight = (key: string, value: number | null) =>
+  withSelected((code) => draft.setThresholdExceptionWeight(code, key, value))
 
 async function loadSemesters() {
   try {

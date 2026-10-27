@@ -98,6 +98,12 @@
       @remove-exception="(key: string) => emit('remove-threshold-exception', key)"
       @set-exception-object="(key: string, value: unknown) => emit('set-threshold-object', key, value)"
       @set-exception-value="(key: string, value: unknown) => emit('set-threshold-value', key, value)"
+      @set-global-enabled="(value: boolean) => emit('set-threshold-global-enabled', value)"
+      @set-global-hard="(value: boolean | null) => emit('set-threshold-global-hard', value)"
+      @set-global-weight="(value: number | null) => emit('set-threshold-global-weight', value)"
+      @set-exception-enabled="(key: string, value: boolean) => emit('set-threshold-exception-enabled', key, value)"
+      @set-exception-hard="(key: string, value: boolean | null) => emit('set-threshold-exception-hard', key, value)"
+      @set-exception-weight="(key: string, value: number | null) => emit('set-threshold-exception-weight', key, value)"
     />
   </section>
 </template>
@@ -145,6 +151,12 @@ const emit = defineEmits<{
   'set-entry-enabled': [key: string, value: boolean]
   'set-entry-hard': [key: string, value: boolean | null]
   'set-entry-weight': [key: string, value: number | null]
+  'set-threshold-global-enabled': [value: boolean]
+  'set-threshold-global-hard': [value: boolean | null]
+  'set-threshold-global-weight': [value: number | null]
+  'set-threshold-exception-enabled': [key: string, value: boolean]
+  'set-threshold-exception-hard': [key: string, value: boolean | null]
+  'set-threshold-exception-weight': [key: string, value: number | null]
 }>()
 
 /**

@@ -258,6 +258,40 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
         }
     }
 
+    /**
+     * Ticket 14: for every entry-backed type the <em>entry</em> override decides the
+     * verdict, in both directions. The type row carries the opposite choice, so a type
+     * that silently kept using its own default would fail here.
+     */
+    @ParameterizedTest(name = "逐项控制：{0}")
+    @MethodSource("catalogue")
+    void perEntryControlDecidesEveryEntryBackedType(Case spec) {
+        if (spec.switchType()) {
+            return;
+        }
+        String token = adminToken();
+        World world = prepare(token);
+        long draftId = draft(world, spec.lessons());
+
+        // Type says soft, entry says hard: the requirement must block.
+        save(token, world, List.of(config(spec, world, false, true))).then().statusCode(200);
+        assertThat(conflictCodes(token, draftId))
+                .as("%s 的条目设为必须后应阻断", spec.type())
+                .contains(spec.code());
+        assertThat(publishStatus(token, draftId))
+                .as("%s 的条目设为必须后应拒绝发布", spec.type())
+                .isEqualTo(409);
+
+        // Type says hard, entry says prefer: nothing blocks, but the fact is scored.
+        save(token, world, List.of(config(spec, world, true, false))).then().statusCode(200);
+        assertThat(conflictCodes(token, draftId))
+                .as("%s 的条目设为尽量后不应阻断", spec.type())
+                .doesNotContain(spec.code());
+        assertThat(softPenalty(world, spec.lessons()))
+                .as("%s 的条目设为尽量后应计入软约束扣分", spec.type())
+                .isPositive();
+    }
+
     /** A 25th type must not silently skip acceptance: the table and the enum move together. */
     @Test
     void theTableCoversTheWholeCatalogue() {
@@ -415,6 +449,18 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
         return config;
     }
 
+    /** The same row with the hard/soft choice written on every entry instead. */
+    private Map<String, Object> config(
+            Case spec, World world, boolean typeHard, boolean entryHard) {
+        Map<String, Object> config = new LinkedHashMap<>();
+        config.put("type", spec.type());
+        config.put("weight", spec.weight());
+        config.put("hard", typeHard);
+        config.put("enabled", true);
+        config.put("entries", entryPayloads(spec, world, entryHard));
+        return config;
+    }
+
     private Map<String, Object> switchConfig(String type, boolean enabled, boolean hard) {
         Map<String, Object> config = new LinkedHashMap<>();
         config.put("type", type);
@@ -429,6 +475,18 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
         List<Map<String, Object>> payloads = new ArrayList<>();
         for (Map<String, Object> entry : spec.entries()) {
             payloads.add(Map.of("params", resolve(world, entry)));
+        }
+        return payloads;
+    }
+
+    private List<Map<String, Object>> entryPayloads(
+            Case spec, World world, boolean entryHard) {
+        List<Map<String, Object>> payloads = new ArrayList<>();
+        for (Map<String, Object> entry : spec.entries()) {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("params", resolve(world, entry));
+            payload.put("hard", entryHard);
+            payloads.add(payload);
         }
         return payloads;
     }

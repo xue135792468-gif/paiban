@@ -9,7 +9,7 @@ import {
   isThresholdType,
   optionalTargetParam,
 } from './entryModel'
-import { emptyObjectNames, emptyThreshold, thresholdWarnings } from './thresholdModel'
+import { emptyObjectNames, emptyThreshold, thresholdRelaxations, thresholdWarnings } from './thresholdModel'
 import { hasValue } from './paramValues'
 import type {
   ConstraintConfigDto,
@@ -440,6 +440,13 @@ export function useConstraintDraft() {
     return conflictReport(rows.value, names)
   }
 
+  /** Per-object exceptions that loosen the global limit, in user-facing sentences. */
+  function relaxations(names: ObjectNames = emptyObjectNames()): string[] {
+    return rows.value.flatMap((row) =>
+      isThresholdType(row) ? thresholdRelaxations(row, names) : [],
+    )
+  }
+
   // ----------------------------------------------------------- thresholds (ticket 04)
 
   function thresholdOf(code: string): ThresholdDraft | undefined {
@@ -499,6 +506,50 @@ export function useConstraintDraft() {
     }
   }
 
+  // ------------------------------------------------ threshold scope controls (14/05)
+
+  function setThresholdGlobalEnabled(code: string, value: boolean) {
+    const draft = thresholdOf(code)
+    if (draft) {
+      draft.globalEnabled = value
+    }
+  }
+
+  function setThresholdGlobalHard(code: string, value: boolean | null) {
+    const draft = thresholdOf(code)
+    if (draft) {
+      draft.globalHard = value
+    }
+  }
+
+  function setThresholdGlobalWeight(code: string, value: number | null) {
+    const draft = thresholdOf(code)
+    if (draft) {
+      draft.globalWeight = value === null || Number.isNaN(value) ? null : Number(value)
+    }
+  }
+
+  function setThresholdExceptionEnabled(code: string, key: string, value: boolean) {
+    const exception = thresholdOf(code)?.exceptions.find((item) => item.key === key)
+    if (exception) {
+      exception.enabled = value
+    }
+  }
+
+  function setThresholdExceptionHard(code: string, key: string, value: boolean | null) {
+    const exception = thresholdOf(code)?.exceptions.find((item) => item.key === key)
+    if (exception) {
+      exception.hard = value
+    }
+  }
+
+  function setThresholdExceptionWeight(code: string, key: string, value: number | null) {
+    const exception = thresholdOf(code)?.exceptions.find((item) => item.key === key)
+    if (exception) {
+      exception.weight = value === null || Number.isNaN(value) ? null : Number(value)
+    }
+  }
+
   return {
     rows,
     selectedCode,
@@ -528,8 +579,15 @@ export function useConstraintDraft() {
     removeThresholdException,
     setThresholdExceptionObject,
     setThresholdExceptionValue,
+    setThresholdGlobalEnabled,
+    setThresholdGlobalHard,
+    setThresholdGlobalWeight,
+    setThresholdExceptionEnabled,
+    setThresholdExceptionHard,
+    setThresholdExceptionWeight,
     warnings,
     conflictsOf,
+    relaxations,
     payload,
   }
 }

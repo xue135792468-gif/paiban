@@ -159,6 +159,45 @@ export function thresholdWarnings(row: TypeDraft): string[] {
 }
 
 /**
+ * Exceptions that make the effective limit looser than the global default, either by a
+ * larger number or by hard → soft. The user has to see that (and confirm it) before
+ * saving: an exception replaces the global for that object, so the relaxed value is the
+ * one that will actually run (ticket 14/05).
+ */
+export function thresholdRelaxations(
+  row: TypeDraft,
+  names: ObjectNames = emptyObjectNames(),
+): string[] {
+  const draft = row.threshold
+  const shape = thresholdShape(row)
+  if (!draft || !shape || !hasValue(draft.globalValue)) {
+    return []
+  }
+  const globalHard = draft.globalHard ?? row.hard
+  const objectNames = namesForField(names, shape.objectField)
+  const messages: string[] = []
+  draft.exceptions.forEach((exception) => {
+    if (exception.objectId === null || !hasValue(exception.value)) {
+      return
+    }
+    const hard = exception.hard ?? row.hard
+    const looserNumber = Number(exception.value) > Number(draft.globalValue)
+    const looserStrength = globalHard && !hard
+    if (!looserNumber && !looserStrength) {
+      return
+    }
+    const object = objectNames.get(exception.objectId) ?? `#${exception.objectId}`
+    const actual = hard ? '必须' : '尽量'
+    const globalStrength = globalHard ? '必须' : '尽量'
+    messages.push(
+      `「${row.name}」：${object} 放宽为最多 ${exception.value} 节（${actual}），`
+        + `不再按全局默认最多 ${draft.globalValue} 节（${globalStrength}）执行。`,
+    )
+  })
+  return messages
+}
+
+/**
  * Two rows for the same scope (two global defaults, or two exceptions for the same
  * object) would leave "which value applies" to the read order, so the server refuses
  * the whole request. Predict exactly that here.

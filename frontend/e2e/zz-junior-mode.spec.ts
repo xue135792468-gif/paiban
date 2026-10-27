@@ -48,7 +48,8 @@ test.describe('初中模式', () => {
     await expect(page.getByText('同步策略')).toHaveCount(0)
     await expect(juniorRadio.locator('input')).toBeChecked()
 
-    // 约束配置：无权重、无模板区、无教研活动禁排，改为必须/尽量两档。
+    // 约束配置：无类型级权重滑块、无模板区，改为必须/尽量两档；教研活动禁排
+    // 在本轮修订后保留入口（ADR-0018），逐项重要程度仍按需在条目上展开。
     await page.goto('/admin/constraints')
     await expect(page.locator('.constraint-card').first()).toBeVisible()
     await expect(page.locator('.constraint-controls').getByText('必须').first()).toBeVisible()
@@ -56,7 +57,7 @@ test.describe('初中模式', () => {
     await expect(page.getByText('权重')).toHaveCount(0)
     await expect(page.getByText('存为模板')).toHaveCount(0)
     await expect(page.getByText('应用模板')).toHaveCount(0)
-    await expect(page.getByText('教研活动禁排')).toHaveCount(0)
+    await expect(page.getByText('教研活动禁排')).toBeVisible()
 
     // 课表：全校视角隐藏。
     await page.goto('/timetable')

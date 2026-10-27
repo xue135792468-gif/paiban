@@ -1,5 +1,5 @@
 import { ref, type Ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
 import { emptySaveErrors, parseSaveErrors, type SaveErrorReport } from './saveErrors'
@@ -17,6 +17,8 @@ export function useConstraintSave(options: {
   draft: ReturnType<typeof useConstraintDraft>
   semesterId: Ref<number | null>
   conflicts: Ref<string[]>
+  /** Exceptions that loosen a global limit; the user must confirm them explicitly. */
+  relaxations?: () => string[]
   reload: () => Promise<void>
 }) {
   const saving = ref(false)
@@ -39,6 +41,24 @@ export function useConstraintSave(options: {
         `请先填写必填参数：${warnings.slice(0, 3).join('、')}${warnings.length > 3 ? ' 等' : ''}`,
       )
       return
+    }
+    // A looser exception replaces the global limit for that object. Nothing is saved
+    // until the user has seen what will actually run.
+    const relaxations = options.relaxations?.() ?? []
+    if (relaxations.length > 0) {
+      try {
+        await ElMessageBox.confirm(
+          relaxations.join('\n'),
+          '确认放宽限制',
+          {
+            confirmButtonText: '确认放宽并保存',
+            cancelButtonText: '返回修改',
+            type: 'warning',
+          },
+        )
+      } catch {
+        return
+      }
     }
 
     saving.value = true
