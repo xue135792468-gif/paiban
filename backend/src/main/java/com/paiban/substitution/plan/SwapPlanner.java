@@ -8,6 +8,7 @@ import com.paiban.scheduling.constraint.ConstraintContext.RoomView;
 import com.paiban.scheduling.constraint.ConstraintViolation;
 import com.paiban.scheduling.constraint.LessonView;
 import com.paiban.scheduling.domain.ConstraintType;
+import com.paiban.scheduling.solver.ConstraintEntryMatcher;
 import com.paiban.scheduling.solver.ConstraintSettings;
 import com.paiban.scheduling.solver.ConstraintSettings.Control;
 import com.paiban.substitution.plan.PlanSnapshot.DaySchedule;
@@ -430,8 +431,7 @@ public final class SwapPlanner {
                 ConstraintType.COURSE_REQUIRED_ROOM_TYPE, lesson.courseId(), "roomType");
         if (configured != null) {
             Control control = settings.match(ConstraintType.COURSE_REQUIRED_ROOM_TYPE,
-                    entry -> Objects.equals(ConstraintSettings.longValue(entry.get("courseId")),
-                            lesson.courseId()) && entry.get("roomType") != null);
+                    entry -> ConstraintEntryMatcher.courseWithRoomType(entry, lesson.courseId()));
             if (control != null) {
                 roomTypeControl = control;
                 requiredType = configured;
@@ -445,12 +445,8 @@ public final class SwapPlanner {
             return false;
         }
         Control unavailable = settings.match(ConstraintType.TEACHER_UNAVAILABLE,
-                entry -> Objects.equals(
-                        ConstraintSettings.longValue(entry.get("teacherId")), lesson.teacherId())
-                        && Objects.equals(ConstraintSettings.intValue(entry.get("dayOfWeek")),
-                        target.dayOfWeek())
-                        && Objects.equals(ConstraintSettings.intValue(entry.get("periodNo")),
-                        target.periodNo()));
+                entry -> ConstraintEntryMatcher.teacherSlot(
+                        entry, lesson.teacherId(), target.dayOfWeek(), target.periodNo()));
         if (unavailable != null && unavailable.hard()) {
             reasons.add(new PlanDiagnosis("TEACHER_UNAVAILABLE",
                     teacherName(snapshot, lesson.teacherId()) + " 在 " + label + " 不排课",
@@ -459,11 +455,9 @@ public final class SwapPlanner {
         }
         var teacher = snapshot.teacher(lesson.teacherId());
         Control meeting = settings.match(ConstraintType.TEACHER_MEETING_BLOCKED,
-                entry -> Objects.equals(ConstraintSettings.intValue(entry.get("dayOfWeek")),
-                        target.dayOfWeek())
-                        && Objects.equals(ConstraintSettings.intValue(entry.get("periodNo")),
-                        target.periodNo())
-                        && meetingSubjectMatches(entry,
+                entry -> ConstraintEntryMatcher.slot(
+                        entry, target.dayOfWeek(), target.periodNo())
+                        && ConstraintEntryMatcher.meetingSubject(entry,
                         teacher == null ? null : teacher.subject()));
         if (meeting != null && meeting.hard()) {
             reasons.add(new PlanDiagnosis("TEACHER_MEETING",
@@ -472,10 +466,7 @@ public final class SwapPlanner {
             return false;
         }
         Control notEvening = settings.match(ConstraintType.COURSE_NOT_IN_EVENING,
-                entry -> {
-                    Long configuredCourse = ConstraintSettings.longValue(entry.get("courseId"));
-                    return configuredCourse == null || configuredCourse.equals(lesson.courseId());
-                });
+                entry -> ConstraintEntryMatcher.courseOrAll(entry, lesson.courseId()));
         if (notEvening != null && notEvening.hard()
                 && target.section() == PeriodSection.EVENING) {
             reasons.add(new PlanDiagnosis("COURSE_NOT_IN_EVENING",
@@ -483,22 +474,15 @@ public final class SwapPlanner {
             return false;
         }
         Control courseUnavailable = settings.match(ConstraintType.COURSE_UNAVAILABLE,
-                entry -> Objects.equals(
-                        ConstraintSettings.longValue(entry.get("courseId")), lesson.courseId())
-                        && Objects.equals(ConstraintSettings.intValue(entry.get("dayOfWeek")),
-                        target.dayOfWeek())
-                        && Objects.equals(ConstraintSettings.intValue(entry.get("periodNo")),
-                        target.periodNo()));
+                entry -> ConstraintEntryMatcher.courseSlot(
+                        entry, lesson.courseId(), target.dayOfWeek(), target.periodNo()));
         if (courseUnavailable != null && courseUnavailable.hard()) {
             reasons.add(new PlanDiagnosis("COURSE_UNAVAILABLE",
                     "该课程在 " + label + " 禁排", lesson.entryId(), target.id()));
             return false;
         }
         Control oncePerDay = settings.match(ConstraintType.SAME_COURSE_ONCE_PER_DAY,
-                entry -> {
-                    Long configuredCourse = ConstraintSettings.longValue(entry.get("courseId"));
-                    return configuredCourse == null || configuredCourse.equals(lesson.courseId());
-                });
+                entry -> ConstraintEntryMatcher.courseOrAll(entry, lesson.courseId()));
         if (oncePerDay != null && oncePerDay.hard()
                 && day.lessons().stream().anyMatch(other -> other.classId() == lesson.classId()
                         && other.courseId() == lesson.courseId()
@@ -516,13 +500,6 @@ public final class SwapPlanner {
     private static boolean blocked(ConstraintSettings settings, ConstraintType type) {
         Control control = settings.control(type);
         return control != null && control.hard();
-    }
-
-    private static boolean meetingSubjectMatches(Map<String, Object> entry, String teacherSubject) {
-        Object raw = entry.get("subject");
-        String configured = raw == null ? null : raw.toString();
-        return configured == null || configured.isBlank()
-                || (teacherSubject != null && configured.equalsIgnoreCase(teacherSubject));
     }
 
     private static String teacherName(PlanSnapshot snapshot, long teacherId) {

@@ -8,6 +8,7 @@ import com.paiban.scheduling.constraint.ConstraintContext.PeriodView;
 import com.paiban.scheduling.constraint.ConstraintContext.RoomView;
 import com.paiban.scheduling.constraint.ConstraintContext.TeacherView;
 import com.paiban.scheduling.domain.ConstraintType;
+import com.paiban.scheduling.solver.ConstraintEntryMatcher;
 import com.paiban.scheduling.solver.ConstraintSettings;
 import com.paiban.scheduling.solver.ConstraintSettings.Control;
 import com.paiban.scheduling.solver.ConstraintSettings.Requirement;
@@ -143,9 +144,7 @@ public final class ConstraintChecker {
         Control roomTypeControl = new Control(true, 100);
         if (lesson.courseId() != null) {
             Control configured = settings.match(ConstraintType.COURSE_REQUIRED_ROOM_TYPE,
-                    entry -> Objects.equals(
-                            ConstraintSettings.longValue(entry.get("courseId")), lesson.courseId())
-                            && entry.get("roomType") != null);
+                    entry -> ConstraintEntryMatcher.courseWithRoomType(entry, lesson.courseId()));
             String configuredType = settings.courseText(
                     ConstraintType.COURSE_REQUIRED_ROOM_TYPE, lesson.courseId(), "roomType");
             if (configured != null && configuredType != null) {
@@ -161,44 +160,37 @@ public final class ConstraintChecker {
         }
 
         Control unavailable = settings.match(ConstraintType.TEACHER_UNAVAILABLE,
-                entry -> Objects.equals(
-                        ConstraintSettings.longValue(entry.get("teacherId")), lesson.teacherId())
-                        && day(entry, period) && periodNo(entry, period));
+                entry -> ConstraintEntryMatcher.teacherSlot(
+                        entry, lesson.teacherId(), period.dayOfWeek(), period.periodNo()));
         addIfHard(out, "TEACHER_UNAVAILABLE",
                 teacherName(ctx, lesson.teacherId()) + " 在 " + periodLabel(period) + " 不排课",
                 lesson.id(), unavailable);
 
         Control meeting = settings.match(ConstraintType.TEACHER_MEETING_BLOCKED,
-                entry -> day(entry, period) && periodNo(entry, period)
-                        && meetingSubjectMatches(entry, ctx, lesson));
+                entry -> ConstraintEntryMatcher.slot(entry, period.dayOfWeek(), period.periodNo())
+                        && ConstraintEntryMatcher.meetingSubject(
+                                entry, teacherSubject(ctx, lesson.teacherId())));
         addIfHard(out, "TEACHER_MEETING",
                 teacherName(ctx, lesson.teacherId()) + " 在 " + periodLabel(period) + " 参加教研活动",
                 lesson.id(), meeting);
 
         Control notEvening = settings.match(ConstraintType.COURSE_NOT_IN_EVENING,
-                entry -> courseEntryMatches(entry, lesson.courseId()));
+                entry -> ConstraintEntryMatcher.courseOrAll(entry, lesson.courseId()));
         if (notEvening != null && notEvening.hard() && period.section() == PeriodSection.EVENING) {
             out.add(new ConstraintViolation("COURSE_NOT_IN_EVENING",
                     courseName + " 不能安排在晚自习", lesson.id(), true));
         }
 
         Control courseUnavailable = settings.match(ConstraintType.COURSE_UNAVAILABLE,
-                entry -> Objects.equals(
-                        ConstraintSettings.longValue(entry.get("courseId")), lesson.courseId())
-                        && day(entry, period) && periodNo(entry, period));
+                entry -> ConstraintEntryMatcher.courseSlot(
+                        entry, lesson.courseId(), period.dayOfWeek(), period.periodNo()));
         addIfHard(out, "COURSE_UNAVAILABLE",
                 courseName + " 在 " + periodLabel(period) + " 不排课", lesson.id(), courseUnavailable);
     }
 
-    private static boolean meetingSubjectMatches(
-            Map<String, Object> entry, ConstraintContext ctx, LessonView lesson) {
-        Object raw = entry.get("subject");
-        String subject = raw == null ? null : raw.toString();
-        if (subject == null || !StringUtils.hasText(subject)) {
-            return true;
-        }
-        TeacherView teacher = lesson.teacherId() == null ? null : ctx.teachers().get(lesson.teacherId());
-        return teacher != null && subject.equalsIgnoreCase(teacher.subject());
+    private static String teacherSubject(ConstraintContext ctx, Long teacherId) {
+        TeacherView teacher = teacherId == null ? null : ctx.teachers().get(teacherId);
+        return teacher == null ? null : teacher.subject();
     }
 
     // ------------------------------------------------------------------ pairs
@@ -653,23 +645,26 @@ public final class ConstraintChecker {
             if (configuredType != null && StringUtils.hasText(configuredType)
                     && (room == null || !configuredType.equals(room.type()))) {
                 total += softHit(settings.match(ConstraintType.COURSE_REQUIRED_ROOM_TYPE,
-                        entry -> Objects.equals(ConstraintSettings.longValue(entry.get("courseId")),
-                                lesson.courseId()) && entry.get("roomType") != null), true);
+                        entry -> ConstraintEntryMatcher.courseWithRoomType(entry, lesson.courseId())), true);
             }
             total += softHit(settings.match(ConstraintType.TEACHER_UNAVAILABLE,
-                            entry -> Objects.equals(ConstraintSettings.longValue(entry.get("teacherId")),
-                                    lesson.teacherId()) && day(entry, period) && periodNo(entry, period)),
+                            entry -> ConstraintEntryMatcher.teacherSlot(
+                                    entry, lesson.teacherId(),
+                                    period.dayOfWeek(), period.periodNo())),
                     true);
             total += softHit(settings.match(ConstraintType.TEACHER_MEETING_BLOCKED,
-                            entry -> day(entry, period) && periodNo(entry, period)
-                                    && meetingSubjectMatches(entry, ctx, lesson)),
+                            entry -> ConstraintEntryMatcher.slot(
+                                    entry, period.dayOfWeek(), period.periodNo())
+                                    && ConstraintEntryMatcher.meetingSubject(
+                                            entry, teacherSubject(ctx, lesson.teacherId()))),
                     true);
             total += softHit(settings.match(ConstraintType.COURSE_NOT_IN_EVENING,
-                            entry -> courseEntryMatches(entry, lesson.courseId())),
+                            entry -> ConstraintEntryMatcher.courseOrAll(entry, lesson.courseId())),
                     period.section() == PeriodSection.EVENING);
             total += softHit(settings.match(ConstraintType.COURSE_UNAVAILABLE,
-                            entry -> Objects.equals(ConstraintSettings.longValue(entry.get("courseId")),
-                                    lesson.courseId()) && day(entry, period) && periodNo(entry, period)),
+                            entry -> ConstraintEntryMatcher.courseSlot(
+                                    entry, lesson.courseId(),
+                                    period.dayOfWeek(), period.periodNo())),
                     true);
             total += softHit(sportMatch(settings, ConstraintType.SPORT_NOT_FIRST_AFTERNOON, lesson, course),
                     period.section() == PeriodSection.AFTERNOON && isFirstAfternoon(period, ctx));
@@ -849,22 +844,16 @@ public final class ConstraintChecker {
 
     // ------------------------------------------------------------------ matching
 
-    private static boolean courseEntryMatches(Map<String, Object> entry, Long courseId) {
-        Long configured = ConstraintSettings.longValue(entry.get("courseId"));
-        return configured == null || configured.equals(courseId);
-    }
-
     /** The control of an entry-backed type whose target course is required (no "all"). */
     private static Control courseStrictMatch(
             ConstraintSettings settings, ConstraintType type, Long courseId) {
-        return settings.match(type,
-                entry -> Objects.equals(ConstraintSettings.longValue(entry.get("courseId")), courseId));
+        return settings.match(type, entry -> ConstraintEntryMatcher.course(entry, courseId));
     }
 
     /** The control of an entry-backed type whose blank course means "every course". */
     private static Control courseLooseMatch(
             ConstraintSettings settings, ConstraintType type, Long courseId) {
-        return settings.match(type, entry -> courseEntryMatches(entry, courseId));
+        return settings.match(type, entry -> ConstraintEntryMatcher.courseOrAll(entry, courseId));
     }
 
     private static Control teacherMatch(
@@ -872,8 +861,7 @@ public final class ConstraintChecker {
         if (teacherId == null) {
             return null;
         }
-        return settings.match(type,
-                entry -> Objects.equals(ConstraintSettings.longValue(entry.get("teacherId")), teacherId));
+        return settings.match(type, entry -> ConstraintEntryMatcher.teacher(entry, teacherId));
     }
 
     private static Control teacherDayMatch(
@@ -882,17 +870,13 @@ public final class ConstraintChecker {
             return null;
         }
         return settings.match(ConstraintType.TEACHER_DAY_OFF,
-                entry -> Objects.equals(ConstraintSettings.longValue(entry.get("teacherId")), teacherId)
-                        && Objects.equals(
-                        ConstraintSettings.intValue(entry.get("dayOfWeek")), dayOfWeek));
+                entry -> ConstraintEntryMatcher.dayOff(entry, teacherId, dayOfWeek));
     }
 
     private static Control sportMatch(
             ConstraintSettings settings, ConstraintType type, LessonView lesson, CourseView course) {
-        return settings.match(type, entry -> {
-            Long configured = ConstraintSettings.longValue(entry.get("courseId"));
-            return configured != null ? configured.equals(lesson.courseId()) : isSportClass(course);
-        });
+        return settings.match(type, entry -> ConstraintEntryMatcher.courseOrSport(
+                entry, lesson.courseId(), isSportClass(course)));
     }
 
     /**
@@ -939,14 +923,6 @@ public final class ConstraintChecker {
             return null;
         }
         return hard ? new Control(true, 0) : new Control(false, weight);
-    }
-
-    private static boolean day(Map<String, Object> entry, PeriodView period) {
-        return Objects.equals(ConstraintSettings.intValue(entry.get("dayOfWeek")), period.dayOfWeek());
-    }
-
-    private static boolean periodNo(Map<String, Object> entry, PeriodView period) {
-        return Objects.equals(ConstraintSettings.intValue(entry.get("periodNo")), period.periodNo());
     }
 
     private static PeriodView periodOf(ConstraintContext ctx, LessonView lesson) {

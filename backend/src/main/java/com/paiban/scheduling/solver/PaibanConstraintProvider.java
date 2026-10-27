@@ -50,14 +50,18 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         addProhibition(factory, constraints, s, ConstraintType.TEACHER_UNAVAILABLE,
                 lesson -> true,
                 lesson -> s.match(ConstraintType.TEACHER_UNAVAILABLE,
-                        entry -> Objects.equals(
-                                ConstraintSettings.longValue(entry.get("teacherId")), lesson.getTeacherId())
-                                && slot(entry, lesson)));
+                        entry -> ConstraintEntryMatcher.teacherSlot(
+                                entry, lesson.getTeacherId(),
+                                lesson.getPeriod().getDayOfWeek(),
+                                lesson.getPeriod().getPeriodNo())));
         addProhibition(factory, constraints, s, ConstraintType.TEACHER_MEETING_BLOCKED,
                 lesson -> true,
                 lesson -> s.match(ConstraintType.TEACHER_MEETING_BLOCKED,
-                        entry -> slot(entry, lesson)
-                                && meetingSubjectMatches(entry, lesson)));
+                        entry -> ConstraintEntryMatcher.slot(
+                                entry, lesson.getPeriod().getDayOfWeek(),
+                                lesson.getPeriod().getPeriodNo())
+                                && ConstraintEntryMatcher.meetingSubject(
+                                        entry, lesson.getTeacherSubject())));
         addProhibition(factory, constraints, s, ConstraintType.COURSE_REQUIRED_ROOM_TYPE,
                 lesson -> roomTypeMismatch(s, lesson),
                 lesson -> courseStrictControl(s, ConstraintType.COURSE_REQUIRED_ROOM_TYPE,
@@ -69,9 +73,10 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         addProhibition(factory, constraints, s, ConstraintType.COURSE_UNAVAILABLE,
                 lesson -> true,
                 lesson -> s.match(ConstraintType.COURSE_UNAVAILABLE,
-                        entry -> Objects.equals(
-                                ConstraintSettings.longValue(entry.get("courseId")), lesson.getCourseId())
-                                && slot(entry, lesson)));
+                        entry -> ConstraintEntryMatcher.courseSlot(
+                                entry, lesson.getCourseId(),
+                                lesson.getPeriod().getDayOfWeek(),
+                                lesson.getPeriod().getPeriodNo())));
 
         addOncePerDay(factory, constraints, s);
         addThreshold(factory, constraints, s, ConstraintType.TEACHER_MAX_PER_DAY, Lesson::getTeacherId);
@@ -99,9 +104,8 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         addProhibition(factory, constraints, s, ConstraintType.TEACHER_DAY_OFF,
                 lesson -> true,
                 lesson -> s.match(ConstraintType.TEACHER_DAY_OFF,
-                        entry -> Objects.equals(
-                                ConstraintSettings.longValue(entry.get("teacherId")), lesson.getTeacherId())
-                                && Objects.equals(ConstraintSettings.intValue(entry.get("dayOfWeek")),
+                        entry -> ConstraintEntryMatcher.dayOff(
+                                entry, lesson.getTeacherId(),
                                 lesson.getPeriod().getDayOfWeek())));
         addSwitch(constraints, s, ConstraintType.CLASS_GAP_MINIMIZED,
                 classGapMinimized(factory, s));
@@ -453,23 +457,6 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         return control == null ? HardSoftScore.ZERO : score(control);
     }
 
-    private boolean slot(Map<String, Object> entry, Lesson lesson) {
-        return Objects.equals(ConstraintSettings.intValue(entry.get("dayOfWeek")),
-                lesson.getPeriod().getDayOfWeek())
-                && Objects.equals(ConstraintSettings.intValue(entry.get("periodNo")),
-                lesson.getPeriod().getPeriodNo());
-    }
-
-    private boolean meetingSubjectMatches(Map<String, Object> entry, Lesson lesson) {
-        Object raw = entry.get("subject");
-        String subject = raw == null ? null : raw.toString();
-        if (subject == null || !StringUtils.hasText(subject)) {
-            return true;
-        }
-        return lesson.getTeacherSubject() != null
-                && subject.equalsIgnoreCase(lesson.getTeacherSubject());
-    }
-
     private boolean roomTypeMismatch(ConstraintSettings s, Lesson lesson) {
         String configured = s.courseText(
                 ConstraintType.COURSE_REQUIRED_ROOM_TYPE, lesson.getCourseId(), "roomType");
@@ -481,16 +468,12 @@ public class PaibanConstraintProvider implements ConstraintProvider {
 
     private Control courseLooseControl(
             ConstraintSettings settings, ConstraintType type, Long courseId) {
-        return settings.match(type, entry -> {
-            Long configured = ConstraintSettings.longValue(entry.get("courseId"));
-            return configured == null || configured.equals(courseId);
-        });
+        return settings.match(type, entry -> ConstraintEntryMatcher.courseOrAll(entry, courseId));
     }
 
     private Control courseStrictControl(
             ConstraintSettings settings, ConstraintType type, Long courseId) {
-        return settings.match(type,
-                entry -> Objects.equals(ConstraintSettings.longValue(entry.get("courseId")), courseId));
+        return settings.match(type, entry -> ConstraintEntryMatcher.course(entry, courseId));
     }
 
     private Control teacherControl(
@@ -498,18 +481,14 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         if (teacherId == null) {
             return null;
         }
-        return settings.match(type,
-                entry -> Objects.equals(ConstraintSettings.longValue(entry.get("teacherId")), teacherId));
+        return settings.match(type, entry -> ConstraintEntryMatcher.teacher(entry, teacherId));
     }
 
     private Control sportControl(
             ConstraintSettings settings, ConstraintType type, Lesson lesson) {
-        return settings.match(type, entry -> {
-            Long configured = ConstraintSettings.longValue(entry.get("courseId"));
-            return configured != null
-                    ? configured.equals(lesson.getCourseId())
-                    : lesson.getCourseName() != null && lesson.getCourseName().contains("体育");
-        });
+        return settings.match(type, entry -> ConstraintEntryMatcher.courseOrSport(
+                entry, lesson.getCourseId(),
+                lesson.getCourseName() != null && lesson.getCourseName().contains("体育")));
     }
 
     private int maxConsecutive(List<Lesson> lessons) {
