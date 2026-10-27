@@ -1,9 +1,9 @@
 # 自然语言生成约束、课程禁排与逐项控制（原票14）
 
-Status: implemented（2026-10-27，集成分支待合并）
+Status: done（2026-10-27，已合并 `main` 并部署，Flyway v37）
 日期：2026-10-27
 来源：用户已完成Q1–Q23的逐轮选择，并明确要求执行`/to-spec`，承接整体设计进入正式规格。
-交付状态：12张实现票已在集成分支 `feature/natural-language-constraints` 完成；完整门禁与两轴评审见[票12交付记录](issues/12-integrate-and-accept.md)。真实模型评测按票09阻塞（无可核实单价与授权，未调用真实模型）；未合并`main`、未部署。
+交付状态：12张实现票已合并 `main`（代码 `b21cb9a`）并部署上线；完整门禁、真实 PostgreSQL 迁移与两轴评审见[票12交付记录](issues/12-integrate-and-accept.md)。真实模型评测按票09阻塞（无可核实单价与授权，未调用真实模型），能力保留未放行。
 
 ## Problem Statement
 

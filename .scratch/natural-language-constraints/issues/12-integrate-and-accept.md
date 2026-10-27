@@ -4,7 +4,7 @@
 
 **Blocked by:** 06 — 全目录模板与旧配置无损往返，收束兼容路径；09 — 用22句语料评测候选模型，在20元内报告可用性；11 — 按账号和学期恢复未保存工作，跨设备冲突不覆盖。
 
-**Status:** done（2026-10-27 全量门禁与两轴评审完成；未合并、未部署）
+**Status:** done（2026-10-27 已合并 `main` 并部署，Flyway v37；真实模型评测仍受阻）
 
 2026-10-27 用户已确认本轮12票拆分及阻塞关系，正式发布；实现范围与共同约束以[正式规格](../spec.md)为准。
 
@@ -21,10 +21,12 @@
 
 ## Implementation (2026-10-27)
 
-- 集成分支为 `feature/natural-language-constraints`（基点 `main` `6d8319a`），全部 12 票在该分支完成；未合并 `main`、未部署。
-- **迁移兼容**：Flyway 新增 V31–V37（逐项控制、配置版本、生成记录、保存审计、模型原文、跨设备工作区、审计差分），本地 H2 全量迁移 35 个到 v37 通过。本机无 Docker，`PostgresContainerIT` 按脚本设计跳过（CI 会真跑）；**未在真实 PostgreSQL/生产库验证**，合并前仍需按部署跑册做临时库迁移验证。
-- **完整门禁（`scripts/verify.sh --full`，退出码 0）**：后端 `./mvnw -B verify` 846 例、0 失败/0 错误、5 skipped；前端 lint 与 build 通过；前端单测 396 例全绿；SFC 体积棘轮与 `isBlank` 棘轮通过；完整 Playwright 89 例全绿（8.3 分钟，隔离端口）。此前各票定向测试与 e2e 见 01–11 的实现说明。
+- 集成分支为 `feature/natural-language-constraints`（基点 `main` `6d8319a`），全部 12 票在该分支完成；2026-10-27 依次合并 `chore/env-guardrails`、工作簿后台分支与本分支到 `main`，代码提交 `b21cb9a`，已推送 `origin/main` 并部署上线。
+- **迁移兼容**：Flyway 新增 V31–V37（逐项控制、配置版本、生成记录、保存审计、模型原文、跨设备工作区、审计差分）；合并后共 36 个唯一迁移（含工作簿 V30，V14 为历史跳号）。服务器临时库 `paiban_migtest_20261027` 从空库跑到 **v37** 通过，6 张核心表与 9 个关键列齐全；CI backend job 以 `-Dtestcontainers=true` 真跑 `PostgresContainerIT`；生产启动日志显示 `Successfully applied 8 migrations ... now at version v37`。
+- **完整门禁（合并后 `main` 上 `scripts/verify.sh --full`，退出码 0）**：后端 `./mvnw -B verify` 857 例、0 失败/0 错误、5 skipped；前端 lint 与 build 通过；前端单测 401 例全绿；SFC 体积棘轮、`isBlank` 棘轮与迁移编号检查通过；完整 Playwright 90 例全绿（7.5 分钟，隔离端口）。合并前票14分支的定向门禁为后端 846、前端 396、Playwright 89；合并后数字以本次为准。
 - **两轴评审**：Standards/Spec 两轴已完成，硬问题与规格缺口集中在 `d139229` 修复（含条目控制、阈值例外、工作区冲突、审计差分、时段来源等）；纯结构性问题转入后续票 13，不改变本轮语义。
 - **真实模型评测**：按票 09 阻塞处理——没有可核实单价与授权，真实调用 0 次，未把替身 54/54、12/12 当作模型通过。报告在 `docs/reports/constraint-model-evaluation-2026-10-27.md`；**本期“真实模型可用性”未达放行，能力保留待有价格/授权后人工执行**。
-- **未通过/待办**：真实模型评测未执行、真实 PostgreSQL 迁移未验证、未推送/合并/部署。A01–A19 与 C01–C22 的自动化证据分别落在 01–11 的定向测试和 Playwright 场景；除上述明确阻塞外无已知失败项。
+- **部署验证**：生产 `~/paiban` HEAD 为 `b21cb9a`；备份 `~/backups/paiban/paiban-pre-v37-20261027T105735Z.sql.gz`（91K，`gzip -t` 通过）；四容器 healthy、`restart=0`；本机 HTTPS 与公网 `/api/health` 均 200；`/api/constraint-types`、`/api/constraint-proposals/availability`、`/api/constraint-workspace` 均返回 401（路由存在，需登录）。
+- **合并期间发现并修复**：合并后的前端单测暴露 `AiDataImportView.spec.ts` 跨用例轮询/`lastSession` 泄漏，`b21cb9a` 在每个用例后卸载视图并清理挂起 Promise；修复后连续 3 轮 401/401 稳定，完整门禁复跑全绿。
+- **仍未完成**：真实模型评测未执行（无可靠单价/授权）。A01–A19 与 C01–C22 的自动化证据分别落在 01–11 的定向测试和 Playwright 场景；除此之外无已知失败项。
 

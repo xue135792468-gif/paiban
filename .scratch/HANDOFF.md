@@ -1,8 +1,8 @@
 # 接手说明（2026-10-25 会话交接）
 
-> **2026-10-27 票14 已实现并合并到本地 `main`（待推送/部署）**：正式规格与 12 张实现票（`.scratch/natural-language-constraints/`）完成 01→12：课程禁排、25 类逐项控制、配置版本/冲突、AI 只读建议、C01–C22 评测工具、校对加入与审计、跨设备工作区。全量门禁与两轴评审见[票12交付记录](natural-language-constraints/issues/12-integrate-and-accept.md)；结构性问题转入票 13。真实模型评测**受阻**（无可靠单价/授权），未调用真实供应商，报告见 `docs/reports/constraint-model-evaluation-2026-10-27.md`。
+> **2026-10-27 票14 已实现、合并 `main` 并部署（代码 `b21cb9a`，Flyway v37）**：正式规格与 12 张实现票（`.scratch/natural-language-constraints/`）完成 01→12：课程禁排、25 类逐项控制、配置版本/冲突、AI 只读建议、C01–C22 评测工具、校对加入与审计、跨设备工作区。合并后全量门禁后端 857、前端 401、Playwright 90 全绿；真实 PostgreSQL 临时库 V1–V37 与 CI `PostgresContainerIT` 均通过；四容器 healthy、两处 health 200。详见[票12交付记录](natural-language-constraints/issues/12-integrate-and-accept.md)；结构性问题转入票 13。真实模型评测**受阻**（无可靠单价/授权），未调用真实供应商，报告见 `docs/reports/constraint-model-evaluation-2026-10-27.md`。
 
-> **2026-10-26 整本导入后台化（02 遗留）已实现并合并到本地 `main`（待推送/部署）**：三张草案 01 → 02 → 03 已完成，每票 TDD、独立评审。上传立即返回 `PARSING`，规划/取值在 `importExecutor` 串行；计划与运行身份落库（Flyway **V30**：`plan_json` / `plan_version` / `run_id`）；停止保留已完成范围并把未覆盖范围列为可重试失败；重试只重放失败批次、成功批次不重调模型；晚响应只进审计。闸门：后端 761 例全绿（5 skipped）、前端 lint/build/unit 371 例全绿、SFC 与 isBlank 棘轮通过、Playwright 全量 71 例全绿。**尚未推送、尚未部署。** 评审遗留的票 04（重复提交单飞）仍未实现；读 `.scratch/workbook-background/spec.md` 与 `issues/`，决策见 `docs/adr/0029-workbook-background-runs.md`。
+> **2026-10-26 整本导入后台化（02 遗留）已实现、合并 `main` 并部署（代码 `b21cb9a`，Flyway v37）**：三张草案 01 → 02 → 03 已完成，每票 TDD、独立评审。上传立即返回 `PARSING`，规划/取值在 `importExecutor` 串行；计划与运行身份落库（Flyway **V30**：`plan_json` / `plan_version` / `run_id`）；停止保留已完成范围并把未覆盖范围列为可重试失败；重试只重放失败批次、成功批次不重调模型；晚响应只进审计。合并后全量门禁通过；备份 `~/backups/paiban/paiban-pre-v37-20261027T105735Z.sql.gz`；四容器 healthy、两处 health 200。评审遗留的票 04（重复提交单飞）仍未实现；读 `.scratch/workbook-background/spec.md` 与 `issues/`，决策见 `docs/adr/0029-workbook-background-runs.md`。
 
 > **2026-10-25 准备复查更新：先读 [准备审查入口](phase11-real-workbook-import/preparation/README.md)。**
 > 用户已暂停本会话修复，改为完成准备材料、交由新的 agent 执行。以下旧路线中的待问与 ready 状态须以新入口为准：六项修复已有补充规格；票 10 已问定并拆成 6 票，先做原型等用户确认；整本后台化另备下一批 3 张草案；14 下一期再 grill。
@@ -39,8 +39,8 @@
 | `08-fill-missing-periods` | 文件里的节次比作息多，只能手工加格子 | 已上线（2026-10-25，main `a8babf5`） |
 | `09-flag-suspicious-teacher-names` | "信息技术"这类占位名被当成老师 | 已上线（2026-10-25，main `a8babf5`） |
 | `10-multiple-constraint-targets` | 约束多条、对象覆盖与折叠布局 | 已确认语义并拆 6 票，见 `.scratch/constraint-entries/`；先原型确认 |
-| `14-natural-language-constraints` | 自然语言生成约束＋课程禁排＋逐项控制＋跨设备恢复 | 已实现并合并到本地 `main`（2026-10-27），待推送/部署；真实模型评测受阻 |
-| 票 02 遗留 | 整本导入没有批次进度/停止/重试（同步跑完） | 已实现并合并到本地 `main`（2026-10-26），待推送/部署；见 `.scratch/workbook-background/` |
+| `14-natural-language-constraints` | 自然语言生成约束＋课程禁排＋逐项控制＋跨设备恢复 | 已上线（2026-10-27，main `b21cb9a`，Flyway v37）；真实模型评测受阻 |
+| 票 02 遗留 | 整本导入没有批次进度/停止/重试（同步跑完） | 已上线（2026-10-27，main `b21cb9a`，Flyway v37）；见 `.scratch/workbook-background/` |
 
 票据都在 `.scratch/phase11-real-workbook-import/issues/`；规格与 ADR 在该目录 `spec.md` 和 `docs/adr/0026-real-workbook-import.md`。
 
@@ -51,10 +51,10 @@
   部署前须知：V24 给 `draft_lesson.period_id` 加外键，若线上存在历史悬空引用，迁移会直接失败（有意闸门）；迁移注释里带 preflight 查询，必须先查、按记录修复后再重建。
 - **10 的旧问题已答，使用独立规格与六张新票。**
   读 `.scratch/constraint-entries/spec.md`。第一票 `/prototype` 出可点页面，经用户确认才放行生产实现；其余按 Blocked by 顺序推进。需求准备完成不代表原型已批准。
-- **02 整本后台化已实现并合并到本地 `main`（2026-10-26），待推送/部署。**
-  读 `.scratch/workbook-background/spec.md` 与 `issues/`；实现说明在各票末尾，决策见 ADR-0029。部署时 Flyway 到 v30。
-- **14 已实现并合并到本地 `main`（2026-10-27），待推送/部署与真实评测。**
-  读 `.scratch/natural-language-constraints/spec.md`、`ticket-plan.md` 与 `issues/01..13`；部署时 Flyway 到 **V37**（V30 工作簿 + V31 逐项控制、V32 配置版本、V33 生成记录、V34 保存审计、V35 模型内容、V36 工作区、V37 审计差分）。真实评测需人工确认单价并授权后用 `--paiban.eval.enabled=true` 运行，不要把替身结果当模型通过。
+- **02 整本后台化已上线（2026-10-27，main `b21cb9a`，Flyway v37）。**
+  读 `.scratch/workbook-background/spec.md` 与 `issues/`；实现说明在各票末尾，决策见 ADR-0029。评审遗留的票 04（重复提交单飞）仍未实现。
+- **14 已上线（2026-10-27，main `b21cb9a`，Flyway v37）。**
+  读 `.scratch/natural-language-constraints/spec.md`、`ticket-plan.md` 与 `issues/01..13`；真实模型评测仍需人工确认单价并授权后用 `--paiban.eval.enabled=true` 运行，不要把替身结果当模型通过。
 - **收尾跑一次 `/retro`**：把"保存作息表毁草稿"这类坑变成确定性检查（例如给 `draft_lesson.period_id` 加外键/一致性校验），别只写在文档里。
 
 ## 交差门槛（每票）
@@ -71,4 +71,4 @@
 
 **六项修复已合并 `main`（`a8babf5`）并部署上线**：真实 PostgreSQL 迁移验证 + 生产 V24 preflight（悬空 0）+ 备份（`paiban-pre-v24-20261025T130850Z.sql.gz`）+ Flyway v24/v25 + 四容器 healthy + 冒烟 15 项全绿。**当前生产副作用**：semester 1 已有发布基线（4 条 entry），再发布 draft 1/2 会 409；两份 546 节草稿仍在，需要时可清掉 draft 4 的 entries/publish 记录或换学期测试。
 
-票 10 的可点击原型仍未制作、未经用户确认；这是 10 的第一票验收门槛。14 已实现待合并；02 已实现待部署。
+票 10 的可点击原型仍未制作、未经用户确认；这是 10 的第一票验收门槛。14 与 02 已于 2026-10-27 上线。
