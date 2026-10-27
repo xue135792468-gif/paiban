@@ -12,7 +12,7 @@
       type="warning"
       show-icon
       :closable="false"
-      title="确认入库已暂停：这次导入还缺部分班级的课。请先重试失败批次或放弃导入。"
+      title="确认入库已暂停：这次导入还缺部分批次的数据。请先重试失败批次或放弃导入。"
     />
 
     <div class="retry-actions">
@@ -26,14 +26,14 @@
         重试失败批次
       </el-button>
       <span data-testid="partial-retry-hint" class="muted">
-        只会重新解析失败的 {{ failedBatches.length }} 个班，已经解析好的不会重复调用 AI
+        只会重新解析失败的 {{ failedBatches.length }} 个批次，已经解析好的不会重复调用 AI
       </span>
     </div>
 
     <section data-testid="partial-success" class="section">
       <div class="section-head">
         <span class="section-title">已解析 {{ rows.length }} 节课</span>
-        <span class="muted">来自 {{ batchCount }} 个班（成功批次）</span>
+        <span class="muted">来自 {{ batchCount }} 个成功批次</span>
         <el-button
           v-if="rows.length"
           link
@@ -66,8 +66,8 @@
 
     <section data-testid="partial-failed" class="section">
       <div class="section-head">
-        <span class="section-title">失败批次：{{ failedBatches.length }} 个班</span>
-        <span class="muted">这些班的课没有解析出来，重试或放弃后才能继续</span>
+        <span class="section-title">失败批次：{{ failedBatches.length }} 批</span>
+        <span class="muted">这些批次的数据没有解析出来，重试或放弃后才能继续</span>
       </div>
       <ul class="failed-list">
         <li v-for="batch in failedBatches" :key="batch.index" class="failed-item">
@@ -89,7 +89,7 @@
       >
         放弃导入
       </el-button>
-      <span class="muted">已解析的班级不会入库，放弃后不写入任何数据</span>
+      <span class="muted">已解析的内容不会入库，放弃后不写入任何数据</span>
     </div>
   </div>
 </template>

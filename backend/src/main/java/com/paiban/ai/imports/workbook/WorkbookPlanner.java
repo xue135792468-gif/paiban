@@ -17,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Consumer;
 import org.springframework.stereotype.Component;
 
 /**
@@ -59,6 +60,15 @@ public class WorkbookPlanner {
     public record Outcome(WorkbookPlan plan, List<Trace> trace) {}
 
     public Outcome plan(List<ProfiledSheet> profiles) {
+        return plan(profiles, round -> {});
+    }
+
+    /**
+     * Same loop, but every finished round is handed to {@code onRound} immediately. The
+     * workbook flow persists each round as it happens, so a planning failure or a stop
+     * during the loop still leaves the tool audit behind.
+     */
+    public Outcome plan(List<ProfiledSheet> profiles, Consumer<Trace> onRound) {
         List<Trace> trace = new ArrayList<>();
         List<AiMessage> messages = new ArrayList<>();
         messages.add(AiMessage.system(systemPrompt()));
@@ -74,16 +84,20 @@ public class WorkbookPlanner {
             String content = result.content();
             Action action = parseAction(content);
             if (action == null) {
-                trace.add(new Trace(round, "invalid", "", summarize(content), ""));
+                Trace entry = new Trace(round, "invalid", "", summarize(content), "");
+                trace.add(entry);
+                onRound.accept(entry);
                 messages.add(AiMessage.assistant(content == null ? "" : content));
                 messages.add(AiMessage.user(
                         "上一轮回复不是可解析的动作对象。请只输出一个 JSON 对象，字段为 tool 和 args。"));
                 continue;
             }
             String toolResult = execute(action, profiles);
-            trace.add(new Trace(
+            Trace entry = new Trace(
                     round, action.tool(), json(action.args()), summarize(content),
-                    summarize(toolResult)));
+                    summarize(toolResult));
+            trace.add(entry);
+            onRound.accept(entry);
             if ("finish".equals(action.tool())) {
                 WorkbookPlan plan = finishPlan(action.args(), profiles);
                 if (plan != null) {

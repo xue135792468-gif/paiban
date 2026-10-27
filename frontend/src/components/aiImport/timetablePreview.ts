@@ -114,12 +114,17 @@ export interface ToolTrace {
   result: string
 }
 
-/** How far a background parse has got; `currentBatch` is the class in flight. */
+/** How far a background parse has got; `currentBatch` is the batch in flight. */
 export interface ImportProgress {
   total: number
   completed: number
   failed: number
   currentBatch?: string | null
+  /**
+   * `PLANNING` while a whole workbook's structure is still being decided (no honest total
+   * yet), `EXTRACTING` once the plan exists and ranges are being copied out.
+   */
+  phase?: 'PLANNING' | 'EXTRACTING' | string
 }
 
 /** One batch that failed, named so the user knows which class to retry. */

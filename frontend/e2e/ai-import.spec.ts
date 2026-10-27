@@ -43,6 +43,11 @@ let batchControl: { latencyMs: number; failChunks: number[] } = { latencyMs: 0, 
 /** One payload per batch, indexed by batch number minus one. */
 let batchPayloads: Record<string, unknown>[] = []
 /**
+ * Whole-workbook extraction pacing. A latency keeps the session in PARSING long enough
+ * for the page (and a reload) to observe the background progress.
+ */
+let workbookControl: { latencyMs: number } = { latencyMs: 0 }
+/**
  * How many chat completions the stub has answered. Read either side of an action to
  * prove the action re-used the saved preview instead of paying for another parse.
  */
@@ -54,6 +59,10 @@ const TOAST_PERIODS_APPENDED = /已补充 1 节课时/
 function toast(page: Page, text: RegExp) {
   return page.locator('.el-message').filter({ hasText: text })
 }
+
+test.beforeEach(() => {
+  workbookControl = { latencyMs: 0 }
+})
 
 test.beforeAll(async () => {
   api = await request.newContext()
@@ -271,6 +280,47 @@ test('多工作表工作簿：一次识别四类数据、跳过说明表并生�
 
   await page.getByRole('button', { name: '查看草稿' }).click()
   await expect(page).toHaveURL(/\/admin\/drafts\/\d+/)
+})
+
+test('整本工作簿在后台分批解析，刷新后仍能看到进度并走到预览', async ({ page }) => {
+  workbookControl = { latencyMs: 2500 }
+  await uiLogin(page, 'admin', 'admin123')
+  await page.goto('/admin/ai-import')
+  await expect(page.getByText('AI 已就绪')).toBeVisible()
+
+  const suffix = seedSuffix(seed)
+  const rows = [['班级', '星期', '节次', '课程', '教师']]
+  for (let klass = 1; klass <= 3; klass++) {
+    for (const day of ['星期一', '星期二', '星期三']) {
+      for (let period = 1; period <= 5; period++) {
+        rows.push([
+          `后台班${klass}-${suffix}`,
+          day,
+          String(period),
+          `后台课程${suffix}`,
+          `后台教师${suffix}`,
+        ])
+      }
+    }
+  }
+  await uploadExcel(page, '后台工作簿.xlsx', buildWorkbookXlsx([{ name: '数据源', rows }]))
+  await page.getByRole('button', { name: '开始解析' }).click()
+
+  const progress = page.getByTestId('import-progress')
+  await expect(progress).toBeVisible({ timeout: 30_000 })
+  // The upload answered before extraction finished: a progress view, not an empty preview.
+  await expect(progress.getByTestId('progress-count')).toContainText('已完成', {
+    timeout: 30_000,
+  })
+  await capture(page, 'workbook_background_progress')
+  expect(page.url()).toMatch(/session=\d+/)
+
+  // A refresh restores the PARSING session and keeps polling instead of losing the work.
+  await page.reload()
+  await expect(page.getByTestId('import-progress')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByTestId('timetable-summary')).toBeVisible({ timeout: 120_000 })
+  await expect(page.getByTestId('timetable-summary')).toContainText('共 45 节')
+  await capture(page, 'workbook_background_preview')
 })
 
 test('解析失败给出可操作提示，而不是通用「操作失败」', async ({ page }) => {
@@ -1060,6 +1110,9 @@ async function startStub(
       return
     }
     if (prompt.includes(WORKBOOK_DATA_MARKER)) {
+      if (workbookControl.latencyMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, workbookControl.latencyMs))
+      }
       sendCompletion(res, body, workbookExtraction(prompt))
       return
     }

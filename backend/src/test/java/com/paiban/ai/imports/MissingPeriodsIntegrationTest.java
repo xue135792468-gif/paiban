@@ -270,7 +270,7 @@ class MissingPeriodsIntegrationTest extends ApiIntegrationTest {
     }
 
     /** A workbook that uses Sunday's 9th period, which no day of the semester has. */
-    private Fixture workbookOnWeekdays() throws IOException {
+    private Fixture workbookOnWeekdays() throws Exception {
         String token = adminToken();
         long semesterId = TestData.semester(token);
         as(token).body(Map.of(
@@ -292,7 +292,7 @@ class MissingPeriodsIntegrationTest extends ApiIntegrationTest {
     private record Fixture(String token, long semesterId, long sessionId) {}
 
     /** Eight default periods per weekday, and a workbook that uses periods 9, 10 and 9. */
-    private Fixture workbookSession() throws IOException {
+    private Fixture workbookSession() throws Exception {
         String token = adminToken();
         long semesterId = TestData.semester(token);
         as(token).body(Map.of(
@@ -432,12 +432,24 @@ class MissingPeriodsIntegrationTest extends ApiIntegrationTest {
 
     // ------------------------------------------------------------------ helpers
 
-    private Response upload(String token, byte[] bytes) {
-        return io.restassured.RestAssured.given()
+    private Response upload(String token, byte[] bytes) throws Exception {
+        Response accepted = io.restassured.RestAssured.given()
                 .header("Authorization", "Bearer " + token)
                 .multiPart("file", "缺节工作簿.xlsx", bytes, XLSX)
                 .queryParam("target", "workbook")
                 .when().post("/api/ai/import/excel");
+        accepted.then().statusCode(200);
+        // The workbook upload answers PARSING; these assertions are about the settled preview.
+        long sessionId = accepted.jsonPath().getLong("sessionId");
+        for (int attempt = 0; attempt < 300; attempt++) {
+            Response session = as(token).when().get("/api/ai/import/sessions/" + sessionId);
+            session.then().statusCode(200);
+            if (!"PARSING".equals(session.jsonPath().getString("status"))) {
+                return session;
+            }
+            Thread.sleep(100);
+        }
+        throw new AssertionError("后台解析在 30 秒内没有结束: session " + sessionId);
     }
 
     private byte[] workbook(Map<String, List<List<String>>> sheets) throws IOException {

@@ -27,6 +27,10 @@ import org.springframework.stereotype.Component;
  * the same column mapping, so a file cannot produce two different readings of the same
  * column; the model only reads cells. Rows are batched (40 by default, configurable) so a
  * 560-row sheet needs 14 calls instead of one answer that would be truncated.
+ *
+ * <p>The plan is deterministic and separate from the calls: {@link #planBatches} says what
+ * will be asked (and is persisted before the first call), {@link #extractBatch} asks it.
+ * A retry replays a stored batch without re-reading the workbook or re-planning it.
  */
 @Component
 public class WorkbookExtractor {
@@ -53,20 +57,48 @@ public class WorkbookExtractor {
         this.batchSize = Math.max(1, Math.min(MAX_BATCH, batchSize));
     }
 
-    /** Rows read out of one sheet, plus what the audit keeps. */
-    public record SheetExtraction(String sheet, SheetCategory category, List<RowDto> rows) {}
+    /**
+     * One extraction batch. {@code key} is stable for the same sheet, data range and plan
+     * version; {@code columns} maps a system field to the sheet's column label and is stored
+     * with the batch so a retry needs neither the workbook nor the planning step.
+     */
+    public record BatchPlan(
+            String key,
+            int index,
+            String sheet,
+            SheetCategory category,
+            Map<String, String> columns,
+            int startRow,
+            int planVersion,
+            /** Total non-empty data rows in the sheet; the prompt keeps saying "第 x/y 行". */
+            int totalRows,
+            List<List<String>> rows) {
 
-    public record Extraction(
-            List<SheetExtraction> sheets,
-            List<String> warnings,
-            int batches,
-            List<String> rawAnswers) {}
+        public int rowCount() {
+            return rows.size();
+        }
 
-    public Extraction extract(List<ProfiledSheet> profiles, WorkbookPlan plan) {
-        List<SheetExtraction> sheets = new ArrayList<>();
+        public String label() {
+            int end = startRow + Math.max(0, rowCount() - 1);
+            String range = startRow == end ? "第 " + startRow + " 行" : "第 " + startRow + "-" + end + " 行";
+            return "工作表「" + sheet + "」" + range;
+        }
+    }
+
+    /** What the deterministic plan produced: batches plus sheets that cannot be read. */
+    public record Planning(List<BatchPlan> batches, List<String> warnings) {}
+
+    /** One batch's answer. An empty row list means the model copied nothing. */
+    public record BatchResult(List<RowDto> rows, String rawResponse) {}
+
+    /**
+     * Splits every contributing sheet into batches without calling the model. The batch
+     * key includes the plan version, so batches from an older plan can never be mistaken
+     * for this one's.
+     */
+    public Planning planBatches(List<ProfiledSheet> profiles, WorkbookPlan plan, int planVersion) {
+        List<BatchPlan> batches = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
-        List<String> rawAnswers = new ArrayList<>();
-        int batches = 0;
         for (SheetPlan sheetPlan : plan.dataSheets()) {
             ProfiledSheet sheet = find(profiles, sheetPlan.sheet());
             if (sheet == null || sheet.skipped()) {
@@ -82,29 +114,53 @@ public class WorkbookExtractor {
                 continue;
             }
             Map<String, Integer> columns = columns(sheet, sheetPlan);
-            List<RowDto> read = new ArrayList<>();
+            if (columns.isEmpty()) {
+                warnings.add("工作表「" + sheet.name() + "」没有可用的列映射，已跳过");
+                continue;
+            }
+            Map<String, String> labels = new LinkedHashMap<>();
+            List<Integer> indices = new ArrayList<>();
+            for (Map.Entry<String, Integer> entry : columns.entrySet()) {
+                labels.put(entry.getKey(), sheet.labels().get(entry.getValue() - 1));
+                indices.add(entry.getValue() - 1);
+            }
             for (int offset = 0; offset < dataRows.size(); offset += batchSize) {
                 List<List<String>> chunk = dataRows.subList(
                         offset, Math.min(offset + batchSize, dataRows.size()));
-                batches++;
-                AiResult result = gateway.chat(request(
-                        prompt(sheetPlan, sheet, columns, chunk, offset, dataRows.size())));
-                if (!result.success()) {
-                    throw ApiException.badRequest("AI 解析失败：" + (result.errorMessage() == null
-                            ? "请检查 AI 供应商配置" : result.errorMessage()));
+                List<List<String>> projected = new ArrayList<>();
+                for (List<String> row : chunk) {
+                    List<String> cells = new ArrayList<>();
+                    for (int index : indices) {
+                        cells.add(index < row.size() && row.get(index) != null ? row.get(index) : "");
+                    }
+                    projected.add(List.copyOf(cells));
                 }
-                rawAnswers.add(result.rawResponse() == null ? result.content() : result.rawResponse());
-                List<RowDto> parsed = parse(result.content(), sheetPlan.category());
-                if (parsed.isEmpty()) {
-                    warnings.add("工作表「" + sheet.name() + "」第 " + (offset + 1) + " 行起的这一批没有返回数据");
-                }
-                read.addAll(parsed);
+                int startRow = offset + 1;
+                int endRow = startRow + chunk.size() - 1;
+                batches.add(new BatchPlan(
+                        sheet.name() + "#" + startRow + "-" + endRow + "@" + planVersion,
+                        batches.size() + 1,
+                        sheet.name(),
+                        sheetPlan.category(),
+                        java.util.Collections.unmodifiableMap(labels),
+                        startRow,
+                        planVersion,
+                        dataRows.size(),
+                        List.copyOf(projected)));
             }
-            sheets.add(new SheetExtraction(
-                    sheet.name(), sheetPlan.category(), List.copyOf(read)));
         }
-        return new Extraction(
-                List.copyOf(sheets), List.copyOf(warnings), batches, List.copyOf(rawAnswers));
+        return new Planning(List.copyOf(batches), List.copyOf(warnings));
+    }
+
+    /** One AI call for one stored batch. A failure belongs to this batch, not the session. */
+    public BatchResult extractBatch(BatchPlan batch) {
+        AiResult result = gateway.chat(request(prompt(batch)));
+        if (!result.success()) {
+            throw ApiException.badRequest("AI 解析失败：" + (result.errorMessage() == null
+                    ? "请检查 AI 供应商配置" : result.errorMessage()));
+        }
+        String raw = result.rawResponse() == null ? result.content() : result.rawResponse();
+        return new BatchResult(parse(result.content(), batch.category()), raw);
     }
 
     private AiRequest request(String prompt) {
@@ -125,37 +181,17 @@ public class WorkbookExtractor {
                 """;
     }
 
-    private String prompt(
-            SheetPlan plan,
-            ProfiledSheet sheet,
-            Map<String, Integer> columns,
-            List<List<String>> chunk,
-            int offset,
-            int total) {
-        Map<String, String> labels = new LinkedHashMap<>();
-        List<Integer> indices = new ArrayList<>();
-        for (Map.Entry<String, Integer> entry : columns.entrySet()) {
-            labels.put(entry.getKey(), sheet.labels().get(entry.getValue() - 1));
-            indices.add(entry.getValue() - 1);
-        }
-        List<List<String>> projected = new ArrayList<>();
-        for (List<String> row : chunk) {
-            List<String> cells = new ArrayList<>();
-            for (int index : indices) {
-                cells.add(index < row.size() && row.get(index) != null ? row.get(index) : "");
-            }
-            projected.add(List.copyOf(cells));
-        }
+    private String prompt(BatchPlan batch) {
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("target", parserTarget(plan.category()));
-        payload.put("sheet", sheet.name());
-        payload.put("columns", labels);
-        payload.put("firstRow", offset + 1);
-        payload.put("rowCount", total);
-        payload.put("rows", projected);
+        payload.put("target", parserTarget(batch.category()).code());
+        payload.put("sheet", batch.sheet());
+        payload.put("columns", batch.columns());
+        payload.put("firstRow", batch.startRow());
+        payload.put("rowCount", Math.max(batch.totalRows(), batch.rowCount()));
+        payload.put("rows", batch.rows());
         return "结构已确认，请只按 columns 的映射把 rows 抄成记录，每行一条。\n"
                 + "columns 的键是系统字段，值是该字段所在列的列名；rows 的每一列依次对应 columns 的字段顺序。\n"
-                + fieldHint(plan.category())
+                + fieldHint(batch.category())
                 + "数据（JSON）：\n" + json(payload);
     }
 
