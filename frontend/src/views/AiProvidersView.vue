@@ -190,6 +190,21 @@
               />
             </el-select>
           </div>
+          <div class="task-line">
+            <span class="task-label">自然语言约束</span>
+            <el-select
+              v-model="customSelections.natural_language_constraints"
+              placeholder="选择模型"
+              style="width: 360px"
+            >
+              <el-option
+                v-for="option in modelOptions"
+                :key="option.modelId"
+                :label="option.providerName + ' / ' + option.modelName"
+                :value="option.modelId"
+              />
+            </el-select>
+          </div>
         </div>
 
         <el-button class="task-save" type="primary" :loading="savingTasks" @click="saveTaskConfig">
@@ -381,7 +396,11 @@ interface ParamDraft {
   maxTokens?: number
 }
 
-const TASK_TYPES = ['data_import', 'substitution_recommend'] as const
+const TASK_TYPES = [
+  'data_import',
+  'substitution_recommend',
+  'natural_language_constraints',
+] as const
 
 const providers = ref<AiProvider[]>([])
 const presets = ref<Preset[]>([])
@@ -404,6 +423,7 @@ const unifiedModelId = ref<number | undefined>()
 const customSelections = reactive<Record<string, number | undefined>>({
   data_import: undefined,
   substitution_recommend: undefined,
+  natural_language_constraints: undefined,
 })
 
 const providerDialogVisible = ref(false)

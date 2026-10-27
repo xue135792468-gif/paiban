@@ -12,9 +12,13 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<Map<String, Object>> handleApi(ApiException ex) {
@@ -70,6 +74,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, Object>> handleIllegalState(IllegalStateException ex) {
         return body(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    /**
+     * Anything unexpected must be a 500 with a log line, never an error dispatch that
+     * security turns into a misleading 401.
+     */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> handleUnexpected(Exception ex) {
+        log.error("未处理的服务端异常", ex);
+        return body(HttpStatus.INTERNAL_SERVER_ERROR, "服务器内部错误");
     }
 
     private ResponseEntity<Map<String, Object>> body(HttpStatus status, String message) {

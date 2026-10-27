@@ -38,6 +38,15 @@
       />
     </div>
 
+    <ConstraintAiPanel
+      v-if="semesterId && canManage"
+      :semester-id="semesterId"
+      :types="draft.rows.value"
+      :teachers="teachers"
+      :courses="courses"
+      :can-read-all="canReadAll"
+    />
+
     <el-card v-if="semesters.length === 0 && !loading" shadow="never">
       <EmptyStateGuide
         title="还没有学期"
@@ -176,6 +185,7 @@ import ConstraintSummaryBar from '@/components/constraints/ConstraintSummaryBar.
 import ConstraintTypeNav from '@/components/constraints/ConstraintTypeNav.vue'
 import ConstraintTypePanel from '@/components/constraints/ConstraintTypePanel.vue'
 import ConstraintTemplateBar from '@/components/constraints/ConstraintTemplateBar.vue'
+import ConstraintAiPanel from '@/components/constraints/ConstraintAiPanel.vue'
 import { useConstraintDraft } from '@/components/constraints/useConstraintDraft'
 import { useConstraintSave } from '@/components/constraints/useConstraintSave'
 import type {
@@ -203,6 +213,7 @@ interface ConstraintState {
 const auth = useAuthStore()
 const settings = useSettingsStore()
 const canManage = computed(() => auth.hasPermission('constraint:manage'))
+const canReadAll = computed(() => auth.hasPermission('settings:manage'))
 const isJunior = computed(() => settings.isJunior)
 
 const draft = useConstraintDraft()

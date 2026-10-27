@@ -62,9 +62,10 @@ public class GeminiStrategy implements AiStrategy {
 
     @Override
     public AiStrategyOutcome invoke(AiInvocation invocation) {
+        Duration requestTimeout = requestTimeout(invocation);
         try {
             HttpRequest.Builder builder = HttpRequest.newBuilder(endpoint(invocation))
-                    .timeout(timeout)
+                    .timeout(requestTimeout)
                     .header("Content-Type", "application/json")
                     .header("Accept", "application/json");
             String apiKey = invocation.apiKey();
@@ -76,7 +77,7 @@ public class GeminiStrategy implements AiStrategy {
                     httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             return interpret(response.statusCode(), response.body());
         } catch (HttpTimeoutException ex) {
-            return AiStrategyOutcome.failure("TIMEOUT", "AI 调用超时（" + timeout.toSeconds() + " 秒）", null);
+            return AiStrategyOutcome.failure("TIMEOUT", "AI 调用超时（" + requestTimeout.toSeconds() + " 秒）", null);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             return AiStrategyOutcome.failure("PROVIDER_ERROR", "AI 调用被中断", 499);
@@ -190,5 +191,12 @@ public class GeminiStrategy implements AiStrategy {
         }
         String compact = value.replaceAll("\\s+", " ").trim();
         return compact.length() <= MAX_ERROR_BODY ? compact : compact.substring(0, MAX_ERROR_BODY);
+    }
+
+    /** The task may cap its own call; every other task keeps the gateway default. */
+    private Duration requestTimeout(AiInvocation invocation) {
+        Integer seconds = invocation.request() == null || invocation.request().options() == null
+                ? null : invocation.request().options().timeoutSeconds();
+        return seconds != null && seconds > 0 ? Duration.ofSeconds(seconds) : timeout;
     }
 }

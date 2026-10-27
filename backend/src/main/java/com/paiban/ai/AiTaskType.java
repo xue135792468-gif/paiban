@@ -9,7 +9,8 @@ package com.paiban.ai;
 public enum AiTaskType {
 
     DATA_IMPORT("data_import"),
-    SUBSTITUTION_RECOMMEND("substitution_recommend");
+    SUBSTITUTION_RECOMMEND("substitution_recommend"),
+    NATURAL_LANGUAGE_CONSTRAINTS("natural_language_constraints");
 
     private final String value;
 

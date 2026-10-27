@@ -206,7 +206,11 @@ public class AiHistoryService {
     }
 
     private String callSummary(AiCallLog log) {
-        String task = "substitution_recommend".equals(log.getTaskType()) ? "调代推荐" : "数据导入";
+        String task = switch (log.getTaskType() == null ? "" : log.getTaskType()) {
+            case "substitution_recommend" -> "调代推荐";
+            case "natural_language_constraints" -> "自然语言约束";
+            default -> "数据导入";
+        };
         return task + " · " + (log.isSuccess() ? "成功" : "失败");
     }
 
