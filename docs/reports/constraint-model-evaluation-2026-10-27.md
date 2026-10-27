@@ -6,7 +6,7 @@
 
 - 可用模型只有 `gemini-3-flash`（provider 2）。C01–C22 每句 3 次：**明确支持 27/54，边界 9/12**，未达到 52/54 与 12 次零误转的门槛。
 - 费用：按名义单价 0.001/0.002 元每 1K token 计算，本次用量 0.1960 元（免费渠道，实际不计费）；最坏费用预留 0.8382 元，远低于 20 元上限。
-- **Gemini 3.8 在当前中转不可用**：`gemini-3.8-flash` 返回 HTTP 404 `Upstream request failed`；`gemini-3.8-flash-low/medium/high/tiered` 在 `HttpClient.send` 挂起；`gemini-3.1-pro` 也返回 404。以上结果不作为模型通过证据。
+- **Gemini 3.8 短提示可用，但评测长提示不可用**：直接短提示（“只回复 OK”）实测 `gemini-3.8-flash-low/medium/tiered` 均返回 200；但在 C01–C22 的约 17K 字符提示 + 4096 输出下，`low/medium/tiered` 在 `HttpClient.send` 挂起超过 12 分钟，远超功能要求的 60 秒任务边界。`gemini-3.8-flash` 普通别名 404，`gemini-3.1-pro` 也 404。以上结果不作为模型通过证据。
 - 决策：**不打开自然语言约束功能**；`NATURAL_LANGUAGE_CONSTRAINTS` 保持未绑定，页面按“AI 不可用/未配置”降级，手动配置路径不受影响。
 - 原始报告：[Markdown](constraint-model-evaluation-2026-10-27-gemini-3-flash.md) / [JSON](constraint-model-evaluation-2026-10-27-gemini-3-flash.json)。
 - 评测工具与预算守卫已用替身演练验证（54/54、12/12 只证明管线，不证明任何真实模型）。

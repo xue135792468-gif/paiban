@@ -1,6 +1,6 @@
 # 接手说明（2026-10-25 会话交接）
 
-> **2026-10-27 票14 已实现、合并 `main` 并部署（代码 `b21cb9a`，Flyway v37）**：正式规格与 12 张实现票（`.scratch/natural-language-constraints/`）完成 01→12：课程禁排、25 类逐项控制、配置版本/冲突、AI 只读建议、C01–C22 评测工具、校对加入与审计、跨设备工作区。合并后全量门禁后端 857、前端 401、Playwright 90 全绿；真实 PostgreSQL 临时库 V1–V37 与 CI `PostgresContainerIT` 均通过；四容器 healthy、两处 health 200。真实评测已执行：唯一可用的 `gemini-3-flash` 为 **27/54、9/12 未达标**；3.8/Pro 在中转不可用，**功能保持未放行**。详见[票12交付记录](natural-language-constraints/issues/12-integrate-and-accept.md)；结构性问题转入票 13。
+> **2026-10-27 票14 已实现、合并 `main` 并部署（代码 `b21cb9a`，Flyway v37）**：正式规格与 12 张实现票（`.scratch/natural-language-constraints/`）完成 01→12：课程禁排、25 类逐项控制、配置版本/冲突、AI 只读建议、C01–C22 评测工具、校对加入与审计、跨设备工作区。合并后全量门禁后端 857、前端 401、Playwright 90 全绿；真实 PostgreSQL 临时库 V1–V37 与 CI `PostgresContainerIT` 均通过；四容器 healthy、两处 health 200。真实评测已执行：唯一完成全套的 `gemini-3-flash` 为 **27/54、9/12 未达标**；`3.8-low/medium/tiered` 短提示 200、长提示挂起，普通 3.8 与 Pro 404，**功能保持未放行**。详见[票12交付记录](natural-language-constraints/issues/12-integrate-and-accept.md)；结构性问题转入票 13。
 
 > **2026-10-26 整本导入后台化（02 遗留）已实现、合并 `main` 并部署（代码 `b21cb9a`，Flyway v37）**：三张草案 01 → 02 → 03 已完成，每票 TDD、独立评审。上传立即返回 `PARSING`，规划/取值在 `importExecutor` 串行；计划与运行身份落库（Flyway **V30**：`plan_json` / `plan_version` / `run_id`）；停止保留已完成范围并把未覆盖范围列为可重试失败；重试只重放失败批次、成功批次不重调模型；晚响应只进审计。合并后全量门禁通过；备份 `~/backups/paiban/paiban-pre-v37-20261027T105735Z.sql.gz`；四容器 healthy、两处 health 200。评审遗留的票 04（重复提交单飞）仍未实现；读 `.scratch/workbook-background/spec.md` 与 `issues/`，决策见 `docs/adr/0029-workbook-background-runs.md`。
 
@@ -39,7 +39,7 @@
 | `08-fill-missing-periods` | 文件里的节次比作息多，只能手工加格子 | 已上线（2026-10-25，main `a8babf5`） |
 | `09-flag-suspicious-teacher-names` | "信息技术"这类占位名被当成老师 | 已上线（2026-10-25，main `a8babf5`） |
 | `10-multiple-constraint-targets` | 约束多条、对象覆盖与折叠布局 | 已确认语义并拆 6 票，见 `.scratch/constraint-entries/`；先原型确认 |
-| `14-natural-language-constraints` | 自然语言生成约束＋课程禁排＋逐项控制＋跨设备恢复 | 已上线（2026-10-27，main `b21cb9a`，Flyway v37）；AI 功能未放行（gemini-3-flash 27/54、9/12；3.8 不可用） |
+| `14-natural-language-constraints` | 自然语言生成约束＋课程禁排＋逐项控制＋跨设备恢复 | 已上线（2026-10-27，main `b21cb9a`，Flyway v37）；AI 功能未放行（gemini-3-flash 27/54、9/12；3.8 短提示可用、长提示挂起） |
 | 票 02 遗留 | 整本导入没有批次进度/停止/重试（同步跑完） | 已上线（2026-10-27，main `b21cb9a`，Flyway v37）；见 `.scratch/workbook-background/` |
 
 票据都在 `.scratch/phase11-real-workbook-import/issues/`；规格与 ADR 在该目录 `spec.md` 和 `docs/adr/0026-real-workbook-import.md`。
@@ -54,7 +54,7 @@
 - **02 整本后台化已上线（2026-10-27，main `b21cb9a`，Flyway v37）。**
   读 `.scratch/workbook-background/spec.md` 与 `issues/`；实现说明在各票末尾，决策见 ADR-0029。评审遗留的票 04（重复提交单飞）仍未实现。
 - **14 已上线（2026-10-27，main `b21cb9a`，Flyway v37）。**
-  读 `.scratch/natural-language-constraints/spec.md`、`ticket-plan.md` 与 `issues/01..13`；真实评测已执行，`gemini-3-flash` 27/54、9/12 未达标，3.8/Pro 在中转不可用；功能保持未放行，不要用替身结果冒充。
+  读 `.scratch/natural-language-constraints/spec.md`、`ticket-plan.md` 与 `issues/01..13`；真实评测已执行，`gemini-3-flash` 27/54、9/12 未达标，3.8-low/medium/tiered 短提示 200 但长提示挂起、普通 3.8 与 Pro 404；功能保持未放行，不要用替身结果冒充。
 - **收尾跑一次 `/retro`**：把"保存作息表毁草稿"这类坑变成确定性检查（例如给 `draft_lesson.period_id` 加外键/一致性校验），别只写在文档里。
 
 ## 交差门槛（每票）
