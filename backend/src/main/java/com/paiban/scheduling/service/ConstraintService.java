@@ -83,8 +83,6 @@ public class ConstraintService {
     private final ConstraintConfigRepository configs;
     private final ConstraintConfigStateRepository states;
     private final ConstraintEntryRepository entries;
-    private final ConstraintSaveAuditRepository audits;
-    private final ConstraintGenerationRunRepository generationRuns;
     private final ConstraintWorkspaceRepository workspaces;
     private final ConstraintTemplateRepository templates;
     private final SemesterService semesters;
@@ -92,15 +90,13 @@ public class ConstraintService {
     private final CourseRepository courses;
     private final PeriodRepository periods;
     private final AdminClassRepository adminClasses;
-    private final UserService users;
+    private final ConstraintAuditService auditService;
     private final ObjectMapper objectMapper;
 
     public ConstraintService(
             ConstraintConfigRepository configs,
             ConstraintConfigStateRepository states,
             ConstraintEntryRepository entries,
-            ConstraintSaveAuditRepository audits,
-            ConstraintGenerationRunRepository generationRuns,
             ConstraintWorkspaceRepository workspaces,
             ConstraintTemplateRepository templates,
             SemesterService semesters,
@@ -108,13 +104,11 @@ public class ConstraintService {
             CourseRepository courses,
             PeriodRepository periods,
             AdminClassRepository adminClasses,
-            UserService users,
+            ConstraintAuditService auditService,
             ObjectMapper objectMapper) {
         this.configs = configs;
         this.states = states;
         this.entries = entries;
-        this.audits = audits;
-        this.generationRuns = generationRuns;
         this.workspaces = workspaces;
         this.templates = templates;
         this.semesters = semesters;
@@ -122,7 +116,7 @@ public class ConstraintService {
         this.courses = courses;
         this.periods = periods;
         this.adminClasses = adminClasses;
-        this.users = users;
+        this.auditService = auditService;
         this.objectMapper = objectMapper;
     }
 
@@ -191,7 +185,7 @@ public class ConstraintService {
             Long semesterId, List<ConstraintConfigRequest> requests, Long baseVersion,
             Long runId, List<ProposalDecision> decisions, String actor) {
         Long resolved = resolveSemester(semesterId);
-        AuditContext audit = prepareAudit(resolved, runId, actor);
+        ConstraintAuditService.AuditContext audit = auditService.prepare(resolved, runId, actor);
         long base = requireVersion(resolved, baseVersion);
         Planning planning = plan(resolved, requests, existingEntries(resolved));
         List<String> errors = refusalErrors(planning);
@@ -203,7 +197,7 @@ public class ConstraintService {
         // later failure rolls the bump back with the rest of the transaction.
         advanceState(resolved, base);
         List<ConstraintConfigDto> result = persist(resolved, planning.configs());
-        recordAudit(resolved, base + 1, audit, decisions, previous, result);
+        auditService.record(resolved, base + 1, audit, decisions, previous, result);
         // The successful save is the new truth: this account's unsaved draft must not
         // resurrect afterwards, on this device or another.
         if (audit.userId() != null) {
@@ -227,16 +221,7 @@ public class ConstraintService {
 
     @Transactional(readOnly = true)
     public List<ConstraintSaveAuditDto> audits(Long semesterId, boolean all, String actor) {
-        Long resolved = resolveSemester(semesterId);
-        Long userId = userIdOf(actor);
-        if (all && !isAdmin()) {
-            throw ApiException.forbidden("只有设置管理员可以查看全部保存记录");
-        }
-        var page = org.springframework.data.domain.PageRequest.of(0, 50);
-        List<ConstraintSaveAudit> rows = all
-                ? audits.findBySemesterIdOrderByCreatedAtDesc(resolved, page)
-                : audits.findBySemesterIdAndUserIdOrderByCreatedAtDesc(resolved, userId, page);
-        return rows.stream().map(this::toAuditDto).toList();
+        return auditService.audits(semesterId, all, actor);
     }
 
     /**
@@ -418,107 +403,6 @@ public class ConstraintService {
         return !configs.findBySemesterId(semesterId).isEmpty();
     }
 
-    // ------------------------------------------------------------ save audit
-
-    private record AuditContext(Long userId, String actor, Long runId) {}
-
-    /**
-     * Validates the generation run a save claims to come from before any write: it must
-     * belong to this semester, and a non-admin may only save decisions about their own
-     * run. A manual save (no run) is always allowed.
-     */
-    private AuditContext prepareAudit(Long semesterId, Long runId, String actor) {
-        Long userId = userIdOf(actor);
-        if (runId == null) {
-            return new AuditContext(userId, actor, null);
-        }
-        // A run-linked save must prove who is saving: an unresolved actor cannot be
-        // allowed to skip the ownership check just because the lookup failed.
-        if (userId == null) {
-            throw ApiException.unauthorized("无法确认当前用户，不能关联生成记录");
-        }
-        ConstraintGenerationRun run = generationRuns.findById(runId)
-                .orElseThrow(() -> ApiException.badRequest("生成记录不存在: " + runId));
-        if (!semesterId.equals(run.getSemesterId())) {
-            throw ApiException.badRequest("生成记录属于其他学期，不能用于本次保存");
-        }
-        if (!isAdmin() && !userId.equals(run.getUserId())) {
-            throw ApiException.forbidden("不能保存他人的生成记录");
-        }
-        return new AuditContext(userId, actor, runId);
-    }
-
-    /** The final configuration and the decisions are written in the save transaction. */
-    private void recordAudit(
-            Long semesterId, long version, AuditContext audit,
-            List<ProposalDecision> decisions, List<ConstraintConfigDto> previous,
-            List<ConstraintConfigDto> result) {
-        ConstraintSaveAudit row = new ConstraintSaveAudit();
-        row.setSemesterId(semesterId);
-        row.setVersion(version);
-        row.setUserId(audit.userId());
-        row.setActor(audit.actor());
-        row.setRunId(audit.runId());
-        row.setDecisionsJson(toJson(decisions == null ? List.of() : decisions));
-        row.setPreviousConfigJson(toJson(previous));
-        row.setFinalConfigJson(toJson(result));
-        row.setDiffJson(toJson(ConstraintConfigDiff.diff(previous, result)));
-        row.setCreatedAt(Instant.now());
-        audits.save(row);
-    }
-
-    private ConstraintSaveAuditDto toAuditDto(ConstraintSaveAudit row) {
-        List<ProposalDecision> decisions;
-        List<ConstraintConfigDto> configs;
-        try {
-            decisions = row.getDecisionsJson() == null ? List.of()
-                    : objectMapper.readValue(row.getDecisionsJson(),
-                    new TypeReference<List<ProposalDecision>>() {});
-        } catch (JsonProcessingException ex) {
-            decisions = List.of();
-        }
-        try {
-            configs = objectMapper.readValue(row.getFinalConfigJson(),
-                    new TypeReference<List<ConstraintConfigDto>>() {});
-        } catch (JsonProcessingException ex) {
-            configs = List.of();
-        }
-        List<ConstraintConfigDto> previous;
-        try {
-            previous = row.getPreviousConfigJson() == null ? List.of()
-                    : objectMapper.readValue(row.getPreviousConfigJson(),
-                    new TypeReference<List<ConstraintConfigDto>>() {});
-        } catch (JsonProcessingException ex) {
-            previous = List.of();
-        }
-        Map<String, Object> diff;
-        try {
-            diff = row.getDiffJson() == null ? Map.of()
-                    : objectMapper.readValue(row.getDiffJson(),
-                    new TypeReference<Map<String, Object>>() {});
-        } catch (JsonProcessingException ex) {
-            diff = Map.of();
-        }
-        return new ConstraintSaveAuditDto(row.getId(), row.getSemesterId(), row.getVersion(),
-                row.getRunId(), row.getActor(), row.getCreatedAt(), decisions, configs,
-                previous, diff);
-    }
-
-    private Long userIdOf(String actor) {
-        if (actor == null || !StringUtils.hasText(actor)) {
-            return null;
-        }
-        try {
-            return users.getByUsername(actor).getId();
-        } catch (RuntimeException ex) {
-            return null;
-        }
-    }
-
-    private boolean isAdmin() {
-        return users.hasPermission(Permissions.SETTINGS_MANAGE);
-    }
-
     // ------------------------------------------------------------ config version
 
     /** The current version; a semester that was never saved reads as 0. */
@@ -696,7 +580,7 @@ public class ConstraintService {
         List<ConstraintConfigDto> result = persist(resolved, planning.configs());
         // Applying a template also changes the effective configuration; the caller's
         // stale unsaved draft must not come back after it.
-        Long userId = userIdOf(actor);
+        Long userId = auditService.userIdOf(actor);
         if (userId != null) {
             workspaces.deleteByUserIdAndSemesterId(userId, resolved);
         }
