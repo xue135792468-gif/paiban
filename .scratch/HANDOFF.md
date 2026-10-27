@@ -1,5 +1,7 @@
 # 接手说明（2026-10-25 会话交接）
 
+> **2026-10-27 票14 已实现（集成分支，未合并/未部署）**：正式规格与 12 张实现票（`.scratch/natural-language-constraints/`）已在 `feature/natural-language-constraints`（从 `main` 6d8319a 拉起）完成 01→12：课程禁排、25 类逐项控制、配置版本/冲突、AI 只读建议、C01–C22 评测工具、校对加入与审计、跨设备工作区。后端 840 例、前端 395 例与完整 Playwright 见票 12 记录。真实模型评测**受阻**（无可靠单价/授权），未调用真实供应商，报告见 `docs/reports/constraint-model-evaluation-2026-10-27.md`。**未合并 main、未部署**；主仓库里另一项整本工作簿后台导入的未提交改动不属于本分支。
+
 > **2026-10-25 准备复查更新：先读 [准备审查入口](phase11-real-workbook-import/preparation/README.md)。**
 > 用户已暂停本会话修复，改为完成准备材料、交由新的 agent 执行。以下旧路线中的待问与 ready 状态须以新入口为准：六项修复已有补充规格；票 10 已问定并拆成 6 票，先做原型等用户确认；整本后台化另备下一批 3 张草案；14 下一期再 grill。
 > 票 11 有未提交、未通过验证的候选代码留在 `E:\paiban-wt\import-repairs`，不是已完成修复。勿忽略未跟踪的外键迁移或把现有失败测试当作绿色证据。新入口记录了基点、失败原因和接手要求。
@@ -35,7 +37,7 @@
 | `08-fill-missing-periods` | 文件里的节次比作息多，只能手工加格子 | 已上线（2026-10-25，main `a8babf5`） |
 | `09-flag-suspicious-teacher-names` | "信息技术"这类占位名被当成老师 | 已上线（2026-10-25，main `a8babf5`） |
 | `10-multiple-constraint-targets` | 约束多条、对象覆盖与折叠布局 | 已确认语义并拆 6 票，见 `.scratch/constraint-entries/`；先原型确认 |
-| `14-natural-language-constraints` | 自然语言生成约束：只有灰开关，功能没实现 | 下一期，保留 grill 问题树，本轮不实现 |
+| `14-natural-language-constraints` | 自然语言生成约束＋课程禁排＋逐项控制＋跨设备恢复 | 已实现于 `feature/natural-language-constraints`（2026-10-27），未合并/未部署；真实模型评测受阻 |
 | 票 02 遗留 | 整本导入没有批次进度/停止/重试（同步跑完） | 下一批草案见 `.scratch/workbook-background/`，仍未完成 |
 
 票据都在 `.scratch/phase11-real-workbook-import/issues/`；规格与 ADR 在该目录 `spec.md` 和 `docs/adr/0026-real-workbook-import.md`。
@@ -49,8 +51,8 @@
   读 `.scratch/constraint-entries/spec.md`。第一票 `/prototype` 出可点页面，经用户确认才放行生产实现；其余按 Blocked by 顺序推进。需求准备完成不代表原型已批准。
 - **02 整本后台化为下一批，仅有准备草案。**
   读 `.scratch/workbook-background/spec.md`；不勾掉原票遗留，不与六项修复混做。
-- **14 下一期再 grill。**
-  先读 `preparation/next-phase-questions.md`。届时用 `/grill-with-docs` 确认范围与语料，再 `/to-spec` → `/to-tickets`。确认应用依赖 10 的稳定保存契约，语料调研与只读建议没有布局完成的硬依赖。
+- **14 已实现，等待合并/部署与真实评测。**
+  读 `.scratch/natural-language-constraints/spec.md`、`ticket-plan.md` 与 `issues/01..12`；集成分支 `feature/natural-language-constraints`。合并前按常规跑 `scripts/verify.sh --full`；部署时 Flyway 到 **V36**（V31 逐项控制、V32 配置版本、V33 生成记录、V34 保存审计、V35 模型内容、V36 工作区）。真实评测需人工确认单价并授权后用 `--paiban.eval.enabled=true` 运行，不要把替身结果当模型通过。
 - **收尾跑一次 `/retro`**：把"保存作息表毁草稿"这类坑变成确定性检查（例如给 `draft_lesson.period_id` 加外键/一致性校验），别只写在文档里。
 
 ## 交差门槛（每票）
