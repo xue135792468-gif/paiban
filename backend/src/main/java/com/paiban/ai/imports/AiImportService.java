@@ -420,6 +420,9 @@ public class AiImportService {
      */
     public PreviewDto stop(long id, String username) {
         AiImportLog log = requireSession(id, username);
+        if (isWorkbook(log)) {
+            return workbook.stop(log);
+        }
         if (!AiImportLog.PARSING.equals(log.getStatus())) {
             throw ApiException.conflict("当前导入不在解析中，无法停止");
         }
@@ -483,6 +486,9 @@ public class AiImportService {
      */
     public PreviewDto retry(long id, String username) {
         AiImportLog log = requireSession(id, username);
+        if (isWorkbook(log)) {
+            return workbook.retry(log);
+        }
         if (!AiImportLog.PARTIAL.equals(log.getStatus())) {
             throw ApiException.conflict(AiImportLog.PARSING.equals(log.getStatus())
                     ? "解析还没完成，请等进度走完再重试失败批次"
@@ -545,6 +551,9 @@ public class AiImportService {
      */
     public PreviewDto abandon(long id, String username) {
         AiImportLog log = requireSession(id, username);
+        if (isWorkbook(log)) {
+            return workbook.abandon(log);
+        }
         requireAbandonable(log);
         AtomicBoolean stop = stopFlags.get(id);
         if (stop != null) {
@@ -890,6 +899,10 @@ public class AiImportService {
     @EventListener(ApplicationReadyEvent.class)
     public void recoverInterruptedSessions() {
         for (AiImportLog candidate : logs.findByStatus(AiImportLog.PARSING)) {
+            // The workbook pipeline has its own planner/batch state; it recovers itself.
+            if (isWorkbook(candidate)) {
+                continue;
+            }
             transactionTemplate.executeWithoutResult(status -> {
                 AiImportLog log = logs.findById(candidate.getId()).orElse(null);
                 if (log == null || !AiImportLog.PARSING.equals(log.getStatus())) {
@@ -1188,7 +1201,7 @@ public class AiImportService {
         }
         return new ImportProgressDto(
                 log.getTotalBatches(), log.getCompletedBatches(), batchStore.failedCount(plan),
-                log.getCurrentBatch());
+                log.getCurrentBatch(), ImportDtos.PHASE_EXTRACTING);
     }
 
     private List<FailedBatchDto> failedBatches(AiImportLog log, List<BatchStore.State> plan) {

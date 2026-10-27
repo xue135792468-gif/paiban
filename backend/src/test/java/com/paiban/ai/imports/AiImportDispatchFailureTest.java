@@ -66,6 +66,27 @@ class AiImportDispatchFailureTest extends ApiIntegrationTest {
     }
 
     @Test
+    void aWorkbookUploadThatCannotBeQueuedEndsAsAFailedSessionWithAConflict() throws Exception {
+        doThrow(new RejectedExecutionException("队列已满")).when(importExecutor).execute(any());
+        String admin = adminToken();
+
+        Response upload = upload(admin, "/api/ai/import/excel?target=workbook",
+                "真实工作簿.xlsx", timetableExcelBytes(4));
+
+        // The workbook path also answers PARSING only when the worker took the job.
+        upload.then().statusCode(409).body("message", containsString("系统繁忙"));
+
+        List<AiImportLog> sessions = importLogs.findAll();
+        assertThat(sessions).hasSize(1);
+        AiImportLog stored = sessions.get(0);
+        assertThat(stored.getStatus()).isEqualTo(AiImportLog.FAILED);
+        assertThat(stored.getAiExplanation()).contains("系统繁忙");
+        assertThat(stored.getRunId()).isNull();
+        assertThat(stored.getPlanJson()).isNull();
+        assertThat(stored.getTotalBatches()).isZero();
+    }
+
+    @Test
     void aRetryThatCannotBeQueuedGoesBackToPartialWithAConflict() {
         doThrow(new RejectedExecutionException("队列已满")).when(importExecutor).execute(any());
         String admin = adminToken();

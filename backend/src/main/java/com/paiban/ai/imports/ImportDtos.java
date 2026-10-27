@@ -28,9 +28,16 @@ public final class ImportDtos {
 
     /**
      * How far a background parse has got. {@code failed} counts batches that errored,
-     * {@code currentBatch} is the class being parsed right now (null when idle).
+     * {@code currentBatch} is the batch being parsed right now (null when idle), and
+     * {@code phase} tells the page whether the workbook structure is still being planned
+     * ({@code PLANNING}) or values are already being extracted ({@code EXTRACTING}).
+     * A planning session has no honest batch total yet, so {@code total} stays 0.
      */
-    public record ImportProgressDto(int total, int completed, int failed, String currentBatch) {}
+    public record ImportProgressDto(
+            int total, int completed, int failed, String currentBatch, String phase) {}
+
+    public static final String PHASE_PLANNING = "PLANNING";
+    public static final String PHASE_EXTRACTING = "EXTRACTING";
 
     /** A batch the AI could not parse, kept so the page can name the class to retry. */
     public record FailedBatchDto(int index, String label, String reason) {}

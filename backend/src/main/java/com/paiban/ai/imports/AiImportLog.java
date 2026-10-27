@@ -114,6 +114,24 @@ public class AiImportLog {
     @Column(name = "batches_json", columnDefinition = "TEXT")
     private String batchesJson;
 
+    /**
+     * The confirmed workbook structure, so a retry never asks the model to plan again.
+     * Only the phase-11 workbook path fills it; every other channel leaves it null.
+     */
+    @Column(name = "plan_json", columnDefinition = "TEXT")
+    private String planJson;
+
+    /** Increments on every new plan; part of each workbook batch's stable identity. */
+    @Column(name = "plan_version", nullable = false)
+    private int planVersion;
+
+    /**
+     * Identity of the background run that owns this session. Stop, abandon and retry
+     * replace it, so a late answer from an older run can never write into the new state.
+     */
+    @Column(name = "run_id", length = 64)
+    private String runId;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 

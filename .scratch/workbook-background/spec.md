@@ -1,7 +1,7 @@
-# 整本工作簿后台解析：下一批草案（原票 02 遗留）
+# 整本工作簿后台解析（原票 02 遗留）
 
-Status: ready-for-agent（2026-10-26 批次启动复核通过）
-Execution: 下一批候选；本轮只准备，不进入六项修复。
+Status: done（2026-10-26 实现并过闸门）
+Execution: 已实现（工作区分支 `feature/workbook-background-import`，未提交）；未部署。
 2026-10-25 用户已同意准备三张草案。由下一批启动时复核接口和范围后执行。
 
 ## Problem Statement
@@ -56,7 +56,7 @@ Execution: 下一批候选；本轮只准备，不进入六项修复。
 ## Further Notes
 
 本草案复用 .scratch/phase8-import-background/spec.md 的产品边界；原票 02 的遗留仍未完成。
-三张文件在 draft-tickets/：01 后台与进度、02 停止与放弃、03 失败重试。02/03 都依赖 01 的运行身份及计划，不把“推荐先做停止”伪造成重试的硬代码依赖。
+三张文件在 issues/：01 后台与进度、02 停止与放弃、03 失败重试。02/03 都依赖 01 的运行身份及计划，不把“推荐先做停止”伪造成重试的硬代码依赖。
 
 ## 批次启动复核（2026-10-26）
 
@@ -68,3 +68,11 @@ Execution: 下一批候选；本轮只准备，不进入六项修复。
 - 交付形式：三张票都按纵向切片做（后端状态机 + REST + 页面 + E2E），不按前后端拆；每票独立评审与 `scripts/verify.sh --full`。
 - 建议在**新会话**里以 `/implement-spec` 执行本批（本批与约束条目批次无代码重叠，但会话上下文应保持单一主题）。
 
+## 执行结果（2026-10-26）
+
+- 三票按 01 → 02 → 03 串行完成；实现说明写在各票末尾。改动尚未提交，合并/部署时按常规复核。
+- 数据：V30 给 `ai_import_log` 增加 `plan_json` / `plan_version` / `run_id`；工作簿批次存于既有 `batches_json`。
+- 代码：`WorkbookImportFlow` 承担后台规划/取值、停止、放弃、重试、重启恢复与提交闸门；`WorkbookExtractor` 拆成确定性 `planBatches` 与单批 `extractBatch`；`WorkbookBatchStore` 负责批次身份与审计历史。
+- 页面：进度面板区分 `PLANNING` / `EXTRACTING`；计划失败显示「重新规划」；部分结果面板与提示改用「批次」措辞，工作簿未完成批次可重试。
+- 闸门：后端 `./mvnw -B test` 761 例全绿（5 skipped）；前端 lint/build/unit 371 例全绿；SFC 体积与 isBlank 棘轮通过；Playwright 全量 71 例全绿（含新增整本后台刷新恢复）。
+- 部署：未部署；上线时 Flyway 到 v30。

@@ -227,7 +227,7 @@ export function useImportSession() {
     retryRound.value = false
     const failed = data.failedBatches?.length ?? 0
     if (failed > 0) {
-      ElMessage.warning(`重试后还有 ${failed} 个班没解析出来，可以再试一次或放弃导入`)
+      ElMessage.warning(`重试后还有 ${failed} 个批次没解析出来，可以再试一次或放弃导入`)
     } else {
       ElMessage.success(`重试成功，已解析全部 ${data.rows.length} 节课`)
     }
@@ -407,8 +407,10 @@ export function useImportSession() {
     if (!preview.value) return
     try {
       await ElMessageBox.confirm(
-        '将丢弃当前预览并重新调用 AI 解析原始文件，确定继续？',
-        '打回重析',
+        isWorkbook.value
+          ? '将重新读取工作簿并让 AI 重新识别结构，当前已有的批次结果会被丢弃，确定继续？'
+          : '将丢弃当前预览并重新调用 AI 解析原始文件，确定继续？',
+        isWorkbook.value ? '重新规划' : '打回重析',
         { type: 'warning' },
       )
     } catch {
@@ -423,7 +425,7 @@ export function useImportSession() {
       )
       setPreview(data)
       editing.value = false
-      ElMessage.success('已重新解析')
+      ElMessage.success(isWorkbook.value ? '已重新开始识别，进度会自动刷新' : '已重新解析')
     } catch (error) {
       ElMessage.error(aiParseErrorMessage(error))
     } finally {
@@ -450,10 +452,12 @@ export function useImportSession() {
       setPreview(data)
       const completed = data.progress?.completed ?? 0
       const total = data.progress?.total ?? 0
-      if (isFailed(data.status)) {
+      if (isFailed(data.status) || (statusIsPartial(data.status) && completed === 0)) {
+        // A workbook stopped before its first finished range is still PARTIAL (retryable),
+        // but "kept 0/3" would read like a success; say what actually remains instead.
         ElMessage.warning(data.explanation || '已停止解析，没有任何已完成的批次')
       } else {
-        ElMessage.success(`已停止解析，保留已完成 ${completed}/${total} 批`)
+        ElMessage.success(`已停止解析，保留已完成 ${completed}/${total} 批${isWorkbook.value ? '，未完成的批次可以重试' : ''}`)
       }
     } catch (error) {
       ElMessage.error(serverMessage(error, '停止解析失败，请稍后重试'))
@@ -479,7 +483,7 @@ export function useImportSession() {
       // A PARSING preview starts the poll loop that reports the round's outcome.
       setPreview(data)
       const failed = current.failedBatches?.length ?? 0
-      ElMessage.info(`正在重试 ${failed} 个班，已解析的班不会重复调用 AI`)
+      ElMessage.info(`正在重试 ${failed} 个失败批次，已解析的批次不会重复调用 AI`)
     } catch (error) {
       ElMessage.error(serverMessage(error, '重试失败批次失败，请稍后重试'))
     } finally {

@@ -764,12 +764,31 @@ class WorkbookImportIntegrationTest extends ApiIntegrationTest {
 
     // ------------------------------------------------------------------ helpers
 
-    private Response upload(String token, byte[] bytes) {
-        return RestAssured.given()
+    private Response upload(String token, byte[] bytes) throws Exception {
+        Response accepted = RestAssured.given()
                 .header("Authorization", "Bearer " + token)
                 .multiPart("file", "真实教务工作簿.xlsx", bytes, XLSX)
                 .queryParam("target", "workbook")
                 .when().post("/api/ai/import/excel");
+        accepted.then().statusCode(200);
+        return waitForSettled(token, accepted.jsonPath().getLong("sessionId"));
+    }
+
+    /**
+     * The workbook upload now answers {@code PARSING}; the assertions below are about the
+     * settled preview, so the helper polls the same endpoint the page does.
+     */
+    private Response waitForSettled(String token, long sessionId) throws Exception {
+        for (int attempt = 0; attempt < 300; attempt++) {
+            Response session = as(token).when().get("/api/ai/import/sessions/" + sessionId);
+            session.then().statusCode(200);
+            String status = session.jsonPath().getString("status");
+            if (!"PARSING".equals(status)) {
+                return session;
+            }
+            Thread.sleep(100);
+        }
+        throw new AssertionError("后台解析在 30 秒内没有结束: session " + sessionId);
     }
 
     private JsonNode sheet(Response preview, String name) throws Exception {

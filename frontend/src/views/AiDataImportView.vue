@@ -64,6 +64,7 @@
         :progress="preview.progress"
         :stopping="stopping"
         :abandoning="abandoning"
+        :kept-for-retry="isWorkbook"
         @stop="stopParsing"
         @abandon="abandonImport"
       />
@@ -140,13 +141,12 @@
         </div>
       </el-card>
 
-      <el-alert
+      <ImportFailureNotice
         v-if="isFailedPreview"
-        data-testid="failed-reason"
-        type="error"
-        show-icon
-        :closable="false"
-        :title="preview.explanation || 'AI 解析失败，请调整文件后重新上传'"
+        :explanation="preview.explanation"
+        :workbook="isWorkbook"
+        :reparsing="reparsing"
+        @replan="reparse"
       />
 
       <ImportBlockerActions :issues="previewIssues" @reload="reloadPreview" />
@@ -222,7 +222,7 @@
             :disabled="isCommittedPreview || isPartial"
             @click="reparse"
           >
-            打回重析
+            {{ isWorkbook ? '重新规划' : '打回重析' }}
           </el-button>
         </template>
         <template v-else-if="!editing">
@@ -267,6 +267,7 @@ import CommitResultSummary from '@/components/aiImport/CommitResultSummary.vue'
 import ImportBlockerActions from '@/components/aiImport/ImportBlockerActions.vue'
 import ImportExplanationCard from '@/components/aiImport/ImportExplanationCard.vue'
 import ImportCommittedAlert from '@/components/aiImport/ImportCommittedAlert.vue'
+import ImportFailureNotice from '@/components/aiImport/ImportFailureNotice.vue'
 import TimetablePreviewGrid from '@/components/aiImport/TimetablePreviewGrid.vue'
 import { useImportSession } from '@/components/aiImport/useImportSession'
 import { type ImportPreview, type PreviewRow } from '@/components/aiImport/timetablePreview'

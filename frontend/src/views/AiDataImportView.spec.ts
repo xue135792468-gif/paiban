@@ -848,6 +848,57 @@ describe('停止解析', () => {
     success.mockRestore()
   })
 
+  it('工作簿有计划但 0 批完成时停止，提示未完成范围而不是「保留 0/N」', async () => {
+    const warning = vi.spyOn(ElMessage, 'warning')
+    const success = vi.spyOn(ElMessage, 'success')
+    const { wrapper } = await mountImport('/admin/ai-import')
+    const parsing = {
+      data: {
+        ...timetablePreview().data,
+        targetType: 'workbook',
+        status: 'PARSING',
+        rows: [],
+        progress: {
+          total: 3,
+          completed: 0,
+          failed: 0,
+          currentBatch: '工作表「数据源」第 1-2 行',
+          phase: 'EXTRACTING',
+        },
+        workbook: { structureConfirmed: true, sheets: [], committed: [] },
+      },
+    }
+    const stopped = {
+      data: {
+        ...parsing.data,
+        status: 'PARTIAL',
+        explanation: '已停止解析，没有任何已完成的批次',
+        progress: { total: 3, completed: 0, failed: 3, phase: 'EXTRACTING' },
+        failedBatches: [
+          { index: 1, label: '工作表「数据源」第 1-2 行', reason: '已停止解析，这一批的结果未采用' },
+        ],
+      },
+    }
+    httpMock.post.mockImplementation((url: string) => {
+      if (url === '/ai/import/excel') return Promise.resolve(parsing)
+      if (url.endsWith('/stop')) return Promise.resolve(stopped)
+      return Promise.resolve({ data: {} })
+    })
+
+    chooseFile(wrapper, 0, 'workbook.xlsx')
+    await flushPromises()
+    await button(wrapper, '开始解析').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="stop-parsing"]').trigger('click')
+    await flushPromises()
+
+    expect(warning).toHaveBeenCalledWith('已停止解析，没有任何已完成的批次')
+    expect(success).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="partial-result-panel"]').exists()).toBe(true)
+    warning.mockRestore()
+    success.mockRestore()
+  })
+
   it('停止被拒绝时展示后端原因并继续轮询', async () => {
     vi.useFakeTimers()
     const error = vi.spyOn(ElMessage, 'error')
@@ -870,6 +921,77 @@ describe('停止解析', () => {
     expect(error).toHaveBeenCalledWith('当前导入不在解析中，无法停止')
     expect(wrapper.find('[data-testid="import-progress"]').exists()).toBe(true)
     error.mockRestore()
+  })
+})
+
+describe('整本工作簿后台化', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('规划阶段显示识别结构，不显示伪造的 0/0 批次', async () => {
+    const { wrapper } = await mountImport('/admin/ai-import?target=workbook')
+    httpMock.post.mockResolvedValue({
+      data: {
+        ...timetablePreview().data,
+        targetType: 'workbook',
+        status: 'PARSING',
+        rows: [],
+        progress: { total: 0, completed: 0, failed: 0, currentBatch: null, phase: 'PLANNING' },
+        workbook: null,
+      },
+    })
+
+    chooseFile(wrapper, 0, 'book.xlsx')
+    await flushPromises()
+    await button(wrapper, '开始解析').trigger('click')
+    await flushPromises()
+
+    const progress = wrapper.get('[data-testid="import-progress"]')
+    expect(progress.text()).toContain('正在识别工作表结构')
+    expect(progress.text()).not.toContain('已完成 0/0 批')
+  })
+
+  it('规划失败后提供明确的重新规划入口', async () => {
+    confirmMock.mockResolvedValue('confirm')
+    const failed = {
+      data: {
+        ...timetablePreview().data,
+        targetType: 'workbook',
+        status: 'FAILED',
+        rows: [],
+        explanation: 'AI 解析失败：stub 规划失败',
+        progress: null,
+        workbook: null,
+        issues: [],
+      },
+    }
+    const { wrapper } = await mountImport(
+      '/admin/ai-import?session=9',
+      true,
+      (url) => (url === '/ai/import/sessions/9' ? Promise.resolve(failed) : null),
+    )
+
+    expect(wrapper.get('[data-testid="failed-reason"]').text()).toContain('AI 解析失败')
+    httpMock.post.mockResolvedValue({
+      data: {
+        ...failed.data,
+        status: 'PARSING',
+        explanation: '正在识别工作簿结构',
+        progress: { total: 0, completed: 0, failed: 0, currentBatch: null, phase: 'PLANNING' },
+      },
+    })
+
+    await button(wrapper, '重新规划').trigger('click')
+    await flushPromises()
+
+    expect(confirmMock).toHaveBeenCalled()
+    expect(httpMock.post).toHaveBeenCalledWith('/ai/import/sessions/9/reparse', undefined, {
+      timeout: 300000,
+    })
+    expect(wrapper.get('[data-testid="import-progress"]').text()).toContain(
+      '正在识别工作表结构',
+    )
   })
 })
 
@@ -1011,7 +1133,7 @@ describe('重试失败批次', () => {
     const panel = wrapper.get('[data-testid="partial-result-panel"]')
     expect(panel.text()).toContain('重试时服务超时')
     expect(panel.text()).not.toContain('模型返回为空')
-    expect(warning).toHaveBeenCalledWith('重试后还有 1 个班没解析出来，可以再试一次或放弃导入')
+    expect(warning).toHaveBeenCalledWith('重试后还有 1 个批次没解析出来，可以再试一次或放弃导入')
     warning.mockRestore()
   })
 

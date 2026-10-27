@@ -52,7 +52,7 @@ describe('部分结果面板', () => {
 
     const success = wrapper.get('[data-testid="partial-success"]').text()
     expect(success).toContain('已解析 2 节课')
-    expect(success).toContain('2 个班')
+    expect(success).toContain('2 个成功批次')
 
     const failed = wrapper.get('[data-testid="partial-failed"]')
     expect(failed.text()).toContain('失败批次')
@@ -106,7 +106,7 @@ describe('部分结果面板', () => {
 
     const retry = wrapper.get('[data-testid="partial-retry"]')
     expect(retry.text()).toContain('重试失败批次')
-    expect(wrapper.get('[data-testid="partial-retry-hint"]').text()).toContain('1 个班')
+    expect(wrapper.get('[data-testid="partial-retry-hint"]').text()).toContain('1 个批次')
 
     await retry.trigger('click')
     expect(wrapper.emitted('retry')).toHaveLength(1)

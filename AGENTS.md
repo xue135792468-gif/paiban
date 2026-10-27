@@ -7,12 +7,13 @@
 - `.scratch/HANDOFF.md` — **接手进度先读这份**：线上状态、红线、待办票与推进路线
 - `README.md` — 启动、测试、部署与实现说明
 - `CODING_STANDARDS.md` — 评审时的判断标准（审计、事务、权限、测试、前端拆分）
-- `docs/adr/` — 21 份决策记录，改行为前先找对应 ADR
+- `docs/adr/` — 29 份决策记录，改行为前先找对应 ADR
 - `GLOSSARY.md` — 领域术语：行政班、授课任务、基线、调代
 - `.scratch/phase1-mvp/` — 一期规格、15 张票据与 PR 记录
 - `.scratch/phase2-ai/` — 二期规格、6 张票据、跨票据接口契约
 - `.scratch/phase3-feishu/` — 三期规格、5 张票据、飞书集成契约
 - `.scratch/phase4-onboarding/` — 四期规格、5 张票据、引导与帮助中心契约（`frontend/src/onboarding`、`frontend/src/help`）
+- `.scratch/workbook-background/` — 整本工作簿后台解析规格与 3 张已实现票据（票 02 遗留）
 - `docs/runbooks/deploy.md` — 部署跑册：备份、后台构建（该机 sshd 会掐掉前台长命令）、`up -d` 与验收判定
 
 ## 后端模块（backend/src/main/java/com/paiban）
