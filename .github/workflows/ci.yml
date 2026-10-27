@@ -19,6 +19,8 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+      - name: Check migration versions
+        run: bash scripts/check-migrations.sh
       - name: Verify backend
         working-directory: backend
         run: ./mvnw -B verify -Dtestcontainers=true
