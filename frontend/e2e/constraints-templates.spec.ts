@@ -238,6 +238,86 @@ test.describe.serial('约束配置：模板完整套用与跨学期引用', () =
     expect(threshold.weight).toBe(60)
   })
 
+  test('模板往返保留要求分组与逐项控制', async ({ page }) => {
+    await apiCall(api, token, 'post', `/semesters/${seed.semesterId}/set-current`)
+    const controlsTemplate = `控制模板-${suffix}`
+    const course = seed.courses[0]
+    const state = await apiCall(api, token, 'get', '/constraints/state', undefined, {
+      semesterId: seed.semesterId,
+    })
+    await apiCall(
+      api,
+      token,
+      'put',
+      `/constraints?semesterId=${seed.semesterId}&baseVersion=${state.version}`,
+      {
+        configs: [
+          {
+            type: 'COURSE_UNAVAILABLE',
+            weight: 100,
+            hard: true,
+            enabled: true,
+            entries: [
+              {
+                params: { courseId: course.id, dayOfWeek: 3, periodNo: 1 },
+                groupKey: 'g-course',
+                hard: false,
+                weight: 35,
+                enabled: true,
+              },
+              {
+                params: { courseId: course.id, dayOfWeek: 5, periodNo: 6 },
+                groupKey: 'g-course',
+                hard: false,
+                weight: 35,
+                enabled: true,
+              },
+            ],
+          },
+        ],
+      },
+    )
+    await apiCall(api, token, 'post', `/constraint-templates?semesterId=${seed.semesterId}`, {
+      name: controlsTemplate,
+    })
+    // Wipe the configuration so the template is the only source.
+    const wiped = await apiCall(api, token, 'get', '/constraints/state', undefined, {
+      semesterId: seed.semesterId,
+    })
+    await apiCall(
+      api,
+      token,
+      'put',
+      `/constraints?semesterId=${seed.semesterId}&baseVersion=${wiped.version}`,
+      { configs: [] },
+    )
+
+    await uiLogin(page, 'admin', 'admin123')
+    await page.goto('/admin/constraints')
+    await expect(page.getByTestId('constraint-nav')).toBeVisible()
+    await pickTemplate(page, controlsTemplate, '（1 类 · 2 条）')
+    await page.getByTestId('constraint-template-apply').click()
+    const confirm = messageBox(page)
+    await expect(confirm).toBeVisible()
+    await confirm.getByRole('button', { name: '确定' }).click()
+    await expect(page.getByTestId('constraint-template-result')).toContainText('恢复 1 类配置')
+
+    const restored = await apiCall(api, token, 'get', '/constraints', undefined, {
+      semesterId: seed.semesterId,
+    })
+    const courseUnavailable = restored.find((item: any) => item.type === 'COURSE_UNAVAILABLE')
+    expect(courseUnavailable.entries).toHaveLength(2)
+    expect(new Set(courseUnavailable.entries.map((entry: any) => entry.groupKey)).size).toBe(1)
+    expect(courseUnavailable.entries[0].hard).toBe(false)
+    expect(courseUnavailable.entries[0].weight).toBe(35)
+
+    await page.locator('[data-type="COURSE_UNAVAILABLE"]').click()
+    const card = page.getByTestId('constraint-entry').first()
+    await expect(card.getByTestId('constraint-entry-effective')).toContainText('实际：软约束')
+    await expect(card).toContainText('重要程度 35')
+    await capture(page, 'constraint-template-controls')
+  })
+
   test('跨学期套用：失效班级列出清单，重新绑定后套用成功', async ({ page }) => {
     // Switch the current semester through the API: the page always opens the current one.
     await apiCall(api, token, 'post', `/semesters/${target.semesterId}/set-current`)
