@@ -44,7 +44,7 @@ class ConstraintScopedThresholdsCheckerTest {
         assertThat(List.of(ConstraintType.values()).stream()
                 .filter(ConstraintType::isEntryBacked)
                 .toList())
-                .hasSize(18)
+                .hasSize(19)
                 .contains(ConstraintType.TEACHER_MAX_PER_DAY,
                         ConstraintType.CLASS_MAX_PER_DAY,
                         ConstraintType.COURSE_MAX_PER_DAY,

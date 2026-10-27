@@ -125,6 +125,9 @@
             @remove-threshold-exception="onRemoveThresholdException"
             @set-threshold-object="onSetThresholdObject"
             @set-threshold-value="onSetThresholdValue"
+            @set-entry-enabled="onSetEntryEnabled"
+            @set-entry-hard="onSetEntryHard"
+            @set-entry-weight="onSetEntryWeight"
           />
         </div>
       </el-card>
@@ -262,6 +265,12 @@ const onSetThresholdObject = (key: string, value: unknown) =>
   withSelected((code) => draft.setThresholdExceptionObject(code, key, value))
 const onSetThresholdValue = (key: string, value: unknown) =>
   withSelected((code) => draft.setThresholdExceptionValue(code, key, value))
+const onSetEntryEnabled = (key: string, value: boolean) =>
+  withSelected((code) => draft.setEntryEnabled(code, key, value))
+const onSetEntryHard = (key: string, value: boolean | null) =>
+  withSelected((code) => draft.setEntryHard(code, key, value))
+const onSetEntryWeight = (key: string, value: number | null) =>
+  withSelected((code) => draft.setEntryWeight(code, key, value))
 
 async function loadSemesters() {
   try {

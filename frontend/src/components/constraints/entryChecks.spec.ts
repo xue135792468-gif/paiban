@@ -46,7 +46,16 @@ function entry(
   values: Record<string, unknown>,
   slots?: EntryDraft['slots'],
 ): EntryDraft {
-  return { key, id: null, values, slots }
+  return {
+    key,
+    id: null,
+    values,
+    slots,
+    groupKey: null,
+    enabled: true,
+    hard: null,
+    weight: null,
+  }
 }
 
 function row(overrides: Partial<TypeDraft> & { code: string }): TypeDraft {
@@ -117,13 +126,13 @@ describe('保存前必填提示', () => {
         name: '教师禁排时段',
         params: TEACHER_PARAMS,
         entries: [
-          entry('e1', { teacherId: 1, dayOfWeek: 3, periodNo: 2 }),
-          entry('e2', { teacherId: 1, dayOfWeek: 4 }),
+          entry('e1', { teacherId: 1 }, [{ key: 's1', id: null, dayOfWeek: 3, periodNo: 2 }]),
+          entry('e2', { teacherId: 1 }, [{ key: 's2', id: null, dayOfWeek: 4, periodNo: null }]),
         ],
       }),
       row({ code: 'COURSE_NOT_IN_EVENING', name: '课程不排晚自习', params: COURSE_PARAMS, entries: [] }),
     ]
-    expect(missingParamWarnings(rows)).toEqual(['「教师禁排时段」第2条的「第几节」'])
+    expect(missingParamWarnings(rows)).toEqual(['「教师禁排时段」第2条第1个时段的「第几节」'])
   })
 
   it('偏好时段提示缺教师、缺时段的卡片位置，没有时段的卡片单独提示', () => {

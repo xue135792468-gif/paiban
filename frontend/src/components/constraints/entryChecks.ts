@@ -1,9 +1,11 @@
 import {
   allTargetLabel,
+  headParams,
   isEntryType,
   isSlotSetType,
   optionalTargetParam,
   plannedEntries,
+  slotParams,
   targetUnresolved,
   type PlannedEntry,
 } from './entryModel'
@@ -11,11 +13,20 @@ import { filledValues, hasValue, roomTypeLabel } from './paramValues'
 import type { SummaryContext } from './entrySummary'
 import type { TypeDraft } from './types'
 
-function signatureOf(params: Record<string, unknown>): string {
-  return Object.keys(params)
+/**
+ * What makes two entries the same requirement: the same parameters with the same
+ * effective controls. The server rejects exactly that pair, so the page predicts it
+ * from the same values — two rows with the same slots but different strengths are
+ * overlapping requirements, not duplicates.
+ */
+function signatureOf(entry: PlannedEntry, row: TypeDraft): string {
+  const params = Object.keys(entry.params)
     .sort()
-    .map((key) => `${key}=${String(params[key])}`)
+    .map((key) => `${key}=${String(entry.params[key])}`)
     .join('|')
+  const hard = entry.hard ?? row.hard
+  const weight = entry.weight ?? row.weight
+  return `${params}|enabled=${entry.enabled ?? true}|hard=${hard}|weight=${weight}`
 }
 
 /**
@@ -30,7 +41,7 @@ export function duplicateMessages(row: TypeDraft): Record<number, string[]> {
   plannedEntries(row)
     .filter((entry) => entry.complete)
     .forEach((entry) => {
-      const signature = signatureOf(entry.params)
+      const signature = signatureOf(entry, row)
       const first = firstSeen.get(signature)
       if (!first) {
         firstSeen.set(signature, entry)
@@ -70,15 +81,16 @@ export function missingParamWarnings(rows: TypeDraft[]): string[] {
           warnings.push(`「${row.name}」第${card}条还没有时段`)
           return
         }
-        if (!hasValue(entry.values.teacherId)) {
-          warnings.push(`「${row.name}」第${card}条的「教师」`)
-        }
+        headParams(row)
+          .filter((param) => param.required && !hasValue(entry.values[param.name]))
+          .forEach((param) =>
+            warnings.push(`「${row.name}」第${card}条的「${param.label}」`),
+          )
         slots.forEach((slot, slotIndex) => {
-          row.params
+          slotParams(row)
             .filter(
               (param) =>
                 param.required &&
-                param.name !== 'teacherId' &&
                 !hasValue(slot[param.name as 'dayOfWeek' | 'periodNo']),
             )
             .forEach((param) =>

@@ -129,6 +129,10 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
                         List.of(params("courseId", Course.CHINESE)),
                         List.of(lesson(1, 9, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL)),
                         "COURSE_NOT_IN_EVENING", false)),
+                Arguments.of(new Case("课程禁排时段", "COURSE_UNAVAILABLE", false, true, 100,
+                        List.of(params("courseId", Course.CHINESE, "dayOfWeek", 1, "periodNo", 2)),
+                        List.of(lesson(1, 2, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL)),
+                        "COURSE_UNAVAILABLE", false)),
                 Arguments.of(new Case("同课程一天一节", "SAME_COURSE_ONCE_PER_DAY", false, true, 100,
                         List.of(params("courseId", Course.CHINESE)),
                         List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL),
@@ -260,7 +264,7 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
         Set<String> covered = catalogue()
                 .map(arguments -> ((Case) arguments.get()[0]).type())
                 .collect(Collectors.toSet());
-        assertThat(covered).hasSize(24);
+        assertThat(covered).hasSize(25);
         assertThat(covered).containsExactlyInAnyOrderElementsOf(
                 Arrays.stream(ConstraintType.values()).map(Enum::name).toList());
     }

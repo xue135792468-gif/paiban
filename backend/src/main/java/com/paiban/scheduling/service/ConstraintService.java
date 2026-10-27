@@ -108,6 +108,7 @@ public class ConstraintService {
                         type.isDefaultHard(),
                         type.getDefaultWeight(),
                         type.isEntryBacked(),
+                        type.isSlotGrouped(),
                         type.thresholdScope() == null ? null : type.thresholdScope().objectField(),
                         type.thresholdScope() == null ? null : type.thresholdScope().valueField(),
                         type.getParams().stream().map(this::toDto).toList()))
@@ -166,13 +167,14 @@ public class ConstraintService {
             if (weight < 0 || weight > 100) {
                 errors.add(type.getDisplayName() + ": 权重必须在 0-100 之间");
             }
+            boolean hard = request.hard() == null ? type.isDefaultHard() : request.hard();
             EntryPlan entries = planEntries(
-                    type, request, timetable, existingEntries, claimedEntries, errors);
+                    type, request, hard, weight, timetable, existingEntries, claimedEntries, errors);
             references.addAll(entries.references());
             planned.add(new PlannedConfig(
                     type,
                     weight,
-                    request.hard() == null ? type.isDefaultHard() : request.hard(),
+                    hard,
                     request.enabled() == null || request.enabled(),
                     entries.entries()));
         }
@@ -271,13 +273,19 @@ public class ConstraintService {
                     kept.add(row.getId());
                 }
                 row.setParamsJson(toJson(entry.params()));
+                row.setEnabled(entry.enabled());
+                row.setHard(entry.hard());
+                row.setWeight(entry.weight());
+                row.setGroupKey(entry.groupKey());
                 rows.add(row);
             }
             List<ConstraintEntry> savedRows = entries.saveAll(rows);
             List<ConstraintEntryDto> entryDtos = new ArrayList<>();
             for (int index = 0; index < savedRows.size(); index++) {
+                PlannedEntry plannedEntry = plan.entries().get(index);
                 entryDtos.add(new ConstraintEntryDto(
-                        savedRows.get(index).getId(), plan.entries().get(index).params()));
+                        savedRows.get(index).getId(), plannedEntry.params(), plannedEntry.enabled(),
+                        plannedEntry.hard(), plannedEntry.weight(), plannedEntry.groupKey()));
             }
             current.values().stream()
                     .filter(row -> !kept.contains(row.getId()))
@@ -454,8 +462,13 @@ public class ConstraintService {
     private record Planning(List<PlannedConfig> configs, List<String> errors,
                             List<TemplateReferenceIssue> references) {}
 
-    /** One accepted entry with the id it came in with and its 1-based request position. */
-    private record PlannedEntry(Long id, Map<String, Object> params, Integer position) {}
+    /**
+     * One accepted entry with the id it came in with, its 1-based request position and
+     * its controls. {@code hard}/{@code weight} null mean "inherit the type default";
+     * {@code groupKey} joins several rows into one user-managed requirement.
+     */
+    private record PlannedEntry(Long id, Map<String, Object> params, Integer position,
+                                boolean enabled, Boolean hard, Integer weight, String groupKey) {}
 
     /** The entries of one type, plus the object references of those entries that do not resolve. */
     private record EntryPlan(List<PlannedEntry> entries, List<TemplateReferenceIssue> references) {}
@@ -520,23 +533,28 @@ public class ConstraintService {
 
     /**
      * Validates every entry of one type and returns the ones to persist. Fully
-     * identical entries are rejected: the union would otherwise count the same
-     * fact twice and hide a duplicate row in the editor. Contradictory scalar
-     * conditions for the same object are rejected too.
+     * identical entries — same parameters <em>and</em> same effective controls — are
+     * rejected: the union would otherwise hide a duplicate row in the editor. The same
+     * parameters under different controls are allowed on purpose: they are overlapping
+     * requirements, and evaluation resolves them once (hard wins, otherwise the higher
+     * weight). Contradictory scalar conditions for the same object are rejected too.
      */
     private EntryPlan planEntries(
-            ConstraintType type, ConstraintConfigRequest request, SemesterScope timetable,
+            ConstraintType type, ConstraintConfigRequest request, boolean defaultHard,
+            int defaultWeight, SemesterScope timetable,
             Map<Long, ConstraintEntry> existingEntries, Map<String, Set<Long>> claimedEntries,
             List<String> errors) {
         List<PlannedEntry> planned = new ArrayList<>();
         List<TemplateReferenceIssue> references = new ArrayList<>();
-        Map<Map<String, Object>, Integer> seen = new HashMap<>();
+        Map<EntrySignature, Integer> seen = new HashMap<>();
         List<ConstraintEntryRequest> requested = request.entries();
         if (requested == null) {
             // Legacy shape: `params` is the single entry, and its messages keep the
-            // pre-ADR wording.
+            // pre-ADR wording. It inherits the type controls, so its meaning is the same
+            // as before per-requirement controls existed.
             Map<String, Object> params = validateParams(type, request.params(), null, errors);
-            accept(type, 1, null, params, planned, seen, timetable, existingEntries,
+            accept(type, new PlannedEntry(null, params, 1, true, null, null, null),
+                    planned, seen, defaultHard, defaultWeight, timetable, existingEntries,
                     claimedEntries, references, errors);
             return new EntryPlan(planned, references);
         }
@@ -549,12 +567,77 @@ public class ConstraintService {
             int position = index + 1;
             Map<String, Object> params = validateParams(
                     type, raw == null ? null : raw.params(), position, errors);
-            accept(type, position, raw == null ? null : raw.id(), params, planned, seen, timetable,
-                    existingEntries, claimedEntries, references, errors);
+            Integer weight = raw == null ? null : raw.weight();
+            if (weight != null && (weight < 0 || weight > 100)) {
+                errors.add(location(type, position) + ": 权重必须在 0-100 之间");
+                weight = null;
+            }
+            String groupKey = raw == null ? null
+                    : normalizeGroupKey(raw.groupKey(), type, position, errors);
+            boolean enabled = raw == null || raw.enabled() == null || raw.enabled();
+            accept(type, new PlannedEntry(raw == null ? null : raw.id(), params, position,
+                            enabled, raw == null ? null : raw.hard(), weight, groupKey),
+                    planned, seen, defaultHard, defaultWeight, timetable, existingEntries,
+                    claimedEntries, references, errors);
         }
+        rejectInconsistentGroups(type, planned, defaultHard, defaultWeight, errors);
         rejectContradictoryScalars(type, planned, errors);
         rejectDuplicateThresholdScopes(type, planned, errors);
         return new EntryPlan(planned, references);
+    }
+
+    /** A duplicate is the same parameters with the same effective controls. */
+    private record EntrySignature(Map<String, Object> params, boolean enabled,
+                                  boolean hard, int weight) {}
+
+    private String normalizeGroupKey(
+            String raw, ConstraintType type, int position, List<String> errors) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String key = raw.trim();
+        if (key.length() > 64) {
+            errors.add(location(type, position) + ": 要求分组标识超过 64 个字符");
+            return null;
+        }
+        return key;
+    }
+
+    /**
+     * The rows of one requirement share its controls: the editor pauses or re-strengths
+     * the whole requirement, never half of it. Mixed values are refused rather than
+     * silently normalized, so the page and the stored configuration cannot disagree.
+     */
+    private void rejectInconsistentGroups(
+            ConstraintType type, List<PlannedEntry> planned, boolean defaultHard,
+            int defaultWeight, List<String> errors) {
+        Map<String, PlannedEntry> byGroup = new LinkedHashMap<>();
+        for (PlannedEntry entry : planned) {
+            if (entry.groupKey() == null) {
+                continue;
+            }
+            PlannedEntry previous = byGroup.putIfAbsent(entry.groupKey(), entry);
+            if (previous == null) {
+                continue;
+            }
+            boolean hard = effectiveHard(entry, defaultHard);
+            int weight = effectiveWeight(entry, defaultWeight);
+            if (previous.enabled() != entry.enabled()
+                    || effectiveHard(previous, defaultHard) != hard
+                    || effectiveWeight(previous, defaultWeight) != weight) {
+                errors.add(location(type, entry.position()) + ": 与第" + previous.position()
+                        + " 条属于同一条要求，但启停/必须或尽量/重要程度不一致；"
+                        + "同一条要求展开的课节必须共用这些设置");
+            }
+        }
+    }
+
+    private boolean effectiveHard(PlannedEntry entry, boolean defaultHard) {
+        return entry.hard() == null ? defaultHard : entry.hard();
+    }
+
+    private int effectiveWeight(PlannedEntry entry, int defaultWeight) {
+        return entry.weight() == null ? defaultWeight : entry.weight();
     }
 
     /**
@@ -589,11 +672,12 @@ public class ConstraintService {
     }
 
     private void accept(
-            ConstraintType type, Integer position, Long id, Map<String, Object> params,
-            List<PlannedEntry> planned, Map<Map<String, Object>, Integer> seen,
+            ConstraintType type, PlannedEntry entry, List<PlannedEntry> planned,
+            Map<EntrySignature, Integer> seen, boolean defaultHard, int defaultWeight,
             SemesterScope timetable, Map<Long, ConstraintEntry> existingEntries,
             Map<String, Set<Long>> claimedEntries, List<TemplateReferenceIssue> references,
             List<String> errors) {
+        Map<String, Object> params = entry.params();
         if (params.isEmpty() && !type.isEntryBacked()) {
             // Nothing to store: no object condition. `{}` means "no extra
             // condition" and is kept in the legacy params column only. For an
@@ -601,17 +685,19 @@ public class ConstraintService {
             // explicit "every course / the sport class" row.
             return;
         }
-        Integer first = seen.putIfAbsent(params, position);
+        EntrySignature signature = new EntrySignature(params, entry.enabled(),
+                effectiveHard(entry, defaultHard), effectiveWeight(entry, defaultWeight));
+        Integer first = seen.putIfAbsent(signature, entry.position());
         if (first != null) {
-            errors.add(location(type, position) + ": 与第" + first + " 条完全相同，重复条目已拒绝");
+            errors.add(location(type, entry.position()) + ": 与第" + first + " 条完全相同，重复条目已拒绝");
             return;
         }
-        if (id != null) {
-            claimEntry(type, position, id, existingEntries, claimedEntries, errors);
+        if (entry.id() != null) {
+            claimEntry(type, entry.position(), entry.id(), existingEntries, claimedEntries, errors);
         }
-        validateTimetableConditions(type, position, params, timetable, errors);
-        references.addAll(referencesOf(type, position, params, timetable));
-        planned.add(new PlannedEntry(id, params, position));
+        validateTimetableConditions(type, entry.position(), params, timetable, errors);
+        references.addAll(referencesOf(type, entry.position(), params, timetable));
+        planned.add(entry);
     }
 
     /**
@@ -701,7 +787,7 @@ public class ConstraintService {
         }
         String location = location(type, position);
         switch (type) {
-            case TEACHER_UNAVAILABLE, TEACHER_PREFERRED_SLOT ->
+            case TEACHER_UNAVAILABLE, TEACHER_PREFERRED_SLOT, COURSE_UNAVAILABLE ->
                     requireSlot(location, params, timetable, errors);
             case TEACHER_MEETING_BLOCKED -> {
                 requireSubject(location, params, errors);
@@ -996,13 +1082,19 @@ public class ConstraintService {
             entryRows.stream()
                     .sorted(Comparator.comparing(ConstraintEntry::getId,
                             Comparator.nullsLast(Comparator.naturalOrder())))
-                    .map(entry -> new ConstraintEntryDto(entry.getId(), paramsFromJson(entry.getParamsJson())))
+                    .map(entry -> new ConstraintEntryDto(
+                            entry.getId(),
+                            paramsFromJson(entry.getParamsJson()),
+                            entry.isEnabled(),
+                            entry.getHard(),
+                            entry.getWeight(),
+                            entry.getGroupKey()))
                     .forEach(dtos::add);
         }
         if (dtos.isEmpty() && !isEntryBacked(config.getType())) {
             Map<String, Object> legacy = paramsFromJson(config.getParamsJson());
             if (!legacy.isEmpty()) {
-                dtos.add(new ConstraintEntryDto(null, legacy));
+                dtos.add(new ConstraintEntryDto(null, legacy, true, null, null, null));
             }
         }
         return dtos;
@@ -1025,7 +1117,9 @@ public class ConstraintService {
         // a legacy params map or fail on its required parameters.
         List<ConstraintEntryRequest> snapshotEntries = entryBacked || !entryDtos.isEmpty()
                 ? entryDtos.stream()
-                        .map(entry -> new ConstraintEntryRequest(null, entry.params()))
+                        .map(entry -> new ConstraintEntryRequest(
+                                null, entry.params(), entry.enabled(), entry.hard(),
+                                entry.weight(), entry.groupKey()))
                         .toList()
                 : null;
         // With entries present the snapshot does not repeat the first entry in the
@@ -1079,7 +1173,8 @@ public class ConstraintService {
                     ? null
                     : config.entries().stream()
                             .map(entry -> new ConstraintEntryRequest(
-                                    null, rebindClass(mapping, entry.params())))
+                                    null, rebindClass(mapping, entry.params()),
+                                    entry.enabled(), entry.hard(), entry.weight(), entry.groupKey()))
                             .toList();
             prepared.add(new ConstraintConfigRequest(config.type(),
                     rebindClass(mapping, config.params()), config.weight(), config.hard(),

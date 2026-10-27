@@ -49,7 +49,16 @@ function entry(
   values: Record<string, unknown>,
   slots?: EntryDraft['slots'],
 ): EntryDraft {
-  return { key, id: null, values, slots }
+  return {
+    key,
+    id: null,
+    values,
+    slots,
+    groupKey: null,
+    enabled: true,
+    hard: null,
+    weight: null,
+  }
 }
 
 function row(overrides: Partial<TypeDraft> & { code: string }): TypeDraft {
@@ -118,10 +127,12 @@ describe('类型形态由目录参数推断', () => {
     expect(isEntryType(row({ code: 'ROOM_CONFLICT' }))).toBe(false)
   })
 
-  it('偏好时段是唯一把一条卡片展开成多个后端条目的类型', () => {
+  it('四种时段型把一条卡片展开成多个后端条目', () => {
     expect(isSlotSetType(row({ code: 'TEACHER_PREFERRED_SLOT', params: SLOT_PARAMS }))).toBe(true)
-    // 参数声明与教师禁排完全相同，但语义是「任一时段即满足」而不是「这些时段都禁排」。
-    expect(isSlotSetType(row({ code: 'TEACHER_UNAVAILABLE', params: SLOT_PARAMS }))).toBe(false)
+    expect(isSlotSetType(row({ code: 'TEACHER_UNAVAILABLE', params: SLOT_PARAMS }))).toBe(true)
+    expect(isSlotSetType(row({ code: 'TEACHER_MEETING_BLOCKED', params: MEETING_PARAMS }))).toBe(true)
+    expect(isSlotSetType(row({ code: 'COURSE_UNAVAILABLE', params: SLOT_PARAMS }))).toBe(true)
+    expect(isSlotSetType(row({ code: 'COURSE_NOT_IN_EVENING', params: SAME_COURSE_PARAMS }))).toBe(false)
   })
 })
 
@@ -145,7 +156,17 @@ describe('卡片展开成后端条目', () => {
       row({ code: 'SAME_COURSE_ONCE_PER_DAY', params: SAME_COURSE_PARAMS, entries: [entry('e1', {})] }),
     )
     expect(planned).toEqual([
-      { position: 1, cardIndex: 0, id: null, params: {}, complete: true },
+      {
+        position: 1,
+        cardIndex: 0,
+        id: null,
+        params: {},
+        complete: true,
+        enabled: true,
+        hard: null,
+        weight: null,
+        groupKey: null,
+      },
     ])
   })
 
@@ -191,6 +212,10 @@ describe('卡片展开成后端条目', () => {
         id: 31,
         params: { teacherId: 5, dayOfWeek: 1, periodNo: 1 },
         complete: true,
+        enabled: true,
+        hard: null,
+        weight: null,
+        groupKey: null,
       },
       {
         position: 2,
@@ -199,6 +224,10 @@ describe('卡片展开成后端条目', () => {
         id: null,
         params: { teacherId: 5, dayOfWeek: 3, periodNo: 2 },
         complete: true,
+        enabled: true,
+        hard: null,
+        weight: null,
+        groupKey: null,
       },
     ])
     expect(draftEntryCount(draftRow)).toBe(2)
@@ -221,6 +250,10 @@ describe('卡片展开成后端条目', () => {
         id: null,
         params: { dayOfWeek: 1 },
         complete: false,
+        enabled: true,
+        hard: null,
+        weight: null,
+        groupKey: null,
       },
     ])
     expect(draftEntryCount(draftRow)).toBe(0)

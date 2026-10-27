@@ -66,8 +66,9 @@ test.describe.serial('约束配置：教师禁排多条条目', () => {
     // Every field is scoped to the card just added: with two cards on screen the
     // bare testid would match both and Playwright's strict mode would refuse.
     await pickOption(card, 'constraint-entry-teacher', teacherName)
-    await pickOption(card, 'constraint-entry-day', dayLabel)
-    const periodInput = card.getByTestId('constraint-entry-period').locator('input')
+    const slot = card.getByTestId('constraint-entry-slot').first()
+    await pickOption(slot, 'constraint-entry-slot-day', dayLabel)
+    const periodInput = slot.getByTestId('constraint-entry-slot-period').locator('input')
     await periodInput.fill(period)
     await periodInput.press('Tab')
   }
@@ -96,13 +97,13 @@ test.describe.serial('约束配置：教师禁排多条条目', () => {
     await addEntry(page, first.name, '周三', '2')
     await expect(entryCards(page)).toHaveCount(1)
     await expect(entryCards(page).first().getByTestId('constraint-entry-summary')).toContainText(
-      `${first.name} · 周三 第2节`,
+      `${first.name} · 周三第2节`,
     )
 
     await addEntry(page, second.name, '周四', '5')
     await expect(entryCards(page)).toHaveCount(2)
     await expect(entryCards(page).nth(1).getByTestId('constraint-entry-summary')).toContainText(
-      `${second.name} · 周四 第5节`,
+      `${second.name} · 周四第5节`,
     )
     await expectCounts(page, 2)
 
@@ -186,7 +187,7 @@ test.describe.serial('约束配置：教师禁排多条条目', () => {
     expect(navEntriesOf(await navCounts())).toBe(1)
 
     const enabledText = await page.getByTestId('constraint-summary-enabled').innerText()
-    expect(enabledText).toMatch(/已启用 \d+ \/ 24 类/)
+    expect(enabledText).toMatch(/已启用 \d+ \/ 25 类/)
 
     // 开关型在左侧标注「开关」而不是 0 条。
     await expect(
@@ -201,7 +202,7 @@ test.describe.serial('约束配置：教师禁排多条条目', () => {
     await openTeacherUnavailable(page)
     await expect(entryCards(page)).toHaveCount(1)
 
-    // 第一条是测试 2 留下的「李娜 · 周四 第5节」，再录一条一模一样的。
+    // 第一条是测试 2 留下的「李娜 · 周四第5节」，再录一条一模一样的。
     await addEntry(page, second.name, '周四', '5')
     await expect(entryCards(page)).toHaveCount(2)
     await expect(entryCards(page).nth(1).getByTestId('constraint-entry-duplicate')).toContainText(

@@ -64,11 +64,12 @@
 
     <template v-else-if="isEntryType(row)">
       <p v-if="isSlotSetType(row)" class="panel-hint" data-testid="constraint-slot-note">
-        同一教师的多个时段按「或」聚合：命中任一时段即满足，不必为同一教师重复添加条目。
+        同一条要求可包含多个时段，整体编辑、暂停或删除；每个时段共用这条要求的必须/尽量与重要程度。
       </p>
       <ConstraintEntryList
         :row="row"
         :editable="canManage"
+        :is-junior="isJunior"
         :teachers="teachers"
         :courses="courses"
         :entry-errors="entryErrors"
@@ -79,6 +80,9 @@
         @add-slot="(key: string) => emit('add-slot', key)"
         @remove-slot="(key: string, slotKey: string) => emit('remove-slot', key, slotKey)"
         @update-slot="(key: string, slotKey: string, field: string, value: unknown) => emit('update-slot', key, slotKey, field, value)"
+        @set-entry-enabled="(key: string, value: boolean) => emit('set-entry-enabled', key, value)"
+        @set-entry-hard="(key: string, value: boolean | null) => emit('set-entry-hard', key, value)"
+        @set-entry-weight="(key: string, value: number | null) => emit('set-entry-weight', key, value)"
       />
     </template>
 
@@ -138,6 +142,9 @@ const emit = defineEmits<{
   'remove-threshold-exception': [key: string]
   'set-threshold-object': [key: string, value: unknown]
   'set-threshold-value': [key: string, value: unknown]
+  'set-entry-enabled': [key: string, value: boolean]
+  'set-entry-hard': [key: string, value: boolean | null]
+  'set-entry-weight': [key: string, value: number | null]
 }>()
 
 /**

@@ -59,14 +59,21 @@ export function thresholdShape(row: {
 
 /** An empty draft: no global default, no exceptions (= the type is not configured). */
 export function emptyThreshold(): ThresholdDraft {
-  return { globalId: null, globalValue: null, exceptions: [] }
+  return {
+    globalId: null,
+    globalValue: null,
+    globalEnabled: true,
+    globalHard: null,
+    globalWeight: null,
+    exceptions: [],
+  }
 }
 
 /**
  * The entries one threshold type would send, in request order: the global default
  * first (when set), then every exception that has both an object and a value.
  *
- * Positions run 1..N across the whole request, exactly like the 13 entry-backed types,
+ * Positions run 1..N across the whole request, exactly like the entry-backed types,
  * so the server's 「第N条」 errors land on the right row. `cardIndex` is the editor row
  * (0 = the global default, i+1 = the i-th exception), never a request position.
  */
@@ -77,7 +84,13 @@ export function thresholdEntries(row: TypeDraft): PlannedEntry[] {
     return []
   }
   const planned: PlannedEntry[] = []
-  const push = (cardIndex: number, id: number | null, objectId: number | null, value: number | null) => {
+  const push = (
+    cardIndex: number,
+    id: number | null,
+    objectId: number | null,
+    value: number | null,
+    control: { enabled: boolean; hard: boolean | null; weight: number | null },
+  ) => {
     if (!hasValue(value)) {
       return
     }
@@ -92,17 +105,29 @@ export function thresholdEntries(row: TypeDraft): PlannedEntry[] {
       id,
       params,
       complete: true,
+      enabled: control.enabled,
+      hard: control.hard,
+      weight: control.weight,
+      groupKey: null,
     })
   }
   // An exception without an object is not stored: sending only the number would turn
   // it into a second global default, which the server rejects (and which the user did
   // not ask for).
-  push(0, draft.globalId, null, draft.globalValue)
+  push(0, draft.globalId, null, draft.globalValue, {
+    enabled: draft.globalEnabled ?? true,
+    hard: draft.globalHard ?? null,
+    weight: draft.globalWeight ?? null,
+  })
   draft.exceptions.forEach((exception, index) => {
     if (exception.objectId === null) {
       return
     }
-    push(index + 1, exception.id, exception.objectId, exception.value)
+    push(index + 1, exception.id, exception.objectId, exception.value, {
+      enabled: exception.enabled ?? true,
+      hard: exception.hard ?? null,
+      weight: exception.weight ?? null,
+    })
   })
   return planned
 }

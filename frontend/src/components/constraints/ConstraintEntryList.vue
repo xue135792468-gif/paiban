@@ -11,6 +11,7 @@
       :entry="entry"
       :index="index"
       :editable="editable"
+      :is-junior="isJunior"
       :teachers="teachers"
       :courses="courses"
       :server-errors="entryErrorsOf(row, index, entryErrors)"
@@ -22,6 +23,9 @@
       @add-slot="emit('add-slot', entry.key)"
       @remove-slot="(slotKey: string) => emit('remove-slot', entry.key, slotKey)"
       @update-slot="(slotKey: string, field: string, value: unknown) => emit('update-slot', entry.key, slotKey, field, value)"
+      @set-enabled="(value: boolean) => emit('set-entry-enabled', entry.key, value)"
+      @set-hard="(value: boolean | null) => emit('set-entry-hard', entry.key, value)"
+      @set-weight="(value: number | null) => emit('set-entry-weight', entry.key, value)"
     />
 
     <el-button
@@ -50,6 +54,7 @@ import type { OptionItem, TypeDraft } from './types'
 const props = defineProps<{
   row: TypeDraft
   editable: boolean
+  isJunior: boolean
   teachers: OptionItem[]
   courses: OptionItem[]
   entryErrors: Record<number, string[]>
@@ -63,6 +68,9 @@ const emit = defineEmits<{
   'add-slot': [key: string]
   'remove-slot': [key: string, slotKey: string]
   'update-slot': [key: string, slotKey: string, field: string, value: unknown]
+  'set-entry-enabled': [key: string, value: boolean]
+  'set-entry-hard': [key: string, value: boolean | null]
+  'set-entry-weight': [key: string, value: number | null]
 }>()
 
 const duplicates = computed(() => duplicateMessages(props.row))

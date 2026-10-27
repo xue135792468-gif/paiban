@@ -58,6 +58,7 @@ function mountList(rowValue: TypeDraft, entryErrors: Record<number, string[]> = 
     props: {
       row: rowValue,
       editable: true,
+        isJunior: false,
       teachers: TEACHERS,
       courses: COURSES,
       entryErrors,

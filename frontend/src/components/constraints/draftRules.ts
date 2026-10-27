@@ -98,7 +98,14 @@ export function buildSavePayload(
       return [
         {
           type: row.code,
-          entries: entries.map((entry) => ({ id: entry.id, params: entry.params })),
+          entries: entries.map((entry) => ({
+            id: entry.id,
+            params: entry.params,
+            enabled: entry.enabled,
+            hard: entry.hard,
+            weight: entry.weight,
+            groupKey: entry.groupKey,
+          })),
           weight,
           hard: row.hard,
           enabled: row.enabled,
