@@ -3,6 +3,7 @@ package com.paiban.common.web;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -53,6 +54,17 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
         return body(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    /**
+     * Two writers based on the same configuration version: the loser of the real race
+     * must not see a generic 500. Nothing of its transaction was written.
+     */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<Map<String, Object>> handleOptimisticLock(
+            ObjectOptimisticLockingFailureException ex) {
+        return body(HttpStatus.CONFLICT,
+                "约束配置刚被他人保存，本次修改未写入；请核对最新配置后再保存");
     }
 
     @ExceptionHandler(IllegalStateException.class)

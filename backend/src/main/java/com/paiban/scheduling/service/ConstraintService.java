@@ -16,6 +16,8 @@ import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.foundation.service.SemesterService;
 import com.paiban.scheduling.domain.ConstraintConfig;
 import com.paiban.scheduling.domain.ConstraintConfigRepository;
+import com.paiban.scheduling.domain.ConstraintConfigState;
+import com.paiban.scheduling.domain.ConstraintConfigStateRepository;
 import com.paiban.scheduling.domain.ConstraintEntry;
 import com.paiban.scheduling.domain.ConstraintEntryRepository;
 import com.paiban.scheduling.domain.ConstraintTemplate;
@@ -29,6 +31,7 @@ import com.paiban.scheduling.web.ConstraintDtos.ConstraintConfigDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintConfigRequest;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintEntryDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintEntryRequest;
+import com.paiban.scheduling.web.ConstraintDtos.ConstraintStateDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintTypeDto;
 import com.paiban.scheduling.web.ConstraintDtos.ParamDefDto;
 import com.paiban.scheduling.web.ConstraintDtos.TemplateApplyPreview;
@@ -37,6 +40,7 @@ import com.paiban.scheduling.web.ConstraintDtos.TemplateDto;
 import com.paiban.scheduling.web.ConstraintDtos.TemplateReferenceIssue;
 import java.time.Instant;
 import java.util.ArrayList;
+import org.springframework.dao.DataIntegrityViolationException;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -67,6 +71,7 @@ public class ConstraintService {
     static final int TEMPLATE_JSON_LIMIT = 65535;
 
     private final ConstraintConfigRepository configs;
+    private final ConstraintConfigStateRepository states;
     private final ConstraintEntryRepository entries;
     private final ConstraintTemplateRepository templates;
     private final SemesterService semesters;
@@ -78,6 +83,7 @@ public class ConstraintService {
 
     public ConstraintService(
             ConstraintConfigRepository configs,
+            ConstraintConfigStateRepository states,
             ConstraintEntryRepository entries,
             ConstraintTemplateRepository templates,
             SemesterService semesters,
@@ -87,6 +93,7 @@ public class ConstraintService {
             AdminClassRepository adminClasses,
             ObjectMapper objectMapper) {
         this.configs = configs;
+        this.states = states;
         this.entries = entries;
         this.templates = templates;
         this.semesters = semesters;
@@ -124,14 +131,40 @@ public class ConstraintService {
                 .toList();
     }
 
+    /**
+     * The effective configuration plus its version. Every writer sends the version it
+     * read back as {@code baseVersion}; a save that names an older version is refused
+     * instead of overwriting someone else's work.
+     */
+    @Transactional(readOnly = true)
+    public ConstraintStateDto state(Long semesterId) {
+        Long resolved = resolveSemester(semesterId);
+        return new ConstraintStateDto(versionOf(resolved), list(resolved));
+    }
+
     @Transactional
     public List<ConstraintConfigDto> save(Long semesterId, List<ConstraintConfigRequest> requests) {
+        return save(semesterId, requests, null);
+    }
+
+    /**
+     * Saves the whole semester configuration. {@code baseVersion} is required once the
+     * stored data uses the per-requirement shape (groups or overrides), because a legacy
+     * request cannot represent it and would silently erase it.
+     */
+    @Transactional
+    public List<ConstraintConfigDto> save(
+            Long semesterId, List<ConstraintConfigRequest> requests, Long baseVersion) {
         Long resolved = resolveSemester(semesterId);
+        long base = requireVersion(resolved, baseVersion);
         Planning planning = plan(resolved, requests, existingEntries(resolved));
         List<String> errors = refusalErrors(planning);
         if (!errors.isEmpty()) {
             throw ApiException.badRequest(String.join("; ", errors));
         }
+        // The version moves before the rows so a losing race writes nothing at all; a
+        // later failure rolls the bump back with the rest of the transaction.
+        advanceState(resolved, base);
         return persist(resolved, planning.configs());
     }
 
@@ -314,6 +347,83 @@ public class ConstraintService {
         return !configs.findBySemesterId(semesterId).isEmpty();
     }
 
+    // ------------------------------------------------------------ config version
+
+    /** The current version; a semester that was never saved reads as 0. */
+    private long versionOf(Long semesterId) {
+        Long version = states.findVersionById(semesterId);
+        return version == null ? 0L : version;
+    }
+
+    /**
+     * Enforces the base version of one write and returns the version it is based on.
+     *
+     * <ul>
+     *   <li>a named {@code baseVersion} must equal the current version, otherwise the
+     *       save is refused with the latest configuration in the body;</li>
+     *   <li>an unnamed base is accepted only while no stored entry uses the
+     *       per-requirement shape. A legacy request cannot represent a group or an
+     *       override, so allowing it would silently erase them (ticket 14/07).</li>
+     * </ul>
+     */
+    private long requireVersion(Long semesterId, Long baseVersion) {
+        long current = versionOf(semesterId);
+        if (baseVersion != null) {
+            if (baseVersion != current) {
+                throw versionConflict(semesterId, baseVersion, current);
+            }
+            return current;
+        }
+        if (hasAdvancedEntries(semesterId)) {
+            throw ApiException.badRequest(
+                    "该学期已包含逐项控制或要求分组，保存时必须携带配置版本（baseVersion），"
+                            + "否则旧请求会静默抹掉这些设置；请刷新页面后重试");
+        }
+        return current;
+    }
+
+    private ApiException versionConflict(Long semesterId, Long basedOn, long current) {
+        return ApiException.conflict(
+                "约束配置已被他人修改（你基于版本 " + basedOn + "，当前版本 " + current
+                        + "）。你的修改仍保留在页面上，请核对最新配置后再保存。",
+                Map.of("version", current, "configs", list(semesterId)));
+    }
+
+    /** True when any stored entry uses a shape a legacy request cannot represent. */
+    private boolean hasAdvancedEntries(Long semesterId) {
+        return entries.findBySemesterId(semesterId).stream().anyMatch(entry ->
+                !entry.isEnabled()
+                        || entry.getHard() != null
+                        || entry.getWeight() != null
+                        || (entry.getGroupKey() != null && !entry.getGroupKey().isBlank()));
+    }
+
+    /**
+     * Advances the semester version from {@code base} to {@code base + 1}. The update is
+     * conditional, so a concurrent writer that already moved it loses here and the whole
+     * transaction (including its configuration rows) is rolled back.
+     */
+    private void advanceState(Long semesterId, long base) {
+        Instant now = Instant.now();
+        if (states.bump(semesterId, base, now) > 0) {
+            return;
+        }
+        if (states.existsById(semesterId)) {
+            throw versionConflict(semesterId, base, versionOf(semesterId));
+        }
+        ConstraintConfigState created = new ConstraintConfigState();
+        created.setSemesterId(semesterId);
+        created.setVersion(1L);
+        created.setUpdatedAt(now);
+        try {
+            // Flush now so a concurrent insert (same primary key) is caught here and
+            // reported as a version conflict rather than as a raw database error.
+            states.saveAndFlush(created);
+        } catch (DataIntegrityViolationException ex) {
+            throw versionConflict(semesterId, base, versionOf(semesterId));
+        }
+    }
+
     /**
      * The one snapshot every evaluation entry point builds: solver, draft check,
      * publication readiness, substitution planner/verifier and the CLI all read the
@@ -374,7 +484,26 @@ public class ConstraintService {
     @Transactional
     public List<ConstraintConfigDto> applyTemplate(
             Long templateId, Long semesterId, TemplateApplyRequest request) {
+        return applyTemplate(templateId, semesterId, request, null);
+    }
+
+    /**
+     * Replaces the whole semester with the template's configuration. Class references
+     * belong to one semester, so they are either rebound explicitly (the caller names
+     * the old → new ids) or the apply is refused with every offending row listed.
+     * Teachers and courses are global assets and stay as they are when they still
+     * exist. Nothing is ever matched by name and no invalid id reaches the database.
+     *
+     * <p>The refusal is one 409 whose body carries the same two lists the preview
+     * returns ({@code errors} and {@code invalidReferences}), so the page parses one
+     * shape no matter which of the two it called (see the controller). Like a manual
+     * save, an apply advances the shared version and honours {@code baseVersion}.
+     */
+    @Transactional
+    public List<ConstraintConfigDto> applyTemplate(
+            Long templateId, Long semesterId, TemplateApplyRequest request, Long baseVersion) {
         Long resolved = resolveSemester(semesterId);
+        long base = requireVersion(resolved, baseVersion);
         List<ConstraintConfigRequest> snapshot = prepareSnapshot(
                 readSnapshot(requireTemplate(templateId)), request);
         Planning planning = plan(resolved, snapshot, Map.of());
@@ -384,6 +513,7 @@ public class ConstraintService {
                     "模板无法套用到当前学期：" + String.join("；", errors),
                     refusalBody(planning));
         }
+        advanceState(resolved, base);
         return persist(resolved, planning.configs());
     }
 

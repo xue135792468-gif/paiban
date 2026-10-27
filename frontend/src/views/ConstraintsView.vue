@@ -33,6 +33,7 @@
       <ConstraintTemplateBar
         :semester-id="semesterId"
         :classes="classes"
+        :base-version="draft.baseVersion.value"
         :reload="loadConstraints"
       />
     </div>
@@ -80,6 +81,31 @@
       >
         <template #title>保存失败，已保留当前输入</template>
         <p class="error-copy">{{ saveMessage }}</p>
+      </el-alert>
+
+      <el-alert
+        v-if="conflict"
+        type="warning"
+        :closable="false"
+        show-icon
+        class="error-bar"
+        data-testid="constraint-conflict"
+      >
+        <template #title>配置已被他人修改（当前版本 {{ conflict.version }}）</template>
+        <p class="error-copy">{{ conflict.message }}</p>
+        <div class="conflict-actions">
+          <el-button size="small" data-testid="constraint-conflict-take-theirs" @click="takeTheirs">
+            加载最新配置（放弃我的修改）
+          </el-button>
+          <el-button
+            size="small"
+            type="primary"
+            data-testid="constraint-conflict-keep-mine"
+            @click="keepMine"
+          >
+            保留我的修改并合并保存
+          </el-button>
+        </div>
       </el-alert>
 
       <el-card v-loading="loading" shadow="never" class="content-card">
@@ -169,6 +195,11 @@ interface Semester {
   current: boolean
 }
 
+interface ConstraintState {
+  version: number
+  configs: ConstraintConfigDto[]
+}
+
 const auth = useAuthStore()
 const settings = useSettingsStore()
 const canManage = computed(() => auth.hasPermission('constraint:manage'))
@@ -209,7 +240,8 @@ const objectNames = computed<ObjectNames>(() => ({
 const conflictReport = computed(() => draft.conflictsOf(objectNames.value))
 const conflicts = computed(() => conflictReport.value.messages)
 
-const { saving, saveMessage, saveReport, save, clearErrors } = useConstraintSave({
+const { saving, saveMessage, saveReport, conflict, save, takeTheirs, keepMine, clearErrors } =
+  useConstraintSave({
   draft,
   semesterId,
   conflicts,
@@ -355,14 +387,17 @@ async function loadConstraints() {
   }
   loading.value = true
   try {
-    const [typeRes, configRes] = await Promise.all([
+    const [typeRes, stateRes] = await Promise.all([
       http.get<ConstraintTypeDef[]>('/constraint-types'),
-      http.get<ConstraintConfigDto[]>('/constraints', {
+      http.get<ConstraintState>('/constraints/state', {
         params: { semesterId: semesterId.value },
       }),
       loadClasses(),
     ])
-    draft.hydrate(typeRes.data ?? [], configRes.data ?? [], { isJunior: isJunior.value })
+    draft.hydrate(typeRes.data ?? [], stateRes.data?.configs ?? [], {
+      isJunior: isJunior.value,
+    })
+    draft.setBaseVersion(stateRes.data?.version ?? 0)
     clearErrors()
   } catch (e: any) {
     ElMessage.error(serverMessage(e, '加载约束配置失败'))
@@ -372,6 +407,7 @@ async function loadConstraints() {
 }
 
 async function onSemesterChange() {
+  clearErrors()
   await loadConstraints()
 }
 
@@ -425,6 +461,12 @@ h2 {
 
 .error-bar {
   margin-bottom: 14px;
+}
+
+.conflict-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .error-copy {

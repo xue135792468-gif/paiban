@@ -57,6 +57,13 @@ public final class ConstraintDtos {
     public record SaveConstraintsRequest(List<ConstraintConfigRequest> configs) {}
 
     /**
+     * The semester's effective configuration together with the version every writer
+     * has to send back as its base (ticket 14/07). A semester with no configuration
+     * reads as version 0.
+     */
+    public record ConstraintStateDto(long version, List<ConstraintConfigDto> configs) {}
+
+    /**
      * {@code configCount} is the number of type rows the template holds,
      * {@code entryCount} the number of parameter entries it will restore.
      */

@@ -14,6 +14,8 @@ import type { ConstraintConfigDto, TemplateItem, TemplateReferenceIssue } from '
  */
 export function useConstraintTemplates(options: {
   semesterId: Ref<number | null>
+  /** The version the page is based on; an apply advances it like a manual save. */
+  baseVersion?: () => number
   reload: () => Promise<void>
 }) {
   const templates = ref<TemplateItem[]>([])
@@ -111,7 +113,12 @@ export function useConstraintTemplates(options: {
       const { data } = await http.post<ConstraintConfigDto[]>(
         `/constraint-templates/${selectedId.value}/apply`,
         { classMapping },
-        { params: { semesterId: options.semesterId.value } },
+        {
+          params: {
+            semesterId: options.semesterId.value,
+            baseVersion: options.baseVersion?.() ?? undefined,
+          },
+        },
       )
       const counts = applyResultOf(data)
       result.value = { name, counts }

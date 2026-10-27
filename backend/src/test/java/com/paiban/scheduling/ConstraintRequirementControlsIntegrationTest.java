@@ -305,7 +305,11 @@ class ConstraintRequirementControlsIntegrationTest extends ApiIntegrationTest {
     }
 
     private Response save(String token, long semesterId, List<Map<String, Object>> configs) {
+        long version = as(token).queryParam("semesterId", semesterId)
+                .when().get("/api/constraints/state")
+                .then().statusCode(200).extract().jsonPath().getLong("version");
         return as(token).queryParam("semesterId", semesterId)
+                .queryParam("baseVersion", version)
                 .body(Map.of("configs", configs))
                 .when().put("/api/constraints");
     }

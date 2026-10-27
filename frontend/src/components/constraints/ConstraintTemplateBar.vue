@@ -146,6 +146,8 @@ const props = defineProps<{
   semesterId: number | null
   /** The classes of the selected semester: the only rebinding targets. */
   classes: OptionItem[]
+  /** The configuration version the page is based on. */
+  baseVersion?: number
   /** Reloads the page configuration after a successful apply. */
   reload: () => Promise<void>
 }>()
@@ -170,6 +172,7 @@ const {
   clearReport,
 } = useConstraintTemplates({
   semesterId: computed(() => props.semesterId),
+  baseVersion: () => props.baseVersion ?? 0,
   reload: () => props.reload(),
 })
 

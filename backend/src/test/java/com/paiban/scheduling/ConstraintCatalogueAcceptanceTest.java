@@ -492,7 +492,13 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
     }
 
     private Response save(String token, World world, List<Map<String, Object>> configs) {
+        // The page always sends the version it loaded. Tests do the same so the entry
+        // overrides written above can be replaced on the next save.
+        long version = as(token).queryParam("semesterId", world.semesterId())
+                .when().get("/api/constraints/state")
+                .then().statusCode(200).extract().jsonPath().getLong("version");
         return as(token).queryParam("semesterId", world.semesterId())
+                .queryParam("baseVersion", version)
                 .body(Map.of("configs", configs))
                 .when().put("/api/constraints");
     }

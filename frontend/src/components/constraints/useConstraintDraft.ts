@@ -212,6 +212,12 @@ export function useConstraintDraft() {
   const selectedCode = ref<string | null>(null)
   const isJuniorMode = ref(false)
   const snapshot = ref('')
+  /** The catalogue the page hydrated from; used to rebuild rows after a conflict. */
+  const catalogueTypes = ref<ConstraintTypeDef[]>([])
+  /** The configuration version the current draft is based on. */
+  const baseVersion = ref(0)
+  /** The payload the page loaded with, so a conflict can tell "my edit" from "theirs". */
+  const basePayload = ref<ConstraintConfigRequest[]>([])
 
   const visibleRows = computed(() => rows.value)
 
@@ -241,6 +247,7 @@ export function useConstraintDraft() {
     options: { isJunior: boolean },
   ) {
     isJuniorMode.value = options.isJunior
+    catalogueTypes.value = types
     const saved = new Map(configs.map((config) => [config.type, config]))
     rows.value = types.map((type) => buildRow(type, saved.get(type.code)))
 
@@ -256,7 +263,23 @@ export function useConstraintDraft() {
   }
 
   function markSaved() {
-    snapshot.value = JSON.stringify(payload())
+    basePayload.value = payload()
+    snapshot.value = JSON.stringify(basePayload.value)
+  }
+
+  function setBaseVersion(version: number) {
+    baseVersion.value = version
+  }
+
+  /**
+   * Rebuilds the editor from a merged configuration after a conflict, keeping the
+   * catalogue and the selected type. The result is unsaved until the caller succeeds.
+   */
+  function rehydrate(configs: ConstraintConfigDto[]) {
+    if (catalogueTypes.value.length === 0) {
+      return
+    }
+    hydrate(catalogueTypes.value, configs, { isJunior: isJuniorMode.value })
   }
 
   function select(code: string) {
@@ -553,12 +576,16 @@ export function useConstraintDraft() {
   return {
     rows,
     selectedCode,
+    baseVersion,
+    basePayload,
     visibleRows,
     counts,
     groups,
     selected,
     dirty,
     hydrate,
+    rehydrate,
+    setBaseVersion,
     markSaved,
     select,
     setEnabled,

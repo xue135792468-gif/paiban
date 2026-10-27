@@ -3,6 +3,7 @@ package com.paiban.scheduling.web;
 import com.paiban.identity.domain.Permissions;
 import com.paiban.scheduling.service.ConstraintService;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintConfigDto;
+import com.paiban.scheduling.web.ConstraintDtos.ConstraintStateDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintTypeDto;
 import com.paiban.scheduling.web.ConstraintDtos.SaveConstraintsRequest;
 import com.paiban.scheduling.web.ConstraintDtos.SaveTemplateRequest;
@@ -42,12 +43,28 @@ public class ConstraintController {
         return service.list(semesterId);
     }
 
+    /**
+     * The effective configuration plus the version a writer must send back as its base.
+     * The plain {@code /constraints} list stays for readers that only need the rows.
+     */
+    @GetMapping("/constraints/state")
+    public ConstraintStateDto state(@RequestParam(required = false) Long semesterId) {
+        return service.state(semesterId);
+    }
+
+    /**
+     * {@code baseVersion} makes the save conditional: a version that no longer matches
+     * returns 409 with the latest configuration instead of overwriting it. A request
+     * without it is accepted only while the stored data has no per-requirement shape.
+     */
     @PutMapping("/constraints")
     @PreAuthorize("hasAuthority('" + Permissions.CONSTRAINT_MANAGE + "')")
     public List<ConstraintConfigDto> save(
             @RequestParam(required = false) Long semesterId,
+            @RequestParam(required = false) Long baseVersion,
             @Valid @RequestBody SaveConstraintsRequest request) {
-        return service.save(semesterId, request.configs() == null ? List.of() : request.configs());
+        return service.save(
+                semesterId, request.configs() == null ? List.of() : request.configs(), baseVersion);
     }
 
     @GetMapping("/constraint-templates")
@@ -79,8 +96,9 @@ public class ConstraintController {
     public List<ConstraintConfigDto> apply(
             @PathVariable Long id,
             @RequestParam(required = false) Long semesterId,
+            @RequestParam(required = false) Long baseVersion,
             @RequestBody(required = false) TemplateApplyRequest request) {
-        return service.applyTemplate(id, semesterId, request);
+        return service.applyTemplate(id, semesterId, request, baseVersion);
     }
 
     /**
