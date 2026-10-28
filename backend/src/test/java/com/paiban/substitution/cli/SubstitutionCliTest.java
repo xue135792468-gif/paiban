@@ -224,4 +224,22 @@ class SubstitutionCliTest {
         assertThat(accepted.code()).isZero();
         assertThat(MAPPER.readTree(accepted.out()).get("status").asText()).isEqualTo("PASS");
     }
+
+    @Test
+    void aDatedCoverDoesNotReachTheFollowingWeekButALegacyOneDoes() throws Exception {
+        // ADR-0030：快照里的新格式生效行带 lessonDate，只在授课日当天生效——
+        // 第二周（2025-09-08）的置换方案按基线教师校验，可以通过。
+        Run dated = run("verify", "--snapshot", DIR + "snapshot-dated-cover.json",
+                "--plan", DIR + "plan-next-week.json");
+        assertThat(dated.code()).isZero();
+        assertThat(MAPPER.readTree(dated.out()).get("status").asText()).isEqualTo("PASS");
+
+        // 同一份方案对旧格式快照（无 lessonDate = 持续覆盖）必须失败：
+        // 第二周的来源课教师已经是代课人 9，方案却写基线教师 1（TEACHER_CHANGED）。
+        Run legacy = run("verify", "--snapshot", DIR + "snapshot-legacy-cover.json",
+                "--plan", DIR + "plan-next-week.json");
+        assertThat(legacy.code()).isEqualTo(1);
+        assertThat(MAPPER.readTree(legacy.out()).get("issues").toString())
+                .contains("TEACHER_CHANGED");
+    }
 }

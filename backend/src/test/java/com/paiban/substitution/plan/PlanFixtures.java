@@ -114,11 +114,24 @@ public final class PlanFixtures {
             return this;
         }
 
+        /** 旧格式生效行：lessonDate 为空，按「effectiveDate 起持续覆盖」读取。 */
         public Builder substitution(long entryId, LocalDate effectiveDate, Long newPeriodId,
                                     int newDayOfWeek, int newPeriodNo, Long newRoomId,
                                     Long substituteTeacherId, String type) {
             substitutions.add(new AppliedSubstitution(
-                    nextEntryId++, entryId, effectiveDate, Instant.EPOCH.plusSeconds(nextEntryId),
+                    nextEntryId++, entryId, effectiveDate, null, null,
+                    Instant.EPOCH.plusSeconds(nextEntryId),
+                    newPeriodId, newDayOfWeek, newPeriodNo, newRoomId, substituteTeacherId, type));
+            return this;
+        }
+
+        /** 新格式日期实例：只作用于 lessonDate；SWAP 的落点实例日期由 targetLessonDate 表达。 */
+        public Builder datedSubstitution(long entryId, LocalDate lessonDate, LocalDate targetLessonDate,
+                                         Long newPeriodId, int newDayOfWeek, int newPeriodNo,
+                                         Long newRoomId, Long substituteTeacherId, String type) {
+            substitutions.add(new AppliedSubstitution(
+                    nextEntryId++, entryId, lessonDate, lessonDate, targetLessonDate,
+                    Instant.EPOCH.plusSeconds(nextEntryId),
                     newPeriodId, newDayOfWeek, newPeriodNo, newRoomId, substituteTeacherId, type));
             return this;
         }
