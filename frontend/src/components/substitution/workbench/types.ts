@@ -22,6 +22,9 @@ export interface WorkbenchCandidateList {
   courseSubject?: string | null
   currentTeacherId: number
   currentTeacherName?: string | null
+  /** 基线原任课教师（票 04）：与当前教师不同时提供「恢复基线」入口。 */
+  baselineTeacherId?: number | null
+  baselineTeacherName?: string | null
   periodId: number
   periodNo: number
   periodLabel: string
@@ -86,6 +89,9 @@ export interface PreviewResponse {
   issues: string[]
   canSubmitApproval: boolean
   canConfirm: boolean
+  /** 修订预览（票 04）：被再次调整的已生效申请与修订类型；首次代课为空。 */
+  revisesRequestId?: number | null
+  revisionKind?: 'CHANGE_SUBSTITUTE' | 'RESTORE_BASELINE' | null
 }
 
 export interface WorkbenchActionResult {

@@ -120,10 +120,19 @@ public class SubstitutionQueryService {
     public TeacherStatsDto stats(Long teacherId) {
         SubstitutionLookups.requireTeacher(teachers, teacherId);
         Long semesterId = semesters.requireCurrent().getId();
-        long out = substitutions.countBySemesterIdAndOriginalTeacherIdAndTypeAndStatus(
-                semesterId, teacherId, Substitution.TYPE_COVER, Substitution.EFFECTIVE);
-        long in = substitutions.countBySemesterIdAndSubstituteTeacherIdAndTypeAndStatus(
-                semesterId, teacherId, Substitution.TYPE_COVER, Substitution.EFFECTIVE);
+        // 代入/代出口径（票 04，规格第 7 节）：按「当前有效授课安排 vs 基线教师」比较，
+        // 不按累计事件行数计数。判定谓词见 {@link RevisionPolicy#countsAsCurrentCover}：
+        // 只数当前生效的非恢复代课覆盖——A→B→C 后 A 被代 1、C 代课 1、B 为 0；
+        // 恢复基线行净变化为零，对任何一方都不计入；被修订替代的旧行退出统计，历史保留。
+        List<Substitution> effective = substitutions.findBySemesterIdAndStatus(semesterId, Substitution.EFFECTIVE);
+        long out = effective.stream()
+                .filter(RevisionPolicy::countsAsCurrentCover)
+                .filter(row -> teacherId.equals(row.getOriginalTeacherId()))
+                .count();
+        long in = effective.stream()
+                .filter(RevisionPolicy::countsAsCurrentCover)
+                .filter(row -> teacherId.equals(row.getSubstituteTeacherId()))
+                .count();
         long swaps = substitutions.countSwapPlans(semesterId, teacherId);
         long weeklyLessons = entries.findBySemesterIdAndTeacherId(semesterId, teacherId).size();
         // A cover moves one lesson from the original teacher to the substitute; a

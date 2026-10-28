@@ -44,7 +44,11 @@ public final class SubstitutionDtos {
                                          String approver,
                                          Instant approvedAt,
                                          String approvalComment,
-                                         Instant createdAt) {}
+                                         Instant createdAt,
+                                         /** 修订链（票 04）：被本申请再次调整的已生效申请；首次为空。 */
+                                         Long revisesRequestId,
+                                         /** CHANGE_SUBSTITUTE / RESTORE_BASELINE；首次为空。 */
+                                         String revisionKind) {}
 
     public record HistoryDto(Long id, String fromStatus, String toStatus, String actor,
                              String comment, Instant createdAt) {}

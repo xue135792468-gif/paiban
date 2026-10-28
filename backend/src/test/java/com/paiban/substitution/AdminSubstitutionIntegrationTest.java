@@ -59,7 +59,7 @@ class AdminSubstitutionIntegrationTest extends ApiIntegrationTest {
     record Fixture(long semesterId, long classAId, long classBId,
                    long teacherAId, long teacherBId, long teacherCId, long teacherDId,
                    long entryAId, long entryBId, LocalDate lessonDate, long periodId,
-                   long headTeacherId) {}
+                   long headTeacherId, long roomAId) {}
 
     /** 未来学期：从下一个周一开始，周三第 1 节是两班共同的槽位。 */
     private Fixture fixture() {
@@ -128,7 +128,7 @@ class AdminSubstitutionIntegrationTest extends ApiIntegrationTest {
                 .findFirst().orElseThrow();
         return new Fixture(semesterId, classAId, classBId,
                 teacherAId, teacherBId, teacherCId, teacherDId, entryAId, entryBId, wednesday, periodId,
-                headTeacherId);
+                headTeacherId, roomA);
     }
 
     /** 静态 helper 专用的请求规格（与父类的 as() 等价，方便静态 fixture 复用）。 */

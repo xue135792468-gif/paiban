@@ -83,17 +83,31 @@
           :selected="candidate"
           @choose="onChoose"
         />
-        <el-card v-if="candidate" shadow="never" class="reason-card">
+        <el-card v-if="candidate || restorable" shadow="never" class="reason-card">
           <div class="reason-row">
-            <span>已选择代课人：{{ candidate.name }}</span>
+            <span v-if="candidate">已选择代课人：{{ candidate.name }}</span>
             <el-input
               v-model="reason"
               placeholder="代课原因（如：甲老师开会）"
               style="width: 260px"
               data-testid="preview-reason"
             />
-            <el-button type="primary" data-testid="generate-preview" :loading="previewLoading" @click="generatePreview">
+            <el-button
+              v-if="candidate"
+              type="primary"
+              data-testid="generate-preview"
+              :loading="previewLoading"
+              @click="generatePreview()"
+            >
               生成预览对照
+            </el-button>
+            <el-button
+              v-if="restorable"
+              data-testid="restore-baseline"
+              :loading="previewLoading"
+              @click="generatePreview(candidateList.baselineTeacherId!)"
+            >
+              恢复基线教师{{ candidateList.baselineTeacherName ? '（' + candidateList.baselineTeacherName + '）' : '' }}
             </el-button>
             <el-button text @click="resetFlow">重新选择</el-button>
           </div>
@@ -189,6 +203,20 @@ const result = ref<WorkbenchActionResult | null>(null)
 const teacherName = computed(
   () => teachers.value.find((item) => item.id === teacherId.value)?.name ?? '',
 )
+/**
+ * 恢复基线入口（票 04）：当前实际教师与基线原教师不同、且实例未被旧格式锁定、
+ * 没有待处理单时，可以直接对基线原教师发起一次经预览、校验的再次调整。
+ */
+const restorable = computed(() => {
+  const info = candidateList.value
+  return (
+    !!info &&
+    !info.legacyLocked &&
+    info.activeRequestId == null &&
+    info.baselineTeacherId != null &&
+    info.baselineTeacherId !== info.currentTeacherId
+  )
+})
 /** 所选日期所在周的周一，作为周课表列头。 */
 const weekStart = computed(() => {
   const value = new Date(`${date.value || today()}T00:00:00`)
@@ -253,16 +281,16 @@ function onChoose(chosen: WorkbenchCandidate) {
   candidate.value = chosen
 }
 
-async function generatePreview() {
+async function generatePreview(substituteTeacherId?: number) {
   const entry = sourceEntry.value
-  const chosen = candidate.value
+  const chosen = substituteTeacherId ?? candidate.value?.teacherId
   if (!entry || !chosen || !date.value) return
   previewLoading.value = true
   try {
     const { data } = await http.post('/substitution-workbench/previews', {
       entryId: entry.id,
       lessonDate: date.value,
-      substituteTeacherId: chosen.teacherId,
+      substituteTeacherId: chosen,
       reason: reason.value || undefined,
     })
     preview.value = data

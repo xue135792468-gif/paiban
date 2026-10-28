@@ -69,6 +69,17 @@ public class SubstitutionPreview {
     @Column(name = "previous_teacher_id", nullable = false)
     private Long previousTeacherId;
 
+    /**
+     * 修订链（票 04）：预览针对的已生效基准申请；为空表示首次代课。
+     * 凭证绑定「快照哈希 + 基准申请」，确认时复核——基准被别的修订替代时明确冲突。
+     */
+    @Column(name = "revises_request_id")
+    private Long revisesRequestId;
+
+    /** 修订类型（票 04）：CHANGE_SUBSTITUTE / RESTORE_BASELINE；首次代课为空。 */
+    @Column(name = "revision_kind", length = 30)
+    private String revisionKind;
+
     /** 绑定操作者账号；确认时校验是同一操作者，管理员绑定的教师身份不参与判定。 */
     @Column(name = "operator_user_id", nullable = false)
     private Long operatorUserId;

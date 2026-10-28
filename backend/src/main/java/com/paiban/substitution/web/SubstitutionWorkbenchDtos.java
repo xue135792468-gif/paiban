@@ -27,7 +27,7 @@ public final class SubstitutionWorkbenchDtos {
                                String busyReason,
                                boolean crossSubject) {}
 
-    /** 候选列表 + 来源课信息 + 锁定状态（旧格式只读 / 已有待审批单）。 */
+    /** 候选列表 + 来源课信息 + 锁定状态（旧格式只读 / 已有待审批单）+ 基线教师（恢复基线入口）。 */
     public record CandidateListDto(Long entryId,
                                    LocalDate lessonDate,
                                    Long classId,
@@ -37,6 +37,8 @@ public final class SubstitutionWorkbenchDtos {
                                    String courseSubject,
                                    Long currentTeacherId,
                                    String currentTeacherName,
+                                   Long baselineTeacherId,
+                                   String baselineTeacherName,
                                    Long periodId,
                                    int periodNo,
                                    String periodLabel,
@@ -72,7 +74,11 @@ public final class SubstitutionWorkbenchDtos {
                                 String roomNameAfter,
                                 String changeKind) {}
 
-    /** 预览结果：凭证 + 权威截止时间 + 左右对照 + 完整变化清单 + 提示性校验问题。 */
+    /** 预览结果：凭证 + 权威截止时间 + 左右对照 + 完整变化清单 + 提示性校验问题。
+     *
+     * <p>修订预览（票 04）：revisesRequestId 指向被再次调整的已生效申请，
+     * revisionKind = CHANGE_SUBSTITUTE（换代课人）或 RESTORE_BASELINE（恢复基线）；
+     * 首次代课两者为空。 */
     public record PreviewResponse(Long voucherId,
                                   Instant deadlineAt,
                                   Instant expiresAt,
@@ -90,7 +96,9 @@ public final class SubstitutionWorkbenchDtos {
                                   List<ChangeItemDto> changes,
                                   List<String> issues,
                                   boolean canSubmitApproval,
-                                  boolean canConfirm) {}
+                                  boolean canConfirm,
+                                  Long revisesRequestId,
+                                  String revisionKind) {}
 
     /** 两种消费动作的统一结果；幂等重放时返回第一次存储的结果并标记 replayed。 */
     public record WorkbenchActionResult(Long requestId, String status, boolean replayed) {

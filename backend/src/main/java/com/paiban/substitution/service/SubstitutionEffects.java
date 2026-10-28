@@ -113,6 +113,20 @@ public class SubstitutionEffects {
         return substitutions.save(substitution);
     }
 
+    /**
+     * 修订生效（票 04）：基准申请的当前生效 COVER 行退出「当前有效安排」，
+     * 状态改为 SUPERSEDED。行保留、内容不改写——历史 A→B 仍完整可追溯，
+     * 读模型只装载 EFFECTIVE 行，因此这次状态迁移就是原子的版本切换。
+     */
+    public void supersedeEffectiveCoversOf(Long baseRequestId) {
+        for (Substitution row : substitutions.findByRequestId(baseRequestId)) {
+            if (Substitution.EFFECTIVE.equals(row.getStatus())) {
+                row.setStatus(Substitution.SUPERSEDED);
+                substitutions.save(row);
+            }
+        }
+    }
+
     public void recordHistory(Long requestId, String from, String to, String actor, String comment) {
         SubstitutionHistory item = new SubstitutionHistory();
         item.setRequestId(requestId);
@@ -150,6 +164,11 @@ public class SubstitutionEffects {
         variables.put("date", request.getEffectiveDate().toString());
         variables.put("periodLabel", SubstitutionMapper.label(request.getDayOfWeek(), request.getPeriodNo()));
         variables.put("originalTeacher", teachers.findById(request.getOriginalTeacherId())
+                .map(Teacher::getName).orElse(""));
+        // 修订通知（票 04）：前教师 = 调整前实际教师；首次代课没有记录时退回基线原教师。
+        Long previousTeacherId = request.getPreviousTeacherId() != null
+                ? request.getPreviousTeacherId() : request.getOriginalTeacherId();
+        variables.put("previousTeacher", teachers.findById(previousTeacherId)
                 .map(Teacher::getName).orElse(""));
         Long substituteId = substitutions.findFirstByEntryIdAndEffectiveDateAndStatus(
                         request.getEntryId(), request.getEffectiveDate(), Substitution.EFFECTIVE)

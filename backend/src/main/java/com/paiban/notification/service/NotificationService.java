@@ -80,7 +80,13 @@ public class NotificationService {
     @Transactional
     public void substitutionEffective(
             SubstitutionRequest request, Substitution substitution, Map<String, Object> variables) {
-        List<Long> originalUsers = userIds(users.usersByTeacherId(request.getOriginalTeacherId()));
+        // 修订（票 04）：通知「调整前后受影响教师的并集」——被解除安排的调整前教师
+        // 也必须收到通知，文案明确本次前后变化与被取代的申请；首次代课维持原模板。
+        boolean revision = request.getRevisesRequestId() != null;
+        Long releasedTeacherId = revision && request.getPreviousTeacherId() != null
+                ? request.getPreviousTeacherId()
+                : request.getOriginalTeacherId();
+        List<Long> originalUsers = userIds(users.usersByTeacherId(releasedTeacherId));
         List<Long> substituteUsers = userIds(users.usersByTeacherId(substitution.getSubstituteTeacherId()));
         String scope = settings.notificationScope();
         List<Long> headTeacherUsers = new ArrayList<>();
@@ -95,8 +101,20 @@ public class NotificationService {
         adminUsers.addAll(settings.substitutionRecipientUserIds());
 
         String link = "/substitutions?requestId=" + request.getId();
-        notify(NotificationTemplates.SUBSTITUTION_EFFECTIVE_ORIGINAL, originalUsers, variables, link);
-        notify(NotificationTemplates.SUBSTITUTION_EFFECTIVE_SUBSTITUTE, substituteUsers, variables, link);
+        if (revision) {
+            // 班主任/管理员的通知同样呈现本次修订的前后变化（前教师 → 新教师），
+            // 而不是相对基线的净差；被取代的申请号用于追溯。
+            Map<String, Object> revisionVariables = new java.util.HashMap<>(variables);
+            revisionVariables.put("originalTeacher", revisionVariables.get("previousTeacher"));
+            revisionVariables.put("revisesRequestId", request.getRevisesRequestId());
+            notify(NotificationTemplates.SUBSTITUTION_REVISION_RELEASED,
+                    originalUsers, revisionVariables, link);
+            notify(NotificationTemplates.SUBSTITUTION_REVISION_ASSIGNED,
+                    substituteUsers, revisionVariables, link);
+        } else {
+            notify(NotificationTemplates.SUBSTITUTION_EFFECTIVE_ORIGINAL, originalUsers, variables, link);
+            notify(NotificationTemplates.SUBSTITUTION_EFFECTIVE_SUBSTITUTE, substituteUsers, variables, link);
+        }
         notify(NotificationTemplates.SUBSTITUTION_EFFECTIVE_HEAD_TEACHER, headTeacherUsers, variables, link);
         notify(NotificationTemplates.SUBSTITUTION_EFFECTIVE_ADMIN, adminUsers, variables, link);
     }
