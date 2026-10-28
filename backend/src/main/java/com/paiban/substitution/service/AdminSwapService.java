@@ -58,6 +58,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 /**
  * 管理员同班调课（票 05）：为实际授课实例指定<b>明确的目标日期与课节</b>，在
@@ -209,7 +210,8 @@ public class AdminSwapService {
                 "目标课节 " + label(targetLesson) + "（" + body.targetDate() + "）");
 
         SwapPlannerOptions options = snapshots.swapOptions();
-        RankingPreset preset = body.rankingPreset() == null || body.rankingPreset().isBlank()
+        // 排序预设缺省时用设置中心的默认值（StringUtils.hasText：新增代码的空白判断规范）。
+        RankingPreset preset = !StringUtils.hasText(body.rankingPreset())
                 ? options.preset()
                 : RankingPreset.fromCode(body.rankingPreset());
         // 冻结槽（票 07）：窗口内本班当前安排已开始的槽位交给求解器跳过——
