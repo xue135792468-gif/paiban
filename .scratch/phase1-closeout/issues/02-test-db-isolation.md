@@ -4,7 +4,7 @@
 
 **Blocked by:** 无
 
-**Status:** ready-for-agent
+**Status:** done（2026-10-28 回填；代码已在 main）
 
 - [x] `DatabaseResetExtension` 在每个测试方法前清空业务表，保留身份表与 `flyway_schema_history`
 - [x] 表名从 `information_schema` 动态读取，迁移新增表无需改代码

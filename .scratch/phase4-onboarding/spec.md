@@ -1,6 +1,6 @@
 # 排课系统四期规格：操作引导与帮助中心
 
-Status: ready-for-agent
+Status: done（已上线）
 
 ---
 

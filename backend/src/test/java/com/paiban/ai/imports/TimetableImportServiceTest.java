@@ -94,6 +94,19 @@ class TimetableImportServiceTest extends ApiIntegrationTest {
     }
 
     @Test
+    void acceptsTheDayPartPrefixOnPeriodLabels() {
+        fixture();
+
+        TimetableImportService.Result result = service.importRows(
+                List.of(row("一年级1班", "周一", "上午第1节", "语文", "张三", "101")),
+                null,
+                "admin");
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.imported()).isEqualTo(1);
+    }
+
+    @Test
     void importsRowsIntoADraftWithAssignmentsAndLessons() {
         Fixture f = fixture();
 

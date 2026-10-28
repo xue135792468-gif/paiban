@@ -4,7 +4,7 @@
 
 **Blocked by:** 无
 
-**Status:** ready-for-agent
+**Status:** done（2026-10-28 回填；代码已在 main）
 
 - [x] 11 个缺失约束各有一个用例，命名体现约束
 - [x] 奖励型约束（偏好时段、班主任第一节）断言软分为正

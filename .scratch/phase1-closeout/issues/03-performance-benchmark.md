@@ -4,7 +4,7 @@
 
 **Blocked by:** 无
 
-**Status:** ready-for-agent
+**Status:** done（2026-10-28 回填；代码已在 main）
 
 - [x] `PerformanceBenchmarkIT`，`@EnabledIfSystemProperty(named = "perf", matches = "true")`
 - [x] 数据规模与 ADR-0017 一致：100 班、500 教师、200 教室、40 个时段

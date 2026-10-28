@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done（2026-10-28 回填；功能已上线，复选框是历史快照）
 
 - [ ] 前端路由 `/help`，帮助中心首页
 - [ ] Markdown 渲染：引入 marked 或 markdown-it，渲染静态 .md 文件

@@ -172,8 +172,10 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
           <!-- Several worktrees run tests at once; without an explicit heap the JVM
-               picks a share of total RAM and Timefold's Chunk::new fails on native memory. -->
-          <argLine>-Xmx2g -XX:MaxMetaspaceSize=512m</argLine>
+               picks a share of total RAM and Timefold's Chunk::new fails on native memory.
+               Mockito's inline mock maker self-attaches; allowing that avoids the slower
+               external attach that some Windows security agents block. -->
+          <argLine>-Xmx2g -XX:MaxMetaspaceSize=512m -Djdk.attach.allowAttachSelf=true</argLine>
           <includes>
             <include>**/*Test.java</include>
             <include>**/*Tests.java</include>

@@ -56,6 +56,9 @@ bash scripts/check-blank-checks.sh
 echo "==> backend: migration versions"
 bash scripts/check-migrations.sh
 
+echo "==> repo: stale ticket statuses"
+bash scripts/check-ticket-status.sh
+
 echo "==> backend: AI HTTP timeouts"
 bash scripts/check-ai-http-timeouts.sh
 

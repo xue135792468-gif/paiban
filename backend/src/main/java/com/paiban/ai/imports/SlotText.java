@@ -1,6 +1,7 @@
 package com.paiban.ai.imports;
 
 import java.text.Normalizer;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -41,9 +42,19 @@ public final class SlotText {
         };
     }
 
-    /** @return the period number for 第3节/3/三, empty when the text is not a period. */
+    /** Day-part prefixes a real workbook may put before the period label. */
+    private static final List<String> DAY_PARTS =
+            List.of("上午", "下午", "中午", "晚上", "早晨", "清晨", "傍晚", "晚间");
+
+    /** @return the period number for 第3节/3/三/上午第1节, empty when it is not a period. */
     public static Optional<Integer> periodNo(String raw) {
         String value = normalize(raw);
+        for (String part : DAY_PARTS) {
+            if (value.startsWith(part)) {
+                value = value.substring(part.length());
+                break;
+            }
+        }
         if (value.startsWith("第")) {
             value = value.substring(1);
         }
