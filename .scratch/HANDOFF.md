@@ -55,7 +55,7 @@
   读 `.scratch/workbook-background/spec.md` 与 `issues/`；实现说明在各票末尾，决策见 ADR-0029。评审遗留的票 04（重复提交单飞）仍未实现。
 - **14 已上线（2026-10-27，main `b21cb9a`，Flyway v37）。**
   读 `.scratch/natural-language-constraints/spec.md`、`ticket-plan.md` 与 `issues/01..13`；真实评测已 **PASSED**（`gemini-3.8-flash-low` 54/54、12/12），任务已绑定、功能开关已开；不要用替身结果冒充。
-- **票13 结构重构已完成（2026-10-27）**：共享 `ConstraintEntryMatcher`、`ConstraintParams`、`ConstraintRunCompletion`、`ConstraintAuditService`、AI 面板状态映射、E2E `pickOption` 收口；完整门禁 863/401/90。剩余“规划/持久化/模板”核心拆分见 [票14](natural-language-constraints/issues/14-core-service-split.md)（needs-triage）。
+- **票13 结构重构已完成并部署（2026-10-27，main `6ce8a2c`）**：共享 `ConstraintEntryMatcher`、`ConstraintParams`、`ConstraintRunCompletion`、`ConstraintAuditService`、AI 面板状态映射、E2E `pickOption` 收口；完整门禁 863/401/90。剩余“规划/持久化/模板”核心拆分见 [票14](natural-language-constraints/issues/14-core-service-split.md)（needs-triage）。
 - **收尾跑一次 `/retro`**：把"保存作息表毁草稿"这类坑变成确定性检查（例如给 `draft_lesson.period_id` 加外键/一致性校验），别只写在文档里。
 
 ## 交差门槛（每票）

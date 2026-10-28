@@ -4,7 +4,7 @@
 
 **Blocked by:** 无（后续技术债，不阻塞票 14 的合并/部署）。
 
-**Status:** done（2026-10-27 重构完成；核心服务的规划/持久化/模板拆分转入票 14）
+**Status:** done（2026-10-27 重构完成并部署；核心服务的规划/持久化/模板拆分转入票 14）
 
 ## 背景
 
@@ -32,3 +32,4 @@
 - 服务拆分：`ConstraintAuditService` 独立；`ConstraintService` 仍负责规划/持久化/模板，剩余拆分见 [票14](14-core-service-split.md)。
 - 前端/E2E：AI 面板单映射；`pickOption` 收进 `helpers.ts`。
 - 完整门禁：后端 **863** 例（0 失败/0 错误、5 skipped）、前端 **401** 例、Playwright **90** 例、SFC/isBlank/迁移检查全绿；定向 e2e 27 例（7 个约束 spec 共用 helper）。
+- 部署：`main` `6ce8a2c` 已上线；Flyway 37、四容器 healthy、两处 health 200；`/api/constraint-proposals/availability` 返回 `available:true`，`/api/constraint-audits` 200，NL 任务仍绑定 provider 2/model 4。
