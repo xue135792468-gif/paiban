@@ -11,6 +11,15 @@
     </template>
 
     <el-alert
+      v-if="preview.revisionKind"
+      type="info"
+      :closable="false"
+      show-icon
+      class="notice"
+      data-testid="revision-banner"
+      :title="revisionBanner"
+    />
+    <el-alert
       v-if="preview.issues.length > 0"
       type="warning"
       :closable="false"
@@ -122,7 +131,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { http } from '@/api/http'
 import type { PreviewResponse } from './types'
 
@@ -133,6 +142,13 @@ const emit = defineEmits<{
   confirm: [comment: string]
   cancel: []
 }>()
+
+/** 修订预览（票 04）：说明本次再次调整的类型、被取代的申请与「生效前旧安排继续执行」。 */
+const revisionBanner = computed(() => {
+  const kind = props.preview.revisionKind === 'RESTORE_BASELINE' ? '恢复基线原任课教师' : '更换代课人'
+  const base = props.preview.revisesRequestId ? `，取代申请 #${props.preview.revisesRequestId}` : ''
+  return `课前再次调整（${kind}${base}）：新修订生效前，当前安排继续执行；生效后原子切换，历史保留。`
+})
 
 const comment = ref('')
 const baseline = ref<Array<Record<string, unknown>>>([])
