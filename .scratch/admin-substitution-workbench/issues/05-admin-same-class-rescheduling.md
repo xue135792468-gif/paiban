@@ -4,7 +4,7 @@
 
 **Blocked by:** 03:管理员指定代课：预览、代发与亲自确认
 
-**Status:** ready-for-agent
+**Status:** in-progress (2026-10-29, branch feature/t05-admin-same-class-rescheduling)
 
 - [ ] HTTP 接受明确目标日期和课节并返回候选方案的实际日期；不会将目标改成相同星期的另一周。
 - [ ] 在非空同班目标槽可得到二人环及多人成环候选；移动保留课程、当前教师、教室、班级每天节数和整组课程集合。

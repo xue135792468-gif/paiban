@@ -4,7 +4,7 @@
 
 **Blocked by:** 03:管理员指定代课：预览、代发与亲自确认
 
-**Status:** ready-for-agent
+**Status:** in-progress (2026-10-29, branch feature/t04-change-substitute-restore)
 
 - [ ] HTTP 端到端完成 A→B 后再次预览 B→C；待审批期间当前教师仍为 B，批准后当前教师为 C。
 - [ ] HTTP 端到端预览并确认恢复 A；当前安排回到基线，历史 A→B 与恢复修订仍可追溯。
