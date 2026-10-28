@@ -85,6 +85,9 @@ public class SecurityConfig {
                                 "/actuator/**")
                         .permitAll()
                         .requestMatchers("/uploads/**").permitAll()
+                        // H2 控制台只在显式启用的环境（e2e 造历史数据用）注册成
+                        // servlet；生产未启用时该路径无对应端点，放行是空操作。
+                        .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/api/integrations/dingtalk/event").permitAll()
                         .requestMatchers("/api/integrations/feishu/event").permitAll()
                         .anyRequest().authenticated())

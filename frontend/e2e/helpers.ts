@@ -600,3 +600,49 @@ export async function seedWorkbenchScenario(context: APIRequestContext): Promise
     password: 'teacher123',
   }
 }
+
+/**
+ * Runs one SQL statement against the e2e backend's in-memory H2 database via
+ * the H2 web console (enabled only in the e2e profile). This exists so specs
+ * can manufacture pre-ticket-01 legacy data (substitution rows without
+ * lesson_date); every other seed must go through the public API.
+ * The JDBC URL must match application-e2e.yml exactly.
+ */
+export async function runSql(request: APIRequestContext, sql: string): Promise<void> {
+  const base = API.replace(/\/api$/, '')
+  const jdbcUrl = 'jdbc:h2:mem:paiban_e2e;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1'
+  const consolePage = await request.get(`${base}/h2-console/`)
+  if (!consolePage.ok()) {
+    throw new Error(`h2 console unavailable: ${consolePage.status()}`)
+  }
+  const html = await consolePage.text()
+  const sessionId = html.match(/name="jsessionid"\s+value="([^"]+)"/)?.[1]
+    ?? html.match(/jsessionid=([a-zA-Z0-9.-]+)/)?.[1]
+  if (!sessionId) {
+    throw new Error(`h2 console session not found in: ${html.slice(0, 300)}`)
+  }
+  // H2 控制台的登录表单字段名是 url（JDBC URL）；登录后连接挂在会话上，
+  // query.do 只需要 sql。
+  const login = await request.post(`${base}/h2-console/login.do?jsessionid=${sessionId}`, {
+    form: {
+      settingsName: 'Generic H2 (Embedded)',
+      setting: 'Generic H2 (Embedded)',
+      name: 'Generic H2 (Embedded)',
+      driver: 'org.h2.Driver',
+      url: jdbcUrl,
+      user: 'sa',
+      password: '',
+    },
+  })
+  if (!login.ok()) {
+    throw new Error(`h2 console login failed: ${login.status()}`)
+  }
+  const result = await request.post(`${base}/h2-console/query.do?jsessionid=${sessionId}`, {
+    form: { sql, maxrows: '1000' },
+  })
+  const body = await result.text()
+  const failed = !result.ok() || /org\.h2\.jdbc|JdbcSQL|Syntax error|Feature not supported/i.test(body)
+  if (failed) {
+    throw new Error(`h2 sql failed (${result.status()}): ${body.slice(0, 1500)}`)
+  }
+}

@@ -26,6 +26,10 @@
           :can-view-all="canViewAllRecords"
         />
       </el-tab-pane>
+
+      <el-tab-pane v-if="canViewRecords" label="历史转换" name="conversion">
+        <SubstitutionConversionPanel />
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -39,6 +43,7 @@ import SubstitutionRequestForm from '@/components/substitution/SubstitutionReque
 import SubstitutionMineTable from '@/components/substitution/SubstitutionMineTable.vue'
 import SubstitutionPendingPanel from '@/components/substitution/SubstitutionPendingPanel.vue'
 import SubstitutionRecordsPanel from '@/components/substitution/SubstitutionRecordsPanel.vue'
+import SubstitutionConversionPanel from '@/components/substitution/SubstitutionConversionPanel.vue'
 import type { RequestRow, Teacher } from '@/components/substitution/types'
 
 const auth = useAuthStore()
