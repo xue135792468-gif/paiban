@@ -50,7 +50,8 @@ public class ConstraintEvaluationRunner {
             int runsPerSentence,
             List<ModelRef> models,
             boolean stub,
-            boolean bindWinner) {}
+            boolean bindWinner,
+            boolean smoke) {}
 
     public record RunRow(
             String code, int attempt, boolean supported, boolean passed, String reason,
@@ -89,9 +90,9 @@ public class ConstraintEvaluationRunner {
     }
 
     public Report run(Request request) {
-        int runs = DEFAULT_RUNS;
+        int runs = request.smoke() ? 1 : DEFAULT_RUNS;
         BigDecimal budget = request.budgetCny() == null ? DEFAULT_BUDGET : request.budgetCny();
-        if (request.runsPerSentence() != DEFAULT_RUNS) {
+        if (!request.smoke() && request.runsPerSentence() != DEFAULT_RUNS) {
             return write(request, new Report(ConstraintEvaluationCorpus.VERSION,
                     Instant.now().toString(), DEFAULT_RUNS, budget, request.priceInPer1k(),
                     request.priceOutPer1k(), "INVALID_REQUEST",
@@ -133,7 +134,7 @@ public class ConstraintEvaluationRunner {
         ConstraintEvaluationBudget guard = new ConstraintEvaluationBudget(
                 budget, request.priceInPer1k(), request.priceOutPer1k());
         List<ModelReport> reports = new ArrayList<>();
-        String verdict = "FAILED";
+        String verdict = request.smoke() ? "SMOKE" : "FAILED";
         String blockedReason = null;
         boolean keepBound = false;
         OriginalConfig original = null;
@@ -141,9 +142,9 @@ public class ConstraintEvaluationRunner {
             for (int index = 0; index < models.size(); index++) {
                 ModelRef model = models.get(index);
                 original = request.stub() ? null : bind(model);
-                ModelReport outcome = evaluateModel(request, guard, model, runs);
+                ModelReport outcome = evaluateModel(request, guard, model, runs, request.smoke());
                 reports.add(outcome);
-                if (outcome.passed()) {
+                if (!request.smoke() && outcome.passed()) {
                     verdict = "PASSED";
                     keepBound = request.bindWinner();
                     if (!keepBound && original != null) {
@@ -175,7 +176,8 @@ public class ConstraintEvaluationRunner {
     }
 
     private ModelReport evaluateModel(
-            Request request, ConstraintEvaluationBudget guard, ModelRef model, int runs) {
+            Request request, ConstraintEvaluationBudget guard, ModelRef model, int runs,
+            boolean smoke) {
         List<RunRow> rows = new ArrayList<>();
         int supportedPass = 0;
         int supportedTotal = 0;
@@ -183,11 +185,14 @@ public class ConstraintEvaluationRunner {
         int boundaryTotal = 0;
         boolean complete = true;
         String blockedReason = null;
-        List<Sentence> sentences = ConstraintEvaluationCorpus.sentences();
+        List<Sentence> sentences = smoke
+                ? List.of(ConstraintEvaluationCorpus.sentences().get(0))
+                : ConstraintEvaluationCorpus.sentences();
+        int attemptsPerSentence = smoke ? 1 : runs;
         outer:
         for (Sentence sentence : sentences) {
             ConstraintEvaluationHarness.PromptText prompt = harness.prompt(sentence);
-            for (int attempt = 1; attempt <= runs; attempt++) {
+            for (int attempt = 1; attempt <= attemptsPerSentence; attempt++) {
                 BigDecimal worst = guard.worstCaseCny(prompt.system(), prompt.user());
                 if (!guard.canAfford(worst)) {
                     complete = false;
@@ -223,7 +228,7 @@ public class ConstraintEvaluationRunner {
                         result.latencyMs()));
             }
         }
-        boolean passed = complete && supportedPass >= REQUIRED_SUPPORTED_PASSES
+        boolean passed = !smoke && complete && supportedPass >= REQUIRED_SUPPORTED_PASSES
                 && boundaryPass >= REQUIRED_BOUNDARY_PASSES;
         return new ModelReport(model, supportedPass, supportedTotal,
                 boundaryPass, boundaryTotal, passed, complete, guard.reserved(),
