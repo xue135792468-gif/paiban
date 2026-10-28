@@ -443,8 +443,23 @@ export async function pickOption(
   testId: string,
   text: string,
 ): Promise<void> {
-  await scope.getByTestId(testId).click()
-  const dropdown = scope.page().locator('.el-select-dropdown:visible').last()
+  const page = scope.page()
+  const select = scope.getByTestId(testId)
+  await select.click()
+  const dropdown = page.locator('.el-select-dropdown:visible').last()
+  const input = select.locator('input')
+  if (await input.isEditable().catch(() => false)) {
+    // A filterable select is the deterministic path: type the exact name, then pick
+    // the single filtered row with the keyboard. Clicking a teleported option can be
+    // lost when the popper re-renders under full-suite load.
+    await input.fill(text)
+    const filtered = dropdown.getByText(text, { exact: true }).first()
+    await expect(filtered).toBeVisible()
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('Enter')
+    await expect(dropdown).toBeHidden()
+    return
+  }
   // getByText normalises whitespace; a raw ^text$ regex does not, and the
   // teleported option can carry padding/newlines the visible label hides.
   const option = dropdown.getByText(text, { exact: true }).first()
