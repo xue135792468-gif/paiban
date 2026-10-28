@@ -57,7 +57,7 @@
   读 `.scratch/workbook-background/spec.md` 与 `issues/`；实现说明在各票末尾，决策见 ADR-0029。评审遗留的票 04（重复提交单飞）已于 2026-10-28 **合并并部署（main `a355dde`）**，生产冒烟 200/409/一份草稿通过。
 - **14 已上线（2026-10-27，main `b21cb9a`，Flyway v37）。**
   读 `.scratch/natural-language-constraints/spec.md`、`ticket-plan.md` 与 `issues/01..13`；真实评测已 **PASSED**（`gemini-3.8-flash-low` 54/54、12/12），任务已绑定、功能开关已开；不要用替身结果冒充。
-- **票13 结构重构已完成并部署（2026-10-27，main `6ce8a2c`）**：共享 `ConstraintEntryMatcher`、`ConstraintParams`、`ConstraintRunCompletion`、`ConstraintAuditService`、AI 面板状态映射、E2E `pickOption` 收口；完整门禁 863/401/90。剩余“规划/持久化/模板”核心拆分见 [票14](natural-language-constraints/issues/14-core-service-split.md)（needs-triage）。
+- **票13 结构重构已完成并部署（2026-10-27，main `6ce8a2c`）**：共享 `ConstraintEntryMatcher`、`ConstraintParams`、`ConstraintRunCompletion`、`ConstraintAuditService`、AI 面板状态映射、E2E `pickOption` 收口；完整门禁 863/401/90。剩余“规划/持久化/模板”核心拆分见 [票14](natural-language-constraints/issues/14-core-service-split.md)（**2026-10-28 实现完成，分支 `feature/ticket-14-core-service-split`（`f87f1b6`），待合并/部署；纯结构重构，门禁 872/401/91**）。
 - **Retro 已完成（2026-10-28）**：见 [.scratch/retro/2026-10-28-ticket04.md](retro/2026-10-28-ticket04.md)。本轮把票据状态检查、节次别名、surefire self-attach、并发测试 seam 规则、工作簿冒烟配方与 E2E 选择器稳定化落成了代码/脚本；剩余的是票 14 拆分与十期钉钉评审后续。
 
 ## 交差门槛（每票）
