@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** in-progress (2026-10-29, branch feature/t08-global-scroll-regions)
 
 - [ ] Playwright 使用长菜单和长页面验证导航区与内容区可分别滚动、互不带动。
 - [ ] 滚动导航至中段后切换不同菜单，右侧回到页面顶部且左侧位置保持。
