@@ -33,3 +33,21 @@ Docker 一律 `sudo -n`。代码变更才需要重建；纯文档变更只要 `u
 导课表必须带 `?target=timetable`（不传 target 会被 400 拒绝：默认值 `workbook` 表示「未指定」，文本管道不猜形状）；
 AI 可能把节次写成「上午第1节」，与作息 label（「第1节」）严格匹配会失败，先 `PUT /api/ai/import/sessions/{id}/rows` 改回作息 label 再提交；
 入库后 room-fill → publish → SWAP（调课申请必须带 `targetPeriodId`，否则 400「调课必须选择目标节次」）。
+
+## 工作簿冒烟配方（票 04 重复提交）
+
+整本导入的提交竞态只走工作簿会话，`COMMITTING` 才会出现；文本导入不经过认领。
+
+1. 取当前学期可用的对象（只读）：
+   ```bash
+   sudo -n docker exec paiban-postgres-1 psql -U paiban -d paiban -tAc \
+     "select name from admin_class where semester_id=(select id from semester where is_current=true) limit 1;
+      select name from course order by id limit 1;
+      select name from teacher order by id limit 1;"
+   ```
+2. 造 1 行 CSV：表头 `班级,星期,节次,课程,教师`，节次写 `1`。修复后 `上午第1节` 也能解析，但数字不依赖作息 label，最稳。
+3. 上传并轮询到 `PREVIEW`：
+   `curl -kfsS -H "Authorization: Bearer $TOKEN" -F 'file=@smoke.csv;type=text/csv' "https://127.0.0.1:18443/api/ai/import/excel?target=workbook"`
+   然后 `GET /api/ai/import/sessions/{id}` 直到 `status != PARSING`。
+4. 连续两次确认入库：第一次 `POST .../commit` 期望 `200` 且返回 `draftId`；第二次期望 `409`（已入库/正在入库）。
+5. 只新增一份草稿：`select count(*) from timetable_draft where id > <第一次提交前的 max(id)>` 期望 `1`。
