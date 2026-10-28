@@ -75,6 +75,7 @@ import {
   Bell,
   Calendar,
   ChatDotRound,
+  Platform,
   Cpu,
   DataLine,
   Document,
@@ -101,6 +102,7 @@ interface MenuItem {
   icon: unknown
   permission?: string
   permissions?: string[]
+  allPermissions?: string[]
 }
 
 interface MenuGroup {
@@ -153,7 +155,15 @@ const groups: MenuGroup[] = [
   },
   {
     title: '调代',
-    items: [{ label: '调代课', path: '/substitutions', icon: ChatDotRound, permission: 'substitution:submit' }],
+    items: [
+      { label: '调代课', path: '/substitutions', icon: ChatDotRound, permission: 'substitution:submit' },
+      {
+        label: '调代工作台',
+        path: '/substitutions/workbench',
+        icon: Platform,
+        allPermissions: ['timetable:view', 'substitution:submit', 'substitution:approve'],
+      },
+    ],
   },
   {
     title: '系统',
@@ -176,7 +186,8 @@ const visibleGroups = computed(() =>
       items: group.items.filter(
         (item) =>
           (!item.permission || auth.hasPermission(item.permission)) &&
-          (!item.permissions || auth.hasAnyPermission(item.permissions)),
+          (!item.permissions || auth.hasAnyPermission(item.permissions)) &&
+          (!item.allPermissions || auth.hasAllPermissions(item.allPermissions)),
       ),
     }))
     .filter((group) => group.items.length > 0),

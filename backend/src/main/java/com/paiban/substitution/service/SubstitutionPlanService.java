@@ -152,7 +152,9 @@ public class SubstitutionPlanService {
         TimetableEntry entry = entries.findById(entryId)
                 .orElseThrow(() -> ApiException.notFound("课节不存在: " + entryId));
         AppUser user = users.getByUsername(username);
-        boolean admin = users.hasPermission(user, com.paiban.identity.domain.Permissions.SUBSTITUTION_VIEW);
+        // 票 03 权限收紧：为他人课节选目标节次需要管理组合权限；仅有查看权限不能代发。
+        boolean admin = users.hasAllPermissions(user,
+                AdminSubstitutionService.MANAGER_PERMISSIONS);
         if (!admin && !Objects.equals(user.getTeacherId(), entry.getTeacherId())) {
             throw ApiException.forbidden("只能为自己的课选择目标节次");
         }

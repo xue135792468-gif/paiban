@@ -469,3 +469,134 @@ export async function pickOption(
   // handler instead, so the exact element receives the event.
   await option.evaluate((element) => (element as HTMLElement).click())
 }
+
+export interface WorkbenchSeed {
+  semesterId: number
+  classId: number
+  teacherId: number
+  teacherName: string
+  /** 无课教师：工作台候选里的默认代课人。 */
+  substituteTeacherId: number
+  substituteTeacherName: string
+  entryId: number
+  lessonDate: string
+  username: string
+  password: string
+}
+
+/**
+ * 票 03 调代工作台的种子：学期从下周一拱到未来（服务端开课截止用权威时钟，
+ * 过去的日期会被正确拒绝），语文课一节，另备一位无课代课人。
+ */
+export async function seedWorkbenchScenario(context: APIRequestContext): Promise<WorkbenchSeed> {
+  const token = await apiLogin(context)
+  const suffix = Math.random().toString(36).slice(2, 8)
+  const monday = new Date()
+  monday.setDate(monday.getDate() + ((8 - monday.getDay()) % 7 || 7))
+  const iso = (value: Date) => {
+    const month = String(value.getMonth() + 1).padStart(2, '0')
+    const day = String(value.getDate()).padStart(2, '0')
+    return `${value.getFullYear()}-${month}-${day}`
+  }
+  const wednesday = new Date(monday)
+  wednesday.setDate(monday.getDate() + 2)
+  const end = new Date(monday)
+  end.setDate(monday.getDate() + 100)
+
+  const semester = await apiCall(context, token, 'post', '/semesters', {
+    name: `E2E工作台-${suffix}`,
+    startDate: iso(monday),
+    endDate: iso(end),
+  })
+  await apiCall(context, token, 'post', `/semesters/${semester.id}/set-current`)
+  await apiCall(context, token, 'post', `/semesters/${semester.id}/periods/default`, {
+    morningCount: 4,
+    afternoonCount: 4,
+    eveningCount: 2,
+    days: [1, 2, 3, 4, 5],
+  })
+
+  const grade = await apiCall(context, token, 'post', '/grades?semesterId=' + semester.id, {
+    name: `高一${suffix}`,
+    sortOrder: 1,
+  })
+  const teacher = await apiCall(context, token, 'post', '/teachers', {
+    name: `张老师${suffix}`,
+    employeeNo: `W1-${suffix}`,
+    subject: '语文',
+  })
+  const substitute = await apiCall(context, token, 'post', '/teachers', {
+    name: `李老师${suffix}`,
+    employeeNo: `W2-${suffix}`,
+  })
+  const adminClass = await apiCall(context, token, 'post', `/classes?semesterId=${semester.id}`, {
+    gradeId: grade.id,
+    name: `高一1班${suffix}`,
+    studentCount: 45,
+  })
+  const course = await apiCall(context, token, 'post', '/courses', {
+    name: `语文${suffix}`,
+    subject: '语文',
+    allowConsecutive: false,
+  })
+  const room = await apiCall(context, token, 'post', '/rooms', {
+    name: `工作台教室${suffix}`,
+    capacity: 50,
+    type: 'NORMAL',
+  })
+  await apiCall(context, token, 'post', '/assignments', {
+    classId: adminClass.id,
+    courseId: course.id,
+    teacherId: teacher.id,
+    weeklyLessons: 2,
+  })
+
+  const username = `wbe2e_${suffix}`
+  await apiCall(context, token, 'post', '/users', {
+    username,
+    password: 'teacher123',
+    displayName: `张老师${suffix}`,
+    roleCodes: ['teacher'],
+    teacherId: teacher.id,
+  })
+
+  // 求解后强制把这节课摆到周三第 1 节，保证种子的授课日期是确定事实。
+  const periodRows = await apiCall(context, token, 'get', `/semesters/${semester.id}/periods`)
+  const wednesdayPeriod = periodRows.find((row: any) => row.dayOfWeek === 3 && row.periodNo === 1)
+  if (!wednesdayPeriod) {
+    throw new Error('missing Wednesday period for the workbench seed')
+  }
+  const draftId = await solveDraft(context, semester.id)
+  const detail = await apiCall(context, token, 'get', `/timetable-drafts/${draftId}`)
+  const lesson = detail.lessons.find(
+    (row: any) => row.classId === adminClass.id && row.courseId === course.id,
+  )
+  if (!lesson) {
+    throw new Error('missing draft lesson for the workbench seed')
+  }
+  await apiCall(context, token, 'patch', `/timetable-drafts/${draftId}/lessons/${lesson.id}`, {
+    periodId: wednesdayPeriod.id,
+    roomId: room.id,
+    force: true,
+  })
+  await publishDraft(context, draftId)
+  const entries = await apiCall(context, token, 'get', `/timetable/class/${adminClass.id}`, undefined, {
+    view: 'baseline',
+  })
+  const wednesdayEntry = entries.find((row: any) => row.dayOfWeek === 3)
+  if (!wednesdayEntry) {
+    throw new Error('solver did not place a lesson on Wednesday for the workbench seed')
+  }
+  return {
+    semesterId: semester.id,
+    classId: adminClass.id,
+    teacherId: teacher.id,
+    teacherName: teacher.name,
+    substituteTeacherId: substitute.id,
+    substituteTeacherName: substitute.name,
+    entryId: wednesdayEntry.id,
+    lessonDate: iso(wednesday),
+    username,
+    password: 'teacher123',
+  }
+}

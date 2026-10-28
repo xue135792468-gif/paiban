@@ -39,6 +39,12 @@ public interface SubstitutionRepository extends JpaRepository<Substitution, Long
     Optional<Substitution> findFirstByEntryIdAndEffectiveDateAndStatus(
             Long entryId, LocalDate effectiveDate, String status);
 
+    /**
+     * 旧格式（lesson_date 为空）的生效行：按「自 effective_date 起持续覆盖」解释，
+     * 管理写入前用它判断实例是否被历史数据锁定（数据级检查，不做转换）。
+     */
+    List<Substitution> findByEntryIdAndStatusAndLessonDateIsNull(Long entryId, String status);
+
     List<Substitution> findBySemesterIdAndEffectiveDateBetweenAndStatus(
             Long semesterId, LocalDate from, LocalDate to, String status);
 
