@@ -1,11 +1,11 @@
 <template>
   <el-container class="shell">
-    <el-aside width="228px" class="aside">
-      <div class="logo">
+    <el-aside width="228px" class="aside" data-testid="layout-aside">
+      <div class="logo" data-testid="layout-logo">
         <span class="logo-mark">排</span>
         <span class="logo-text">排课系统</span>
       </div>
-      <el-menu :default-active="route.path" router class="menu">
+      <el-menu :default-active="route.path" router class="menu" data-testid="layout-menu">
         <template v-for="group in visibleGroups" :key="group.title">
           <div class="group-title">{{ group.title }}</div>
           <el-menu-item v-for="item in group.items" :key="item.path" :index="item.path" :data-tour="item.path">
@@ -17,7 +17,7 @@
     </el-aside>
 
     <el-container>
-      <el-header class="header">
+      <el-header class="header" data-testid="layout-header">
         <div class="page-title">{{ route.meta.title ?? '' }}</div>
         <div class="header-right">
           <el-popover v-if="canSeeNotifications" placement="bottom-end" :width="340" trigger="click">
@@ -60,7 +60,7 @@
           </el-dropdown>
         </div>
       </el-header>
-      <el-main class="main">
+      <el-main ref="mainRef" class="main" data-testid="layout-main">
         <router-view />
       </el-main>
     </el-container>
@@ -68,7 +68,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import type { ComponentPublicInstance } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Bell,
@@ -262,6 +263,23 @@ watch(
   { immediate: true },
 )
 
+// 内容区的滚动容器：el-main 渲染出的真实 <main> 元素。
+const mainRef = ref<ComponentPublicInstance | null>(null)
+
+/**
+ * 只有「换页面」（路径变化）才把内容区滚回顶部；同页修改筛选/页签/日期
+ * 只改查询参数或组件状态，路径不变，不会触发回顶。左侧菜单的滚动位置
+ * 从不主动改动，因此切换页面后自然保持。
+ */
+watch(
+  () => route.path,
+  async () => {
+    await nextTick()
+    const el = mainRef.value?.$el as HTMLElement | undefined
+    if (el) el.scrollTop = 0
+  },
+)
+
 onMounted(() => {
   auth.refresh().catch(() => undefined)
   settings.load()
@@ -277,13 +295,17 @@ onUnmounted(() => {
 
 <style scoped>
 .shell {
-  min-height: 100vh;
+  /* 外壳固定为一屏高：整页不再滚动，滚动交给左右两个内部区域。 */
+  height: 100vh;
+  overflow: hidden;
 }
 .aside {
   background: #fff;
   border-right: 1px solid #eef0f5;
   display: flex;
   flex-direction: column;
+  /* 覆盖 el-aside 默认的 overflow:auto，滚动收敛到内部的 .menu。 */
+  overflow: hidden;
 }
 .logo {
   height: 64px;
@@ -310,6 +332,10 @@ onUnmounted(() => {
 .menu {
   border-right: none;
   padding: 8px;
+  /* 标识区固定，菜单占满剩余高度并独立滚动。 */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 .group-title {
   padding: 16px 12px 6px;
@@ -354,6 +380,9 @@ onUnmounted(() => {
 .main {
   padding: 24px;
   background: var(--paiban-bg);
+  /* 顶栏固定，内容占满剩余高度并独立滚动；min-height:0 防 flex 撑破。 */
+  min-height: 0;
+  overflow-y: auto;
 }
 .notif-head {
   display: flex;
