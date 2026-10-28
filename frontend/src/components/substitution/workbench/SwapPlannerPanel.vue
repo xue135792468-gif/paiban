@@ -3,7 +3,7 @@
     <template #header>
       <div class="card-head">
         <span class="card-title">同班调课：{{ courseName }}（{{ lessonDate }}）→ 指定目标日期与课节</span>
-        <span class="hint">目标槽必须是本班当天已有课的格子；系统求闭合置换环（最多 3 个候选）</span>
+        <span class="hint">表单选择或直接拖拽课表格子均可；目标槽必须是本班当天已有课的格子；系统求闭合置换环（最多 3 个候选）</span>
       </div>
     </template>
 
@@ -74,6 +74,28 @@
       :description="diagnoses.map((item) => item.message).join('；')"
     />
 
+    <!-- 票 06：行政班周课表格子是拖拽面。教师视角发起时网格锁定为源课行政班，
+         教师空闲格不在网格里，不会误当班级目标槽。 -->
+    <SwapTargetGrid
+      :entry="entry"
+      :lesson-date="lessonDate"
+      :week-start="weekStart"
+      :disabled="generating || choosing"
+      @drop-target="onDropTarget"
+      @invalid-drop="onInvalidDrop"
+    />
+
+    <el-alert
+      v-if="invalidDropReason"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="notice"
+      data-testid="swap-drop-invalid"
+      title="该目标格不可用，未生成方案、未产生任何写入"
+      :description="invalidDropReason"
+    />
+
     <div v-if="plans.length > 0" class="candidates" data-testid="swap-candidates">
       <div class="panel-title">候选方案（{{ rankingLabel }}，共 {{ plans.length }} 个）</div>
       <div v-for="(plan, index) in plans" :key="plan.planId" class="plan-card" data-testid="swap-plan-card">
@@ -119,6 +141,8 @@ import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
+import SwapTargetGrid from './SwapTargetGrid.vue'
+import { mondayOf } from './swapTargetRules'
 import type {
   PlanDiagnosis,
   SwapCandidate,
@@ -149,10 +173,31 @@ const rankingLabel = ref('')
 const courseName = computed(() => props.entry.courseName ?? '')
 /** 窗口从来源日期向后展开：目标日期不能早于来源日。 */
 const lessonTime = new Date(`${props.lessonDate}T00:00:00`).getTime()
+/** 拖拽网格的列头：来源日期所在周的周一。 */
+const weekStart = computed(() => mondayOf(props.lessonDate))
+/** 拖到无效格子的原因提示（票 06）；投放有效目标或重开面板时清除。 */
+const invalidDropReason = ref('')
 
 const emptyDay = computed(
   () => targetDate.value !== '' && slots.value.length === 0 && !generating.value,
 )
+
+/**
+ * 拖拽投放＝另一种「设置目标」：把目标日期/课节写入与表单相同的状态，
+ * 再走 loadTargets → generate 同一条路径；不复制流程，也不绕过后端校验。
+ */
+async function onDropTarget(target: { date: string; periodId: number; periodNo: number; courseName: string }) {
+  invalidDropReason.value = ''
+  targetDate.value = target.date
+  await loadTargets()
+  targetPeriodId.value = target.periodId
+  await generate()
+}
+
+/** 拖到无效格：展示明确原因，不产生任何预览或写入。 */
+function onInvalidDrop(reason: string) {
+  invalidDropReason.value = reason
+}
 
 function disableDate(value: Date) {
   return value.getTime() < lessonTime
