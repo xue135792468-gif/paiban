@@ -190,6 +190,7 @@ public class AiHistoryService {
         String source = log.getFileName() == null ? "粘贴文本" : log.getFileName();
         return switch (log.getStatus()) {
             case AiImportLog.COMMITTED -> source + " · 入库 " + log.getImportedCount() + " 条";
+            case AiImportLog.COMMITTING -> source + " · 入库中";
             case AiImportLog.FAILED -> source + " · 解析失败";
             case AiImportLog.ABANDONED -> source + " · 已放弃";
             case AiImportLog.EDITED -> source + " · 已微调 " + log.getRowCount() + " 行";
@@ -198,12 +199,13 @@ public class AiHistoryService {
     }
 
     /**
-     * An abandoned import wrote nothing, so it is not a success: showing a green tick
-     * next to a discarded import would claim data that does not exist.
+     * An abandoned import wrote nothing and a committing one has not finished, so neither is
+     * a success: showing a green tick there would claim data that does not exist yet.
      */
     private boolean importSucceeded(AiImportLog log) {
         return !AiImportLog.FAILED.equals(log.getStatus())
-                && !AiImportLog.ABANDONED.equals(log.getStatus());
+                && !AiImportLog.ABANDONED.equals(log.getStatus())
+                && !AiImportLog.COMMITTING.equals(log.getStatus());
     }
 
     private String callSummary(AiCallLog log) {

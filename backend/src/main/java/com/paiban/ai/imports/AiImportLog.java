@@ -25,6 +25,11 @@ public class AiImportLog {
 
     public static final String PREVIEW = "PREVIEW";
     public static final String EDITED = "EDITED";
+    /**
+     * One request has claimed the write. A concurrent confirm gets a conflict instead of
+     * building its own draft; a crash or restart settles the row back to {@code PREVIEW}.
+     */
+    public static final String COMMITTING = "COMMITTING";
     public static final String COMMITTED = "COMMITTED";
     public static final String FAILED = "FAILED";
     /** A large upload is being parsed in the background; the page polls for progress. */

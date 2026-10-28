@@ -210,6 +210,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
+import { statusText } from '@/components/aiImport/importStatus'
 
 interface HistoryRow {
   type: 'import' | 'call'
@@ -470,13 +471,7 @@ function taskLabel(task?: string) {
 }
 
 function importStatus(status: string) {
-  const labels: Record<string, string> = {
-    PREVIEW: '待确认',
-    EDITED: '已微调',
-    COMMITTED: '已入库',
-    FAILED: '解析失败',
-  }
-  return labels[status] ?? status
+  return statusText(status)
 }
 
 function pretty(value: unknown) {
