@@ -110,11 +110,12 @@ describe('AI 导入目标卡片', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
-  it('展示教师、课表两个可用目标和四个即将支持的目标', async () => {
+  it('展示整本工作簿、教师、课表三个可用目标和四个即将支持的目标', async () => {
     const { wrapper } = await mountImport()
 
     const cards = wrapper.findAll('[data-testid="target-card"]')
     expect(cards.map((card) => card.attributes('data-target'))).toEqual([
+      'workbook',
       'teacher',
       'timetable',
       'admin-class',
@@ -123,8 +124,10 @@ describe('AI 导入目标卡片', () => {
       'assignment',
     ])
 
+    const workbook = wrapper.get('[data-testid="target-card"][data-target="workbook"]')
     const teacher = wrapper.get('[data-testid="target-card"][data-target="teacher"]')
     const timetable = wrapper.get('[data-testid="target-card"][data-target="timetable"]')
+    expect(workbook.classes()).not.toContain('is-disabled')
     expect(teacher.classes()).not.toContain('is-disabled')
     expect(timetable.classes()).not.toContain('is-disabled')
 
@@ -136,7 +139,7 @@ describe('AI 导入目标卡片', () => {
     }
 
     await wrapper.get('[data-testid="target-card"][data-target="course"]').trigger('click')
-    expect(wrapper.get('[data-testid="target-card"][data-target="teacher"]').text()).toContain(
+    expect(wrapper.get('[data-testid="target-card"][data-target="workbook"]').text()).toContain(
       '已选择',
     )
   })
@@ -150,6 +153,13 @@ describe('AI 导入目标卡片', () => {
       expect(text).toContain('输出')
       expect(text).toContain('限制')
     }
+
+    const workbook = wrapper.get('[data-testid="target-card"][data-target="workbook"]').text()
+    expect(workbook).toContain('整本工作簿')
+    expect(workbook).toContain('多张工作表')
+    expect(workbook).toContain('教师')
+    expect(workbook).toContain('课表')
+    expect(workbook).toContain('Excel / CSV')
 
     const teacher = wrapper.get('[data-testid="target-card"][data-target="teacher"]').text()
     expect(teacher).toContain('名单')
@@ -178,10 +188,23 @@ describe('入口预选目标', () => {
     expect(wrapper.get('[data-testid="target-card"][data-target="teacher"]').text()).not.toContain('已选择')
   })
 
-  it('未知或尚未开放的目标回退到教师', async () => {
+  it('没有指定目标时默认整本工作簿', async () => {
+    const { wrapper } = await mountImport()
+
+    expect(wrapper.get('[data-testid="target-card"][data-target="workbook"]').text()).toContain(
+      '已选择',
+    )
+    expect(wrapper.get('[data-testid="target-card"][data-target="teacher"]').text()).not.toContain(
+      '已选择',
+    )
+  })
+
+  it('未知或尚未开放的目标回退到整本工作簿', async () => {
     const { wrapper } = await mountImport('/admin/ai-import?target=course')
 
-    expect(wrapper.get('[data-testid="target-card"][data-target="teacher"]').text()).toContain('已选择')
+    expect(wrapper.get('[data-testid="target-card"][data-target="workbook"]').text()).toContain(
+      '已选择',
+    )
   })
 })
 
@@ -191,7 +214,7 @@ describe('上传请求携带导入目标', () => {
     httpMock.post.mockResolvedValue(preview())
   })
 
-  it('Excel 一律按整本工作簿上传，不受导入目标影响', async () => {
+  it('默认按整本工作簿上传', async () => {
     const { wrapper } = await mountImport()
 
     chooseFile(wrapper, 0, 'teachers.xlsx')
@@ -251,6 +274,41 @@ describe('上传请求携带导入目标', () => {
       { params: { target: 'timetable' }, timeout: 300000 },
     )
   })
+
+  it('默认切到粘贴文本时改用教师目标，整本工作簿卡片随之隐藏', async () => {
+    const { wrapper } = await mountImport()
+
+    const textTab = wrapper.findAll('.el-tabs__item').find((tab) => tab.text() === '粘贴文本')
+    if (!textTab) throw new Error('text tab not found')
+    await textTab.trigger('click')
+    expect(wrapper.find('[data-testid="target-card"][data-target="workbook"]').exists()).toBe(false)
+    await wrapper.get('textarea').setValue('张老师教语文')
+    await button(wrapper, '开始解析').trigger('click')
+    await flushPromises()
+
+    expect(httpMock.post).toHaveBeenCalledWith(
+      '/ai/import/text',
+      { text: '张老师教语文' },
+      { params: { target: 'teacher' }, timeout: 300000 },
+    )
+  })
+
+  it('从文本切回 Excel 时恢复整本工作簿', async () => {
+    const { wrapper } = await mountImport()
+
+    const tab = (label: string) => {
+      const found = wrapper.findAll('.el-tabs__item').find((candidate) => candidate.text() === label)
+      if (!found) throw new Error(`tab not found: ${label}`)
+      return found
+    }
+    await tab('粘贴文本').trigger('click')
+    expect(wrapper.find('[data-testid="target-card"][data-target="workbook"]').exists()).toBe(false)
+    await tab('Excel / CSV').trigger('click')
+
+    expect(wrapper.get('[data-testid="target-card"][data-target="workbook"]').text()).toContain(
+      '已选择',
+    )
+  })
 })
 
 describe('图片入口受视觉模型能力控制', () => {
@@ -271,6 +329,8 @@ describe('图片入口受视觉模型能力控制', () => {
   it('模型支持视觉时图片入口可用', async () => {
     const { wrapper } = await mountImport('/admin/ai-import', true)
 
+    // Images are teacher-only, so the teacher card has to be picked first.
+    await wrapper.get('[data-testid="target-card"][data-target="teacher"]').trigger('click')
     expect(wrapper.find('[data-testid="vision-warning"]').exists()).toBe(false)
     const imageTab = wrapper.get('[data-testid="image-tab"]')
     expect(imageTab.element.closest('.el-tabs__item')?.classList.contains('is-disabled')).toBe(false)
@@ -649,7 +709,7 @@ describe('会话恢复', () => {
     error.mockRestore()
   })
 
-  it('解析成功后把 session 与 target 写进 URL，并记住上次导入', async () => {
+  it('解析成功后把 session 与后端返回的 target 写进 URL，并记住上次导入', async () => {
     const { wrapper, router } = await mountImport('/admin/ai-import')
     httpMock.post.mockResolvedValue(timetablePreview())
 
@@ -659,7 +719,8 @@ describe('会话恢复', () => {
     await flushPromises()
 
     expect(router.currentRoute.value.query.session).toBe('9')
-    expect(router.currentRoute.value.query.target).toBe('teacher')
+    // The URL names the session's real target, not the card that happened to be selected.
+    expect(router.currentRoute.value.query.target).toBe('timetable')
     const stored = JSON.parse(localStorage.getItem('paiban.aiImport.lastSession') ?? '{}')
     expect(stored).toMatchObject({ id: 9, fileName: 'grade-1.xlsx', status: 'PREVIEW' })
     expect(typeof stored.savedAt).toBe('string')

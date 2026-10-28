@@ -174,6 +174,21 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void aMultiSheetWorkbookOnASingleTargetPathPointsAtTheWorkbookImport() throws Exception {
+        String admin = adminToken();
+
+        Response upload = upload(
+                admin, "/api/ai/import/excel?target=timetable", "整本课表.xlsx",
+                multiSheetWorkbookBytes(), XLSX);
+
+        // The single-target path cannot represent several sheets, but the workbook path
+        // can; the refusal has to name that way out instead of asking for a split file.
+        upload.then().statusCode(400)
+                .body("message", containsString("整本工作簿"));
+        assertThat(fake.calls).isZero();
+    }
+
+    @Test
     void aLargeTimetableIsParsedOneClassPerCallAndMerged() throws Exception {
         String admin = adminToken();
         timetableFixture(admin);
@@ -2422,6 +2437,18 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
                 row.createCell(1).setCellValue("语文");
                 row.createCell(2).setCellValue("1380000" + String.format("%04d", i));
             }
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private byte[] multiSheetWorkbookBytes() throws Exception {
+        try (XSSFWorkbook workbook = new XSSFWorkbook();
+                ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet data = workbook.createSheet("数据源");
+            data.createRow(0).createCell(0).setCellValue("班级");
+            Sheet teachers = workbook.createSheet("教师课表");
+            teachers.createRow(0).createCell(0).setCellValue("教师");
             workbook.write(out);
             return out.toByteArray();
         }

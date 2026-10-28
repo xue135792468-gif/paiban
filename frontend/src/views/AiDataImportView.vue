@@ -251,7 +251,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type UploadFile } from 'element-plus'
 import { AI_IMPORT_TIMEOUT_MS, http } from '@/api/http'
@@ -270,8 +270,9 @@ import ImportCommittedAlert from '@/components/aiImport/ImportCommittedAlert.vue
 import ImportFailureNotice from '@/components/aiImport/ImportFailureNotice.vue'
 import TimetablePreviewGrid from '@/components/aiImport/TimetablePreviewGrid.vue'
 import { useImportSession } from '@/components/aiImport/useImportSession'
+import { useImportTarget } from '@/components/aiImport/useImportTarget'
 import { type ImportPreview, type PreviewRow } from '@/components/aiImport/timetablePreview'
-import { preselectedTarget, targetTitle } from '@/components/aiImport/importTargets'
+import { targetTitle } from '@/components/aiImport/importTargets'
 import { isAbandoned, isEditable } from '@/components/aiImport/importStatus'
 
 const router = useRouter()
@@ -279,9 +280,14 @@ const route = useRoute()
 const configured = ref(false)
 const visionCapable = ref(false)
 const inputMode = ref<'excel' | 'text' | 'image'>('excel')
-const selectedTarget = ref(preselectedTarget(route.query.target))
-/** Only an explicit pick (card click or ?target=) keeps Excel on the single-target path. */
-const targetChosen = ref(typeof route.query.target === 'string' && Boolean(route.query.target))
+const {
+  selectedTarget,
+  requestTarget,
+  selectTarget,
+  resetTarget,
+  applySuggestedTarget,
+  restoreTarget,
+} = useImportTarget(route.query.target, inputMode)
 const selectedFile = ref<File | null>(null)
 const imageFile = ref<File | null>(null)
 const text = ref('')
@@ -365,14 +371,6 @@ const canParse = computed(() => {
   return text.value.trim().length > 0
 })
 
-// Image import is teacher-only; leaving the tab selected after switching target
-// would send a request the backend rejects.
-watch(selectedTarget, (target) => {
-  if (target !== 'teacher' && inputMode.value === 'image') {
-    inputMode.value = 'excel'
-  }
-})
-
 onMounted(async () => {
   const session = route.query.session
   if (typeof session === 'string' && session) {
@@ -393,7 +391,7 @@ async function restoreFrom(sessionId: string) {
   try {
     const outcome = await restore(sessionId)
     if (outcome === 'restored' && preview.value) {
-      selectedTarget.value = preselectedTarget(preview.value.targetType)
+      restoreTarget(preview.value.targetType)
     }
   } finally {
     restoring.value = false
@@ -412,8 +410,7 @@ async function continueLastSession() {
 }
 
 function onSelectTarget(code: string) {
-  selectedTarget.value = code
-  targetChosen.value = true
+  selectTarget(code)
   commitErrors.value = []
 }
 
@@ -432,11 +429,9 @@ async function parse() {
   dropSessionFromUrl()
   parsing.value = true
   commitErrors.value = []
-  // Excel defaults to the whole-workbook path. Picking a target card is how the older
-  // single-target parse is still reached (kept for text/images and existing sessions).
-  const target =
-    inputMode.value === 'excel' && !targetChosen.value ? 'workbook' : selectedTarget.value
-  const config = { params: { target }, timeout: AI_IMPORT_TIMEOUT_MS }
+  // Excel defaults to the whole-workbook path; the target card is an explicit
+  // single-target choice. Text and images never carry the workbook shape.
+  const config = { params: { target: requestTarget.value }, timeout: AI_IMPORT_TIMEOUT_MS }
   try {
     let response
     if (inputMode.value === 'excel') {
@@ -457,7 +452,7 @@ async function parse() {
       query: {
         ...route.query,
         session: String(response.data.sessionId),
-        target: selectedTarget.value,
+        target: response.data.targetType,
       },
     })
   } catch (error) {
@@ -477,14 +472,14 @@ function uploadedFileName(): string {
 /** Switches the target the AI suggested, keeping the chosen file for a re-parse. */
 function switchToSuggestedTarget() {
   if (!suggestedTarget.value) return
-  selectedTarget.value = suggestedTarget.value
+  applySuggestedTarget(suggestedTarget.value)
   clear()
   ElMessage.info(`已切换到${targetTitle(selectedTarget.value)}，请重新解析`)
 }
 
 function reset() {
   clear()
-  targetChosen.value = false
+  resetTarget()
   selectedFile.value = null
   imageFile.value = null
   text.value = ''

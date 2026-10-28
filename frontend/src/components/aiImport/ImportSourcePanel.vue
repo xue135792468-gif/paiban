@@ -5,13 +5,13 @@
     type="info"
     show-icon
     :closable="false"
-    title="不选目标时，Excel / CSV 按整本工作簿解析：AI 自己识别课表、教师名单与课程清单。点选下面的目标则按该目标解析（兼容旧的单目标流程）。"
+    title="默认「整本工作簿」：Excel / CSV 里的多张表会分别识别（课表、教师名单、课程清单、使用说明）。只想导入某一类时，再点选下面的目标。"
   />
 
   <el-card shadow="never">
     <template #header><span class="card-title">选择导入目标</span></template>
     <ImportTargetPicker
-      :targets="IMPORT_TARGETS"
+      :targets="visibleTargets"
       :selected="selectedTarget"
       @select="(code: string) => emit('select-target', code)"
     />
@@ -129,7 +129,13 @@ const emit = defineEmits<{
   (e: 'parse'): void
 }>()
 
-const currentTarget = computed(() => targetCard(props.selectedTarget) ?? IMPORT_TARGETS[0])
+/** The workbook target only reads Excel/CSV; text and images keep a single target. */
+const visibleTargets = computed(() =>
+  inputMode.value === 'excel'
+    ? IMPORT_TARGETS
+    : IMPORT_TARGETS.filter((target) => target.code !== 'workbook'),
+)
+const currentTarget = computed(() => targetCard(props.selectedTarget) ?? targetCard('teacher')!)
 </script>
 
 <style scoped>

@@ -107,7 +107,13 @@ test('目标卡片写清能处理、输出与限制，未支持目标为禁用�
   await uiLogin(page, 'admin', 'admin123')
   await page.goto('/admin/ai-import')
 
-  await expect(page.getByTestId('target-card')).toHaveCount(6)
+  await expect(page.getByTestId('target-card')).toHaveCount(7)
+
+  const workbook = page.locator('[data-testid=target-card][data-target=workbook]')
+  await expect(workbook).toContainText('整本工作簿')
+  await expect(workbook).toContainText('多张工作表')
+  await expect(workbook).toContainText('Excel / CSV')
+  await expect(workbook).toContainText('已选择')
 
   const teacher = page.locator('[data-testid=target-card][data-target=teacher]')
   await expect(teacher).toContainText('能处理')
@@ -131,13 +137,13 @@ test('目标卡片写清能处理、输出与限制，未支持目标为禁用�
   }
 })
 
-test('排课页的「导入课表」入口预选课表目标', async ({ page }) => {
+test('排课页的「导入课表」入口默认整本工作簿目标', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
   await page.goto('/admin/scheduling')
   await page.getByRole('button', { name: '导入课表' }).click()
 
-  await expect(page).toHaveURL(/\/admin\/ai-import\?target=timetable/)
-  await expect(page.locator('[data-target=timetable]')).toContainText('已选择')
+  await expect(page).toHaveURL(/\/admin\/ai-import$/)
+  await expect(page.locator('[data-target=workbook]')).toContainText('已选择')
 })
 
 test('课表导入：网格预览、班级切换、未匹配映射、生成草稿', async ({ page }) => {
@@ -549,7 +555,7 @@ test('放弃导入：不生成草稿，?session= 恢复入口不再继续该会�
     await expect(page.locator('.el-message--info')).toContainText('已放弃本次导入，未写入任何数据')
 
     // Back to an empty import page: no preview, no session in the URL, nothing to continue.
-    await expect(page.getByTestId('target-card')).toHaveCount(6)
+    await expect(page.getByTestId('target-card')).toHaveCount(7)
     await expect(page.getByTestId('timetable-summary')).toHaveCount(0)
     await expect(page).not.toHaveURL(/session=/)
     await expect(page.getByTestId('last-session-card')).toHaveCount(0)
@@ -564,7 +570,7 @@ test('放弃导入：不生成草稿，?session= 恢复入口不再继续该会�
     // A bookmarked `?session=` must not resurrect it either.
     await page.goto(`/admin/ai-import?session=${sessionId}`)
     await expect(page.locator('.el-message--error')).toContainText('该导入会话已不可用')
-    await expect(page.getByTestId('target-card')).toHaveCount(6)
+    await expect(page.getByTestId('target-card')).toHaveCount(7)
     await expect(page).not.toHaveURL(/session=/)
   })
 })
