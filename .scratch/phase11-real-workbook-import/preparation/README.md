@@ -1,5 +1,7 @@
 # 待办准备审查与执行入口（2026-10-25）
 
+> **2026-10-28 更新**：本文件是 2026-10-25 的准备快照；票 10/14 与六项修复均已上线，当前状态以 [`.scratch/HANDOFF.md`](../../HANDOFF.md) 为准，不要按本页的「未合并/未部署」描述重复实现。
+
 > **2026-10-27 票14已实现（集成分支，未合并/未部署）**：用户完成Q1–Q23选择后明确要求`/to-spec`，正式实现依据见 [自然语言约束规格](../../natural-language-constraints/spec.md)；[设计汇总](natural-language-constraints-design.md)与[语料及验收](natural-language-constraint-corpus.md)保留依据。12张实现票已在 `feature/natural-language-constraints` 完成，完整门禁与两轴评审见[票12交付记录](../../natural-language-constraints/issues/12-integrate-and-accept.md)。真实模型评测因无可靠单价/授权受阻，未调用真实供应商；**未合并 `main`、未部署**。下面是2026-10-25准备快照，“14下一期再grill”“同类必须共用”等旧描述不覆盖本轮新规格。
 
 本文件由本轮 ask-matt 复查产生。用户当前授权是**完成准备材料，修复由新的 agent 执行**。本轮仅做代码阅读、需求确认与文档整理；没有继续修代码、重新测试、部署或修改线上数据。

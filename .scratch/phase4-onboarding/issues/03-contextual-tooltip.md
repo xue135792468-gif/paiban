@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done（2026-10-28 回填；功能已上线，复选框是历史快照）
 
 - [ ] 梳理所有需要 Tooltip 的字段（复杂/专业/易混淆的字段）
 - [ ] 字段清单：

@@ -4,7 +4,8 @@
 
 **Blocked by:** 无未完成的票10代码前置；多条约束保存已具备。正式规格已发布，待to-tickets明确基础能力及AI/恢复/审计的阻塞关系；尚未拆实现票，不能按原灰开关小票直接开工。
 
-Status: ready-for-agent
+Status: superseded（正式规格与实现见 natural-language-constraints，已上线）
+**Superseded by:** ../../natural-language-constraints/spec.md
 
 **正式规格：** [自然语言生成约束、课程禁排与逐项控制](../../natural-language-constraints/spec.md)。以下保留本轮设计选择与原票背景；实现以正式规格为准。
 

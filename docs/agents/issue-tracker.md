@@ -8,6 +8,7 @@ Issues and specs for this repo live as markdown files in `.scratch/`.
 - The spec is `.scratch/<feature-slug>/spec.md`
 - Implementation issues are one file per ticket at `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01`, never a single combined tickets file
 - Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
+- A `Status:` line or its checkboxes may be a **historical snapshot**. Before starting work, confirm against `HANDOFF.md`, `git log`, and the live system; do not redo a ticket whose status is stale. `scripts/check-ticket-status.sh` flags the unambiguous case: a `ready-for-agent` ticket whose checklist is already fully checked.
 - Multi-session work: switch a spec/ticket to `Status: in-progress` when implementation starts, and to `done` only after acceptance. A `ready-for-agent` ticket may already be in flight on another branch.
 - Record acceptance numbers (backend/front-end/Playwright counts) once, in the ticket's delivery record. `HANDOFF.md` and the spec link to that record instead of repeating the numbers, so a re-run does not leave three stale copies.
 - Split review-followup refactors into one ticket per independent slice (matching, service boundary, parameters, frontend, e2e); do not bundle them into one ticket whose core item then has to be split again.

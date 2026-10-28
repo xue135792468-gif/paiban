@@ -6,7 +6,8 @@
 
 **Blocked by:** None（2026-10-25 用户提出，扩展自原"只支持一个老师"）
 
-**Status:** needs-info
+**Status:** superseded（由 constraint-entries 六票替代并已上线）
+**Superseded by:** ../../constraint-entries/spec.md
 
 ## 数据与求解
 

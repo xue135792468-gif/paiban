@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done（2026-10-28 回填；功能已上线，复选框是历史快照）
 
 - [ ] `EmptyStateGuide` 组件：props 接收 title、description、buttonText、buttonAction、helpLink
 - [ ] 统一样式：图标 + 标题 + 描述 + 按钮 + 链接，居中显示
