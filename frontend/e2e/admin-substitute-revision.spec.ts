@@ -53,6 +53,8 @@ async function openLessonOfCurrentSubstitute(page: Page, seed: WorkbenchSeed) {
   await dateInput.press('Tab')
   await expect(page.getByTestId('pick-lesson').first()).toBeVisible()
   await page.getByTestId('pick-lesson').first().click()
+  // 票 05 在选中课节后加了动作选择：修订链仍走「指定代课」分支。
+  await page.getByTestId('choose-cover').click()
   await expect(page.getByTestId('substitute-picker')).toBeVisible()
 }
 

@@ -34,9 +34,8 @@ test('管理员亲自确认：选教师 → 指定代课 → 对照清单 → �
   await page.getByTestId('choose-cover').click()
   await expect(page.getByTestId('substitute-picker')).toBeVisible()
   await expect(page.getByTestId('candidate-table')).toBeVisible()
-  const candidateRows = page.locator('[data-testid^="choose-"]')
-  await expect(candidateRows.first()).toBeVisible()
-  await candidateRows.first().click()
+  // 并行 spec 共享同一后端库：按种子教师精确选择，不用第一行（可能命中别例数据）。
+  await page.getByTestId(`choose-${seed.substituteTeacherId}`).click()
 
   await page.getByTestId('preview-reason').fill('管理员代发：任课教师临时有事')
   await page.getByTestId('generate-preview').click()
@@ -72,7 +71,7 @@ test('管理员提交审批：进入待批队列，旧安排继续生效', async
 
   await page.getByTestId('pick-lesson').first().click()
   await page.getByTestId('choose-cover').click()
-  await page.locator('[data-testid^="choose-"]').first().click()
+  await page.getByTestId(`choose-${seed.substituteTeacherId}`).click()
   await page.getByTestId('preview-reason').fill('先走审批流')
   await page.getByTestId('generate-preview').click()
   await expect(page.getByTestId('compare-panels')).toBeVisible()
