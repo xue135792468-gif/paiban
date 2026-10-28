@@ -1,5 +1,7 @@
 # 接手说明（2026-10-25 会话交接）
 
+> **2026-10-29 管理员调代工作台规划已确认并发布，尚未实现**：见 [正式规格](admin-substitution-workbench/spec.md)、[九票依赖总览](admin-substitution-workbench/ticket-plan.md) 与 [决策记录](admin-substitution-workbench/decisions.md)。支持管理员代任意教师发起/亲自确认、左右课表对照、发布后同班环拖拽，以及开课前再次调整；全站独立滚动单独成票。初始 frontier 为 **01、08**，其余按 Blocked by 推进。ADR-0030 已接受；日期实例语义与现有持续覆盖不同，历史转换须先出差异清单并完成教务数据确认。本次仅发布文档和九张 ready-for-agent 票据，未认领、未编码、未部署；原线上状态保持下述记录的证据边界。
+
 > **2026-10-28 票 04（重复提交单飞）已实现、评审、合并并部署（代码 `a355dde`，Flyway v37，无迁移）**：`COMMITTING` 短事务认领 + 失败释放 + 启动恢复；两轴独立评审无阻塞；官方门禁后端 869（5 skipped）、前端 401、Playwright 91 全绿；CI 四 job（含真实 PostgreSQL `PostgresContainerIT`）全绿。部署备份 `~/backups/paiban/paiban-pre-20261028T041007Z.sql.gz`；四容器 healthy、两处 health 200。生产冒烟：1 行工作簿导入 → 第一次确认 200（草稿 6）、第二次 409、只新增 1 份草稿。详见[票 04](workbook-background/issues/04-commit-single-flight.md)。
 
 > **2026-10-27 票14 已实现、合并 `main` 并部署（代码 `b21cb9a`，Flyway v37）**：正式规格与 12 张实现票（`.scratch/natural-language-constraints/`）完成 01→12：课程禁排、25 类逐项控制、配置版本/冲突、AI 只读建议、C01–C22 评测工具、校对加入与审计、跨设备工作区。合并后全量门禁后端 860、前端 401、Playwright 90 全绿；真实 PostgreSQL 临时库 V1–V37 与 CI `PostgresContainerIT` 均通过；四容器 healthy、两处 health 200。真实评测已 **PASSED**：`gemini-3.8-flash-low` **54/54、12/12**；任务已绑定、`ai.features.natural-language-constraints=true`、`/api/constraint-proposals/availability` 返回 `available:true`。详见[票12交付记录](natural-language-constraints/issues/12-integrate-and-accept.md)；票13 结构重构已完成（共享匹配器/类型化参数/审计服务/面板/helper，门禁 863/401/90），剩余核心规划/持久化/模板拆分见票14。
