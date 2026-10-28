@@ -39,7 +39,7 @@ class ConstraintEvaluationRunnerTest {
                 3,
                 List.of(),
                 true,
-                false));
+                false, false));
 
         assertThat(report.verdict()).isEqualTo("PASSED");
         assertThat(report.models()).hasSize(1);
@@ -61,7 +61,7 @@ class ConstraintEvaluationRunnerTest {
         Report report = runner.run(new Request(
                 tempDir.resolve("ten-runs"), BigDecimal.valueOf(20),
                 new BigDecimal("0.001"), new BigDecimal("0.002"), 10,
-                List.of(), true, false));
+                List.of(), true, false, false));
 
         assertThat(report.verdict()).isEqualTo("INVALID_REQUEST");
         assertThat(report.blockedReason()).contains("3 次");
@@ -73,7 +73,7 @@ class ConstraintEvaluationRunnerTest {
         Report report = runner.run(new Request(
                 tempDir.resolve("big-budget"), BigDecimal.valueOf(21),
                 new BigDecimal("0.001"), new BigDecimal("0.002"), 3,
-                List.of(), true, false));
+                List.of(), true, false, false));
 
         assertThat(report.verdict()).isEqualTo("INVALID_REQUEST");
         assertThat(report.blockedReason()).contains("20 元");
@@ -93,7 +93,7 @@ class ConstraintEvaluationRunnerTest {
                         new ConstraintEvaluationRunner.ModelRef(1L, 2L, "b"),
                         new ConstraintEvaluationRunner.ModelRef(1L, 3L, "c")),
                 true,
-                false));
+                false, false));
 
         assertThat(report.verdict()).isEqualTo("INVALID_REQUEST");
         assertThat(report.blockedReason()).contains("两个");
@@ -103,7 +103,7 @@ class ConstraintEvaluationRunnerTest {
     void anUnknownPriceStopsBeforeAnyCall() {
         Report report = runner.run(new Request(
                 tempDir.resolve("no-price"), BigDecimal.valueOf(20), null, null, 3,
-                List.of(), true, false));
+                List.of(), true, false, false));
 
         assertThat(report.verdict()).isEqualTo("PRICE_UNRELIABLE");
         assertThat(report.models()).isEmpty();
@@ -120,12 +120,35 @@ class ConstraintEvaluationRunnerTest {
                 3,
                 List.of(),
                 true,
-                false));
+                false, false));
 
         assertThat(report.verdict()).isEqualTo("INCOMPLETE");
         assertThat(report.blockedReason()).isEqualTo("BUDGET_EXHAUSTED");
         assertThat(report.models()).hasSize(1);
         assertThat(report.models().get(0).runs()).isEmpty();
         assertThat(report.models().get(0).complete()).isFalse();
+    }
+
+    @Test
+    void smokeRunsOnlyTheFirstSentenceOnceAndNeverCountsAsAPass() {
+        Report report = runner.run(new Request(
+                tempDir.resolve("smoke"),
+                BigDecimal.valueOf(20),
+                new BigDecimal("0.001"),
+                new BigDecimal("0.002"),
+                3,
+                List.of(),
+                true,
+                false,
+                true));
+
+        assertThat(report.verdict()).isEqualTo("SMOKE");
+        assertThat(report.models()).hasSize(1);
+        ModelReport model = report.models().get(0);
+        assertThat(model.runs()).hasSize(1);
+        assertThat(model.runs().get(0).code()).isEqualTo("C01");
+        assertThat(model.supportedTotal()).isEqualTo(1);
+        assertThat(model.boundaryTotal()).isZero();
+        assertThat(model.passed()).isFalse();
     }
 }

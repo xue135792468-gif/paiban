@@ -26,7 +26,9 @@ import org.springframework.util.StringUtils;
  *   --budget=20
  * </pre>
  *
- * <p>Add {@code --stub=true} for the deterministic pipeline check, and
+ * <p>Add {@code --smoke=true} to run only C01 once as a connectivity/latency check;
+ * its verdict is SMOKE and never counts as a passing evaluation. Add
+ * {@code --stub=true} for the deterministic pipeline check, and
  * {@code --bind=true} to keep the winning model bound to the task.
  *
  * <p>It is deliberately not an HTTP endpoint: a real round costs money, so it only
@@ -50,6 +52,7 @@ public class ConstraintEvaluationCli implements ApplicationRunner {
         BigDecimal priceOut = decimal(option(args, "price-out", null));
         boolean stub = Boolean.parseBoolean(option(args, "stub", "false"));
         boolean bind = Boolean.parseBoolean(option(args, "bind", "false"));
+        boolean smoke = Boolean.parseBoolean(option(args, "smoke", "false"));
         List<ModelRef> models = new ArrayList<>();
         for (String value : list(args, "model")) {
             String[] parts = value.split(":");
@@ -64,8 +67,11 @@ public class ConstraintEvaluationCli implements ApplicationRunner {
         }
         Report report = runner.run(new Request(
                 output, budget, priceIn, priceOut,
-                ConstraintEvaluationRunner.DEFAULT_RUNS, models, stub, bind));
+                ConstraintEvaluationRunner.DEFAULT_RUNS, models, stub, bind, smoke));
         System.out.println("约束模型评测结论: " + report.verdict());
+        if (smoke) {
+            System.out.println("SMOKE 只做连通/链路检查，不是达标证据；正式评测必须去掉 --smoke");
+        }
         if (report.blockedReason() != null) {
             System.out.println("阻塞原因: " + report.blockedReason());
         }

@@ -21,6 +21,8 @@ jobs:
           cache: maven
       - name: Check migration versions
         run: bash scripts/check-migrations.sh
+      - name: Check AI HTTP timeouts
+        run: bash scripts/check-ai-http-timeouts.sh
       - name: Verify backend
         working-directory: backend
         run: ./mvnw -B verify -Dtestcontainers=true

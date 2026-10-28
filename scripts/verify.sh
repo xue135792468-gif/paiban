@@ -56,6 +56,9 @@ bash scripts/check-blank-checks.sh
 echo "==> backend: migration versions"
 bash scripts/check-migrations.sh
 
+echo "==> backend: AI HTTP timeouts"
+bash scripts/check-ai-http-timeouts.sh
+
 if [[ $MODE == full ]]; then
   echo "==> e2e: Playwright（隔离端口 28080/25173，不复用本地 dev 服务）"
   export PAIBAN_E2E_ISOLATED=1
