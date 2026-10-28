@@ -6,6 +6,7 @@ import {
   seedConstraintScenario,
   uiLogin,
   type ConstraintSeed,
+  pickOption,
 } from './helpers'
 
 /**
@@ -47,19 +48,6 @@ test.describe.serial('约束配置：课程禁排时段与逐项控制', () => {
     await expect(toggle).toHaveClass(/is-checked/)
   }
 
-  async function pickOption(scope: Locator, field: string, text: string) {
-    await scope.getByTestId(field).click()
-    const options = scope
-      .page()
-      .locator('.el-select-dropdown:visible')
-      .last()
-      .locator('.el-select-dropdown__item')
-    // No contains-fallback: the retry inside toBeVisible waits for the dropdown to
-    // render instead of silently clicking "继承类型（尽量）" for "尽量".
-    const option = options.filter({ hasText: new RegExp(`^${text}$`) }).first()
-    await expect(option).toBeVisible()
-    await option.click()
-  }
 
   async function addSlot(card: Locator, dayLabel: string, period: string) {
     await card.getByTestId('constraint-entry-slot-add').click()

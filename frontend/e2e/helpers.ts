@@ -1,4 +1,4 @@
-import { request, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, request, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 
 /**
  * API origin used by direct calls. Defaults to the Playwright config's backend;
@@ -430,4 +430,27 @@ export async function classEntries(
 ): Promise<Array<{ id: number; dayOfWeek: number; periodNo: number; courseName: string }>> {
   const token = await apiLogin(context)
   return apiCall(context, token, 'get', `/timetable/class/${classId}`)
+}
+
+/**
+ * Picks one option from an Element Plus select by its exact label. The dropdown is
+ * teleported to <body>, so only the trigger is scoped to the card; the last visible
+ * dropdown is the one the click just opened. Shared by all constraint specs so a
+ * widget change is one edit, not seven.
+ */
+export async function pickOption(
+  scope: Locator,
+  testId: string,
+  text: string,
+): Promise<void> {
+  await scope.getByTestId(testId).click()
+  const option = scope
+    .page()
+    .locator('.el-select-dropdown:visible')
+    .last()
+    .locator('.el-select-dropdown__item')
+    .filter({ hasText: new RegExp(`^${text}$`) })
+    .first()
+  await expect(option).toBeVisible()
+  await option.click()
 }

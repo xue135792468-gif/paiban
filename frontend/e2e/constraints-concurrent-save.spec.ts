@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Browser, type Locator, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Browser, type Page } from '@playwright/test'
 import {
   apiCall,
   apiLogin,
@@ -6,6 +6,7 @@ import {
   seedConstraintScenario,
   uiLogin,
   type ConstraintSeed,
+  pickOption,
 } from './helpers'
 
 /**
@@ -35,18 +36,6 @@ test.describe.serial('约束配置：两人同时保存', () => {
     return page
   }
 
-  async function pickOption(scope: Locator, field: string, text: string) {
-    await scope.getByTestId(field).click()
-    const option = scope
-      .page()
-      .locator('.el-select-dropdown:visible')
-      .last()
-      .locator('.el-select-dropdown__item')
-      .filter({ hasText: new RegExp(`^${text}$`) })
-      .first()
-    await expect(option).toBeVisible()
-    await option.click()
-  }
 
   async function enableType(page: Page) {
     const toggle = page.getByTestId('constraint-enabled-switch')

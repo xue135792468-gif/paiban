@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import {
   apiCall,
   apiLogin,
@@ -6,6 +6,7 @@ import {
   seedConstraintScenario,
   uiLogin,
   type ConstraintSeed,
+  pickOption,
 } from './helpers'
 
 /**
@@ -47,17 +48,6 @@ test.describe.serial('约束配置：教师禁排多条条目', () => {
     await expect(toggle).toHaveClass(/is-checked/)
   }
 
-  async function pickOption(scope: Locator, field: string, text: string) {
-    await scope.getByTestId(field).click()
-    // The dropdown is teleported to <body>, so only the trigger is scoped to the card.
-    const option = scope
-      .page()
-      .locator('.el-select-dropdown:visible .el-select-dropdown__item')
-      .filter({ hasText: text })
-      .first()
-    await expect(option).toBeVisible()
-    await option.click()
-  }
 
   async function addEntry(page: Page, teacherName: string, dayLabel: string, period: string) {
     await page.getByTestId('constraint-entry-add').click()

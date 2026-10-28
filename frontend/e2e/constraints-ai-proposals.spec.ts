@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import {
@@ -8,6 +8,7 @@ import {
   seedConstraintScenario,
   uiLogin,
   type ConstraintSeed,
+  pickOption,
 } from './helpers'
 import { capture } from './screenshots'
 
@@ -108,18 +109,6 @@ test.describe.serial('约束配置：自然语言只读建议', () => {
     await expect(page.getByTestId('constraint-ai-panel')).toBeVisible()
   }
 
-  async function pickOption(scope: Locator, testId: string, text: string) {
-    await scope.getByTestId(testId).click()
-    const option = scope
-      .page()
-      .locator('.el-select-dropdown:visible')
-      .last()
-      .locator('.el-select-dropdown__item')
-      .filter({ hasText: new RegExp(`^${text}$`) })
-      .first()
-    await expect(option).toBeVisible()
-    await option.click()
-  }
 
   test('生成建议：按条展示，不写入生效配置', async ({ page }) => {
     const before = await apiCall(api, token, 'get', '/constraints', undefined, {

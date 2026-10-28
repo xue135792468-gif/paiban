@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import {
   apiCall,
   apiLogin,
@@ -6,6 +6,7 @@ import {
   seedConstraintScenario,
   uiLogin,
   type ConstraintSeed,
+  pickOption,
 } from './helpers'
 import { capture } from './screenshots'
 
@@ -53,19 +54,6 @@ test.describe.serial('约束配置：目标型约束多条目', () => {
     await expect(toggle).toHaveClass(/is-checked/)
   }
 
-  async function pickOption(scope: Locator, field: string, text: string) {
-    const trigger = scope.getByTestId(field)
-    await trigger.click()
-    // 下拉被 teleport 到 <body>：用触发器 input 的 aria-controls 锁定「这一个」下拉，
-    // 避免多条条目并存时命中上一张卡片残留的下拉。
-    const controls = await trigger.locator('input').getAttribute('aria-controls')
-    const dropdown = scope.page().locator(`#${controls}`)
-    await expect(dropdown).toBeVisible()
-    const option = dropdown.locator('.el-select-dropdown__item').filter({ hasText: text }).first()
-    await expect(option).toBeVisible()
-    await option.click()
-    await expect(dropdown).toBeHidden()
-  }
 
   async function addCard(page: Page) {
     await page.getByTestId('constraint-entry-add').click()

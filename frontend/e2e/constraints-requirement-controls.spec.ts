@@ -6,6 +6,7 @@ import {
   seedConstraintScenario,
   uiLogin,
   type ConstraintSeed,
+  pickOption,
 } from './helpers'
 
 /**
@@ -28,22 +29,6 @@ test.describe.serial('约束配置：阈值例外的逐项控制与放宽确认'
     await api.dispose()
   })
 
-  async function pickOption(scope: Locator, field: string, text: string) {
-    await scope.getByTestId(field).click()
-    // The dropdown is teleported to <body>; the one just opened is appended last.
-    const options = scope
-      .page()
-      .locator('.el-select-dropdown:visible')
-      .last()
-      .locator('.el-select-dropdown__item')
-    // Exact label first: "尽量" must not select "继承类型（尽量）". A caller that
-    // names a longer label ("继承类型（必须）") still matches exactly.
-    // No contains-fallback: the retry inside toBeVisible waits for the dropdown to
-    // render instead of silently clicking "继承类型（尽量）" for "尽量".
-    const option = options.filter({ hasText: new RegExp(`^${text}$`) }).first()
-    await expect(option).toBeVisible()
-    await option.click()
-  }
 
   async function setNumber(scope: Locator, field: string, value: string) {
     const input = scope.getByTestId(field).locator('input')

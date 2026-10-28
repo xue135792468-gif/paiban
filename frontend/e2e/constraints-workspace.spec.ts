@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Browser, type Locator, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Browser, type Page } from '@playwright/test'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import {
@@ -8,6 +8,7 @@ import {
   seedConstraintScenario,
   uiLogin,
   type ConstraintSeed,
+  pickOption,
 } from './helpers'
 
 /**
@@ -112,18 +113,6 @@ test.describe.serial('约束配置：跨设备未保存工作', () => {
     return page
   }
 
-  async function pickOption(scope: Locator, testId: string, text: string) {
-    await scope.getByTestId(testId).click()
-    const option = scope
-      .page()
-      .locator('.el-select-dropdown:visible')
-      .last()
-      .locator('.el-select-dropdown__item')
-      .filter({ hasText: new RegExp(`^${text}$`) })
-      .first()
-    await expect(option).toBeVisible()
-    await option.click()
-  }
 
   async function addManualCard(page: Page, teacher: string, day: string, period: string) {
     await page.getByTestId('constraint-entry-add').click()
