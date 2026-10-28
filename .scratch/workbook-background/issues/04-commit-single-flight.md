@@ -40,6 +40,9 @@
 - **单目标课表提交评估（按要求不改）：** 单目标 `commitSingleTarget` 在**一个** `transactionTemplate` 里同时建草稿和保存会话，后到请求的乐观锁失败会让整个事务回滚，草稿不会残留；因此同类竞态只影响错误文案（`ObjectOptimisticLockingFailureException` 已由 `GlobalExceptionHandler` 映射 409），不产生重复数据，不在本票顺手改。
 - **已知边界：** 启动恢复会把**所有**残留 `COMMITTING` 视为本进程崩溃遗留。当前部署是单实例；若将来多实例部署，需要额外的认领时间戳/心跳，避免重启实例误清另一个实例正在进行的提交。
 
+**部署记录（2026-10-28）**：合并 `main` `a355dde`（提交 `ade61b3`），推送后 CI 四 job 全绿（backend 含真实 PostgreSQL `PostgresContainerIT`、e2e、frontend、deploy-scripts）。服务器 `~/paiban` HEAD 与 origin/main 一致；Flyway 仍为 v37（本票无迁移）；四容器 healthy；本机 HTTPS 与公网 health 均 200。部署前备份 `~/backups/paiban/paiban-pre-20261028T041007Z.sql.gz`（295KB，`gzip -t` 通过）。
+**生产冒烟**：用 1 行 CSV 工作簿（八（1）/星期一/1/语文/金林墨）走 `POST /api/ai/import/excel?target=workbook` → PREVIEW；第一次确认 200（`draftId=6`），第二次确认 409「该导入已入库，不能再修改」；`timetable_draft` 只新增 1 份，`draft_lesson` 1 节。冒烟中发现并绕开一个与本票无关的既有坑：把生产作息 label「上午第1节」原样写进 CSV 时，课表导入的节次解析只认「第1节 / 1」，该行会被标成无法识别节次；冒烟改用 `1` 后通过。
+
 **测试：** 新增 `WorkbookCommitRaceTest`：两个「都读到 PREVIEW」的会话快照（顺序与双线程各一）断言只有一次成功、另一方冲突、数据库只多一份草稿；失败后同一会话可再次提交；`COMMITTING` 经启动恢复回到 `PREVIEW`；另有一条 HTTP 并发用例断言两个请求恰好一个 200、一个 409 且只多一份草稿。修复前稳定变红（期望 2 份草稿、实际 3 份），修复后全绿。定向回归：导入模块 111 例全绿，前端相关单测 74 例全绿。
 
 ## 评审修复（2026-10-28，两轴独立评审）
