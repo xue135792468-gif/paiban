@@ -29,8 +29,9 @@ test('管理员亲自确认：选教师 → 指定代课 → 对照清单 → �
   await pickTeacher(page, seed)
   await fillLessonDate(page, seed)
 
-  // 选一节课发起代课：候选列表排除当前教师、只含启用教师。
+  // 选一节课发起代课：先选「指定代课」动作，候选列表排除当前教师、只含启用教师。
   await page.getByTestId('pick-lesson').first().click()
+  await page.getByTestId('choose-cover').click()
   await expect(page.getByTestId('substitute-picker')).toBeVisible()
   await expect(page.getByTestId('candidate-table')).toBeVisible()
   const candidateRows = page.locator('[data-testid^="choose-"]')
@@ -70,6 +71,7 @@ test('管理员提交审批：进入待批队列，旧安排继续生效', async
   await fillLessonDate(page, seed)
 
   await page.getByTestId('pick-lesson').first().click()
+  await page.getByTestId('choose-cover').click()
   await page.locator('[data-testid^="choose-"]').first().click()
   await page.getByTestId('preview-reason').fill('先走审批流')
   await page.getByTestId('generate-preview').click()

@@ -646,3 +646,155 @@ export async function runSql(request: APIRequestContext, sql: string): Promise<v
     throw new Error(`h2 sql failed (${result.status()}): ${body.slice(0, 1500)}`)
   }
 }
+
+
+export interface SwapWorkbenchSeed {
+  semesterId: number
+  classId: number
+  teacherChineseId: number
+  teacherChineseName: string
+  teacherMathId: number
+  teacherMathName: string
+  entryChineseId: number
+  courseChineseName: string
+  lessonDate: string
+  targetDate: string
+}
+
+/**
+ * 票 05 调课工作台的种子：未来学期，高一1班周三第 1 节语文（张老师）、
+ * 周五第 1 节数学（王老师），二人环无冲突——管理员明确指定目标日期即可成环。
+ */
+export async function seedSwapWorkbenchScenario(
+  context: APIRequestContext,
+): Promise<SwapWorkbenchSeed> {
+  const token = await apiLogin(context)
+  const suffix = Math.random().toString(36).slice(2, 8)
+  const monday = new Date()
+  monday.setDate(monday.getDate() + ((8 - monday.getDay()) % 7 || 7))
+  const iso = (value: Date) => {
+    const month = String(value.getMonth() + 1).padStart(2, '0')
+    const dayNo = String(value.getDate()).padStart(2, '0')
+    return `${value.getFullYear()}-${month}-${dayNo}`
+  }
+  const wednesday = new Date(monday)
+  wednesday.setDate(monday.getDate() + 2)
+  const friday = new Date(monday)
+  friday.setDate(monday.getDate() + 4)
+  const end = new Date(monday)
+  end.setDate(monday.getDate() + 100)
+
+  const semester = await apiCall(context, token, 'post', '/semesters', {
+    name: `E2E调课台-${suffix}`,
+    startDate: iso(monday),
+    endDate: iso(end),
+  })
+  await apiCall(context, token, 'post', `/semesters/${semester.id}/set-current`)
+  await apiCall(context, token, 'post', `/semesters/${semester.id}/periods/default`, {
+    morningCount: 2,
+    afternoonCount: 0,
+    eveningCount: 0,
+    days: [1, 2, 3, 4, 5],
+  })
+
+  const grade = await apiCall(context, token, 'post', `/grades?semesterId=${semester.id}`, {
+    name: `高一${suffix}`,
+    sortOrder: 1,
+  })
+  const adminClass = await apiCall(context, token, 'post', `/classes?semesterId=${semester.id}`, {
+    gradeId: grade.id,
+    name: `高一1班${suffix}`,
+    studentCount: 45,
+  })
+  const teacherChinese = await apiCall(context, token, 'post', '/teachers', {
+    name: `调课张${suffix}`,
+    employeeNo: `SW1-${suffix}`,
+    subject: '语文',
+  })
+  const teacherMath = await apiCall(context, token, 'post', '/teachers', {
+    name: `调课王${suffix}`,
+    employeeNo: `SW2-${suffix}`,
+    subject: '数学',
+  })
+  const chinese = await apiCall(context, token, 'post', '/courses', {
+    name: `语文${suffix}`,
+    subject: '语文',
+    allowConsecutive: false,
+  })
+  const math = await apiCall(context, token, 'post', '/courses', {
+    name: `数学${suffix}`,
+    subject: '数学',
+    allowConsecutive: false,
+  })
+  const roomA = await apiCall(context, token, 'post', '/rooms', {
+    name: `调课台教室A${suffix}`,
+    capacity: 50,
+    type: 'NORMAL',
+  })
+  const roomB = await apiCall(context, token, 'post', '/rooms', {
+    name: `调课台教室B${suffix}`,
+    capacity: 50,
+    type: 'NORMAL',
+  })
+  await apiCall(context, token, 'post', '/assignments', {
+    classId: adminClass.id,
+    courseId: chinese.id,
+    teacherId: teacherChinese.id,
+    weeklyLessons: 1,
+  })
+  await apiCall(context, token, 'post', '/assignments', {
+    classId: adminClass.id,
+    courseId: math.id,
+    teacherId: teacherMath.id,
+    weeklyLessons: 1,
+  })
+
+  // 求解后强制摆放：语文周三第 1、数学周五第 1（二人环的确定性事实）。
+  const periodRows = await apiCall(context, token, 'get', `/semesters/${semester.id}/periods`)
+  const wednesdayPeriod = periodRows.find((row: any) => row.dayOfWeek === 3 && row.periodNo === 1)
+  const fridayPeriod = periodRows.find((row: any) => row.dayOfWeek === 5 && row.periodNo === 1)
+  if (!wednesdayPeriod || !fridayPeriod) {
+    throw new Error('missing Wednesday/Friday periods for the swap workbench seed')
+  }
+  const draftId = await solveDraft(context, semester.id)
+  const detail = await apiCall(context, token, 'get', `/timetable-drafts/${draftId}`)
+  const byCourse = new Map<number, any>()
+  for (const lesson of detail.lessons) {
+    if (lesson.classId === adminClass.id) byCourse.set(lesson.courseId, lesson)
+  }
+  const chineseLesson = byCourse.get(chinese.id)
+  const mathLesson = byCourse.get(math.id)
+  if (!chineseLesson || !mathLesson) {
+    throw new Error('missing draft lessons for the swap workbench seed')
+  }
+  await apiCall(context, token, 'patch', `/timetable-drafts/${draftId}/lessons/${chineseLesson.id}`, {
+    periodId: wednesdayPeriod.id,
+    roomId: roomA.id,
+    force: true,
+  })
+  await apiCall(context, token, 'patch', `/timetable-drafts/${draftId}/lessons/${mathLesson.id}`, {
+    periodId: fridayPeriod.id,
+    roomId: roomB.id,
+    force: true,
+  })
+  await publishDraft(context, draftId)
+  const entries = await apiCall(context, token, 'get', `/timetable/class/${adminClass.id}`, undefined, {
+    view: 'baseline',
+  })
+  const chineseEntry = entries.find((row: any) => row.dayOfWeek === 3)
+  if (!chineseEntry) {
+    throw new Error('solver did not keep the Wednesday Chinese lesson for the swap workbench seed')
+  }
+  return {
+    semesterId: semester.id,
+    classId: adminClass.id,
+    teacherChineseId: teacherChinese.id,
+    teacherChineseName: teacherChinese.name,
+    teacherMathId: teacherMath.id,
+    teacherMathName: teacherMath.name,
+    entryChineseId: chineseEntry.id,
+    courseChineseName: chinese.name,
+    lessonDate: iso(wednesday),
+    targetDate: iso(friday),
+  }
+}

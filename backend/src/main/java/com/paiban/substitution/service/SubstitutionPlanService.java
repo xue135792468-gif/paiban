@@ -54,6 +54,8 @@ public class SubstitutionPlanService {
     private final AuditLogRepository auditLogs;
     private final SubstitutionEffects effects;
     private final SubstitutionMapper mapper;
+    /** 服务端权威时钟（Asia/Shanghai）：方案 TTL 与时间戳都用它，不读系统默认时钟。 */
+    private final java.time.Clock clock;
 
     public SubstitutionPlanService(
             SubstitutionRequestRepository requests,
@@ -65,7 +67,8 @@ public class SubstitutionPlanService {
             SubstitutionAuditService audits,
             AuditLogRepository auditLogs,
             SubstitutionEffects effects,
-            SubstitutionMapper mapper) {
+            SubstitutionMapper mapper,
+            java.time.Clock clock) {
         this.requests = requests;
         this.plans = plans;
         this.planMoves = planMoves;
@@ -76,6 +79,7 @@ public class SubstitutionPlanService {
         this.auditLogs = auditLogs;
         this.effects = effects;
         this.mapper = mapper;
+        this.clock = clock;
     }
 
     @Transactional
@@ -89,11 +93,13 @@ public class SubstitutionPlanService {
         }
         PlanSnapshot snapshot = snapshots.build(request.getSemesterId());
         SwapPlannerOptions options = snapshots.swapOptions();
+        // 票 05：管理端调课的申请带明确目标日期（target_date）；旧教师自助申请为空，
+        // 继续按目标课节的星期推算最近日期，行为不变。
         PlanningResult result = SwapPlanner.plan(
                 snapshot,
                 new SwapPlanner.Request(
                         request.getAdminClassId(), request.getEntryId(), request.getEffectiveDate(),
-                        request.getTargetPeriodId()),
+                        request.getTargetPeriodId(), request.getTargetDate()),
                 SwapPlanner.Options.of(options.windowDays(), options.maxTeachers(), options.preset()));
 
         plans.findByRequestIdAndStatusOrderByIdAsc(requestId, SubstitutionPlan.PROPOSED)
@@ -104,7 +110,7 @@ public class SubstitutionPlanService {
 
         List<SubstitutionPlan> saved = new ArrayList<>();
         String hash = snapshot.snapshotHash();
-        Instant now = Instant.now();
+        Instant now = clock.instant();
         for (CandidatePlan candidate : result.candidates().stream().limit(3).toList()) {
             SubstitutionPlan plan = new SubstitutionPlan();
             plan.setRequestId(requestId);
@@ -192,6 +198,10 @@ public class SubstitutionPlanService {
     public SubstitutionRequestDto approvePlan(Long planId, String username, String comment) {
         SubstitutionPlan plan = plans.findById(planId)
                 .orElseThrow(() -> ApiException.notFound("调课方案不存在: " + planId));
+        // 票 05：管理端预览方案在选定前没有申请；没有申请的方案不能直接批准。
+        if (plan.getRequestId() == null) {
+            throw ApiException.conflict("该方案还没有关联调课申请，不能直接批准");
+        }
         SubstitutionRequest request = SubstitutionLookups.requireRequest(requests, plan.getRequestId());
         if (!SubstitutionPlan.PROPOSED.equals(plan.getStatus())) {
             throw ApiException.conflict("该方案当前状态为 " + plan.getStatus() + "，不能批准");
@@ -199,7 +209,7 @@ public class SubstitutionPlanService {
         if (!SubstitutionRequest.PENDING_APPROVAL.equals(request.getStatus())) {
             throw ApiException.conflict("该申请当前状态为 " + request.getStatus() + "，不能批准方案");
         }
-        if (Instant.now().isAfter(plan.getExpiresAt())) {
+        if (clock.instant().isAfter(plan.getExpiresAt())) {
             audits.expirePlan(planId, SubstitutionPlan.EXPIRED, username,
                     "SUBSTITUTION_PLAN_EXPIRED", "方案 " + planId + " 已超过 30 分钟有效期");
             throw ApiException.conflict("方案已过期，请重新生成");
@@ -227,7 +237,7 @@ public class SubstitutionPlanService {
             throw ApiException.conflict("方案未通过校验，整单不生效：" + detail);
         }
 
-        Instant now = Instant.now();
+        Instant now = clock.instant();
         AppUser approver = users.getByUsername(username);
         for (PlanMove move : moves) {
             effects.createSwapSubstitution(request, plan.getId(), move, now);

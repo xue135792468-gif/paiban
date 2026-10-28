@@ -167,6 +167,183 @@ class SwapPlannerTest {
                 .containsExactly(sameDayThreeTeachers, crossDayTwoTeachers);
     }
 
+    // ------------------------------------------------- 票 05：明确目标日期的调课
+
+    @Test
+    void explicitTargetDatePlansTheCycleOnThatExactDate() {
+        PlanFixtures.Builder builder = base();
+        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
+        long second = builder.addLesson(CLASS_1, 2, 2, 2L, 3, 1);
+        PlanSnapshot snapshot = builder.build();
+        // 明确指定下周三：不会被替换成同星期的另一周（本周三，旧推算的落点）。
+        java.time.LocalDate nextWednesday = PlanFixtures.MONDAY.plusDays(9);
+
+        PlanningResult result = SwapPlanner.plan(
+                snapshot,
+                new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
+                        PlanFixtures.periodId(3, 1), nextWednesday),
+                SwapPlanner.Options.of(10, 6, RankingPreset.MIN_IMPACT));
+
+        assertThat(result.candidates()).isNotEmpty();
+        CandidatePlan plan = result.candidates().get(0);
+        assertThat(plan.cycleLength()).isEqualTo(2);
+        assertThat(plan.moves()).anySatisfy(move -> {
+            if (move.entryId() == first) {
+                assertThat(move.toDate()).isEqualTo(nextWednesday);
+            }
+            if (move.entryId() == second) {
+                assertThat(move.fromDate()).isEqualTo(nextWednesday);
+                assertThat(move.toDate()).isEqualTo(PlanFixtures.date(1));
+            }
+        });
+    }
+
+    @Test
+    void sameWeekdayNextWeekIsNotMistakenForTheOriginalSlot() {
+        PlanFixtures.Builder builder = base();
+        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
+        long second = builder.addLesson(CLASS_1, 2, 2, 2L, 1, 2);
+        PlanSnapshot snapshot = builder.build();
+        java.time.LocalDate nextMonday = PlanFixtures.MONDAY.plusDays(7);
+
+        PlanningResult result = SwapPlanner.plan(
+                snapshot,
+                new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
+                        PlanFixtures.periodId(1, 2), nextMonday),
+                SwapPlanner.Options.of(8, 6, RankingPreset.MIN_IMPACT));
+
+        assertThat(result.candidates()).isNotEmpty();
+        assertThat(result.candidates().get(0).moves()).anySatisfy(move -> {
+            if (move.entryId() == first) {
+                // 目标落点是传入的下周一，不是同一星期的本周一（原槽）。
+                assertThat(move.toDate()).isEqualTo(nextMonday);
+            }
+            if (move.entryId() == second) {
+                assertThat(move.fromDate()).isEqualTo(nextMonday);
+                assertThat(move.toDate()).isEqualTo(PlanFixtures.date(1));
+            }
+        });
+    }
+
+    @Test
+    void multiTeacherCycleWorksWithAnExplicitTargetDate() {
+        PlanFixtures.Builder builder = base();
+        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
+        long second = builder.addLesson(CLASS_1, 2, 2, 2L, 1, 2);
+        long third = builder.addLesson(CLASS_1, 3, 3, 3L, 1, 3);
+        // Teacher 2 在周一第 1 节已被高一2班占用，直接互移不可行，需要第三人成环。
+        builder.lesson(CLASS_2, 4, 2, 4L, 1, 1);
+        PlanSnapshot snapshot = builder.build();
+
+        PlanningResult result = SwapPlanner.plan(
+                snapshot,
+                new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
+                        PlanFixtures.periodId(1, 2), PlanFixtures.date(1)),
+                SwapPlanner.Options.defaults());
+
+        assertThat(result.candidates()).isNotEmpty();
+        CandidatePlan plan = result.candidates().get(0);
+        assertThat(plan.cycleLength()).isEqualTo(3);
+        assertThat(plan.moves()).extracting(PlanMove::entryId)
+                .containsExactlyInAnyOrder(first, second, third);
+        assertThat(plan.moves()).extracting(PlanMove::toDate)
+                .contains(PlanFixtures.date(1));
+    }
+
+    @Test
+    void explicitTargetDateBeforeTheSourceIsRejected() {
+        PlanFixtures.Builder builder = base();
+        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
+        builder.addLesson(CLASS_1, 2, 2, 2L, 3, 1);
+        PlanSnapshot snapshot = builder.build();
+
+        PlanningResult result = SwapPlanner.plan(
+                snapshot,
+                new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
+                        PlanFixtures.periodId(3, 1), PlanFixtures.date(1).minusDays(1)),
+                SwapPlanner.Options.of(10, 6, RankingPreset.MIN_IMPACT));
+
+        assertThat(result.candidates()).isEmpty();
+        assertThat(result.diagnoses()).extracting(PlanDiagnosis::code)
+                .contains("TARGET_OUT_OF_WINDOW");
+    }
+
+    @Test
+    void explicitTargetDateBeyondTheWindowIsRejected() {
+        PlanFixtures.Builder builder = base();
+        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
+        builder.addLesson(CLASS_1, 2, 2, 2L, 3, 1);
+        PlanSnapshot snapshot = builder.build();
+
+        // 窗口 7 天 → [周一, 周日]；下周二越界（旧推算的落点最多到 +6 天）。
+        PlanningResult result = SwapPlanner.plan(
+                snapshot,
+                new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
+                        PlanFixtures.periodId(3, 1), PlanFixtures.date(1).plusDays(8)),
+                SwapPlanner.Options.of(7, 6, RankingPreset.MIN_IMPACT));
+
+        assertThat(result.candidates()).isEmpty();
+        assertThat(result.diagnoses()).extracting(PlanDiagnosis::code)
+                .contains("TARGET_OUT_OF_WINDOW");
+    }
+
+    @Test
+    void explicitTargetDateBeyondTheSemesterIsRejected() {
+        PlanFixtures.Builder builder = base();
+        builder.semesterEndsAfter(10);
+        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
+        builder.addLesson(CLASS_1, 2, 2, 2L, 3, 1);
+        PlanSnapshot snapshot = builder.build();
+
+        // 目标日期在窗口（30 天）内但超出学期最后一天（MONDAY+10 是周四，与课节星期一致）。
+        PlanningResult result = SwapPlanner.plan(
+                snapshot,
+                new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
+                        PlanFixtures.periodId(4, 1), PlanFixtures.MONDAY.plusDays(10)),
+                SwapPlanner.Options.of(30, 6, RankingPreset.MIN_IMPACT));
+
+        assertThat(result.candidates()).isEmpty();
+        assertThat(result.diagnoses()).extracting(PlanDiagnosis::code)
+                .contains("TARGET_OUT_OF_SEMESTER");
+    }
+
+    @Test
+    void explicitTargetDateOnAnEmptySlotIsRejected() {
+        PlanFixtures.Builder builder = base();
+        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
+        PlanSnapshot snapshot = builder.build();
+
+        // 明确目标日期当天（周三），本班第 4 节没有课：空格只挪不补。
+        PlanningResult result = SwapPlanner.plan(
+                snapshot,
+                new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
+                        PlanFixtures.periodId(3, 4), PlanFixtures.date(3)),
+                SwapPlanner.Options.of(7, 6, RankingPreset.MIN_IMPACT));
+
+        assertThat(result.candidates()).isEmpty();
+        assertThat(result.diagnoses()).extracting(PlanDiagnosis::code)
+                .contains("TARGET_EMPTY");
+    }
+
+    @Test
+    void explicitTargetDateWithMismatchedWeekdayIsRejected() {
+        PlanFixtures.Builder builder = base();
+        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
+        builder.addLesson(CLASS_1, 2, 2, 2L, 3, 1);
+        PlanSnapshot snapshot = builder.build();
+
+        // 目标课节是周三第 1 节，目标日期却是周二：明确拒绝而不是静默换日。
+        PlanningResult result = SwapPlanner.plan(
+                snapshot,
+                new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
+                        PlanFixtures.periodId(3, 1), PlanFixtures.date(2)),
+                SwapPlanner.Options.of(7, 6, RankingPreset.MIN_IMPACT));
+
+        assertThat(result.candidates()).isEmpty();
+        assertThat(result.diagnoses()).extracting(PlanDiagnosis::code)
+                .contains("TARGET_DAY_MISMATCH");
+    }
+
     private static PlanFixtures.Builder base() {
         PlanFixtures.Builder builder = PlanFixtures.builder()
                 .adminClass(CLASS_1, "高一1班", 45, null)

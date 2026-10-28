@@ -112,4 +112,108 @@ public final class SubstitutionWorkbenchDtos {
             }
         }
     }
+
+    // ------------------------- 票 05：管理员同班调课（SWAP）的 HTTP 契约 -------------------------
+
+    /** 指定目标日期里，来源班当前已有课的槽位（可作置换目标的候选格）。 */
+    public record SwapTargetSlotDto(Long periodId,
+                                    int periodNo,
+                                    Long courseId,
+                                    String courseName,
+                                    Long teacherId,
+                                    String teacherName) {}
+
+    /** 目标日期的班级槽位清单；空列表 = 当天是空格（空格只挪不补）。 */
+    public record SwapTargetsResponse(Long entryId,
+                                      LocalDate lessonDate,
+                                      LocalDate targetDate,
+                                      Long classId,
+                                      String className,
+                                      List<SwapTargetSlotDto> slots) {}
+
+    /** 生成置换环候选的请求：目标日期必须明确，绝不静默替换。 */
+    public record SwapPlanGenerateRequest(@NotNull(message = "请选择课节") Long entryId,
+                                          @NotNull(message = "请选择授课日期") LocalDate lessonDate,
+                                          @NotNull(message = "请选择目标日期") LocalDate targetDate,
+                                          @NotNull(message = "请选择目标课节") Long targetPeriodId,
+                                          String rankingPreset,
+                                          String reason) {}
+
+    /** 一个置换环候选：整环的每一步移动（含实际日期与名称解析）。 */
+    public record SwapCandidateDto(Long planId,
+                                   int impactDays,
+                                   int impactTeachers,
+                                   int softPenalty,
+                                   int cycleLength,
+                                   boolean sameWeek,
+                                   List<com.paiban.substitution.web.SubstitutionDtos.PlanMoveDto> moves) {}
+
+    /** 生成方案结果：≤3 个候选 + 无解原因（无解时原课表不动、零申请）。 */
+    public record SwapPlansResponse(Long entryId,
+                                    LocalDate lessonDate,
+                                    Long classId,
+                                    String className,
+                                    Long courseId,
+                                    String courseName,
+                                    LocalDate targetDate,
+                                    Long targetPeriodId,
+                                    Integer targetPeriodNo,
+                                    String rankingPreset,
+                                    String rankingPresetLabel,
+                                    List<SwapCandidateDto> plans,
+                                    List<com.paiban.substitution.web.SubstitutionDtos.DiagnosisDto> diagnoses) {}
+
+    /** 选定候选方案创建 SWAP 预览凭证；目标从方案读回，服务端权威。 */
+    public record SwapPreviewCreateRequest(@NotNull(message = "请选择课节") Long entryId,
+                                           @NotNull(message = "请选择授课日期") LocalDate lessonDate,
+                                           @NotNull(message = "请选择方案") Long planId,
+                                           String reason) {}
+
+    /** 单日左右对照：左 = 调整前最新，右 = 应用整环方案后。 */
+    public record SwapDayCompareDto(LocalDate date,
+                                    List<GridCellDto> left,
+                                    List<GridCellDto> right) {}
+
+    /** 变化清单逐项：课程、班级、前后实际日期/节次、教师与教室（SWAP 教师跟课走）。 */
+    public record SwapChangeItemDto(Long entryId,
+                                    Long classId,
+                                    String className,
+                                    Long courseId,
+                                    String courseName,
+                                    LocalDate fromDate,
+                                    String fromLabel,
+                                    LocalDate toDate,
+                                    String toLabel,
+                                    Long teacherId,
+                                    String teacherName,
+                                    String roomName,
+                                    String changeKind) {}
+
+    /** SWAP 预览结果：凭证 + 环内最小开课截止 + 逐日左右对照 + 完整变化清单。 */
+    public record SwapPreviewResponse(Long voucherId,
+                                      Long planId,
+                                      Instant deadlineAt,
+                                      Instant expiresAt,
+                                      Long entryId,
+                                      LocalDate lessonDate,
+                                      LocalDate targetDate,
+                                      Long targetPeriodId,
+                                      Integer targetPeriodNo,
+                                      Long classId,
+                                      String className,
+                                      List<Long> affectedTeacherIds,
+                                      List<String> affectedTeacherNames,
+                                      List<SwapDayCompareDto> days,
+                                      List<SwapChangeItemDto> changes,
+                                      List<String> issues,
+                                      boolean canSubmitApproval,
+                                      boolean canConfirm) {}
+
+    /** 切换视角（班级/教师）后的单日左右对照；日期与视角两侧联动。 */
+    public record SwapCompareResponse(LocalDate date,
+                                      String view,
+                                      Long viewId,
+                                      String viewName,
+                                      List<GridCellDto> left,
+                                      List<GridCellDto> right) {}
 }
