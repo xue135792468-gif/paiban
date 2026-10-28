@@ -79,6 +79,8 @@ public class SubstitutionEffects {
         substitution.setRequestId(request.getId());
         substitution.setEntryId(request.getEntryId());
         substitution.setEffectiveDate(request.getEffectiveDate());
+        // 新格式：代课只影响所指的授课实例（学期 + 条目 + 原始授课日期）。
+        substitution.setLessonDate(request.getEffectiveDate());
         substitution.setOriginalTeacherId(request.getOriginalTeacherId());
         substitution.setSubstituteTeacherId(substituteTeacherId);
         substitution.setType(SubstitutionMapper.typeOf(request));
@@ -95,6 +97,9 @@ public class SubstitutionEffects {
         substitution.setRequestId(request.getId());
         substitution.setEntryId(move.entryId());
         substitution.setEffectiveDate(move.fromDate());
+        // 新格式：来源实例 = 移出日，落点实例 = 目标日（旧实现丢失 toDate，只能反推周几）。
+        substitution.setLessonDate(move.fromDate());
+        substitution.setTargetLessonDate(move.toDate());
         substitution.setOriginalTeacherId(move.teacherId());
         substitution.setSubstituteTeacherId(move.teacherId());
         substitution.setNewRoomId(move.roomId());

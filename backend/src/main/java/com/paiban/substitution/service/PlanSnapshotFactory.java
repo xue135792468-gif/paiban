@@ -100,7 +100,8 @@ public class PlanSnapshotFactory {
         List<AppliedSubstitution> applied = substitutions
                 .findBySemesterIdAndStatus(semesterId, Substitution.EFFECTIVE).stream()
                 .map(item -> new AppliedSubstitution(
-                        item.getId(), item.getEntryId(), item.getEffectiveDate(), item.getCreatedAt(),
+                        item.getId(), item.getEntryId(), item.getEffectiveDate(),
+                        item.getLessonDate(), item.getTargetLessonDate(), item.getCreatedAt(),
                         item.getNewPeriodId(), item.getNewDayOfWeek(), item.getNewPeriodNo(),
                         item.getNewRoomId(), item.getSubstituteTeacherId(), item.getType()))
                 .toList();

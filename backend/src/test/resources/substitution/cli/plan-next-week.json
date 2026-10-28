@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "moves": [
+    {"entryId": 1000, "classId": 1, "courseId": 1, "teacherId": 1, "roomId": 1,
+     "fromPeriodId": 101, "fromDayOfWeek": 1, "fromPeriodNo": 1, "fromDate": "2025-09-08",
+     "toPeriodId": 103, "toDayOfWeek": 1, "toPeriodNo": 3, "toDate": "2025-09-08", "order": 0},
+    {"entryId": 1002, "classId": 1, "courseId": 3, "teacherId": 3, "roomId": 3,
+     "fromPeriodId": 103, "fromDayOfWeek": 1, "fromPeriodNo": 3, "fromDate": "2025-09-08",
+     "toPeriodId": 101, "toDayOfWeek": 1, "toPeriodNo": 1, "toDate": "2025-09-08", "order": 1}
+  ]
+}

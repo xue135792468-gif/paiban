@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "semesterId": 1,
+  "semesterStart": "2025-09-01",
+  "semesterEnd": "2026-01-20",
+  "periods": [
+    {"id": 101, "dayOfWeek": 1, "periodNo": 1, "section": "MORNING"},
+    {"id": 102, "dayOfWeek": 1, "periodNo": 2, "section": "MORNING"},
+    {"id": 103, "dayOfWeek": 1, "periodNo": 3, "section": "AFTERNOON"},
+    {"id": 104, "dayOfWeek": 1, "periodNo": 4, "section": "AFTERNOON"}
+  ],
+  "rooms": [
+    {"id": 1, "name": "教室1", "type": "NORMAL", "capacity": 50},
+    {"id": 2, "name": "教室2", "type": "NORMAL", "capacity": 50},
+    {"id": 3, "name": "教室3", "type": "NORMAL", "capacity": 50},
+    {"id": 4, "name": "教室4", "type": "NORMAL", "capacity": 50}
+  ],
+  "courses": [
+    {"id": 1, "name": "语文", "requiredRoomType": null},
+    {"id": 2, "name": "数学", "requiredRoomType": null},
+    {"id": 3, "name": "英语", "requiredRoomType": null}
+  ],
+  "teachers": [
+    {"id": 1, "name": "语文老师", "subject": "语文"},
+    {"id": 2, "name": "数学老师", "subject": "数学"},
+    {"id": 3, "name": "英语老师", "subject": "英语"},
+    {"id": 9, "name": "代课老师", "subject": "语文"}
+  ],
+  "classes": [
+    {"id": 1, "name": "高一1班", "studentCount": 45, "headTeacherId": null},
+    {"id": 2, "name": "高一2班", "studentCount": 45, "headTeacherId": null}
+  ],
+  "lessons": [
+    {"entryId": 1000, "classId": 1, "courseId": 1, "teacherId": 1, "roomId": 1, "periodId": 101, "dayOfWeek": 1, "periodNo": 1},
+    {"entryId": 1001, "classId": 1, "courseId": 2, "teacherId": 2, "roomId": 2, "periodId": 102, "dayOfWeek": 1, "periodNo": 2},
+    {"entryId": 1002, "classId": 1, "courseId": 3, "teacherId": 3, "roomId": 3, "periodId": 103, "dayOfWeek": 1, "periodNo": 3},
+    {"entryId": 1003, "classId": 2, "courseId": 2, "teacherId": 2, "roomId": 4, "periodId": 101, "dayOfWeek": 1, "periodNo": 1}
+  ],
+  "substitutions": [
+    {"id": 1, "entryId": 1000, "effectiveDate": "2025-09-01", "lessonDate": "2025-09-01",
+     "createdAt": "2025-09-01T08:00:00Z", "substituteTeacherId": 9, "type": "COVER"}
+  ],
+  "constraints": [
+    {"type": "TEACHER_CONFLICT", "enabled": true, "hard": true, "weight": 100, "params": {}},
+    {"type": "CLASS_CONFLICT", "enabled": true, "hard": true, "weight": 100, "params": {}},
+    {"type": "ROOM_CONFLICT", "enabled": true, "hard": true, "weight": 100, "params": {}},
+    {"type": "ROOM_CAPACITY_FIT", "enabled": true, "hard": true, "weight": 100, "params": {}}
+  ]
+}

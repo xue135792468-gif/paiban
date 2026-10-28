@@ -240,6 +240,7 @@ public final class SubstitutionCli {
         for (SubstitutionJson item : safe(json.substitutions)) {
             substitutions.add(new PlanSnapshot.AppliedSubstitution(
                     item.id == null ? 0 : item.id, item.entryId, item.effectiveDate,
+                    item.lessonDate, item.targetLessonDate,
                     item.createdAt == null ? Instant.EPOCH : item.createdAt,
                     item.newPeriodId, item.newDayOfWeek, item.newPeriodNo, item.newRoomId,
                     item.substituteTeacherId, item.type == null ? "COVER" : item.type));
@@ -472,6 +473,10 @@ public final class SubstitutionCli {
         public Long id;
         public Long entryId;
         public LocalDate effectiveDate;
+        /** 可选：新格式实例日期（非空 = 只影响该授课日期）；缺省按旧格式持续覆盖读取。 */
+        public LocalDate lessonDate;
+        /** 可选：新格式调课落点实例日期。 */
+        public LocalDate targetLessonDate;
         public Instant createdAt;
         public Long newPeriodId;
         public Integer newDayOfWeek;

@@ -41,6 +41,17 @@ public class Substitution {
     @Column(name = "effective_date", nullable = false)
     private LocalDate effectiveDate;
 
+    /**
+     * 新格式：本笔覆盖对应的原始授课日期（实例身份 = 学期 + 条目 + 该日期），
+     * 非空表示只影响这一天；NULL 表示旧格式历史行，按「自 effective_date 起持续覆盖」读取。
+     */
+    @Column(name = "lesson_date")
+    private LocalDate lessonDate;
+
+    /** 新格式 SWAP 落点实例日期；COVER 行与旧格式行均为 NULL。 */
+    @Column(name = "target_lesson_date")
+    private LocalDate targetLessonDate;
+
     @Column(name = "original_teacher_id", nullable = false)
     private Long originalTeacherId;
 

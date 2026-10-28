@@ -332,6 +332,58 @@ class SwapFlowIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void swapMovesShowOnceAndNextWeekRestoresTheBaseline() {
+        String admin = adminToken();
+        String suffix = TestData.suffix();
+        World world = prepare(admin, suffix, false);
+        String teacherA = teacherUser(admin, "movea_" + suffix, world.teachers().get("A"));
+        teacherUser(admin, "moveb_" + suffix, world.teachers().get("B"));
+
+        long requestId = submitSwap(teacherA, world.chineseEntry(), world.periodByNo().get(2));
+        long planId = as(admin).when().post("/api/substitution-requests/" + requestId + "/plans")
+                .then().statusCode(200)
+                .extract().jsonPath().getLong("plans[0].id");
+        as(admin).when().post("/api/substitution-plans/" + planId + "/approve")
+                .then().statusCode(200)
+                .body("status", equalTo("EFFECTIVE"));
+
+        // 授课日：两节课互移，每个条目在班级课表里恰好出现一次（移出与移入各显示一次）。
+        Response movedDay = as(admin).queryParam("date", MONDAY.toString())
+                .when().get("/api/timetable/class/" + world.class1())
+                .then().statusCode(200)
+                .body("findAll { it.id == " + world.chineseEntry() + " }.size()", equalTo(1))
+                .body("find { it.id == " + world.chineseEntry() + " }.periodNo", equalTo(2))
+                .body("find { it.id == " + world.chineseEntry() + " }.substituted", equalTo(true))
+                .body("findAll { it.id == " + world.mathEntry() + " }.size()", equalTo(1))
+                .body("find { it.id == " + world.mathEntry() + " }.periodNo", equalTo(1))
+                .body("find { it.id == " + world.mathEntry() + " }.substituted", equalTo(true))
+                .extract().response();
+        // 实例身份落在生效行上：原始授课日期都指向本次调课的授课日。
+        assertThat(movedDay.jsonPath().getString(
+                "find { it.id == " + world.chineseEntry() + " }.lessonDate"))
+                .isEqualTo(MONDAY.toString());
+        assertThat(movedDay.jsonPath().getString(
+                "find { it.id == " + world.chineseEntry() + " }.targetLessonDate"))
+                .isEqualTo(MONDAY.toString());
+
+        // 教师跟课走：视角里仍是一节语文课，只是换了节次。
+        as(admin).queryParam("date", MONDAY.toString())
+                .when().get("/api/timetable/teacher/" + world.teachers().get("A"))
+                .then().statusCode(200)
+                .body("findAll { it.id == " + world.chineseEntry() + " }.size()", equalTo(1))
+                .body("find { it.id == " + world.chineseEntry() + " }.periodNo", equalTo(2));
+
+        // 下周同一基线槽位：独立实例，恢复常规安排。
+        as(admin).queryParam("date", MONDAY.plusDays(7).toString())
+                .when().get("/api/timetable/class/" + world.class1())
+                .then().statusCode(200)
+                .body("find { it.id == " + world.chineseEntry() + " }.periodNo", equalTo(1))
+                .body("find { it.id == " + world.chineseEntry() + " }.substituted", equalTo(false))
+                .body("find { it.id == " + world.mathEntry() + " }.periodNo", equalTo(2))
+                .body("find { it.id == " + world.mathEntry() + " }.substituted", equalTo(false));
+    }
+
+    @Test
     void aRequestCannotTargetAnEmptySlotOrPassAWeekdayMismatch() {
         String admin = adminToken();
         String suffix = TestData.suffix();
