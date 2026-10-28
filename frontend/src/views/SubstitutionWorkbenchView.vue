@@ -166,6 +166,7 @@ import SubstitutePicker from '@/components/substitution/workbench/SubstitutePick
 import PreviewCompare from '@/components/substitution/workbench/PreviewCompare.vue'
 import SwapPlannerPanel from '@/components/substitution/workbench/SwapPlannerPanel.vue'
 import SwapCompare from '@/components/substitution/workbench/SwapCompare.vue'
+import { mondayOf } from '@/components/substitution/workbench/swapTargetRules'
 import type { Entry } from '@/components/substitution/types'
 import type {
   PreviewResponse,
@@ -217,15 +218,8 @@ const restorable = computed(() => {
     info.baselineTeacherId !== info.currentTeacherId
   )
 })
-/** 所选日期所在周的周一，作为周课表列头。 */
-const weekStart = computed(() => {
-  const value = new Date(`${date.value || today()}T00:00:00`)
-  const offset = (value.getDay() + 6) % 7
-  value.setDate(value.getDate() - offset)
-  const month = String(value.getMonth() + 1).padStart(2, '0')
-  const dayNo = String(value.getDate()).padStart(2, '0')
-  return `${value.getFullYear()}-${month}-${dayNo}`
-})
+/** 所选日期所在周的周一，作为周课表列头（与拖拽网格共用同一实现）。 */
+const weekStart = computed(() => mondayOf(date.value || today()))
 
 const resultMessage = computed(() => {
   if (!result.value) return ''

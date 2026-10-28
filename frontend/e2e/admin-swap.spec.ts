@@ -1,59 +1,18 @@
 import { expect, test } from '@playwright/test'
-import { apiCall, apiLogin, newContext, seedSwapWorkbenchScenario, uiLogin } from './helpers'
+import {
+  apiCall,
+  apiLogin,
+  newContext,
+  openSwapFlow,
+  pickTargetAndGenerate,
+  seedSwapWorkbenchScenario,
+} from './helpers'
 
 /**
  * 票 05：管理员同班调课。管理员在工作台为实际授课实例明确指定目标日期与课节，
  * 生成闭合置换环候选（≤3），检查整环左右对照与变化清单后提交审批或亲自确认。
+ * 公共流程（openSwapFlow / pickTargetAndGenerate）在 helpers.ts，与票 06 拖拽 spec 共用。
  */
-
-async function openSwapFlow(
-  page: import('@playwright/test').Page,
-  seed: Awaited<ReturnType<typeof seedSwapWorkbenchScenario>>,
-) {
-  await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/substitutions/workbench')
-  await expect(page.getByTestId('teacher-select')).toBeVisible()
-  // filterable 下拉：输入带后缀的唯一教师名定位来源课教师。
-  await page.getByTestId('teacher-select').click()
-  await page.getByTestId('teacher-select').locator('input').fill(seed.teacherChineseName)
-  const dropdown = page.locator('.el-select-dropdown:visible').last()
-  await expect(dropdown.getByText(seed.teacherChineseName, { exact: true })).toBeVisible()
-  await page.keyboard.press('ArrowDown')
-  await page.keyboard.press('Enter')
-  await expect(page.getByTestId('workbench-timetable')).toBeVisible({ timeout: 20_000 })
-
-  const dateInput = page.getByTestId('lesson-date').locator('input')
-  await dateInput.fill(seed.lessonDate)
-  await dateInput.press('Tab')
-  await expect(page.getByTestId('pick-lesson').first()).toBeVisible()
-
-  // 选来源课 → 选择「调课」动作（区别于票 03 的「指定代课」）。
-  await page.getByTestId('pick-lesson').first().click()
-  await page.getByTestId('choose-swap').click()
-  await expect(page.getByTestId('swap-planner')).toBeVisible()
-}
-
-async function pickTargetAndGenerate(
-  page: import('@playwright/test').Page,
-  seed: Awaited<ReturnType<typeof seedSwapWorkbenchScenario>>,
-) {
-  // 明确指定目标日期（周五）与目标课节（数学）——不会被替换成同星期的另一周。
-  const targetDateInput = page.getByTestId('swap-target-date').locator('input')
-  await targetDateInput.fill(seed.targetDate)
-  await targetDateInput.press('Tab')
-  await expect(page.getByTestId('swap-target-period')).toBeEnabled()
-  await page.getByTestId('swap-target-period').click()
-  const targetDropdown = page.locator('.el-select-dropdown:visible').last()
-  await expect(targetDropdown.locator('.el-select-dropdown__item').first()).toBeVisible()
-  await targetDropdown
-    .locator('.el-select-dropdown__item')
-    .filter({ hasText: '数学' })
-    .first()
-    .click()
-
-  await page.getByTestId('swap-reason').fill('运动会调课')
-  await page.getByTestId('generate-swap-plans').click()
-}
 
 test('管理员调课：明确目标日期生成二人环 → 整环对照 → 提交审批后旧课表继续', async ({ page }) => {
   const api = await newContext()
