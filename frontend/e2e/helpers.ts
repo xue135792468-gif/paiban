@@ -444,13 +444,13 @@ export async function pickOption(
   text: string,
 ): Promise<void> {
   await scope.getByTestId(testId).click()
-  const option = scope
-    .page()
-    .locator('.el-select-dropdown:visible')
-    .last()
-    .locator('.el-select-dropdown__item')
-    .filter({ hasText: new RegExp(`^${text}$`) })
-    .first()
+  const dropdown = scope.page().locator('.el-select-dropdown:visible').last()
+  // getByText normalises whitespace; a raw ^text$ regex does not, and the
+  // teleported option can carry padding/newlines the visible label hides.
+  const option = dropdown.getByText(text, { exact: true }).first()
   await expect(option).toBeVisible()
-  await option.click()
+  // The teleported popper can fail Playwright's actionability check while moving;
+  // force-clicking then hits a neighbour. Trigger the resolved option's own click
+  // handler instead, so the exact element receives the event.
+  await option.evaluate((element) => (element as HTMLElement).click())
 }
