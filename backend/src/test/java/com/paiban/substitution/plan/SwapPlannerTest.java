@@ -3,6 +3,7 @@ package com.paiban.substitution.plan;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class SwapPlannerTest {
@@ -342,6 +343,97 @@ class SwapPlannerTest {
         assertThat(result.candidates()).isEmpty();
         assertThat(result.diagnoses()).extracting(PlanDiagnosis::code)
                 .contains("TARGET_DAY_MISMATCH");
+    }
+
+    // ------------------------------------------------- 冻结槽（票 07，部分已开始的环）
+
+    @Test
+    void frozenSlotsAreSkippedWhenSearchingCycleNodes() {
+        PlanFixtures.Builder builder = base();
+        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
+        long second = builder.addLesson(CLASS_1, 2, 2, 2L, 1, 2);
+        PlanSnapshot snapshot = builder.build();
+
+        // 不带冻结槽：周一第 1 → 第 2 的二人环可解。
+        PlanningResult open = SwapPlanner.plan(
+                snapshot,
+                new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
+                        PlanFixtures.periodId(1, 2)),
+                SwapPlanner.Options.defaults());
+        assertThat(open.candidates()).isNotEmpty();
+
+        // 目标槽（周一第 2 节）已开始：冻结后不可再作为落点或环节点，无解并给出原因。
+        PlanningResult frozen = SwapPlanner.plan(
+                snapshot,
+                new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
+                        PlanFixtures.periodId(1, 2), null,
+                        Set.of(new FrozenSlot(PlanFixtures.date(1),
+                                PlanFixtures.periodId(1, 2)))),
+                SwapPlanner.Options.defaults());
+        assertThat(frozen.candidates()).isEmpty();
+        assertThat(frozen.diagnoses()).extracting(PlanDiagnosis::code)
+                .contains("TARGET_FROZEN");
+    }
+
+    @Test
+    void frozenSourceSlotIsRejectedWithASourceDiagnosis() {
+        PlanFixtures.Builder builder = base();
+        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
+        builder.addLesson(CLASS_1, 2, 2, 2L, 1, 2);
+        PlanSnapshot snapshot = builder.build();
+
+        PlanningResult result = SwapPlanner.plan(
+                snapshot,
+                new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
+                        PlanFixtures.periodId(1, 2), null,
+                        Set.of(new FrozenSlot(PlanFixtures.date(1),
+                                PlanFixtures.periodId(1, 1)))),
+                SwapPlanner.Options.defaults());
+
+        assertThat(result.candidates()).isEmpty();
+        assertThat(result.diagnoses()).extracting(PlanDiagnosis::code)
+                .contains("SOURCE_FROZEN");
+    }
+
+    @Test
+    void cycleDetoursAroundFrozenIntermediateSlots() {
+        PlanFixtures.Builder builder = base();
+        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
+        long second = builder.addLesson(CLASS_1, 2, 2, 2L, 1, 2);
+        long third = builder.addLesson(CLASS_1, 3, 3, 3L, 2, 1);
+        PlanSnapshot snapshot = builder.build();
+
+        // 目标 = 周二第 1 节（third）。不冻结时既有二人环也有经周一第 2 节（second）
+        // 的三人环；冻结周一第 2 节后，三条腿的环被排除，只剩不碰冻结槽的二人环。
+        PlanningResult open = SwapPlanner.plan(
+                snapshot,
+                new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
+                        PlanFixtures.periodId(2, 1)),
+                SwapPlanner.Options.defaults());
+        assertThat(open.candidates()).isNotEmpty();
+
+        PlanningResult result = SwapPlanner.plan(
+                snapshot,
+                new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
+                        PlanFixtures.periodId(2, 1), null,
+                        Set.of(new FrozenSlot(PlanFixtures.date(1),
+                                PlanFixtures.periodId(1, 2)))),
+                SwapPlanner.Options.defaults());
+
+        assertThat(result.candidates()).isNotEmpty();
+        assertThat(result.candidates()).allSatisfy(plan -> {
+            assertThat(plan.moves()).extracting(PlanMove::entryId).doesNotContain(second);
+            assertThat(plan.moves()).allSatisfy(move -> {
+                boolean touchesFrozenFrom = move.fromDate().equals(PlanFixtures.date(1))
+                        && move.fromPeriodId() == PlanFixtures.periodId(1, 2);
+                boolean touchesFrozenTo = move.toDate().equals(PlanFixtures.date(1))
+                        && move.toPeriodId() == PlanFixtures.periodId(1, 2);
+                assertThat(touchesFrozenFrom || touchesFrozenTo).isFalse();
+            });
+        });
+        assertThat(result.candidates().get(0).moves())
+                .extracting(PlanMove::entryId)
+                .containsExactlyInAnyOrder(first, third);
     }
 
     private static PlanFixtures.Builder base() {

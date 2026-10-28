@@ -257,8 +257,13 @@ public class SubstitutionRequestService {
         }
         // 重复生效检查（修订感知）：修订只允许替代它绑定的基准生效行；
         // 基准被别的修订抢先替代或已消失时明确冲突，旧安排保持完整。
-        var currentRow = substitutions.findFirstByEntryIdAndEffectiveDateAndStatus(
-                request.getEntryId(), request.getEffectiveDate(), Substitution.EFFECTIVE);
+        // 票 07：修订的基准可能是 SWAP 行（调课后代课）——按实例当前生效行解析，
+        // 落点命中该日期的 SWAP 行也算基准；首次代课保持按 effectiveDate 的旧检查。
+        var currentRow = revision
+                ? SubstitutionLookups.currentInstanceRow(
+                        substitutions, request.getEntryId(), request.getEffectiveDate())
+                : substitutions.findFirstByEntryIdAndEffectiveDateAndStatus(
+                        request.getEntryId(), request.getEffectiveDate(), Substitution.EFFECTIVE);
         if (currentRow.isPresent()) {
             boolean baseMatches = revision
                     && request.getRevisesRequestId().equals(currentRow.get().getRequestId());
@@ -300,11 +305,17 @@ public class SubstitutionRequestService {
                 username,
                 decision == null ? null : decision.comment());
 
-        Substitution substitution = effects.createCoverSubstitution(request, substituteTeacherId);
+        // COVER 行继承基准行的槽位/教室覆盖（票 07：调课后代课时实例的当前槽 =
+        // SWAP 落点槽，COVER 行要完整描述当前有效安排）。
+        Substitution substitution = effects.createCoverSubstitution(request, substituteTeacherId,
+                currentRow.orElse(null));
         if (revision) {
-            // 原子切换（票 04）：基准生效行退出「当前有效安排」（行保留、可追溯），
-            // 修订接管该实例；驳回/过期/失败时不会走到这里，旧安排继续生效。
-            effects.supersedeEffectiveCoversOf(request.getRevisesRequestId());
+            // 原子切换（票 04/07）：实例当前的非 SWAP 生效行退出「当前有效安排」
+            // （行保留、可追溯）。基准是 SWAP 行时行保留——它的「来源日移出」分支
+            // 仍承担移动链语义，新 COVER 行以后写胜接管落点教师。
+            // 驳回/过期/失败时不会走到这里，旧安排继续生效。
+            effects.supersedeCurrentCoverAt(
+                    request.getEntryId(), request.getEffectiveDate(), request.getId());
         }
         if (decision != null && decision.newRoomId() != null) {
             if (!rooms.existsById(decision.newRoomId())) {

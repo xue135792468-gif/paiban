@@ -3,6 +3,9 @@ package com.paiban.substitution.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.paiban.substitution.domain.Substitution;
+import com.paiban.substitution.plan.PlanMove;
+import java.time.LocalDate;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -15,6 +18,61 @@ import org.junit.jupiter.api.Test;
  * 不依赖 Spring：这条规则同时被统计查询与修订预览使用，单测钉住语义。
  */
 class RevisionPolicyTest {
+
+    @Test
+    void swapRevisionKindSeparatesFreshRescheduleFromRevision() {
+        // 票 07：管理调课的修订类别要能区分「新调课」与「修订调课」——
+        // 首次（无基准申请）是新调课；以当前生效安排为基准的再次调课是修订调课。
+        assertThat(RevisionPolicy.swapRevisionKind(null))
+                .isEqualTo(RevisionPolicy.RESCHEDULE);
+        assertThat(RevisionPolicy.swapRevisionKind(42L))
+                .isEqualTo(RevisionPolicy.RESCHEDULE_REVISION);
+    }
+
+    @Test
+    void baselineSourceDateInheritsTheEffectiveSwapRowOfTheSameInstance() {
+        // 票 07 净差行不变量：SWAP 生效行的 lessonDate 恒为实例的基线来源日。
+        // 再次调课（from = 当前落点 周五）必须继承首次 SWAP 行的基线来源日（周三），
+        // 这样批准后基准行转 SUPERSEDED 时，「来源日移出」的语义由净差行接管。
+        Substitution baseRow = swapRow(LocalDate.of(2025, 9, 3), LocalDate.of(2025, 9, 5));
+        PlanMove revision = move(LocalDate.of(2025, 9, 5));
+
+        assertThat(RevisionPolicy.baselineSourceDate(List.of(baseRow), revision))
+                .isEqualTo(LocalDate.of(2025, 9, 3));
+
+        // 当前实际 = 基线槽（没有触及该日期的 SWAP 行）：来源日就是本次的 from。
+        assertThat(RevisionPolicy.baselineSourceDate(List.of(baseRow),
+                move(LocalDate.of(2025, 9, 10)))).isEqualTo(LocalDate.of(2025, 9, 10));
+        assertThat(RevisionPolicy.baselineSourceDate(List.of(), move(LocalDate.of(2025, 9, 10))))
+                .isEqualTo(LocalDate.of(2025, 9, 10));
+    }
+
+    @Test
+    void moveThatLandsBackOnTheBaselineSlotIsNetZero() {
+        // 恢复基线环：落点 = 基线来源日 + 基线课节（helper 的 move 落在周三 301）→ 净差为零。
+        PlanMove restore = move(LocalDate.of(2025, 9, 5));
+        assertThat(RevisionPolicy.restoresBaseline(restore,
+                LocalDate.of(2025, 9, 3), 301L)).isTrue();
+        // 落点与基线日期或课节不同：净差非零，照常写行。
+        assertThat(RevisionPolicy.restoresBaseline(restore,
+                LocalDate.of(2025, 9, 5), 301L)).isFalse();
+        assertThat(RevisionPolicy.restoresBaseline(restore,
+                LocalDate.of(2025, 9, 3), 302L)).isFalse();
+    }
+
+    private static Substitution swapRow(LocalDate lessonDate, LocalDate targetLessonDate) {
+        Substitution row = new Substitution();
+        row.setStatus(Substitution.EFFECTIVE);
+        row.setType(Substitution.TYPE_SWAP);
+        row.setLessonDate(lessonDate);
+        row.setTargetLessonDate(targetLessonDate);
+        return row;
+    }
+
+    private static PlanMove move(LocalDate fromDate) {
+        return new PlanMove(10L, 1L, 1L, 1L, null,
+                501L, 5, 1, fromDate, 301L, 3, 1, LocalDate.of(2025, 9, 3), 0);
+    }
 
     @Test
     void substituteEqualToBaselineTeacherMeansRestore() {
