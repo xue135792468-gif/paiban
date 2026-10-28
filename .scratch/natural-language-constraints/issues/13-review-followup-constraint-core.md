@@ -4,7 +4,7 @@
 
 **Blocked by:** 无（后续技术债，不阻塞票 14 的合并/部署）。
 
-**Status:** needs-triage
+**Status:** done（2026-10-27 重构完成；核心服务的规划/持久化/模板拆分转入票 14）
 
 ## 背景
 
@@ -18,8 +18,17 @@
 
 ## 验收
 
-- [ ] 抽取共享的条目匹配函数，checker/provider/planner 全部调用它，行为测试保持绿。
-- [ ] 核心服务按职责拆分，公开 REST 契约与测试不变。
-- [ ] 参数访问不再依赖散落的字符串键（或至少集中到一个访问器）。
-- [ ] `pickOption` 只在 `frontend/e2e/helpers.ts` 实现一次，7 个约束 spec 改为 import；相关 e2e 保持绿。
-- [ ] 定向回归 + 一次完整门禁；不改变票 14 已确认的语义。
+- [x] 抽取共享的 `ConstraintEntryMatcher`，checker/provider/planner 全部调用它，行为测试保持绿（`2862cc9`）。
+- [x] 审计/保存历史从核心服务分离为 `ConstraintAuditService`；规划/持久化/模板仍合在 `ConstraintService`，这一半转入票 14（`a26ce89`）。
+- [x] 参数访问集中到 `ConstraintParams`；`ConstraintProposalService.finish`/`finishRunning` 改用 `ConstraintRunCompletion` 对象（`e19b8aa`、`eb847ec`）。
+- [x] `pickOption` 只在 `frontend/e2e/helpers.ts` 实现一次，7 个约束 spec 改为 import；相关 e2e 27 例绿（`5750c8c`）。
+- [x] `ConstraintAiPanel` 的状态提示收敛为 `runNotice` 映射（`d9417e9`）。
+- [x] 定向回归 + 完整门禁；票 14 已确认的语义不变（门禁结果见交付说明）。
+
+## Implementation (2026-10-27)
+
+- 共享匹配器：`ConstraintEntryMatcher` + 3 个调用方重构；契约单测 `ConstraintEntryMatcherTest`。
+- 类型化参数：`ConstraintParams` 集中 `courseId/teacherId/dayOfWeek/periodNo/roomType/subject`；`ConstraintRunCompletion` 替代 `finish` 的 12 个位置参数，repository 默认方法解包。
+- 服务拆分：`ConstraintAuditService` 独立；`ConstraintService` 仍负责规划/持久化/模板，剩余拆分见 [票14](14-core-service-split.md)。
+- 前端/E2E：AI 面板单映射；`pickOption` 收进 `helpers.ts`。
+- 完整门禁：后端 **863** 例（0 失败/0 错误、5 skipped）、前端 **401** 例、Playwright **90** 例、SFC/isBlank/迁移检查全绿；定向 e2e 27 例（7 个约束 spec 共用 helper）。
