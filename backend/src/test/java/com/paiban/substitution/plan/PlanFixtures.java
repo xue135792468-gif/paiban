@@ -51,10 +51,17 @@ public final class PlanFixtures {
         private ConstraintSettings settings = ConstraintSettings.defaults();
         private int days = 5;
         private int periodsPerDay = 8;
+        private int semesterDays = 120;
         private long nextEntryId = 1000L;
 
         public Builder days(int days) {
             this.days = days;
+            return this;
+        }
+
+        /** 覆盖默认学期长度（120 天），用于学期边界测试。 */
+        public Builder semesterEndsAfter(int days) {
+            this.semesterDays = days;
             return this;
         }
 
@@ -144,8 +151,8 @@ public final class PlanFixtures {
                 }
             }
             return new PlanSnapshot(
-                    1L, MONDAY, MONDAY.plusDays(119), periods, rooms, courses, teachers, classes,
-                    baseline, substitutions, settings);
+                    1L, MONDAY, MONDAY.plusDays(semesterDays - 1L), periods, rooms, courses,
+                    teachers, classes, baseline, substitutions, settings);
         }
 
         private PeriodSection section(int periodNo) {

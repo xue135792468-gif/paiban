@@ -41,7 +41,21 @@ import java.util.Set;
  */
 public final class SwapPlanner {
 
-    public record Request(long classId, long entryId, LocalDate date, long targetPeriodId) {}
+    /**
+     * 一次调课请求：来源实例（班级 + 条目 + 授课日期）与目标课节。
+     *
+     * <p>{@code targetDate} 是票 05 的管理端入口：管理员明确指定的目标实际日期，
+     * 求解必须落在这个日期上，绝不静默替换成同星期的另一周。为 null 时保持旧
+     * 语义（教师自助入口）：按目标课节的星期从来源日期起推算最近的一天。
+     */
+    public record Request(long classId, long entryId, LocalDate date, long targetPeriodId,
+                          LocalDate targetDate) {
+
+        /** 旧入口（按星期推算目标日期）；管理端明确日期入口走五参构造器。 */
+        public Request(long classId, long entryId, LocalDate date, long targetPeriodId) {
+            this(classId, entryId, date, targetPeriodId, null);
+        }
+    }
 
     public record Options(int searchWindowDays, int maxTeachers, RankingPreset preset,
                           int nodeBudget, int timeBudgetMs) {
@@ -93,13 +107,33 @@ public final class SwapPlanner {
                     "TARGET_SAME", "目标节次就是原节次", request.entryId(), request.targetPeriodId())), 0, false);
         }
         LocalDate windowEnd = request.date().plusDays(options.searchWindowDays() - 1L);
-        int delta = Math.floorMod(targetPeriod.dayOfWeek() - request.date().getDayOfWeek().getValue(), 7);
-        LocalDate targetDate = request.date().plusDays(delta);
-        if (targetDate.isAfter(windowEnd)) {
-            return PlanningResult.none(List.of(new PlanDiagnosis(
-                    "TARGET_OUT_OF_WINDOW",
-                    "目标节次落在搜索窗口之外（窗口 " + options.searchWindowDays() + " 天）",
-                    request.entryId(), request.targetPeriodId())), 0, false);
+        LocalDate targetDate;
+        if (request.targetDate() != null) {
+            // 明确目标日期：原样使用，绝不静默替换。只做方向、窗口与学期边界检查。
+            targetDate = request.targetDate();
+            if (targetDate.isBefore(request.date()) || targetDate.isAfter(windowEnd)) {
+                return PlanningResult.none(List.of(new PlanDiagnosis(
+                        "TARGET_OUT_OF_WINDOW",
+                        "目标日期 " + targetDate + " 不在来源日期起 " + options.searchWindowDays()
+                                + " 天的搜索窗口内（不支持向来源日期之前搜索）",
+                        request.entryId(), request.targetPeriodId())), 0, false);
+            }
+            if (targetPeriod.dayOfWeek() != targetDate.getDayOfWeek().getValue()) {
+                return PlanningResult.none(List.of(new PlanDiagnosis(
+                        "TARGET_DAY_MISMATCH",
+                        "目标日期 " + targetDate + " 与目标课节的星期不一致",
+                        request.entryId(), request.targetPeriodId())), 0, false);
+            }
+        } else {
+            // 旧入口：按目标课节的星期推算来源日期起的最近一天。
+            int delta = Math.floorMod(targetPeriod.dayOfWeek() - request.date().getDayOfWeek().getValue(), 7);
+            targetDate = request.date().plusDays(delta);
+            if (targetDate.isAfter(windowEnd)) {
+                return PlanningResult.none(List.of(new PlanDiagnosis(
+                        "TARGET_OUT_OF_WINDOW",
+                        "目标节次落在搜索窗口之外（窗口 " + options.searchWindowDays() + " 天）",
+                        request.entryId(), request.targetPeriodId())), 0, false);
+            }
         }
         if (targetDate.isAfter(snapshot.semesterEnd())) {
             return PlanningResult.none(List.of(new PlanDiagnosis(

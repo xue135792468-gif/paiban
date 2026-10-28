@@ -173,24 +173,26 @@ public class TimetableViewService {
         if (cutoff.isBefore(semesterStart)) {
             return Map.of();
         }
-        List<Substitution> effective = substitutions.findBySemesterIdAndEffectiveDateBetweenAndStatus(
-                semesterId, semesterStart, cutoff, Substitution.EFFECTIVE);
+        // 票 05：调课环的落点日可以早于来源日（如周五的课移回周三），因此不能按
+        // effective_date ≤ 查询日做 between 裁剪——那会漏掉「来源日在查询日之后、
+        // 落点日正好是查询日」的移入行。这里取全学期生效行，按实例日期精确匹配。
+        List<Substitution> effective =
+                substitutions.findBySemesterIdAndStatus(semesterId, Substitution.EFFECTIVE);
         return effective.stream()
-                .filter(item -> touches(item, cutoff))
+                .filter(item -> touches(item, cutoff, semesterStart))
                 .sorted(Comparator.comparing(Substitution::getCreatedAt))
                 .collect(Collectors.toMap(
                         Substitution::getEntryId, substitution -> substitution, (first, second) -> second));
     }
 
     /**
-     * 该生效行是否影响查询日当天的课表。between 查询已保证旧格式的
-     * effective_date &le; 查询日（持续覆盖直接成立）；新格式按实例日期精确匹配。
-     * 新格式的 lesson_date = effective_date &le; target_lesson_date，因此任何
-     * 命中查询日的行都会被 between 查询带出，这里不会漏行。
+     * 该生效行是否影响查询日当天的课表：新格式按实例日期精确匹配（来源日或
+     * 落点日，无论哪个在前）；旧格式保持「自 effective_date（学期内）起持续覆盖」。
      */
-    private static boolean touches(Substitution item, LocalDate date) {
+    private static boolean touches(Substitution item, LocalDate date, LocalDate semesterStart) {
         if (item.getLessonDate() == null) {
-            return true;
+            return !item.getEffectiveDate().isBefore(semesterStart)
+                    && !item.getEffectiveDate().isAfter(date);
         }
         return date.equals(item.getLessonDate()) || date.equals(item.getTargetLessonDate());
     }

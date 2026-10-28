@@ -102,6 +102,10 @@ public class SubstitutionRequest {
     @Column(name = "target_period_id")
     private Long targetPeriodId;
 
+    /** 票 05：管理端调课的明确目标实际日期；旧路径为空，按目标课节的星期推算。 */
+    @Column(name = "target_date")
+    private LocalDate targetDate;
+
     @Column(nullable = false, length = 30)
     private String status;
 

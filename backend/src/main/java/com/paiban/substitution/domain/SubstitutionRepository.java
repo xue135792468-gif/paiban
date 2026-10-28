@@ -11,6 +11,8 @@ public interface SubstitutionRepository extends JpaRepository<Substitution, Long
 
     List<Substitution> findByRequestId(Long requestId);
 
+    List<Substitution> findByEntryId(Long entryId);
+
     List<Substitution> findBySemesterIdAndEffectiveDateAndStatus(
             Long semesterId, LocalDate effectiveDate, String status);
 

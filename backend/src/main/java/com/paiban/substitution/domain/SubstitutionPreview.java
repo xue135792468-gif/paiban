@@ -51,8 +51,19 @@ public class SubstitutionPreview {
     @Column(name = "lesson_date", nullable = false)
     private LocalDate lessonDate;
 
-    @Column(name = "substitute_teacher_id", nullable = false)
+    /**
+     * 代课（COVER）凭证的选定代课人；调课（SWAP，票 05）凭证没有代课教师，
+     * 改为绑定 {@code planId}，此列为空。
+     */
+    @Column(name = "substitute_teacher_id")
     private Long substituteTeacherId;
+
+    /**
+     * 调课（SWAP，票 05）凭证绑定的选定方案：方案的 moves 固化了来源实例、
+     * 明确目标日期与课节，消费时按方案重放（快照哈希不匹配即拒绝）。
+     */
+    @Column(name = "plan_id")
+    private Long planId;
 
     /** 预览发起时的当前实际教师（快照计算），确认后写入申请的调整前教师。 */
     @Column(name = "previous_teacher_id", nullable = false)

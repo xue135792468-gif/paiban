@@ -36,6 +36,7 @@ public final class SubstitutionDtos {
                                          String periodLabel,
                                          Long targetPeriodId,
                                          String targetPeriodLabel,
+                                         LocalDate targetDate,
                                          String type,
                                          String reason,
                                          String status,
@@ -54,6 +55,7 @@ public final class SubstitutionDtos {
 
     public record SubstitutionRecordDto(Long id, Long requestId, Long entryId, String type, Long planId,
                                         LocalDate effectiveDate,
+                                        LocalDate lessonDate,
                                         Long classId, String className, Long courseId, String courseName,
                                         Long originalTeacherId, String originalTeacherName,
                                         Long substituteTeacherId, String substituteTeacherName,

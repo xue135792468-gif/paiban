@@ -4,7 +4,7 @@
       <div>
         <h2>调代工作台</h2>
         <p class="subtitle">
-          搜索教师 → 看实际日期课表 → 指定代课人 → 对照确认。预览不产生申请或生效；提交审批进待批队列，亲自确认按普通批准路径生效。
+          搜索教师 → 看实际日期课表 → 指定代课或同班调课 → 对照确认。调课需指定明确的目标日期与课节；预览不产生申请或生效，提交审批进待批队列，亲自确认按普通批准路径生效。
         </p>
       </div>
     </div>
@@ -61,7 +61,23 @@
         description="所选教师当天没有可调整的课"
       />
 
-      <template v-if="sourceEntry && candidateList && !preview">
+      <template v-if="sourceEntry && !action && !preview">
+        <el-card shadow="never" class="picker-card">
+          <div class="reason-row">
+            <span>
+              已选：{{ sourceEntry.courseName }}（{{ date }} 第 {{ sourceEntry.periodNo }} 节）
+            </span>
+            <el-button type="primary" plain data-testid="choose-cover" @click="action = 'cover'">
+              指定代课
+            </el-button>
+            <el-button type="primary" plain data-testid="choose-swap" @click="action = 'swap'">
+              调课（同班置换）
+            </el-button>
+          </div>
+        </el-card>
+      </template>
+
+      <template v-if="sourceEntry && candidateList && action === 'cover' && !preview">
         <SubstitutePicker
           :info="candidateList"
           :selected="candidate"
@@ -98,13 +114,31 @@
         </el-card>
       </template>
 
+      <SwapPlannerPanel
+        v-if="sourceEntry && action === 'swap' && !preview"
+        :entry="sourceEntry"
+        :lesson-date="date"
+        @preview="onSwapPreview"
+        @cancel="resetFlow"
+      />
+
       <PreviewCompare
-        v-if="preview"
+        v-if="preview && action === 'cover'"
         :preview="preview"
         :can-confirm="canConfirm"
         :busy="actionBusy"
         @submit-approval="onSubmitApproval"
         @confirm="onConfirm"
+        @cancel="resetFlow"
+      />
+
+      <SwapCompare
+        v-if="swapPreview"
+        :preview="swapPreview"
+        :can-confirm="canConfirm"
+        :busy="actionBusy"
+        @submit-approval="onSubmitSwapApproval"
+        @confirm="onConfirmSwap"
         @cancel="resetFlow"
       />
 
@@ -130,9 +164,12 @@ import { useAuthStore } from '@/stores/auth'
 import WorkbenchTimetable from '@/components/substitution/workbench/WorkbenchTimetable.vue'
 import SubstitutePicker from '@/components/substitution/workbench/SubstitutePicker.vue'
 import PreviewCompare from '@/components/substitution/workbench/PreviewCompare.vue'
+import SwapPlannerPanel from '@/components/substitution/workbench/SwapPlannerPanel.vue'
+import SwapCompare from '@/components/substitution/workbench/SwapCompare.vue'
 import type { Entry } from '@/components/substitution/types'
 import type {
   PreviewResponse,
+  SwapPreviewResponse,
   WorkbenchActionResult,
   WorkbenchCandidate,
   WorkbenchCandidateList,
@@ -152,11 +189,14 @@ const entries = ref<Entry[]>([])
 const timetableLoading = ref(false)
 
 const sourceEntry = ref<Entry | null>(null)
+/** 本次调整的动作：指定代课（票 03）或同班调课（票 05）。 */
+const action = ref<'cover' | 'swap' | null>(null)
 const candidateList = ref<WorkbenchCandidateList | null>(null)
 const candidate = ref<WorkbenchCandidate | null>(null)
 const reason = ref('')
 const previewLoading = ref(false)
 const preview = ref<PreviewResponse | null>(null)
+const swapPreview = ref<SwapPreviewResponse | null>(null)
 const actionBusy = ref(false)
 const result = ref<WorkbenchActionResult | null>(null)
 
@@ -217,8 +257,10 @@ async function loadTimetable() {
 
 async function onPick(entry: Entry) {
   sourceEntry.value = entry
+  action.value = null
   candidate.value = null
   preview.value = null
+  swapPreview.value = null
   result.value = null
   try {
     const { data } = await http.get('/substitution-workbench/candidates', {
@@ -228,6 +270,11 @@ async function onPick(entry: Entry) {
   } catch (error) {
     ElMessage.error(serverMessage(error, '操作失败'))
   }
+}
+
+/** 调课面板选定候选方案并创建 SWAP 预览凭证后进入整环对照。 */
+function onSwapPreview(response: SwapPreviewResponse) {
+  swapPreview.value = response
 }
 
 function onChoose(chosen: WorkbenchCandidate) {
@@ -262,16 +309,25 @@ async function onConfirm(comment: string) {
   await consume('confirm', comment)
 }
 
-async function consume(action: 'submit-approval' | 'confirm', comment: string) {
-  if (!preview.value) return
+async function onSubmitSwapApproval(comment: string) {
+  await consume('submit-approval-swap', comment)
+}
+
+async function onConfirmSwap(comment: string) {
+  await consume('confirm-swap', comment)
+}
+
+async function consume(action: string, comment: string) {
+  const voucherId = preview.value?.voucherId ?? swapPreview.value?.voucherId
+  if (!voucherId) return
   actionBusy.value = true
   try {
-    const { data } = await http.post(
-      `/substitution-workbench/previews/${preview.value.voucherId}/${action}`,
-      { comment: comment || undefined },
-    )
+    const { data } = await http.post(`/substitution-workbench/previews/${voucherId}/${action}`, {
+      comment: comment || undefined,
+    })
     result.value = data
     preview.value = null
+    swapPreview.value = null
     resetFlow()
     await loadTimetable()
   } catch (error) {
@@ -284,9 +340,11 @@ async function consume(action: 'submit-approval' | 'confirm', comment: string) {
 /** 取消预览或完成操作后清空流程状态；预览本身零申请、零生效、零通知。 */
 function resetFlow() {
   sourceEntry.value = null
+  action.value = null
   candidateList.value = null
   candidate.value = null
   preview.value = null
+  swapPreview.value = null
   reason.value = ''
 }
 

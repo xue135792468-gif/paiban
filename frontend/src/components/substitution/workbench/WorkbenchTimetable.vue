@@ -45,7 +45,7 @@
                   data-testid="pick-lesson"
                   @click="emit('pick', cellAt(day, row)!)"
                 >
-                  指定代课
+                  发起调整
                 </el-button>
               </div>
             </template>

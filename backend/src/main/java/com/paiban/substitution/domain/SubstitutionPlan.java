@@ -28,7 +28,11 @@ public class SubstitutionPlan {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "request_id", nullable = false)
+    /**
+     * 管理端预览方案（票 05）在选定前没有申请；提交审批/亲自确认时才关联。
+     * 普通教师路径生成方案时申请已存在，该列不会为空。
+     */
+    @Column(name = "request_id")
     private Long requestId;
 
     @Column(name = "semester_id", nullable = false)
