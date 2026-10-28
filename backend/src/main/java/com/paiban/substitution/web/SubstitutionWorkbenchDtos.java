@@ -215,7 +215,11 @@ public final class SubstitutionWorkbenchDtos {
                                       List<SwapChangeItemDto> changes,
                                       List<String> issues,
                                       boolean canSubmitApproval,
-                                      boolean canConfirm) {}
+                                      boolean canConfirm,
+                                      /** 修订链（票 07）：预览绑定的基准申请；首次新调课为空。 */
+                                      Long revisesRequestId,
+                                      /** RESCHEDULE（新调课）或 RESCHEDULE_REVISION（修订调课）。 */
+                                      String revisionKind) {}
 
     /** 切换视角（班级/教师）后的单日左右对照；日期与视角两侧联动。 */
     public record SwapCompareResponse(LocalDate date,

@@ -481,14 +481,14 @@ public class AdminSubstitutionService {
     }
 
     /**
-     * 该实例当天的新格式 COVER 生效行（票 04 修订链的基准）。
-     * SWAP 行不算：来源日的实例当天已被移走（装载即失败），落点日归票 05 管。
+     * 该实例当天的新格式生效行（票 04/07 修订链的基准）：同日 COVER 行优先，
+     * 否则落点命中该日期的 SWAP 行（票 07：原先调课后的实例仍可再代课——
+     * 预览产出以 SWAP 申请为基准的修订，而不是冲突）。SWAP 来源日实例当天已被
+     * 移走（装载即失败），不会出现在这里。
      */
     private java.util.Optional<Substitution> currentCoverRow(Instance instance) {
-        return substitutions
-                .findFirstByEntryIdAndEffectiveDateAndStatus(
-                        instance.entryId(), instance.lessonDate(), Substitution.EFFECTIVE)
-                .filter(row -> !Substitution.TYPE_SWAP.equals(row.getType()));
+        return SubstitutionLookups.currentInstanceRow(
+                substitutions, instance.entryId(), instance.lessonDate());
     }
 
     /** 同一实例同一时间最多一笔活跃修改；返回待处理申请 id 供界面引导。 */

@@ -19,6 +19,7 @@ import com.paiban.substitution.domain.SubstitutionRequest;
 import com.paiban.substitution.domain.SubstitutionRequestRepository;
 import com.paiban.substitution.domain.SubstitutionRepository;
 import com.paiban.substitution.plan.CandidatePlan;
+import com.paiban.substitution.plan.FrozenSlot;
 import com.paiban.substitution.plan.PlanDiagnosis;
 import com.paiban.substitution.plan.PlanMove;
 import com.paiban.substitution.plan.PlanSnapshot;
@@ -211,10 +212,14 @@ public class AdminSwapService {
         RankingPreset preset = body.rankingPreset() == null || body.rankingPreset().isBlank()
                 ? options.preset()
                 : RankingPreset.fromCode(body.rankingPreset());
+        // 冻结槽（票 07）：窗口内本班当前安排已开始的槽位交给求解器跳过——
+        // 部分已开始的旧环里，不碰冻结实例的合法新方案要能被找到。
+        Set<FrozenSlot> frozenSlots = frozenSlotsInWindow(snapshot, classId,
+                body.lessonDate(), options.windowDays());
         PlanningResult result = SwapPlanner.plan(
                 snapshot,
                 new SwapPlanner.Request(classId, body.entryId(), body.lessonDate(),
-                        body.targetPeriodId(), body.targetDate()),
+                        body.targetPeriodId(), body.targetDate(), frozenSlots),
                 SwapPlanner.Options.of(options.windowDays(), options.maxTeachers(), preset));
 
         // 管理预览候选是短期试算结果：重新生成时清掉上一批（没有申请的 PROPOSED 方案）。
@@ -298,12 +303,24 @@ public class AdminSwapService {
         Instant deadline = swapDeadline(moves);
         new DeadlineChecker(clock::instant).requireBeforeDeadline(deadline, "置换环内最早的课节");
 
+        // 冻结校验（票 07）：方案触及已开始的槽位（来源或落点）即拒绝——
+        // 已开始或已结束的授课任何路径都不可改变。
+        LessonFreeze.frozenTouchReason(moves, this::periodStart, clock.instant())
+                .ifPresent(reason -> { throw ApiException.conflict(reason); });
+
         // 校验问题只是预览提示；硬冲突以确认时的独立校验器裁决为准。
         PlanVerifier.Result verification =
                 PlanVerifier.verify(snapshot, moves, PlanVerifier.Kind.SWAP, plan.getSoftPenalty());
         List<String> issues = verification.issues().stream()
                 .map(issue -> issue.code() + ": " + issue.message())
                 .toList();
+
+        // 修订链（票 07）：预览绑定来源实例的当前生效申请作为基准。
+        // 有基准 = 修订调课（RESCHEDULE_REVISION），无基准 = 首次新调课（RESCHEDULE）。
+        Long revisesRequestId = SubstitutionLookups
+                .currentInstanceRow(substitutions, body.entryId(), body.lessonDate())
+                .map(Substitution::getRequestId).orElse(null);
+        String revisionKind = RevisionPolicy.swapRevisionKind(revisesRequestId);
 
         Instant now = clock.instant();
         SubstitutionPreview voucher = new SubstitutionPreview();
@@ -312,6 +329,8 @@ public class AdminSwapService {
         voucher.setLessonDate(body.lessonDate());
         voucher.setPlanId(plan.getId());
         voucher.setPreviousTeacherId(source.current().teacherId());
+        voucher.setRevisesRequestId(revisesRequestId);
+        voucher.setRevisionKind(revisionKind);
         voucher.setOperatorUserId(user.getId());
         voucher.setSnapshotHash(snapshot.snapshotHash());
         voucher.setReason(body.reason());
@@ -348,7 +367,9 @@ public class AdminSwapService {
                 changeItems(snapshot, moves),
                 issues,
                 true,
-                true);
+                true,
+                revisesRequestId,
+                revisionKind);
     }
 
     // ------------------------------------------------------- submit / confirm
@@ -415,6 +436,23 @@ public class AdminSwapService {
         if (raced != null) {
             throw ApiException.conflict("置换环内的课节已有待处理的申请（#" + raced + "），请先处理该单");
         }
+        // 冻结复核（票 07）：等待行锁后实时读时钟——排队期间环内任何槽位开课都整单拒绝。
+        LessonFreeze.frozenTouchReason(moves, this::periodStart, clock.instant())
+                .ifPresent(reason -> { throw ApiException.conflict(reason); });
+        // 基准复核（票 07）：来源实例的当前生效行必须仍属于预览绑定的基准申请。
+        // 快照哈希已保证整份课表未变，这里钉住基准防旁路；基准被抢先替代时明确冲突。
+        var currentRow = SubstitutionLookups
+                .currentInstanceRow(substitutions, voucher.getEntryId(), voucher.getLessonDate());
+        if (currentRow.isPresent()) {
+            if (voucher.getRevisesRequestId() == null
+                    || !voucher.getRevisesRequestId().equals(currentRow.get().getRequestId())) {
+                expire(voucher);
+                throw ApiException.conflict("该课节的当前安排已变化，旧预览不能生效，请重新预览");
+            }
+        } else if (voucher.getRevisesRequestId() != null) {
+            expire(voucher);
+            throw ApiException.conflict("该修订的基准安排已不存在，请重新预览");
+        }
 
         SubstitutionRequest request = createSwapRequest(user, voucher, snapshot, moves);
         plan.setRequestId(request.getId());
@@ -474,6 +512,10 @@ public class AdminSwapService {
         request.setTargetDate(sourceMove.toDate());
         request.setReason(voucher.getReason());
         request.setType(Substitution.TYPE_SWAP);
+        // 修订链（票 07）：RESCHEDULE = 首次新调课；RESCHEDULE_REVISION = 以当前
+        // 生效安排为基准的修订调课。前驱申请随凭证绑定落库，批准后由 approvePlan 处理。
+        request.setRevisesRequestId(voucher.getRevisesRequestId());
+        request.setRevisionKind(voucher.getRevisionKind());
         // 管理员的提交审批与亲自确认都不依赖全局教师自助模式。
         request.setApprovalMode("approval");
         request.setStatus(SubstitutionRequest.SUBMITTED);
@@ -615,6 +657,25 @@ public class AdminSwapService {
             throw ApiException.conflict("方案没有任何课节移动，请重新生成");
         }
         return moves;
+    }
+
+    /**
+     * 窗口内本班已开始的槽位集合（票 07）：日期从来源日起按窗口展开、不超过学期末，
+     * 槽位取当前实际安排（含生效调代）。课节开始时间缺失即拒绝写入（规格第 6 节）。
+     */
+    private Set<FrozenSlot> frozenSlotsInWindow(PlanSnapshot snapshot, long classId,
+                                                LocalDate lessonDate, int windowDays) {
+        Set<FrozenSlot> frozen = new LinkedHashSet<>();
+        LocalDate windowEnd = lessonDate.plusDays(windowDays - 1L);
+        for (LocalDate date = lessonDate; !date.isAfter(windowEnd)
+                && !date.isAfter(snapshot.semesterEnd()); date = date.plusDays(1)) {
+            for (PlanSnapshot.ScheduledLesson lesson : snapshot.scheduleOn(date).ofClass(classId)) {
+                if (LessonFreeze.started(clock.instant(), date, periodStart(lesson.periodId()))) {
+                    frozen.add(new FrozenSlot(date, lesson.periodId()));
+                }
+            }
+        }
+        return frozen;
     }
 
     /** 本单截止：环内所有被改变实例「当前与拟生效」开课时刻的最小值。 */

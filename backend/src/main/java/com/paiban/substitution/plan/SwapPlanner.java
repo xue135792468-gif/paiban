@@ -47,13 +47,31 @@ public final class SwapPlanner {
      * <p>{@code targetDate} 是票 05 的管理端入口：管理员明确指定的目标实际日期，
      * 求解必须落在这个日期上，绝不静默替换成同星期的另一周。为 null 时保持旧
      * 语义（教师自助入口）：按目标课节的星期从来源日期起推算最近的一天。
+     *
+     * <p>{@code frozenSlots} 是票 07 的冻结边界（规格第 6 节）：当前安排开课时刻
+     * 已过的槽位（已开始/已结束的授课）。搜索绝不把冻结槽选作环节点——既不移出
+     * 冻结实例、也不把课落进已开始的时间；来源或目标槽被冻结时直接给出诊断。
      */
     public record Request(long classId, long entryId, LocalDate date, long targetPeriodId,
-                          LocalDate targetDate) {
+                          LocalDate targetDate, Set<FrozenSlot> frozenSlots) {
 
         /** 旧入口（按星期推算目标日期）；管理端明确日期入口走五参构造器。 */
         public Request(long classId, long entryId, LocalDate date, long targetPeriodId) {
             this(classId, entryId, date, targetPeriodId, null);
+        }
+
+        /** 明确目标日期、无冻结槽（票 05 语义）。 */
+        public Request(long classId, long entryId, LocalDate date, long targetPeriodId,
+                       LocalDate targetDate) {
+            this(classId, entryId, date, targetPeriodId, targetDate, Set.of());
+        }
+
+        public Request {
+            frozenSlots = frozenSlots == null ? Set.of() : Set.copyOf(frozenSlots);
+        }
+
+        private boolean frozen(LocalDate d, long periodId) {
+            return frozenSlots.contains(new FrozenSlot(d, periodId));
         }
     }
 
@@ -106,6 +124,12 @@ public final class SwapPlanner {
             return PlanningResult.none(List.of(new PlanDiagnosis(
                     "TARGET_SAME", "目标节次就是原节次", request.entryId(), request.targetPeriodId())), 0, false);
         }
+        // 票 07：来源槽已冻结（开课时刻已过）时，方案无从谈起，直接给出诊断。
+        if (request.frozen(request.date(), source.periodId())) {
+            return PlanningResult.none(List.of(new PlanDiagnosis(
+                    "SOURCE_FROZEN", "该课节已经开课，不能改变已开始或已结束的授课",
+                    request.entryId(), source.periodId())), 0, false);
+        }
         LocalDate windowEnd = request.date().plusDays(options.searchWindowDays() - 1L);
         LocalDate targetDate;
         if (request.targetDate() != null) {
@@ -139,6 +163,12 @@ public final class SwapPlanner {
             return PlanningResult.none(List.of(new PlanDiagnosis(
                     "TARGET_OUT_OF_SEMESTER", "目标日期超出学期范围", request.entryId(),
                     request.targetPeriodId())), 0, false);
+        }
+        // 票 07：目标槽已冻结（开课时刻已过）时，不能把课移到已开始的时间。
+        if (request.frozen(targetDate, request.targetPeriodId())) {
+            return PlanningResult.none(List.of(new PlanDiagnosis(
+                    "TARGET_FROZEN", "目标课节已经开课，不能把课移到已开始的时间",
+                    request.entryId(), request.targetPeriodId())), 0, false);
         }
         DaySchedule targetDay = snapshot.scheduleOn(targetDate);
         ScheduledLesson targetLesson = targetDay.lessonAt(request.classId(), request.targetPeriodId());
@@ -225,6 +255,10 @@ public final class SwapPlanner {
                 DaySchedule day = schedule(currentDate);
                 for (ScheduledLesson candidate : day.ofClass(request.classId())) {
                     if (candidate.entryId() == source.entryId() || usedEntries.contains(candidate.entryId())) {
+                        continue;
+                    }
+                    // 票 07：已开始的槽不进环——既不能把冻结课移走，也不能把课落进去。
+                    if (request.frozen(currentDate, candidate.periodId())) {
                         continue;
                     }
                     if (currentDate.equals(goal.date()) && candidate.periodId() == goal.periodId()) {
