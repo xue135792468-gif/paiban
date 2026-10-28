@@ -58,14 +58,14 @@ describe('排课页的导入课表入口', () => {
     })
   })
 
-  it('进入 AI 导入页并预选课表目标', async () => {
+  it('进入 AI 导入页并默认整本工作簿目标', async () => {
     const { wrapper, router } = await mountScheduling()
 
     await button(wrapper, '导入课表').trigger('click')
     await flushPromises()
 
     expect(router.currentRoute.value.path).toBe('/admin/ai-import')
-    expect(router.currentRoute.value.query.target).toBe('timetable')
+    expect(router.currentRoute.value.query.target).toBeUndefined()
   })
 
   it('没有基础数据管理权限时不显示导入入口', async () => {

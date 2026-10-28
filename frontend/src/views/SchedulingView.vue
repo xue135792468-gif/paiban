@@ -689,7 +689,7 @@ function openDraftEditor(draftId: number) {
 }
 
 function goImportTimetable() {
-  router.push({ path: '/admin/ai-import', query: { target: 'timetable' } })
+  router.push('/admin/ai-import')
 }
 
 onMounted(async () => {

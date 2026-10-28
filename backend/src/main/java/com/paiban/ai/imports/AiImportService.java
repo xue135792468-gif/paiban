@@ -1427,7 +1427,16 @@ public class AiImportService {
             ExcelTableReader.Grid grid = ExcelTableReader.readGrid(new ByteArrayInputStream(bytes));
             return new GridData(grid.sheetName(), grid.rows());
         } catch (Exception ex) {
-            throw ApiException.badRequest("无法读取表格文件: " + ex.getMessage());
+            String message = ex.getMessage() == null ? "" : ex.getMessage();
+            if (message.contains("多个有数据的工作表")) {
+                // The single-target path cannot represent several sheets, but the workbook
+                // pipeline can. Tell the user the way out instead of asking them to split.
+                throw ApiException.badRequest(
+                        "这个文件有多张工作表，不能按单一目标解析。请改用「整本工作簿」导入"
+                                + "（在导入页选择「整本工作簿（推荐）」后重新上传），"
+                                + "或拆分文件只保留一张工作表");
+            }
+            throw ApiException.badRequest("无法读取表格文件: " + message);
         }
     }
 

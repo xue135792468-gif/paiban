@@ -15,6 +15,16 @@ export interface ImportTargetCard {
 
 export const IMPORT_TARGETS: ImportTargetCard[] = [
   {
+    code: 'workbook',
+    title: '整本工作簿（推荐）',
+    available: true,
+    handles: '一个 Excel 里的多张工作表：数据源、班级课表、教师课表、课程清单、使用说明',
+    output: '一次识别并导入教师、课程、班级与课表；课表生成草稿',
+    limits: '只支持 Excel / CSV；文本和图片请改选教师或课表',
+    excelHint: '推荐：把整个工作簿拖进来，AI 会自己分辨每张表。',
+    textPlaceholder: '',
+  },
+  {
     code: 'teacher',
     title: '教师',
     available: true,
@@ -80,18 +90,13 @@ export function targetCard(code: string): ImportTargetCard | undefined {
   return IMPORT_TARGETS.find((target) => target.code === code)
 }
 
-/** Codes that are not pickable cards but still appear on a preview. */
-const EXTRA_TITLES: Record<string, string> = {
-  workbook: '整本工作簿',
-}
-
 export function targetTitle(code: string): string {
-  return targetCard(code)?.title ?? EXTRA_TITLES[code] ?? code
+  return targetCard(code)?.title ?? code
 }
 
-/** Query parameters may name a target; unknown or unavailable codes fall back to teacher. */
+/** Query parameters may name a target; unknown or unavailable codes fall back to the workbook. */
 export function preselectedTarget(query: unknown): string {
   const requested = typeof query === 'string' ? query : ''
   const match = IMPORT_TARGETS.find((target) => target.code === requested && target.available)
-  return match?.code ?? 'teacher'
+  return match?.code ?? 'workbook'
 }
