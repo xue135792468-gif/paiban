@@ -2,7 +2,8 @@
 
 **What to build:** 同一会话的两次并发「确认入库」应只有一次真正写入；第二次返回明确冲突，不得各建一份草稿后由乐观锁把后一次保存打掉。
 **Blocked by:** None（本批 01-03 已实现的提交前批次完整性闸门是前置）
-**Status:** needs-triage
+**Status:** done
+**Execution:** 已实现（2026-10-28），采用候选方案 2（`COMMITTING` 短事务认领）
 **Spec:** ../spec.md
 
 ## 现象与证据
@@ -27,3 +28,33 @@
 ## Comments
 
 - 2026-10-26 由 01-03 的 code-review（Spec 轴）发现，未在本批实现；本批已有「任何未完成批次拒绝提交」和 `run_id` 防护，但重复提交本身仍未单飞。
+
+## 实现说明（2026-10-28）
+
+**选型：** 候选方案 2。`AiImportLog` 新增 `COMMITTING` 状态；`WorkbookImportFlow.commit` 在写任何业务数据前，先在一个短事务里重新读取会话、校验状态、写入 `COMMITTING` 并 `saveAndFlush`。乐观锁（`@Version`）是唯一的仲裁者：两个请求都从 `PREVIEW` 出发时，只有一个能完成认领，另一个要么读到 `COMMITTING`、要么在 flush 时丢版本，统一返回 409，不执行任何类别写入。
+
+- **失败可重试：** 认领后的任何异常都会走 `releaseCommitClaim` 把状态放回 `PREVIEW`（审计里写「入库未完成，可再次确认：…」）；类别本身的行错误仍按原逻辑落成 `PREVIEW`，不会卡在 `COMMITTING`。
+- **重启恢复：** `recoverInterruptedSessions` 新增扫描 `COMMITTING`，把上次进程留下的占位放回 `PREVIEW` 并注明「服务重启中断了入库，请重新确认」，不会留下永久 `COMMITTING`。
+- **并发入口：** `AiImportService.requireEditable` 与 `reparse` 都拒绝 `COMMITTING`；`stop`（仅 `PARSING`）、`abandon`（仅 `PARSING`/`PARTIAL`）、`retry`（仅 `PARTIAL`）本来就不会碰这个状态。
+- **前端：** `importStatus.ts` 增加「入库中」标签、锁定态与可恢复态；确认按钮在 `COMMITTING` 时显示「入库中…」并禁用。帮助文档补充一句并发确认的行为。
+- **单目标课表提交评估（按要求不改）：** 单目标 `commitSingleTarget` 在**一个** `transactionTemplate` 里同时建草稿和保存会话，后到请求的乐观锁失败会让整个事务回滚，草稿不会残留；因此同类竞态只影响错误文案（`ObjectOptimisticLockingFailureException` 已由 `GlobalExceptionHandler` 映射 409），不产生重复数据，不在本票顺手改。
+- **已知边界：** 启动恢复会把**所有**残留 `COMMITTING` 视为本进程崩溃遗留。当前部署是单实例；若将来多实例部署，需要额外的认领时间戳/心跳，避免重启实例误清另一个实例正在进行的提交。
+
+**测试：** 新增 `WorkbookCommitRaceTest`：两个「都读到 PREVIEW」的会话快照（顺序与双线程各一）断言只有一次成功、另一方冲突、数据库只多一份草稿；失败后同一会话可再次提交；`COMMITTING` 经启动恢复回到 `PREVIEW`；另有一条 HTTP 并发用例断言两个请求恰好一个 200、一个 409 且只多一份草稿。修复前稳定变红（期望 2 份草稿、实际 3 份），修复后全绿。定向回归：导入模块 111 例全绿，前端相关单测 74 例全绿。
+
+## 评审修复（2026-10-28，两轴独立评审）
+
+评审结论为无阻塞问题；按评审建议补了以下低成本项：
+
+- **页面轮询**：`useImportSession` 恢复出 `COMMITTING` 时也继续轮询，跨标签页恢复后会自动刷新到已入库，不会永久停在「入库中」。
+- **历史状态**：`AiHistoryView` 改用 `importStatus.ts` 的共享中文词表（不再维护第二份局部表）；`AiHistoryService` 给 `COMMITTING` 单独摘要，且不再把进行中的入库标成成功。
+- **认领结算去重**：`recoverCommitClaim` 与 `releaseCommitClaim` 合并为 `settleCommitClaim`，恢复与释放只差一句说明文案。
+- **Playwright 覆盖**：新增「入库中的会话恢复后显示禁用按钮，并自动刷新到已入库」，用会话读 stub 稳定观察这个瞬时状态。
+- **HTTP 契约**：`WorkbookCommitRaceTest` 增加真实 REST 并发用例（一个 200、一个 409、只多一份草稿）。
+
+保留为后续、不在本票扩大的项：
+
+1. `AiImportService.requireEditable`、`reparse` 与 `WorkbookImportFlow.requireCommitable` 各有一份状态门文案，未来可在票 14 的服务拆分里统一。
+2. 认领没有租约/超时：进程挂起（非崩溃）时只能靠重启释放；当前单实例部署接受，ADR-0029 已记。
+3. 后台晚响应仍会写 `batches_json` 并推进版本；现有状态门（提交要求全部批次完成）使它在实践中不可达，但若未来放宽提交前置，应给 `recordLateAnswer` 补 `COMMITTING` 保护。
+4. `releaseCommitClaim` 写的「入库未完成」说明存在 `ai_explanation`，而 `PREVIEW` 的页面说明优先取 payload 文案，因此用户看到的是提交返回的错误提示；说明保留作审计。

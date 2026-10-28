@@ -7,6 +7,7 @@ export const STATUS_LABELS: Record<string, string> = {
   PARSING: '解析中',
   PREVIEW: '待确认',
   EDITED: '已微调',
+  COMMITTING: '入库中',
   COMMITTED: '已入库',
   FAILED: '解析失败',
   PARTIAL: '部分结果',
@@ -18,13 +19,19 @@ export const RESTORABLE_STATUSES: ReadonlySet<string> = new Set([
   'PARSING',
   'PREVIEW',
   'EDITED',
+  'COMMITTING',
   'COMMITTED',
   'FAILED',
   'PARTIAL',
 ])
 
 /** Statuses that must not accept an edit or a commit. */
-export const LOCKED_STATUSES: ReadonlySet<string> = new Set(['PARSING', 'PARTIAL', 'ABANDONED'])
+export const LOCKED_STATUSES: ReadonlySet<string> = new Set([
+  'PARSING',
+  'PARTIAL',
+  'COMMITTING',
+  'ABANDONED',
+])
 
 /** Statuses whose rows the user may still correct. */
 export const EDITABLE_STATUSES: ReadonlySet<string> = new Set(['PREVIEW', 'EDITED'])
@@ -36,7 +43,7 @@ export function statusText(status: string): string {
 export function statusTagType(status: string): 'success' | 'danger' | 'info' | 'warning' {
   if (status === 'COMMITTED') return 'success'
   if (status === 'FAILED') return 'danger'
-  if (status === 'PARSING' || status === 'PARTIAL') return 'warning'
+  if (status === 'PARSING' || status === 'PARTIAL' || status === 'COMMITTING') return 'warning'
   return 'info'
 }
 
@@ -46,6 +53,10 @@ export function isParsing(status?: string | null): boolean {
 
 export function isPartial(status?: string | null): boolean {
   return status === 'PARTIAL'
+}
+
+export function isCommitting(status?: string | null): boolean {
+  return status === 'COMMITTING'
 }
 
 export function isAbandoned(status?: string | null): boolean {

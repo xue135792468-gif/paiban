@@ -316,6 +316,9 @@ public class AiImportService {
             // A full re-parse would throw away the batches that did parse.
             throw ApiException.conflict("这次导入只解析了一部分班级，请先重试失败批次或放弃导入");
         }
+        if (AiImportLog.COMMITTING.equals(log.getStatus())) {
+            throw ApiException.conflict("这次导入正在入库，请刷新后查看结果");
+        }
         ImportTarget target = targetOf(log);
         if (target == ImportTarget.WORKBOOK) {
             return workbook.reparse(log);
@@ -1398,6 +1401,9 @@ public class AiImportService {
         }
         if (AiImportLog.COMMITTED.equals(log.getStatus())) {
             throw ApiException.conflict("该导入已入库，不能再修改");
+        }
+        if (AiImportLog.COMMITTING.equals(log.getStatus())) {
+            throw ApiException.conflict("这次导入正在入库，请刷新后查看结果");
         }
         if (AiImportLog.FAILED.equals(log.getStatus())) {
             throw ApiException.conflict("该导入解析失败，请打回重析");

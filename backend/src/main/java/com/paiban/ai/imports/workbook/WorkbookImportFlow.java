@@ -711,7 +711,9 @@ public class WorkbookImportFlow {
     /**
      * A restart leaves rows in PARSING that nothing is working on. A planned session becomes
      * PARTIAL with its unfinished ranges listed for retry; a session that never got a plan
-     * becomes FAILED and offers the explicit re-plan entry. Nothing is replayed automatically.
+     * becomes FAILED and offers the explicit re-plan entry. A row left in COMMITTING had a
+     * confirm in flight, so it goes back to PREVIEW and the user confirms again. Nothing is
+     * replayed automatically.
      */
     @EventListener(ApplicationReadyEvent.class)
     public void recoverInterruptedSessions() {
@@ -725,6 +727,17 @@ public class WorkbookImportFlow {
                 // A corrupt row must not abort startup for every other session; the row stays
                 // PARSING and the failure is visible in the log.
                 LOG.error("无法恢复中断的工作簿导入 session={}", candidate.getId(), ex);
+            }
+        }
+        for (AiImportLog candidate : logs.findByStatus(AiImportLog.COMMITTING)) {
+            if (!TARGET.equals(candidate.getTargetType())) {
+                continue;
+            }
+            try {
+                transactionTemplate.executeWithoutResult(status ->
+                        settleCommitClaim(candidate.getId(), "服务重启中断了入库，请重新确认"));
+            } catch (RuntimeException ex) {
+                LOG.error("无法恢复未完成的入库 session={}", candidate.getId(), ex);
             }
         }
     }
@@ -914,14 +927,22 @@ public class WorkbookImportFlow {
      * Writes the confirmed preview in dependency order: teachers, courses, classes, then the
      * timetable. Each category is its own transaction, so a failing timetable does not undo
      * the teachers; the session stays editable and a second click retries only what failed.
+     *
+     * <p>The row is claimed with a short {@code COMMITTING} write before any category is
+     * touched. Two concurrent confirms both start from {@code PREVIEW}, but only the winner
+     * of the version race gets past the claim, so the second one cannot build an extra draft.
      */
     public CommitResultDto commit(AiImportLog log, String username) {
-        if (AiImportLog.COMMITTED.equals(log.getStatus())) {
-            throw ApiException.conflict("该导入已入库，不能再修改");
+        AiImportLog claimed = claimCommit(log.getId());
+        try {
+            return commitClaimed(claimed, username);
+        } catch (RuntimeException ex) {
+            releaseCommitClaim(claimed.getId(), ex);
+            throw ex;
         }
-        if (AiImportLog.PARSING.equals(log.getStatus()) || AiImportLog.PARTIAL.equals(log.getStatus())) {
-            throw ApiException.conflict("这次导入还没有完整结果，请先处理失败批次");
-        }
+    }
+
+    private CommitResultDto commitClaimed(AiImportLog log, String username) {
         requireAllBatchesDone(log);
         WorkbookPayload payload = readPayload(log);
         if (payload.rows().isEmpty() && payload.teachers().isEmpty() && payload.courses().isEmpty()) {
@@ -998,6 +1019,71 @@ public class WorkbookImportFlow {
         return new CommitResultDto(
                 total, List.copyOf(rowErrors), draftId, payload.warnings(), categoryDtos(committed),
                 payload.teacherWarnings());
+    }
+
+    /**
+     * Short transaction that turns the preview into {@code COMMITTING}. The flush makes the
+     * optimistic version the arbiter, not a check-then-act gap: the second request either
+     * sees the new status or loses the version race, and either way it writes nothing.
+     */
+    private AiImportLog claimCommit(Long id) {
+        try {
+            return transactionTemplate.execute(status -> {
+                AiImportLog current = logs.findById(id)
+                        .orElseThrow(() -> ApiException.notFound("导入会话不存在: " + id));
+                requireCommitable(current);
+                current.setStatus(AiImportLog.COMMITTING);
+                current.setUpdatedAt(Instant.now());
+                return logs.saveAndFlush(current);
+            });
+        } catch (org.springframework.dao.OptimisticLockingFailureException ex) {
+            throw ApiException.conflict("另一次确认入库正在进行，请刷新后查看结果");
+        }
+    }
+
+    private void requireCommitable(AiImportLog log) {
+        if (AiImportLog.COMMITTED.equals(log.getStatus())) {
+            throw ApiException.conflict("该导入已入库，不能再修改");
+        }
+        if (AiImportLog.COMMITTING.equals(log.getStatus())) {
+            throw ApiException.conflict("这次导入正在入库，请刷新后查看结果");
+        }
+        if (AiImportLog.PARSING.equals(log.getStatus())
+                || AiImportLog.PARTIAL.equals(log.getStatus())) {
+            throw ApiException.conflict("这次导入还没有完整结果，请先处理失败批次");
+        }
+        if (AiImportLog.ABANDONED.equals(log.getStatus())) {
+            throw ApiException.conflict("该导入已放弃，不能再修改或入库");
+        }
+        if (AiImportLog.FAILED.equals(log.getStatus())) {
+            throw ApiException.conflict("该导入解析失败，请打回重析");
+        }
+    }
+
+    /**
+     * A failed write must not leave a claim nobody will finish: the user can confirm again.
+     * Only the claim owner releases it; if this write is lost too, startup recovery settles
+     * the row instead.
+     */
+    private void releaseCommitClaim(Long id, RuntimeException failure) {
+        try {
+            transactionTemplate.executeWithoutResult(status ->
+                    settleCommitClaim(id, "入库未完成，可再次确认：" + message(failure)));
+        } catch (RuntimeException ex) {
+            LOG.error("无法释放入库占位 session={}", id, ex);
+        }
+    }
+
+    /** Puts a claimed row back to PREVIEW; the claimant or startup recovery calls this. */
+    private void settleCommitClaim(Long id, String explanation) {
+        AiImportLog current = logs.findById(id).orElse(null);
+        if (current == null || !AiImportLog.COMMITTING.equals(current.getStatus())) {
+            return;
+        }
+        current.setStatus(AiImportLog.PREVIEW);
+        current.setAiExplanation(explanation);
+        current.setUpdatedAt(Instant.now());
+        logs.save(current);
     }
 
     /** A workbook is never committed while any planned range is still missing. */

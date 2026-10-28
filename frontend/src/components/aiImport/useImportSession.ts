@@ -16,6 +16,7 @@ import { targetTitle } from './importTargets'
 import {
   isAbandoned,
   isCommitted,
+  isCommitting,
   isFailed,
   isLocked,
   isParsing as statusIsParsing,
@@ -131,6 +132,7 @@ export function useImportSession() {
     const status = preview.value?.status
     if (isCommitted(status)) return '已入库'
     if (isFailed(status)) return '解析失败'
+    if (isCommitting(status)) return '入库中…'
     if (statusIsParsing(status)) return '解析中…'
     if (statusIsPartial(status)) return '先重试或放弃'
     if (isAbandoned(status)) return '已放弃'
@@ -204,7 +206,7 @@ export function useImportSession() {
   }
 
   function syncPolling(data: ImportPreview) {
-    if (statusIsParsing(data.status)) {
+    if (statusIsParsing(data.status) || isCommitting(data.status)) {
       startPolling(data.sessionId)
     } else {
       stopPolling()

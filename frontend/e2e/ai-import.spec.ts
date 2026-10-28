@@ -1200,6 +1200,53 @@ async function configureImportProvider(context: APIRequestContext, baseUrl: stri
   })
 }
 
+/**
+ * A commit is normally too fast to observe from the page, and the status only becomes
+ * COMMITTING while another request owns the session. Stubbing the session read is how the
+ * restored page's "入库中" state and its polling are exercised deterministically.
+ */
+test('入库中的会话恢复后显示禁用按钮，并自动刷新到已入库', async ({ page }) => {
+  await uiLogin(page, 'admin', 'admin123')
+  await page.goto('/admin/ai-import')
+  const suffix = seedSuffix(seed)
+  const workbook = buildWorkbookXlsx([
+    {
+      name: '数据源',
+      rows: [
+        ['班级', '星期', '节次', '课程', '教师'],
+        [`高一5班-${suffix}`, '星期一', '1', `入库课程-${suffix}`, `入库教师-${suffix}`],
+      ],
+    },
+  ])
+  await uploadExcel(page, '入库中状态.xlsx', workbook)
+  await page.getByRole('button', { name: '开始解析' }).click()
+  await expect(page.getByTestId('workbook-summary')).toBeVisible()
+  await expect(page).toHaveURL(/session=\d+/)
+  const sessionId = new URL(page.url()).searchParams.get('session')!
+  expect(sessionId).toBeTruthy()
+
+  let sessionGets = 0
+  await page.route(`**/api/ai/import/sessions/${sessionId}`, async (route) => {
+    if (route.request().method() !== 'GET') return route.continue()
+    sessionGets += 1
+    const response = await route.fetch()
+    const body = await response.json()
+    await route.fulfill({
+      response,
+      json: { ...body, status: sessionGets <= 3 ? 'COMMITTING' : 'COMMITTED' },
+    })
+  })
+
+  await page.goto(`/admin/ai-import?session=${sessionId}&target=workbook`)
+
+  await expect(page.getByTestId('import-status')).toHaveText('入库中')
+  await expect(
+    page.locator('.footer-actions').getByRole('button', { name: /入库中/ }),
+  ).toBeDisabled()
+  // The restored page keeps polling, so the transient status settles without a manual reload.
+  await expect(page.getByTestId('import-status')).toHaveText('已入库', { timeout: 15000 })
+})
+
 async function uploadExcel(page: Page, name: string, buffer: Buffer): Promise<void> {
   await page.locator('input[type=file]').first().setInputFiles({
     name,

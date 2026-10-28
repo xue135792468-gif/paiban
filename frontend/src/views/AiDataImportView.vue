@@ -77,7 +77,7 @@
               <el-tag size="small" type="info" effect="plain" data-testid="preview-target">
                 目标：{{ targetTitle(preview.targetType) }}
               </el-tag>
-              <el-tag size="small" :type="statusType">{{ statusLabel }}</el-tag>
+              <el-tag size="small" :type="statusType" data-testid="import-status">{{ statusLabel }}</el-tag>
               <el-button link type="primary" @click="reset">重新导入</el-button>
             </div>
           </div>
