@@ -798,3 +798,65 @@ export async function seedSwapWorkbenchScenario(
     targetDate: iso(friday),
   }
 }
+
+// ---------------------------------------------------------------- 票 05/06
+// 管理员同班调课的公共流程：选教师 → 选日期 → 选来源课 → 进入调课面板。
+// 拖拽 spec（admin-swap-drag）与表单 spec（admin-swap）共用，避免两份漂移。
+
+/**
+ * Opens the admin swap flow up to the swap planner panel: log in as admin,
+ * search the seeded Chinese teacher, jump to the lesson date and pick the
+ * first lesson, then choose the 调课 action.
+ */
+export async function openSwapFlow(
+  page: Page,
+  seed: Awaited<ReturnType<typeof seedSwapWorkbenchScenario>>,
+): Promise<void> {
+  await uiLogin(page, 'admin', 'admin123')
+  await page.goto('/substitutions/workbench')
+  await expect(page.getByTestId('teacher-select')).toBeVisible()
+  // filterable 下拉：输入带后缀的唯一教师名定位来源课教师。
+  await page.getByTestId('teacher-select').click()
+  await page.getByTestId('teacher-select').locator('input').fill(seed.teacherChineseName)
+  const dropdown = page.locator('.el-select-dropdown:visible').last()
+  await expect(dropdown.getByText(seed.teacherChineseName, { exact: true })).toBeVisible()
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Enter')
+  await expect(page.getByTestId('workbench-timetable')).toBeVisible({ timeout: 20_000 })
+
+  const dateInput = page.getByTestId('lesson-date').locator('input')
+  await dateInput.fill(seed.lessonDate)
+  await dateInput.press('Tab')
+  await expect(page.getByTestId('pick-lesson').first()).toBeVisible()
+
+  // 选来源课 → 选择「调课」动作（区别于票 03 的「指定代课」）。
+  await page.getByTestId('pick-lesson').first().click()
+  await page.getByTestId('choose-swap').click()
+  await expect(page.getByTestId('swap-planner')).toBeVisible()
+}
+
+/**
+ * Form path for picking the swap target: explicit target date (Friday) and
+ * target period (数学) so the seed's two-person cycle is deterministic.
+ */
+export async function pickTargetAndGenerate(
+  page: Page,
+  seed: Awaited<ReturnType<typeof seedSwapWorkbenchScenario>>,
+): Promise<void> {
+  // 明确指定目标日期（周五）与目标课节（数学）——不会被替换成同星期的另一周。
+  const targetDateInput = page.getByTestId('swap-target-date').locator('input')
+  await targetDateInput.fill(seed.targetDate)
+  await targetDateInput.press('Tab')
+  await expect(page.getByTestId('swap-target-period')).toBeEnabled()
+  await page.getByTestId('swap-target-period').click()
+  const targetDropdown = page.locator('.el-select-dropdown:visible').last()
+  await expect(targetDropdown.locator('.el-select-dropdown__item').first()).toBeVisible()
+  await targetDropdown
+    .locator('.el-select-dropdown__item')
+    .filter({ hasText: '数学' })
+    .first()
+    .click()
+
+  await page.getByTestId('swap-reason').fill('运动会调课')
+  await page.getByTestId('generate-swap-plans').click()
+}
