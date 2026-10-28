@@ -111,7 +111,9 @@ public class SubstitutionMapper {
                 approver,
                 request.getApprovedAt(),
                 request.getApprovalComment(),
-                request.getCreatedAt());
+                request.getCreatedAt(),
+                request.getRevisesRequestId(),
+                request.getRevisionKind());
     }
 
     public SubstitutionRecordDto toRecordDto(Substitution substitution) {

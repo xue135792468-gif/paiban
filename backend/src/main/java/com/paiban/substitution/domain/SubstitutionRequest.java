@@ -66,6 +66,18 @@ public class SubstitutionRequest {
     @Column(name = "final_teacher_id")
     private Long finalTeacherId;
 
+    /**
+     * 修订链（票 04）：本申请是对哪一笔已生效申请的再次调整（前驱引用）。
+     * 为空表示首次代课/调课。批准时只替代该前驱涉及的当前安排，
+     * 驳回/过期/校验失败时前驱安排继续生效；历史双方都保留、可追溯。
+     */
+    @Column(name = "revises_request_id")
+    private Long revisesRequestId;
+
+    /** 修订类型（票 04）：CHANGE_SUBSTITUTE 更换代课人 / RESTORE_BASELINE 恢复基线。 */
+    @Column(name = "revision_kind", length = 30)
+    private String revisionKind;
+
     @Column(name = "effective_date", nullable = false)
     private LocalDate effectiveDate;
 

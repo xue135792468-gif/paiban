@@ -18,12 +18,6 @@ public interface SubstitutionRepository extends JpaRepository<Substitution, Long
 
     List<Substitution> findBySemesterIdAndStatusAndType(Long semesterId, String status, String type);
 
-    long countBySemesterIdAndOriginalTeacherIdAndTypeAndStatus(
-            Long semesterId, Long originalTeacherId, String type, String status);
-
-    long countBySemesterIdAndSubstituteTeacherIdAndTypeAndStatus(
-            Long semesterId, Long substituteTeacherId, String type, String status);
-
     /** Distinct swap plans a teacher took part in; a three-person swap counts once. */
     @org.springframework.data.jpa.repository.Query(
             "select count(distinct s.planId) from Substitution s "
