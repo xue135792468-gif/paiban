@@ -4,7 +4,7 @@
 
 **Blocked by:** 04:课前更换代课人与恢复原安排; 05:管理员同班调课方案与跨日对照
 
-**Status:** ready-for-agent
+**Status:** in-progress (2026-10-29, branch feature/t07-readjust-moved-lessons)
 
 - [ ] HTTP 端到端先移动授课实例，再基于其当前日期/课节发起新调课；批准后只更新当前有效修订。
 - [ ] HTTP 端到端代课后调课、调课后代课；教师、班级、教室与全校最终安排一致。
