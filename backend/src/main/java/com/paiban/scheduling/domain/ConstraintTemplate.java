@@ -27,7 +27,7 @@ public class ConstraintTemplate {
 
     /**
      * The whole snapshot as JSON. Widened to VARCHAR(65535) in V29 because a template
-     * carries every entry of a semester; {@code ConstraintService.TEMPLATE_JSON_LIMIT}
+     * carries every entry of a semester; {@code ConstraintTemplateService.TEMPLATE_JSON_LIMIT}
      * refuses anything bigger instead of truncating.
      */
     @Column(name = "configs_json", nullable = false, length = 65535)
