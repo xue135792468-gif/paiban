@@ -13,6 +13,11 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+  h2:
+    # 仅 e2e 环境：Playwright 经控制台执行少量 SQL，制造票 01 之前的旧格式
+    # 存量行（lesson_date 置空）；生产 profile 不启用，servlet 不会注册。
+    console:
+      enabled: true
 
 paiban:
   scheduling:
