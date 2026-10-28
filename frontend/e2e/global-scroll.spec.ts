@@ -214,10 +214,16 @@ test('长菜单的首尾菜单项均可到达', async ({ page }) => {
   await page.goto('/admin/teachers')
 
   const aside = page.getByTestId('layout-aside')
-  const first = page.getByRole('menuitem', { name: '工作台' })
-  const last = page.getByRole('menuitem', { name: '帮助中心' })
+  // name 默认按子串匹配；「调代工作台」会让非精确的「工作台」命中两项。
+  const first = page.getByRole('menuitem', { name: '工作台', exact: true })
+  const last = page.getByRole('menuitem', { name: '帮助中心', exact: true })
 
-  expect((await readScroll(page)).menuScrollable).toBe(true)
+  // 菜单项是异步渲染的：先等首尾都出现，再量滚动高度，否则早量会误判不可滚。
+  await expect(first).toBeVisible()
+  await expect(last).toBeAttached()
+  await expect
+    .poll(() => readScroll(page).then((state) => state.menuScrollable))
+    .toBe(true)
   await expect(first).toBeInViewport()
 
   await wheelOn(page, aside, 5000)
