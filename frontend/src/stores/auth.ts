@@ -94,6 +94,10 @@ export const useAuthStore = defineStore('auth', () => {
     return codes.some((code) => hasPermission(code))
   }
 
+  function hasAllPermissions(codes: string[]) {
+    return codes.every((code) => hasPermission(code))
+  }
+
   function hasRole(code: string) {
     return user.value?.roles.includes(code) ?? false
   }
@@ -120,6 +124,7 @@ export const useAuthStore = defineStore('auth', () => {
     refresh,
     hasPermission,
     hasAnyPermission,
+    hasAllPermissions,
     hasRole,
     canFillDraftRooms,
   }

@@ -98,7 +98,10 @@ public class SubstitutionRequestService {
             throw ApiException.badRequest("该课节不属于当前学期");
         }
         AppUser user = users.getByUsername(username);
-        boolean admin = users.hasPermission(user, com.paiban.identity.domain.Permissions.SUBSTITUTION_VIEW);
+        // 票 03 权限收紧：代人提交（含直接生效分支）需要「全校课表查看 + 提交 + 审批」组合；
+        // 仅有 SUBSTITUTION_VIEW（查看全部调代记录）不能代发。
+        boolean admin = users.hasAllPermissions(user,
+                AdminSubstitutionService.MANAGER_PERMISSIONS);
         if (!admin && !Objects.equals(user.getTeacherId(), entry.getTeacherId())) {
             throw ApiException.forbidden("只能为自己的课提交调代申请");
         }
@@ -252,6 +255,9 @@ public class SubstitutionRequestService {
         request.setApproverId(approver.getId());
         request.setApprovedAt(Instant.now());
         request.setApprovalComment(decision == null ? null : decision.comment());
+        // 调整后教师如实落库（票 03：申请要保存调整前后教师；批准结果可能与最初期望不同）。
+        request.setFinalTeacherId(substituteTeacherId);
+        request.setExpectedSubstituteTeacherId(substituteTeacherId);
         request.setUpdatedAt(Instant.now());
         effects.recordHistory(
                 requestId,

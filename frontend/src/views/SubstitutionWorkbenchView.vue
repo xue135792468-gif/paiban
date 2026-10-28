@@ -1,0 +1,310 @@
+<template>
+  <div class="workbench">
+    <div class="toolbar">
+      <div>
+        <h2>调代工作台</h2>
+        <p class="subtitle">
+          搜索教师 → 看实际日期课表 → 指定代课人 → 对照确认。预览不产生申请或生效；提交审批进待批队列，亲自确认按普通批准路径生效。
+        </p>
+      </div>
+    </div>
+
+    <el-alert
+      v-if="!isManager"
+      type="warning"
+      :closable="false"
+      show-icon
+      title="管理调代工作台需要「全校课表查看 + 提交调代 + 审批调代」权限；教师请使用「调代课」页面的自助入口。"
+      data-testid="workbench-forbidden"
+    />
+
+    <template v-else>
+      <el-card shadow="never" class="picker-card">
+        <div class="filters">
+          <span class="label">教师</span>
+          <el-select
+            v-model="teacherId"
+            filterable
+            placeholder="搜索教师姓名"
+            style="width: 220px"
+            data-testid="teacher-select"
+            @change="loadTimetable"
+          >
+            <el-option v-for="option in teachers" :key="option.id" :label="option.name" :value="option.id" />
+          </el-select>
+          <span class="label">日期</span>
+          <span data-testid="lesson-date">
+            <el-date-picker
+              v-model="date"
+              type="date"
+              value-format="YYYY-MM-DD"
+              placeholder="选择授课日期"
+              style="width: 160px"
+              @change="loadTimetable"
+            />
+          </span>
+        </div>
+      </el-card>
+
+      <WorkbenchTimetable
+        v-if="teacherId"
+        :entries="entries"
+        :week-start="weekStart"
+        :selected-date="date"
+        :teacher-name="teacherName"
+        :loading="timetableLoading"
+        @pick="onPick"
+      />
+
+      <el-empty
+        v-if="teacherId && !timetableLoading && entries.length === 0"
+        description="所选教师当天没有可调整的课"
+      />
+
+      <template v-if="sourceEntry && candidateList && !preview">
+        <SubstitutePicker
+          :info="candidateList"
+          :selected="candidate"
+          @choose="onChoose"
+        />
+        <el-card v-if="candidate" shadow="never" class="reason-card">
+          <div class="reason-row">
+            <span>已选择代课人：{{ candidate.name }}</span>
+            <el-input
+              v-model="reason"
+              placeholder="代课原因（如：甲老师开会）"
+              style="width: 260px"
+              data-testid="preview-reason"
+            />
+            <el-button type="primary" data-testid="generate-preview" :loading="previewLoading" @click="generatePreview">
+              生成预览对照
+            </el-button>
+            <el-button text @click="resetFlow">重新选择</el-button>
+          </div>
+        </el-card>
+      </template>
+
+      <PreviewCompare
+        v-if="preview"
+        :preview="preview"
+        :can-confirm="canConfirm"
+        :busy="actionBusy"
+        @submit-approval="onSubmitApproval"
+        @confirm="onConfirm"
+        @cancel="resetFlow"
+      />
+
+      <el-alert
+        v-if="result"
+        :type="result.status === 'EFFECTIVE' ? 'success' : 'info'"
+        :closable="false"
+        show-icon
+        class="result"
+        :data-testid="`workbench-result`"
+        :title="resultMessage"
+      />
+    </template>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import { http } from '@/api/http'
+import { serverMessage } from '@/api/errors'
+import { useAuthStore } from '@/stores/auth'
+import WorkbenchTimetable from '@/components/substitution/workbench/WorkbenchTimetable.vue'
+import SubstitutePicker from '@/components/substitution/workbench/SubstitutePicker.vue'
+import PreviewCompare from '@/components/substitution/workbench/PreviewCompare.vue'
+import type { Entry } from '@/components/substitution/types'
+import type {
+  PreviewResponse,
+  WorkbenchActionResult,
+  WorkbenchCandidate,
+  WorkbenchCandidateList,
+} from '@/components/substitution/workbench/types'
+
+/** 与后端 AdminSubstitutionService.MANAGER_PERMISSIONS 保持同一组合。 */
+const MANAGER_PERMISSIONS = ['timetable:view', 'substitution:submit', 'substitution:approve']
+
+const auth = useAuthStore()
+const isManager = computed(() => auth.hasAllPermissions(MANAGER_PERMISSIONS))
+const canConfirm = computed(() => auth.hasPermission('substitution:approve'))
+
+const teachers = ref<Array<{ id: number; name: string }>>([])
+const teacherId = ref<number | null>(null)
+const date = ref(today())
+const entries = ref<Entry[]>([])
+const timetableLoading = ref(false)
+
+const sourceEntry = ref<Entry | null>(null)
+const candidateList = ref<WorkbenchCandidateList | null>(null)
+const candidate = ref<WorkbenchCandidate | null>(null)
+const reason = ref('')
+const previewLoading = ref(false)
+const preview = ref<PreviewResponse | null>(null)
+const actionBusy = ref(false)
+const result = ref<WorkbenchActionResult | null>(null)
+
+const teacherName = computed(
+  () => teachers.value.find((item) => item.id === teacherId.value)?.name ?? '',
+)
+/** 所选日期所在周的周一，作为周课表列头。 */
+const weekStart = computed(() => {
+  const value = new Date(`${date.value || today()}T00:00:00`)
+  const offset = (value.getDay() + 6) % 7
+  value.setDate(value.getDate() - offset)
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const dayNo = String(value.getDate()).padStart(2, '0')
+  return `${value.getFullYear()}-${month}-${dayNo}`
+})
+
+const resultMessage = computed(() => {
+  if (!result.value) return ''
+  return result.value.status === 'EFFECTIVE'
+    ? `亲自确认已生效（申请 #${result.value.requestId}），课表已更新。`
+    : `已提交审批（申请 #${result.value.requestId}），待批期间旧安排继续生效。`
+})
+
+async function loadTeachers() {
+  const { data } = await http.get('/teachers/options')
+  teachers.value = data
+}
+
+async function loadTimetable() {
+  if (!teacherId.value || !date.value) return
+  timetableLoading.value = true
+  try {
+    const { data } = await http.get(`/timetable/teacher/${teacherId.value}`, {
+      params: { view: 'latest', date: date.value },
+    })
+    entries.value = data
+  } catch {
+    entries.value = []
+  } finally {
+    timetableLoading.value = false
+    resetFlow()
+  }
+}
+
+async function onPick(entry: Entry) {
+  sourceEntry.value = entry
+  candidate.value = null
+  preview.value = null
+  result.value = null
+  try {
+    const { data } = await http.get('/substitution-workbench/candidates', {
+      params: { entryId: entry.id, lessonDate: date.value },
+    })
+    candidateList.value = data
+  } catch (error) {
+    ElMessage.error(serverMessage(error, '操作失败'))
+  }
+}
+
+function onChoose(chosen: WorkbenchCandidate) {
+  candidate.value = chosen
+}
+
+async function generatePreview() {
+  const entry = sourceEntry.value
+  const chosen = candidate.value
+  if (!entry || !chosen || !date.value) return
+  previewLoading.value = true
+  try {
+    const { data } = await http.post('/substitution-workbench/previews', {
+      entryId: entry.id,
+      lessonDate: date.value,
+      substituteTeacherId: chosen.teacherId,
+      reason: reason.value || undefined,
+    })
+    preview.value = data
+  } catch (error) {
+    ElMessage.error(serverMessage(error, '操作失败'))
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+async function onSubmitApproval(comment: string) {
+  await consume('submit-approval', comment)
+}
+
+async function onConfirm(comment: string) {
+  await consume('confirm', comment)
+}
+
+async function consume(action: 'submit-approval' | 'confirm', comment: string) {
+  if (!preview.value) return
+  actionBusy.value = true
+  try {
+    const { data } = await http.post(
+      `/substitution-workbench/previews/${preview.value.voucherId}/${action}`,
+      { comment: comment || undefined },
+    )
+    result.value = data
+    preview.value = null
+    resetFlow()
+    await loadTimetable()
+  } catch (error) {
+    ElMessage.error(serverMessage(error, '操作失败'))
+  } finally {
+    actionBusy.value = false
+  }
+}
+
+/** 取消预览或完成操作后清空流程状态；预览本身零申请、零生效、零通知。 */
+function resetFlow() {
+  sourceEntry.value = null
+  candidateList.value = null
+  candidate.value = null
+  preview.value = null
+  reason.value = ''
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+onMounted(loadTeachers)
+</script>
+
+<style scoped>
+.toolbar {
+  margin-bottom: 8px;
+}
+h2 {
+  margin: 0 0 4px;
+  font-size: 20px;
+}
+.subtitle {
+  color: var(--paiban-muted);
+  font-size: 13px;
+  margin: 0;
+}
+.picker-card {
+  margin-bottom: 12px;
+}
+.filters {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.label {
+  color: var(--paiban-muted);
+  font-size: 13px;
+}
+.reason-card {
+  margin-top: 12px;
+}
+.reason-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.result {
+  margin-top: 12px;
+}
+</style>

@@ -16,6 +16,12 @@ export interface Entry {
   periodNo: number
   dayOfWeek: number
   substituted: boolean
+  /** 工作台需要的补充字段；教师自助表单不会用到。 */
+  roomName?: string | null
+  room?: string | null
+  periodLabel?: string | null
+  lessonDate?: string | null
+  targetLessonDate?: string | null
 }
 
 export interface SwapTarget {

@@ -51,6 +51,21 @@ public class SubstitutionRequest {
     @Column(name = "requester_teacher_id")
     private Long requesterTeacherId;
 
+    /**
+     * 真实操作账号（规格第 1 节）：管理员代发时是管理员账号，教师自助时是教师本人账号。
+     * 管理员绑定的教师身份不得顶替它；代发对象另见 requester_teacher_id。
+     */
+    @Column(name = "operator_user_id")
+    private Long operatorUserId;
+
+    /** 调整前实际教师：本次变更前该实例的当前安排教师（可能与基线原教师不同）。 */
+    @Column(name = "previous_teacher_id")
+    private Long previousTeacherId;
+
+    /** 调整后教师：审批决定后的实际代课教师（批准时写入，可与最初期望不同）。 */
+    @Column(name = "final_teacher_id")
+    private Long finalTeacherId;
+
     @Column(name = "effective_date", nullable = false)
     private LocalDate effectiveDate;
 
