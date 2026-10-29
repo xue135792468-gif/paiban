@@ -57,11 +57,16 @@ public class SubstitutionQueryService {
 
     @Transactional(readOnly = true)
     public List<SubstitutionRecordDto> records(
-            Long semesterId, Long teacherId, Long classId, LocalDate dateFrom, LocalDate dateTo, String type) {
+            Long semesterId, Long teacherId, Long classId, LocalDate dateFrom, LocalDate dateTo,
+            String type, String status) {
         Long resolved = semesterId != null ? semesterId : semesters.requireCurrent().getId();
+        // 默认只回当前生效行（既有调用方语义不变）；历史视图显式要 ALL 时
+        // 连同被后续修订替代的行一起展示（规格第 7 节）。
+        List<String> statuses = "ALL".equalsIgnoreCase(status)
+                ? HISTORY_STATUSES : List.of(Substitution.EFFECTIVE);
         List<Substitution> result = type != null && !type.isBlank()
-                ? substitutions.findBySemesterIdAndStatusInAndType(resolved, HISTORY_STATUSES, type)
-                : substitutions.findBySemesterIdAndStatusIn(resolved, HISTORY_STATUSES);
+                ? substitutions.findBySemesterIdAndStatusInAndType(resolved, statuses, type)
+                : substitutions.findBySemesterIdAndStatusIn(resolved, statuses);
         if (teacherId != null) {
             result = result.stream()
                     .filter(item -> teacherId.equals(item.getSubstituteTeacherId())
@@ -90,8 +95,9 @@ public class SubstitutionQueryService {
     /** Semester-end export: the same filtered rows as the records page, as CSV. */
     @Transactional(readOnly = true)
     public String recordsCsv(Long semesterId, Long teacherId, Long classId,
-                             LocalDate dateFrom, LocalDate dateTo, String type) {
-        List<SubstitutionRecordDto> rows = records(semesterId, teacherId, classId, dateFrom, dateTo, type);
+                             LocalDate dateFrom, LocalDate dateTo, String type, String status) {
+        List<SubstitutionRecordDto> rows = records(
+                semesterId, teacherId, classId, dateFrom, dateTo, type, status);
         StringBuilder csv = new StringBuilder("\uFEFF");
         csv.append("类型,生效日期,行政班,课程,原教师,代课教师,教室,原节次,目标节次,方案ID,状态\n");
         for (SubstitutionRecordDto row : rows) {
@@ -166,11 +172,11 @@ public class SubstitutionQueryService {
         if (user.getTeacherId() == null) {
             return List.of();
         }
-        return records(null, user.getTeacherId(), null, null, null, null);
+        return records(null, user.getTeacherId(), null, null, null, null, null);
     }
 
     @Transactional(readOnly = true)
     public List<SubstitutionRecordDto> allRecords() {
-        return new ArrayList<>(records(null, null, null, null, null, null));
+        return new ArrayList<>(records(null, null, null, null, null, null, null));
     }
 }

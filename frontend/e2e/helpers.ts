@@ -132,8 +132,8 @@ export async function seedSchool(context: APIRequestContext): Promise<SeedResult
 
   const semester = await apiCall(context, token, 'post', '/semesters', {
     name: `E2E学期-${suffix}`,
-    startDate: '2025-09-01',
-    endDate: '2026-01-20',
+    startDate: SEED_MONDAY_ISO,
+    endDate: SEED_END_ISO,
   })
   await apiCall(context, token, 'post', `/semesters/${semester.id}/set-current`)
   await apiCall(context, token, 'post', `/semesters/${semester.id}/periods/default`, {
@@ -244,13 +244,39 @@ export async function solveAndPublish(context: APIRequestContext, seed: SeedResu
   return draftId
 }
 
-export function dateFor(dayOfWeek: number): string {
-  const date = new Date('2025-09-01T00:00:00')
-  date.setDate(date.getDate() + (dayOfWeek - 1))
+/**
+ * 学期锚点：最近的下个周一。批准路径受开课截止约束（规格第 6 节，服务端真实
+ * 时钟判定），因此 e2e 种子学期必须落在未来，否则任何批准都会被 409 拒绝。
+ */
+function nextMonday(): Date {
+  const today = new Date()
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  monday.setDate(monday.getDate() + ((8 - monday.getDay()) % 7 || 7))
+  return monday
+}
+
+const SEED_MONDAY = nextMonday()
+
+export function isoDate(date: Date): string {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+/** 种子学期的开始日（ISO），跨周断言都以它为基准。 */
+export const SEED_MONDAY_ISO = isoDate(SEED_MONDAY)
+/** 种子学期的结束日：学期覆盖 20 周，跨周用例都在范围内。 */
+export const SEED_END_ISO = isoDate(new Date(
+  SEED_MONDAY.getFullYear(),
+  SEED_MONDAY.getMonth(),
+  SEED_MONDAY.getDate() + 140,
+))
+
+export function dateFor(dayOfWeek: number): string {
+  const date = new Date(SEED_MONDAY)
+  date.setDate(date.getDate() + (dayOfWeek - 1))
+  return isoDate(date)
 }
 
 export interface SwapScenario {
@@ -284,8 +310,8 @@ export async function seedSwapScenario(
   const suffix = Math.random().toString(36).slice(2, 8)
   const semester = await apiCall(context, token, 'post', '/semesters', {
     name: `E2E调课-${suffix}`,
-    startDate: '2025-09-01',
-    endDate: '2026-01-20',
+    startDate: SEED_MONDAY_ISO,
+    endDate: SEED_END_ISO,
   })
   await apiCall(context, token, 'post', `/semesters/${semester.id}/set-current`)
   await apiCall(context, token, 'post', `/semesters/${semester.id}/periods/default`, {

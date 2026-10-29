@@ -3,19 +3,16 @@ import {
   apiCall,
   apiLogin,
   classEntries,
+  dateFor,
   newContext,
   seedSchool,
   solveAndPublish,
   uiLogin,
 } from './helpers'
 
+// 种子学期锚在未来的周一（批准受开课截止约束），日期一律由 dateFor 派生。
 function dateForWeekday(dayOfWeek: number) {
-  const date = new Date('2025-09-01T00:00:00')
-  date.setDate(date.getDate() + (dayOfWeek - 1))
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  return dateFor(dayOfWeek)
 }
 
 test('场景 2：教师提交调代 → 教务审批 → 通知与课表叠加', async ({ page }) => {

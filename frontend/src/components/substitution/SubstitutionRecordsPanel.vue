@@ -142,6 +142,8 @@ function buildParams() {
     params.dateFrom = filter.range[0]
     params.dateTo = filter.range[1]
   }
+  // 历史视图：当前生效 + 已被后续修订替代的行都展示（规格第 7 节）。
+  params.status = 'ALL'
   return params
 }
 

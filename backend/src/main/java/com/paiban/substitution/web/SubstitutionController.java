@@ -150,10 +150,11 @@ public class SubstitutionController {
             @RequestParam(required = false) LocalDate dateFrom,
             @RequestParam(required = false) LocalDate dateTo,
             @RequestParam(required = false) String type,
+            @RequestParam(required = false) String status,
             Authentication authentication,
             Principal principal) {
         authorizeRecords(authentication, principal, classId);
-        return queries.records(semesterId, teacherId, classId, dateFrom, dateTo, type);
+        return queries.records(semesterId, teacherId, classId, dateFrom, dateTo, type, status);
     }
 
     /** Same filters as the records page; the type column distinguishes 调课 / 代课. */
@@ -165,10 +166,11 @@ public class SubstitutionController {
             @RequestParam(required = false) LocalDate dateFrom,
             @RequestParam(required = false) LocalDate dateTo,
             @RequestParam(required = false) String type,
+            @RequestParam(required = false) String status,
             Authentication authentication,
             Principal principal) {
         authorizeRecords(authentication, principal, classId);
-        String csv = queries.recordsCsv(semesterId, teacherId, classId, dateFrom, dateTo, type);
+        String csv = queries.recordsCsv(semesterId, teacherId, classId, dateFrom, dateTo, type, status);
         return org.springframework.http.ResponseEntity.ok()
                 .header("Content-Disposition", "attachment; filename=substitutions.csv")
                 .contentType(org.springframework.http.MediaType.parseMediaType("text/csv;charset=UTF-8"))
