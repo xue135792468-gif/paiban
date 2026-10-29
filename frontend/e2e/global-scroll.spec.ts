@@ -134,8 +134,13 @@ test('长内容页面不出整页滚动条，顶部栏与导航标识保持可�
   expect(after.windowScrollable).toBe(false)
   await expect(header).toBeVisible()
   await expect(logo).toBeInViewport()
-  // 长内容底部（最后一行）可正常访问
-  await expect(page.locator('.el-table__row').last()).toBeInViewport()
+  // 长内容底部（最后一行）可正常访问。全量长跑时表格数据更多、行数在滚动后仍会
+  // 增长，因此在轮询里重复「滚到底」直到末行真正进入视口（断言本身不放宽）。
+  await expect(async () => {
+    await wheelOn(page, page.getByTestId('layout-main'), 5000)
+    await waitForScroll(page, 'main', 1)
+    await expect(page.locator('.el-table__row').last()).toBeInViewport({ timeout: 1_000 })
+  }).toPass({ timeout: 15_000 })
 })
 
 test('内容短于视口时同样不出整页滚动条', async ({ page }) => {
