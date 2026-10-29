@@ -234,7 +234,7 @@ async function firstSwapViaApi(api: APIRequestContext, seed: RescheduleSeed): Pr
   return confirmed.requestId
 }
 
-/** 工作台选教师 + 授课日期 + 课节（票 07 的再次操作从当前实际安排的课进入）。 */
+/** 工作台选教师 + 授课日期 + 课节（票 07 的再次操作从当前实际安排的课进入向导步骤 2）。 */
 async function openMovedLesson(
   page: Page,
   seed: RescheduleSeed,
@@ -255,6 +255,7 @@ async function openMovedLesson(
   await dateInput.press('Tab')
   await expect(page.getByTestId('pick-lesson').first()).toBeVisible()
   await page.getByTestId('pick-lesson').first().click()
+  await page.getByTestId('wizard-next-1').click()
 }
 
 test('已移动的课再次调课：以周五落点为起点移到下周一，旧环其余成员保持', async ({ page }) => {
@@ -263,28 +264,22 @@ test('已移动的课再次调课：以周五落点为起点移到下周一，�
   const firstRequestId = await firstSwapViaApi(api, seed)
 
   // 从周五落点进入（当前实际安排里的语文），再次指定目标 = 下周一（英语的基线槽）。
+  // 窗口日期块：来源周五起 7 天，下周一的 chip 可选。
   await openMovedLesson(page, seed, seed.friday)
   await page.getByTestId('choose-swap').click()
-  await expect(page.getByTestId('swap-planner')).toBeVisible()
-  const targetDateInput = page.getByTestId('swap-target-date').locator('input')
-  await targetDateInput.fill(seed.nextMonday)
-  await targetDateInput.press('Tab')
-  await expect(page.getByTestId('swap-target-period')).toBeEnabled()
-  await page.getByTestId('swap-target-period').click()
-  const targetDropdown = page.locator('.el-select-dropdown:visible').last()
-  await expect(targetDropdown.locator('.el-select-dropdown__item').first()).toBeVisible()
-  await targetDropdown
-    .locator('.el-select-dropdown__item')
-    .filter({ hasText: '英语' })
-    .first()
-    .click()
+  await expect(page.getByTestId('window-dates')).toBeVisible()
+  await page.getByTestId(`swap-date-chip-${seed.nextMonday}`).click()
+  const period = page.getByTestId('swap-target-period-1')
+  await expect(period).toBeVisible()
+  await expect(period).toContainText('英语')
+  await period.locator('input').check()
   await page.getByTestId('swap-reason').fill('再次调整到下周一')
-  await page.getByTestId('generate-swap-plans').click()
-  await expect(page.getByTestId('swap-plan-card').first()).toContainText('2 人环')
-  await page.getByTestId('choose-swap-plan-0').click()
-  await expect(page.getByTestId('swap-compare')).toBeVisible()
-  await page.getByTestId('swap-personal-confirm').click()
-  await expect(page.getByTestId('workbench-result')).toContainText('亲自确认已生效')
+  await page.getByTestId('wizard-next-2').click()
+  await expect(page.getByTestId('swap-plan-tab-0')).toContainText('2 节课对调')
+  await expect(page.getByTestId('change-week-0')).toBeVisible()
+  await expect(page.getByTestId('change-week-1')).toBeVisible()
+  await page.getByTestId('personal-confirm').click()
+  await expect(page.getByTestId('workbench-result')).toContainText('已生效')
 
   // API 侧：修订申请绑定前驱（RESCHEDULE_REVISION），历史链可追溯。
   const token = await apiLogin(api)
@@ -325,14 +320,15 @@ test('调课后代课：从周五落点指定丙老师，修订横幅标明取�
   await openMovedLesson(page, seed, seed.friday)
   await page.getByTestId('choose-cover').click()
   await expect(page.getByTestId('substitute-picker')).toBeVisible()
-  await page.getByTestId(`choose-${seed.teacherSpareId}`).click()
+  await page.getByTestId(`substitute-option-${seed.teacherSpareId}`).locator('input').check()
   await page.getByTestId('preview-reason').fill('周五临时有事')
-  await page.getByTestId('generate-preview').click()
+  await page.getByTestId('wizard-next-2').click()
+  await expect(page.getByTestId('confirm-conclusion')).toBeVisible()
 
-  // 修订链（COVER-on-SWAP）：横幅明确被取代的调课申请。
-  await expect(page.getByTestId('revision-banner')).toContainText(`取代申请 #${swapRequestId}`)
+  // 修订链（COVER-on-SWAP）：横幅明确被取代的调课申请编号。
+  await expect(page.getByTestId('revision-banner')).toContainText(`#${swapRequestId}`)
   await page.getByTestId('personal-confirm').click()
-  await expect(page.getByTestId('workbench-result')).toContainText('亲自确认已生效')
+  await expect(page.getByTestId('workbench-result')).toContainText('已生效')
 
   // 当前有效结果：周五的语文由丙承担；SWAP 行保留（来源日移出语义不受影响）。
   const token = await apiLogin(api)
@@ -354,7 +350,7 @@ test('调课后代课：从周五落点指定丙老师，修订横幅标明取�
   expect(cover.revisionKind).toBe('CHANGE_SUBSTITUTE')
 })
 
-test('已开课的实例不可再操作：批准与预览都被截止拒绝且零写入', async () => {
+test('已开课的实例不可再操作：批准与预览都被截止拒绝且零写入', async ({ page }) => {
   const api = await newContext()
   const seed = await seedRescheduleScenario(api, true)
   const admin = await apiLogin(api)
@@ -407,6 +403,37 @@ test('已开课的实例不可再操作：批准与预览都被截止拒绝且�
   // 上一步教师提交的调课申请仍在待批（批准被截止拒绝），单实例单活跃修改
   // 先把它挡在截止检查之前——同样是「不可再操作」，且不产生任何写入。
   expect(cover.body.message).toContain('申请')
+
+  // 新界面同语义：管理端工作台发起再次调课，第③步生成方案被截止拒绝，
+  // confirm-error 原样显示后端拒绝原文，不跳步、不产生写入。
+  await uiLogin(page, 'admin', 'admin123')
+  await page.goto('/substitutions/workbench')
+  await expect(page.getByTestId('teacher-select')).toBeVisible()
+  await page.getByTestId('teacher-select').click()
+  await page.getByTestId('teacher-select').locator('input').fill(seed.teacherChineseName)
+  const dropdown = page.locator('.el-select-dropdown:visible').last()
+  await expect(dropdown.getByText(seed.teacherChineseName, { exact: true })).toBeVisible()
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Enter')
+  // 过去学期：先跳到种子周再等课卡（本周课表为空时新界面不渲染网格）。
+  const dateInput = page.getByTestId('lesson-date').locator('input')
+  await dateInput.fill(seed.wednesday)
+  await dateInput.press('Tab')
+  await expect(page.getByTestId('pick-lesson').first()).toBeVisible({ timeout: 20_000 })
+  await page.getByTestId('pick-lesson').first().click()
+  await page.getByTestId('wizard-next-1').click()
+  await page.getByTestId('choose-swap').click()
+  await page.getByTestId(`swap-date-chip-${seed.friday}`).click()
+  const period = page.getByTestId('swap-target-period-1')
+  await expect(period).toBeVisible()
+  await expect(period).toContainText('数学')
+  await period.locator('input').check()
+  await page.getByTestId('wizard-next-2').click()
+  const errorBar = page.getByTestId('confirm-error')
+  await expect(errorBar).toContainText('开课')
+  await expect(errorBar).toContainText('不能再调整')
+  await expect(page.getByTestId('wizard-panel-3')).toBeVisible()
+  await expect(page.getByTestId('regenerate')).toBeEnabled()
 
   // 零写入：没有任何生效行；待批申请仍只有教师那一单（失败的批准未改动它），
   // 管理端两次被拒的预览也没有产生新申请。

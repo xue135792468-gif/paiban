@@ -443,4 +443,19 @@ onUnmounted(() => {
   color: #9ca3af;
   margin-top: 4px;
 }
+/* 窄屏（≤900px）：左侧导航让位，内容独占整行（调代工作台等宽内容页的 320px 验收依赖）。 */
+@media (max-width: 900px) {
+  .aside {
+    display: none;
+  }
+}
+/* 更窄（≤520px）：收敛壳层留白，给内容让出宽度，避免横向滚动。 */
+@media (max-width: 520px) {
+  .header {
+    padding: 0 12px;
+  }
+  .main {
+    padding: 12px;
+  }
+}
 </style>

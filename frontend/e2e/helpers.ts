@@ -826,70 +826,63 @@ export async function seedSwapWorkbenchScenario(
 }
 
 // ---------------------------------------------------------------- 票 05/06
-// 管理员同班调课的公共流程：选教师 → 选日期 → 选来源课 → 进入调课面板。
-// 拖拽 spec（admin-swap-drag）与表单 spec（admin-swap）共用，避免两份漂移。
+// 管理员同班调课的公共流程（三步向导版）：选教师 → 选日期 → 定位来源课（步骤 1）。
+// 表单 spec（admin-swap）从步骤 1 继续走向导；拖拽 spec（admin-swap-drag）在步骤 1
+// 的周网格里拖课卡。两路共用定位逻辑，避免漂移。
+
+/** 定位来源课所需的最小种子字段（seedSwapWorkbenchScenario / 拖拽本地种子都满足）。 */
+export interface WorkbenchSourceSeed {
+  teacherName: string
+  lessonDate: string
+}
 
 /**
- * Opens the admin swap flow up to the swap planner panel: log in as admin,
- * search the seeded Chinese teacher, jump to the lesson date and pick the
- * first lesson, then choose the 调课 action.
+ * 登录管理员 → 搜索种子教师 → 跳到来源课所在周，等课卡出现即返回（仍在步骤 1）。
+ * 选中教师/填日期之前零副作用，整段可安全重试（CI 负载下弹出层偶尔不渲染）。
  */
-export async function openSwapFlow(
+export async function openWorkbenchAtSourceLesson(
   page: Page,
-  seed: Awaited<ReturnType<typeof seedSwapWorkbenchScenario>>,
+  seed: WorkbenchSourceSeed,
 ): Promise<void> {
   await uiLogin(page, 'admin', 'admin123')
   await page.goto('/substitutions/workbench')
   await expect(page.getByTestId('teacher-select')).toBeVisible()
-  // filterable 下拉：输入带后缀的唯一教师名定位来源课教师。
-  // CI 负载下弹出层偶尔不渲染，整段选择可安全重试（选中前无副作用）。
   await expect(async () => {
-    await page.getByTestId('teacher-select').click()
-    await page.getByTestId('teacher-select').locator('input').fill(seed.teacherChineseName)
-    const dropdown = page.locator('.el-select-dropdown:visible').last()
-    await expect(dropdown.getByText(seed.teacherChineseName, { exact: true }))
-      .toBeVisible({ timeout: 1_000 })
-    await page.keyboard.press('ArrowDown')
-    await page.keyboard.press('Enter')
-    await expect(page.getByTestId('workbench-timetable')).toBeVisible({ timeout: 2_000 })
-  }).toPass({ timeout: 30_000 })
+    if ((await page.getByTestId('pick-lesson').count()) === 0) {
+      await pickOption(page.locator('.picker-card'), 'teacher-select', seed.teacherName)
+      const dateInput = page.getByTestId('lesson-date').locator('input')
+      await dateInput.fill(seed.lessonDate)
+      await dateInput.press('Tab')
+    }
+    await expect(page.getByTestId('pick-lesson').first()).toBeVisible({ timeout: 5_000 })
+  }).toPass({ timeout: 60_000 })
+}
 
-  const dateInput = page.getByTestId('lesson-date').locator('input')
-  await dateInput.fill(seed.lessonDate)
-  await dateInput.press('Tab')
-  await expect(page.getByTestId('pick-lesson').first()).toBeVisible()
-
-  // 选来源课 → 选择「调课」动作（区别于票 03 的「指定代课」）。
+/** 表单路径：从步骤 1 进入第②步并选择「调课」动作（窗口日期块可见即成功）。 */
+export async function startSwapAction(page: Page): Promise<void> {
   await page.getByTestId('pick-lesson').first().click()
+  await page.getByTestId('wizard-next-1').click()
   await page.getByTestId('choose-swap').click()
-  await expect(page.getByTestId('swap-planner')).toBeVisible()
+  await expect(page.getByTestId('window-dates')).toBeVisible()
 }
 
 /**
- * Form path for picking the swap target: explicit target date (Friday) and
- * target period (数学) so the seed's two-person cycle is deterministic.
+ * 表单路径：点目标日期 chip + 目标节次 radio（默认第 1 节，即种子数学课），
+ * 填原因后进入第③步并等方案页签出现。
  */
-export async function pickTargetAndGenerate(
+export async function pickSwapTargetAndContinue(
   page: Page,
-  seed: Awaited<ReturnType<typeof seedSwapWorkbenchScenario>>,
+  seed: { targetDate: string },
+  options: { periodNo?: number; reason?: string } = {},
 ): Promise<void> {
-  // 明确指定目标日期（周五）与目标课节（数学）——不会被替换成同星期的另一周。
-  // 目标课节下拉在 CI 负载下偶尔打开后不渲染选项，整段选择可安全重试。
-  await expect(async () => {
-    const targetDateInput = page.getByTestId('swap-target-date').locator('input')
-    await targetDateInput.fill(seed.targetDate)
-    await targetDateInput.press('Tab')
-    await expect(page.getByTestId('swap-target-period')).toBeEnabled({ timeout: 1_000 })
-    await page.getByTestId('swap-target-period').click()
-    const targetDropdown = page.locator('.el-select-dropdown:visible').last()
-    const mathOption = targetDropdown
-      .locator('.el-select-dropdown__item')
-      .filter({ hasText: '数学' })
-      .first()
-    await expect(mathOption).toBeVisible({ timeout: 1_000 })
-    await mathOption.click()
-  }).toPass({ timeout: 30_000 })
-
-  await page.getByTestId('swap-reason').fill('运动会调课')
-  await page.getByTestId('generate-swap-plans').click()
+  const periodNo = options.periodNo ?? 1
+  const reason = options.reason ?? '运动会调课'
+  await page.getByTestId(`swap-date-chip-${seed.targetDate}`).click()
+  const period = page.getByTestId(`swap-target-period-${periodNo}`)
+  await expect(period).toBeVisible()
+  await period.locator('input').check()
+  await page.getByTestId('swap-reason').fill(reason)
+  await page.getByTestId('wizard-next-2').click()
+  await expect(page.getByTestId('wizard-panel-3')).toBeVisible()
+  await expect(page.getByTestId('swap-plan-tab-0')).toBeVisible()
 }

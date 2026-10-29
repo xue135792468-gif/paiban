@@ -3,42 +3,53 @@ import {
   apiCall,
   apiLogin,
   newContext,
-  openSwapFlow,
-  pickTargetAndGenerate,
+  openWorkbenchAtSourceLesson,
+  pickSwapTargetAndContinue,
   seedSwapWorkbenchScenario,
+  startSwapAction,
 } from './helpers'
 
 /**
- * 票 05：管理员同班调课。管理员在工作台为实际授课实例明确指定目标日期与课节，
- * 生成闭合置换环候选（≤3），检查整环左右对照与变化清单后提交审批或亲自确认。
- * 公共流程（openSwapFlow / pickTargetAndGenerate）在 helpers.ts，与票 06 拖拽 spec 共用。
+ * 票 05：管理员同班调课（三步向导版）。管理员在工作台为实际授课实例明确指定
+ * 目标日期（窗口 chip）与课节（radio），第③步生成闭合置换环候选（页签），
+ * 检查变化格与折叠明细后提交审批或亲自确认。
+ * 公共流程（openWorkbenchAtSourceLesson / startSwapAction / pickSwapTargetAndContinue）
+ * 在 helpers.ts，与拖拽 spec 共用。
  */
+
+/** 与视图 monthDayCn 同款：11月5日（月/日不补零）。 */
+function cnDate(date: string): string {
+  const [, month, day] = date.split('-')
+  return `${Number(month)}月${Number(day)}日`
+}
 
 test('管理员调课：明确目标日期生成二人环 → 整环对照 → 提交审批后旧课表继续', async ({ page }) => {
   const api = await newContext()
   const seed = await seedSwapWorkbenchScenario(api)
 
-  await openSwapFlow(page, seed)
-  await pickTargetAndGenerate(page, seed)
+  await openWorkbenchAtSourceLesson(page, { teacherName: seed.teacherChineseName, lessonDate: seed.lessonDate })
+  await startSwapAction(page)
+  await pickSwapTargetAndContinue(page, seed)
 
-  // 候选：二人环、影响 2 天（跨日）。
-  await expect(page.getByTestId('swap-plan-card').first()).toBeVisible()
-  await expect(page.getByTestId('swap-plan-card').first()).toContainText('2 人环')
-  await expect(page.getByTestId('swap-plan-card').first()).toContainText('影响 2 天')
+  // 候选：方案 A（推荐）= 二人环的两步对调、影响 2 天（跨日）。
+  const planA = page.getByTestId('swap-plan-tab-0')
+  await expect(planA).toContainText('方案 A（推荐）')
+  await expect(planA).toContainText('2 节课对调')
+  await expect(planA).toContainText('影响 2 天')
+  await expect(planA).toHaveAttribute('aria-selected', 'true')
 
-  // 选定候选 → 整环左右对照：来源日与目标日各一块，变化清单完整两步。
-  await page.getByTestId('choose-swap-plan-0').click()
-  await expect(page.getByTestId('swap-compare')).toBeVisible()
-  await expect(page.getByTestId(`swap-left-${seed.lessonDate}`)).toBeVisible()
-  await expect(page.getByTestId(`swap-right-${seed.lessonDate}`)).toBeVisible()
-  await expect(page.getByTestId(`swap-left-${seed.targetDate}`)).toBeVisible()
-  await expect(page.getByTestId(`swap-right-${seed.targetDate}`)).toBeVisible()
-  await expect(page.getByTestId('swap-change-list').locator('.el-table__row')).toHaveCount(2)
-  await expect(page.getByTestId('swap-change-list')).toContainText(seed.lessonDate)
-  await expect(page.getByTestId('swap-change-list')).toContainText(seed.targetDate)
+  // 整环对照（新呈现）：本周一张迷你周表两处变化 + 折叠明细两行，
+  // 每行写明来源日与目标日的实际日期。
+  await expect(page.getByTestId('change-week-0')).toBeVisible()
+  await expect(page.getByTestId('change-visual').locator('.wc.chg')).toHaveCount(2)
+  await page.getByTestId('confirm-details').locator('summary').click()
+  const rows = page.getByTestId('change-diff').locator('.drow:not(.hd)')
+  await expect(rows).toHaveCount(2)
+  await expect(page.getByTestId('change-diff')).toContainText(cnDate(seed.lessonDate))
+  await expect(page.getByTestId('change-diff')).toContainText(cnDate(seed.targetDate))
 
   // 提交审批：进待批队列，旧课表继续生效。
-  await page.getByTestId('swap-submit-approval').click()
+  await page.getByTestId('submit-approval').click()
   await expect(page.getByTestId('workbench-result')).toContainText('已提交审批')
 
   // API 侧不变量：有一笔待批 SWAP 申请，没有生效行。
@@ -57,13 +68,14 @@ test('管理员调课：亲自确认整环生效，课表按实际日期呈现',
   const api = await newContext()
   const seed = await seedSwapWorkbenchScenario(api)
 
-  await openSwapFlow(page, seed)
-  await pickTargetAndGenerate(page, seed)
-  await page.getByTestId('choose-swap-plan-0').click()
-  await expect(page.getByTestId('swap-compare')).toBeVisible()
+  await openWorkbenchAtSourceLesson(page, { teacherName: seed.teacherChineseName, lessonDate: seed.lessonDate })
+  await startSwapAction(page)
+  await pickSwapTargetAndContinue(page, seed)
+  await expect(page.getByTestId('change-week-0')).toBeVisible()
 
-  await page.getByTestId('swap-personal-confirm').click()
-  await expect(page.getByTestId('workbench-result')).toContainText('亲自确认已生效')
+  await page.getByTestId('personal-confirm').click()
+  await expect(page.getByTestId('workbench-result')).toContainText('已生效')
+  await expect(page.getByTestId('workbench-result')).toContainText('课表已更新')
 
   // 生效事实（API 侧）：两条 SWAP 生效行，实例日期成对（周三↔周五）。
   const token = await apiLogin(api)

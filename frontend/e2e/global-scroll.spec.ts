@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { apiCall, apiLogin, seedSchool, solveAndPublish, uiLogin } from './helpers'
+import { apiCall, apiLogin, pickOption, seedSchool, seedWorkbenchScenario, solveAndPublish, uiLogin } from './helpers'
 
 /**
  * 票 08 验收：应用外壳固定为视口高度，左侧导航与右侧内容各自独立滚动。
@@ -327,5 +327,45 @@ test.describe('同页筛选不回顶', () => {
       const current = await readScroll(page)
       expect(current.mainTop).toBeGreaterThan(0)
     }).toPass({ timeout: 5_000 })
+  })
+})
+
+// 票 03（工作台 UI 重做）：调代工作台新界面自带独立滚动容器（.wb-scroll），
+// 内容在它内部滚动；外壳约定（窗口不滚、主内容与导航不动）在这里一并守住。
+test.describe('工作台独立滚动', () => {
+  // 400px 高的视口让步骤 1 的内容必然超出内部容器高度，无需构造长课表。
+  test.use({ viewport: { width: 1280, height: 400 } })
+
+  test('工作台内容在内部容器滚动，主内容与导航不动', async ({ page, request }) => {
+    const seed = await seedWorkbenchScenario(request)
+    await uiLogin(page, 'admin', 'admin123')
+    await page.goto('/substitutions/workbench')
+    await expect(page.getByTestId('teacher-select')).toBeVisible()
+    await pickOption(page.locator('.picker-card'), 'teacher-select', seed.teacherName)
+    const dateInput = page.getByTestId('lesson-date').locator('input')
+    await dateInput.fill(seed.lessonDate)
+    await dateInput.press('Tab')
+    await expect(page.getByTestId('pick-lesson').first()).toBeVisible({ timeout: 20_000 })
+
+    const before = await readScroll(page)
+    expect(before.windowScrollable).toBe(false)
+    expect(before.windowY).toBe(0)
+
+    // 滚轮落在工作台内部滚动容器上：内容滚动，主内容/菜单/窗口都不动。
+    await page.locator('.wb-scroll').hover()
+    await page.mouse.wheel(0, 800)
+    await page.waitForFunction(
+      () => {
+        const el = document.querySelector<HTMLElement>('.wb-scroll')
+        return !!el && el.scrollTop > 0
+      },
+      undefined,
+      { timeout: 5_000 },
+    )
+    const after = await readScroll(page)
+    expect(after.mainTop).toBe(0)
+    expect(after.menuTop).toBe(0)
+    expect(after.windowY).toBe(0)
+    expect(after.windowScrollable).toBe(false)
   })
 })
