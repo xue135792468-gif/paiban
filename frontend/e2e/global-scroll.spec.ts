@@ -143,16 +143,22 @@ test('长内容页面不出整页滚动条，顶部栏与导航标识保持可�
   }).toPass({ timeout: 15_000 })
 })
 
-test('内容短于视口时同样不出整页滚动条', async ({ page }) => {
-  await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/admin/ai-providers')
+// 短内容场景用超高视口保证页面确实短于视口：全量跑时前面的 spec 会累积
+// AI 供应商行，内容高度随数据增长，固定 720px 视口会让断言依赖执行顺序。
+test.describe('内容短于视口', () => {
+  test.use({ viewport: { width: 1280, height: 2000 } })
 
-  const state = await readScroll(page)
-  expect(state.windowScrollable).toBe(false)
-  expect(state.windowY).toBe(0)
-  expect(state.mainScrollable).toBe(false)
-  await expect(page.getByTestId('layout-header')).toBeVisible()
-  await expect(page.getByTestId('layout-logo')).toBeInViewport()
+  test('内容短于视口时同样不出整页滚动条', async ({ page }) => {
+    await uiLogin(page, 'admin', 'admin123')
+    await page.goto('/admin/ai-providers')
+
+    const state = await readScroll(page)
+    expect(state.windowScrollable).toBe(false)
+    expect(state.windowY).toBe(0)
+    expect(state.mainScrollable).toBe(false)
+    await expect(page.getByTestId('layout-header')).toBeVisible()
+    await expect(page.getByTestId('layout-logo')).toBeInViewport()
+  })
 })
 
 test('导航区与内容区分别滚动，互不带动', async ({ page, request }) => {
