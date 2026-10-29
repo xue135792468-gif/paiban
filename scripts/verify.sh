@@ -27,6 +27,12 @@ if [[ $MODE == quick ]]; then
   (cd backend && ./mvnw -B -DskipTests compile)
 else
   MVN_ARGS=(-B verify)
+  # 本机环境逃生口：surefire 分叉偶发被系统杀掉时，用
+  # PAIBAN_MVN_EXTRA_ARGS=-DforkCount=0 跑全量门禁；CI 不设置该变量，仍是权威。
+  if [[ -n "${PAIBAN_MVN_EXTRA_ARGS:-}" ]]; then
+    read -r -a mvn_extra <<< "$PAIBAN_MVN_EXTRA_ARGS"
+    MVN_ARGS+=("${mvn_extra[@]}")
+  fi
   if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     MVN_ARGS+=(-Dtestcontainers=true)
   elif [[ $REQUIRE_DOCKER -eq 1 ]]; then
