@@ -1,14 +1,5 @@
 <template>
   <div class="workbench">
-    <div class="toolbar">
-      <div>
-        <h2>调代工作台</h2>
-        <p class="subtitle">
-          搜索教师 → 看实际日期课表 → 指定代课或同班调课 → 对照确认。调课需指定明确的目标日期与课节；预览不产生申请或生效，提交审批进待批队列，亲自确认按普通批准路径生效。
-        </p>
-      </div>
-    </div>
-
     <el-alert
       v-if="!isManager"
       type="warning"
@@ -19,167 +10,136 @@
     />
 
     <template v-else>
-      <el-card shadow="never" class="picker-card">
-        <div class="filters">
-          <span class="label">教师</span>
-          <el-select
-            v-model="teacherId"
-            filterable
-            placeholder="搜索教师姓名"
-            style="width: 220px"
-            data-testid="teacher-select"
-            @change="loadTimetable"
-          >
-            <el-option v-for="option in teachers" :key="option.id" :label="option.name" :value="option.id" />
-          </el-select>
-          <span class="label">日期</span>
-          <span data-testid="lesson-date">
-            <el-date-picker
-              v-model="date"
-              type="date"
-              value-format="YYYY-MM-DD"
-              placeholder="选择授课日期"
-              style="width: 160px"
-              @change="loadTimetable"
-            />
-          </span>
+      <div ref="scrollRef" class="wb-scroll">
+        <div class="wb-canvas">
+          <WizardSteps :step="step" />
+
+          <LessonPicker
+            v-if="step === 1"
+            :teachers="teachers"
+            :teacher-id="teacherId"
+            :date="date"
+            :entries="entries"
+            :loading="timetableLoading"
+            :week-start="weekStart"
+            :selected-entry-id="sourceEntry?.id ?? null"
+            :drag-invalid-reason="dragInvalidReason"
+            @update:teacher-id="onTeacherChange"
+            @update:date="onDateChange"
+            @pick="onPick"
+            @drop="onLessonDrop"
+            @clear-drag-invalid="dragInvalidReason = ''"
+          />
+
+          <ActionChooser
+            v-else-if="step === 2"
+            :action="action"
+            :hint="sourceLabel"
+            :lesson-date="sourceLessonDate"
+            :candidates-loading="candidatesLoading"
+            :candidate-list="candidateList"
+            :candidate="candidate"
+            :cover-reason="coverReason"
+            :swap-reason="swapReason"
+            :chips="targetChips"
+            :target-date="targetDate"
+            :target-slots="targetSlots"
+            :target-period-id="targetPeriodId"
+            :targets-loading="targetsLoading"
+            :targets-error="targetsError"
+            :restorable="restorable"
+            @choose-action="onChooseAction"
+            @choose-candidate="onChooseCandidate"
+            @update:cover-reason="coverReason = $event"
+            @update:swap-reason="swapReason = $event"
+            @select-target-date="onSelectTargetDate"
+            @select-target-slot="targetPeriodId = $event"
+            @restore-baseline="onRestoreBaseline"
+          />
+
+          <section v-else class="panel cur" data-testid="wizard-panel-3">
+            <div class="phead">
+              <span class="idx">3</span>
+              <h2>核对并提交</h2>
+              <span class="hint">只列这次会变化的内容</span>
+            </div>
+            <div class="pbody">
+              <p class="placeholder">第 3 步（结论、课表变化对照与提交）由票 02 实现。</p>
+            </div>
+          </section>
         </div>
-      </el-card>
+      </div>
 
-      <WorkbenchTimetable
-        v-if="teacherId"
-        :entries="entries"
-        :week-start="weekStart"
-        :selected-date="date"
-        :teacher-name="teacherName"
-        :loading="timetableLoading"
-        @pick="onPick"
-      />
-
-      <el-empty
-        v-if="teacherId && !timetableLoading && entries.length === 0"
-        description="所选教师当天没有可调整的课"
-      />
-
-      <template v-if="sourceEntry && !action && !preview">
-        <el-card shadow="never" class="picker-card">
-          <div class="reason-row">
-            <span>
-              已选：{{ sourceEntry.courseName }}（{{ date }} 第 {{ sourceEntry.periodNo }} 节）
-            </span>
-            <el-button type="primary" plain data-testid="choose-cover" @click="action = 'cover'">
-              指定代课
-            </el-button>
-            <el-button type="primary" plain data-testid="choose-swap" @click="action = 'swap'">
-              调课（同班置换）
-            </el-button>
-          </div>
-        </el-card>
-      </template>
-
-      <template v-if="sourceEntry && candidateList && action === 'cover' && !preview">
-        <SubstitutePicker
-          :info="candidateList"
-          :selected="candidate"
-          @choose="onChoose"
-        />
-        <el-card v-if="candidate || restorable" shadow="never" class="reason-card">
-          <div class="reason-row">
-            <span v-if="candidate">已选择代课人：{{ candidate.name }}</span>
-            <el-input
-              v-model="reason"
-              placeholder="代课原因（如：甲老师开会）"
-              style="width: 260px"
-              data-testid="preview-reason"
-            />
-            <el-button
-              v-if="candidate"
-              type="primary"
-              data-testid="generate-preview"
-              :loading="previewLoading"
-              @click="generatePreview()"
+      <div class="dock" data-testid="wizard-dock">
+        <div class="dock-in">
+          <div v-if="step === 1" class="foot">
+            <span v-if="!sourceEntry" class="need">还差：点一节课开始</span>
+            <PickedSummary v-else :label="sourceLabel" :editable="false" />
+            <button
+              type="button"
+              class="bt primary next"
+              data-testid="wizard-next-1"
+              :disabled="!sourceEntry"
+              @click="step = 2"
             >
-              生成预览对照
-            </el-button>
-            <el-button
-              v-if="restorable"
-              data-testid="restore-baseline"
-              :loading="previewLoading"
-              @click="generatePreview(candidateList.baselineTeacherId!)"
-            >
-              恢复基线教师{{ candidateList.baselineTeacherName ? '（' + candidateList.baselineTeacherName + '）' : '' }}
-            </el-button>
-            <el-button text @click="resetFlow">重新选择</el-button>
+              下一步：怎么调
+            </button>
           </div>
-        </el-card>
-      </template>
 
-      <SwapPlannerPanel
-        v-if="sourceEntry && action === 'swap' && !preview"
-        :entry="sourceEntry"
-        :lesson-date="date"
-        @preview="onSwapPreview"
-        @cancel="resetFlow"
-      />
+          <div v-else-if="step === 2" class="foot">
+            <PickedSummary :label="sourceLabel" @edit="step = 1" />
+            <button type="button" class="bt" data-testid="wizard-back-2" @click="step = 1">上一步</button>
+            <div class="fr">
+              <span class="need" data-testid="wizard-need-2">{{ need2 }}</span>
+              <button
+                type="button"
+                class="bt primary"
+                data-testid="wizard-next-2"
+                :disabled="need2 !== '可以点下一步了'"
+                @click="step = 3"
+              >
+                下一步：核对并提交
+              </button>
+            </div>
+          </div>
 
-      <PreviewCompare
-        v-if="preview && action === 'cover'"
-        :preview="preview"
-        :can-confirm="canConfirm"
-        :busy="actionBusy"
-        @submit-approval="onSubmitApproval"
-        @confirm="onConfirm"
-        @cancel="resetFlow"
-      />
-
-      <SwapCompare
-        v-if="swapPreview"
-        :preview="swapPreview"
-        :can-confirm="canConfirm"
-        :busy="actionBusy"
-        @submit-approval="onSubmitSwapApproval"
-        @confirm="onConfirmSwap"
-        @cancel="resetFlow"
-      />
-
-      <el-alert
-        v-if="result"
-        :type="result.status === 'EFFECTIVE' ? 'success' : 'info'"
-        :closable="false"
-        show-icon
-        class="result"
-        :data-testid="`workbench-result`"
-        :title="resultMessage"
-      />
+          <div v-else class="foot">
+            <button type="button" class="bt" data-testid="wizard-back-3" @click="step = 2">上一步</button>
+            <div class="fr"><span class="need">第 3 步由票 02 实现</span></div>
+          </div>
+        </div>
+      </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
 import { useAuthStore } from '@/stores/auth'
-import WorkbenchTimetable from '@/components/substitution/workbench/WorkbenchTimetable.vue'
-import SubstitutePicker from '@/components/substitution/workbench/SubstitutePicker.vue'
-import PreviewCompare from '@/components/substitution/workbench/PreviewCompare.vue'
-import SwapPlannerPanel from '@/components/substitution/workbench/SwapPlannerPanel.vue'
-import SwapCompare from '@/components/substitution/workbench/SwapCompare.vue'
-import { mondayOf } from '@/components/substitution/workbench/swapTargetRules'
+import WizardSteps from '@/components/substitution/workbench/WizardSteps.vue'
+import LessonPicker from '@/components/substitution/workbench/LessonPicker.vue'
+import ActionChooser from '@/components/substitution/workbench/ActionChooser.vue'
+import PickedSummary from '@/components/substitution/workbench/PickedSummary.vue'
+import { mondayOf, weekdayLabel } from '@/components/substitution/workbench/swapTargetRules'
+import { buildSwapWindow } from '@/components/substitution/workbench/windowDates'
+import { evaluateLessonDrop } from '@/components/substitution/workbench/dragTargets'
 import { WORKBENCH_MANAGER_PERMISSIONS } from '@/constants/permissions'
 import type { Entry } from '@/components/substitution/types'
 import type {
-  PreviewResponse,
-  SwapPreviewResponse,
-  WorkbenchActionResult,
+  SwapTargetSlot,
+  SwapTargetsResponse,
   WorkbenchCandidate,
   WorkbenchCandidateList,
 } from '@/components/substitution/workbench/types'
 
 const auth = useAuthStore()
 const isManager = computed(() => auth.hasAllPermissions(WORKBENCH_MANAGER_PERMISSIONS))
-const canConfirm = computed(() => auth.hasPermission('substitution:approve'))
+
+const step = ref<1 | 2 | 3>(1)
+const scrollRef = ref<HTMLElement | null>(null)
 
 const teachers = ref<Array<{ id: number; name: string }>>([])
 const teacherId = ref<number | null>(null)
@@ -187,25 +147,40 @@ const date = ref(today())
 const entries = ref<Entry[]>([])
 const timetableLoading = ref(false)
 
+/** 点选的课卡；lessonDate 一律取该卡所在格的真实日期，而不是日期选择器的值。 */
 const sourceEntry = ref<Entry | null>(null)
-/** 本次调整的动作：指定代课（票 03）或同班调课（票 05）。 */
 const action = ref<'cover' | 'swap' | null>(null)
+
 const candidateList = ref<WorkbenchCandidateList | null>(null)
 const candidate = ref<WorkbenchCandidate | null>(null)
-const reason = ref('')
-const previewLoading = ref(false)
-const preview = ref<PreviewResponse | null>(null)
-const swapPreview = ref<SwapPreviewResponse | null>(null)
-const actionBusy = ref(false)
-const result = ref<WorkbenchActionResult | null>(null)
+const candidatesLoading = ref(false)
+const coverReason = ref('')
 
-const teacherName = computed(
-  () => teachers.value.find((item) => item.id === teacherId.value)?.name ?? '',
+const targetDate = ref('')
+const targetSlots = ref<SwapTargetSlot[]>([])
+const targetPeriodId = ref<number | null>(null)
+const targetsLoading = ref(false)
+const targetsError = ref('')
+const swapReason = ref('')
+
+const dragInvalidReason = ref('')
+
+const weekStart = computed(() => mondayOf(date.value || today()))
+const sourceLessonDate = computed(() =>
+  sourceEntry.value ? dateOfDay(weekStart.value, sourceEntry.value.dayOfWeek) : '',
 )
-/**
- * 恢复基线入口（票 04）：当前实际教师与基线原教师不同、且实例未被旧格式锁定、
- * 没有待处理单时，可以直接对基线原教师发起一次经预览、校验的再次调整。
- */
+const sourceLabel = computed(() => {
+  const entry = sourceEntry.value
+  const lessonDate = sourceLessonDate.value
+  if (!entry || !lessonDate) return ''
+  return `${monthDayCn(lessonDate)} ${weekdayLabel(lessonDate)}第${entry.periodNo}节 · ${entry.className} · ${entry.courseName} · ${entry.teacherName}`
+})
+
+const targetChips = computed(() =>
+  sourceLessonDate.value ? buildSwapWindow(sourceLessonDate.value, today()) : [],
+)
+
+/** 「恢复基线」入口沿用旧视图同款判定（票 04）；本票只展示按钮与 emit。 */
 const restorable = computed(() => {
   const info = candidateList.value
   return (
@@ -216,14 +191,13 @@ const restorable = computed(() => {
     info.baselineTeacherId !== info.currentTeacherId
   )
 })
-/** 所选日期所在周的周一，作为周课表列头（与拖拽网格共用同一实现）。 */
-const weekStart = computed(() => mondayOf(date.value || today()))
 
-const resultMessage = computed(() => {
-  if (!result.value) return ''
-  return result.value.status === 'EFFECTIVE'
-    ? `亲自确认已生效（申请 #${result.value.requestId}），课表已更新。`
-    : `已提交审批（申请 #${result.value.requestId}），待批期间旧安排继续生效。`
+const need2 = computed(() => {
+  if (!action.value) return '还差：选择一种调整方式'
+  if (action.value === 'cover') return candidate.value ? '可以点下一步了' : '还差：选择代课老师'
+  if (!targetDate.value) return '还差：选择目标日期'
+  if (!targetPeriodId.value) return '还差：选择目标节次'
+  return '可以点下一步了'
 })
 
 async function loadTeachers() {
@@ -232,7 +206,10 @@ async function loadTeachers() {
 }
 
 async function loadTimetable() {
-  if (!teacherId.value || !date.value) return
+  if (!teacherId.value || !date.value) {
+    entries.value = []
+    return
+  }
   timetableLoading.value = true
   try {
     const { data } = await http.get(`/timetable/teacher/${teacherId.value}`, {
@@ -243,146 +220,371 @@ async function loadTimetable() {
     entries.value = []
   } finally {
     timetableLoading.value = false
-    resetFlow()
   }
 }
 
-async function onPick(entry: Entry) {
-  sourceEntry.value = entry
-  action.value = null
-  candidate.value = null
-  preview.value = null
-  swapPreview.value = null
-  result.value = null
-  try {
-    const { data } = await http.get('/substitution-workbench/candidates', {
-      params: { entryId: entry.id, lessonDate: date.value },
-    })
-    candidateList.value = data
-  } catch (error) {
-    ElMessage.error(serverMessage(error, '操作失败'))
-  }
+function onTeacherChange(value: number | null) {
+  teacherId.value = value
+  step.value = 1
+  resetSelection()
+  void loadTimetable()
 }
 
-/** 调课面板选定候选方案并创建 SWAP 预览凭证后进入整环对照。 */
-function onSwapPreview(response: SwapPreviewResponse) {
-  swapPreview.value = response
+function onDateChange(value: string) {
+  if (!value) return
+  date.value = value
+  step.value = 1
+  resetSelection()
+  void loadTimetable()
 }
 
-function onChoose(chosen: WorkbenchCandidate) {
-  candidate.value = chosen
-}
-
-async function generatePreview(substituteTeacherId?: number) {
-  const entry = sourceEntry.value
-  const chosen = substituteTeacherId ?? candidate.value?.teacherId
-  if (!entry || !chosen || !date.value) return
-  previewLoading.value = true
-  try {
-    const { data } = await http.post('/substitution-workbench/previews', {
-      entryId: entry.id,
-      lessonDate: date.value,
-      substituteTeacherId: chosen,
-      reason: reason.value || undefined,
-    })
-    preview.value = data
-  } catch (error) {
-    ElMessage.error(serverMessage(error, '操作失败'))
-  } finally {
-    previewLoading.value = false
-  }
-}
-
-async function onSubmitApproval(comment: string) {
-  await consume('submit-approval', comment)
-}
-
-async function onConfirm(comment: string) {
-  await consume('confirm', comment)
-}
-
-async function onSubmitSwapApproval(comment: string) {
-  await consume('submit-approval-swap', comment)
-}
-
-async function onConfirmSwap(comment: string) {
-  await consume('confirm-swap', comment)
-}
-
-async function consume(action: string, comment: string) {
-  const voucherId = preview.value?.voucherId ?? swapPreview.value?.voucherId
-  if (!voucherId) return
-  actionBusy.value = true
-  try {
-    const { data } = await http.post(`/substitution-workbench/previews/${voucherId}/${action}`, {
-      comment: comment || undefined,
-    })
-    result.value = data
-    preview.value = null
-    swapPreview.value = null
-    resetFlow()
-    await loadTimetable()
-  } catch (error) {
-    ElMessage.error(serverMessage(error, '操作失败'))
-  } finally {
-    actionBusy.value = false
-  }
-}
-
-/** 取消预览或完成操作后清空流程状态；预览本身零申请、零生效、零通知。 */
-function resetFlow() {
+/** 换教师/换日期/重新点选都会清掉已选课及之后的全部状态。 */
+function resetSelection() {
   sourceEntry.value = null
   action.value = null
   candidateList.value = null
   candidate.value = null
-  preview.value = null
-  swapPreview.value = null
-  reason.value = ''
+  candidatesLoading.value = false
+  coverReason.value = ''
+  swapReason.value = ''
+  targetDate.value = ''
+  targetSlots.value = []
+  targetPeriodId.value = null
+  targetsLoading.value = false
+  targetsError.value = ''
+  dragInvalidReason.value = ''
 }
 
-function today() {
-  return new Date().toISOString().slice(0, 10)
+function onPick(entry: Entry) {
+  resetSelection()
+  sourceEntry.value = entry
 }
+
+async function onChooseAction(kind: 'cover' | 'swap') {
+  if (!sourceEntry.value || action.value === kind) return
+  action.value = kind
+  if (kind === 'cover') {
+    // cover ↔ swap 互斥：切到代课时清掉调课的未定状态。
+    targetDate.value = ''
+    targetSlots.value = []
+    targetPeriodId.value = null
+    targetsError.value = ''
+    swapReason.value = ''
+    await loadCandidates()
+  } else {
+    // 切到调课时清掉代课候选与原因。
+    candidateList.value = null
+    candidate.value = null
+    coverReason.value = ''
+  }
+}
+
+async function loadCandidates() {
+  const entry = sourceEntry.value
+  const lessonDate = sourceLessonDate.value
+  if (!entry || !lessonDate) return
+  candidatesLoading.value = true
+  candidateList.value = null
+  candidate.value = null
+  try {
+    const { data } = await http.get<WorkbenchCandidateList>('/substitution-workbench/candidates', {
+      params: { entryId: entry.id, lessonDate },
+    })
+    if (sourceEntry.value?.id === entry.id) candidateList.value = data
+  } catch (error) {
+    if (sourceEntry.value?.id === entry.id) {
+      ElMessage.error(serverMessage(error, '加载代课候选失败'))
+    }
+  } finally {
+    candidatesLoading.value = false
+  }
+}
+
+function onChooseCandidate(chosen: WorkbenchCandidate) {
+  candidate.value = chosen
+}
+
+async function onSelectTargetDate(value: string) {
+  targetDate.value = value
+  targetPeriodId.value = null
+  targetSlots.value = []
+  targetsError.value = ''
+  await loadTargets()
+}
+
+async function loadTargets() {
+  const entry = sourceEntry.value
+  const lessonDate = sourceLessonDate.value
+  const requestedDate = targetDate.value
+  if (!entry || !lessonDate || !requestedDate) return
+  targetsLoading.value = true
+  targetsError.value = ''
+  try {
+    const { data } = await http.get<SwapTargetsResponse>('/substitution-workbench/swap-targets', {
+      params: { entryId: entry.id, lessonDate, targetDate: requestedDate },
+    })
+    if (targetDate.value !== requestedDate) return
+    targetSlots.value = data.slots
+  } catch (error) {
+    // 窗口天数、学期范围由后端裁决：这里原样显示后端原因。
+    if (targetDate.value !== requestedDate) return
+    targetSlots.value = []
+    targetsError.value = serverMessage(error, '加载目标节次失败')
+  } finally {
+    if (targetDate.value === requestedDate) targetsLoading.value = false
+  }
+}
+
+/**
+ * 拖拽预选：有效目标 = 选中来源卡 + 调课动作 + 目标日期/节次，落在步骤 2；
+ * 绝不自动进步骤 3、不自动生成方案。无效目标只显示原因，零请求零写入。
+ */
+async function onLessonDrop(payload: { source: Entry; target: Entry | null; targetDate: string }) {
+  const lessonDate = dateOfDay(weekStart.value, payload.source.dayOfWeek)
+  const verdict = evaluateLessonDrop(payload.source, payload.target, payload.targetDate, lessonDate)
+  if (!verdict.ok) {
+    dragInvalidReason.value = verdict.reason ?? '该目标格不能作为调课目标'
+    return
+  }
+
+  dragInvalidReason.value = ''
+  resetSelection()
+  sourceEntry.value = payload.source
+  action.value = 'swap'
+  targetDate.value = payload.targetDate
+  step.value = 2
+  await loadTargets()
+  const periodNo = payload.target?.periodNo
+  const slot = targetSlots.value.find((item) => item.periodNo === periodNo)
+  if (slot) targetPeriodId.value = slot.periodId
+}
+
+/** 本票只提供按钮与 emit；票 02 接「以基线教师创建修订预览」。 */
+function onRestoreBaseline() {
+  // 票 02：创建修订预览。
+}
+
+function dateOfDay(weekStartIso: string, dayOfWeek: number): string {
+  const value = new Date(`${weekStartIso}T00:00:00`)
+  if (Number.isNaN(value.getTime())) return ''
+  value.setDate(value.getDate() + dayOfWeek - 1)
+  return isoOf(value)
+}
+
+function monthDayCn(iso: string): string {
+  const [, month, day] = iso.split('-')
+  return `${Number(month)}月${Number(day)}日`
+}
+
+function isoOf(value: Date): string {
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const dayNo = String(value.getDate()).padStart(2, '0')
+  return `${value.getFullYear()}-${month}-${dayNo}`
+}
+
+function today(): string {
+  return isoOf(new Date())
+}
+
+watch(step, async () => {
+  await nextTick()
+  if (scrollRef.value) scrollRef.value.scrollTop = 0
+})
 
 onMounted(loadTeachers)
 </script>
 
 <style scoped>
-.toolbar {
-  margin-bottom: 8px;
+.workbench {
+  --bg: #f5f7fa;
+  --surface: #ffffff;
+  --inset: #f9fafb;
+  --line: #e6e8ef;
+  --line-2: #d0d5dd;
+  --text: #101828;
+  --muted: #667085;
+  --faint: #98a2b3;
+  --brand: #2563eb;
+  --brand-soft: #eff6ff;
+  --ok: #15803d;
+  --ok-soft: #f0fdf4;
+  --warn: #b45309;
+  --warn-soft: #fffbeb;
+  --on-brand: #ffffff;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --radius: 14px;
+  --radius-sm: 10px;
+  --btn-h: 38px;
+  background: var(--bg);
+  border-radius: 14px;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  height: 100%;
+  line-height: 1.7;
+  min-height: 0;
 }
-h2 {
-  margin: 0 0 4px;
-  font-size: 20px;
+.wb-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 24px 4px;
 }
-.subtitle {
-  color: var(--paiban-muted);
-  font-size: 13px;
+.wb-canvas {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin: 0 auto;
+  max-width: 1080px;
+  min-height: 100%;
+}
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  min-width: 0;
+  overflow: hidden;
+}
+.panel.cur {
+  border-left: 3px solid var(--brand);
+}
+.phead {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 16px 24px;
+}
+.idx {
+  align-items: center;
+  background: var(--brand-soft);
+  border-radius: 50%;
+  color: var(--brand);
+  display: grid;
+  flex: none;
+  font-size: 12px;
+  height: 22px;
+  place-items: center;
+  width: 22px;
+}
+.phead h2 {
+  font-size: 15px;
+  font-weight: 500;
   margin: 0;
 }
-.picker-card {
-  margin-bottom: 12px;
+.hint {
+  color: var(--muted);
+  font-size: 12px;
 }
-.filters {
+.pbody {
+  padding: 24px;
+}
+.placeholder {
+  color: var(--muted);
+  margin: 0;
+}
+.dock {
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  flex: none;
+  padding: 12px 24px;
+}
+.dock-in {
+  margin: 0 auto;
+  max-width: 1080px;
+}
+.foot {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  min-width: 0;
+  width: 100%;
+}
+.need {
+  color: var(--muted);
+  font-size: 12px;
+}
+.fr {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 18px;
+  justify-content: flex-end;
+  margin-left: auto;
+  min-width: 0;
 }
-.label {
-  color: var(--paiban-muted);
-  font-size: 13px;
+.next {
+  margin-left: auto;
 }
-.reason-card {
-  margin-top: 12px;
-}
-.reason-row {
+.bt {
   align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 13.5px;
+  gap: 6px;
+  justify-content: center;
+  min-height: var(--btn-h);
+  padding: 0 16px;
+  white-space: nowrap;
 }
-.result {
-  margin-top: 12px;
+.bt:hover:not(:disabled) {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+.bt.primary {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--on-brand);
+}
+.bt.primary:hover:not(:disabled) {
+  color: var(--on-brand);
+  filter: brightness(1.07);
+}
+.bt:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+@media (max-width: 1180px) {
+  .dock-in {
+    max-width: 100%;
+  }
+}
+@media (max-width: 900px) {
+  .wb-scroll {
+    padding: 14px 14px 4px;
+  }
+  .dock {
+    padding: 10px 14px;
+  }
+  .phead {
+    padding: 12px 16px;
+  }
+  .pbody {
+    padding: 16px;
+  }
+}
+@media (max-width: 560px) {
+  .foot {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .next {
+    margin-left: 0;
+    width: 100%;
+  }
+  .fr {
+    justify-content: space-between;
+    margin-left: 0;
+    width: 100%;
+  }
 }
 </style>
