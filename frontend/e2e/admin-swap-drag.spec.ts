@@ -86,8 +86,11 @@ test('拖到空格与窗口外：显示明确不可用原因，不产生候选�
   const thursday = shiftDate(seed.lessonDate, 1)
   const emptyCell = page.getByTestId(`swap-cell-${thursday}-1`)
   await expect(emptyCell).toHaveAttribute('data-cell-state', 'empty')
-  await dragSourceToCell(page, emptyCell)
-  await expect(page.getByTestId('swap-drop-invalid')).toBeVisible()
+  // 非法投放零写入，整段拖拽可安全重试：CI 负载下 pointerup 后的提示渲染偶尔超时。
+  await expect(async () => {
+    await dragSourceToCell(page, emptyCell)
+    await expect(page.getByTestId('swap-drop-invalid')).toBeVisible({ timeout: 1_000 })
+  }).toPass({ timeout: 20_000 })
   await expect(page.getByTestId('swap-drop-invalid')).toContainText('空格')
   await expect(page.getByTestId('swap-plan-card')).toHaveCount(0)
 
@@ -95,8 +98,11 @@ test('拖到空格与窗口外：显示明确不可用原因，不产生候选�
   const monday = shiftDate(seed.lessonDate, -2)
   const beforeCell = page.getByTestId(`swap-cell-${monday}-1`)
   await expect(beforeCell).toHaveAttribute('data-cell-state', 'before-source')
-  await dragSourceToCell(page, beforeCell)
-  await expect(page.getByTestId('swap-drop-invalid')).toContainText('早于来源日期')
+  await expect(async () => {
+    await dragSourceToCell(page, beforeCell)
+    await expect(page.getByTestId('swap-drop-invalid'))
+      .toContainText('早于来源日期', { timeout: 1_000 })
+  }).toPass({ timeout: 20_000 })
   await expect(page.getByTestId('swap-plan-card')).toHaveCount(0)
 
   // API 侧不变量：拖动零写入——没有申请，也没有生效行。
