@@ -42,6 +42,7 @@ import java.util.Comparator;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 /**
  * 管理调代工作台（票 03）：无教师绑定的管理员搜索教师、按实际日期选课、
@@ -688,14 +689,14 @@ public class AdminSubstitutionService {
         if (course == null) {
             return null;
         }
-        if (course.getSubject() != null && !course.getSubject().isBlank()) {
+        if (StringUtils.hasText(course.getSubject())) {
             return course.getSubject().trim();
         }
-        return course.getName() == null || course.getName().isBlank() ? null : course.getName().trim();
+        return StringUtils.hasText(course.getName()) ? course.getName().trim() : null;
     }
 
     private boolean sameSubject(String courseSubject, String teacherSubject) {
-        return courseSubject != null && teacherSubject != null && !teacherSubject.isBlank()
+        return courseSubject != null && StringUtils.hasText(teacherSubject)
                 && courseSubject.equalsIgnoreCase(teacherSubject.trim());
     }
 }

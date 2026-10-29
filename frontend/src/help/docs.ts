@@ -63,6 +63,11 @@ const META: Record<HelpSlug, { title: string; summary: string; group: HelpGroupT
     summary: '教师与课表的通用导入：原始网格、目标识别、名称映射与草稿生成',
     group: '功能模块',
   },
+  'substitution-workbench': {
+    title: '调代工作台',
+    summary: '教务管理员代人安排调代：一次性日期、对照确认、审批与亲自生效',
+    group: '功能模块',
+  },
   'flow-term-start': {
     title: '新学期开学流程',
     summary: '从初始化向导到第一次自动排课的完整步骤',

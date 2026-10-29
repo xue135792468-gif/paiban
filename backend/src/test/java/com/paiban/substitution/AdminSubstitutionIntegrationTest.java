@@ -307,6 +307,105 @@ class AdminSubstitutionIntegrationTest extends ApiIntegrationTest {
                 .count()).isGreaterThanOrEqualTo(1);
     }
 
+    /**
+     * 票 09 集成补缺：跨票全链「管理员代发 → 待批 → 另一位管理员批准 →
+     * 历史/统计/通知/导出一致」。票 03 的代发用例批准人与代发人是同一管理员，
+     * 也没有串联历史、统计与导出；这里由另一位真实管理员账号完成批准。
+     */
+    @Test
+    void anotherAdminApprovesDispatchedRequestAndHistoryStatsExportAgree() throws Exception {
+        Fixture fx = fixture();
+        String dispatcher = adminToken();
+        long dispatcherId = userRows.findByUsername("admin").orElseThrow().getId();
+
+        // 教师账号先建：生效通知按「教师 → 用户」在批准时解析收件人。
+        String teacherAToken = teacherUser(TestData.suffix(), fx.teacherAId());
+        String teacherCToken = teacherUser(TestData.suffix(), fx.teacherCId());
+
+        // 代发：管理员 A 替教师甲提交审批（票 03 合同），进入待批队列。
+        long voucherId = preview(dispatcher, fx, fx.teacherCId());
+        long requestId = consume(dispatcher, voucherId, "submit-approval", "代发：甲老师开会", 200);
+
+        // 另一位管理员 B 批准：同一普通批准路径，审批人按真实账号记录。
+        String approverName = "approver_" + TestData.suffix();
+        long approverId = createUser(adminToken(), approverName, "admin123", "admin");
+        String approver = login(approverName, "admin123");
+        as(approver).body(Map.of("substituteTeacherId", fx.teacherCId(), "comment", "同意"))
+                .when().post("/api/substitution-requests/" + requestId + "/approve")
+                .then().statusCode(200)
+                .body("status", equalTo("EFFECTIVE"));
+
+        // 历史：完整流转 SUBMITTED → PENDING_APPROVAL → EFFECTIVE，可追溯。
+        as(approver).when().get("/api/substitution-requests/" + requestId + "/history")
+                .then().statusCode(200)
+                .body("toStatus", hasItem("SUBMITTED"))
+                .body("toStatus", hasItem("PENDING_APPROVAL"))
+                .body("toStatus", hasItem("EFFECTIVE"));
+
+        // 审计：操作者 = 代发管理员；审批人 = 批准的管理员。
+        SubstitutionRequest saved = requestRows.findById(requestId).orElseThrow();
+        assertThat(saved.getOperatorUserId()).isEqualTo(dispatcherId);
+        assertThat(saved.getApproverId()).isEqualTo(approverId);
+        assertThat(saved.getOriginalTeacherId()).isEqualTo(fx.teacherAId());
+        assertThat(saved.getFinalTeacherId()).isEqualTo(fx.teacherCId());
+
+        // 统计：按当前有效安排口径——甲被代 1、丙代课 1（与票 04 同一口径）。
+        as(dispatcher).queryParam("teacherId", fx.teacherAId())
+                .when().get("/api/substitutions/stats")
+                .then().statusCode(200)
+                .body("substitutedOut", equalTo(1));
+        as(dispatcher).queryParam("teacherId", fx.teacherCId())
+                .when().get("/api/substitutions/stats")
+                .then().statusCode(200)
+                .body("substitutedIn", equalTo(1));
+
+        // 通知：被代教师与代课教师都收到生效通知。
+        as(teacherAToken).when().get("/api/notifications/unread-count")
+                .then().statusCode(200)
+                .body("count", equalTo(1));
+        as(teacherCToken).when().get("/api/notifications/unread-count")
+                .then().statusCode(200)
+                .body("count", equalTo(1));
+
+        // 导出与视图同一读取模型：授课日甲的导出无课、丙的导出恰有这一节。
+        String date = fx.lessonDate().toString();
+        byte[] originalExcel = as(dispatcher).queryParam("view", "latest").queryParam("date", date)
+                .when().get("/api/timetable/teacher/" + fx.teacherAId() + "/export/excel")
+                .then().statusCode(200).extract().asByteArray();
+        assertThat(excelHasAnyLesson(originalExcel)).isFalse();
+        byte[] coverExcel = as(dispatcher).queryParam("view", "latest").queryParam("date", date)
+                .when().get("/api/timetable/teacher/" + fx.teacherCId() + "/export/excel")
+                .then().statusCode(200).extract().asByteArray();
+        assertThat(excelHasAnyLesson(coverExcel)).isTrue();
+        as(dispatcher).queryParam("view", "latest").queryParam("date", date)
+                .when().get("/api/timetable/teacher/" + fx.teacherCId())
+                .then().statusCode(200)
+                .body("size()", equalTo(1));
+    }
+
+    /** 与 SubstitutionRevisionIntegrationTest 相同的 Excel 内容探针：数据行是否存在非空单元格。 */
+    private static boolean excelHasAnyLesson(byte[] excel) throws Exception {
+        try (var workbook = org.apache.poi.ss.usermodel.WorkbookFactory.create(
+                new java.io.ByteArrayInputStream(excel))) {
+            var sheet = workbook.getSheetAt(0);
+            for (int r = 3; r <= sheet.getLastRowNum(); r++) {
+                var row = sheet.getRow(r);
+                if (row == null) {
+                    continue;
+                }
+                for (int c = 1; c < row.getLastCellNum(); c++) {
+                    var cell = row.getCell(c);
+                    if (cell != null
+                            && cell.getCellType() == org.apache.poi.ss.usermodel.CellType.STRING
+                            && !cell.getStringCellValue().isBlank()) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+    }
+
     @Test
     void adminPersonalConfirmRunsTheApprovalPath() {
         Fixture fx = fixture();

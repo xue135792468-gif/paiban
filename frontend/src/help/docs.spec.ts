@@ -22,6 +22,8 @@ const REQUIRED_ANCHORS: Record<string, string[]> = {
   ],
   'flow-substitution': ['apply', 'approve'],
   'flow-term-end': ['stats'],
+  /** 票 09：管理员调代工作台说明，四个锚点对应票据 1-4 条。 */
+  'substitution-workbench': ['one-time', 'concepts', 'approve', 'compare'],
 }
 
 describe('HELP_DOCS', () => {
@@ -47,8 +49,8 @@ describe('HELP_DOCS', () => {
 
   it('groups documents by feature module and by scenario flow', () => {
     expect(HELP_GROUPS.map((group) => group.title)).toEqual(['功能模块', '场景流程'])
-    expect(HELP_GROUPS[0].docs.map((doc) => doc.slug)).toEqual(HELP_SLUGS.slice(0, 7))
-    expect(HELP_GROUPS[1].docs.map((doc) => doc.slug)).toEqual(HELP_SLUGS.slice(7))
+    expect(HELP_GROUPS[0].docs.map((doc) => doc.slug)).toEqual(HELP_SLUGS.slice(0, 8))
+    expect(HELP_GROUPS[1].docs.map((doc) => doc.slug)).toEqual(HELP_SLUGS.slice(8))
   })
 
   it('links to routes that exist in the router', () => {
@@ -65,6 +67,7 @@ describe('HELP_DOCS', () => {
       '/admin/scheduling',
       '/timetable',
       '/substitutions',
+      '/substitutions/workbench',
       '/notifications',
       '/admin/settings',
       '/admin/ai-providers',
@@ -121,6 +124,20 @@ describe('searchDocs', () => {
       expect(body).toContain(action)
     }
     expect(searchDocs('后台解析').map((result) => result.doc.slug)).toContain('ai-import')
+  })
+
+  it('indexes the admin workbench guide (ticket 09)', () => {
+    expect(searchDocs('调代工作台').map((result) => result.doc.slug)).toContain(
+      'substitution-workbench',
+    )
+    expect(searchDocs('恢复基线').map((result) => result.doc.slug)).toContain(
+      'substitution-workbench',
+    )
+    // 票据 1-3 条的关键句必须在正文里，供帮助搜索与人工核对。
+    const body = findDoc('substitution-workbench')!.body
+    expect(body).toContain('下周同一节次自动恢复常规课表')
+    expect(body).toContain('开课后不能再改')
+    expect(body).toContain('变化清单')
   })
 
   it('matches body text and returns a snippet around the hit', () => {
