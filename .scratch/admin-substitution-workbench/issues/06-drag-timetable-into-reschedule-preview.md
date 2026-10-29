@@ -4,7 +4,7 @@
 
 **Blocked by:** 05:管理员同班调课方案与跨日对照
 
-**Status:** in-progress (2026-10-29, branch feature/t06-drag-timetable-reschedule)
+**Status:** done (2026-10-29, 集成分支 `feature/admin-substitution-workbench`；门禁后端 1012 / 前端 417 / Playwright 117 全绿)
 
 - [ ] Playwright 从行政班视角拖动课节到同班目标格后，显示目标的实际日期/课节并进入方案预览。
 - [ ] Playwright 从教师视角发起时，目标明确属于源课行政班，不把教师空闲格误当班级目标槽。

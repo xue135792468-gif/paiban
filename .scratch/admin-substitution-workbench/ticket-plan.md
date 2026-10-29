@@ -42,3 +42,7 @@ Status: ready-for-agent
 3. 用户确认 HTTP 集成与 Playwright 两个现有验收入口，以及纯算法缝的必要边界补充。
 
 按本地 issue tracker 约定，每票一份独立文件，写明 Blocked by 并标为 ready-for-agent；本次发布不自动认领、实现、提交生产数据或部署。
+
+## 完成记录（2026-10-29）
+
+九张票已全部实现、两轴评审并修复，合入集成分支 `feature/admin-substitution-workbench`。最终门禁：后端 1012（0 失败，8 skipped 为需 Docker 的容器测试）、前端 417、Playwright 117 全绿；真实 PostgreSQL（PostgresContainerIT）待 CI/服务器执行。评审发现与修法见 `review-fixes.md`。**未合并 main、未部署**；上线须独立授权（`--deploy` + 真 PG + 教务确认历史影响清单）。

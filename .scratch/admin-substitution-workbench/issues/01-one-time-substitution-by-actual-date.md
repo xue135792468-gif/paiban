@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** in-progress (2026-10-29, branch feature/t01-dated-substitution-instances)
+**Status:** done (2026-10-29, 集成分支 `feature/admin-substitution-workbench`；门禁后端 1012 / 前端 417 / Playwright 117 全绿)
 
 - [ ] 新格式实例可通过现有 HTTP 用户流程完成申请、批准和生效；仅指定日期的安排发生变化。
 - [ ] 同一基线条目下一周仍按常规安排显示，未被一次性调代延续。

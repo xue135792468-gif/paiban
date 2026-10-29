@@ -1,5 +1,7 @@
 # 接手说明（2026-10-25 会话交接）
 
+> **2026-10-29 管理员调代工作台九票已全部实现、评审并合入集成分支 `feature/admin-substitution-workbench`（未合并 main、未部署）**：01 日期实例（V38）、02 历史转换预检（V39）、03 管理员代课/预览/亲自确认（V40）、04 修订链换代课人/恢复基线（V41）、05 同班调课明确目标日期（V42）、06 拖拽入口、07 已调课实例再调整与冻结、08 全站独立滚动、09 帮助与集成验收。两轴 code-review 后的修复：批准路径一律受开课截止（含首次批准）、候选方案按操作者隔离（V43）、SUPERSEDED 历史展示（记录接口 `status=ALL` 可选）、h2 控制台按环境放行、共享 `SubstitutionLookups` 去重、前端权限常量集中；门禁修复：e2e 种子改未来学期、onboarding 前置、滚动/重姓 flaky 加固。最终门禁：后端 1012（0 失败，8 skipped 为需 Docker 的容器测试）、前端 417、Playwright 117 全绿。真实 PostgreSQL（PostgresContainerIT，票 02 扩展 4 条）待 CI/服务器执行。**上线须独立授权**（`--deploy` + 真 PG + 教务确认历史影响清单）。修复明细见 [review-fixes.md](admin-substitution-workbench/review-fixes.md)，验收截图在 `admin-substitution-workbench/acceptance/`。
+
 > **2026-10-29 管理员调代工作台规划已确认并发布，尚未实现**：见 [正式规格](admin-substitution-workbench/spec.md)、[九票依赖总览](admin-substitution-workbench/ticket-plan.md) 与 [决策记录](admin-substitution-workbench/decisions.md)。支持管理员代任意教师发起/亲自确认、左右课表对照、发布后同班环拖拽，以及开课前再次调整；全站独立滚动单独成票。初始 frontier 为 **01、08**，其余按 Blocked by 推进。ADR-0030 已接受；日期实例语义与现有持续覆盖不同，历史转换须先出差异清单并完成教务数据确认。本次仅发布文档和九张 ready-for-agent 票据，未认领、未编码、未部署；原线上状态保持下述记录的证据边界。
 
 > **2026-10-28 票 04（重复提交单飞）已实现、评审、合并并部署（代码 `a355dde`，Flyway v37，无迁移）**：`COMMITTING` 短事务认领 + 失败释放 + 启动恢复；两轴独立评审无阻塞；官方门禁后端 869（5 skipped）、前端 401、Playwright 91 全绿；CI 四 job（含真实 PostgreSQL `PostgresContainerIT`）全绿。部署备份 `~/backups/paiban/paiban-pre-20261028T041007Z.sql.gz`；四容器 healthy、两处 health 200。生产冒烟：1 行工作簿导入 → 第一次确认 200（草稿 6）、第二次 409、只新增 1 份草稿。详见[票 04](workbook-background/issues/04-commit-single-flight.md)。

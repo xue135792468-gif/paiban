@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** in-progress (2026-10-29, branch feature/t08-global-scroll-regions)
+**Status:** done (2026-10-29, 集成分支 `feature/admin-substitution-workbench`；门禁后端 1012 / 前端 417 / Playwright 117 全绿)
 
 - [ ] Playwright 使用长菜单和长页面验证导航区与内容区可分别滚动、互不带动。
 - [ ] 滚动导航至中段后切换不同菜单，右侧回到页面顶部且左侧位置保持。

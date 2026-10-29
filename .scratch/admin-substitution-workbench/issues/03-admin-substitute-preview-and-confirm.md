@@ -4,7 +4,7 @@
 
 **Blocked by:** 01:按实际授课日期查看和导出一次性调代
 
-**Status:** in-progress (2026-10-29, branch feature/t03-admin-substitute-flow)
+**Status:** done (2026-10-29, 集成分支 `feature/admin-substitution-workbench`；门禁后端 1012 / 前端 417 / Playwright 117 全绿)
 
 - [ ] 无教师绑定且具备相应权限的管理员可经 HTTP 完成代人预览、提交审批和亲自确认；课表只在确认后改变。
 - [ ] 提交审批进入待审批队列，待批期间旧安排继续生效且不发已生效通知。

@@ -4,7 +4,7 @@
 
 **Blocked by:** 01:按实际授课日期查看和导出一次性调代
 
-**Status:** in-progress (2026-10-29, branch feature/t02-legacy-conversion-precheck)
+**Status:** done (2026-10-29, 集成分支 `feature/admin-substitution-workbench`；门禁后端 1012 / 前端 417 / Playwright 117 全绿)
 
 - [ ] 只读预检可生成按记录列明依据、转换状态和影响范围的可审阅报告，不改动业务数据。
 - [ ] 报告对转换前后教师/班级/教室/全校日期课表差异可逐项核对，并指出后续周恢复常规安排。
