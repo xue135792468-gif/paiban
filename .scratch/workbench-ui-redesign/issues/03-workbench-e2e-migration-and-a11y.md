@@ -4,7 +4,7 @@
 
 **Blocked by:** 01、02
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-30, 集成分支 feature/workbench-ui-redesign；门禁后端 1012 / 前端 438 / Playwright 137 全绿)
 
 ## 需要迁移的 spec（覆盖不可缩水）
 
