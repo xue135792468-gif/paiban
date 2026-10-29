@@ -236,12 +236,3 @@ export interface SwapPreviewResponse {
   canSubmitApproval: boolean
   canConfirm: boolean
 }
-
-export interface SwapCompareResponse {
-  date: string
-  view: string
-  viewId: number
-  viewName?: string | null
-  left: GridCell[]
-  right: GridCell[]
-}

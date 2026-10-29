@@ -12,7 +12,7 @@
     <template v-else>
       <div ref="scrollRef" class="wb-scroll">
         <div class="wb-canvas">
-          <WizardSteps :step="step" />
+          <WizardSteps v-if="step !== 4" :step="stepperStep" />
 
           <LessonPicker
             v-if="step === 1"
@@ -61,20 +61,18 @@
             @restore-baseline="onRestoreBaseline"
           />
 
-          <section v-else class="panel cur" data-testid="wizard-panel-3">
-            <div class="phead">
-              <span class="idx">3</span>
-              <h2>核对并提交</h2>
-              <span class="hint">只列这次会变化的内容</span>
-            </div>
-            <div class="pbody">
-              <p class="placeholder">第 3 步（结论、课表变化对照与提交）由票 02 实现。</p>
-            </div>
+          <ConfirmStep v-else-if="step === 3" :flow="flow" @success="step = 4" />
+
+          <section v-else class="result" data-testid="workbench-result">
+            <span class="okmark" aria-hidden="true">✓</span>
+            <h2>{{ flow.resultTitle }}</h2>
+            <p>{{ flow.resultText }}</p>
+            <button type="button" class="bt" data-testid="wizard-again" @click="onAgain">再调整一节课</button>
           </section>
         </div>
       </div>
 
-      <div class="dock" data-testid="wizard-dock">
+      <div v-if="step !== 4" class="dock" data-testid="wizard-dock">
         <div class="dock-in">
           <div v-if="step === 1" class="foot">
             <span v-if="!sourceEntry" class="need">还差：点一节课开始</span>
@@ -107,9 +105,22 @@
             </div>
           </div>
 
-          <div v-else class="foot">
-            <button type="button" class="bt" data-testid="wizard-back-3" @click="step = 2">上一步</button>
-            <div class="fr"><span class="need">第 3 步由票 02 实现</span></div>
+          <div v-else-if="step === 3" class="foot">
+            <button type="button" class="bt" data-testid="wizard-back-3" @click="onBack3">上一步</button>
+            <div class="fr">
+              <div class="bc">
+                <button type="button" class="bt" data-testid="submit-approval" :disabled="flow.submitDisabled" @click="flow.submitApproval()">
+                  提交审批
+                </button>
+                <span class="cap">先进待批，暂不生效</span>
+              </div>
+              <div class="bc">
+                <button type="button" class="bt primary" data-testid="personal-confirm" :disabled="flow.confirmDisabled" @click="flow.confirmEffective()">
+                  亲自确认生效
+                </button>
+                <span class="cap">立即生效，通知老师</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -126,7 +137,9 @@ import { useAuthStore } from '@/stores/auth'
 import WizardSteps from '@/components/substitution/workbench/WizardSteps.vue'
 import LessonPicker from '@/components/substitution/workbench/LessonPicker.vue'
 import ActionChooser from '@/components/substitution/workbench/ActionChooser.vue'
+import ConfirmStep from '@/components/substitution/workbench/ConfirmStep.vue'
 import PickedSummary from '@/components/substitution/workbench/PickedSummary.vue'
+import { useConfirmFlow } from '@/components/substitution/workbench/useConfirmFlow'
 import {
   dateOfDay,
   mondayOf,
@@ -148,7 +161,7 @@ import type {
 const auth = useAuthStore()
 const isManager = computed(() => auth.hasAllPermissions(WORKBENCH_MANAGER_PERMISSIONS))
 
-const step = ref<1 | 2 | 3>(1)
+const step = ref<1 | 2 | 3 | 4>(1)
 const scrollRef = ref<HTMLElement | null>(null)
 
 const teachers = ref<Array<{ id: number; name: string }>>([])
@@ -211,6 +224,20 @@ const need2 = computed(() => {
   if (!targetPeriodId.value) return '还差：选择目标节次'
   return '可以点下一步了'
 })
+
+// 第③步数据编排（预览/方案/提交/确认/错误重试）全部在 useConfirmFlow；View 只持步骤状态。
+const flow = useConfirmFlow({
+  entryId: computed(() => sourceEntry.value?.id ?? null),
+  lessonDate: sourceLessonDate,
+  action,
+  candidate,
+  targetDate,
+  targetPeriodId,
+  coverReason,
+  swapReason,
+})
+
+const stepperStep = computed(() => (step.value === 4 ? 3 : step.value))
 
 const ready2 = computed(() => {
   if (!action.value) return false
@@ -283,6 +310,7 @@ function resetSelection() {
   targetsLoading.value = false
   targetsError.value = ''
   dragInvalidReason.value = ''
+  flow.reset()
 }
 
 function onPick(entry: Entry) {
@@ -393,15 +421,38 @@ async function onLessonDrop(payload: { source: Entry; target: Entry | null; targ
   if (slot) targetPeriodId.value = slot.periodId
 }
 
-/** 本票只提供按钮与 emit；票 02 接「以基线教师创建修订预览」。 */
-function onRestoreBaseline() {}
+/** 「恢复基线」走同一 previews 端点（revisionKind=RESTORE_BASELINE 随响应回来）。 */
+function onRestoreBaseline(teacherId: number) {
+  flow.startRestoreBaseline(teacherId)
+  step.value = 3
+}
 
-watch(step, async () => { await nextTick(); if (scrollRef.value) scrollRef.value.scrollTop = 0 })
+/** 上一步（第③步 → 第②步）：凭证弃用，零请求零写入；再进来会重新生成。 */
+function onBack3() {
+  step.value = 2
+  flow.invalidate()
+}
+
+/** 「再调整一节课」：清空全部状态回步骤 1，并重拉课表（能看到新安排）。 */
+function onAgain() {
+  resetSelection()
+  step.value = 1
+  void loadTimetable()
+}
+
+watch(step, async (value, previous) => {
+  if (value === 3) await flow.generate()
+  // 从第③步离开（非成功态）：凭证弃用；成功态保留 result 供成功面板显示。
+  if (previous === 3 && value !== 4) flow.invalidate()
+  await nextTick()
+  if (scrollRef.value) scrollRef.value.scrollTop = 0
+})
 
 onMounted(loadTeachers)
 </script>
 
 <style scoped>
+/* 短规则单行书写：本文件受 600 行闸门约束，样式压缩不承载逻辑。 */
 .workbench {
   --bg: #f5f7fa;
   --surface: #ffffff;
@@ -434,12 +485,7 @@ onMounted(loadTeachers)
   min-height: 0;
   overflow: hidden;
 }
-.wb-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 20px 24px 4px;
-}
+.wb-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px 4px; }
 .wb-canvas {
   display: flex;
   flex-direction: column;
@@ -448,63 +494,8 @@ onMounted(loadTeachers)
   max-width: 1080px;
   min-height: 100%;
 }
-.panel {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  min-width: 0;
-  overflow: hidden;
-}
-.panel.cur {
-  border-left: 3px solid var(--brand);
-}
-.phead {
-  align-items: center;
-  border-bottom: 1px solid var(--line);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 16px 24px;
-}
-.idx {
-  align-items: center;
-  background: var(--brand-soft);
-  border-radius: 50%;
-  color: var(--brand);
-  display: grid;
-  flex: none;
-  font-size: 12px;
-  height: 22px;
-  place-items: center;
-  width: 22px;
-}
-.phead h2 {
-  font-size: 15px;
-  font-weight: 500;
-  margin: 0;
-}
-.hint {
-  color: var(--muted);
-  font-size: 12px;
-}
-.pbody {
-  padding: 24px;
-}
-.placeholder {
-  color: var(--muted);
-  margin: 0;
-}
-.dock {
-  background: var(--surface);
-  border-top: 1px solid var(--line);
-  flex: none;
-  padding: 12px 24px;
-}
-.dock-in {
-  margin: 0 auto;
-  max-width: 1080px;
-}
+.dock { background: var(--surface); border-top: 1px solid var(--line); flex: none; padding: 12px 24px; }
+.dock-in { margin: 0 auto; max-width: 1080px; }
 .foot {
   align-items: center;
   display: flex;
@@ -512,10 +503,7 @@ onMounted(loadTeachers)
   min-width: 0;
   width: 100%;
 }
-.need {
-  color: var(--muted);
-  font-size: 12px;
-}
+.need { color: var(--muted); font-size: 12px; }
 .fr {
   align-items: center;
   display: flex;
@@ -525,9 +513,38 @@ onMounted(loadTeachers)
   margin-left: auto;
   min-width: 0;
 }
-.next {
-  margin-left: auto;
+.bc {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
+.cap { color: var(--muted); font-size: 11px; line-height: 1.4; text-align: right; }
+.result {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: auto 0;
+  padding: 46px 24px;
+  text-align: center;
+}
+.okmark {
+  align-items: center;
+  background: var(--ok-soft);
+  border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent);
+  border-radius: 50%;
+  color: var(--ok);
+  display: grid;
+  flex: none;
+  font-size: 24px;
+  height: 48px;
+  place-items: center;
+  width: 48px;
+}
+.result h2 { font-size: 16px; font-weight: 500; margin: 6px 0 0; }
+.result p { color: var(--muted); font-size: 13px; margin: 0; }
+.next { margin-left: auto; }
 .bt {
   align-items: center;
   background: var(--surface);
@@ -544,55 +561,18 @@ onMounted(loadTeachers)
   padding: 0 16px;
   white-space: nowrap;
 }
-.bt:hover:not(:disabled) {
-  border-color: var(--brand);
-  color: var(--brand);
-}
-.bt.primary {
-  background: var(--brand);
-  border-color: var(--brand);
-  color: var(--on-brand);
-}
-.bt.primary:hover:not(:disabled) {
-  color: var(--on-brand);
-  filter: brightness(1.07);
-}
-.bt:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-@media (max-width: 1180px) {
-  .dock-in {
-    max-width: 100%;
-  }
-}
+.bt:hover:not(:disabled) { border-color: var(--brand); color: var(--brand); }
+.bt.primary { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
+.bt.primary:hover:not(:disabled) { color: var(--on-brand); filter: brightness(1.07); }
+.bt:disabled { cursor: not-allowed; opacity: 0.45; }
+@media (max-width: 1180px) { .dock-in { max-width: 100%; } }
 @media (max-width: 900px) {
-  .wb-scroll {
-    padding: 14px 14px 4px;
-  }
-  .dock {
-    padding: 10px 14px;
-  }
-  .phead {
-    padding: 12px 16px;
-  }
-  .pbody {
-    padding: 16px;
-  }
+  .wb-scroll { padding: 14px 14px 4px; }
+  .dock { padding: 10px 14px; }
 }
 @media (max-width: 520px) {
-  .foot {
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-  .next {
-    margin-left: 0;
-    width: 100%;
-  }
-  .fr {
-    justify-content: space-between;
-    margin-left: 0;
-    width: 100%;
-  }
+  .foot { flex-wrap: wrap; gap: 10px; }
+  .next { margin-left: 0; width: 100%; }
+  .fr { justify-content: space-between; margin-left: 0; width: 100%; }
 }
 </style>
