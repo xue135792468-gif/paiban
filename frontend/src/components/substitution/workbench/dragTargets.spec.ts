@@ -58,12 +58,33 @@ describe('evaluateLessonDrop', () => {
   it('跨班目标不可投放，原因里点出目标班级', () => {
     const verdict = evaluateLessonDrop(
       SOURCE,
-      entry({ id: 103, className: '高一2班', periodNo: 2 }),
+      entry({ id: 103, classId: 8, className: '高一2班', periodNo: 2 }),
       '2026-10-29',
       LESSON_DATE,
     )
     expect(verdict.ok).toBe(false)
     expect(verdict.reason).toBe('跨班：目标格是高一2班的课，不是同一班，不能对调')
+  })
+
+  it('同名班级但 classId 不同 → 仍判跨班（身份看 classId）', () => {
+    const verdict = evaluateLessonDrop(
+      SOURCE,
+      entry({ id: 107, classId: 99, className: '高一1班', periodNo: 2 }),
+      '2026-10-29',
+      LESSON_DATE,
+    )
+    expect(verdict.ok).toBe(false)
+    expect(verdict.reason).toBe('跨班：目标格是高一1班的课，不是同一班，不能对调')
+  })
+
+  it('classId 相同、展示名不同 → 视为同班，有效', () => {
+    const verdict = evaluateLessonDrop(
+      SOURCE,
+      entry({ id: 106, periodNo: 2, className: '高一1班（已改名）' }),
+      '2026-10-29',
+      LESSON_DATE,
+    )
+    expect(verdict).toEqual({ ok: true })
   })
 
   it('同班且目标日期等于来源日期 → 有效', () => {

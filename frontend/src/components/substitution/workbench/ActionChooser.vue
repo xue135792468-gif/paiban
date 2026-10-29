@@ -42,6 +42,12 @@
               <p class="hint2">同科教师优先排列；跨科可选但会提示；忙碌的教师会显示原因，最终以服务端校验为准。</p>
 
               <div v-if="candidatesLoading" class="loading">候选教师加载中…</div>
+              <div v-else-if="candidatesError" class="callout" data-testid="candidates-error">
+                <div class="cw"><span class="ic">!</span><span>{{ candidatesError }}</span></div>
+                <button type="button" class="bt" data-testid="retry-candidates" @click="emit('retryCandidates')">
+                  重试
+                </button>
+              </div>
               <div v-else-if="candidates.length === 0" class="loading">没有可用的代课老师。</div>
               <div v-else class="opts">
                 <label
@@ -169,6 +175,7 @@ const props = defineProps<{
   hint: string
   lessonDate: string
   candidatesLoading: boolean
+  candidatesError: string
   candidateList: WorkbenchCandidateList | null
   candidate: WorkbenchCandidate | null
   coverReason: string
@@ -185,6 +192,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   chooseAction: [kind: 'cover' | 'swap']
   chooseCandidate: [candidate: WorkbenchCandidate]
+  retryCandidates: []
   'update:coverReason': [value: string]
   'update:swapReason': [value: string]
   selectTargetDate: [date: string]
@@ -518,7 +526,7 @@ function onSwapReason(event: Event) {
     padding: 16px;
   }
 }
-@media (max-width: 560px) {
+@media (max-width: 520px) {
   .acts {
     grid-template-columns: 1fr;
   }

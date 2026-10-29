@@ -34,3 +34,29 @@ export function weekdayLabel(date: string): string {
   const day = new Date(`${date}T00:00:00`).getDay()
   return names[day] ?? `周${day}`
 }
+
+/** Date 对象 → 本地时区 ISO 日期。 */
+export function isoOf(value: Date): string {
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const dayNo = String(value.getDate()).padStart(2, '0')
+  return `${value.getFullYear()}-${month}-${dayNo}`
+}
+
+/** 今天的 ISO 日期。 */
+export function today(): string {
+  return isoOf(new Date())
+}
+
+/** weekStart 所在周里第 dayOfWeek 天（1~7）的 ISO 日期；非法输入返回空串。 */
+export function dateOfDay(weekStartIso: string, dayOfWeek: number): string {
+  const value = new Date(`${weekStartIso}T00:00:00`)
+  if (Number.isNaN(value.getTime())) return ''
+  value.setDate(value.getDate() + dayOfWeek - 1)
+  return isoOf(value)
+}
+
+/** 「11月2日」样式的中文日期（月/日不补零）。 */
+export function monthDayCn(iso: string): string {
+  const [, month, day] = iso.split('-')
+  return `${Number(month)}月${Number(day)}日`
+}

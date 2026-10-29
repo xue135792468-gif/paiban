@@ -257,6 +257,17 @@ async function dragCardToCell(page: Page, from: Locator, to: Locator): Promise<v
   await page.waitForTimeout(50)
 }
 
+/** 每个用例开始前挂 console/pageerror 监听；用例结束断言为空（见各 test 尾部）。 */
+let consoleErrors: string[] = []
+
+test.beforeEach(({ page }) => {
+  consoleErrors = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text())
+  })
+  page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error}`))
+})
+
 test('步骤1：周课表点选、下一步解锁、步骤条与单面板渲染', async ({ page }) => {
   const api = await newContext()
   const seed = await seedWizardScenario(api)
@@ -291,9 +302,10 @@ test('步骤1：周课表点选、下一步解锁、步骤条与单面板渲染'
   await page.getByTestId('wizard-back-2').click()
   await expect(page.getByTestId('wizard-panel-1')).toBeVisible()
   await expect(page.getByTestId('wizard-panel-2')).toHaveCount(0)
+  expect(consoleErrors).toEqual([])
 })
 
-test('320px 以下改为按天列表，网格不渲染', async ({ page }) => {
+test('窄屏（390px）按天列表', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   const api = await newContext()
   const seed = await seedWizardScenario(api)
@@ -313,6 +325,7 @@ test('320px 以下改为按天列表，网格不渲染', async ({ page }) => {
   await expect(items.first()).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByTestId('picked-summary')).toBeVisible()
   await expect(page.getByTestId('wizard-next-1')).toBeEnabled()
+  expect(consoleErrors).toEqual([])
 })
 
 test('动作卡：两方向来回切，切换链接在表单上方且 1280×720 首屏可见', async ({ page }) => {
@@ -340,6 +353,10 @@ test('动作卡：两方向来回切，切换链接在表单上方且 1280×720 
   expect(linkBox!.y).toBeLessThan(formBox!.y)
   expect(linkBox!.y).toBeGreaterThanOrEqual(0)
   expect(linkBox!.y + linkBox!.height).toBeLessThanOrEqual(720)
+
+  // 先把代课侧填一半：候选选中 + 原因已填，切走后必须被清掉。
+  await page.getByTestId(`substitute-option-${seed.sameSubjectFreeId}`).locator('input').check()
+  await page.getByTestId('preview-reason').fill('临时有事')
   await capture(page, 't01-03-step2-action-cards')
 
   // 切到调课：另一方向的链接同样在表单上方、首屏可见。
@@ -357,9 +374,28 @@ test('动作卡：两方向来回切，切换链接在表单上方且 1280×720 
   expect(swapLinkBox!.y).toBeGreaterThanOrEqual(0)
   expect(swapLinkBox!.y + swapLinkBox!.height).toBeLessThanOrEqual(720)
 
-  // 来回切回代课，表单仍可用。
+  // 来回切回代课：代课未定状态已清场（radio 全部未选中、原因为空）。
   await swapLink.click()
   await expect(coverForm).toBeVisible()
+  const coverRadios = coverForm.locator('input[name="workbench-substitute"]')
+  await expect(coverRadios.first()).toBeVisible()
+  const radioCount = await coverRadios.count()
+  for (let index = 0; index < radioCount; index += 1) {
+    await expect(coverRadios.nth(index)).not.toBeChecked()
+  }
+  await expect(page.getByTestId('preview-reason')).toHaveValue('')
+
+  // 再走一遍调课并填原因，切回代课再切回调课：swap-reason 为空、目标 chip 无选中。
+  await coverLink.click()
+  const fridayChip = page.getByTestId(`swap-date-chip-${seed.targetDate}`)
+  await fridayChip.click()
+  await expect(fridayChip).toHaveAttribute('aria-pressed', 'true')
+  await page.getByTestId('swap-reason').fill('要去开会')
+  await page.getByTestId('switch-cover').click()
+  await page.getByTestId('switch-swap').click()
+  await expect(page.getByTestId('swap-reason')).toHaveValue('')
+  await expect(page.locator('[data-testid^="swap-date-chip-"][aria-pressed="true"]')).toHaveCount(0)
+  expect(consoleErrors).toEqual([])
 })
 
 test('代课候选：排除当前教师、同科排前、跨科标记、禁用候选原因可见', async ({ page }) => {
@@ -397,7 +433,10 @@ test('代课候选：排除当前教师、同科排前、跨科标记、禁用�
   const reasonBox = await page.getByTestId('preview-reason').boundingBox()
   expect(reasonBox).toBeTruthy()
   expect(reasonBox!.height).toBeLessThanOrEqual(50)
+  // 截图前把内部滚动容器滚到忙碌候选行，让证据图拍出「禁用候选 + 原因」。
+  await busy.scrollIntoViewIfNeeded()
   await capture(page, 't01-04-step2-cover-candidates')
+  expect(consoleErrors).toEqual([])
 })
 
 test('调课窗口 chips：含当天共 7 天、周末置灰、选日期拉目标节次、空格日提示', async ({ page }) => {
@@ -444,12 +483,19 @@ test('调课窗口 chips：含当天共 7 天、周末置灰、选日期拉目�
   // 周四本班没课：空格只挪不补。
   await page.getByTestId(`swap-date-chip-${seed.crossDate}`).click()
   await expect(page.getByTestId('swap-empty-day')).toContainText('空格只挪不补，请换一个目标日期')
+  expect(consoleErrors).toEqual([])
 })
 
 test('拖拽有效：预选调课并带出目标日期/节次，落在步骤 2 不自动进步骤 3', async ({ page }) => {
   const api = await newContext()
   const seed = await seedWizardScenario(api)
   await openWizard(page, seed)
+
+  // 拖拽只预选表单：swap-plans（生成方案）必须一个都不发。
+  const swapPlanRequests: string[] = []
+  page.on('request', (request) => {
+    if (request.url().includes('/substitution-workbench/swap-plans')) swapPlanRequests.push(request.url())
+  })
 
   const panel2 = page.getByTestId('wizard-panel-2')
   const target = page.getByTestId(`workbench-cell-${seed.targetDate}-1`)
@@ -473,21 +519,20 @@ test('拖拽有效：预选调课并带出目标日期/节次，落在步骤 2 �
   await expect(page.getByTestId('wizard-next-2')).toBeEnabled()
   await expect(page.getByTestId('swap-target-period-1')).toContainText('第1节')
   await capture(page, 't01-06-drag-preselect-step2')
+  expect(swapPlanRequests).toHaveLength(0)
+  expect(consoleErrors).toEqual([])
 })
 
-test('拖拽无效：空格与跨班给出原因，留在步骤 1 且零请求', async ({ page }) => {
+test('拖拽无效：空格与跨班给出原因，留在步骤 1 且零写入', async ({ page }) => {
   const api = await newContext()
   const seed = await seedWizardScenario(api)
-
-  const swapPlanRequests: string[] = []
-  const swapTargetRequests: string[] = []
-  page.on('request', (request) => {
-    const url = request.url()
-    if (url.includes('/substitution-workbench/swap-plans')) swapPlanRequests.push(url)
-    if (url.includes('/substitution-workbench/swap-targets')) swapTargetRequests.push(url)
-  })
-
   await openWizard(page, seed)
+
+  // 登录已完成，此后页面上任何一个非 GET 请求都算写入；不只盯 swap-plans/swap-targets。
+  const writeRequests: string[] = []
+  page.on('request', (request) => {
+    if (request.method() !== 'GET') writeRequests.push(`${request.method()} ${request.url()}`)
+  })
 
   // 空格（周一第 1 节）：原因条 + 留在步骤 1 + 未选中任何课。
   const mondayCell = page.getByTestId(`workbench-cell-${shiftDate(seed.lessonDate, -2)}-1`)
@@ -508,18 +553,13 @@ test('拖拽无效：空格与跨班给出原因，留在步骤 1 且零请求',
   await expect(page.getByTestId('wizard-panel-1')).toBeVisible()
   await capture(page, 't01-07-drop-invalid-reason')
 
-  // 零写入：没有 swap-plans，也没有 swap-targets 请求。
-  expect(swapPlanRequests).toHaveLength(0)
-  expect(swapTargetRequests).toHaveLength(0)
+  // 计数前给一拍可观测窗口：确认 UI 稳定后再查，迟到的写入也逃不掉。
+  await page.waitForTimeout(200)
+  expect(writeRequests).toEqual([])
+  expect(consoleErrors).toEqual([])
 })
 
 test('①②步全流程走查：控制台零错误', async ({ page }) => {
-  const consoleErrors: string[] = []
-  page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push(message.text())
-  })
-  page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error}`))
-
   const api = await newContext()
   const seed = await seedWizardScenario(api)
   await openWizard(page, seed)

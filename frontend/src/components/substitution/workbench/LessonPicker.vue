@@ -37,6 +37,10 @@
 
       <div v-if="!teacherId" class="empty">先选一位教师，再看他这一周的课表。</div>
       <div v-else-if="loading" class="empty">课表加载中…</div>
+      <div v-else-if="timetableError" class="empty" data-testid="timetable-error">
+        课表加载失败：{{ timetableError }}
+        <button type="button" class="retry" @click="emit('retry')">重试</button>
+      </div>
       <div v-else-if="entries.length === 0" class="empty">该教师本学期没有排课，或所选周没有课。</div>
       <template v-else>
         <div v-if="!narrow" class="wgrid" :class="{ dragging }" data-testid="workbench-timetable">
@@ -81,6 +85,8 @@
         </div>
 
         <div v-else class="mlist" data-testid="workbench-timetable">
+          <!-- ≤520px：列表只保留点击选课；不挂 pointerdown、不做投放格，
+               touch-action 恢复默认，避免拖拽手势吃掉列表的原生滚动。 -->
           <button
             v-for="item in mobileLessons"
             :key="`m-${item.entry.id}`"
@@ -89,10 +95,6 @@
             :class="{ chosen: item.entry.id === selectedEntryId }"
             data-testid="pick-lesson"
             :aria-pressed="item.entry.id === selectedEntryId ? 'true' : 'false'"
-            :data-drop-cell="true"
-            :data-cell-date="item.date"
-            :data-cell-entry="item.entry.id"
-            @pointerdown="onPointerDown($event, item.entry)"
             @click="onLessonClick(item.entry)"
           >
             <span class="c">
@@ -128,6 +130,7 @@ const props = defineProps<{
   date: string
   entries: Entry[]
   loading: boolean
+  timetableError: string
   weekStart: string
   selectedEntryId: number | null
   dragInvalidReason: string
@@ -138,6 +141,7 @@ const emit = defineEmits<{
   'update:date': [value: string]
   pick: [entry: Entry]
   drop: [payload: { source: Entry; target: Entry | null; targetDate: string }]
+  retry: []
   'clear-drag-invalid': []
 }>()
 
@@ -357,6 +361,21 @@ onBeforeUnmount(cleanupDrag)
   padding: 24px 0;
   text-align: center;
 }
+.retry {
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  margin-left: 8px;
+  padding: 2px 12px;
+}
+.retry:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
 .wgrid {
   background: var(--inset);
   border: 1px solid var(--line);
@@ -417,8 +436,11 @@ onBeforeUnmount(cleanupDrag)
   min-height: 62px;
   padding: 10px;
   text-align: left;
-  touch-action: none;
   width: 100%;
+}
+/* 只有网格课卡参与指针拖拽；列表项保持默认 touch-action，竖向滚动不被吃掉。 */
+.wgrid .lesson {
+  touch-action: none;
 }
 .lesson:hover {
   border-color: var(--brand);
@@ -454,7 +476,6 @@ onBeforeUnmount(cleanupDrag)
 }
 .mlist .lesson {
   min-height: 0;
-  touch-action: none;
 }
 .callout {
   background: var(--warn-soft);
@@ -510,7 +531,7 @@ onBeforeUnmount(cleanupDrag)
     padding: 16px;
   }
 }
-@media (max-width: 560px) {
+@media (max-width: 520px) {
   .toolbar .field {
     flex: 1 1 100%;
   }

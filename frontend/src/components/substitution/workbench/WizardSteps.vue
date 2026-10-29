@@ -95,7 +95,7 @@ const liveText = computed(
   white-space: nowrap;
   width: 1px;
 }
-@media (max-width: 560px) {
+@media (max-width: 520px) {
   .stepper {
     gap: 5px;
     padding: 8px 10px;

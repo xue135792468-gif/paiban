@@ -29,7 +29,7 @@ export function evaluateLessonDrop(
       reason: '窗口外：调课窗口从来源日期向后展开，不支持向来源日期之前搜索',
     }
   }
-  if (target.className !== source.className) {
+  if (target.classId !== source.classId) {
     return {
       ok: false,
       reason: `跨班：目标格是${target.className || '其他班级'}的课，不是同一班，不能对调`,

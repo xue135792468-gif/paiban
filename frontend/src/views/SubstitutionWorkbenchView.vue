@@ -21,6 +21,7 @@
             :date="date"
             :entries="entries"
             :loading="timetableLoading"
+            :timetable-error="timetableError"
             :week-start="weekStart"
             :selected-entry-id="sourceEntry?.id ?? null"
             :drag-invalid-reason="dragInvalidReason"
@@ -28,6 +29,7 @@
             @update:date="onDateChange"
             @pick="onPick"
             @drop="onLessonDrop"
+            @retry="loadTimetable"
             @clear-drag-invalid="dragInvalidReason = ''"
           />
 
@@ -37,6 +39,7 @@
             :hint="sourceLabel"
             :lesson-date="sourceLessonDate"
             :candidates-loading="candidatesLoading"
+            :candidates-error="candidatesError"
             :candidate-list="candidateList"
             :candidate="candidate"
             :cover-reason="coverReason"
@@ -50,6 +53,7 @@
             :restorable="restorable"
             @choose-action="onChooseAction"
             @choose-candidate="onChooseCandidate"
+            @retry-candidates="loadCandidates"
             @update:cover-reason="coverReason = $event"
             @update:swap-reason="swapReason = $event"
             @select-target-date="onSelectTargetDate"
@@ -95,7 +99,7 @@
                 type="button"
                 class="bt primary"
                 data-testid="wizard-next-2"
-                :disabled="need2 !== '可以点下一步了'"
+                :disabled="!ready2"
                 @click="step = 3"
               >
                 下一步：核对并提交
@@ -123,7 +127,13 @@ import WizardSteps from '@/components/substitution/workbench/WizardSteps.vue'
 import LessonPicker from '@/components/substitution/workbench/LessonPicker.vue'
 import ActionChooser from '@/components/substitution/workbench/ActionChooser.vue'
 import PickedSummary from '@/components/substitution/workbench/PickedSummary.vue'
-import { mondayOf, weekdayLabel } from '@/components/substitution/workbench/swapTargetRules'
+import {
+  dateOfDay,
+  mondayOf,
+  monthDayCn,
+  today,
+  weekdayLabel,
+} from '@/components/substitution/workbench/swapTargetRules'
 import { buildSwapWindow } from '@/components/substitution/workbench/windowDates'
 import { evaluateLessonDrop } from '@/components/substitution/workbench/dragTargets'
 import { WORKBENCH_MANAGER_PERMISSIONS } from '@/constants/permissions'
@@ -146,6 +156,7 @@ const teacherId = ref<number | null>(null)
 const date = ref(today())
 const entries = ref<Entry[]>([])
 const timetableLoading = ref(false)
+const timetableError = ref('')
 
 /** 点选的课卡；lessonDate 一律取该卡所在格的真实日期，而不是日期选择器的值。 */
 const sourceEntry = ref<Entry | null>(null)
@@ -154,6 +165,7 @@ const action = ref<'cover' | 'swap' | null>(null)
 const candidateList = ref<WorkbenchCandidateList | null>(null)
 const candidate = ref<WorkbenchCandidate | null>(null)
 const candidatesLoading = ref(false)
+const candidatesError = ref('')
 const coverReason = ref('')
 
 const targetDate = ref('')
@@ -200,26 +212,44 @@ const need2 = computed(() => {
   return '可以点下一步了'
 })
 
+const ready2 = computed(() => {
+  if (!action.value) return false
+  if (action.value === 'cover') return !!candidate.value
+  return !!targetDate.value && targetPeriodId.value != null
+})
+
+// 请求序号守卫：响应与 finally 都校验 mine === seq，旧请求不得覆盖新状态。
+let teachersSeq = 0
+let timetableSeq = 0
+
 async function loadTeachers() {
-  const { data } = await http.get('/teachers/options')
-  teachers.value = data
+  const mine = ++teachersSeq
+  try {
+    const { data } = await http.get('/teachers/options')
+    if (mine === teachersSeq) teachers.value = data
+  } catch (error) {
+    if (mine === teachersSeq) ElMessage.error(serverMessage(error, '加载教师列表失败'))
+  }
 }
 
 async function loadTimetable() {
-  if (!teacherId.value || !date.value) {
-    entries.value = []
-    return
-  }
+  const mine = ++timetableSeq
+  entries.value = []
+  timetableError.value = ''
+  if (!teacherId.value || !date.value) return
   timetableLoading.value = true
   try {
     const { data } = await http.get(`/timetable/teacher/${teacherId.value}`, {
       params: { view: 'latest', date: date.value },
     })
+    if (mine !== timetableSeq) return
     entries.value = data
-  } catch {
+  } catch (error) {
+    if (mine !== timetableSeq) return
     entries.value = []
+    timetableError.value = serverMessage(error, '课表加载失败')
   } finally {
-    timetableLoading.value = false
+    if (mine === timetableSeq) timetableLoading.value = false
   }
 }
 
@@ -275,6 +305,7 @@ async function onChooseAction(kind: 'cover' | 'swap') {
     // 切到调课时清掉代课候选与原因。
     candidateList.value = null
     candidate.value = null
+    candidatesError.value = ''
     coverReason.value = ''
   }
 }
@@ -286,15 +317,15 @@ async function loadCandidates() {
   candidatesLoading.value = true
   candidateList.value = null
   candidate.value = null
+  candidatesError.value = ''
   try {
     const { data } = await http.get<WorkbenchCandidateList>('/substitution-workbench/candidates', {
       params: { entryId: entry.id, lessonDate },
     })
     if (sourceEntry.value?.id === entry.id) candidateList.value = data
   } catch (error) {
-    if (sourceEntry.value?.id === entry.id) {
-      ElMessage.error(serverMessage(error, '加载代课候选失败'))
-    }
+    if (sourceEntry.value?.id !== entry.id) return
+    candidatesError.value = serverMessage(error, '加载代课候选失败')
   } finally {
     candidatesLoading.value = false
   }
@@ -305,6 +336,7 @@ function onChooseCandidate(chosen: WorkbenchCandidate) {
 }
 
 async function onSelectTargetDate(value: string) {
+  if (value === targetDate.value) return
   targetDate.value = value
   targetPeriodId.value = null
   targetSlots.value = []
@@ -354,42 +386,17 @@ async function onLessonDrop(payload: { source: Entry; target: Entry | null; targ
   targetDate.value = payload.targetDate
   step.value = 2
   await loadTargets()
+  // 等待期间用户可能已换目标日期或重新点选：状态漂移就放弃预选，不写 targetPeriodId。
+  if (targetDate.value !== payload.targetDate || sourceEntry.value?.id !== payload.source.id) return
   const periodNo = payload.target?.periodNo
   const slot = targetSlots.value.find((item) => item.periodNo === periodNo)
   if (slot) targetPeriodId.value = slot.periodId
 }
 
 /** 本票只提供按钮与 emit；票 02 接「以基线教师创建修订预览」。 */
-function onRestoreBaseline() {
-  // 票 02：创建修订预览。
-}
+function onRestoreBaseline() {}
 
-function dateOfDay(weekStartIso: string, dayOfWeek: number): string {
-  const value = new Date(`${weekStartIso}T00:00:00`)
-  if (Number.isNaN(value.getTime())) return ''
-  value.setDate(value.getDate() + dayOfWeek - 1)
-  return isoOf(value)
-}
-
-function monthDayCn(iso: string): string {
-  const [, month, day] = iso.split('-')
-  return `${Number(month)}月${Number(day)}日`
-}
-
-function isoOf(value: Date): string {
-  const month = String(value.getMonth() + 1).padStart(2, '0')
-  const dayNo = String(value.getDate()).padStart(2, '0')
-  return `${value.getFullYear()}-${month}-${dayNo}`
-}
-
-function today(): string {
-  return isoOf(new Date())
-}
-
-watch(step, async () => {
-  await nextTick()
-  if (scrollRef.value) scrollRef.value.scrollTop = 0
-})
+watch(step, async () => { await nextTick(); if (scrollRef.value) scrollRef.value.scrollTop = 0 })
 
 onMounted(loadTeachers)
 </script>
@@ -425,6 +432,7 @@ onMounted(loadTeachers)
   height: 100%;
   line-height: 1.7;
   min-height: 0;
+  overflow: hidden;
 }
 .wb-scroll {
   flex: 1;
@@ -572,7 +580,7 @@ onMounted(loadTeachers)
     padding: 16px;
   }
 }
-@media (max-width: 560px) {
+@media (max-width: 520px) {
   .foot {
     flex-wrap: wrap;
     gap: 10px;

@@ -66,7 +66,7 @@ const emit = defineEmits<{ select: [date: string] }>()
   color: var(--muted);
   font-size: 11px;
 }
-@media (max-width: 560px) {
+@media (max-width: 520px) {
   .chip {
     flex: 1 1 86px;
     min-width: 0;
