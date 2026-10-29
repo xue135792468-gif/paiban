@@ -842,13 +842,17 @@ export async function openSwapFlow(
   await page.goto('/substitutions/workbench')
   await expect(page.getByTestId('teacher-select')).toBeVisible()
   // filterable 下拉：输入带后缀的唯一教师名定位来源课教师。
-  await page.getByTestId('teacher-select').click()
-  await page.getByTestId('teacher-select').locator('input').fill(seed.teacherChineseName)
-  const dropdown = page.locator('.el-select-dropdown:visible').last()
-  await expect(dropdown.getByText(seed.teacherChineseName, { exact: true })).toBeVisible()
-  await page.keyboard.press('ArrowDown')
-  await page.keyboard.press('Enter')
-  await expect(page.getByTestId('workbench-timetable')).toBeVisible({ timeout: 20_000 })
+  // CI 负载下弹出层偶尔不渲染，整段选择可安全重试（选中前无副作用）。
+  await expect(async () => {
+    await page.getByTestId('teacher-select').click()
+    await page.getByTestId('teacher-select').locator('input').fill(seed.teacherChineseName)
+    const dropdown = page.locator('.el-select-dropdown:visible').last()
+    await expect(dropdown.getByText(seed.teacherChineseName, { exact: true }))
+      .toBeVisible({ timeout: 1_000 })
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('Enter')
+    await expect(page.getByTestId('workbench-timetable')).toBeVisible({ timeout: 2_000 })
+  }).toPass({ timeout: 30_000 })
 
   const dateInput = page.getByTestId('lesson-date').locator('input')
   await dateInput.fill(seed.lessonDate)
@@ -870,18 +874,21 @@ export async function pickTargetAndGenerate(
   seed: Awaited<ReturnType<typeof seedSwapWorkbenchScenario>>,
 ): Promise<void> {
   // 明确指定目标日期（周五）与目标课节（数学）——不会被替换成同星期的另一周。
-  const targetDateInput = page.getByTestId('swap-target-date').locator('input')
-  await targetDateInput.fill(seed.targetDate)
-  await targetDateInput.press('Tab')
-  await expect(page.getByTestId('swap-target-period')).toBeEnabled()
-  await page.getByTestId('swap-target-period').click()
-  const targetDropdown = page.locator('.el-select-dropdown:visible').last()
-  await expect(targetDropdown.locator('.el-select-dropdown__item').first()).toBeVisible()
-  await targetDropdown
-    .locator('.el-select-dropdown__item')
-    .filter({ hasText: '数学' })
-    .first()
-    .click()
+  // 目标课节下拉在 CI 负载下偶尔打开后不渲染选项，整段选择可安全重试。
+  await expect(async () => {
+    const targetDateInput = page.getByTestId('swap-target-date').locator('input')
+    await targetDateInput.fill(seed.targetDate)
+    await targetDateInput.press('Tab')
+    await expect(page.getByTestId('swap-target-period')).toBeEnabled({ timeout: 1_000 })
+    await page.getByTestId('swap-target-period').click()
+    const targetDropdown = page.locator('.el-select-dropdown:visible').last()
+    const mathOption = targetDropdown
+      .locator('.el-select-dropdown__item')
+      .filter({ hasText: '数学' })
+      .first()
+    await expect(mathOption).toBeVisible({ timeout: 1_000 })
+    await mathOption.click()
+  }).toPass({ timeout: 30_000 })
 
   await page.getByTestId('swap-reason').fill('运动会调课')
   await page.getByTestId('generate-swap-plans').click()

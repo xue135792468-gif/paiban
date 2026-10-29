@@ -35,8 +35,27 @@ async function dragSourceToCell(page: Page, target: Locator): Promise<void> {
   expect(to).toBeTruthy()
   await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2)
   await page.mouse.down()
+  // 给 dragstart 状态一个渲染节拍，再分步移动到目标中心。
+  await page.waitForTimeout(50)
   await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, { steps: 10 })
   await page.mouse.up()
+  // pointerup 后的落点处理是异步的；让调用方的断言先看到这一拍的更新。
+  await page.waitForTimeout(50)
+}
+
+/**
+ * 拖拽 + 断言可整体重试：CI 负载下 pointerup 的事件偶尔丢失，而拖拽本身
+ * 零写入（无效目标不产生预览、有效目标只设置待生成的目标），重试安全。
+ */
+async function dragAndExpect(
+  page: Page,
+  target: Locator,
+  check: () => Promise<void>,
+): Promise<void> {
+  await expect(async () => {
+    await dragSourceToCell(page, target)
+    await check()
+  }).toPass({ timeout: 30_000 })
 }
 
 test('拖拽到同班有课的目标格：显示目标日期/课节并进入候选与整环对照', async ({ page }) => {
@@ -55,10 +74,11 @@ test('拖拽到同班有课的目标格：显示目标日期/课节并进入候�
 
   const targetCell = page.getByTestId(`swap-cell-${seed.targetDate}-1`)
   await expect(targetCell).toHaveAttribute('data-cell-state', 'valid')
-  await dragSourceToCell(page, targetCell)
+  await dragAndExpect(page, targetCell, () =>
+    expect(page.getByTestId('swap-target-date').locator('input'))
+      .toHaveValue(seed.targetDate, { timeout: 1_000 }))
 
   // 松手即带上目标日期/课节进入候选（与表单完全相同的状态与路径）。
-  await expect(page.getByTestId('swap-target-date').locator('input')).toHaveValue(seed.targetDate)
   await expect(page.getByTestId('swap-target-period')).toContainText('数学')
   await expect(page.getByTestId('swap-plan-card').first()).toContainText('2 人环')
 
@@ -87,10 +107,8 @@ test('拖到空格与窗口外：显示明确不可用原因，不产生候选�
   const emptyCell = page.getByTestId(`swap-cell-${thursday}-1`)
   await expect(emptyCell).toHaveAttribute('data-cell-state', 'empty')
   // 非法投放零写入，整段拖拽可安全重试：CI 负载下 pointerup 后的提示渲染偶尔超时。
-  await expect(async () => {
-    await dragSourceToCell(page, emptyCell)
-    await expect(page.getByTestId('swap-drop-invalid')).toBeVisible({ timeout: 1_000 })
-  }).toPass({ timeout: 20_000 })
+  await dragAndExpect(page, emptyCell, () =>
+    expect(page.getByTestId('swap-drop-invalid')).toBeVisible({ timeout: 1_000 }))
   await expect(page.getByTestId('swap-drop-invalid')).toContainText('空格')
   await expect(page.getByTestId('swap-plan-card')).toHaveCount(0)
 
@@ -98,11 +116,9 @@ test('拖到空格与窗口外：显示明确不可用原因，不产生候选�
   const monday = shiftDate(seed.lessonDate, -2)
   const beforeCell = page.getByTestId(`swap-cell-${monday}-1`)
   await expect(beforeCell).toHaveAttribute('data-cell-state', 'before-source')
-  await expect(async () => {
-    await dragSourceToCell(page, beforeCell)
-    await expect(page.getByTestId('swap-drop-invalid'))
-      .toContainText('早于来源日期', { timeout: 1_000 })
-  }).toPass({ timeout: 20_000 })
+  await dragAndExpect(page, beforeCell, () =>
+    expect(page.getByTestId('swap-drop-invalid'))
+      .toContainText('早于来源日期', { timeout: 1_000 }))
   await expect(page.getByTestId('swap-plan-card')).toHaveCount(0)
 
   // API 侧不变量：拖动零写入——没有申请，也没有生效行。
@@ -122,8 +138,8 @@ test('取消预览后零变化：无申请、无生效、当前有效课表不�
 
   const targetCell = page.getByTestId(`swap-cell-${seed.targetDate}-1`)
   await expect(targetCell).toHaveAttribute('data-cell-state', 'valid')
-  await dragSourceToCell(page, targetCell)
-  await expect(page.getByTestId('swap-plan-card').first()).toBeVisible()
+  await dragAndExpect(page, targetCell, () =>
+    expect(page.getByTestId('swap-plan-card').first()).toBeVisible({ timeout: 1_000 }))
   await page.getByTestId('choose-swap-plan-0').click()
   await expect(page.getByTestId('swap-compare')).toBeVisible()
 
@@ -167,8 +183,8 @@ test('表单与拖拽等价：同一目标得到同一批候选', async ({ page 
   await openSwapFlow(page, seed)
   const targetCell = page.getByTestId(`swap-cell-${seed.targetDate}-1`)
   await expect(targetCell).toHaveAttribute('data-cell-state', 'valid')
-  await dragSourceToCell(page, targetCell)
-  await expect(page.getByTestId('swap-plan-card').first()).toBeVisible()
+  await dragAndExpect(page, targetCell, () =>
+    expect(page.getByTestId('swap-plan-card').first()).toBeVisible({ timeout: 1_000 }))
 
   expect(await page.getByTestId('swap-plan-card').count()).toBe(formCount)
   expect(await page.getByTestId('swap-plan-card').first().innerText()).toBe(formFirst)
