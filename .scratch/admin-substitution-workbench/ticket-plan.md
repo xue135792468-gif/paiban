@@ -45,4 +45,4 @@ Status: ready-for-agent
 
 ## 完成记录（2026-10-29）
 
-九张票已全部实现、两轴评审并修复，合并 `main`（`94f0372`，PR #20）。最终门禁：后端 1012（0 失败；真实 PostgreSQL 的 `PostgresContainerIT` 4 条已在 CI 通过）、前端 417、Playwright 117 全绿；main 上 CI 四 job 亦全绿。评审发现与修法见 `review-fixes.md`。**未部署**；上线须独立授权（`--deploy` + 教务确认历史影响清单）。
+九张票已全部实现、两轴评审并修复，合并 `main`（PR #20，merge `94f0372`）并**部署到生产**（服务器 `4e2acef`，Flyway v43；备份 `~/backups/paiban/paiban-pre-20261029T103312Z.sql.gz`）。最终门禁：后端 1012（0 失败；真实 PostgreSQL 的 `PostgresContainerIT` 4 条已在 CI 通过）、前端 417、Playwright 117 全绿；main 上 CI 四 job 亦全绿。评审发现与修法见 `review-fixes.md`。**生产历史调代转换未执行**（独立教务确认门：预检 → 差异清单 → 签字）。
