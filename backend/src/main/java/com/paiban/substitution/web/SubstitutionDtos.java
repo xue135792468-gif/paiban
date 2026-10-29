@@ -36,6 +36,7 @@ public final class SubstitutionDtos {
                                          String periodLabel,
                                          Long targetPeriodId,
                                          String targetPeriodLabel,
+                                         LocalDate targetDate,
                                          String type,
                                          String reason,
                                          String status,
@@ -43,13 +44,18 @@ public final class SubstitutionDtos {
                                          String approver,
                                          Instant approvedAt,
                                          String approvalComment,
-                                         Instant createdAt) {}
+                                         Instant createdAt,
+                                         /** 修订链（票 04）：被本申请再次调整的已生效申请；首次为空。 */
+                                         Long revisesRequestId,
+                                         /** CHANGE_SUBSTITUTE / RESTORE_BASELINE；首次为空。 */
+                                         String revisionKind) {}
 
     public record HistoryDto(Long id, String fromStatus, String toStatus, String actor,
                              String comment, Instant createdAt) {}
 
     public record SubstitutionRecordDto(Long id, Long requestId, Long entryId, String type, Long planId,
                                         LocalDate effectiveDate,
+                                        LocalDate lessonDate,
                                         Long classId, String className, Long courseId, String courseName,
                                         Long originalTeacherId, String originalTeacherName,
                                         Long substituteTeacherId, String substituteTeacherName,

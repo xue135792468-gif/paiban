@@ -88,13 +88,11 @@ public class TimetableViewService {
     public List<TimetableEntryDto> teacherView(Long teacherId, String view, LocalDate date) {
         Long semesterId = semesters.requireCurrent().getId();
         Map<Long, Substitution> overlay = overlayMap(semesterId, view, date);
-        Set<Long> substitutedIn = overlay.values().stream()
-                .filter(substitution -> teacherId.equals(substitution.getSubstituteTeacherId()))
-                .map(Substitution::getEntryId)
-                .collect(Collectors.toCollection(HashSet::new));
+        // ADR-0030：先叠加当天实际生效的调代，再按「最终有效教师」过滤。
+        // 被解除安排的原教师不再看到这节课，接替者恰好看到一次。
         return enrich(entries.findBySemesterId(semesterId), semesterId).stream()
-                .filter(dto -> teacherId.equals(dto.teacherId()) || substitutedIn.contains(dto.id()))
                 .map(dto -> apply(dto, overlay.get(dto.id()), semesterId))
+                .filter(dto -> teacherId.equals(dto.teacherId()))
                 .toList();
     }
 
@@ -102,12 +100,8 @@ public class TimetableViewService {
     public List<TimetableEntryDto> roomView(Long roomId, String view, LocalDate date) {
         Long semesterId = semesters.requireCurrent().getId();
         Map<Long, Substitution> overlay = overlayMap(semesterId, view, date);
-        Set<Long> movedIn = overlay.values().stream()
-                .filter(substitution -> roomId.equals(substitution.getNewRoomId()))
-                .map(Substitution::getEntryId)
-                .collect(Collectors.toCollection(HashSet::new));
+        // 与 teacherView 同理：叠加后再按「当天有效教室」过滤，换出/换入各算一次。
         return enrich(entries.findBySemesterId(semesterId), semesterId).stream()
-                .filter(dto -> roomId.equals(dto.roomId()) || movedIn.contains(dto.id()))
                 .map(dto -> apply(dto, overlay.get(dto.id()), semesterId))
                 .filter(dto -> Objects.equals(roomId, dto.roomId()))
                 .toList();
@@ -170,18 +164,37 @@ public class TimetableViewService {
         if ("baseline".equalsIgnoreCase(view)) {
             return Map.of();
         }
-        // ADR-0008: latest view shows substitutions effective up to the requested day.
+        // ADR-0030：最新视图呈现「所选日期当天实际生效」的调代。
+        // 新格式行（lesson_date 非空）只命中授课实例日期本身：来源日或调课落点日；
+        // 旧格式历史行（lesson_date 为空）保持 ADR-0008 的「自 effective_date 起持续覆盖」
+        // 读取语义，不转换、不解释。
         java.time.LocalDate cutoff = date != null ? date : java.time.LocalDate.now();
         java.time.LocalDate semesterStart = semesters.require(semesterId).getStartDate();
         if (cutoff.isBefore(semesterStart)) {
             return Map.of();
         }
-        List<Substitution> effective = substitutions.findBySemesterIdAndEffectiveDateBetweenAndStatus(
-                semesterId, semesterStart, cutoff, Substitution.EFFECTIVE);
+        // 票 05：调课环的落点日可以早于来源日（如周五的课移回周三），因此不能按
+        // effective_date ≤ 查询日做 between 裁剪——那会漏掉「来源日在查询日之后、
+        // 落点日正好是查询日」的移入行。这里取全学期生效行，按实例日期精确匹配。
+        List<Substitution> effective =
+                substitutions.findBySemesterIdAndStatus(semesterId, Substitution.EFFECTIVE);
         return effective.stream()
+                .filter(item -> touches(item, cutoff, semesterStart))
                 .sorted(Comparator.comparing(Substitution::getCreatedAt))
                 .collect(Collectors.toMap(
                         Substitution::getEntryId, substitution -> substitution, (first, second) -> second));
+    }
+
+    /**
+     * 该生效行是否影响查询日当天的课表：新格式按实例日期精确匹配（来源日或
+     * 落点日，无论哪个在前）；旧格式保持「自 effective_date（学期内）起持续覆盖」。
+     */
+    private static boolean touches(Substitution item, LocalDate date, LocalDate semesterStart) {
+        if (item.getLessonDate() == null) {
+            return !item.getEffectiveDate().isBefore(semesterStart)
+                    && !item.getEffectiveDate().isAfter(date);
+        }
+        return date.equals(item.getLessonDate()) || date.equals(item.getTargetLessonDate());
     }
 
     private TimetableEntryDto apply(TimetableEntryDto dto, Substitution substitution, Long semesterId) {
@@ -225,7 +238,9 @@ public class TimetableViewService {
                         .map(Teacher::getName).orElse(null),
                 substitutionRequests.findById(substitution.getRequestId())
                         .map(com.paiban.substitution.domain.SubstitutionRequest::getReason).orElse(null),
-                "调代生效于 " + substitution.getEffectiveDate());
+                "调代生效于 " + substitution.getEffectiveDate(),
+                substitution.getLessonDate(),
+                substitution.getTargetLessonDate());
     }
 
     private List<TimetableEntryDto> enrich(List<TimetableEntry> source, Long semesterId) {
@@ -265,6 +280,8 @@ public class TimetableViewService {
                     period == null ? null : period.getSection().name(),
                     "周" + entry.getDayOfWeek() + "第" + entry.getPeriodNo() + "节",
                     false,
+                    null,
+                    null,
                     null,
                     null,
                     null,

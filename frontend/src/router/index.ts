@@ -130,6 +130,15 @@ const router = createRouter({
           meta: { title: '调代课', permission: 'substitution:submit' },
         },
         {
+          // 管理员调代工作台（票 03）：代人预览、提交审批与亲自确认。
+          // 路由先按提交权限放行，页面内再按「全校课表查看 + 提交 + 审批」组合把关，
+          // 与后端的服务端裁决保持同一口径。
+          path: 'substitutions/workbench',
+          name: 'substitution-workbench',
+          component: () => import('@/views/SubstitutionWorkbenchView.vue'),
+          meta: { title: '调代工作台', permissionAny: ['substitution:submit', 'substitution:approve'] },
+        },
+        {
           path: 'notifications',
           name: 'notifications',
           component: () => import('@/views/NotificationsView.vue'),

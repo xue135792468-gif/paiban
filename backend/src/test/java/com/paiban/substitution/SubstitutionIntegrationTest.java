@@ -7,6 +7,8 @@ import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 
+import com.paiban.substitution.domain.Substitution;
+import com.paiban.substitution.domain.SubstitutionRepository;
 import com.paiban.support.ApiIntegrationTest;
 import com.paiban.support.ScheduleFixture;
 import com.paiban.support.TestData;
@@ -16,12 +18,16 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 class SubstitutionIntegrationTest extends ApiIntegrationTest {
+
+    @Autowired
+    private SubstitutionRepository substitutions;
 
     @AfterEach
     void resetApprovalMode() {
@@ -40,7 +46,10 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
                            long entryId, LocalDate date, String username) {}
 
     private Context prepare(String token, String suffix) {
-        ScheduleFixture.Result fixture = ScheduleFixture.published(token, 5);
+        // 未来学期：批准路径受开课截止约束（规格第 6 节），批准要真正落地必须锚在未来。
+        LocalDate monday = ScheduleFixture.nextMonday();
+        ScheduleFixture.Result fixture =
+                ScheduleFixture.publishedIn(token, 5, TestData.semesterStarting(token, monday));
         List<Map<String, Object>> entries = ScheduleFixture.classEntries(token, fixture.classId());
         Map<String, Object> entry = entries.stream()
                 .filter(item -> ((Number) item.get("teacherId")).longValue() == fixture.teacherId())
@@ -48,7 +57,7 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
                 .orElseThrow();
         long entryId = ((Number) entry.get("id")).longValue();
         int dayOfWeek = ((Number) entry.get("dayOfWeek")).intValue();
-        LocalDate date = LocalDate.of(2025, 9, 1).plusDays(dayOfWeek - 1L);
+        LocalDate date = monday.plusDays(dayOfWeek - 1L);
 
         // A teacher with no assignments, so the substitute is always free at that period.
         long substituteTeacherId = TestData.teacher(token, "代课老师" + suffix);
@@ -303,7 +312,7 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
                         == context.fixture().otherTeacherId())
                 .findFirst()
                 .orElseThrow();
-        LocalDate date = LocalDate.of(2025, 9, 1)
+        LocalDate date = ScheduleFixture.nextMonday()
                 .plusDays(((Number) otherEntry.get("dayOfWeek")).intValue() - 1L);
 
         as(context.teacherToken()).body(Map.of(
@@ -332,6 +341,34 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void oneTimeCoverChangesOnlyTheSpecifiedDate() {
+        String token = adminToken();
+        Context context = prepare(token, TestData.suffix());
+        long requestId = submit(context, context.teacherToken(), context.teacherB());
+        as(token).body(Map.of("substituteTeacherId", context.teacherB(), "comment", "同意"))
+                .when().post("/api/substitution-requests/" + requestId + "/approve")
+                .then().statusCode(200)
+                .body("status", equalTo("EFFECTIVE"));
+
+        // 指定日期：代课生效，教师换成代课人。
+        as(token).queryParam("date", context.date().toString())
+                .when().get("/api/timetable/class/" + context.classId())
+                .then().statusCode(200)
+                .body("find { it.id == " + context.entryId() + " }.substituted", equalTo(true))
+                .body("find { it.id == " + context.entryId() + " }.teacherId",
+                        equalTo((int) context.teacherB()));
+
+        // 下周同槽：恢复常规安排，一次调代不延续到以后各周。
+        LocalDate nextWeekSameSlot = context.date().plusDays(7);
+        as(token).queryParam("date", nextWeekSameSlot.toString())
+                .when().get("/api/timetable/class/" + context.classId())
+                .then().statusCode(200)
+                .body("find { it.id == " + context.entryId() + " }.substituted", equalTo(false))
+                .body("find { it.id == " + context.entryId() + " }.teacherId",
+                        equalTo((int) context.teacherA()));
+    }
+
+    @Test
     void substituteTeacherSeesTheLessonInTheirTimetable() {
         String token = adminToken();
         Context context = prepare(token, TestData.suffix());
@@ -340,15 +377,180 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
                 .when().post("/api/substitution-requests/" + requestId + "/approve")
                 .then().statusCode(200);
 
+        // 接替者在该日期恰好看到这节课一次。
         as(token).queryParam("date", context.date().toString())
                 .when().get("/api/timetable/teacher/" + context.teacherB())
                 .then().statusCode(200)
+                .body("findAll { it.id == " + context.entryId() + " }.size()", equalTo(1))
                 .body("find { it.id == " + context.entryId() + " }.substituted", equalTo(true));
 
+        // 被解除安排的原教师在该日期不再看到这节课（ADR-0030：按最终有效教师过滤）。
         as(token).queryParam("date", context.date().toString())
                 .when().get("/api/timetable/teacher/" + context.teacherA())
                 .then().statusCode(200)
-                .body("find { it.id == " + context.entryId() + " }.substituteTeacherName",
-                        org.hamcrest.Matchers.notNullValue());
+                .body("find { it.id == " + context.entryId() + " }", equalTo(null));
+    }
+
+    @Test
+    void coversOnDifferentWeeksResolveIndependently() {
+        String token = adminToken();
+        Context context = prepare(token, TestData.suffix());
+        long secondSubstituteId = TestData.teacher(token, "第二周代课" + TestData.suffix());
+
+        // 同一基线条目、两个不同周的日期各生效一笔一次性代课。
+        long firstRequest = submit(context, context.teacherToken(), context.teacherB());
+        as(token).body(Map.of("substituteTeacherId", context.teacherB()))
+                .when().post("/api/substitution-requests/" + firstRequest + "/approve")
+                .then().statusCode(200);
+
+        LocalDate secondWeekDate = context.date().plusDays(7);
+        long secondRequest = as(context.teacherToken()).body(Map.of(
+                        "entryId", context.entryId(),
+                        "effectiveDate", secondWeekDate.toString(),
+                        "reason", "第二周再次请假",
+                        "expectedSubstituteTeacherId", secondSubstituteId))
+                .when().post("/api/substitution-requests")
+                .then().statusCode(200)
+                .body("status", equalTo("PENDING_APPROVAL"))
+                .extract().jsonPath().getLong("id");
+        as(token).body(Map.of("substituteTeacherId", secondSubstituteId))
+                .when().post("/api/substitution-requests/" + secondRequest + "/approve")
+                .then().statusCode(200);
+
+        // 同周期槽不同周分别显示各自的实例，互不覆盖。
+        as(token).queryParam("date", context.date().toString())
+                .when().get("/api/timetable/class/" + context.classId())
+                .then().statusCode(200)
+                .body("find { it.id == " + context.entryId() + " }.teacherId",
+                        equalTo((int) context.teacherB()))
+                .body("find { it.id == " + context.entryId() + " }.lessonDate",
+                        equalTo(context.date().toString()));
+        as(token).queryParam("date", secondWeekDate.toString())
+                .when().get("/api/timetable/class/" + context.classId())
+                .then().statusCode(200)
+                .body("find { it.id == " + context.entryId() + " }.teacherId",
+                        equalTo((int) secondSubstituteId))
+                .body("find { it.id == " + context.entryId() + " }.lessonDate",
+                        equalTo(secondWeekDate.toString()));
+        // 第三周没有任何实例命中，回到基线。
+        as(token).queryParam("date", context.date().plusDays(14).toString())
+                .when().get("/api/timetable/class/" + context.classId())
+                .then().statusCode(200)
+                .body("find { it.id == " + context.entryId() + " }.substituted", equalTo(false));
+    }
+
+    @Test
+    void roomViewFollowsTheInstanceOnItsDate() {
+        String token = adminToken();
+        Context context = prepare(token, TestData.suffix());
+        long newRoomId = TestData.room(token, "临时教室" + TestData.suffix());
+        long requestId = submit(context, context.teacherToken(), context.teacherB());
+        as(token).body(Map.of(
+                        "substituteTeacherId", context.teacherB(),
+                        "newRoomId", newRoomId))
+                .when().post("/api/substitution-requests/" + requestId + "/approve")
+                .then().statusCode(200);
+
+        // 授课日：该实例出现在新教室，原教室不再有这节课。
+        as(token).queryParam("date", context.date().toString())
+                .when().get("/api/timetable/room/" + newRoomId)
+                .then().statusCode(200)
+                .body("find { it.id == " + context.entryId() + " }.substituted", equalTo(true));
+        // 原教室的视角：先拿到基线教室 id 再断言当天与下周。
+        long baselineRoomId = as(token).queryParam("view", "baseline")
+                .when().get("/api/timetable/class/" + context.classId())
+                .then().statusCode(200)
+                .extract().jsonPath().getLong("find { it.id == " + context.entryId() + " }.roomId");
+
+        as(token).queryParam("date", context.date().toString())
+                .when().get("/api/timetable/room/" + baselineRoomId)
+                .then().statusCode(200)
+                .body("find { it.id == " + context.entryId() + " }", equalTo(null));
+
+        // 下周同一槽位：恢复基线教室，新教室不再有这节课。
+        as(token).queryParam("date", context.date().plusDays(7).toString())
+                .when().get("/api/timetable/room/" + baselineRoomId)
+                .then().statusCode(200)
+                .body("find { it.id == " + context.entryId() + " }.substituted", equalTo(false));
+        as(token).queryParam("date", context.date().plusDays(7).toString())
+                .when().get("/api/timetable/room/" + newRoomId)
+                .then().statusCode(200)
+                .body("find { it.id == " + context.entryId() + " }", equalTo(null));
+    }
+
+    @Test
+    void allViewsAgreeOnTheDatedInstance() {
+        String token = adminToken();
+        Context context = prepare(token, TestData.suffix());
+        long requestId = submit(context, context.teacherToken(), context.teacherB());
+        as(token).body(Map.of("substituteTeacherId", context.teacherB()))
+                .when().post("/api/substitution-requests/" + requestId + "/approve")
+                .then().statusCode(200);
+
+        // 班级、教师、全校三个视角对同一实例给出一致结果，行上带实例日期。
+        as(token).queryParam("date", context.date().toString())
+                .when().get("/api/timetable/class/" + context.classId())
+                .then().statusCode(200)
+                .body("find { it.id == " + context.entryId() + " }.teacherId",
+                        equalTo((int) context.teacherB()))
+                .body("find { it.id == " + context.entryId() + " }.lessonDate",
+                        equalTo(context.date().toString()))
+                .body("find { it.id == " + context.entryId() + " }.targetLessonDate", equalTo(null));
+
+        as(token).queryParam("date", context.date().toString())
+                .when().get("/api/timetable/teacher/" + context.teacherB())
+                .then().statusCode(200)
+                .body("find { it.id == " + context.entryId() + " }.lessonDate",
+                        equalTo(context.date().toString()));
+
+        as(token).queryParam("date", context.date().toString())
+                .when().get("/api/timetable/school")
+                .then().statusCode(200)
+                .body("entries.find { it.id == " + context.entryId() + " }.teacherId",
+                        equalTo((int) context.teacherB()));
+
+        // 导出走同一读取模型：授课日与下周都能导出且不报错。
+        as(token).queryParam("view", "latest").queryParam("date", context.date().toString())
+                .when().get("/api/timetable/class/" + context.classId() + "/export/excel")
+                .then().statusCode(200);
+        as(token).queryParam("view", "latest")
+                .queryParam("date", context.date().plusDays(7).toString())
+                .when().get("/api/timetable/class/" + context.classId() + "/export/excel")
+                .then().statusCode(200);
+    }
+
+    @Test
+    void legacySubstitutionRowKeepsOverridingFollowingWeeks() {
+        String token = adminToken();
+        Context context = prepare(token, TestData.suffix());
+        long requestId = submit(context, context.teacherToken(), context.teacherB());
+        as(token).body(Map.of("substituteTeacherId", context.teacherB()))
+                .when().post("/api/substitution-requests/" + requestId + "/approve")
+                .then().statusCode(200);
+
+        // 把生效行改回旧格式（lesson_date 置空），模拟迁移前的历史数据：不转换、不解释。
+        Substitution row = substitutions.findByRequestId(requestId).get(0);
+        row.setLessonDate(null);
+        row.setTargetLessonDate(null);
+        substitutions.save(row);
+
+        // 旧格式语义保持改动前行为：生效日起持续覆盖后续各周。
+        as(token).queryParam("date", context.date().toString())
+                .when().get("/api/timetable/class/" + context.classId())
+                .then().statusCode(200)
+                .body("find { it.id == " + context.entryId() + " }.substituted", equalTo(true))
+                .body("find { it.id == " + context.entryId() + " }.teacherId",
+                        equalTo((int) context.teacherB()))
+                .body("find { it.id == " + context.entryId() + " }.lessonDate", equalTo(null));
+        as(token).queryParam("date", context.date().plusDays(7).toString())
+                .when().get("/api/timetable/class/" + context.classId())
+                .then().statusCode(200)
+                .body("find { it.id == " + context.entryId() + " }.substituted", equalTo(true))
+                .body("find { it.id == " + context.entryId() + " }.teacherId",
+                        equalTo((int) context.teacherB()));
+        as(token).queryParam("date", context.date().plusDays(28).toString())
+                .when().get("/api/timetable/class/" + context.classId())
+                .then().statusCode(200)
+                .body("find { it.id == " + context.entryId() + " }.substituted", equalTo(true));
     }
 }

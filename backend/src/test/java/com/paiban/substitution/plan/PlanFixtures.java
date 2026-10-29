@@ -51,10 +51,17 @@ public final class PlanFixtures {
         private ConstraintSettings settings = ConstraintSettings.defaults();
         private int days = 5;
         private int periodsPerDay = 8;
+        private int semesterDays = 120;
         private long nextEntryId = 1000L;
 
         public Builder days(int days) {
             this.days = days;
+            return this;
+        }
+
+        /** 覆盖默认学期长度（120 天），用于学期边界测试。 */
+        public Builder semesterEndsAfter(int days) {
+            this.semesterDays = days;
             return this;
         }
 
@@ -114,11 +121,24 @@ public final class PlanFixtures {
             return this;
         }
 
+        /** 旧格式生效行：lessonDate 为空，按「effectiveDate 起持续覆盖」读取。 */
         public Builder substitution(long entryId, LocalDate effectiveDate, Long newPeriodId,
                                     int newDayOfWeek, int newPeriodNo, Long newRoomId,
                                     Long substituteTeacherId, String type) {
             substitutions.add(new AppliedSubstitution(
-                    nextEntryId++, entryId, effectiveDate, Instant.EPOCH.plusSeconds(nextEntryId),
+                    nextEntryId++, entryId, effectiveDate, null, null,
+                    Instant.EPOCH.plusSeconds(nextEntryId),
+                    newPeriodId, newDayOfWeek, newPeriodNo, newRoomId, substituteTeacherId, type));
+            return this;
+        }
+
+        /** 新格式日期实例：只作用于 lessonDate；SWAP 的落点实例日期由 targetLessonDate 表达。 */
+        public Builder datedSubstitution(long entryId, LocalDate lessonDate, LocalDate targetLessonDate,
+                                         Long newPeriodId, int newDayOfWeek, int newPeriodNo,
+                                         Long newRoomId, Long substituteTeacherId, String type) {
+            substitutions.add(new AppliedSubstitution(
+                    nextEntryId++, entryId, lessonDate, lessonDate, targetLessonDate,
+                    Instant.EPOCH.plusSeconds(nextEntryId),
                     newPeriodId, newDayOfWeek, newPeriodNo, newRoomId, substituteTeacherId, type));
             return this;
         }
@@ -131,8 +151,8 @@ public final class PlanFixtures {
                 }
             }
             return new PlanSnapshot(
-                    1L, MONDAY, MONDAY.plusDays(119), periods, rooms, courses, teachers, classes,
-                    baseline, substitutions, settings);
+                    1L, MONDAY, MONDAY.plusDays(semesterDays - 1L), periods, rooms, courses,
+                    teachers, classes, baseline, substitutions, settings);
         }
 
         private PeriodSection section(int periodNo) {

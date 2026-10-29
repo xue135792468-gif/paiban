@@ -28,6 +28,7 @@
       <span>参与调课 <b>{{ stats.swapParticipation }}</b> 次</span>
       <span>周课时 <b>{{ stats.weeklyLessons }}</b></span>
       <span>净课时（含代课） <b>{{ stats.netLessons }}</b></span>
+      <span class="hint">净课量按实际授课日期计，包含尚未上课但已确认的安排</span>
     </div>
   </el-card>
 
@@ -72,7 +73,7 @@
       <el-table-column prop="roomName" label="教室" width="100" />
       <el-table-column label="状态" width="90">
         <template #default="{ row }">
-          <el-tag type="success" size="small">{{ statusLabel(row.status) }}</el-tag>
+          <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
         </template>
       </el-table-column>
     </el-table>
@@ -92,7 +93,7 @@ import { http } from '@/api/http'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import InfoTooltip from '@/components/InfoTooltip.vue'
 import type { Plan, PlanMove, RecordRow, Stats, Teacher } from './types'
-import { statusLabel, typeLabel } from './types'
+import { statusLabel, statusType, typeLabel } from './types'
 
 const props = defineProps<{
   classOptions: Array<{ id: number; name: string }>
@@ -141,6 +142,8 @@ function buildParams() {
     params.dateFrom = filter.range[0]
     params.dateTo = filter.range[1]
   }
+  // 历史视图：当前生效 + 已被后续修订替代的行都展示（规格第 7 节）。
+  params.status = 'ALL'
   return params
 }
 

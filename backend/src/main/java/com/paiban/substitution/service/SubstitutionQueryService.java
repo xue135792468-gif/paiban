@@ -34,6 +34,10 @@ public class SubstitutionQueryService {
     private final UserService users;
     private final SubstitutionMapper mapper;
 
+    /** 记录/导出展示的历史状态集合：当前生效 + 已被后续修订替代（规格第 7 节）。 */
+    private static final List<String> HISTORY_STATUSES =
+            List.of(Substitution.EFFECTIVE, Substitution.SUPERSEDED);
+
     public SubstitutionQueryService(
             SubstitutionRepository substitutions,
             TimetableEntryRepository entries,
@@ -53,11 +57,16 @@ public class SubstitutionQueryService {
 
     @Transactional(readOnly = true)
     public List<SubstitutionRecordDto> records(
-            Long semesterId, Long teacherId, Long classId, LocalDate dateFrom, LocalDate dateTo, String type) {
+            Long semesterId, Long teacherId, Long classId, LocalDate dateFrom, LocalDate dateTo,
+            String type, String status) {
         Long resolved = semesterId != null ? semesterId : semesters.requireCurrent().getId();
+        // 默认只回当前生效行（既有调用方语义不变）；历史视图显式要 ALL 时
+        // 连同被后续修订替代的行一起展示（规格第 7 节）。
+        List<String> statuses = "ALL".equalsIgnoreCase(status)
+                ? HISTORY_STATUSES : List.of(Substitution.EFFECTIVE);
         List<Substitution> result = type != null && !type.isBlank()
-                ? substitutions.findBySemesterIdAndStatusAndType(resolved, Substitution.EFFECTIVE, type)
-                : substitutions.findBySemesterIdAndStatus(resolved, Substitution.EFFECTIVE);
+                ? substitutions.findBySemesterIdAndStatusInAndType(resolved, statuses, type)
+                : substitutions.findBySemesterIdAndStatusIn(resolved, statuses);
         if (teacherId != null) {
             result = result.stream()
                     .filter(item -> teacherId.equals(item.getSubstituteTeacherId())
@@ -86,10 +95,11 @@ public class SubstitutionQueryService {
     /** Semester-end export: the same filtered rows as the records page, as CSV. */
     @Transactional(readOnly = true)
     public String recordsCsv(Long semesterId, Long teacherId, Long classId,
-                             LocalDate dateFrom, LocalDate dateTo, String type) {
-        List<SubstitutionRecordDto> rows = records(semesterId, teacherId, classId, dateFrom, dateTo, type);
+                             LocalDate dateFrom, LocalDate dateTo, String type, String status) {
+        List<SubstitutionRecordDto> rows = records(
+                semesterId, teacherId, classId, dateFrom, dateTo, type, status);
         StringBuilder csv = new StringBuilder("\uFEFF");
-        csv.append("类型,生效日期,行政班,课程,原教师,代课教师,教室,原节次,目标节次,方案ID\n");
+        csv.append("类型,生效日期,行政班,课程,原教师,代课教师,教室,原节次,目标节次,方案ID,状态\n");
         for (SubstitutionRecordDto row : rows) {
             boolean swap = Substitution.TYPE_SWAP.equals(row.type());
             csv.append(csvCell(swap ? "调课" : "代课")).append(',')
@@ -101,7 +111,8 @@ public class SubstitutionQueryService {
                     .append(csvCell(row.roomName())).append(',')
                     .append(csvCell(row.fromPeriodLabel())).append(',')
                     .append(csvCell(row.toPeriodLabel())).append(',')
-                    .append(row.planId() == null ? "" : row.planId()).append('\n');
+                    .append(row.planId() == null ? "" : row.planId()).append(',')
+                    .append(csvCell(row.status())).append('\n');
         }
         return csv.toString();
     }
@@ -120,10 +131,19 @@ public class SubstitutionQueryService {
     public TeacherStatsDto stats(Long teacherId) {
         SubstitutionLookups.requireTeacher(teachers, teacherId);
         Long semesterId = semesters.requireCurrent().getId();
-        long out = substitutions.countBySemesterIdAndOriginalTeacherIdAndTypeAndStatus(
-                semesterId, teacherId, Substitution.TYPE_COVER, Substitution.EFFECTIVE);
-        long in = substitutions.countBySemesterIdAndSubstituteTeacherIdAndTypeAndStatus(
-                semesterId, teacherId, Substitution.TYPE_COVER, Substitution.EFFECTIVE);
+        // 代入/代出口径（票 04，规格第 7 节）：按「当前有效授课安排 vs 基线教师」比较，
+        // 不按累计事件行数计数。判定谓词见 {@link RevisionPolicy#countsAsCurrentCover}：
+        // 只数当前生效的非恢复代课覆盖——A→B→C 后 A 被代 1、C 代课 1、B 为 0；
+        // 恢复基线行净变化为零，对任何一方都不计入；被修订替代的旧行退出统计，历史保留。
+        List<Substitution> effective = substitutions.findBySemesterIdAndStatus(semesterId, Substitution.EFFECTIVE);
+        long out = effective.stream()
+                .filter(RevisionPolicy::countsAsCurrentCover)
+                .filter(row -> teacherId.equals(row.getOriginalTeacherId()))
+                .count();
+        long in = effective.stream()
+                .filter(RevisionPolicy::countsAsCurrentCover)
+                .filter(row -> teacherId.equals(row.getSubstituteTeacherId()))
+                .count();
         long swaps = substitutions.countSwapPlans(semesterId, teacherId);
         long weeklyLessons = entries.findBySemesterIdAndTeacherId(semesterId, teacherId).size();
         // A cover moves one lesson from the original teacher to the substitute; a
@@ -152,11 +172,11 @@ public class SubstitutionQueryService {
         if (user.getTeacherId() == null) {
             return List.of();
         }
-        return records(null, user.getTeacherId(), null, null, null, null);
+        return records(null, user.getTeacherId(), null, null, null, null, null);
     }
 
     @Transactional(readOnly = true)
     public List<SubstitutionRecordDto> allRecords() {
-        return new ArrayList<>(records(null, null, null, null, null, null));
+        return new ArrayList<>(records(null, null, null, null, null, null, null));
     }
 }

@@ -1,10 +1,12 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect as baseExpect, test, type APIRequestContext, type Page } from '@playwright/test'
 import { apiCall, apiLogin, uiLogin } from './helpers'
 
-// Depends on an empty e2e database. Specs that call seedSchool run later
-// (zz-junior-mode.spec.ts), so this file sees the "first login" condition.
-// Each test resets the admin's wizard progress so the order of tests and of
-// earlier runs cannot change whether the wizard is shown.
+// 全量单 worker 长跑下页面首绘/导航偶发超过默认 5s；放宽断言等待（不弱化断言）。
+const expect = baseExpect.configure({ timeout: 10_000 })
+
+// Depends on an empty e2e database：向导只在「还没有班级/作息」时出现，
+// 因此本文件以 00- 前缀保证在其它造数据的 spec 之前运行（与 zz-junior-mode
+// 靠在最后同一约定）。每个用例先重置管理员的向导进度，测试顺序无关。
 
 async function resetWizard(request: APIRequestContext) {
   const token = await apiLogin(request)

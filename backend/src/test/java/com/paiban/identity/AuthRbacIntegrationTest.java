@@ -31,6 +31,14 @@ class AuthRbacIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void h2ConsoleIsNotOpenWhenConsoleIsDisabled() {
+        // 生产语义：未启用 H2 控制台的环境不放行 /h2-console/**（e2e profile 才显式启用）。
+        io.restassured.RestAssured.given()
+                .when().get("/h2-console/")
+                .then().statusCode(org.hamcrest.Matchers.anyOf(equalTo(401), equalTo(403)));
+    }
+
+    @Test
     void wrongPasswordIsRejectedWith401() {
         io.restassured.RestAssured.given()
                 .contentType(ContentType.JSON)

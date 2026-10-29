@@ -137,6 +137,20 @@ public class UserService {
                 .anyMatch(permission -> permission.getCode().equals(permissionCode));
     }
 
+    /** 全部权限点都具备才返回 true；管理动作按权限常量组合判定（如调代工作台）。 */
+    public boolean hasAllPermissions(AppUser user, String... permissionCodes) {
+        java.util.Set<String> owned = user.getRoles().stream()
+                .flatMap(role -> role.getPermissions().stream())
+                .map(com.paiban.identity.domain.Permission::getCode)
+                .collect(java.util.stream.Collectors.toSet());
+        for (String code : permissionCodes) {
+            if (!owned.contains(code)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     @Transactional(readOnly = true)
     public List<RoleDto> listRoles() {        return roles.findAll().stream()
                 .sorted(Comparator.comparing(Role::getId))

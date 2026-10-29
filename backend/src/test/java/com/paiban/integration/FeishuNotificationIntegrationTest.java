@@ -202,14 +202,16 @@ class FeishuNotificationIntegrationTest extends ApiIntegrationTest {
     void approvedSubstitutionSendsAFeishuCardAndLogsThePlatform() {
         enableFeishu();
         String token = adminToken();
-        ScheduleFixture.Result fixture = ScheduleFixture.published(token, 5);
+        LocalDate monday = ScheduleFixture.nextMonday();
+        long semesterId = TestData.semesterStarting(token, monday);
+        ScheduleFixture.Result fixture = ScheduleFixture.publishedIn(token, 5, semesterId);
         List<Map<String, Object>> entries = ScheduleFixture.classEntries(token, fixture.classId());
         Map<String, Object> entry = entries.stream()
                 .filter(item -> ((Number) item.get("teacherId")).longValue() == fixture.teacherId())
                 .findFirst()
                 .orElseThrow();
         long entryId = ((Number) entry.get("id")).longValue();
-        LocalDate date = LocalDate.of(2025, 9, 1)
+        LocalDate date = monday
                 .plusDays(((Number) entry.get("dayOfWeek")).intValue() - 1L);
 
         // Bind the original teacher to the deterministic fake Feishu identity.

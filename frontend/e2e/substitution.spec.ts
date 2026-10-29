@@ -3,19 +3,16 @@ import {
   apiCall,
   apiLogin,
   classEntries,
+  dateFor,
   newContext,
   seedSchool,
   solveAndPublish,
   uiLogin,
 } from './helpers'
 
+// 种子学期锚在未来的周一（批准受开课截止约束），日期一律由 dateFor 派生。
 function dateForWeekday(dayOfWeek: number) {
-  const date = new Date('2025-09-01T00:00:00')
-  date.setDate(date.getDate() + (dayOfWeek - 1))
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  return dateFor(dayOfWeek)
 }
 
 test('场景 2：教师提交调代 → 教务审批 → 通知与课表叠加', async ({ page }) => {
@@ -75,8 +72,31 @@ test('场景 2：教师提交调代 → 教务审批 → 通知与课表叠加',
   await page.goto('/notifications')
   await expect(page.getByText('调代申请已批准').first()).toBeVisible()
 
+  // 一次性调代只影响所指授课日期（ADR-0030）。
+  // 申请者（被代教师）视角：授课日这节课被代课人接走，课表少一节；
+  // 下周同一槽位恢复常规，课回到课表且全程不出现「代」标记。
   await page.goto('/timetable')
   await page.getByPlaceholder('选择日期').fill(effectiveDate)
   await page.getByPlaceholder('选择日期').press('Enter')
-  await expect(page.getByText('代').first()).toBeVisible()
+  await expect(page.locator('.lesson .el-tag', { hasText: '代' })).toHaveCount(0)
+  const lessonsOnLessonWeek = await page.locator('.lesson').count()
+
+  const nextWeekDate = new Date(`${effectiveDate}T00:00:00`)
+  nextWeekDate.setDate(nextWeekDate.getDate() + 7)
+  const nextWeek = `${nextWeekDate.getFullYear()}-${String(nextWeekDate.getMonth() + 1).padStart(2, '0')}-${String(nextWeekDate.getDate()).padStart(2, '0')}`
+  await page.getByPlaceholder('选择日期').fill(nextWeek)
+  await page.getByPlaceholder('选择日期').press('Enter')
+  await expect(page.locator('.lesson')).toHaveCount(lessonsOnLessonWeek + 1)
+  await expect(page.locator('.lesson .el-tag', { hasText: '代' })).toHaveCount(0)
+
+  // 管理员的班级课表对同一实例给出一致结果：授课日出现「代」，下周恢复基线。
+  await page.evaluate(() => localStorage.clear())
+  await uiLogin(page, 'admin', 'admin123')
+  await page.goto('/timetable')
+  await page.getByPlaceholder('选择日期').fill(effectiveDate)
+  await page.getByPlaceholder('选择日期').press('Enter')
+  await expect(page.locator('.lesson .el-tag', { hasText: '代' }).first()).toBeVisible()
+  await page.getByPlaceholder('选择日期').fill(nextWeek)
+  await page.getByPlaceholder('选择日期').press('Enter')
+  await expect(page.locator('.lesson .el-tag', { hasText: '代' })).toHaveCount(0)
 })

@@ -22,6 +22,12 @@ public class Substitution {
 
     public static final String EFFECTIVE = "EFFECTIVE";
     public static final String CANCELLED = "CANCELLED";
+    /**
+     * 被后续修订替代（票 04）：行保留、可追溯，只是退出「当前有效安排」——
+     * 读模型只装载 EFFECTIVE 行，因此替代关系是原子的版本切换；历史事实
+     * 仍由本行与 substitution_history 完整保留，绝不删除或改写内容。
+     */
+    public static final String SUPERSEDED = "SUPERSEDED";
     public static final String TYPE_SWAP = "SWAP";
     public static final String TYPE_COVER = "COVER";
 
@@ -40,6 +46,17 @@ public class Substitution {
 
     @Column(name = "effective_date", nullable = false)
     private LocalDate effectiveDate;
+
+    /**
+     * 新格式：本笔覆盖对应的原始授课日期（实例身份 = 学期 + 条目 + 该日期），
+     * 非空表示只影响这一天；NULL 表示旧格式历史行，按「自 effective_date 起持续覆盖」读取。
+     */
+    @Column(name = "lesson_date")
+    private LocalDate lessonDate;
+
+    /** 新格式 SWAP 落点实例日期；COVER 行与旧格式行均为 NULL。 */
+    @Column(name = "target_lesson_date")
+    private LocalDate targetLessonDate;
 
     @Column(name = "original_teacher_id", nullable = false)
     private Long originalTeacherId;

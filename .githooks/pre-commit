@@ -2,8 +2,14 @@
 # Lint only the staged frontend files. The PR gate lints everything
 # (`npm run lint`); this catches the case where a commit or merge breaks lint
 # while the unit tests stay green, without paying for a full lint per commit.
+# Also runs the backend isBlank ratchet for staged Java: that check lives only
+# in verify.sh, so an unwired hook lets new isBlank calls reach the full gate.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+if git diff --cached --name-only --diff-filter=ACMR | grep -qE '^backend/.*\.java$'; then
+  bash scripts/check-blank-checks.sh
+fi
 
 mapfile -t staged < <(git diff --cached --name-only --diff-filter=ACMR \
   | grep -E '^frontend/.*\.(ts|vue|js|mjs)$' || true)

@@ -132,8 +132,8 @@ export async function seedSchool(context: APIRequestContext): Promise<SeedResult
 
   const semester = await apiCall(context, token, 'post', '/semesters', {
     name: `E2E学期-${suffix}`,
-    startDate: '2025-09-01',
-    endDate: '2026-01-20',
+    startDate: SEED_MONDAY_ISO,
+    endDate: SEED_END_ISO,
   })
   await apiCall(context, token, 'post', `/semesters/${semester.id}/set-current`)
   await apiCall(context, token, 'post', `/semesters/${semester.id}/periods/default`, {
@@ -244,13 +244,39 @@ export async function solveAndPublish(context: APIRequestContext, seed: SeedResu
   return draftId
 }
 
-export function dateFor(dayOfWeek: number): string {
-  const date = new Date('2025-09-01T00:00:00')
-  date.setDate(date.getDate() + (dayOfWeek - 1))
+/**
+ * 学期锚点：最近的下个周一。批准路径受开课截止约束（规格第 6 节，服务端真实
+ * 时钟判定），因此 e2e 种子学期必须落在未来，否则任何批准都会被 409 拒绝。
+ */
+function nextMonday(): Date {
+  const today = new Date()
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  monday.setDate(monday.getDate() + ((8 - monday.getDay()) % 7 || 7))
+  return monday
+}
+
+const SEED_MONDAY = nextMonday()
+
+export function isoDate(date: Date): string {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+/** 种子学期的开始日（ISO），跨周断言都以它为基准。 */
+export const SEED_MONDAY_ISO = isoDate(SEED_MONDAY)
+/** 种子学期的结束日：学期覆盖 20 周，跨周用例都在范围内。 */
+export const SEED_END_ISO = isoDate(new Date(
+  SEED_MONDAY.getFullYear(),
+  SEED_MONDAY.getMonth(),
+  SEED_MONDAY.getDate() + 140,
+))
+
+export function dateFor(dayOfWeek: number): string {
+  const date = new Date(SEED_MONDAY)
+  date.setDate(date.getDate() + (dayOfWeek - 1))
+  return isoDate(date)
 }
 
 export interface SwapScenario {
@@ -284,8 +310,8 @@ export async function seedSwapScenario(
   const suffix = Math.random().toString(36).slice(2, 8)
   const semester = await apiCall(context, token, 'post', '/semesters', {
     name: `E2E调课-${suffix}`,
-    startDate: '2025-09-01',
-    endDate: '2026-01-20',
+    startDate: SEED_MONDAY_ISO,
+    endDate: SEED_END_ISO,
   })
   await apiCall(context, token, 'post', `/semesters/${semester.id}/set-current`)
   await apiCall(context, token, 'post', `/semesters/${semester.id}/periods/default`, {
@@ -468,4 +494,395 @@ export async function pickOption(
   // force-clicking then hits a neighbour. Trigger the resolved option's own click
   // handler instead, so the exact element receives the event.
   await option.evaluate((element) => (element as HTMLElement).click())
+}
+
+export interface WorkbenchSeed {
+  semesterId: number
+  classId: number
+  teacherId: number
+  teacherName: string
+  /** 无课教师：工作台候选里的默认代课人。 */
+  substituteTeacherId: number
+  substituteTeacherName: string
+  entryId: number
+  lessonDate: string
+  username: string
+  password: string
+}
+
+/**
+ * 票 03 调代工作台的种子：学期从下周一拱到未来（服务端开课截止用权威时钟，
+ * 过去的日期会被正确拒绝），语文课一节，另备一位无课代课人。
+ */
+export async function seedWorkbenchScenario(context: APIRequestContext): Promise<WorkbenchSeed> {
+  const token = await apiLogin(context)
+  const suffix = Math.random().toString(36).slice(2, 8)
+  const monday = new Date()
+  monday.setDate(monday.getDate() + ((8 - monday.getDay()) % 7 || 7))
+  const iso = (value: Date) => {
+    const month = String(value.getMonth() + 1).padStart(2, '0')
+    const day = String(value.getDate()).padStart(2, '0')
+    return `${value.getFullYear()}-${month}-${day}`
+  }
+  const wednesday = new Date(monday)
+  wednesday.setDate(monday.getDate() + 2)
+  const end = new Date(monday)
+  end.setDate(monday.getDate() + 100)
+
+  const semester = await apiCall(context, token, 'post', '/semesters', {
+    name: `E2E工作台-${suffix}`,
+    startDate: iso(monday),
+    endDate: iso(end),
+  })
+  await apiCall(context, token, 'post', `/semesters/${semester.id}/set-current`)
+  await apiCall(context, token, 'post', `/semesters/${semester.id}/periods/default`, {
+    morningCount: 4,
+    afternoonCount: 4,
+    eveningCount: 2,
+    days: [1, 2, 3, 4, 5],
+  })
+
+  const grade = await apiCall(context, token, 'post', '/grades?semesterId=' + semester.id, {
+    name: `高一${suffix}`,
+    sortOrder: 1,
+  })
+  const teacher = await apiCall(context, token, 'post', '/teachers', {
+    name: `张老师${suffix}`,
+    employeeNo: `W1-${suffix}`,
+    subject: '语文',
+  })
+  const substitute = await apiCall(context, token, 'post', '/teachers', {
+    name: `李老师${suffix}`,
+    employeeNo: `W2-${suffix}`,
+  })
+  const adminClass = await apiCall(context, token, 'post', `/classes?semesterId=${semester.id}`, {
+    gradeId: grade.id,
+    name: `高一1班${suffix}`,
+    studentCount: 45,
+  })
+  const course = await apiCall(context, token, 'post', '/courses', {
+    name: `语文${suffix}`,
+    subject: '语文',
+    allowConsecutive: false,
+  })
+  const room = await apiCall(context, token, 'post', '/rooms', {
+    name: `工作台教室${suffix}`,
+    capacity: 50,
+    type: 'NORMAL',
+  })
+  await apiCall(context, token, 'post', '/assignments', {
+    classId: adminClass.id,
+    courseId: course.id,
+    teacherId: teacher.id,
+    weeklyLessons: 2,
+  })
+
+  const username = `wbe2e_${suffix}`
+  await apiCall(context, token, 'post', '/users', {
+    username,
+    password: 'teacher123',
+    displayName: `张老师${suffix}`,
+    roleCodes: ['teacher'],
+    teacherId: teacher.id,
+  })
+
+  // 求解后强制把这节课摆到周三第 1 节，保证种子的授课日期是确定事实。
+  const periodRows = await apiCall(context, token, 'get', `/semesters/${semester.id}/periods`)
+  const wednesdayPeriod = periodRows.find((row: any) => row.dayOfWeek === 3 && row.periodNo === 1)
+  if (!wednesdayPeriod) {
+    throw new Error('missing Wednesday period for the workbench seed')
+  }
+  const draftId = await solveDraft(context, semester.id)
+  const detail = await apiCall(context, token, 'get', `/timetable-drafts/${draftId}`)
+  const lesson = detail.lessons.find(
+    (row: any) => row.classId === adminClass.id && row.courseId === course.id,
+  )
+  if (!lesson) {
+    throw new Error('missing draft lesson for the workbench seed')
+  }
+  await apiCall(context, token, 'patch', `/timetable-drafts/${draftId}/lessons/${lesson.id}`, {
+    periodId: wednesdayPeriod.id,
+    roomId: room.id,
+    force: true,
+  })
+  await publishDraft(context, draftId)
+  const entries = await apiCall(context, token, 'get', `/timetable/class/${adminClass.id}`, undefined, {
+    view: 'baseline',
+  })
+  const wednesdayEntry = entries.find((row: any) => row.dayOfWeek === 3)
+  if (!wednesdayEntry) {
+    throw new Error('solver did not place a lesson on Wednesday for the workbench seed')
+  }
+  return {
+    semesterId: semester.id,
+    classId: adminClass.id,
+    teacherId: teacher.id,
+    teacherName: teacher.name,
+    substituteTeacherId: substitute.id,
+    substituteTeacherName: substitute.name,
+    entryId: wednesdayEntry.id,
+    lessonDate: iso(wednesday),
+    username,
+    password: 'teacher123',
+  }
+}
+
+/**
+ * Runs one SQL statement against the e2e backend's in-memory H2 database via
+ * the H2 web console (enabled only in the e2e profile). This exists so specs
+ * can manufacture pre-ticket-01 legacy data (substitution rows without
+ * lesson_date); every other seed must go through the public API.
+ * The JDBC URL must match application-e2e.yml exactly.
+ */
+export async function runSql(request: APIRequestContext, sql: string): Promise<void> {
+  const base = API.replace(/\/api$/, '')
+  const jdbcUrl = 'jdbc:h2:mem:paiban_e2e;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1'
+  const consolePage = await request.get(`${base}/h2-console/`)
+  if (!consolePage.ok()) {
+    throw new Error(`h2 console unavailable: ${consolePage.status()}`)
+  }
+  const html = await consolePage.text()
+  const sessionId = html.match(/name="jsessionid"\s+value="([^"]+)"/)?.[1]
+    ?? html.match(/jsessionid=([a-zA-Z0-9.-]+)/)?.[1]
+  if (!sessionId) {
+    throw new Error(`h2 console session not found in: ${html.slice(0, 300)}`)
+  }
+  // H2 控制台的登录表单字段名是 url（JDBC URL）；登录后连接挂在会话上，
+  // query.do 只需要 sql。
+  const login = await request.post(`${base}/h2-console/login.do?jsessionid=${sessionId}`, {
+    form: {
+      settingsName: 'Generic H2 (Embedded)',
+      setting: 'Generic H2 (Embedded)',
+      name: 'Generic H2 (Embedded)',
+      driver: 'org.h2.Driver',
+      url: jdbcUrl,
+      user: 'sa',
+      password: '',
+    },
+  })
+  if (!login.ok()) {
+    throw new Error(`h2 console login failed: ${login.status()}`)
+  }
+  const result = await request.post(`${base}/h2-console/query.do?jsessionid=${sessionId}`, {
+    form: { sql, maxrows: '1000' },
+  })
+  const body = await result.text()
+  const failed = !result.ok() || /org\.h2\.jdbc|JdbcSQL|Syntax error|Feature not supported/i.test(body)
+  if (failed) {
+    throw new Error(`h2 sql failed (${result.status()}): ${body.slice(0, 1500)}`)
+  }
+}
+
+
+export interface SwapWorkbenchSeed {
+  semesterId: number
+  classId: number
+  teacherChineseId: number
+  teacherChineseName: string
+  teacherMathId: number
+  teacherMathName: string
+  entryChineseId: number
+  courseChineseName: string
+  lessonDate: string
+  targetDate: string
+}
+
+/**
+ * 票 05 调课工作台的种子：未来学期，高一1班周三第 1 节语文（张老师）、
+ * 周五第 1 节数学（王老师），二人环无冲突——管理员明确指定目标日期即可成环。
+ */
+export async function seedSwapWorkbenchScenario(
+  context: APIRequestContext,
+): Promise<SwapWorkbenchSeed> {
+  const token = await apiLogin(context)
+  const suffix = Math.random().toString(36).slice(2, 8)
+  const monday = new Date()
+  monday.setDate(monday.getDate() + ((8 - monday.getDay()) % 7 || 7))
+  const iso = (value: Date) => {
+    const month = String(value.getMonth() + 1).padStart(2, '0')
+    const dayNo = String(value.getDate()).padStart(2, '0')
+    return `${value.getFullYear()}-${month}-${dayNo}`
+  }
+  const wednesday = new Date(monday)
+  wednesday.setDate(monday.getDate() + 2)
+  const friday = new Date(monday)
+  friday.setDate(monday.getDate() + 4)
+  const end = new Date(monday)
+  end.setDate(monday.getDate() + 100)
+
+  const semester = await apiCall(context, token, 'post', '/semesters', {
+    name: `E2E调课台-${suffix}`,
+    startDate: iso(monday),
+    endDate: iso(end),
+  })
+  await apiCall(context, token, 'post', `/semesters/${semester.id}/set-current`)
+  await apiCall(context, token, 'post', `/semesters/${semester.id}/periods/default`, {
+    morningCount: 2,
+    afternoonCount: 0,
+    eveningCount: 0,
+    days: [1, 2, 3, 4, 5],
+  })
+
+  const grade = await apiCall(context, token, 'post', `/grades?semesterId=${semester.id}`, {
+    name: `高一${suffix}`,
+    sortOrder: 1,
+  })
+  const adminClass = await apiCall(context, token, 'post', `/classes?semesterId=${semester.id}`, {
+    gradeId: grade.id,
+    name: `高一1班${suffix}`,
+    studentCount: 45,
+  })
+  const teacherChinese = await apiCall(context, token, 'post', '/teachers', {
+    name: `调课张${suffix}`,
+    employeeNo: `SW1-${suffix}`,
+    subject: '语文',
+  })
+  const teacherMath = await apiCall(context, token, 'post', '/teachers', {
+    name: `调课王${suffix}`,
+    employeeNo: `SW2-${suffix}`,
+    subject: '数学',
+  })
+  const chinese = await apiCall(context, token, 'post', '/courses', {
+    name: `语文${suffix}`,
+    subject: '语文',
+    allowConsecutive: false,
+  })
+  const math = await apiCall(context, token, 'post', '/courses', {
+    name: `数学${suffix}`,
+    subject: '数学',
+    allowConsecutive: false,
+  })
+  const roomA = await apiCall(context, token, 'post', '/rooms', {
+    name: `调课台教室A${suffix}`,
+    capacity: 50,
+    type: 'NORMAL',
+  })
+  const roomB = await apiCall(context, token, 'post', '/rooms', {
+    name: `调课台教室B${suffix}`,
+    capacity: 50,
+    type: 'NORMAL',
+  })
+  await apiCall(context, token, 'post', '/assignments', {
+    classId: adminClass.id,
+    courseId: chinese.id,
+    teacherId: teacherChinese.id,
+    weeklyLessons: 1,
+  })
+  await apiCall(context, token, 'post', '/assignments', {
+    classId: adminClass.id,
+    courseId: math.id,
+    teacherId: teacherMath.id,
+    weeklyLessons: 1,
+  })
+
+  // 求解后强制摆放：语文周三第 1、数学周五第 1（二人环的确定性事实）。
+  const periodRows = await apiCall(context, token, 'get', `/semesters/${semester.id}/periods`)
+  const wednesdayPeriod = periodRows.find((row: any) => row.dayOfWeek === 3 && row.periodNo === 1)
+  const fridayPeriod = periodRows.find((row: any) => row.dayOfWeek === 5 && row.periodNo === 1)
+  if (!wednesdayPeriod || !fridayPeriod) {
+    throw new Error('missing Wednesday/Friday periods for the swap workbench seed')
+  }
+  const draftId = await solveDraft(context, semester.id)
+  const detail = await apiCall(context, token, 'get', `/timetable-drafts/${draftId}`)
+  const byCourse = new Map<number, any>()
+  for (const lesson of detail.lessons) {
+    if (lesson.classId === adminClass.id) byCourse.set(lesson.courseId, lesson)
+  }
+  const chineseLesson = byCourse.get(chinese.id)
+  const mathLesson = byCourse.get(math.id)
+  if (!chineseLesson || !mathLesson) {
+    throw new Error('missing draft lessons for the swap workbench seed')
+  }
+  await apiCall(context, token, 'patch', `/timetable-drafts/${draftId}/lessons/${chineseLesson.id}`, {
+    periodId: wednesdayPeriod.id,
+    roomId: roomA.id,
+    force: true,
+  })
+  await apiCall(context, token, 'patch', `/timetable-drafts/${draftId}/lessons/${mathLesson.id}`, {
+    periodId: fridayPeriod.id,
+    roomId: roomB.id,
+    force: true,
+  })
+  await publishDraft(context, draftId)
+  const entries = await apiCall(context, token, 'get', `/timetable/class/${adminClass.id}`, undefined, {
+    view: 'baseline',
+  })
+  const chineseEntry = entries.find((row: any) => row.dayOfWeek === 3)
+  if (!chineseEntry) {
+    throw new Error('solver did not keep the Wednesday Chinese lesson for the swap workbench seed')
+  }
+  return {
+    semesterId: semester.id,
+    classId: adminClass.id,
+    teacherChineseId: teacherChinese.id,
+    teacherChineseName: teacherChinese.name,
+    teacherMathId: teacherMath.id,
+    teacherMathName: teacherMath.name,
+    entryChineseId: chineseEntry.id,
+    courseChineseName: chinese.name,
+    lessonDate: iso(wednesday),
+    targetDate: iso(friday),
+  }
+}
+
+// ---------------------------------------------------------------- 票 05/06
+// 管理员同班调课的公共流程：选教师 → 选日期 → 选来源课 → 进入调课面板。
+// 拖拽 spec（admin-swap-drag）与表单 spec（admin-swap）共用，避免两份漂移。
+
+/**
+ * Opens the admin swap flow up to the swap planner panel: log in as admin,
+ * search the seeded Chinese teacher, jump to the lesson date and pick the
+ * first lesson, then choose the 调课 action.
+ */
+export async function openSwapFlow(
+  page: Page,
+  seed: Awaited<ReturnType<typeof seedSwapWorkbenchScenario>>,
+): Promise<void> {
+  await uiLogin(page, 'admin', 'admin123')
+  await page.goto('/substitutions/workbench')
+  await expect(page.getByTestId('teacher-select')).toBeVisible()
+  // filterable 下拉：输入带后缀的唯一教师名定位来源课教师。
+  await page.getByTestId('teacher-select').click()
+  await page.getByTestId('teacher-select').locator('input').fill(seed.teacherChineseName)
+  const dropdown = page.locator('.el-select-dropdown:visible').last()
+  await expect(dropdown.getByText(seed.teacherChineseName, { exact: true })).toBeVisible()
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Enter')
+  await expect(page.getByTestId('workbench-timetable')).toBeVisible({ timeout: 20_000 })
+
+  const dateInput = page.getByTestId('lesson-date').locator('input')
+  await dateInput.fill(seed.lessonDate)
+  await dateInput.press('Tab')
+  await expect(page.getByTestId('pick-lesson').first()).toBeVisible()
+
+  // 选来源课 → 选择「调课」动作（区别于票 03 的「指定代课」）。
+  await page.getByTestId('pick-lesson').first().click()
+  await page.getByTestId('choose-swap').click()
+  await expect(page.getByTestId('swap-planner')).toBeVisible()
+}
+
+/**
+ * Form path for picking the swap target: explicit target date (Friday) and
+ * target period (数学) so the seed's two-person cycle is deterministic.
+ */
+export async function pickTargetAndGenerate(
+  page: Page,
+  seed: Awaited<ReturnType<typeof seedSwapWorkbenchScenario>>,
+): Promise<void> {
+  // 明确指定目标日期（周五）与目标课节（数学）——不会被替换成同星期的另一周。
+  const targetDateInput = page.getByTestId('swap-target-date').locator('input')
+  await targetDateInput.fill(seed.targetDate)
+  await targetDateInput.press('Tab')
+  await expect(page.getByTestId('swap-target-period')).toBeEnabled()
+  await page.getByTestId('swap-target-period').click()
+  const targetDropdown = page.locator('.el-select-dropdown:visible').last()
+  await expect(targetDropdown.locator('.el-select-dropdown__item').first()).toBeVisible()
+  await targetDropdown
+    .locator('.el-select-dropdown__item')
+    .filter({ hasText: '数学' })
+    .first()
+    .click()
+
+  await page.getByTestId('swap-reason').fill('运动会调课')
+  await page.getByTestId('generate-swap-plans').click()
 }

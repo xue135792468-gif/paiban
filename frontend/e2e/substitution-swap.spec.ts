@@ -95,4 +95,12 @@ test('场景 9b：周五无解时跨天到下周 → 影响 2 天且整单生效
   await page.getByPlaceholder('选择日期').fill(FRIDAY)
   await page.getByPlaceholder('选择日期').press('Enter')
   await expect(page.getByText('调').first()).toBeVisible()
+
+  // 一次性调课只影响移动涉及的两天：第三周（窗口之外）恢复基线，不再出现「调」。
+  const thirdWeekFriday = new Date(`${FRIDAY}T00:00:00`)
+  thirdWeekFriday.setDate(thirdWeekFriday.getDate() + 14)
+  const laterDate = `${thirdWeekFriday.getFullYear()}-${String(thirdWeekFriday.getMonth() + 1).padStart(2, '0')}-${String(thirdWeekFriday.getDate()).padStart(2, '0')}`
+  await page.getByPlaceholder('选择日期').fill(laterDate)
+  await page.getByPlaceholder('选择日期').press('Enter')
+  await expect(page.locator('.lesson .el-tag', { hasText: '调' })).toHaveCount(0)
 })

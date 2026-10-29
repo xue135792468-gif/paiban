@@ -104,6 +104,7 @@ public class SubstitutionMapper {
                 DAY_NAMES[request.getDayOfWeek()] + "第" + request.getPeriodNo() + "节",
                 request.getTargetPeriodId(),
                 targetPeriodLabel,
+                request.getTargetDate(),
                 typeOf(request),
                 request.getReason(),
                 request.getStatus(),
@@ -111,7 +112,9 @@ public class SubstitutionMapper {
                 approver,
                 request.getApprovedAt(),
                 request.getApprovalComment(),
-                request.getCreatedAt());
+                request.getCreatedAt(),
+                request.getRevisesRequestId(),
+                request.getRevisionKind());
     }
 
     public SubstitutionRecordDto toRecordDto(Substitution substitution) {
@@ -138,6 +141,7 @@ public class SubstitutionMapper {
                 substitution.getType() == null ? Substitution.TYPE_COVER : substitution.getType(),
                 substitution.getPlanId(),
                 substitution.getEffectiveDate(),
+                substitution.getLessonDate(),
                 entry == null ? null : entry.getAdminClassId(),
                 className,
                 entry == null ? null : entry.getCourseId(),

@@ -11,18 +11,20 @@ public interface SubstitutionRepository extends JpaRepository<Substitution, Long
 
     List<Substitution> findByRequestId(Long requestId);
 
+    List<Substitution> findByEntryId(Long entryId);
+
     List<Substitution> findBySemesterIdAndEffectiveDateAndStatus(
             Long semesterId, LocalDate effectiveDate, String status);
 
     List<Substitution> findBySemesterIdAndStatus(Long semesterId, String status);
 
+    /** 历史展示：当前生效与被后续修订替代的行都要可追溯（规格第 7 节）。 */
+    List<Substitution> findBySemesterIdAndStatusIn(Long semesterId, List<String> statuses);
+
+    List<Substitution> findBySemesterIdAndStatusInAndType(
+            Long semesterId, List<String> statuses, String type);
+
     List<Substitution> findBySemesterIdAndStatusAndType(Long semesterId, String status, String type);
-
-    long countBySemesterIdAndOriginalTeacherIdAndTypeAndStatus(
-            Long semesterId, Long originalTeacherId, String type, String status);
-
-    long countBySemesterIdAndSubstituteTeacherIdAndTypeAndStatus(
-            Long semesterId, Long substituteTeacherId, String type, String status);
 
     /** Distinct swap plans a teacher took part in; a three-person swap counts once. */
     @org.springframework.data.jpa.repository.Query(
@@ -38,6 +40,12 @@ public interface SubstitutionRepository extends JpaRepository<Substitution, Long
 
     Optional<Substitution> findFirstByEntryIdAndEffectiveDateAndStatus(
             Long entryId, LocalDate effectiveDate, String status);
+
+    /**
+     * 旧格式（lesson_date 为空）的生效行：按「自 effective_date 起持续覆盖」解释，
+     * 管理写入前用它判断实例是否被历史数据锁定（数据级检查，不做转换）。
+     */
+    List<Substitution> findByEntryIdAndStatusAndLessonDateIsNull(Long entryId, String status);
 
     List<Substitution> findBySemesterIdAndEffectiveDateBetweenAndStatus(
             Long semesterId, LocalDate from, LocalDate to, String status);

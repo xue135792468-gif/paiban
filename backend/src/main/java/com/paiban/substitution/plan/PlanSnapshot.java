@@ -52,10 +52,16 @@ public record PlanSnapshot(long semesterId,
                                  int dayOfWeek,
                                  int periodNo) {}
 
-    /** One effective overlay row. For SWAP the substitute teacher is the original. */
+    /**
+     * One effective overlay row. For SWAP the substitute teacher is the original.
+     * {@code lessonDate} 非空 = 新格式日期实例（只影响该授课日期；SWAP 的落点在
+     * {@code targetLessonDate}）；为 null = 旧格式历史行，按「effectiveDate 起持续覆盖」读取。
+     */
     public record AppliedSubstitution(long id,
                                       long entryId,
                                       LocalDate effectiveDate,
+                                      LocalDate lessonDate,
+                                      LocalDate targetLessonDate,
                                       Instant createdAt,
                                       Long newPeriodId,
                                       Integer newDayOfWeek,
@@ -112,9 +118,10 @@ public record PlanSnapshot(long semesterId,
     }
 
     /**
-     * The timetable as it appears on one date. Mirrors the timetable read model:
-     * the latest substitution created for an entry whose effective date has been
-     * reached wins, and the resulting weekday decides whether it is on this date.
+     * The timetable as it appears on one date. Mirrors the timetable read model
+     * (ADR-0030): a new-format substitution applies only on its lesson date (or
+     * the swap's target date), a legacy row keeps overriding from its effective
+     * date onward, and the resulting weekday decides whether it is on this date.
      */
     public DaySchedule scheduleOn(LocalDate date) {
         int dayOfWeek = date.getDayOfWeek().getValue();
@@ -122,6 +129,10 @@ public record PlanSnapshot(long semesterId,
         List<ScheduledLesson> lessons = new ArrayList<>();
         for (BaselineLesson lesson : baseline) {
             AppliedSubstitution substitution = latest.get(lesson.entryId());
+            if (isMovedOutOn(substitution, date)) {
+                // 调课来源日：这节课当天被移走，原槽不再出现（落点日由 target 分支呈现）。
+                continue;
+            }
             long periodId = substitution != null && substitution.newPeriodId() != null
                     ? substitution.newPeriodId() : lesson.periodId();
             int resolvedDay = substitution != null && substitution.newDayOfWeek() != null
@@ -155,10 +166,17 @@ public record PlanSnapshot(long semesterId,
         return new DaySchedule(date, List.copyOf(lessons));
     }
 
+    /** 新格式调课行在来源日命中时，该课当天被移出原槽。 */
+    private static boolean isMovedOutOn(AppliedSubstitution substitution, LocalDate date) {
+        return substitution != null
+                && substitution.lessonDate() != null
+                && substitution.targetLessonDate() != null
+                && date.equals(substitution.lessonDate());
+    }
+
     private Map<Long, AppliedSubstitution> latestPerEntry(LocalDate date) {
         List<AppliedSubstitution> reached = substitutions.stream()
-                .filter(item -> !item.effectiveDate().isAfter(date))
-                .filter(item -> !item.effectiveDate().isBefore(semesterStart))
+                .filter(item -> touches(item, date))
                 .sorted(Comparator
                         .comparing(AppliedSubstitution::createdAt,
                                 Comparator.nullsFirst(Comparator.naturalOrder()))
@@ -169,6 +187,18 @@ public record PlanSnapshot(long semesterId,
             latest.put(item.entryId(), item);
         }
         return latest;
+    }
+
+    /**
+     * 该生效行是否作用于查询日：新格式按实例日期精确匹配（来源日或落点日），
+     * 旧格式保持「自 effectiveDate 起在本学期内持续覆盖」的原语义。
+     */
+    private boolean touches(AppliedSubstitution item, LocalDate date) {
+        if (item.lessonDate() == null) {
+            return !item.effectiveDate().isAfter(date)
+                    && !item.effectiveDate().isBefore(semesterStart);
+        }
+        return date.equals(item.lessonDate()) || date.equals(item.targetLessonDate());
     }
 
     public PeriodView period(long periodId) {
@@ -204,7 +234,9 @@ public record PlanSnapshot(long semesterId,
                 .forEach(item -> lines.add("S|" + item.id() + "|" + item.entryId() + "|"
                         + item.effectiveDate() + "|" + item.newPeriodId() + "|" + item.newDayOfWeek()
                         + "|" + item.newPeriodNo() + "|" + item.newRoomId() + "|"
-                        + item.substituteTeacherId() + "|" + item.type()));
+                        + item.substituteTeacherId() + "|" + item.type() + "|"
+                        // 实例日期属于读模型输入：历史转换改写 lesson_date 后旧凭证必须失效
+                        + item.lessonDate() + "|" + item.targetLessonDate()));
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             return HexFormat.of().formatHex(

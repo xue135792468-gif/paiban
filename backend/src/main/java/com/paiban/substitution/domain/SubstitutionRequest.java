@@ -51,6 +51,33 @@ public class SubstitutionRequest {
     @Column(name = "requester_teacher_id")
     private Long requesterTeacherId;
 
+    /**
+     * 真实操作账号（规格第 1 节）：管理员代发时是管理员账号，教师自助时是教师本人账号。
+     * 管理员绑定的教师身份不得顶替它；代发对象另见 requester_teacher_id。
+     */
+    @Column(name = "operator_user_id")
+    private Long operatorUserId;
+
+    /** 调整前实际教师：本次变更前该实例的当前安排教师（可能与基线原教师不同）。 */
+    @Column(name = "previous_teacher_id")
+    private Long previousTeacherId;
+
+    /** 调整后教师：审批决定后的实际代课教师（批准时写入，可与最初期望不同）。 */
+    @Column(name = "final_teacher_id")
+    private Long finalTeacherId;
+
+    /**
+     * 修订链（票 04）：本申请是对哪一笔已生效申请的再次调整（前驱引用）。
+     * 为空表示首次代课/调课。批准时只替代该前驱涉及的当前安排，
+     * 驳回/过期/校验失败时前驱安排继续生效；历史双方都保留、可追溯。
+     */
+    @Column(name = "revises_request_id")
+    private Long revisesRequestId;
+
+    /** 修订类型（票 04）：CHANGE_SUBSTITUTE 更换代课人 / RESTORE_BASELINE 恢复基线。 */
+    @Column(name = "revision_kind", length = 30)
+    private String revisionKind;
+
     @Column(name = "effective_date", nullable = false)
     private LocalDate effectiveDate;
 
@@ -74,6 +101,10 @@ public class SubstitutionRequest {
 
     @Column(name = "target_period_id")
     private Long targetPeriodId;
+
+    /** 票 05：管理端调课的明确目标实际日期；旧路径为空，按目标课节的星期推算。 */
+    @Column(name = "target_date")
+    private LocalDate targetDate;
 
     @Column(nullable = false, length = 30)
     private String status;
