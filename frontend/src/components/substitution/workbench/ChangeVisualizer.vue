@@ -37,7 +37,7 @@
 
         <div v-else class="wlist" :data-testid="index === 0 ? 'change-list' : `change-list-${index}`">
           <div v-for="item in listItems(week)" :key="item.no" class="wi">
-            <span class="slot"><b>{{ item.no }}</b> {{ item.slot }}</span>
+            <span class="slot"><b aria-hidden="true">{{ item.no }}</b> {{ item.slot }}</span>
             <span class="vv">
               <span v-if="item.old" class="old">{{ item.old }}</span>
               <span v-if="item.old && item.new"> → </span>

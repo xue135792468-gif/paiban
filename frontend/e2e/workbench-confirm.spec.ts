@@ -276,6 +276,14 @@ function captureSwapResponses(page: Page): { plans: any[]; previews: any[] } {
   return { plans, previews }
 }
 
+/**
+ * 响应体由异步 json() 挂进数组：UI 断言通过不代表捕获已落袋。
+ * 读取 captured.plans / captured.previews 前一律先 poll 到位，消除异步竞态。
+ */
+async function waitForCaptured(captured: { plans: any[]; previews: any[] }, key: 'plans' | 'previews') {
+  await expect.poll(() => captured[key].length, { timeout: 10_000 }).toBeGreaterThan(0)
+}
+
 /** 每个用例开始前挂 console/pageerror 监听；用例结束断言为空。 */
 let consoleErrors: string[] = []
 
@@ -383,6 +391,7 @@ test('同周调课：一张周表两格，格内内容与接口一致，图例�
   const captured = captureSwapResponses(page)
   await toSwapStep3(page, seed, seed.targetDate)
 
+  await waitForCaptured(captured, 'previews')
   const preview = captured.previews[0]
   const leave = preview.changes.find((item: any) => item.fromDate === seed.lessonDate)
   const back = preview.changes.find((item: any) => item.fromDate === seed.targetDate)
@@ -416,6 +425,8 @@ test('同周调课：一张周表两格，格内内容与接口一致，图例�
   await expect(page.getByTestId('change-diff').locator('.rest')).toHaveText('其余不变：教室、课程、任课老师。')
   await expect(page.getByTestId('change-people').locator('.person')).toHaveCount(3)
 
+  // 课表在内部滚动容器里滚：截图前把展开的明细滚进视口，fullPage 拍不到未滚动区域。
+  await page.getByTestId('confirm-details').scrollIntoViewIfNeeded()
   await capture(page, 't02-03-same-week-swap-details')
   expect(consoleErrors).toEqual([])
 })
@@ -426,6 +437,7 @@ test('跨周调课：本周+下周两排周表在 1280×720 同屏可见', async
   const captured = captureSwapResponses(page)
   await toSwapStep3(page, seed, seed.crossDate)
 
+  await waitForCaptured(captured, 'previews')
   const preview = captured.previews[0]
   expect(preview.changes).toHaveLength(2)
 
@@ -471,6 +483,7 @@ test('方案 A/B：页签切换格数变化（A=2、B≥3），明细同步', as
   await toSwapStep3(page, seed, seed.targetDate)
 
   // 种子必须造出 ≥2 个候选方案；不足则让测试红掉，不许静默跳过。
+  await waitForCaptured(captured, 'plans')
   const planCount = captured.plans[0]?.plans?.length ?? 0
   expect(planCount, `种子必须造出 ≥2 个候选方案，swap-plans 实际返回 ${planCount} 个`).toBeGreaterThanOrEqual(2)
 
@@ -481,7 +494,10 @@ test('方案 A/B：页签切换格数变化（A=2、B≥3），明细同步', as
   await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true')
 
   const cells = page.getByTestId('change-visual').locator('.wc.chg')
+  await waitForCaptured(captured, 'previews')
   const planA = captured.previews[0]
+  // 硬断言：种子（周三语文 ↔ 周五数学）的方案 A 恰好两处对调，不只与 UI 自身比较。
+  expect(planA.changes, '方案 A 应恰好 2 处对调').toHaveLength(2)
   await expect(cells).toHaveCount(planA.changes.length)
   const rowsA = page.getByTestId('change-diff').locator('.drow:not(.hd)')
   await expect(rowsA).toHaveCount(planA.changes.length)
@@ -496,6 +512,8 @@ test('方案 A/B：页签切换格数变化（A=2、B≥3），明细同步', as
   await expect(rowsB).toHaveCount(planB.changes.length)
   await expect(page.getByTestId('change-legend').locator('.lg')).toHaveCount(planB.changes.length)
 
+  // 截图前把方案 B 的可视化滚进视口（内部滚动容器，fullPage 不会自动滚）。
+  await page.getByTestId('change-visual').scrollIntoViewIfNeeded()
   await capture(page, 't02-05-plan-b')
   expect(consoleErrors).toEqual([])
 })
@@ -548,6 +566,10 @@ test('409：产生活跃单后提交被拒，错误条给大白话与重新生�
   await expect(errorBar).toContainText('已有待处理的申请')
   await expect(errorBar).toContainText('请先处理该单')
   await expect(page.getByTestId('wizard-panel-3')).toBeVisible()
+  // 错误态禁用两个提交按钮（必须先重新生成），错误条里的重新生成保持可用。
+  await expect(page.getByTestId('submit-approval')).toBeDisabled()
+  await expect(page.getByTestId('personal-confirm')).toBeDisabled()
+  await expect(page.getByTestId('regenerate')).toBeEnabled()
   await capture(page, 't02-07-409-error')
 
   // 重新生成：活跃单仍在，同样 409——错误条始终可操作、可重试。
@@ -578,6 +600,8 @@ test('窄屏（390px）：变化可视化按天列表且无横向溢出', async 
     .evaluate((element) => (element as HTMLElement).scrollWidth - (element as HTMLElement).clientWidth)
   expect(delta).toBeLessThanOrEqual(1)
 
+  // 课表在内部滚动容器里滚：截图前把变化可视化（含按天列表）滚进视口，fullPage 拍不到未滚动区域。
+  await page.getByTestId('change-visual').scrollIntoViewIfNeeded()
   await capture(page, 't02-08-narrow-change-list')
   expect(consoleErrors).toEqual([])
 })

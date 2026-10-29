@@ -63,6 +63,16 @@ function clockTime(iso: string): string {
   return `${pad(value.getHours())}:${pad(value.getMinutes())}`
 }
 
+/** 结论句走 v-html 渲染（原型同款 <b> 强调）：教师/班级/课程等动态值先转义再拼接。 */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 /** 按教师分组（保持首次出现顺序），每位受影响老师一句话。 */
 function groupByTeacher(
   changes: SwapPreviewResponse['changes'],
@@ -119,14 +129,18 @@ export function useConfirmFlow(input: ConfirmFlowInput) {
     return null
   })
 
+  /** 一句话结论（HTML：新教师用 <b> 强调，配合 v-html 渲染；动态值一律先转义）。 */
   const conclusion = computed(() => {
     if (coverPreview.value && coverChange.value) {
       const preview = coverPreview.value
       const change = coverChange.value
       const date = preview.lessonDate
+      const className = escapeHtml(preview.className ?? '')
+      const courseName = escapeHtml(change.courseName ?? '')
+      const substituteName = escapeHtml(preview.substituteTeacherName ?? '')
       return (
         `${monthDayCn(date)}（${weekdayLabel(date)}）第 ${periodNoOf(change.periodLabelBefore)} 节，` +
-        `${preview.className ?? ''}${change.courseName ?? ''}改由${preview.substituteTeacherName ?? ''}上，时间、教室不变。`
+        `${className}${courseName}改由<b>${substituteName}</b>上，时间、教室不变。`
       )
     }
     if (swapPreview.value && swapPreview.value.changes.length > 0) {
@@ -140,9 +154,11 @@ export function useConfirmFlow(input: ConfirmFlowInput) {
       )
       const target = toTarget ?? changes.find((item) => item.fromDate === preview.targetDate) ?? source
       const targetPeriodNo = preview.targetPeriodNo ?? periodNoOf(target.fromLabel)
+      const sourceCourse = escapeHtml(source.courseName ?? '')
+      const targetCourse = escapeHtml(target.courseName ?? '')
       return (
-        `${monthDayCn(preview.lessonDate)}（${weekdayLabel(preview.lessonDate)}）第 ${periodNoOf(source.fromLabel)} 节的${source.courseName ?? ''}，` +
-        `和 ${monthDayCn(preview.targetDate)}（${weekdayLabel(preview.targetDate)}）第 ${targetPeriodNo} 节的${target.courseName ?? ''}对调时间。`
+        `${monthDayCn(preview.lessonDate)}（${weekdayLabel(preview.lessonDate)}）第 ${periodNoOf(source.fromLabel)} 节的${sourceCourse}，` +
+        `和 ${monthDayCn(preview.targetDate)}（${weekdayLabel(preview.targetDate)}）第 ${targetPeriodNo} 节的${targetCourse}对调时间。`
       )
     }
     return ''
@@ -246,11 +262,22 @@ export function useConfirmFlow(input: ConfirmFlowInput) {
   const canSubmitApproval = computed(() => coverPreview.value?.canSubmitApproval ?? swapPreview.value?.canSubmitApproval ?? false)
   const canConfirm = computed(() => coverPreview.value?.canConfirm ?? swapPreview.value?.canConfirm ?? false)
 
+  // 加载中/错误态一律禁用提交：错误必须先在错误条点「重新生成」，加载中不许踩旧凭证。
   const submitDisabled = computed(
-    () => busy.value || (crossSubject.value && !crossSubjectAck.value) || !canSubmitApproval.value,
+    () =>
+      loading.value ||
+      busy.value ||
+      !!error.value ||
+      (crossSubject.value && !crossSubjectAck.value) ||
+      !canSubmitApproval.value,
   )
   const confirmDisabled = computed(
-    () => busy.value || (crossSubject.value && !crossSubjectAck.value) || !canConfirm.value,
+    () =>
+      loading.value ||
+      busy.value ||
+      !!error.value ||
+      (crossSubject.value && !crossSubjectAck.value) ||
+      !canConfirm.value,
   )
 
   const resultTitle = computed(() => (result.value?.effective ? '已生效' : '已提交审批'))
@@ -276,6 +303,8 @@ export function useConfirmFlow(input: ConfirmFlowInput) {
 
   /** 进入步骤 3 / 「重新生成」：按当前动作重跑预览（旧凭证弃用，预览零写入）。 */
   async function generate(): Promise<void> {
+    // 双击幂等：已在生成/提交中时忽略后续触发，不推进 loadSeq。
+    if (loading.value || busy.value) return
     const seq = ++loadSeq
     error.value = ''
     noSolution.value = false
@@ -353,7 +382,10 @@ export function useConfirmFlow(input: ConfirmFlowInput) {
   /** 提交审批（代发）或亲自确认生效；失败留在第③步显示错误条。 */
   async function consume(kind: 'submit' | 'confirm'): Promise<void> {
     const preview = coverPreview.value ?? swapPreview.value
-    if (!preview || busy.value) return
+    if (!preview || busy.value || loading.value) return
+    // 捕获当前流程序号：提交/确认在途时若流程被推进（重新生成/返回上一步），
+    // loadSeq 变大，旧响应的 result/error/busy 一律不写入新流程。
+    const seq = loadSeq
     busy.value = true
     error.value = ''
     try {
@@ -363,11 +395,13 @@ export function useConfirmFlow(input: ConfirmFlowInput) {
           ? `/substitution-workbench/previews/${preview.voucherId}/submit-approval${suffix}`
           : `/substitution-workbench/previews/${preview.voucherId}/confirm${suffix}`
       const { data } = await http.post<WorkbenchActionResult>(path)
+      if (seq !== loadSeq) return
       result.value = { requestId: data.requestId, effective: data.status === 'EFFECTIVE' }
     } catch (e) {
-      error.value = serverMessage(e, '操作失败，请稍后重试')
+      if (seq === loadSeq) error.value = serverMessage(e, '操作失败，请稍后重试')
     } finally {
-      busy.value = false
+      // 旧响应不碰新流程：invalidate 已复位 busy，新流程的 busy 由它自己的 consume 管理。
+      if (seq === loadSeq) busy.value = false
     }
   }
 

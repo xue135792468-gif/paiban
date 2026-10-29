@@ -63,7 +63,8 @@
 
           <ConfirmStep v-else-if="step === 3" :flow="flow" @success="step = 4" />
 
-          <section v-else class="result" data-testid="workbench-result">
+          <!-- 成功态与第③步同为白色卡片（原型 #done 挂在 .panel 上）。 -->
+          <section v-else class="panel result" data-testid="workbench-result">
             <span class="okmark" aria-hidden="true">✓</span>
             <h2>{{ flow.resultTitle }}</h2>
             <p>{{ flow.resultText }}</p>
@@ -106,7 +107,8 @@
           </div>
 
           <div v-else-if="step === 3" class="foot">
-            <button type="button" class="bt" data-testid="wizard-back-3" @click="onBack3">上一步</button>
+            <!-- 提交中不许返回：busy 时禁用，避免凭证消费在途时流程被清场。 -->
+            <button type="button" class="bt" data-testid="wizard-back-3" :disabled="flow.busy" @click="onBack3">上一步</button>
             <div class="fr">
               <div class="bc">
                 <button type="button" class="bt" data-testid="submit-approval" :disabled="flow.submitDisabled" @click="flow.submitApproval()">
@@ -496,6 +498,15 @@ onMounted(loadTeachers)
 }
 .dock { background: var(--surface); border-top: 1px solid var(--line); flex: none; padding: 12px 24px; }
 .dock-in { margin: 0 auto; max-width: 1080px; }
+/* 与 ConfirmStep 同款面板卡：白底、1px 边、14px 圆角、轻阴影（原型 .panel）。 */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  min-width: 0;
+  overflow: hidden;
+}
 .foot {
   align-items: center;
   display: flex;

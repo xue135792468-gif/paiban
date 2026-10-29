@@ -11,37 +11,41 @@
       <!-- 生成/切换/提交失败：大白话原文 + 重新生成，不静默跳步。 -->
       <div v-else-if="flow.error" class="callout" data-testid="confirm-error" role="alert">
         <div class="cw"><span class="ic">!</span><span>{{ flow.error }}</span></div>
-        <button type="button" class="bt" data-testid="regenerate" @click="flow.generate()">重新生成</button>
+        <button type="button" class="bt" data-testid="regenerate" :disabled="flow.loading" @click="flow.generate()">重新生成</button>
       </div>
 
-      <!-- 调课无解：错误条 + 后端逐条原因。 -->
-      <div v-else-if="flow.noSolution" class="callout" data-testid="confirm-no-solution" role="alert">
-        <div class="cw"><span class="ic">!</span><span>没有可行的置换环（原课表未动）</span></div>
+      <!-- 调课无解：错误条 + 后端逐条原因；testid 统一挂 confirm-error（消息行保留旧名）。 -->
+      <div v-else-if="flow.noSolution" class="callout" data-testid="confirm-error" role="alert">
+        <div class="cw" data-testid="confirm-no-solution">
+          <span class="ic">!</span><span>没有可行的置换环（原课表未动）</span>
+        </div>
         <ul v-if="flow.diagnoses.length > 0" class="list">
           <li v-for="(item, index) in flow.diagnoses" :key="index">{{ item.message }}</li>
         </ul>
-        <button type="button" class="bt" data-testid="regenerate" @click="flow.generate()">重新生成</button>
+        <button type="button" class="bt" data-testid="regenerate" :disabled="flow.loading" @click="flow.generate()">重新生成</button>
       </div>
 
       <template v-else-if="flow.previewLoaded && flow.visual">
         <!-- 方案页签（仅调课）：单方案也显示单页签，方便统一。 -->
-        <div v-if="flow.plans.length > 0" class="tabs" data-testid="swap-plan-tabs">
+        <div v-if="flow.plans.length > 0" class="tabs" role="tablist" data-testid="swap-plan-tabs">
           <button
             v-for="(plan, index) in flow.plans"
             :key="plan.planId"
             type="button"
+            role="tab"
             class="tab"
             :data-testid="`swap-plan-tab-${index}`"
             :aria-selected="flow.activePlanIndex === index ? 'true' : 'false'"
             @click="flow.selectPlan(index)"
           >
             <b>方案 {{ planLetter(index) }}{{ index === 0 ? '（推荐）' : '' }}</b>
-            <span>{{ plan.cycleLength }} 人环 · 影响 {{ plan.impactDays }} 天</span>
+            <span>{{ plan.moves.length }} 节课对调 · 影响 {{ plan.impactDays }} 天</span>
           </button>
         </div>
 
         <div class="conclusion">
-          <div class="big" data-testid="confirm-conclusion">{{ flow.conclusion }}</div>
+          <!-- eslint-disable-next-line vue/no-v-html —— 结论含 <b> 强调，动态值已在 useConfirmFlow 转义 -->
+          <div class="big" data-testid="confirm-conclusion" v-html="flow.conclusion" />
           <div class="scope" data-testid="confirm-scope">{{ flow.scope }}</div>
         </div>
 
@@ -211,6 +215,11 @@ function onAckChange(event: Event) {
 .conclusion .big {
   font-size: 15px;
   line-height: 1.65;
+}
+/* 原型 v3a-airy：结论句里的新教师品牌色加粗。 */
+.conclusion .big b {
+  color: var(--brand);
+  font-weight: 500;
 }
 .conclusion .scope {
   color: var(--muted);
