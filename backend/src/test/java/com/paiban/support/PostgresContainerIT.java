@@ -95,6 +95,8 @@ class PostgresContainerIT {
     @Autowired
     TimetableEntryRepository entries;
     @Autowired
+    com.paiban.scheduling.domain.TimetableDraftRepository drafts;
+    @Autowired
     SubstitutionRepository substitutions;
     @Autowired
     SubstitutionRequestRepository requests;
@@ -204,6 +206,10 @@ class PostgresContainerIT {
 
     private record Seed(long semesterId, long requestId, long substitutionId, LocalDate date) {}
 
+    /** 教师工号与教室名在真实 PostgreSQL 上有唯一约束；每个用例的种子必须互不相同。 */
+    private static final java.util.concurrent.atomic.AtomicInteger SEQ =
+            new java.util.concurrent.atomic.AtomicInteger();
+
     private long seedSemesterOnly() {
         Semester semester = new Semester();
         semester.setName("PG转换约束学期");
@@ -216,6 +222,7 @@ class PostgresContainerIT {
     private Seed seedLegacyCover() {
         long semesterId = seedSemesterOnly();
         LocalDate monday = LocalDate.of(2025, 9, 1);
+        String suffix = "-PG" + SEQ.incrementAndGet();
 
         Grade grade = new Grade();
         grade.setSemesterId(semesterId);
@@ -225,11 +232,11 @@ class PostgresContainerIT {
 
         Teacher original = new Teacher();
         original.setName("原任课");
-        original.setEmployeeNo("PG-T1");
+        original.setEmployeeNo("PG-T1" + suffix);
         long originalId = teachers.save(original).getId();
         Teacher substitute = new Teacher();
         substitute.setName("代课人");
-        substitute.setEmployeeNo("PG-T2");
+        substitute.setEmployeeNo("PG-T2" + suffix);
         long substituteId = teachers.save(substitute).getId();
 
         AdminClass adminClass = new AdminClass();
@@ -240,10 +247,10 @@ class PostgresContainerIT {
         long classId = adminClasses.save(adminClass).getId();
 
         Course course = new Course();
-        course.setName("语文");
+        course.setName("语文" + suffix);
         long courseId = courses.save(course).getId();
         Room room = new Room();
-        room.setName("教室A");
+        room.setName("教室A" + suffix);
         long roomId = rooms.save(room).getId();
 
         Period period = new Period();
@@ -256,7 +263,16 @@ class PostgresContainerIT {
         period.setEndTime(LocalTime.of(8, 45));
         long periodId = periods.save(period).getId();
 
+        // timetable_entry.draft_id 非空：草稿发布是正式路径，直接播种时补一张已发布草稿。
+        com.paiban.scheduling.domain.TimetableDraft draft =
+                new com.paiban.scheduling.domain.TimetableDraft();
+        draft.setSemesterId(semesterId);
+        draft.setName("PG种子草稿" + suffix);
+        draft.setStatus("PUBLISHED");
+        long draftId = drafts.save(draft).getId();
+
         TimetableEntry entry = new TimetableEntry();
+        entry.setDraftId(draftId);
         entry.setSemesterId(semesterId);
         entry.setAdminClassId(classId);
         entry.setCourseId(courseId);
