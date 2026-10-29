@@ -2,6 +2,9 @@ package com.paiban.support;
 
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -15,9 +18,21 @@ public final class ScheduleFixture {
 
     private ScheduleFixture() {}
 
+    /**
+     * 下一个周一（未来学期锚点）。调代批准路径受开课截止约束（规格第 6 节），
+     * 需要批准真正落地的流程必须把学期锚在未来。
+     */
+    public static LocalDate nextMonday() {
+        return LocalDate.now().with(TemporalAdjusters.next(DayOfWeek.MONDAY));
+    }
+
     public static Result solved(String token, int maxSeconds) {
+        return solvedIn(token, maxSeconds, TestData.semester(token));
+    }
+
+    /** 指定学期内的排课 fixture：学期由调用方创建（如未来学期），这里只负责课表。 */
+    public static Result solvedIn(String token, int maxSeconds, long semesterId) {
         String suffix = TestData.suffix();
-        long semesterId = TestData.semester(token);
         RestAssuredHolder.given(token)
                 .body(Map.of("morningCount", 4, "afternoonCount", 4, "eveningCount", 2))
                 .when().post("/api/semesters/" + semesterId + "/periods/default")
@@ -71,6 +86,15 @@ public final class ScheduleFixture {
 
     public static Result published(String token, int maxSeconds) {
         Result result = solved(token, maxSeconds);
+        RestAssuredHolder.given(token)
+                .when().post("/api/timetable-drafts/" + result.draftId() + "/publish")
+                .then().statusCode(200);
+        return result;
+    }
+
+    /** 指定学期内的发布 fixture（与 {@link #published} 同流程，学期由调用方创建）。 */
+    public static Result publishedIn(String token, int maxSeconds, long semesterId) {
+        Result result = solvedIn(token, maxSeconds, semesterId);
         RestAssuredHolder.given(token)
                 .when().post("/api/timetable-drafts/" + result.draftId() + "/publish")
                 .then().statusCode(200);

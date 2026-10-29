@@ -3,7 +3,6 @@ package com.paiban.substitution.service;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.AuditLog;
 import com.paiban.foundation.domain.AuditLogRepository;
-import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
 import com.paiban.identity.domain.AppUser;
 import com.paiban.identity.service.UserService;
@@ -235,14 +234,18 @@ public class SubstitutionPlanService {
         }
         List<SubstitutionPlanMove> moveEntities = planMoves.findByPlanIdOrderByMoveOrderAsc(planId);
         List<PlanMove> moves = moveEntities.stream().map(mapper::toPlanMove).toList();
-        // 修订调课（票 07）：批准与再次调整同样受开课截止、冻结实例与基准一致性约束；
-        // 都在学期行锁之后实时读时钟，排队跨点即整单拒绝。首次调课保持票 05 行为。
         boolean revision = request.getRevisesRequestId() != null;
         if (revision) {
+            // 修订调课（票 07）的基准复核：来源实例的当前生效行必须仍属于基准申请。
             requireBaseRowIntact(request);
-            requireBeforeEarliestLessonStart(moves);
+        }
+        // 规格第 6 节：批准一律受开课截止约束（首次调课与修订调课同规则；首次时
+        // 「当前安排」= 基线安排，即每个移动的来源日槽位）。都在学期行锁之后
+        // 实时读时钟，排队跨点即整单拒绝。
+        requireBeforeEarliestLessonStart(moves);
+        if (revision) {
             LessonFreeze.frozenTouchReason(moves,
-                    periodId -> requirePeriodStart(periodId).getStartTime(), clock.instant())
+                    periodId -> SubstitutionLookups.periodStart(periods, periodId), clock.instant())
                     .ifPresent(reason -> {
                         audits.planFailure(planId, SubstitutionPlan.REJECTED, username,
                                 "SUBSTITUTION_PLAN_FROZEN", reason, true,
@@ -333,24 +336,12 @@ public class SubstitutionPlanService {
         List<ChangedSlot> slots = new ArrayList<>();
         for (PlanMove move : moves) {
             slots.add(new ChangedSlot(move.fromDate(),
-                    requirePeriodStart(move.fromPeriodId()).getStartTime()));
+                    SubstitutionLookups.periodStart(periods, move.fromPeriodId())));
             slots.add(new ChangedSlot(move.toDate(),
-                    requirePeriodStart(move.toPeriodId()).getStartTime()));
+                    SubstitutionLookups.periodStart(periods, move.toPeriodId())));
         }
         new DeadlineChecker(clock::instant).requireBeforeDeadline(
                 LessonDeadline.earliest(slots), "置换环内最早的课节");
-    }
-
-    /** 课节开始时间缺失即拒绝写入并列出缺失项（规格第 6 节，不用默认时间猜测）。 */
-    private Period requirePeriodStart(long periodId) {
-        Period period = periods.findById(periodId)
-                .orElseThrow(() -> ApiException.badRequest(
-                        "无法确定开课时刻：课节 " + periodId + " 不存在，拒绝写入"));
-        if (period.getStartTime() == null) {
-            throw ApiException.badRequest(
-                    "无法确定开课时刻：课节 " + periodId + " 缺少开始时间，拒绝写入");
-        }
-        return period;
     }
 
     /** 实例的基线课节：基线条目的周槽位，净差为零（恢复基线）的判定基准。 */

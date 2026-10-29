@@ -1,5 +1,8 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect as baseExpect, test, type APIRequestContext, type Page } from '@playwright/test'
 import { apiCall, apiLogin, uiLogin } from './helpers'
+
+// 全量单 worker 长跑下页面首绘/导航偶发超过默认 5s；放宽断言等待（不弱化断言）。
+const expect = baseExpect.configure({ timeout: 10_000 })
 
 // Depends on an empty e2e database. Specs that call seedSchool run later
 // (zz-junior-mode.spec.ts), so this file sees the "first login" condition.

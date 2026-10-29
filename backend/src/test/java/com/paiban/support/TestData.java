@@ -2,6 +2,7 @@ package com.paiban.support;
 
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -21,6 +22,24 @@ public final class TestData {
                         "name", "测试学期-" + suffix(),
                         "startDate", "2025-09-01",
                         "endDate", "2026-01-20"))
+                .when().post("/api/semesters");
+        response.then().statusCode(200);
+        long id = response.jsonPath().getLong("id");
+        setCurrent(token, id);
+        return id;
+    }
+
+    /**
+     * 学期从给定周一开始（未来学期）。调代批准路径受开课截止约束（规格第 6 节，
+     * 真实时钟判定）：需要批准真正落地的流程必须锚在未来，锚在过去学期的批准会被
+     * 以「已开课」正确拒绝——那是生产语义，不是测试环境缺陷。
+     */
+    public static long semesterStarting(String token, LocalDate monday) {
+        Response response = RestAssuredHolder.given(token)
+                .body(Map.of(
+                        "name", "测试学期-" + suffix(),
+                        "startDate", monday.toString(),
+                        "endDate", monday.plusDays(140).toString()))
                 .when().post("/api/semesters");
         response.then().statusCode(200);
         long id = response.jsonPath().getLong("id");

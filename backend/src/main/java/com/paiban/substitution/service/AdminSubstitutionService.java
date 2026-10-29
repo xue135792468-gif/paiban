@@ -5,7 +5,6 @@ import com.paiban.foundation.domain.AuditLog;
 import com.paiban.foundation.domain.AuditLogRepository;
 import com.paiban.foundation.domain.Course;
 import com.paiban.foundation.domain.CourseRepository;
-import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
 import com.paiban.foundation.domain.Semester;
 import com.paiban.foundation.domain.Teacher;
@@ -132,19 +131,19 @@ public class AdminSubstitutionService {
                 entryId,
                 lessonDate,
                 current.classId(),
-                className(snapshot, current.classId()),
+                SubstitutionLookups.className(snapshot, current.classId()),
                 current.courseId(),
-                courseName(snapshot, current.courseId()),
+                SubstitutionLookups.courseName(snapshot, current.courseId()),
                 instance.courseSubject(),
                 current.teacherId(),
-                teacherName(snapshot, current.teacherId()),
+                SubstitutionLookups.teacherName(snapshot, current.teacherId()),
                 instance.entry().getTeacherId(),
-                teacherName(snapshot, instance.entry().getTeacherId()),
+                SubstitutionLookups.teacherName(snapshot, instance.entry().getTeacherId()),
                 current.periodId(),
                 current.periodNo(),
                 SubstitutionMapper.label(current.dayOfWeek(), current.periodNo()),
-                hasLegacyCover(entryId, lessonDate),
-                activeRequestFor(entryId, lessonDate),
+                SubstitutionLookups.hasLegacyCover(substitutions, entryId, lessonDate),
+                SubstitutionLookups.activeRequestFor(requests, entryId, lessonDate),
                 candidateList);
     }
 
@@ -168,8 +167,8 @@ public class AdminSubstitutionService {
                                 && lesson.periodId() == current.periodId())
                         .findFirst().orElse(null);
                 busyReason = "该时段已有课："
-                        + (clash == null ? "" : className(snapshot, clash.classId()) + " ")
-                        + (clash == null ? "" : courseName(snapshot, clash.courseId()) + " ")
+                        + (clash == null ? "" : SubstitutionLookups.className(snapshot, clash.classId()) + " ")
+                        + (clash == null ? "" : SubstitutionLookups.courseName(snapshot, clash.courseId()) + " ")
                         + SubstitutionMapper.label(current.dayOfWeek(), current.periodNo());
             }
             boolean sameSubject = instance.sameSubject(teacher.subject());
@@ -219,7 +218,7 @@ public class AdminSubstitutionService {
         String revisionKind = baseRow.isPresent()
                 ? RevisionPolicy.revisionKind(body.substituteTeacherId(), instance.entry().getTeacherId())
                 : null;
-        Long raced = activeRequestFor(body.entryId(), body.lessonDate());
+        Long raced = SubstitutionLookups.activeRequestFor(requests, body.entryId(), body.lessonDate());
         if (raced != null) {
             throw ApiException.conflict("该课节已有待处理的申请（#" + raced + "），请先处理该单");
         }
@@ -253,7 +252,7 @@ public class AdminSubstitutionService {
         voucher.setSnapshotHash(snapshot.snapshotHash());
         voucher.setReason(body.reason());
         voucher.setDeadlineAt(deadline);
-        voucher.setExpiresAt(min(now.plus(PREVIEW_TTL), deadline));
+        voucher.setExpiresAt(SubstitutionLookups.min(now.plus(PREVIEW_TTL), deadline));
         voucher.setStatus(SubstitutionPreview.ACTIVE);
         voucher.setCreatedAt(now);
         SubstitutionPreview saved = previews.save(voucher);
@@ -265,10 +264,10 @@ public class AdminSubstitutionService {
                 saved.getExpiresAt(),
                 body.lessonDate(),
                 current.classId(),
-                className(snapshot, current.classId()),
+                SubstitutionLookups.className(snapshot, current.classId()),
                 current.entryId(),
                 current.teacherId(),
-                teacherName(snapshot, current.teacherId()),
+                SubstitutionLookups.teacherName(snapshot, current.teacherId()),
                 body.substituteTeacherId(),
                 substituteView.name(),
                 sameSubject,
@@ -282,10 +281,6 @@ public class AdminSubstitutionService {
                 true,
                 revisesRequestId,
                 revisionKind);
-    }
-
-    private Instant min(Instant left, Instant right) {
-        return left.isBefore(right) ? left : right;
     }
 
     // ----------------------------------------------------------- submit / confirm
@@ -315,7 +310,7 @@ public class AdminSubstitutionService {
         if (!voucher.getOperatorUserId().equals(user.getId())) {
             throw ApiException.forbidden("预览凭证绑定操作者，不能使用他人的预览");
         }
-        String actionHash = actionHash(action, comment);
+        String actionHash = SubstitutionLookups.actionHash(action, comment);
 
         // 幂等：相同动作 + 相同参数的重试返回第一次结果；参数改变返回冲突。
         var replayed = voucher.replay(action, actionHash);
@@ -361,7 +356,8 @@ public class AdminSubstitutionService {
             previews.markExpiredIfActive(voucher.getId());
             throw ApiException.conflict("该修订的基准安排已不存在，请重新预览");
         }
-        Long raced = activeRequestFor(voucher.getEntryId(), voucher.getLessonDate());
+        Long raced = SubstitutionLookups.activeRequestFor(
+                requests, voucher.getEntryId(), voucher.getLessonDate());
         if (raced != null) {
             previews.markExpiredIfActive(voucher.getId());
             throw ApiException.conflict("该课节已有待处理的申请（#" + raced + "），请先处理该单");
@@ -474,13 +470,6 @@ public class AdminSubstitutionService {
         return new Instance(entry, semester.getId(), lessonDate, snapshot, current, this);
     }
 
-    /** 数据级旧格式检查：该条目存在 lesson_date 为空的 EFFECTIVE 行且覆盖该日期。 */
-    private boolean hasLegacyCover(Long entryId, LocalDate lessonDate) {
-        return substitutions.findByEntryIdAndStatusAndLessonDateIsNull(entryId, Substitution.EFFECTIVE)
-                .stream()
-                .anyMatch(row -> !row.getEffectiveDate().isAfter(lessonDate));
-    }
-
     /**
      * 该实例当天的新格式生效行（票 04/07 修订链的基准）：同日 COVER 行优先，
      * 否则落点命中该日期的 SWAP 行（票 07：原先调课后的实例仍可再代课——
@@ -492,30 +481,9 @@ public class AdminSubstitutionService {
                 substitutions, instance.entryId(), instance.lessonDate());
     }
 
-    /** 同一实例同一时间最多一笔活跃修改；返回待处理申请 id 供界面引导。 */
-    private Long activeRequestFor(Long entryId, LocalDate lessonDate) {
-        return requests.findByEntryIdAndEffectiveDate(entryId, lessonDate).stream()
-                .filter(request -> SubstitutionRequest.SUBMITTED.equals(request.getStatus())
-                        || SubstitutionRequest.PENDING_APPROVAL.equals(request.getStatus()))
-                .map(SubstitutionRequest::getId)
-                .findFirst()
-                .orElse(null);
-    }
-
     private void requireManager(AppUser user) {
         if (!users.hasAllPermissions(user, MANAGER_PERMISSIONS)) {
             throw ApiException.forbidden("管理调代工作台需要「全校课表查看 + 提交调代 + 审批调代」权限");
-        }
-    }
-
-    private String actionHash(String action, String comment) {
-        String payload = action + "|" + (comment == null ? "" : comment);
-        try {
-            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
-                    .digest(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            return java.util.HexFormat.of().formatHex(digest);
-        } catch (java.security.NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 is required but unavailable", ex);
         }
     }
 
@@ -531,11 +499,11 @@ public class AdminSubstitutionService {
                     lesson.entryId(),
                     lesson.periodNo(),
                     SubstitutionMapper.label(lesson.dayOfWeek(), lesson.periodNo()),
-                    courseName(snapshot, lesson.courseId()),
-                    className(snapshot, lesson.classId()),
+                    SubstitutionLookups.courseName(snapshot, lesson.courseId()),
+                    SubstitutionLookups.className(snapshot, lesson.classId()),
                     teacherId,
-                    teacherName(snapshot, teacherId),
-                    lesson.roomId() == null ? null : roomName(snapshot, lesson.roomId()),
+                    SubstitutionLookups.teacherName(snapshot, teacherId),
+                    lesson.roomId() == null ? null : SubstitutionLookups.roomName(snapshot, lesson.roomId()),
                     isSource));
         }
         cells.sort(Comparator.comparingInt(GridCellDto::periodNo));
@@ -546,43 +514,23 @@ public class AdminSubstitutionService {
                                      PlanSnapshot.ScheduledLesson current,
                                      Long substituteTeacherId, String substituteTeacherName) {
         String label = SubstitutionMapper.label(current.dayOfWeek(), current.periodNo());
-        String room = current.roomId() == null ? null : roomName(snapshot, current.roomId());
+        String room = current.roomId() == null ? null : SubstitutionLookups.roomName(snapshot, current.roomId());
         return new ChangeItemDto(
                 current.entryId(),
                 current.classId(),
-                className(snapshot, current.classId()),
+                SubstitutionLookups.className(snapshot, current.classId()),
                 current.courseId(),
-                courseName(snapshot, current.courseId()),
+                SubstitutionLookups.courseName(snapshot, current.courseId()),
                 lessonDate,
                 label,
                 label,
                 current.teacherId(),
-                teacherName(snapshot, current.teacherId()),
+                SubstitutionLookups.teacherName(snapshot, current.teacherId()),
                 substituteTeacherId,
                 substituteTeacherName,
                 room,
                 room,
                 "TEACHER_CHANGED");
-    }
-
-    private static String className(PlanSnapshot snapshot, long classId) {
-        var view = snapshot.classes().get(classId);
-        return view == null ? null : view.name();
-    }
-
-    private static String courseName(PlanSnapshot snapshot, long courseId) {
-        var view = snapshot.courses().get(courseId);
-        return view == null ? null : view.name();
-    }
-
-    private static String teacherName(PlanSnapshot snapshot, long teacherId) {
-        var view = snapshot.teacher(teacherId);
-        return view == null ? null : view.name();
-    }
-
-    private static String roomName(PlanSnapshot snapshot, long roomId) {
-        var view = snapshot.rooms().get(roomId);
-        return view == null ? null : view.name();
     }
 
     /**
@@ -664,24 +612,13 @@ public class AdminSubstitutionService {
         }
 
         boolean legacyLocked() {
-            return owner.hasLegacyCover(entry.getId(), lessonDate);
+            return SubstitutionLookups.hasLegacyCover(owner.substitutions, entry.getId(), lessonDate);
         }
     }
 
     private Instant deadline(LocalDate lessonDate, Long periodId) {
-        Period period = periods.findById(periodId)
-                .orElseThrow(() -> ApiException.badRequest(
-                        "无法确定开课时刻：课节 " + periodId + " 不存在，拒绝写入"));
-        if (period.getStartTime() == null) {
-            throw ApiException.badRequest(
-                    "无法确定开课时刻：课节 " + periodId + " 缺少开始时间，拒绝写入");
-        }
-        try {
-            return LessonDeadline.earliest(List.of(
-                    new ChangedSlot(lessonDate, period.getStartTime())));
-        } catch (LessonDeadline.MissingStartTimeException ex) {
-            throw ApiException.badRequest(ex.getMessage());
-        }
+        return LessonDeadline.earliest(List.of(
+                new ChangedSlot(lessonDate, SubstitutionLookups.periodStart(periods, periodId))));
     }
 
     private String courseSubject(Long courseId) {

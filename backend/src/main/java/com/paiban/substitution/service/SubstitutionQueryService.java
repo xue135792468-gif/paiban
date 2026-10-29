@@ -34,6 +34,10 @@ public class SubstitutionQueryService {
     private final UserService users;
     private final SubstitutionMapper mapper;
 
+    /** 记录/导出展示的历史状态集合：当前生效 + 已被后续修订替代（规格第 7 节）。 */
+    private static final List<String> HISTORY_STATUSES =
+            List.of(Substitution.EFFECTIVE, Substitution.SUPERSEDED);
+
     public SubstitutionQueryService(
             SubstitutionRepository substitutions,
             TimetableEntryRepository entries,
@@ -56,8 +60,8 @@ public class SubstitutionQueryService {
             Long semesterId, Long teacherId, Long classId, LocalDate dateFrom, LocalDate dateTo, String type) {
         Long resolved = semesterId != null ? semesterId : semesters.requireCurrent().getId();
         List<Substitution> result = type != null && !type.isBlank()
-                ? substitutions.findBySemesterIdAndStatusAndType(resolved, Substitution.EFFECTIVE, type)
-                : substitutions.findBySemesterIdAndStatus(resolved, Substitution.EFFECTIVE);
+                ? substitutions.findBySemesterIdAndStatusInAndType(resolved, HISTORY_STATUSES, type)
+                : substitutions.findBySemesterIdAndStatusIn(resolved, HISTORY_STATUSES);
         if (teacherId != null) {
             result = result.stream()
                     .filter(item -> teacherId.equals(item.getSubstituteTeacherId())
@@ -89,7 +93,7 @@ public class SubstitutionQueryService {
                              LocalDate dateFrom, LocalDate dateTo, String type) {
         List<SubstitutionRecordDto> rows = records(semesterId, teacherId, classId, dateFrom, dateTo, type);
         StringBuilder csv = new StringBuilder("\uFEFF");
-        csv.append("类型,生效日期,行政班,课程,原教师,代课教师,教室,原节次,目标节次,方案ID\n");
+        csv.append("类型,生效日期,行政班,课程,原教师,代课教师,教室,原节次,目标节次,方案ID,状态\n");
         for (SubstitutionRecordDto row : rows) {
             boolean swap = Substitution.TYPE_SWAP.equals(row.type());
             csv.append(csvCell(swap ? "调课" : "代课")).append(',')
@@ -101,7 +105,8 @@ public class SubstitutionQueryService {
                     .append(csvCell(row.roomName())).append(',')
                     .append(csvCell(row.fromPeriodLabel())).append(',')
                     .append(csvCell(row.toPeriodLabel())).append(',')
-                    .append(row.planId() == null ? "" : row.planId()).append('\n');
+                    .append(row.planId() == null ? "" : row.planId()).append(',')
+                    .append(csvCell(row.status())).append('\n');
         }
         return csv.toString();
     }

@@ -46,7 +46,10 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
                            long entryId, LocalDate date, String username) {}
 
     private Context prepare(String token, String suffix) {
-        ScheduleFixture.Result fixture = ScheduleFixture.published(token, 5);
+        // 未来学期：批准路径受开课截止约束（规格第 6 节），批准要真正落地必须锚在未来。
+        LocalDate monday = ScheduleFixture.nextMonday();
+        ScheduleFixture.Result fixture =
+                ScheduleFixture.publishedIn(token, 5, TestData.semesterStarting(token, monday));
         List<Map<String, Object>> entries = ScheduleFixture.classEntries(token, fixture.classId());
         Map<String, Object> entry = entries.stream()
                 .filter(item -> ((Number) item.get("teacherId")).longValue() == fixture.teacherId())
@@ -54,7 +57,7 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
                 .orElseThrow();
         long entryId = ((Number) entry.get("id")).longValue();
         int dayOfWeek = ((Number) entry.get("dayOfWeek")).intValue();
-        LocalDate date = LocalDate.of(2025, 9, 1).plusDays(dayOfWeek - 1L);
+        LocalDate date = monday.plusDays(dayOfWeek - 1L);
 
         // A teacher with no assignments, so the substitute is always free at that period.
         long substituteTeacherId = TestData.teacher(token, "代课老师" + suffix);
@@ -309,7 +312,7 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
                         == context.fixture().otherTeacherId())
                 .findFirst()
                 .orElseThrow();
-        LocalDate date = LocalDate.of(2025, 9, 1)
+        LocalDate date = ScheduleFixture.nextMonday()
                 .plusDays(((Number) otherEntry.get("dayOfWeek")).intValue() - 1L);
 
         as(context.teacherToken()).body(Map.of(

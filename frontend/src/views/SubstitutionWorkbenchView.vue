@@ -167,6 +167,7 @@ import PreviewCompare from '@/components/substitution/workbench/PreviewCompare.v
 import SwapPlannerPanel from '@/components/substitution/workbench/SwapPlannerPanel.vue'
 import SwapCompare from '@/components/substitution/workbench/SwapCompare.vue'
 import { mondayOf } from '@/components/substitution/workbench/swapTargetRules'
+import { WORKBENCH_MANAGER_PERMISSIONS } from '@/constants/permissions'
 import type { Entry } from '@/components/substitution/types'
 import type {
   PreviewResponse,
@@ -176,11 +177,8 @@ import type {
   WorkbenchCandidateList,
 } from '@/components/substitution/workbench/types'
 
-/** 与后端 AdminSubstitutionService.MANAGER_PERMISSIONS 保持同一组合。 */
-const MANAGER_PERMISSIONS = ['timetable:view', 'substitution:submit', 'substitution:approve']
-
 const auth = useAuthStore()
-const isManager = computed(() => auth.hasAllPermissions(MANAGER_PERMISSIONS))
+const isManager = computed(() => auth.hasAllPermissions(WORKBENCH_MANAGER_PERMISSIONS))
 const canConfirm = computed(() => auth.hasPermission('substitution:approve'))
 
 const teachers = ref<Array<{ id: number; name: string }>>([])

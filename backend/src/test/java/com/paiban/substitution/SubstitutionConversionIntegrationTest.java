@@ -39,8 +39,9 @@ import static org.mockito.Mockito.doThrow;
 @ActiveProfiles("test")
 class SubstitutionConversionIntegrationTest extends ApiIntegrationTest {
 
-    private static final LocalDate MONDAY = LocalDate.of(2025, 9, 1);
-    private static final LocalDate SECOND_MONDAY = LocalDate.of(2025, 9, 8);
+    // 种子经真实批准流程生成生效行（批准受开课截止约束，规格第 6 节）：学期锚在未来。
+    private static final LocalDate MONDAY = ScheduleFixture.nextMonday();
+    private static final LocalDate SECOND_MONDAY = MONDAY.plusWeeks(1);
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -63,7 +64,8 @@ class SubstitutionConversionIntegrationTest extends ApiIntegrationTest {
     // ------------------------------------------------------------------
 
     private CoverContext seedCover(String token, String suffix) {
-        ScheduleFixture.Result fixture = ScheduleFixture.published(token, 5);
+        ScheduleFixture.Result fixture =
+                ScheduleFixture.publishedIn(token, 5, TestData.semesterStarting(token, MONDAY));
         List<Map<String, Object>> entries = ScheduleFixture.classEntries(token, fixture.classId());
         Map<String, Object> entry = entries.stream()
                 .filter(item -> ((Number) item.get("teacherId")).longValue() == fixture.teacherId())
@@ -251,7 +253,7 @@ class SubstitutionConversionIntegrationTest extends ApiIntegrationTest {
     @Test
     void confirmWithoutLegacyRowsIsRejectedAndHarmless() {
         String token = adminToken();
-        ScheduleFixture.published(token, 5);
+        ScheduleFixture.publishedIn(token, 5, TestData.semesterStarting(token, MONDAY));
         // 没有任何调代历史：确认门直接拒绝，不落批次
         as(token).when().post("/api/substitution-conversion/confirm")
                 .then().statusCode(400);
@@ -458,7 +460,7 @@ class SubstitutionConversionIntegrationTest extends ApiIntegrationTest {
     private com.paiban.substitution.domain.SubstitutionPlanMoveRepository planMoves;
 
     private SwapWorld seedSwap(String token, String suffix) {
-        long semesterId = TestData.semester(token);
+        long semesterId = TestData.semesterStarting(token, MONDAY);
         as(token).body(Map.of("morningCount", 2, "afternoonCount", 2, "eveningCount", 0))
                 .when().post("/api/semesters/" + semesterId + "/periods/default").then().statusCode(200);
         List<Map<String, Object>> periodRows = as(token)

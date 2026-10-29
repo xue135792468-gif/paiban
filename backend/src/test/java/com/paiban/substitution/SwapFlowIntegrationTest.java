@@ -33,7 +33,10 @@ import org.springframework.test.context.ActiveProfiles;
 @ActiveProfiles("test")
 class SwapFlowIntegrationTest extends ApiIntegrationTest {
 
-    private static final LocalDate MONDAY = LocalDate.of(2025, 9, 1);
+    // 批准路径受开课截止约束（规格第 6 节，真实时钟判定）：学期锚在未来，
+    // 正常批准流程才能真实落地；过去学期的批准由 SubstitutionApprovalDeadline
+    // IntegrationTest 证明会被 409 拒绝。
+    private static final LocalDate MONDAY = ScheduleFixture.nextMonday();
 
     @Autowired
     private TimetableDraftRepository drafts;
@@ -51,7 +54,7 @@ class SwapFlowIntegrationTest extends ApiIntegrationTest {
     }
 
     private World prepare(String token, String suffix, boolean blockSameDay) {
-        long semesterId = TestData.semester(token);
+        long semesterId = TestData.semesterStarting(token, MONDAY);
         as(token).body(Map.of("morningCount", 2, "afternoonCount", 2, "eveningCount", 0))
                 .when().post("/api/semesters/" + semesterId + "/periods/default")
                 .then().statusCode(200);

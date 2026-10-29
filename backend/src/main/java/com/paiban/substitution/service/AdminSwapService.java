@@ -3,7 +3,6 @@ package com.paiban.substitution.service;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.AuditLog;
 import com.paiban.foundation.domain.AuditLogRepository;
-import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
 import com.paiban.foundation.domain.Semester;
 import com.paiban.foundation.service.SemesterService;
@@ -46,7 +45,6 @@ import com.paiban.timetable.domain.TimetableEntryRepository;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -166,7 +164,7 @@ public class AdminSwapService {
         }
         slots.sort(Comparator.comparingInt(SwapTargetSlotDto::periodNo));
         return new SwapTargetsResponse(entryId, lessonDate, targetDate, classId,
-                className(snapshot, classId), slots);
+                SubstitutionLookups.className(snapshot, classId), slots);
     }
 
     // ------------------------------------------------------------ plan generate
@@ -225,10 +223,13 @@ public class AdminSwapService {
                 SwapPlanner.Options.of(options.windowDays(), options.maxTeachers(), preset));
 
         // 管理预览候选是短期试算结果：重新生成时清掉上一批（没有申请的 PROPOSED 方案）。
-        plans.findByRequestIdIsNullAndStatus(SubstitutionPlan.PROPOSED).forEach(old -> {
-            planMoves.deleteByPlanId(old.getId());
-            plans.delete(old);
-        });
+        // 管理预览候选是短期试算结果：重新生成时只清掉本人上一批（没有申请的
+        // PROPOSED 方案）。按 owner 隔离，并发管理员的候选与凭证互不干扰。
+        plans.findByOwnerUserIdAndRequestIdIsNullAndStatus(user.getId(), SubstitutionPlan.PROPOSED)
+                .forEach(old -> {
+                    planMoves.deleteByPlanId(old.getId());
+                    plans.delete(old);
+                });
 
         String hash = snapshot.snapshotHash();
         Instant now = clock.instant();
@@ -236,6 +237,7 @@ public class AdminSwapService {
         for (CandidatePlan candidate : result.candidates().stream().limit(3).toList()) {
             SubstitutionPlan plan = new SubstitutionPlan();
             plan.setRequestId(null);
+            plan.setOwnerUserId(user.getId());
             plan.setSemesterId(source.semesterId());
             plan.setSnapshotHash(hash);
             plan.setRankingPreset(preset.code());
@@ -266,7 +268,7 @@ public class AdminSwapService {
 
         var sourceCourse = snapshot.course(source.current().courseId());
         return new SwapPlansResponse(
-                body.entryId(), body.lessonDate(), classId, className(snapshot, classId),
+                body.entryId(), body.lessonDate(), classId, SubstitutionLookups.className(snapshot, classId),
                 source.current().courseId(), sourceCourse == null ? null : sourceCourse.name(),
                 body.targetDate(), body.targetPeriodId(), targetPeriodView.periodNo(),
                 preset.code(), preset.label(), candidates,
@@ -286,12 +288,13 @@ public class AdminSwapService {
         requireManager(user);
         SourceInstance source = loadInstance(body.entryId(), body.lessonDate());
         PlanSnapshot snapshot = source.snapshot();
-        SubstitutionPlan plan = requireUsablePlan(body.planId(), snapshot, source.semesterId());
+        SubstitutionPlan plan = requireUsablePlan(body.planId(), snapshot, source.semesterId(),
+                user.getId());
         List<PlanMove> moves = movesOf(plan);
         if (moves.stream().noneMatch(move -> move.entryId() == body.entryId())) {
             throw ApiException.badRequest("该方案不包含所选课节，请重新生成");
         }
-        if (hasLegacyCover(body.entryId(), body.lessonDate())) {
+        if (SubstitutionLookups.hasLegacyCover(substitutions, body.entryId(), body.lessonDate())) {
             throw ApiException.conflict(
                     "该课节当前生效的是旧格式调代记录（无授课实例日期，历史数据），"
                             + "需先完成历史转换才能在管理端修改，本次操作被拒绝");
@@ -307,7 +310,8 @@ public class AdminSwapService {
 
         // 冻结校验（票 07）：方案触及已开始的槽位（来源或落点）即拒绝——
         // 已开始或已结束的授课任何路径都不可改变。
-        LessonFreeze.frozenTouchReason(moves, this::periodStart, clock.instant())
+        LessonFreeze.frozenTouchReason(moves,
+                periodId -> SubstitutionLookups.periodStart(periods, periodId), clock.instant())
                 .ifPresent(reason -> { throw ApiException.conflict(reason); });
 
         // 校验问题只是预览提示；硬冲突以确认时的独立校验器裁决为准。
@@ -337,7 +341,7 @@ public class AdminSwapService {
         voucher.setSnapshotHash(snapshot.snapshotHash());
         voucher.setReason(body.reason());
         voucher.setDeadlineAt(deadline);
-        voucher.setExpiresAt(min(now.plus(PREVIEW_TTL), deadline));
+        voucher.setExpiresAt(SubstitutionLookups.min(now.plus(PREVIEW_TTL), deadline));
         voucher.setStatus(SubstitutionPreview.ACTIVE);
         voucher.setCreatedAt(now);
         SubstitutionPreview saved = previews.save(voucher);
@@ -349,7 +353,7 @@ public class AdminSwapService {
         Set<Long> teacherIds = new LinkedHashSet<>();
         moves.forEach(move -> teacherIds.add(move.teacherId()));
         List<String> teacherNames = teacherIds.stream()
-                .map(id -> teacherName(snapshot, id)).toList();
+                .map(id -> SubstitutionLookups.teacherName(snapshot, id)).toList();
         return new SwapPreviewResponse(
                 saved.getId(),
                 plan.getId(),
@@ -362,7 +366,7 @@ public class AdminSwapService {
                 sourceMove.toPeriodId(),
                 targetPeriodView == null ? null : targetPeriodView.periodNo(),
                 classId,
-                className(snapshot, classId),
+                SubstitutionLookups.className(snapshot, classId),
                 new ArrayList<>(teacherIds),
                 teacherNames,
                 compareDays(snapshot, classId, moves),
@@ -402,7 +406,7 @@ public class AdminSwapService {
         if (!voucher.getOperatorUserId().equals(user.getId())) {
             throw ApiException.forbidden("预览凭证绑定操作者，不能使用他人的预览");
         }
-        String actionHash = actionHash(action, comment);
+        String actionHash = SubstitutionLookups.actionHash(action, comment);
 
         // 幂等：相同动作 + 相同参数的重试返回第一次结果；参数改变返回冲突。
         var replayed = voucher.replay(action, actionHash);
@@ -439,7 +443,8 @@ public class AdminSwapService {
             throw ApiException.conflict("置换环内的课节已有待处理的申请（#" + raced + "），请先处理该单");
         }
         // 冻结复核（票 07）：等待行锁后实时读时钟——排队期间环内任何槽位开课都整单拒绝。
-        LessonFreeze.frozenTouchReason(moves, this::periodStart, clock.instant())
+        LessonFreeze.frozenTouchReason(moves,
+                periodId -> SubstitutionLookups.periodStart(periods, periodId), clock.instant())
                 .ifPresent(reason -> { throw ApiException.conflict(reason); });
         // 基准复核（票 07）：来源实例的当前生效行必须仍属于预览绑定的基准申请。
         // 快照哈希已保证整份课表未变，这里钉住基准防旁路；基准被抢先替代时明确冲突。
@@ -568,7 +573,7 @@ public class AdminSwapService {
             Map<Long, GridCellDto> left = leftGrid(snapshot, lessons);
             Map<Long, GridCellDto> right = rightGrid(snapshot, lessons, date, moves);
             return new SwapCompareResponse(date, "teacher", teacherId,
-                    teacherName(snapshot, teacherId),
+                    SubstitutionLookups.teacherName(snapshot, teacherId),
                     marked(left, right, true), marked(left, right, false));
         }
         long classId = snapshot.scheduleOn(date).lessons().stream()
@@ -581,7 +586,7 @@ public class AdminSwapService {
         List<PlanSnapshot.ScheduledLesson> lessons = snapshot.scheduleOn(date).ofClass(classId);
         Map<Long, GridCellDto> left = leftGrid(snapshot, lessons);
         Map<Long, GridCellDto> right = rightGrid(snapshot, lessons, date, moves);
-        return new SwapCompareResponse(date, "class", classId, className(snapshot, classId),
+        return new SwapCompareResponse(date, "class", classId, SubstitutionLookups.className(snapshot, classId),
                 marked(left, right, true), marked(left, right, false));
     }
 
@@ -630,9 +635,13 @@ public class AdminSwapService {
     }
 
     /** 可用的管理预览方案：PROPOSED、未过期、未关联申请、快照哈希匹配当前课表。 */
-    private SubstitutionPlan requireUsablePlan(Long planId, PlanSnapshot snapshot, Long semesterId) {
+    private SubstitutionPlan requireUsablePlan(Long planId, PlanSnapshot snapshot, Long semesterId,
+                                               Long ownerUserId) {
         SubstitutionPlan plan = plans.findById(planId)
                 .orElseThrow(() -> ApiException.notFound("调课方案不存在: " + planId));
+        if (plan.getOwnerUserId() != null && !plan.getOwnerUserId().equals(ownerUserId)) {
+            throw ApiException.conflict("该方案属于其他操作者，请重新生成");
+        }
         if (!SubstitutionPlan.PROPOSED.equals(plan.getStatus())) {
             throw ApiException.conflict("该方案当前状态为 " + plan.getStatus() + "，不能预览");
         }
@@ -672,7 +681,8 @@ public class AdminSwapService {
         for (LocalDate date = lessonDate; !date.isAfter(windowEnd)
                 && !date.isAfter(snapshot.semesterEnd()); date = date.plusDays(1)) {
             for (PlanSnapshot.ScheduledLesson lesson : snapshot.scheduleOn(date).ofClass(classId)) {
-                if (LessonFreeze.started(clock.instant(), date, periodStart(lesson.periodId()))) {
+                if (LessonFreeze.started(clock.instant(), date,
+                        SubstitutionLookups.periodStart(periods, lesson.periodId()))) {
                     frozen.add(new FrozenSlot(date, lesson.periodId()));
                 }
             }
@@ -684,8 +694,10 @@ public class AdminSwapService {
     private Instant swapDeadline(List<PlanMove> moves) {
         List<ChangedSlot> slots = new ArrayList<>();
         for (PlanMove move : moves) {
-            slots.add(new ChangedSlot(move.fromDate(), periodStart(move.fromPeriodId())));
-            slots.add(new ChangedSlot(move.toDate(), periodStart(move.toPeriodId())));
+            slots.add(new ChangedSlot(move.fromDate(),
+                    SubstitutionLookups.periodStart(periods, move.fromPeriodId())));
+            slots.add(new ChangedSlot(move.toDate(),
+                    SubstitutionLookups.periodStart(periods, move.toPeriodId())));
         }
         try {
             return LessonDeadline.earliest(slots);
@@ -697,38 +709,20 @@ public class AdminSwapService {
     private Instant deadline(LocalDate lessonDate, long periodId) {
         try {
             return LessonDeadline.earliest(List.of(
-                    new ChangedSlot(lessonDate, periodStart(periodId))));
+                    new ChangedSlot(lessonDate, SubstitutionLookups.periodStart(periods, periodId))));
         } catch (LessonDeadline.MissingStartTimeException ex) {
             throw ApiException.badRequest(ex.getMessage());
         }
     }
 
-    private LocalTime periodStart(long periodId) {
-        Period period = periods.findById(periodId)
-                .orElseThrow(() -> ApiException.badRequest(
-                        "无法确定开课时刻：课节 " + periodId + " 不存在，拒绝写入"));
-        if (period.getStartTime() == null) {
-            throw ApiException.badRequest(
-                    "无法确定开课时刻：课节 " + periodId + " 缺少开始时间，拒绝写入");
-        }
-        return period.getStartTime();
-    }
-
-    /** 数据级旧格式检查：该条目存在 lesson_date 为空的 EFFECTIVE 行且覆盖该日期。 */
-    private boolean hasLegacyCover(Long entryId, LocalDate lessonDate) {
-        return substitutions.findByEntryIdAndStatusAndLessonDateIsNull(entryId, Substitution.EFFECTIVE)
-                .stream()
-                .anyMatch(row -> !row.getEffectiveDate().isAfter(lessonDate));
-    }
-
     /** 环内每个实例（当前日与落点日）同一时间最多一笔活跃修改。 */
     private Long activeRequestWithin(List<PlanMove> moves) {
         for (PlanMove move : moves) {
-            Long raced = activeRequestFor(move.entryId(), move.fromDate());
+            Long raced = SubstitutionLookups.activeRequestFor(requests, move.entryId(), move.fromDate());
             if (raced != null) {
                 return raced;
             }
-            raced = activeRequestFor(move.entryId(), move.toDate());
+            raced = SubstitutionLookups.activeRequestFor(requests, move.entryId(), move.toDate());
             if (raced != null) {
                 return raced;
             }
@@ -736,39 +730,16 @@ public class AdminSwapService {
         return null;
     }
 
-    private Long activeRequestFor(Long entryId, LocalDate date) {
-        return requests.findByEntryIdAndEffectiveDate(entryId, date).stream()
-                .filter(request -> SubstitutionRequest.SUBMITTED.equals(request.getStatus())
-                        || SubstitutionRequest.PENDING_APPROVAL.equals(request.getStatus()))
-                .map(SubstitutionRequest::getId)
-                .findFirst()
-                .orElse(null);
-    }
-
     private void expire(SubstitutionPreview voucher) {
-        voucher.setStatus(SubstitutionPreview.EXPIRED);
-        previews.save(voucher);
+        // 条件更新（与票 03 同口径）：只把仍为 ACTIVE 的凭证标过期，
+        // 不覆盖并发消费写入的结果字段。
+        previews.markExpiredIfActive(voucher.getId());
     }
 
     private void requireManager(AppUser user) {
         if (!users.hasAllPermissions(user, AdminSubstitutionService.MANAGER_PERMISSIONS)) {
             throw ApiException.forbidden("管理调代工作台需要「全校课表查看 + 提交调代 + 审批调代」权限");
         }
-    }
-
-    private String actionHash(String action, String comment) {
-        String payload = action + "|" + (comment == null ? "" : comment);
-        try {
-            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
-                    .digest(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            return java.util.HexFormat.of().formatHex(digest);
-        } catch (java.security.NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 is required but unavailable", ex);
-        }
-    }
-
-    private Instant min(Instant left, Instant right) {
-        return left.isBefore(right) ? left : right;
     }
 
     // ------------------------------------------------------- compare projection
@@ -797,16 +768,16 @@ public class AdminSwapService {
                 .map(move -> new SwapChangeItemDto(
                         move.entryId(),
                         move.classId(),
-                        className(snapshot, move.classId()),
+                        SubstitutionLookups.className(snapshot, move.classId()),
                         move.courseId(),
-                        courseName(snapshot, move.courseId()),
+                        SubstitutionLookups.courseName(snapshot, move.courseId()),
                         move.fromDate(),
                         SubstitutionMapper.label(move.fromDayOfWeek(), move.fromPeriodNo()),
                         move.toDate(),
                         SubstitutionMapper.label(move.toDayOfWeek(), move.toPeriodNo()),
                         move.teacherId(),
-                        teacherName(snapshot, move.teacherId()),
-                        move.roomId() == null ? null : roomName(snapshot, move.roomId()),
+                        SubstitutionLookups.teacherName(snapshot, move.teacherId()),
+                        move.roomId() == null ? null : SubstitutionLookups.roomName(snapshot, move.roomId()),
                         "SLOT_MOVED"))
                 .toList();
     }
@@ -819,10 +790,10 @@ public class AdminSwapService {
             map.put(lesson.periodId(), new GridCellDto(
                     lesson.entryId(), lesson.periodNo(),
                     SubstitutionMapper.label(lesson.dayOfWeek(), lesson.periodNo()),
-                    courseName(snapshot, lesson.courseId()),
-                    className(snapshot, lesson.classId()),
-                    lesson.teacherId(), teacherName(snapshot, lesson.teacherId()),
-                    lesson.roomId() == null ? null : roomName(snapshot, lesson.roomId()),
+                    SubstitutionLookups.courseName(snapshot, lesson.courseId()),
+                    SubstitutionLookups.className(snapshot, lesson.classId()),
+                    lesson.teacherId(), SubstitutionLookups.teacherName(snapshot, lesson.teacherId()),
+                    lesson.roomId() == null ? null : SubstitutionLookups.roomName(snapshot, lesson.roomId()),
                     false));
         }
         return map;
@@ -842,10 +813,10 @@ public class AdminSwapService {
             map.put(lesson.periodId(), new GridCellDto(
                     lesson.entryId(), lesson.periodNo(),
                     SubstitutionMapper.label(lesson.dayOfWeek(), lesson.periodNo()),
-                    courseName(snapshot, lesson.courseId()),
-                    className(snapshot, lesson.classId()),
-                    lesson.teacherId(), teacherName(snapshot, lesson.teacherId()),
-                    lesson.roomId() == null ? null : roomName(snapshot, lesson.roomId()),
+                    SubstitutionLookups.courseName(snapshot, lesson.courseId()),
+                    SubstitutionLookups.className(snapshot, lesson.classId()),
+                    lesson.teacherId(), SubstitutionLookups.teacherName(snapshot, lesson.teacherId()),
+                    lesson.roomId() == null ? null : SubstitutionLookups.roomName(snapshot, lesson.roomId()),
                     false));
         }
         for (PlanMove move : moves) {
@@ -857,10 +828,10 @@ public class AdminSwapService {
                     move.entryId(),
                     period == null ? move.toPeriodNo() : period.periodNo(),
                     SubstitutionMapper.label(move.toDayOfWeek(), move.toPeriodNo()),
-                    courseName(snapshot, move.courseId()),
-                    className(snapshot, move.classId()),
-                    move.teacherId(), teacherName(snapshot, move.teacherId()),
-                    move.roomId() == null ? null : roomName(snapshot, move.roomId()),
+                    SubstitutionLookups.courseName(snapshot, move.courseId()),
+                    SubstitutionLookups.className(snapshot, move.classId()),
+                    move.teacherId(), SubstitutionLookups.teacherName(snapshot, move.teacherId()),
+                    move.roomId() == null ? null : SubstitutionLookups.roomName(snapshot, move.roomId()),
                     false));
         }
         return map;
@@ -895,25 +866,5 @@ public class AdminSwapService {
 
     private String label(PlanSnapshot.ScheduledLesson lesson) {
         return SubstitutionMapper.label(lesson.dayOfWeek(), lesson.periodNo());
-    }
-
-    private static String className(PlanSnapshot snapshot, long classId) {
-        var view = snapshot.classes().get(classId);
-        return view == null ? null : view.name();
-    }
-
-    private static String courseName(PlanSnapshot snapshot, long courseId) {
-        var view = snapshot.courses().get(courseId);
-        return view == null ? null : view.name();
-    }
-
-    private static String teacherName(PlanSnapshot snapshot, long teacherId) {
-        var view = snapshot.teacher(teacherId);
-        return view == null ? null : view.name();
-    }
-
-    private static String roomName(PlanSnapshot snapshot, long roomId) {
-        var view = snapshot.rooms().get(roomId);
-        return view == null ? null : view.name();
     }
 }
