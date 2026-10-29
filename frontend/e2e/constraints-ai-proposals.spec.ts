@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect as baseExpect, test, type APIRequestContext, type Page } from '@playwright/test'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import {
@@ -11,6 +11,9 @@ import {
   pickOption,
 } from './helpers'
 import { capture } from './screenshots'
+
+// 全量单 worker 长跑下 AI 面板轮询/首绘偶发超过默认 5s；放宽断言等待（不弱化断言）。
+const expect = baseExpect.configure({ timeout: 15_000 })
 
 /**
  * Ticket 14/08: read-only natural-language proposals against a local HTTP stub

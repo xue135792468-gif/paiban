@@ -280,11 +280,10 @@ public class SubstitutionRequestService {
             throw ApiException.badRequest("代课只换教师，不换节次；换时间请使用调课");
         }
         effects.lockSemester(request.getSemesterId());
-        if (revision) {
-            // 规格第 6 节：批准同样受开课截止约束（B→C 与恢复基线同规则）；
-            // 等待行锁后实时读时钟，避免排队跨点。
-            requireBeforeLessonStart(request, targetPeriodId);
-        }
+        // 规格第 6 节：批准一律受开课截止约束（首次批准、B→C 与恢复基线同规则；
+        // 首次批准时「当前安排」= 基线安排，COVER 槽位不变，当前与拟生效是同一时刻）。
+        // 等待行锁后实时读时钟，避免排队跨点。
+        requireBeforeLessonStart(request, targetPeriodId);
         verifyCoverOrReject(username, request, substituteTeacherId,
                 decision == null ? null : decision.newRoomId(),
                 decision == null ? null : decision.newPeriodId());
@@ -420,17 +419,12 @@ public class SubstitutionRequestService {
         return list(username, null, SubstitutionRequest.PENDING_APPROVAL, false);
     }
 
-    /** 修订批准的开课截止复核：COVER 槽位不变，当前/拟生效的开课时刻是同一个。 */
+    /** 批准的开课截止复核：COVER 槽位不变，当前/拟生效的开课时刻是同一个。 */
     private void requireBeforeLessonStart(SubstitutionRequest request, Long targetPeriodId) {
-        Period period = periods.findById(targetPeriodId)
-                .orElseThrow(() -> ApiException.badRequest(
-                        "无法确定开课时刻：课节 " + targetPeriodId + " 不存在，拒绝写入"));
-        if (period.getStartTime() == null) {
-            throw ApiException.badRequest("无法确定开课时刻：课节缺少开始时间，拒绝写入");
-        }
         new DeadlineChecker(clock::instant).requireBeforeDeadline(
                 LessonDeadline.earliest(List.of(new LessonDeadline.ChangedSlot(
-                        request.getEffectiveDate(), period.getStartTime()))),
+                        request.getEffectiveDate(),
+                        SubstitutionLookups.periodStart(periods, targetPeriodId)))),
                 SubstitutionMapper.label(request.getDayOfWeek(), request.getPeriodNo())
                         + "（" + request.getEffectiveDate() + "）");
     }

@@ -151,6 +151,7 @@ const STATUS_LABELS: Record<string, string> = {
   APPROVED: '已批准',
   REJECTED: '已驳回',
   EFFECTIVE: '已生效',
+  SUPERSEDED: '已被替代',
   CANCELLED: '已取消',
   PROPOSED: '待选择',
   EXPIRED: '已过期',
@@ -164,6 +165,7 @@ export function statusType(status: string): 'success' | 'danger' | 'warning' | '
   if (status === 'EFFECTIVE' || status === 'APPROVED') return 'success'
   if (status === 'REJECTED' || status === 'EXPIRED') return 'danger'
   if (status === 'PENDING_APPROVAL' || status === 'PROPOSED') return 'warning'
+  if (status === 'SUPERSEDED') return 'info'
   return 'info'
 }
 

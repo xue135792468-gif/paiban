@@ -283,15 +283,17 @@ test.describe('同页筛选不回顶', () => {
     // 行政班/教师/教室视角是普通网格（只有全校视角才用虚拟表格），等格子渲染即可。
     await expect(page.locator('.grid').first()).toBeVisible()
 
-    const state = await readScroll(page)
-    expect(state.mainScrollable).toBe(true)
+    // 内容高度/滚动能力在渲染完成前读数会偏低：轮询到可滚状态再继续。
+    await expect
+      .poll(async () => (await readScroll(page)).mainScrollable)
+      .toBe(true)
 
     // 内容区轻微下滚：只滚 15px（内容起始 padding 内），保证换行工具栏里
     // 两组 radio 都保持可见，后续点击不会触发自动滚动改变基线。
     await wheelOn(page, page.getByTestId('layout-main'), 15, { x: 300, y: 30 })
     await waitForScroll(page, 'main', 1)
+    await expect.poll(async () => (await readScroll(page)).mainTop).toBeGreaterThan(0)
     const scrolled = await readScroll(page)
-    expect(scrolled.mainTop).toBeGreaterThan(0)
 
     // 切「原始」页签：同一页面的查询状态变化，不应回顶
     const baselineRadio = page.locator('.el-radio-button', { hasText: '原始' })

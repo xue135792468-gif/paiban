@@ -28,7 +28,8 @@ import org.springframework.test.context.ActiveProfiles;
 @ActiveProfiles("test")
 class SwapApprovalReverificationIntegrationTest extends ApiIntegrationTest {
 
-    private static final LocalDate MONDAY = LocalDate.of(2025, 9, 1);
+    // 批准受开课截止约束（规格第 6 节）：学期锚在未来，正常批准才能真实落地。
+    private static final LocalDate MONDAY = ScheduleFixture.nextMonday();
 
     @Autowired
     private TimetableDraftRepository drafts;
@@ -223,7 +224,7 @@ class SwapApprovalReverificationIntegrationTest extends ApiIntegrationTest {
                          long chineseEntry) {}
 
     private World prepare(String token, String suffix) {
-        long semesterId = TestData.semester(token);
+        long semesterId = TestData.semesterStarting(token, MONDAY);
         as(token).body(Map.of("morningCount", 2, "afternoonCount", 2, "eveningCount", 0))
                 .when().post("/api/semesters/" + semesterId + "/periods/default")
                 .then().statusCode(200);

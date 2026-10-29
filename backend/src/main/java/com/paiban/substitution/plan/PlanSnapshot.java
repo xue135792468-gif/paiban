@@ -234,7 +234,9 @@ public record PlanSnapshot(long semesterId,
                 .forEach(item -> lines.add("S|" + item.id() + "|" + item.entryId() + "|"
                         + item.effectiveDate() + "|" + item.newPeriodId() + "|" + item.newDayOfWeek()
                         + "|" + item.newPeriodNo() + "|" + item.newRoomId() + "|"
-                        + item.substituteTeacherId() + "|" + item.type()));
+                        + item.substituteTeacherId() + "|" + item.type() + "|"
+                        // 实例日期属于读模型输入：历史转换改写 lesson_date 后旧凭证必须失效
+                        + item.lessonDate() + "|" + item.targetLessonDate()));
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             return HexFormat.of().formatHex(

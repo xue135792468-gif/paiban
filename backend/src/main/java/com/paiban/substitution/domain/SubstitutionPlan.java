@@ -35,6 +35,13 @@ public class SubstitutionPlan {
     @Column(name = "request_id")
     private Long requestId;
 
+    /**
+     * 管理端试算方案的操作者（评审修复 P2b）：重新生成候选只清理本人上一批，
+     * 并发管理员的候选互不干扰。教师自助方案与历史方案该列为空。
+     */
+    @Column(name = "owner_user_id")
+    private Long ownerUserId;
+
     @Column(name = "semester_id", nullable = false)
     private Long semesterId;
 

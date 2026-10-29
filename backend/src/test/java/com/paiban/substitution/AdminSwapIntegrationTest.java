@@ -690,6 +690,35 @@ class AdminSwapIntegrationTest extends ApiIntegrationTest {
         assertThat(requestId).isPositive();
     }
 
+    /**
+     * 评审修复 P2b：候选方案按操作者隔离。两位管理员先后生成候选时，
+     * 后者的清理不得删掉前者在途的方案（否则其凭证会报「方案不存在」）。
+     */
+    @Test
+    void adminsRegeneratingCandidatesDoNotWipeEachOthersPlans() {
+        Fixture fx = fixture(false, false);
+        String admin = adminToken();
+        long planId = firstPlanId(admin, fx);
+
+        String username = "second_manager_" + TestData.suffix();
+        as(admin).body(Map.of(
+                        "username", username,
+                        "password", "teacher123",
+                        "displayName", username,
+                        "roleCodes", List.of("admin")))
+                .when().post("/api/users").then().statusCode(200);
+        String otherAdmin = login(username, "teacher123");
+
+        // 另一位管理员重新生成候选。
+        long otherPlanId = firstPlanId(otherAdmin, fx);
+        assertThat(otherPlanId).isNotEqualTo(planId);
+
+        // 第一位管理员仍能用自己的方案预览：其候选未被连带删除。
+        preview(admin, fx, planId).then().statusCode(200);
+        // 反向亦然。
+        preview(otherAdmin, fx, otherPlanId).then().statusCode(200);
+    }
+
     /** 一个只有「查看全部调代记录」权限的角色与账号（与票 03 的矩阵一致）。 */
     private String viewOnlyUser(String suffix) {
         var view = permissionRows.findByCode("substitution:view").orElseThrow();

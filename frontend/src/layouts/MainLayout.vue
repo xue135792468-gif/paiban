@@ -92,6 +92,7 @@ import {
   User,
 } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
+import { WORKBENCH_MANAGER_PERMISSIONS } from '@/constants/permissions'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import { hasSeenTour, startTour, type TourStage } from '@/onboarding/tour'
@@ -161,7 +162,7 @@ const groups: MenuGroup[] = [
         label: '调代工作台',
         path: '/substitutions/workbench',
         icon: Platform,
-        allPermissions: ['timetable:view', 'substitution:submit', 'substitution:approve'],
+        allPermissions: [...WORKBENCH_MANAGER_PERMISSIONS],
       },
     ],
   },
