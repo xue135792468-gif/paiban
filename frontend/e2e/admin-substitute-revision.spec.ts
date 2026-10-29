@@ -77,9 +77,10 @@ test('查看当前代课人 B 后改为 C：待批期间 B 生效，批准后 C 
   await page.getByTestId('wizard-next-2').click()
   await expect(page.getByTestId('confirm-conclusion')).toBeVisible()
 
-  // 修订横幅：标明这是对被取代申请的再次调整；变化格 B → C（旧师删除线 → 新师绿色）。
-  await expect(page.getByTestId('revision-banner')).toContainText('再次调整')
-  await expect(page.getByTestId('revision-banner')).toContainText(`#${baseRequestId}`)
+  // 修订横幅：标明类型（更换代课人）与被取代的申请；变化格 B → C（旧师删除线 → 新师绿色）。
+  await expect(page.getByTestId('revision-banner')).toContainText(
+    `这是对已生效申请 #${baseRequestId} 的再次调整（更换代课人）`,
+  )
   await expect(page.getByTestId('change-cell-1').locator('.old')).toContainText(
     seed.substituteTeacherName,
   )
@@ -121,8 +122,9 @@ test('从 B 的课表恢复基线教师 A：确认后 A 回归、B 释放，历�
   // 恢复基线入口（第②步候选面板）：直接对基线原教师发起一次经预览、校验的再次调整。
   await page.getByTestId('restore-baseline').click()
   await expect(page.getByTestId('confirm-conclusion')).toBeVisible()
-  await expect(page.getByTestId('revision-banner')).toContainText('再次调整')
-  await expect(page.getByTestId('revision-banner')).toContainText(`#${baseRequestId}`)
+  await expect(page.getByTestId('revision-banner')).toContainText(
+    `这是对已生效申请 #${baseRequestId} 的再次调整（恢复基线）`,
+  )
 
   await page.getByTestId('personal-confirm').click()
   await expect(page.getByTestId('workbench-result')).toContainText('已生效')

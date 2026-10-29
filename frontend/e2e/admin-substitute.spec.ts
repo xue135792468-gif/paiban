@@ -1,5 +1,12 @@
 import { expect, test, type Page } from '@playwright/test'
-import { newContext, pickOption, seedWorkbenchScenario, uiLogin, type WorkbenchSeed } from './helpers'
+import {
+  newContext,
+  pickOption,
+  seedWorkbenchScenario,
+  sourceCard,
+  uiLogin,
+  type WorkbenchSeed,
+} from './helpers'
 
 /**
  * 票 03：管理员调代工作台全流程（三步向导版）。
@@ -20,14 +27,9 @@ async function fillLessonDate(page: Page, seed: WorkbenchSeed) {
   await expect(page.getByTestId('pick-lesson').first()).toBeVisible()
 }
 
-/** 来源格（周三第 1 节）里的课卡：周网格里按格定位，避免命中教师本周其他课。 */
-function sourceCard(page: Page, seed: WorkbenchSeed) {
-  return page.getByTestId(`workbench-cell-${seed.lessonDate}-1`).getByTestId('pick-lesson')
-}
-
 /** 旧「候选表 choose-{id} + generate-preview」的新路径：选课 → 下一步 → radio 选候选 → 下一步。 */
 async function pickSubstituteAndPreview(page: Page, seed: WorkbenchSeed, reason: string) {
-  await sourceCard(page, seed).click()
+  await sourceCard(page, seed.lessonDate).click()
   await page.getByTestId('wizard-next-1').click()
   await page.getByTestId('choose-cover').click()
   await expect(page.getByTestId('substitute-picker')).toBeVisible()
@@ -77,7 +79,7 @@ test('管理员亲自确认：选教师 → 指定代课 → 对照清单 → �
   // 「再调整一节课」回步骤 1 并重拉课表；周网格里周三第 1 节的课卡随之消失。
   await page.getByTestId('wizard-again').click()
   await expect(page.getByTestId('wizard-panel-1')).toBeVisible()
-  await expect(sourceCard(page, seed)).toHaveCount(0)
+  await expect(sourceCard(page, seed.lessonDate)).toHaveCount(0)
 })
 
 test('管理员提交审批：进入待批队列，旧安排继续生效', async ({ page }) => {
@@ -103,7 +105,7 @@ test('管理员提交审批：进入待批队列，旧安排继续生效', async
   // 待批期间旧安排继续生效：回步骤 1 后周三这节课仍在原教师名下，可继续操作。
   await page.getByTestId('wizard-again').click()
   await expect(page.getByTestId('wizard-panel-1')).toBeVisible()
-  await expect(sourceCard(page, seed)).toContainText(seed.teacherName)
+  await expect(sourceCard(page, seed.lessonDate)).toContainText(seed.teacherName)
 
   // 申请进了待审批队列，原因可定位到这一单。
   await page.goto('/substitutions')

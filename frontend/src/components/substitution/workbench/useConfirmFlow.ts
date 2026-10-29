@@ -1,7 +1,7 @@
 import { computed, reactive, ref, type Ref } from 'vue'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
-import { monthDayCn, weekdayLabel } from './swapTargetRules'
+import { monthDayCn, periodNoOf, weekdayLabel } from './swapTargetRules'
 import { buildCoverVisual, buildSwapVisual, type VisualModel } from './changeVisual'
 import type {
   PlanDiagnosis,
@@ -47,12 +47,6 @@ export interface PersonRow {
 export interface ConfirmResult {
   requestId: number
   effective: boolean
-}
-
-/** 从「周三第1节」这类节次标签解析节次号。 */
-function periodNoOf(label: string | null | undefined): number {
-  const match = /第(\d+)节/.exec(label ?? '')
-  return match ? Number(match[1]) : 0
 }
 
 /** Instant ISO → 本地 HH:mm。 */
@@ -118,8 +112,14 @@ export function useConfirmFlow(input: ConfirmFlowInput) {
 
   const coverChange = computed(() => coverPreview.value?.changes?.[0] ?? null)
 
-  const deadlineText = computed(() => {
-    const iso = coverPreview.value?.deadlineAt ?? swapPreview.value?.deadlineAt ?? ''
+  /** 「保留到」= 凭证过期时间（expiresAt）；旧数据缺它时回退开课截止（deadlineAt）。 */
+  const reservedText = computed(() => {
+    const iso =
+      coverPreview.value?.expiresAt ??
+      coverPreview.value?.deadlineAt ??
+      swapPreview.value?.expiresAt ??
+      swapPreview.value?.deadlineAt ??
+      ''
     return clockTime(iso)
   })
 
@@ -180,10 +180,17 @@ export function useConfirmFlow(input: ConfirmFlowInput) {
     return ''
   })
 
+  /** 修订横幅（票 04/07）：按修订类型给标签；首次代课/新调课没有基准申请时不显示。 */
   const revisionText = computed(() => {
-    const preview = coverPreview.value
-    if (!preview?.revisionKind || !preview.revisesRequestId) return ''
-    return `这是对已生效申请 #${preview.revisesRequestId} 的再次调整`
+    const preview = coverPreview.value ?? swapPreview.value
+    if (!preview?.revisesRequestId) return ''
+    const labels: Record<string, string> = {
+      CHANGE_SUBSTITUTE: '更换代课人',
+      RESTORE_BASELINE: '恢复基线',
+      RESCHEDULE_REVISION: '再次调整已调课',
+    }
+    const label = preview.revisionKind ? labels[preview.revisionKind] : undefined
+    return `这是对已生效申请 #${preview.revisesRequestId} 的再次调整${label ? `（${label}）` : ''}`
   })
 
   /** 跨科门：仅代课且预览判 different subject（科目取步骤 2 候选，缺省写「所派教师」）。 */
@@ -440,7 +447,7 @@ export function useConfirmFlow(input: ConfirmFlowInput) {
     activePlanIndex,
     crossSubjectAck,
     previewLoaded,
-    deadlineText,
+    reservedText,
     visual,
     conclusion,
     scope,

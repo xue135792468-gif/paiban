@@ -1,4 +1,4 @@
-import { isoOf, mondayOf, weekdayLabel } from './swapTargetRules'
+import { isoOf, mondayOf, periodNoOf, weekdayLabel } from './swapTargetRules'
 import type { ChangeItem, PreviewResponse, SwapPreviewResponse } from './types'
 
 /**
@@ -43,14 +43,10 @@ export function circledNo(n: number): string {
   return `${n}.`
 }
 
-/** circledNo 的逆运算（组件按编号反查序号）。 */
-export function circledIndex(no: string): number {
+/** 字符串首字符是否带圈编号（图例高亮与 ChangeVisualizer 共用同一判定）。 */
+export function isCircledNo(no: string): boolean {
   const code = no.charCodeAt(0)
-  if (code >= CIRCLED_START && code <= CIRCLED_END) {
-    return code - CIRCLED_START + 1
-  }
-  const parsed = Number.parseInt(no, 10)
-  return Number.isFinite(parsed) ? parsed : 0
+  return code >= CIRCLED_START && code <= CIRCLED_END
 }
 
 /** dayIdx 0=周一。 */
@@ -85,12 +81,6 @@ function shiftDays(date: string, days: number): string {
 export function slotLabel(date: string, periodNo: number, anchorMonday: string): string {
   const prefix = mondayOf(date) === anchorMonday ? '本' : '下'
   return `${prefix}${weekdayLabel(date)}第${periodNo}节`
-}
-
-/** 从「周三第1节」这类节次标签里解析节次号。 */
-function parsePeriodNo(label: string | null | undefined): number {
-  const match = /第(\d+)节/.exec(label ?? '')
-  return match ? Number(match[1]) : 0
 }
 
 /** 格内旧值/新值文本：`{课程} {教师}`（缺教师只写课程）。 */
@@ -139,9 +129,9 @@ export function buildSwapVisual(preview: SwapPreviewResponse): VisualModel {
     const move: MoveRef = {
       course: change.courseName ?? '',
       fromDate: change.fromDate,
-      fromPeriodNo: parsePeriodNo(change.fromLabel),
+      fromPeriodNo: periodNoOf(change.fromLabel),
       toDate: change.toDate,
-      toPeriodNo: parsePeriodNo(change.toLabel),
+      toPeriodNo: periodNoOf(change.toLabel),
     }
     const fromKey = `${move.fromPeriodNo}-${dayIndexOf(move.fromDate)}`
     const toKey = `${move.toPeriodNo}-${dayIndexOf(move.toDate)}`
@@ -228,7 +218,7 @@ export function buildCoverVisual(preview: PreviewResponse): VisualModel {
   if (!change) return EMPTY_MODEL
   const anchorMonday = mondayOf(preview.lessonDate || change.lessonDate)
   if (!anchorMonday) return EMPTY_MODEL
-  const periodNo = parsePeriodNo(change.periodLabelBefore)
+  const periodNo = periodNoOf(change.periodLabelBefore)
   const cell: ChangeCell = {
     no: circledNo(1),
     old: cellText(change.courseName, change.teacherNameBefore),

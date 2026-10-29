@@ -886,3 +886,47 @@ export async function pickSwapTargetAndContinue(
   await expect(page.getByTestId('wizard-panel-3')).toBeVisible()
   await expect(page.getByTestId('swap-plan-tab-0')).toBeVisible()
 }
+
+// ---------------------------------------------------------------- 票 01-06
+// 工作台各 spec 复制的公共 UI 交互与日期工具，只在这里放一份
+// （CODING_STANDARDS：E2E 公共交互只在 helpers.ts 出现一次）。
+
+/** 按本地时区平移日期。 */
+export function shiftDate(date: string, days: number): string {
+  const value = new Date(`${date}T00:00:00`)
+  value.setDate(value.getDate() + days)
+  return isoDate(value)
+}
+
+/** 与视图 monthDayCn 同款：11月2日（不补零）。 */
+export function cnDate(date: string): string {
+  const [, month, day] = date.split('-')
+  return `${Number(month)}月${Number(day)}日`
+}
+
+const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+
+export function weekdayOf(date: string): string {
+  return WEEKDAYS[new Date(`${date}T00:00:00`).getDay()]
+}
+
+/** 来源格（第 1 节）里的课卡按钮；lessonDate 是该格的真实日期。 */
+export function sourceCard(page: Page, lessonDate: string): Locator {
+  return page.getByTestId(`workbench-cell-${lessonDate}-1`).getByTestId('pick-lesson')
+}
+
+/** 真实鼠标管线：按住来源卡 → 移到目标格中心 → 松手（拖拽 spec 同节拍）。 */
+export async function dragCardToCell(page: Page, from: Locator, to: Locator): Promise<void> {
+  await from.scrollIntoViewIfNeeded()
+  await to.scrollIntoViewIfNeeded()
+  const fromBox = await from.boundingBox()
+  const toBox = await to.boundingBox()
+  expect(fromBox).toBeTruthy()
+  expect(toBox).toBeTruthy()
+  await page.mouse.move(fromBox!.x + fromBox!.width / 2, fromBox!.y + fromBox!.height / 2)
+  await page.mouse.down()
+  await page.waitForTimeout(50)
+  await page.mouse.move(toBox!.x + toBox!.width / 2, toBox!.y + toBox!.height / 2, { steps: 10 })
+  await page.mouse.up()
+  await page.waitForTimeout(50)
+}

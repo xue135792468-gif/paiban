@@ -276,6 +276,10 @@ test('已移动的课再次调课：以周五落点为起点移到下周一，�
   await page.getByTestId('swap-reason').fill('再次调整到下周一')
   await page.getByTestId('wizard-next-2').click()
   await expect(page.getByTestId('swap-plan-tab-0')).toContainText('2 节课对调')
+  // 修订横幅（票 07 语义）：以当前生效安排为基准的再次调课，类型标签随 revisionKind 回来。
+  await expect(page.getByTestId('revision-banner')).toContainText(
+    `这是对已生效申请 #${firstRequestId} 的再次调整（再次调整已调课）`,
+  )
   await expect(page.getByTestId('change-week-0')).toBeVisible()
   await expect(page.getByTestId('change-week-1')).toBeVisible()
   await page.getByTestId('personal-confirm').click()
@@ -325,8 +329,10 @@ test('调课后代课：从周五落点指定丙老师，修订横幅标明取�
   await page.getByTestId('wizard-next-2').click()
   await expect(page.getByTestId('confirm-conclusion')).toBeVisible()
 
-  // 修订链（COVER-on-SWAP）：横幅明确被取代的调课申请编号。
-  await expect(page.getByTestId('revision-banner')).toContainText(`#${swapRequestId}`)
+  // 修订链（COVER-on-SWAP）：横幅标明类型（更换代课人）与被取代的调课申请编号。
+  await expect(page.getByTestId('revision-banner')).toContainText(
+    `这是对已生效申请 #${swapRequestId} 的再次调整（更换代课人）`,
+  )
   await page.getByTestId('personal-confirm').click()
   await expect(page.getByTestId('workbench-result')).toContainText('已生效')
 

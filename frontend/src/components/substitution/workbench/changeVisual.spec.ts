@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   buildCoverVisual,
   buildSwapVisual,
-  circledIndex,
   circledNo,
+  isCircledNo,
   slotLabel,
 } from './changeVisual'
 import type { ChangeItem, PreviewResponse, SwapChangeItem, SwapPreviewResponse } from './types'
@@ -64,10 +64,10 @@ describe('circledNo', () => {
     expect(circledNo(21)).toBe('21.')
   })
 
-  it('circledIndex 是 circledNo 的逆运算', () => {
-    expect(circledIndex('①')).toBe(1)
-    expect(circledIndex('⑳')).toBe(20)
-    expect(circledIndex('21.')).toBe(21)
+  it('isCircledNo 只认带圈区间的首字符（「21.」不算带圈编号）', () => {
+    expect(isCircledNo('①')).toBe(true)
+    expect(isCircledNo('⑳')).toBe(true)
+    expect(isCircledNo('21.')).toBe(false)
   })
 })
 

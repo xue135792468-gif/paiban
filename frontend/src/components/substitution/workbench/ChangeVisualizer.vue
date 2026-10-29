@@ -3,7 +3,7 @@
     <div class="lab">课表怎么变</div>
     <div v-if="visual.legend.length > 0" class="legend" data-testid="change-legend">
       <span v-for="item in visual.legend" :key="item" class="lg">
-        <b v-if="circled(item)">{{ item.slice(0, 1) }}</b>{{ item.slice(circled(item) ? 1 : 0) }}
+        <b v-if="isCircledNo(item)">{{ item.slice(0, 1) }}</b>{{ item.slice(isCircledNo(item) ? 1 : 0) }}
       </span>
     </div>
     <div class="weeks">
@@ -52,6 +52,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { isCircledNo } from './changeVisual'
 import type { ChangeCell, VisualModel, WeekTable } from './changeVisual'
 
 /**
@@ -83,12 +84,6 @@ function lookup(week: WeekTable, periodNo: number, dayIdx: number): ChangeCell |
 
 function seq(week: WeekTable, periodNo: number, dayIdx: number): number {
   return seqByKey.value.get(`${week.label}|${periodNo}-${dayIdx}`) ?? 0
-}
-
-/** 图例首字符若是带圈编号则挑出来上品牌色。 */
-function circled(item: string): boolean {
-  const code = item.charCodeAt(0)
-  return code >= 0x2460 && code <= 0x2473
 }
 
 function listItems(week: WeekTable): Array<{ no: string; slot: string; old: string | null; new: string | null }> {

@@ -235,4 +235,8 @@ export interface SwapPreviewResponse {
   issues: string[]
   canSubmitApproval: boolean
   canConfirm: boolean
+  /** 修订链（票 07）：预览绑定的基准申请；首次新调课为空。 */
+  revisesRequestId?: number | null
+  /** RESCHEDULE（首次新调课）或 RESCHEDULE_REVISION（修订调课）。 */
+  revisionKind?: string | null
 }

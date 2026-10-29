@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import {
   apiCall,
   apiLogin,
+  cnDate,
   newContext,
   openWorkbenchAtSourceLesson,
   pickSwapTargetAndContinue,
@@ -16,12 +17,6 @@ import {
  * 公共流程（openWorkbenchAtSourceLesson / startSwapAction / pickSwapTargetAndContinue）
  * 在 helpers.ts，与拖拽 spec 共用。
  */
-
-/** 与视图 monthDayCn 同款：11月5日（月/日不补零）。 */
-function cnDate(date: string): string {
-  const [, month, day] = date.split('-')
-  return `${Number(month)}月${Number(day)}日`
-}
 
 test('管理员调课：明确目标日期生成二人环 → 整环对照 → 提交审批后旧课表继续', async ({ page }) => {
   const api = await newContext()

@@ -1,5 +1,17 @@
-import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
-import { apiCall, apiLogin, isoDate, newContext, pickOption, publishDraft, solveDraft, uiLogin } from './helpers'
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import {
+  apiCall,
+  apiLogin,
+  cnDate,
+  isoDate,
+  newContext,
+  openWorkbenchAtSourceLesson,
+  publishDraft,
+  shiftDate,
+  solveDraft,
+  sourceCard,
+  weekdayOf,
+} from './helpers'
 import { capture } from './screenshots'
 
 /**
@@ -185,48 +197,17 @@ async function seedConfirmScenario(context: APIRequestContext): Promise<ConfirmS
   }
 }
 
-/** 与视图 monthDayCn 同款：11月2日（不补零）。 */
-function cnDate(date: string): string {
-  const [, month, day] = date.split('-')
-  return `${Number(month)}月${Number(day)}日`
-}
-
 function mmdd(date: string): string {
   const [, month, day] = date.split('-')
   return `${month}/${day}`
 }
 
-function shiftDate(date: string, days: number): string {
-  const value = new Date(`${date}T00:00:00`)
-  value.setDate(value.getDate() + days)
-  return isoDate(value)
-}
-
-const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-
-function weekdayOf(date: string): string {
-  return WEEKDAYS[new Date(`${date}T00:00:00`).getDay()]
-}
-
-/** 登录管理员 → 选种子教师 → 跳到来源课所在周，等课卡出现（照抄票 01 写法）。 */
-async function openWizard(page: Page, seed: ConfirmSeed): Promise<void> {
-  await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/substitutions/workbench')
-  await expect(page.getByTestId('teacher-select')).toBeVisible()
-  await expect(async () => {
-    if ((await page.getByTestId('pick-lesson').count()) === 0) {
-      await pickOption(page.locator('.picker-card'), 'teacher-select', seed.teacherZhangName)
-      const dateInput = page.getByTestId('lesson-date').locator('input')
-      await dateInput.fill(seed.lessonDate)
-      await dateInput.press('Tab')
-    }
-    await expect(page.getByTestId('pick-lesson').first()).toBeVisible({ timeout: 5_000 })
-  }).toPass({ timeout: 60_000 })
-}
-
-/** 来源格（周三第 1 节）里的课卡按钮。 */
-function sourceCard(page: Page, seed: ConfirmSeed): Locator {
-  return page.getByTestId(`workbench-cell-${seed.lessonDate}-1`).getByTestId('pick-lesson')
+/** 步骤 1 公共入口（helpers.openWorkbenchAtSourceLesson）：本 spec 的种子字段名不同，做一次适配。 */
+function openWizard(page: Page, seed: ConfirmSeed): Promise<void> {
+  return openWorkbenchAtSourceLesson(page, {
+    teacherName: seed.teacherZhangName,
+    lessonDate: seed.lessonDate,
+  })
 }
 
 /** 走到第③步（代课，指定候选教师）；narrow 时周网格不存在，点列表首卡。 */
@@ -235,7 +216,7 @@ async function toCoverStep3(page: Page, seed: ConfirmSeed, candidateId: number, 
   if (narrow) {
     await page.getByTestId('pick-lesson').first().click()
   } else {
-    await sourceCard(page, seed).click()
+    await sourceCard(page, seed.lessonDate).click()
   }
   await page.getByTestId('wizard-next-1').click()
   await page.getByTestId('choose-cover').click()
@@ -249,7 +230,7 @@ async function toCoverStep3(page: Page, seed: ConfirmSeed, candidateId: number, 
 /** 走到第③步（调课，指定目标日期；目标节次固定第 1 节）。 */
 async function toSwapStep3(page: Page, seed: ConfirmSeed, targetDate: string): Promise<void> {
   await openWizard(page, seed)
-  await sourceCard(page, seed).click()
+  await sourceCard(page, seed.lessonDate).click()
   await page.getByTestId('wizard-next-1').click()
   await page.getByTestId('choose-swap').click()
   await page.getByTestId(`swap-date-chip-${targetDate}`).click()
@@ -335,7 +316,7 @@ test('代课（同科）：结论卡、单格可视化、提交审批后课表�
   await page.getByTestId('wizard-again').click()
   await expect(page.getByTestId('wizard-panel-1')).toBeVisible()
   await expect(page.getByTestId('wizard-live')).toHaveText('第 1 步，共 3 步：选哪节课')
-  await expect(sourceCard(page, seed)).toContainText(seed.teacherZhangName)
+  await expect(sourceCard(page, seed.lessonDate)).toContainText(seed.teacherZhangName)
   expect(consoleErrors).toEqual([])
 })
 
@@ -522,7 +503,7 @@ test('返回上一步零写入：无 submit/confirm 请求，重进步骤 3 重�
   const api = await newContext()
   const seed = await seedConfirmScenario(api)
   await openWizard(page, seed)
-  await sourceCard(page, seed).click()
+  await sourceCard(page, seed.lessonDate).click()
   await page.getByTestId('wizard-next-1').click()
   await page.getByTestId('choose-cover').click()
   await page.getByTestId(`substitute-option-${seed.sameSubjectFreeId}`).locator('input').check()

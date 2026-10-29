@@ -1,5 +1,13 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { newContext, pickOption, seedWorkbenchScenario, uiLogin, type WorkbenchSeed } from './helpers'
+import {
+  newContext,
+  pickOption,
+  seedWorkbenchScenario,
+  shiftDate,
+  sourceCard,
+  uiLogin,
+  type WorkbenchSeed,
+} from './helpers'
 import { capture } from './screenshots'
 
 /**
@@ -9,15 +17,6 @@ import { capture } from './screenshots'
  *    跨科勾选有可读 label；
  * 3) 320×700：导航隐藏、步骤 1 与确认页变化可视化均切按天列表、页面无横向滚动。
  */
-
-/** 按本地时区平移日期（种子日期都在未来一周内）。 */
-function shiftDate(date: string, days: number): string {
-  const value = new Date(`${date}T00:00:00`)
-  value.setDate(value.getDate() + days)
-  const month = String(value.getMonth() + 1).padStart(2, '0')
-  const dayNo = String(value.getDate()).padStart(2, '0')
-  return `${value.getFullYear()}-${month}-${dayNo}`
-}
 
 /** 键盘流公共步：focus + Enter 触发按钮（本 spec 禁用 mouse.click）。 */
 async function pressButton(page: Page, testId: string): Promise<void> {
@@ -71,10 +70,10 @@ test('仅键盘完成一次代课确认：选课 → 动作卡 → 候选 → �
   await dateInput.press('Tab')
   await expect(page.getByTestId('pick-lesson').first()).toBeVisible({ timeout: 20_000 })
 
-  const sourceCard = page.getByTestId(`workbench-cell-${seed.lessonDate}-1`).getByTestId('pick-lesson')
-  await sourceCard.focus()
+  const card = sourceCard(page, seed.lessonDate)
+  await card.focus()
   await page.keyboard.press('Enter')
-  await expect(sourceCard).toHaveAttribute('aria-pressed', 'true')
+  await expect(card).toHaveAttribute('aria-pressed', 'true')
 
   // aria-live 容器：文本随步骤更新（步骤 1 → 2 → 3）。
   await expect(page.getByTestId('wizard-stepper')).toBeVisible()

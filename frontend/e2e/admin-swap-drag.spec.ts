@@ -1,5 +1,16 @@
-import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
-import { apiCall, apiLogin, isoDate, newContext, openWorkbenchAtSourceLesson, publishDraft, solveDraft } from './helpers'
+import { expect, test, type APIRequestContext } from '@playwright/test'
+import {
+  apiCall,
+  apiLogin,
+  dragCardToCell,
+  isoDate,
+  newContext,
+  openWorkbenchAtSourceLesson,
+  publishDraft,
+  shiftDate,
+  solveDraft,
+  sourceCard,
+} from './helpers'
 
 /**
  * 票 06：已发布课表拖拽进入调课预览（三步向导版）。
@@ -21,13 +32,6 @@ interface SwapDragSeed {
   targetDate: string
   monday: string
   thursday: string
-}
-
-/** 按本地时区平移日期（e2e 种子日期都是未来某周的周一~周五）。 */
-function shiftDate(date: string, days: number): string {
-  const value = new Date(`${date}T00:00:00`)
-  value.setDate(value.getDate() + days)
-  return isoDate(value)
 }
 
 async function seedSwapDragScenario(api: APIRequestContext): Promise<SwapDragSeed> {
@@ -177,27 +181,6 @@ async function seedSwapDragScenario(api: APIRequestContext): Promise<SwapDragSee
   }
 }
 
-/** 来源格（周三第 1 节）里的课卡按钮。 */
-function sourceCard(page: Page, seed: SwapDragSeed): Locator {
-  return page.getByTestId(`workbench-cell-${seed.lessonDate}-1`).getByTestId('pick-lesson')
-}
-
-/** 真实鼠标管线：按住来源卡 → 移到目标格中心 → 松手（与票 01 拖拽同节拍）。 */
-async function dragCardToCell(page: Page, from: Locator, to: Locator): Promise<void> {
-  await from.scrollIntoViewIfNeeded()
-  await to.scrollIntoViewIfNeeded()
-  const fromBox = await from.boundingBox()
-  const toBox = await to.boundingBox()
-  expect(fromBox).toBeTruthy()
-  expect(toBox).toBeTruthy()
-  await page.mouse.move(fromBox!.x + fromBox!.width / 2, fromBox!.y + fromBox!.height / 2)
-  await page.mouse.down()
-  await page.waitForTimeout(50)
-  await page.mouse.move(toBox!.x + toBox!.width / 2, toBox!.y + toBox!.height / 2, { steps: 10 })
-  await page.mouse.up()
-  await page.waitForTimeout(50)
-}
-
 test('拖拽到同班有课的目标格：预选调课带出目标日期/节次，生成方案后整环对照', async ({ page }) => {
   const api = await newContext()
   const seed = await seedSwapDragScenario(api)
@@ -220,7 +203,7 @@ test('拖拽到同班有课的目标格：预选调课带出目标日期/节次�
   const targetCell = page.getByTestId(`workbench-cell-${seed.targetDate}-2`)
   await expect(async () => {
     if ((await panel2.count()) === 0) {
-      await dragCardToCell(page, sourceCard(page, seed), targetCell)
+      await dragCardToCell(page, sourceCard(page, seed.lessonDate), targetCell)
     }
     await expect(panel2).toBeVisible({ timeout: 1_000 })
     await expect(page.getByTestId('choose-swap')).toHaveAttribute('aria-pressed', 'true', { timeout: 1_000 })
@@ -262,7 +245,7 @@ test('拖到空格、来源日之前与跨班格子：显示明确原因，留�
   // 空格（周三第 2 节本班没课）：空格只挪不补。
   const emptyCell = page.getByTestId(`workbench-cell-${seed.lessonDate}-2`)
   await expect(async () => {
-    await dragCardToCell(page, sourceCard(page, seed), emptyCell)
+    await dragCardToCell(page, sourceCard(page, seed.lessonDate), emptyCell)
     await expect(page.getByTestId('swap-drop-invalid')).toContainText('空格', { timeout: 1_000 })
   }).toPass({ timeout: 30_000 })
   await expect(page.getByTestId('wizard-panel-1')).toBeVisible()
@@ -272,7 +255,7 @@ test('拖到空格、来源日之前与跨班格子：显示明确原因，留�
   const beforeCell = page.getByTestId(`workbench-cell-${seed.monday}-1`)
   await expect(beforeCell).toContainText(seed.courseChineseName)
   await expect(async () => {
-    await dragCardToCell(page, sourceCard(page, seed), beforeCell)
+    await dragCardToCell(page, sourceCard(page, seed.lessonDate), beforeCell)
     await expect(page.getByTestId('swap-drop-invalid'))
       .toContainText('来源日期之前', { timeout: 1_000 })
   }).toPass({ timeout: 30_000 })
@@ -281,7 +264,7 @@ test('拖到空格、来源日之前与跨班格子：显示明确原因，留�
   const crossCell = page.getByTestId(`workbench-cell-${seed.thursday}-1`)
   await expect(crossCell).toContainText(seed.courseChineseName)
   await expect(async () => {
-    await dragCardToCell(page, sourceCard(page, seed), crossCell)
+    await dragCardToCell(page, sourceCard(page, seed.lessonDate), crossCell)
     await expect(page.getByTestId('swap-drop-invalid'))
       .toContainText(`跨班：目标格是${seed.class2Name}的课`, { timeout: 1_000 })
   }).toPass({ timeout: 30_000 })
@@ -315,7 +298,7 @@ test('取消预览后零变化：无申请、无生效、当前有效课表不�
   const targetCell = page.getByTestId(`workbench-cell-${seed.targetDate}-2`)
   await expect(async () => {
     if ((await page.getByTestId('wizard-panel-2').count()) === 0) {
-      await dragCardToCell(page, sourceCard(page, seed), targetCell)
+      await dragCardToCell(page, sourceCard(page, seed.lessonDate), targetCell)
     }
     await expect(page.getByTestId('wizard-panel-2')).toBeVisible({ timeout: 1_000 })
   }).toPass({ timeout: 30_000 })
@@ -354,7 +337,7 @@ test('表单与拖拽等价：同一目标（周五第 2 节）得到同一批�
   // 表单路径：窗口 chip 周五 + 目标节次 radio（第 2 节 写作）。
   // 来源课必须选周三第 1 节的语文（first() 会命中教师周一在高一2班的课）。
   await openWorkbenchAtSourceLesson(page, { teacherName: seed.teacherChineseName, lessonDate: seed.lessonDate })
-  await sourceCard(page, seed).click()
+  await sourceCard(page, seed.lessonDate).click()
   await page.getByTestId('wizard-next-1').click()
   await page.getByTestId('choose-swap').click()
   await expect(page.getByTestId('window-dates')).toBeVisible()
@@ -374,7 +357,7 @@ test('表单与拖拽等价：同一目标（周五第 2 节）得到同一批�
   const targetCell = page.getByTestId(`workbench-cell-${seed.targetDate}-2`)
   await expect(async () => {
     if ((await page.getByTestId('wizard-panel-2').count()) === 0) {
-      await dragCardToCell(page, sourceCard(page, seed), targetCell)
+      await dragCardToCell(page, sourceCard(page, seed.lessonDate), targetCell)
     }
     await expect(page.getByTestId('swap-target-period-2').locator('input'))
       .toBeChecked({ timeout: 1_000 })

@@ -60,3 +60,9 @@ export function monthDayCn(iso: string): string {
   const [, month, day] = iso.split('-')
   return `${Number(month)}月${Number(day)}日`
 }
+
+/** 从「周三第1节」这类节次标签里解析节次号；解析不出返回 0。 */
+export function periodNoOf(label: string | null | undefined): number {
+  const match = /第(\d+)节/.exec(label ?? '')
+  return match ? Number(match[1]) : 0
+}

@@ -1,5 +1,18 @@
-import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
-import { apiCall, apiLogin, isoDate, newContext, pickOption, publishDraft, solveDraft, uiLogin } from './helpers'
+import { expect, test, type APIRequestContext } from '@playwright/test'
+import {
+  apiCall,
+  apiLogin,
+  cnDate,
+  dragCardToCell,
+  isoDate,
+  newContext,
+  openWorkbenchAtSourceLesson,
+  publishDraft,
+  shiftDate,
+  solveDraft,
+  sourceCard,
+  weekdayOf,
+} from './helpers'
 import { capture } from './screenshots'
 
 /**
@@ -197,66 +210,6 @@ async function seedWizardScenario(context: APIRequestContext): Promise<WizardSee
   }
 }
 
-/** 按本地时区平移日期。 */
-function shiftDate(date: string, days: number): string {
-  const value = new Date(`${date}T00:00:00`)
-  value.setDate(value.getDate() + days)
-  return isoDate(value)
-}
-
-/** 与视图 monthDayCn 同款：11月2日（不补零）。 */
-function cnDate(date: string): string {
-  const [, month, day] = date.split('-')
-  return `${Number(month)}月${Number(day)}日`
-}
-
-const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-
-function weekdayOf(date: string): string {
-  return WEEKDAYS[new Date(`${date}T00:00:00`).getDay()]
-}
-
-/** 登录管理员 → 选种子教师 → 跳到来源课所在周，等课卡出现。 */
-async function openWizard(page: Page, seed: WizardSeed): Promise<void> {
-  await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/substitutions/workbench')
-  await expect(page.getByTestId('teacher-select')).toBeVisible()
-  // 选中前无副作用（选教师/填日期都不发写请求），整段可重试；成功信号 = 课卡出现。
-  // el-select 选中后标签渲染在 selected-item span、filter input 会被清空，
-  // 所以不能用 input value 判断是否选中。
-  await expect(async () => {
-    if ((await page.getByTestId('pick-lesson').count()) === 0) {
-      await pickOption(page.locator('.picker-card'), 'teacher-select', seed.teacherName)
-      // 种子学期从下周一开始：先选日期再等课表（今天的周没有课）。
-      const dateInput = page.getByTestId('lesson-date').locator('input')
-      await dateInput.fill(seed.lessonDate)
-      await dateInput.press('Tab')
-    }
-    await expect(page.getByTestId('pick-lesson').first()).toBeVisible({ timeout: 5_000 })
-  }).toPass({ timeout: 60_000 })
-}
-
-/** 来源格（周三第 1 节）里的课卡按钮。 */
-function sourceCard(page: Page, seed: WizardSeed): Locator {
-  return page.getByTestId(`workbench-cell-${seed.lessonDate}-1`).getByTestId('pick-lesson')
-}
-
-/** 真实鼠标管线：按住来源卡 → 移到目标格中心 → 松手（票 06 同节拍）。 */
-async function dragCardToCell(page: Page, from: Locator, to: Locator): Promise<void> {
-  await from.scrollIntoViewIfNeeded()
-  await to.scrollIntoViewIfNeeded()
-  const fromBox = await from.boundingBox()
-  const toBox = await to.boundingBox()
-  expect(fromBox).toBeTruthy()
-  expect(toBox).toBeTruthy()
-  await page.mouse.move(fromBox!.x + fromBox!.width / 2, fromBox!.y + fromBox!.height / 2)
-  await page.mouse.down()
-  await page.waitForTimeout(50)
-  await page.mouse.move(toBox!.x + toBox!.width / 2, toBox!.y + toBox!.height / 2, { steps: 10 })
-  await page.mouse.up()
-  await page.waitForTimeout(50)
-}
-
 /** 每个用例开始前挂 console/pageerror 监听；用例结束断言为空（见各 test 尾部）。 */
 let consoleErrors: string[] = []
 
@@ -271,7 +224,7 @@ test.beforeEach(({ page }) => {
 test('步骤1：周课表点选、下一步解锁、步骤条与单面板渲染', async ({ page }) => {
   const api = await newContext()
   const seed = await seedWizardScenario(api)
-  await openWizard(page, seed)
+  await openWorkbenchAtSourceLesson(page, seed)
 
   await expect(page.getByTestId('wizard-stepper')).toBeVisible()
   await expect(page.getByTestId('wizard-live')).toHaveText('第 1 步，共 3 步：选哪节课')
@@ -287,8 +240,8 @@ test('步骤1：周课表点选、下一步解锁、步骤条与单面板渲染'
   await capture(page, 't01-01-step1-grid')
 
   // 点选：卡片高亮（aria-pressed）+ dock 摘要 + 下一步解锁。整周课卡都可点。
-  await sourceCard(page, seed).click()
-  await expect(sourceCard(page, seed)).toHaveAttribute('aria-pressed', 'true')
+  await sourceCard(page, seed.lessonDate).click()
+  await expect(sourceCard(page, seed.lessonDate)).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByTestId('picked-summary')).toContainText(`${weekdayOf(seed.lessonDate)}第1节`)
   await expect(page.getByTestId('picked-summary')).toContainText(seed.teacherName)
   await expect(page.getByTestId('wizard-next-1')).toBeEnabled()
@@ -309,7 +262,7 @@ test('窄屏（390px）按天列表', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   const api = await newContext()
   const seed = await seedWizardScenario(api)
-  await openWizard(page, seed)
+  await openWorkbenchAtSourceLesson(page, seed)
 
   // 网格与列表二选一渲染（v-if，不是 CSS 隐藏）。
   await expect(page.locator('.wgrid')).toHaveCount(0)
@@ -331,9 +284,9 @@ test('窄屏（390px）按天列表', async ({ page }) => {
 test('动作卡：两方向来回切，切换链接在表单上方且 1280×720 首屏可见', async ({ page }) => {
   const api = await newContext()
   const seed = await seedWizardScenario(api)
-  await openWizard(page, seed)
+  await openWorkbenchAtSourceLesson(page, seed)
 
-  await sourceCard(page, seed).click()
+  await sourceCard(page, seed.lessonDate).click()
   await page.getByTestId('wizard-next-1').click()
   await expect(page.getByTestId('wizard-panel-2')).toBeVisible()
   await expect(page.getByTestId('wizard-need-2')).toHaveText('还差：选择一种调整方式')
@@ -401,9 +354,9 @@ test('动作卡：两方向来回切，切换链接在表单上方且 1280×720 
 test('代课候选：排除当前教师、同科排前、跨科标记、禁用候选原因可见', async ({ page }) => {
   const api = await newContext()
   const seed = await seedWizardScenario(api)
-  await openWizard(page, seed)
+  await openWorkbenchAtSourceLesson(page, seed)
 
-  await sourceCard(page, seed).click()
+  await sourceCard(page, seed.lessonDate).click()
   await page.getByTestId('wizard-next-1').click()
   await page.getByTestId('choose-cover').click()
   const picker = page.getByTestId('substitute-picker')
@@ -442,9 +395,9 @@ test('代课候选：排除当前教师、同科排前、跨科标记、禁用�
 test('调课窗口 chips：含当天共 7 天、周末置灰、选日期拉目标节次、空格日提示', async ({ page }) => {
   const api = await newContext()
   const seed = await seedWizardScenario(api)
-  await openWizard(page, seed)
+  await openWorkbenchAtSourceLesson(page, seed)
 
-  await sourceCard(page, seed).click()
+  await sourceCard(page, seed.lessonDate).click()
   await page.getByTestId('wizard-next-1').click()
   await page.getByTestId('choose-swap').click()
 
@@ -489,7 +442,7 @@ test('调课窗口 chips：含当天共 7 天、周末置灰、选日期拉目�
 test('拖拽有效：预选调课并带出目标日期/节次，落在步骤 2 不自动进步骤 3', async ({ page }) => {
   const api = await newContext()
   const seed = await seedWizardScenario(api)
-  await openWizard(page, seed)
+  await openWorkbenchAtSourceLesson(page, seed)
 
   // 拖拽只预选表单：swap-plans（生成方案）必须一个都不发。
   const swapPlanRequests: string[] = []
@@ -502,7 +455,7 @@ test('拖拽有效：预选调课并带出目标日期/节次，落在步骤 2 �
   // 拖拽零写入、可整体重试（CI 负载下 pointerup 偶发丢失）。
   await expect(async () => {
     if ((await panel2.count()) === 0) {
-      await dragCardToCell(page, sourceCard(page, seed), target)
+      await dragCardToCell(page, sourceCard(page, seed.lessonDate), target)
     }
     await expect(panel2).toBeVisible({ timeout: 1_000 })
     await expect(page.getByTestId('choose-swap')).toHaveAttribute('aria-pressed', 'true', { timeout: 1_000 })
@@ -526,7 +479,7 @@ test('拖拽有效：预选调课并带出目标日期/节次，落在步骤 2 �
 test('拖拽无效：空格与跨班给出原因，留在步骤 1 且零写入', async ({ page }) => {
   const api = await newContext()
   const seed = await seedWizardScenario(api)
-  await openWizard(page, seed)
+  await openWorkbenchAtSourceLesson(page, seed)
 
   // 登录已完成，此后页面上任何一个非 GET 请求都算写入；不只盯 swap-plans/swap-targets。
   const writeRequests: string[] = []
@@ -537,7 +490,7 @@ test('拖拽无效：空格与跨班给出原因，留在步骤 1 且零写入',
   // 空格（周一第 1 节）：原因条 + 留在步骤 1 + 未选中任何课。
   const mondayCell = page.getByTestId(`workbench-cell-${shiftDate(seed.lessonDate, -2)}-1`)
   await expect(async () => {
-    await dragCardToCell(page, sourceCard(page, seed), mondayCell)
+    await dragCardToCell(page, sourceCard(page, seed.lessonDate), mondayCell)
     await expect(page.getByTestId('swap-drop-invalid')).toContainText('空格', { timeout: 1_000 })
   }).toPass({ timeout: 30_000 })
   await expect(page.getByTestId('wizard-panel-1')).toBeVisible()
@@ -546,7 +499,7 @@ test('拖拽无效：空格与跨班给出原因，留在步骤 1 且零写入',
   // 跨班（周四第 1 节是高一2班的课）：原因里点出目标班级。
   const crossCell = page.getByTestId(`workbench-cell-${seed.crossDate}-1`)
   await expect(async () => {
-    await dragCardToCell(page, sourceCard(page, seed), crossCell)
+    await dragCardToCell(page, sourceCard(page, seed.lessonDate), crossCell)
     await expect(page.getByTestId('swap-drop-invalid'))
       .toContainText(`跨班：目标格是${seed.class2Name}的课`, { timeout: 1_000 })
   }).toPass({ timeout: 30_000 })
@@ -562,10 +515,10 @@ test('拖拽无效：空格与跨班给出原因，留在步骤 1 且零写入',
 test('①②步全流程走查：控制台零错误', async ({ page }) => {
   const api = await newContext()
   const seed = await seedWizardScenario(api)
-  await openWizard(page, seed)
+  await openWorkbenchAtSourceLesson(page, seed)
 
   // 步骤 1 → 代课：选候选、填原因。
-  await sourceCard(page, seed).click()
+  await sourceCard(page, seed.lessonDate).click()
   await page.getByTestId('wizard-next-1').click()
   await page.getByTestId('choose-cover').click()
   await page.getByTestId(`substitute-option-${seed.sameSubjectFreeId}`).locator('input').check()

@@ -76,7 +76,7 @@
         <ChangeDetails :rows="flow.diffRows" :rest="flow.restText" :people="flow.people" />
 
         <div class="cap" data-testid="confirm-deadline">
-          这个方案保留到 {{ flow.deadlineText }}；过期后回来点一下就能重新生成。
+          这个方案保留到 {{ flow.reservedText }}；过期后回来点一下就能重新生成。
         </div>
       </template>
     </div>
