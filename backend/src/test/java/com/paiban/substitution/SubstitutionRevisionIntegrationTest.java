@@ -152,7 +152,13 @@ class SubstitutionRevisionIntegrationTest extends ApiIntegrationTest {
 
         // 历史展示（评审修复 P3）：被后续修订替代的生效行以 SUPERSEDED 出现在记录里，
         // 与当前生效行并列可追溯（规格第 7 节「区分…已被后续安排替代」）。
+        // 记录接口默认只回 EFFECTIVE（既有调用方语义不变）；历史视图显式要 ALL。
         as(admin).when().get("/api/substitutions")
+                .then().statusCode(200)
+                .body("findAll { it.requestId == " + firstRequestId + " }.status",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.contains(
+                                Substitution.SUPERSEDED)));
+        as(admin).queryParam("status", "ALL").when().get("/api/substitutions")
                 .then().statusCode(200)
                 .body("findAll { it.requestId == " + firstRequestId + " }.status",
                         org.hamcrest.Matchers.contains(Substitution.SUPERSEDED))

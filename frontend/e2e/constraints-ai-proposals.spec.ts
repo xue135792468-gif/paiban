@@ -23,7 +23,9 @@ const expect = baseExpect.configure({ timeout: 15_000 })
  */
 test.describe.serial('约束配置：自然语言只读建议', () => {
   const suffix = Math.random().toString(36).slice(2, 8)
-  const teacherName = `王明${suffix}`
+  // 「慕」是 e2e 全站唯一姓氏： spoken 的「X老师」按前缀解析教师，
+  // 全量跑时其他 spec 也会建「王老师/张老师」等，重姓会让解析变成歧义候选。
+  const teacherName = `慕明${suffix}`
 
   let server: Server
   let api: APIRequestContext
@@ -94,12 +96,12 @@ test.describe.serial('约束配置：自然语言只读建议', () => {
     reply = JSON.stringify({
       proposals: [
         {
-          sourceText: '王老师周三下午不排课',
+          sourceText: '慕老师周三下午不排课',
           type: 'TEACHER_UNAVAILABLE',
           strength: 'HARD',
           status: 'READY',
           explanation: '周三下午全部禁排',
-          teacherName: '王老师',
+          teacherName: '慕老师',
           days: [3],
           section: 'AFTERNOON',
         },
@@ -120,7 +122,7 @@ test.describe.serial('约束配置：自然语言只读建议', () => {
 
     await uiLogin(page, 'admin', 'admin123')
     await openPanel(page)
-    await page.getByTestId('constraint-ai-input').fill('王老师周三下午不排课')
+    await page.getByTestId('constraint-ai-input').fill('慕老师周三下午不排课')
     await page.getByTestId('constraint-ai-generate').click()
 
     await expect(page.getByTestId('constraint-ai-run')).toBeVisible()
@@ -147,7 +149,7 @@ test.describe.serial('约束配置：自然语言只读建议', () => {
     await expect(page.getByTestId('constraint-ai-history-item').first()).toBeVisible()
     await page.getByTestId('constraint-ai-history-item').first().click()
     await expect(page.getByTestId('constraint-ai-history-detail')).toContainText(
-      '王老师周三下午不排课',
+      '慕老师周三下午不排课',
     )
     await page.getByTestId('constraint-ai-history-detail').locator('summary').click()
     await expect(page.getByTestId('constraint-ai-raw')).toContainText('TEACHER_UNAVAILABLE')
@@ -157,7 +159,7 @@ test.describe.serial('约束配置：自然语言只读建议', () => {
     delayMs = 4000
     await uiLogin(page, 'admin', 'admin123')
     await openPanel(page)
-    await page.getByTestId('constraint-ai-input').fill('王老师周三下午不排课')
+    await page.getByTestId('constraint-ai-input').fill('慕老师周三下午不排课')
     await page.getByTestId('constraint-ai-generate').click()
     await expect(page.getByTestId('constraint-ai-wait')).toBeVisible()
     await page.getByTestId('constraint-ai-cancel').click()
@@ -166,13 +168,13 @@ test.describe.serial('约束配置：自然语言只读建议', () => {
     await expect(page.getByTestId('constraint-proposal')).toHaveCount(0)
     // The late provider answer is recorded, not rendered.
     await expect(page.getByTestId('constraint-ai-run')).toHaveCount(0)
-    await expect(page.getByTestId('constraint-ai-input')).toHaveValue('王老师周三下午不排课')
+    await expect(page.getByTestId('constraint-ai-input')).toHaveValue('慕老师周三下午不排课')
   })
 
   test('勾选加入后仍是未保存，统一保存并留下确认记录', async ({ page }) => {
     await uiLogin(page, 'admin', 'admin123')
     await openPanel(page)
-    await page.getByTestId('constraint-ai-input').fill('王老师周三下午不排课')
+    await page.getByTestId('constraint-ai-input').fill('慕老师周三下午不排课')
     await page.getByTestId('constraint-ai-generate').click()
     await expect(page.getByTestId('constraint-ai-run')).toBeVisible()
 

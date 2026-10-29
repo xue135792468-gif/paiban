@@ -41,7 +41,8 @@ interface RescheduleSeed {
 /**
  * 票 07 种子：高一1班语文周三第 1 节（张）、数学周五第 1 节（王）、英语周一第 1 节
  * （李），另备无课的丙老师。{@code past} 直接把学期锚在 2025-09-01（全部已开课，
- * 用于冻结路径；首次调课走教师自助旧路径，不经管理端截止检查）。
+ * 用于冻结路径：P1 起批准一律受开课截止约束，过去学期连首次调课都无法生效，
+ * 因此这里断言的是「已开课不可操作」的用户可见语义）。
  */
 async function seedRescheduleScenario(
   api: APIRequestContext,
@@ -353,11 +354,12 @@ test('调课后代课：从周五落点指定丙老师，修订横幅标明取�
   expect(cover.revisionKind).toBe('CHANGE_SUBSTITUTE')
 })
 
-test('旧环成员已开课：冻结实例不可再操作，预览明确拒绝且零写入', async () => {
+test('已开课的实例不可再操作：批准与预览都被截止拒绝且零写入', async () => {
   const api = await newContext()
   const seed = await seedRescheduleScenario(api, true)
   const admin = await apiLogin(api)
-  // 学期锚在 2025-09-01：全部授课时刻已过。首次调课走教师自助旧路径（无截止检查）。
+  // 学期锚在过去：全部授课时刻已过。批准路径统一受开课截止约束（规格第 6 节），
+  // 因此这里连「先造一个已生效环」都不可能——这本身就是用户可见的冻结语义。
   const username = `respast_${Math.random().toString(36).slice(2, 8)}`
   await apiCall(api, admin, 'post', '/users', {
     username,
@@ -370,42 +372,50 @@ test('旧环成员已开课：冻结实例不可再操作，预览明确拒绝�
   const request = await apiCall(api, teacherToken, 'post', '/substitution-requests', {
     entryId: seed.entryChineseId,
     effectiveDate: seed.wednesday,
-    reason: '旧环种子',
+    reason: '已开课后尝试调课',
     type: 'SWAP',
     targetPeriodId: seed.fridayPeriodId,
   })
   const generated = await apiCall(
     api, admin, 'post', `/substitution-requests/${request.id}/plans`, {},
   )
-  await apiCall(api, admin, 'post', `/substitution-plans/${generated.plans[0].id}/approve`, {})
+  // 教师自助旧路径的整单批准同样在锁后按权威时钟拒绝。
+  const approve = await apiCallRaw(
+    api, admin, `/substitution-plans/${generated.plans[0].id}/approve`, {},
+  )
+  expect(approve.status).toBe(409)
+  expect(approve.body.message).toContain('开课')
 
-  const swapsBefore = await apiCall(api, admin, 'get', '/substitutions', undefined, {
-    type: 'SWAP',
-  })
-  expect(swapsBefore.length).toBe(2)
-
-  // 已开课环成员（周三的数学 + 周五的语文）冻结：再次调课与代课的预览都明确拒绝。
+  // 管理端再次调课与代课的预览都明确拒绝（截止先于冻结校验生效）。
+  // 没有已生效环时语文课仍在基线周三槽位，因此以周三为来源、周五为目标。
   const reschedule = await apiCallRaw(api, admin, '/substitution-workbench/swap-plans', {
     entryId: seed.entryChineseId,
-    lessonDate: seed.friday,
-    targetDate: seed.nextMonday,
-    targetPeriodId: seed.nextMondayPeriodId,
+    lessonDate: seed.wednesday,
+    targetDate: seed.friday,
+    targetPeriodId: seed.fridayPeriodId,
     reason: '已开课后再调课',
   })
   expect(reschedule.status).toBe(409)
   expect(reschedule.body.message).toContain('开课')
   const cover = await apiCallRaw(api, admin, '/substitution-workbench/previews', {
     entryId: seed.entryChineseId,
-    lessonDate: seed.friday,
+    lessonDate: seed.wednesday,
     substituteTeacherId: seed.teacherSpareId,
     reason: '已开课后代课',
   })
   expect(cover.status).toBe(409)
-  expect(cover.body.message).toContain('开课')
+  // 上一步教师提交的调课申请仍在待批（批准被截止拒绝），单实例单活跃修改
+  // 先把它挡在截止检查之前——同样是「不可再操作」，且不产生任何写入。
+  expect(cover.body.message).toContain('申请')
 
-  // 零写入：生效行仍是首次调课的两条。
+  // 零写入：没有任何生效行；待批申请仍只有教师那一单（失败的批准未改动它），
+  // 管理端两次被拒的预览也没有产生新申请。
   const swapsAfter = await apiCall(api, admin, 'get', '/substitutions', undefined, {
     type: 'SWAP',
   })
-  expect(swapsAfter.length).toBe(2)
+  expect(swapsAfter.length).toBe(0)
+  const pending = await apiCall(api, admin, 'get', '/substitution-requests', undefined, {
+    status: 'PENDING_APPROVAL',
+  })
+  expect(pending.length).toBe(1)
 })

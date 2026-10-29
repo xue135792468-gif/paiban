@@ -32,3 +32,24 @@
 ## 边界
 
 - 未执行任何生产数据操作、未部署、未 push；上线仍须独立授权（`--deploy` + 真实 PostgreSQL + 教务确认历史影响清单）。
+
+## 门禁修复轮（首次全量门禁暴露）
+
+首次 `verify.sh --full`（后端 1012 绿）在 Playwright 暴露 11 条失败，三类根因与修法：
+
+1. **records 接口默认值回归**（评审 P3 引入）：`/substitutions` 与导出默认只回
+   EFFECTIVE，历史视图显式传 `status=ALL`；`SubstitutionRevisionIntegrationTest`
+   同时钉住两种语义。修掉 admin-reschedule 的「净差行 toDayOfWeek」误取旧行。
+2. **e2e 种子锚在过去学期**：批准路径统一受开课截止约束后，`2025-09-01` 锚点的
+   批准全部被 409 拒绝。`seedSchool`/`seedSwapScenario`/`dateFor` 改为「最近的下个
+   周一」，substitution/substitution-swap/substitution-conversion 相应更新。
+3. **冻结用例无法再用 HTTP 造环**：过去学期连首次调课都无法生效（这正是新的
+   用户可见语义）。该用例改为直接断言「过去学期：批准/再次调课/代课预览全部 409、
+   零生效行、待批单不被改动」；部分已开课的环语义仍由后端固定时钟集成测试覆盖。
+4. **全量顺序暴露的存量 flaky**：
+   - `onboarding` 需要空库（向导只在无班级/作息时出现），改名 `00-onboarding.spec.ts`
+     以在造数据的 spec 之前运行（沿用仓库 `zz-` 命名约定的反向）。
+   - `constraints-ai` 的「王老师」前缀解析与 `admin-substitute-revision` 新建的
+     「王老师xxx」撞姓 → 歧义候选（待补齐）。改用全站唯一的「慕」姓。
+   - `global-scroll` 同页筛选：切换视图后内容高度变化会把滚动合法夹紧；断言改为
+     「未被无条件归零（>0）」，并把教师视角换成内容等高的一周网格视角（教室）。
