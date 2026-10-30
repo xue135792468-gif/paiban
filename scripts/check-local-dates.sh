@@ -6,7 +6,7 @@
 # 只拦「toISOString() 后直接截日期」这一种写法，容忍链式调用里的空格。
 #
 # Usage: scripts/check-local-dates.sh [src-dir]
-# Exit:  0 = 没有命中；1 = 至少一处命中
+# Exit:  0 = 没有命中；1 = 至少一处命中或扫描失败（grep 报错）
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -20,9 +20,18 @@ fi
 # 扫描 .ts/.vue，排除 *.spec.ts；grep 的 file:line:text 输出直接可用。
 pattern='toISOString\(\)[[:space:]]*\.[[:space:]]*(slice[[:space:]]*\([[:space:]]*0[[:space:]]*,[[:space:]]*10[[:space:]]*\)|substring[[:space:]]*\([[:space:]]*0[[:space:]]*,[[:space:]]*10[[:space:]]*\)|split[[:space:]]*\([[:space:]]*['"'"'"']T['"'"'"'][[:space:]]*\)[[:space:]]*\[[[:space:]]*0[[:space:]]*\])'
 
+status=0
 if matches=$(grep -rnE --include='*.ts' --include='*.vue' --exclude='*.spec.ts' "$pattern" "$SRC_DIR"); then
   echo "$matches" >&2
   echo "用 toISOString() 截日期会按 UTC 计算，北京时间 0–8 点会得到昨天；改用本地日期分量（如 today()）。" >&2
+  exit 1
+else
+  status=$?
+fi
+
+# grep 0 = 命中（上面已失败退出）；1 = 无命中（通过）；2+ = grep 自身出错。
+if [[ $status -ne 1 ]]; then
+  echo "local dates check: grep failed with exit status $status while scanning $SRC_DIR" >&2
   exit 1
 fi
 

@@ -38,7 +38,7 @@
 ## 本地开发
 
 - 构建前 `source .tools/env.sh`：JDK 21、Maven、E 盘仓库；`scripts/verify.sh` 会在 `.tools/env.sh` 存在时自动 source
-- 首次检出后执行 `git config core.hooksPath .githooks`：pre-commit 只对 staged 的 `frontend/**` 跑 eslint（`npm run lint` 覆盖全量，本地钩子只挡增量）；pre-push 在分支未包含 `origin/main` 时阻止推送。
+- 首次检出后执行 `git config core.hooksPath .githooks`：pre-commit 只对 staged 的 `frontend/**` 跑 eslint（`npm run lint` 覆盖全量，本地钩子只挡增量），并会无条件跑三个仓库级检查（票状态、本地日期、e2e helper 去重）；pre-push 在分支未包含 `origin/main` 时阻止推送。
 - `scripts/verify.sh` — 本地闸门，与 CI 同一条路径；`--full` 用隔离端口 28080/25173 跑 Playwright（可用 `PAIBAN_E2E_BACKEND_PORT` / `PAIBAN_E2E_FRONTEND_PORT` 覆盖），`--quick` 只做后端编译 + 前端 lint/build/unit，迭代期用；`--deploy` 在 `--full` 基础上要求 Docker 真跑 `PostgresContainerIT`，没有 Docker 直接失败
 - 跑全量门禁时重定向到日志再取退出码：`bash scripts/verify.sh --full > /tmp/verify.log 2>&1; echo $?`；不要接 `| tee`/`| tail`，管道会把失败退出码换成 0
 - 本机若 surefire 分叉被杀或 Mockito 报「could not self-attach / inline mock maker」，定向测试加 `-DforkCount=0` 跑（全量仍以 CI 为准）；全量门禁同样的抖动用 `PAIBAN_MVN_EXTRA_ARGS=-DforkCount=0 bash scripts/verify.sh --full`；不要再手工拼 `JAVA_TOOL_OPTIONS`

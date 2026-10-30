@@ -46,7 +46,7 @@
 | `07-rooms-before-publish` | 发布前没有教室，导入完发布不了；要一键补教室 | 已上线（2026-10-25，main `a8babf5`） |
 | `08-fill-missing-periods` | 文件里的节次比作息多，只能手工加格子 | 已上线（2026-10-25，main `a8babf5`） |
 | `09-flag-suspicious-teacher-names` | "信息技术"这类占位名被当成老师 | 已上线（2026-10-25，main `a8babf5`） |
-| `10-multiple-constraint-targets` | 约束多条、对象覆盖与折叠布局 | 已确认语义并拆 6 票，见 `.scratch/constraint-entries/`；先原型确认 |
+| `10-multiple-constraint-targets` | 约束多条、对象覆盖与折叠布局 | 已上线（2026-10-26 部署；constraint-entries 六票全部 done，证据见 `.scratch/constraint-entries/issues/` 与 git log） |
 | `14-natural-language-constraints` | 自然语言生成约束＋课程禁排＋逐项控制＋跨设备恢复 | 已上线并放行（2026-10-27，main `b21cb9a`，Flyway v37）；3.8-low 54/54、12/12，任务已绑定、开关已开 |
 | 票 02 遗留 | 整本导入没有批次进度/停止/重试（同步跑完） | 已上线（2026-10-27，main `b21cb9a`，Flyway v37）；见 `.scratch/workbook-background/` |
 
@@ -57,8 +57,8 @@
 - **六项修复已执行完毕。**
   11 → 12 → 13 → 07 → 08 → 09 已全部实现、评审并**上线**（main `a8babf5`，Flyway v25）。不要再重复实现；线上问题按「实现说明」与当天日志排查。各票实现说明写在 `.scratch/phase11-real-workbook-import/issues/*.md`。
   部署前须知：V24 给 `draft_lesson.period_id` 加外键，若线上存在历史悬空引用，迁移会直接失败（有意闸门）；迁移注释里带 preflight 查询，必须先查、按记录修复后再重建。
-- **10 的旧问题已答，使用独立规格与六张新票。**
-  读 `.scratch/constraint-entries/spec.md`。第一票 `/prototype` 出可点页面，经用户确认才放行生产实现；其余按 Blocked by 顺序推进。需求准备完成不代表原型已批准。
+- **10 的旧问题已答，六张新票已全部实现并上线（2026-10-26）。**
+  读 `.scratch/constraint-entries/spec.md`。constraint-entries 六票全部 done，2026-10-26 已部署，证据见 `.scratch/constraint-entries/issues/` 与 git log；无需再排期或重复实现。
 - **02 整本后台化已上线（2026-10-27，main `b21cb9a`，Flyway v37）。**
   读 `.scratch/workbook-background/spec.md` 与 `issues/`；实现说明在各票末尾，决策见 ADR-0029。评审遗留的票 04（重复提交单飞）已于 2026-10-28 **合并并部署（main `a355dde`）**，生产冒烟 200/409/一份草稿通过。
 - **14 已上线（2026-10-27，main `b21cb9a`，Flyway v37）。**

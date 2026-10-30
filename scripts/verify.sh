@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 本地闸门。默认：后端全量测试 + 前端 lint/build/unit/SFC + 后端 isBlank 棘轮；--full 追加 Playwright；
-# --quick 只做后端编译 + 前端 lint/build/unit/SFC + isBlank，迭代期用；
+# --quick 只做后端编译 + 前端 lint/build/unit/SFC/local dates/e2e helper 去重 + isBlank，迭代期用；
 # --deploy = --full + 要求 Docker（真跑 PostgresContainerIT），发布前用。
 set -euo pipefail
 cd "$(dirname "$0")/.."

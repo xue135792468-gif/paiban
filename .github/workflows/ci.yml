@@ -90,6 +90,10 @@ jobs:
         run: npm run test:unit
       - name: SFC size
         run: bash scripts/check-sfc-size.sh
+      - name: Local date check
+        run: bash scripts/check-local-dates.sh
+      - name: E2E helper duplicates
+        run: bash scripts/check-e2e-helpers.sh
       - name: isBlank ratchet
         run: bash scripts/check-blank-checks.sh
 
