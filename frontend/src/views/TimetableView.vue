@@ -141,6 +141,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import InfoTooltip from '@/components/InfoTooltip.vue'
 import { serverMessage } from '@/api/errors'
+import { today } from '@/components/substitution/types'
 
 interface Entry {
   id: number
@@ -201,7 +202,7 @@ const headClasses = computed(() =>
 
 const mode = ref<'class' | 'teacher' | 'room' | 'school'>('class')
 const view = ref<'latest' | 'baseline'>('latest')
-const date = ref<string>(new Date().toISOString().slice(0, 10))
+const date = ref<string>(today())
 const targetId = ref<number | null>(null)
 const entries = ref<Entry[]>([])
 const periods = ref<Period[]>([])

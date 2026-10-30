@@ -6,7 +6,7 @@ Docker 一律 `sudo -n`。代码变更才需要重建；纯文档变更只要 `u
 **该机 sshd 对短时间连续连接限流**：前台跑 `docker compose build` 会被 `Connection closed by remote host` 打断（没并发也一样）。
 所以：**长命令一律 `setsid nohup ... > 日志 2>&1 &` 后台跑再轮询**，远程步骤尽量合并进单次 SSH。
 
-**部署前本地门禁**：`bash scripts/verify.sh --deploy`。它要求 Docker 真跑 `PostgresContainerIT`；本机没有 Docker 时，用 PR 的 CI backend job 确认同一测试通过，不要用 `--full` 跳过真实 PostgreSQL 验证来冒充发布门禁。
+**部署前本地门禁**：`bash scripts/verify.sh --deploy`。它要求 Docker 真跑 `PostgresContainerIT`；本机没有 Docker 时，用 PR 的 CI backend job 确认同一测试通过，不要用 `--full` 跳过真实 PostgreSQL 验证来冒充发布门禁。CI 的 backend job 偶发因 GitHub 运行器无 Docker 报 `PostgresContainerIT: Could not find a valid Docker environment`，先 `gh run rerun <run-id> --failed`，并以代码提交那次 CI 的结果为准，不要当代码回归。
 
 0. 进服务器：`ssh -i C:/Users/liu/.ssh/LightsailDefaultKey-ap-southeast-2.pem ubuntu@15.134.169.2`
 1. **备份**（失败就停，别往下走）：

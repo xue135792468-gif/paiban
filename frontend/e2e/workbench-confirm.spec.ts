@@ -203,7 +203,7 @@ function mmdd(date: string): string {
 }
 
 /** 步骤 1 公共入口（helpers.openWorkbenchAtSourceLesson）：本 spec 的种子字段名不同，做一次适配。 */
-function openWizard(page: Page, seed: ConfirmSeed): Promise<void> {
+function openConfirmWizard(page: Page, seed: ConfirmSeed): Promise<void> {
   return openWorkbenchAtSourceLesson(page, {
     teacherName: seed.teacherZhangName,
     lessonDate: seed.lessonDate,
@@ -212,7 +212,7 @@ function openWizard(page: Page, seed: ConfirmSeed): Promise<void> {
 
 /** 走到第③步（代课，指定候选教师）；narrow 时周网格不存在，点列表首卡。 */
 async function toCoverStep3(page: Page, seed: ConfirmSeed, candidateId: number, narrow = false): Promise<void> {
-  await openWizard(page, seed)
+  await openConfirmWizard(page, seed)
   if (narrow) {
     await page.getByTestId('pick-lesson').first().click()
   } else {
@@ -229,7 +229,7 @@ async function toCoverStep3(page: Page, seed: ConfirmSeed, candidateId: number, 
 
 /** 走到第③步（调课，指定目标日期；目标节次固定第 1 节）。 */
 async function toSwapStep3(page: Page, seed: ConfirmSeed, targetDate: string): Promise<void> {
-  await openWizard(page, seed)
+  await openConfirmWizard(page, seed)
   await sourceCard(page, seed.lessonDate).click()
   await page.getByTestId('wizard-next-1').click()
   await page.getByTestId('choose-swap').click()
@@ -502,7 +502,7 @@ test('方案 A/B：页签切换格数变化（A=2、B≥3），明细同步', as
 test('返回上一步零写入：无 submit/confirm 请求，重进步骤 3 重新生成', async ({ page }) => {
   const api = await newContext()
   const seed = await seedConfirmScenario(api)
-  await openWizard(page, seed)
+  await openConfirmWizard(page, seed)
   await sourceCard(page, seed.lessonDate).click()
   await page.getByTestId('wizard-next-1').click()
   await page.getByTestId('choose-cover').click()

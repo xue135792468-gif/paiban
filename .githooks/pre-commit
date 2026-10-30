@@ -4,8 +4,17 @@
 # while the unit tests stay green, without paying for a full lint per commit.
 # Also runs the backend isBlank ratchet for staged Java: that check lives only
 # in verify.sh, so an unwired hook lets new isBlank calls reach the full gate.
+# Three repo-level guards run on every commit, even documentation-only ones:
+# stale ticket status, production local-date formatting, and duplicate e2e
+# helpers. They are cheap, and skipping them for docs would let a problem reach
+# the full gate unnoticed.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# Unconditional: these checks do not depend on which file types are staged.
+bash scripts/check-ticket-status.sh
+bash scripts/check-local-dates.sh
+bash scripts/check-e2e-helpers.sh
 
 if git diff --cached --name-only --diff-filter=ACMR | grep -qE '^backend/.*\.java$'; then
   bash scripts/check-blank-checks.sh

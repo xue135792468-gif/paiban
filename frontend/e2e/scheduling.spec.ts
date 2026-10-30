@@ -1,5 +1,5 @@
 import { expect, test, type ElementHandle, type Page } from '@playwright/test'
-import { apiCall, apiLogin, newContext, seedSchool, uiLogin } from './helpers'
+import { apiCall, apiLogin, newContext, seedSchool, solveDraft, uiLogin } from './helpers'
 import { capture } from './screenshots'
 
 type Api = Awaited<ReturnType<typeof newContext>>
@@ -18,23 +18,6 @@ const TOAST_PUBLISHED = /课表已发布/
  */
 function toast(page: Page, text: RegExp) {
   return page.locator('.el-message').filter({ hasText: text })
-}
-
-async function solveDraft(api: Api, semesterId: number): Promise<number> {
-  const token = await apiLogin(api)
-  const job = await apiCall(api, token, 'post', `/scheduling-jobs?semesterId=${semesterId}`, {
-    maxSeconds: 5,
-  })
-  const deadline = Date.now() + 120_000
-  while (Date.now() < deadline) {
-    const current = await apiCall(api, token, 'get', `/scheduling-jobs/${job.id}`)
-    if (current.status === 'COMPLETED') return current.draftId as number
-    if (current.status === 'FAILED' || current.status === 'CANCELLED') {
-      throw new Error(`scheduling failed: ${current.errorMessage}`)
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500))
-  }
-  throw new Error('scheduling timed out')
 }
 
 async function fireDrag(page: Page, node: ElementHandle, type: string) {

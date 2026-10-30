@@ -56,6 +56,12 @@ echo "==> frontend: unit tests"
 echo "==> frontend: SFC size"
 bash scripts/check-sfc-size.sh
 
+echo "==> frontend: local dates"
+bash scripts/check-local-dates.sh
+
+echo "==> e2e: helper duplicates"
+bash scripts/check-e2e-helpers.sh
+
 echo "==> backend: isBlank ratchet"
 bash scripts/check-blank-checks.sh
 

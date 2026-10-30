@@ -74,10 +74,4 @@
 4. 上线后冒烟：导入 → 补教室 → 发布 → 调代一单（申请 SWAP 必须带 `targetPeriodId`）。
 5. 回写当天日志（`D:\work Buddy-cn\2026-10-11-22-22-40\.workbuddy\memory\`）与 `MEMORY.md`，重跑 `~/ops/state-snapshot.sh`。
 
-## 本轮确认与下一道门
-
-用户已确认六项修复的准备、07/08 的补齐方式、10 的布局/阈值/控制层级/组合语义与六票拆分，14 下一期、02 独立下一批。完整记录在 preparation/README。
-
-**六项修复已合并 `main`（`a8babf5`）并部署上线**：真实 PostgreSQL 迁移验证 + 生产 V24 preflight（悬空 0）+ 备份（`paiban-pre-v24-20261025T130850Z.sql.gz`）+ Flyway v24/v25 + 四容器 healthy + 冒烟 15 项全绿。**当前生产副作用**：semester 1 已有发布基线（4 条 entry），再发布 draft 1/2 会 409；两份 546 节草稿仍在，需要时可清掉 draft 4 的 entries/publish 记录或换学期测试。
-
-票 10 的可点击原型仍未制作、未经用户确认；这是 10 的第一票验收门槛。14 与 02 已于 2026-10-27 上线。
+历史归档：2026-10-25 及之前的确认记录见 git 历史。

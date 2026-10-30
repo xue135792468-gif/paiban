@@ -45,7 +45,9 @@
 - 并行分支新增 Flyway 迁移前，先查所有 worktree/分支已占用的最高版本，按合并顺序续号（允许跳号）；`scripts/check-migrations.sh` 在本地闸门与 CI 拦重复版本
 - 单条 E2E 用 `scripts/e2e.sh <spec>`：自动 source `.tools/env.sh`、隔离端口，并把 Git Bash 下的 Maven 路径转成 Windows 绝对路径
 - 多票据 worktree：用 `scripts/worktree-add.sh <name> <branch> [base]` 创建、`scripts/worktree-remove.sh <name>` 清理；脚本会联接 `frontend/node_modules` 和 `.tools`（`--full` 需要），不要直接 `rm -rf`（会顺着 junction 删主仓库依赖）
-- 多票并行时每票只跑定向测试；全量 `verify.sh` 只在集成分支合并完成后跑一次，合并时只跑受影响范围。
+- 多票并行时每票只跑定向测试；全量 `verify.sh` 在评审修复与票面状态/实现说明落盘之后、发布前跑一次；之后只允许文档类提交。
+- 本机内存常低于 2GB：定向单测用 `npx vitest run --no-file-parallelism <路径>`，全量门禁用 `VITEST_MAX_WORKERS=4 bash scripts/verify.sh --full`；vitest 与 e2e 不并发。
+- 重活（全量门禁、批量 e2e、重建）前先 `bash scripts/doctor.sh` 看内存/端口/磁盘。
 - 串行依赖的票据链在集成分支上顺序实现；只有真正可并行 frontier 才开 worktree
 - 多个会话并行时各自开 worktree，主仓库只用于合并；提交只 stage 本任务路径（用 `git add <path>`，不要 `git add -A`），别把另一个会话的未提交改动带进自己的提交
 - 性能基准（ADR-0017，约 3 分钟）：`cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test`

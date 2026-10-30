@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
-import { API, apiCall, apiLogin, newContext, uiLogin } from './helpers'
+import { API, apiCall, apiLogin, newContext, solveDraft, uiLogin } from './helpers'
 
 /**
  * Manual swap coverage. The seed is deliberately separate from `seedSchool`:
@@ -166,23 +166,6 @@ async function seedSwapSchool(api: APIRequestContext): Promise<SwapSeed> {
     teacherBName,
     teacherCName,
   }
-}
-
-async function solveDraft(api: APIRequestContext, semesterId: number): Promise<number> {
-  const token = await apiLogin(api)
-  const job = await apiCall(api, token, 'post', `/scheduling-jobs?semesterId=${semesterId}`, {
-    maxSeconds: 5,
-  })
-  const deadline = Date.now() + 120_000
-  while (Date.now() < deadline) {
-    const current = await apiCall(api, token, 'get', `/scheduling-jobs/${job.id}`)
-    if (current.status === 'COMPLETED') return current.draftId as number
-    if (current.status === 'FAILED' || current.status === 'CANCELLED') {
-      throw new Error(`scheduling failed: ${current.errorMessage}`)
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500))
-  }
-  throw new Error('scheduling timed out')
 }
 
 async function draftDetail(api: APIRequestContext, draftId: number): Promise<DraftDetail> {
