@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type APIResponse, type Page } from '@playwright/test'
-import { API, apiCall, apiLogin, newContext, publishDraft, solveDraft, uiLogin } from './helpers'
+import { API, apiCall, apiLogin, isoDate, newContext, publishDraft, solveDraft, uiLogin } from './helpers'
 
 /** 不抛错的原始调用：冻结路径的 409 需要读取状态码与错误消息。 */
 async function apiCallRaw(
@@ -410,8 +410,8 @@ test('已开课的实例不可再操作：批准与预览都被截止拒绝且�
   // 先把它挡在截止检查之前——同样是「不可再操作」，且不产生任何写入。
   expect(cover.body.message).toContain('申请')
 
-  // 新界面同语义：管理端工作台发起再次调课，第③步生成方案被截止拒绝，
-  // confirm-error 原样显示后端拒绝原文，不跳步、不产生写入。
+  // 新界面语义（过去日期拦截上线后）：工作台不再允许选中过去日期/课卡，
+  // 用户在界面上就无法发起已开课的调整；服务端截止仍由上面的 API 断言兜底。
   await uiLogin(page, 'admin', 'admin123')
   await page.goto('/substitutions/workbench')
   await expect(page.getByTestId('teacher-select')).toBeVisible()
@@ -421,25 +421,20 @@ test('已开课的实例不可再操作：批准与预览都被截止拒绝且�
   await expect(dropdown.getByText(seed.teacherChineseName, { exact: true })).toBeVisible()
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Enter')
-  // 过去学期：先跳到种子周再等课卡（本周课表为空时新界面不渲染网格）。
+
+  // 手输过去日期会被日期选择器/守卫挡住（值保持今天）；过去课卡不可选中。
   const dateInput = page.getByTestId('lesson-date').locator('input')
   await dateInput.fill(seed.wednesday)
   await dateInput.press('Tab')
-  await expect(page.getByTestId('pick-lesson').first()).toBeVisible({ timeout: 20_000 })
-  await page.getByTestId('pick-lesson').first().click()
-  await page.getByTestId('wizard-next-1').click()
-  await page.getByTestId('choose-swap').click()
-  await page.getByTestId(`swap-date-chip-${seed.friday}`).click()
-  const period = page.getByTestId('swap-target-period-1')
-  await expect(period).toBeVisible()
-  await expect(period).toContainText('数学')
-  await period.locator('input').check()
-  await page.getByTestId('wizard-next-2').click()
-  const errorBar = page.getByTestId('confirm-error')
-  await expect(errorBar).toContainText('开课')
-  await expect(errorBar).toContainText('不能再调整')
-  await expect(page.getByTestId('wizard-panel-3')).toBeVisible()
-  await expect(page.getByTestId('regenerate')).toBeEnabled()
+  await expect(dateInput).toHaveValue(isoDate(new Date()))
+  const cards = page.getByTestId('pick-lesson')
+  if ((await cards.count()) > 0) {
+    await expect(cards.first()).toHaveAttribute('aria-disabled', 'true')
+    await expect(cards.first()).toBeDisabled()
+    await cards.first().dispatchEvent('click')
+    await expect(page.getByTestId('wizard-next-1')).toBeDisabled()
+    await expect(page.getByTestId('picked-summary')).toHaveCount(0)
+  }
 
   // 零写入：没有任何生效行；待批申请仍只有教师那一单（失败的批准未改动它），
   // 管理端两次被拒的预览也没有产生新申请。

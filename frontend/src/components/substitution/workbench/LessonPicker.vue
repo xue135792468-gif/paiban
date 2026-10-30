@@ -3,7 +3,7 @@
     <div class="phead">
       <span class="idx">1</span>
       <h2>选哪节课</h2>
-      <span class="hint">列头是实际日期，点一节课开始调整；选中后也可以直接拖到同班另一节课上预选调课</span>
+      <span class="hint">列头是实际日期，只能调整今天及以后的课</span>
     </div>
     <div class="pbody">
       <div class="toolbar picker-card">
@@ -27,6 +27,7 @@
               :model-value="date"
               type="date"
               value-format="YYYY-MM-DD"
+              :disabled-date="pickerDisabledDate"
               placeholder="选择日期（浏览该周）"
               style="width: 100%"
               @update:model-value="onDateChange"
@@ -65,11 +66,17 @@
                 v-if="cellAt(day.index, row)"
                 type="button"
                 class="lesson"
-                :class="{ chosen: cellAt(day.index, row)!.id === selectedEntryId }"
+                :class="{
+                  chosen: cellAt(day.index, row)!.id === selectedEntryId,
+                  'is-past': isPast(day.date),
+                }"
+                :disabled="isPast(day.date)"
+                :aria-disabled="isPast(day.date) ? 'true' : 'false'"
+                :title="isPast(day.date) ? '已过去的日期不能调整' : undefined"
                 data-testid="pick-lesson"
                 :aria-pressed="cellAt(day.index, row)!.id === selectedEntryId ? 'true' : 'false'"
-                @pointerdown="onPointerDown($event, cellAt(day.index, row)!)"
-                @click="onLessonClick(cellAt(day.index, row)!)"
+                @pointerdown="isPast(day.date) ? undefined : onPointerDown($event, cellAt(day.index, row)!)"
+                @click="isPast(day.date) ? undefined : onLessonClick(cellAt(day.index, row)!)"
               >
                 <span class="c">
                   {{ cellAt(day.index, row)!.courseName }} · {{ cellAt(day.index, row)!.teacherName }}
@@ -92,10 +99,16 @@
             :key="`m-${item.entry.id}`"
             type="button"
             class="lesson"
-            :class="{ chosen: item.entry.id === selectedEntryId }"
+            :class="{
+              chosen: item.entry.id === selectedEntryId,
+              'is-past': isPast(item.date),
+            }"
+            :disabled="isPast(item.date)"
+            :aria-disabled="isPast(item.date) ? 'true' : 'false'"
+            :title="isPast(item.date) ? '已过去的日期不能调整' : undefined"
             data-testid="pick-lesson"
             :aria-pressed="item.entry.id === selectedEntryId ? 'true' : 'false'"
-            @click="onLessonClick(item.entry)"
+            @click="isPast(item.date) ? undefined : onLessonClick(item.entry)"
           >
             <span class="c">
               {{ item.day.label }} {{ item.day.monthDay }} · 第{{ item.entry.periodNo }}节 ·
@@ -121,20 +134,29 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { weekDates, weekdayLabel } from './swapTargetRules'
+import { isoOf, weekDates, weekdayLabel } from './swapTargetRules'
+import { isPastDate, today } from '../types'
 import type { Entry } from '../types'
 
-const props = defineProps<{
-  teachers: Array<{ id: number; name: string }>
-  teacherId: number | null
-  date: string
-  entries: Entry[]
-  loading: boolean
-  timetableError: string
-  weekStart: string
-  selectedEntryId: number | null
-  dragInvalidReason: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    teachers: Array<{ id: number; name: string }>
+    teacherId: number | null
+    date: string
+    minDate?: string
+    disabledDate?: (d: Date) => boolean
+    entries: Entry[]
+    loading: boolean
+    timetableError: string
+    weekStart: string
+    selectedEntryId: number | null
+    dragInvalidReason: string
+  }>(),
+  {
+    minDate: '',
+    disabledDate: undefined,
+  },
+)
 
 const emit = defineEmits<{
   'update:teacherId': [value: number | null]
@@ -144,6 +166,16 @@ const emit = defineEmits<{
   retry: []
   'clear-drag-invalid': []
 }>()
+
+function isPast(dateIso: string): boolean {
+  if (props.minDate) return dateIso < props.minDate
+  return isPastDate(dateIso)
+}
+
+function pickerDisabledDate(d: Date): boolean {
+  if (props.disabledDate) return props.disabledDate(d)
+  return isoOf(d) < (props.minDate || today())
+}
 
 const days = computed(() =>
   weekDates(props.weekStart).map((date, index) => ({
@@ -449,6 +481,13 @@ onBeforeUnmount(cleanupDrag)
   background: var(--brand-soft);
   border-color: var(--brand);
   box-shadow: inset 0 0 0 1px var(--brand);
+}
+.lesson.is-past {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.lesson.is-past:hover {
+  border-color: var(--line-2);
 }
 .lesson .c {
   font-size: 13px;

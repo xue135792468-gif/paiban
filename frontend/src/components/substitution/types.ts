@@ -184,8 +184,17 @@ export function weekdayOf(date: string) {
   return day === 0 ? 7 : day
 }
 
-export function today() {
-  return new Date().toISOString().slice(0, 10)
+export function today(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+export function isPastDate(dateIso: string): boolean {
+  if (!dateIso) return false
+  return dateIso < today()
 }
 
 // ---------------------------------------------------------------------

@@ -7,10 +7,12 @@ import {
   isoDate,
   newContext,
   openWorkbenchAtSourceLesson,
+  pickOption,
   publishDraft,
   shiftDate,
   solveDraft,
   sourceCard,
+  uiLogin,
   weekdayOf,
 } from './helpers'
 import { capture } from './screenshots'
@@ -207,6 +209,111 @@ async function seedWizardScenario(context: APIRequestContext): Promise<WizardSee
     crossDate: thursday,
     saturday,
     sunday,
+  }
+}
+
+interface PastWeekSeed {
+  teacherId: number
+  teacherName: string
+  /** 测试进程按本地时区算出的今天；页面默认日期必须等于它。 */
+  today: string
+  /** 今天所在周的周一~周五（默认浏览周）。 */
+  weekDates: string[]
+}
+
+/**
+ * 过去日期守护种子：学期从两周前开始，教师周一~周五第 1 节各一节课，
+ * 覆盖「默认周里既有已过去课卡、也有今天/未来课卡」的场景。
+ */
+async function seedPastWeekScenario(context: APIRequestContext): Promise<PastWeekSeed> {
+  const token = await apiLogin(context)
+  const suffix = Math.random().toString(36).slice(2, 8)
+  const now = new Date()
+  const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const semesterStart = new Date(todayDate)
+  semesterStart.setDate(semesterStart.getDate() - 14)
+  const semesterEnd = new Date(todayDate)
+  semesterEnd.setDate(semesterEnd.getDate() + 100)
+
+  const semester = await apiCall(context, token, 'post', '/semesters', {
+    name: `E2E过去日期-${suffix}`,
+    startDate: isoDate(semesterStart),
+    endDate: isoDate(semesterEnd),
+  })
+  await apiCall(context, token, 'post', `/semesters/${semester.id}/set-current`)
+  await apiCall(context, token, 'post', `/semesters/${semester.id}/periods/default`, {
+    morningCount: 1,
+    afternoonCount: 0,
+    eveningCount: 0,
+    days: [1, 2, 3, 4, 5],
+  })
+  const periodRows = await apiCall(context, token, 'get', `/semesters/${semester.id}/periods`)
+  const periods: Record<string, number> = {}
+  for (const row of periodRows) {
+    periods[`${row.dayOfWeek}-${row.periodNo}`] = row.id
+  }
+
+  const grade = await apiCall(context, token, 'post', '/grades?semesterId=' + semester.id, {
+    name: `高一过去${suffix}`,
+    sortOrder: 1,
+  })
+  const adminClass = await apiCall(context, token, 'post', `/classes?semesterId=${semester.id}`, {
+    gradeId: grade.id,
+    name: `高一1班过去${suffix}`,
+    studentCount: 45,
+  })
+  const teacher = await apiCall(context, token, 'post', '/teachers', {
+    name: `过去张${suffix}`,
+    employeeNo: `PZ-${suffix}`,
+    subject: '语文',
+  })
+  const course = await apiCall(context, token, 'post', '/courses', {
+    name: `语文过去${suffix}`,
+    subject: '语文',
+    allowConsecutive: false,
+  })
+  const room = await apiCall(context, token, 'post', '/rooms', {
+    name: `过去教室${suffix}`,
+    capacity: 50,
+    type: 'NORMAL',
+  })
+  await apiCall(context, token, 'post', '/assignments', {
+    classId: adminClass.id,
+    courseId: course.id,
+    teacherId: teacher.id,
+    weeklyLessons: 5,
+  })
+
+  const draftId = await solveDraft(context, semester.id)
+  const detail = await apiCall(context, token, 'get', `/timetable-drafts/${draftId}`)
+  const lessonIds = detail.lessons
+    .filter((row: any) => row.classId === adminClass.id && row.courseId === course.id)
+    .map((row: any) => row.id)
+  if (lessonIds.length !== 5) {
+    throw new Error('unexpected draft lessons for the past-week seed')
+  }
+  for (let dayOfWeek = 1; dayOfWeek <= 5; dayOfWeek += 1) {
+    await apiCall(context, token, 'patch', `/timetable-drafts/${draftId}/lessons/${lessonIds[dayOfWeek - 1]}`, {
+      periodId: periods[`${dayOfWeek}-1`],
+      roomId: room.id,
+      force: true,
+    })
+  }
+  await publishDraft(context, draftId)
+
+  const monday = new Date(todayDate)
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
+  const weekDates = Array.from({ length: 5 }, (_, index) => {
+    const day = new Date(monday)
+    day.setDate(monday.getDate() + index)
+    return isoDate(day)
+  })
+
+  return {
+    teacherId: teacher.id,
+    teacherName: teacher.name,
+    today: isoDate(todayDate),
+    weekDates,
   }
 }
 
@@ -541,5 +648,92 @@ test('①②步全流程走查：控制台零错误', async ({ page }) => {
   await page.getByTestId(`swap-date-chip-${seed.targetDate}`).click()
   await expect(page.getByTestId('swap-target-period')).toBeVisible()
 
+  expect(consoleErrors).toEqual([])
+})
+
+test('过去日期与课卡不可选：第①步默认今天，昨天置灰', async ({ page }) => {
+  const api = await newContext()
+  const seed = await seedPastWeekScenario(api)
+
+  await uiLogin(page, 'admin', 'admin123')
+  await page.goto('/substitutions/workbench')
+  await expect(page.getByTestId('teacher-select')).toBeVisible()
+
+  // 默认日期 = 测试进程按本地时区算出的今天（不是 UTC 的昨天）。
+  const dateInput = page.getByTestId('lesson-date').locator('input')
+  await expect(dateInput).toHaveValue(seed.today)
+
+  // 日期面板：今天可选、昨天禁用（跨月时先翻到上个月）。
+  await dateInput.click()
+  const panel = page.locator('.el-picker-panel:visible').last()
+  const table = panel.locator('.el-date-table')
+  await expect(table).toBeVisible()
+  const todayCell = table.locator('td.available.today').first()
+  await expect(todayCell).toBeVisible()
+  await expect(todayCell).not.toHaveClass(/disabled/)
+
+  const yesterday = shiftDate(seed.today, -1)
+  const yesterdayDay = Number(yesterday.slice(8))
+  if (yesterday.slice(0, 7) === seed.today.slice(0, 7)) {
+    const yesterdayCell = table
+      .locator('td.disabled:not(.prev-month):not(.next-month)', {
+        hasText: new RegExp(`^\\s*${yesterdayDay}\\s*$`),
+      })
+      .first()
+    await expect(yesterdayCell).toHaveClass(/disabled/)
+  } else {
+    await panel.locator('.el-date-picker__prev-btn').click()
+    const yesterdayCell = table
+      .locator('td.disabled:not(.prev-month):not(.next-month)', {
+        hasText: new RegExp(`^\\s*${yesterdayDay}\\s*$`),
+      })
+      .first()
+    await expect(yesterdayCell).toHaveClass(/disabled/)
+  }
+  await page.keyboard.press('Escape')
+  await expect(panel).toBeHidden()
+
+  // 默认周：周一~周五各一节课；过去日期的课卡不可用。
+  await expect(async () => {
+    if ((await page.getByTestId('pick-lesson').count()) === 0) {
+      await pickOption(page.locator('.picker-card'), 'teacher-select', seed.teacherName)
+    }
+    await expect(page.getByTestId('pick-lesson')).toHaveCount(5, { timeout: 5_000 })
+  }).toPass({ timeout: 60_000 })
+  const cardOn = (date: string) =>
+    page.getByTestId(`workbench-cell-${date}-1`).getByTestId('pick-lesson')
+
+  const pastDates = seed.weekDates.filter((date) => date < seed.today)
+  for (const date of pastDates) {
+    const card = cardOn(date)
+    await expect(card).toHaveAttribute('aria-disabled', 'true')
+    await expect(card).toBeDisabled()
+    await expect(card).toHaveAttribute('title', '已过去的日期不能调整')
+    await expect(card).toHaveClass(/is-past/)
+  }
+  if (pastDates.length > 0) {
+    // 强制派发 click 也选不中：next 仍禁用、dock 不出现已选摘要。
+    await cardOn(pastDates[0]).dispatchEvent('click')
+    await expect(page.getByTestId('wizard-next-1')).toBeDisabled()
+    await expect(page.getByTestId('picked-summary')).toHaveCount(0)
+  }
+
+  // 今天或未来的课卡正常选中。
+  const futureDate = seed.weekDates.find((date) => date >= seed.today)
+  if (futureDate) {
+    await cardOn(futureDate).click()
+  } else {
+    // 今天在周末时默认周全是过去：跳到下周一验证未来课卡可选。
+    const nextMonday = shiftDate(seed.weekDates[0], 7)
+    await dateInput.fill(nextMonday)
+    await dateInput.press('Tab')
+    await expect(page.getByTestId('pick-lesson')).toHaveCount(5)
+    await cardOn(nextMonday).click()
+  }
+  await expect(page.getByTestId('picked-summary')).toBeVisible()
+  await expect(page.getByTestId('wizard-next-1')).toBeEnabled()
+
+  await page.getByTestId('wizard-panel-1').scrollIntoViewIfNeeded()
+  await capture(page, 't04-01-past-date-guard')
   expect(consoleErrors).toEqual([])
 })

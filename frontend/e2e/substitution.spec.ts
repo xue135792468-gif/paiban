@@ -4,8 +4,10 @@ import {
   apiLogin,
   classEntries,
   dateFor,
+  isoDate,
   newContext,
   seedSchool,
+  shiftDate,
   solveAndPublish,
   uiLogin,
 } from './helpers'
@@ -28,6 +30,27 @@ test('场景 2：教师提交调代 → 教务审批 → 通知与课表叠加',
   await uiLogin(page, seed.username, seed.password)
   await page.goto('/substitutions')
   const dateInput = page.getByRole('combobox', { name: '请假日期' })
+
+  // 自助表单的日期选择器禁止过去日期：今天可选、昨天置灰。
+  const localToday = isoDate(new Date())
+  const yesterday = shiftDate(localToday, -1)
+  await dateInput.click()
+  const datePanel = page.locator('.el-picker-panel:visible').last()
+  const dateTable = datePanel.locator('.el-date-table')
+  await expect(dateTable).toBeVisible()
+  await expect(dateTable.locator('td.available.today').first()).not.toHaveClass(/disabled/)
+  if (yesterday.slice(0, 7) !== localToday.slice(0, 7)) {
+    await datePanel.locator('.el-date-picker__prev-btn').click()
+  }
+  const yesterdayCell = dateTable
+    .locator('td.disabled:not(.prev-month):not(.next-month)', {
+      hasText: new RegExp(`^\\s*${Number(yesterday.slice(8))}\\s*$`),
+    })
+    .first()
+  await expect(yesterdayCell).toHaveClass(/disabled/)
+  await page.keyboard.press('Escape')
+  await expect(datePanel).toBeHidden()
+
   await dateInput.fill(effectiveDate)
   await dateInput.press('Tab')
 

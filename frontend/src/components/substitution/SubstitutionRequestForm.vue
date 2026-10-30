@@ -17,7 +17,13 @@
         <span class="hint">{{ form.type === 'SWAP' ? '与同班其他课节置换，需教务整单批准' : '原教师请假，由另一位教师接替' }}</span>
       </el-form-item>
       <el-form-item :label="form.type === 'SWAP' ? '调课日期' : '请假日期'">
-        <el-date-picker v-model="form.date" type="date" value-format="YYYY-MM-DD" @change="loadEntries" />
+        <el-date-picker
+          v-model="form.date"
+          type="date"
+          value-format="YYYY-MM-DD"
+          :disabled-date="disabledDate"
+          @change="onDateChange"
+        />
         <span class="hint">只会列出当天有课的课节</span>
       </el-form-item>
       <el-form-item label="我的课节">
@@ -64,10 +70,23 @@ import { ElMessage } from 'element-plus'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
 import type { Entry, SwapTarget, Teacher } from './types'
-import { today, weekdayOf } from './types'
+import { isPastDate, today, weekdayOf } from './types'
+import { isoOf } from './workbench/swapTargetRules'
 
 const props = defineProps<{ myTeacherId: number | null; teachers: Teacher[] }>()
 const emit = defineEmits<{ submitted: [] }>()
+
+function disabledDate(d: Date): boolean {
+  return isoOf(d) < today()
+}
+
+function onDateChange(value: string | null) {
+  if (value && isPastDate(value)) {
+    ElMessage.warning('只能选择今天及以后的日期')
+    form.date = today()
+  }
+  void loadEntries()
+}
 
 const form = reactive({
   type: 'COVER' as 'COVER' | 'SWAP',

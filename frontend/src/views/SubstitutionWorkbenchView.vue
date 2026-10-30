@@ -19,6 +19,8 @@
             :teachers="teachers"
             :teacher-id="teacherId"
             :date="date"
+            :min-date="today()"
+            :disabled-date="disabledDate"
             :entries="entries"
             :loading="timetableLoading"
             :timetable-error="timetableError"
@@ -144,6 +146,7 @@ import PickedSummary from '@/components/substitution/workbench/PickedSummary.vue
 import { useConfirmFlow } from '@/components/substitution/workbench/useConfirmFlow'
 import {
   dateOfDay,
+  isoOf,
   mondayOf,
   monthDayCn,
   today,
@@ -282,6 +285,10 @@ async function loadTimetable() {
   }
 }
 
+function disabledDate(d: Date): boolean {
+  return isoOf(d) < today()
+}
+
 function onTeacherChange(value: number | null) {
   teacherId.value = value
   step.value = 1
@@ -291,7 +298,12 @@ function onTeacherChange(value: number | null) {
 
 function onDateChange(value: string) {
   if (!value) return
-  date.value = value
+  if (value < today()) {
+    ElMessage.warning('只能选择今天及以后的日期')
+    date.value = today()
+  } else {
+    date.value = value
+  }
   step.value = 1
   resetSelection()
   void loadTimetable()
@@ -577,10 +589,7 @@ onMounted(loadTeachers)
 .bt.primary:hover:not(:disabled) { color: var(--on-brand); filter: brightness(1.07); }
 .bt:disabled { cursor: not-allowed; opacity: 0.45; }
 @media (max-width: 1180px) { .dock-in { max-width: 100%; } }
-@media (max-width: 900px) {
-  .wb-scroll { padding: 14px 14px 4px; }
-  .dock { padding: 10px 14px; }
-}
+@media (max-width: 900px) { .wb-scroll { padding: 14px 14px 4px; } .dock { padding: 10px 14px; } }
 @media (max-width: 520px) {
   .foot { flex-wrap: wrap; gap: 10px; }
   .next { margin-left: 0; width: 100%; }

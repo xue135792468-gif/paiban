@@ -42,10 +42,7 @@ export function isoOf(value: Date): string {
   return `${value.getFullYear()}-${month}-${dayNo}`
 }
 
-/** 今天的 ISO 日期。 */
-export function today(): string {
-  return isoOf(new Date())
-}
+export { today } from '../types'
 
 /** weekStart 所在周里第 dayOfWeek 天（1~7）的 ISO 日期；非法输入返回空串。 */
 export function dateOfDay(weekStartIso: string, dayOfWeek: number): string {
