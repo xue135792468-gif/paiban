@@ -65,6 +65,9 @@ bash scripts/check-e2e-helpers.sh
 echo "==> backend: isBlank ratchet"
 bash scripts/check-blank-checks.sh
 
+echo "==> backend: module boundaries"
+bash scripts/check-module-boundaries.sh
+
 echo "==> backend: migration versions"
 bash scripts/check-migrations.sh
 
@@ -81,6 +84,8 @@ if [[ $MODE == full ]]; then
     # mvnw.cmd (spawned by Playwright) does not understand MSYS /e/ paths.
     export MAVEN_ARGS="-s $(cygpath -w "$PWD/.tools/maven-settings.xml") -Dmaven.repo.local=$(cygpath -w "$PWD/.tools/m2repo")"
   fi
+  # A stale Vite cache can make the esbuild service crash mid-run; drop it first.
+  rm -rf frontend/node_modules/.vite
   (cd frontend && npx playwright install chromium && npm run test:e2e)
 fi
 

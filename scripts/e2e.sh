@@ -20,5 +20,8 @@ esac
 # Isolated ports so a running dev server is never silently reused.
 export PAIBAN_E2E_ISOLATED="${PAIBAN_E2E_ISOLATED:-1}"
 
+# A stale Vite cache can make the esbuild service crash; drop it first.
+rm -rf "$ROOT/frontend/node_modules/.vite"
+
 cd "$ROOT/frontend"
 exec npx playwright test "$@"
