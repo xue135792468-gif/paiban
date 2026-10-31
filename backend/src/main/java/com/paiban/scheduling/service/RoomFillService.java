@@ -17,6 +17,7 @@ import com.paiban.scheduling.domain.TimetableDraft;
 import com.paiban.scheduling.domain.TimetableDraftRepository;
 import com.paiban.scheduling.web.RoomFillDtos.ClassRoomPlanDto;
 import com.paiban.scheduling.web.RoomFillDtos.ManualItemDto;
+import com.paiban.scheduling.solver.RoomRequirement;
 import com.paiban.scheduling.web.RoomFillDtos.RoomFillPlanDto;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -28,7 +29,6 @@ import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
 /**
  * The explicit action behind the {@code MISSING_ROOMS} blocker (ticket 07): give every
@@ -303,8 +303,7 @@ public class RoomFillService {
         if (course.isRequireOutdoor()) {
             return true;
         }
-        String required = course.getRequiredRoomType();
-        return StringUtils.hasText(required) && !RoomFillPlanner.ROOM_TYPE_NORMAL.equals(required);
+        return RoomRequirement.isSpecial(course.getRequiredRoomType());
     }
 
     /** Every planned assignment, with placeholder ids for rooms that do not exist yet. */

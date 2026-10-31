@@ -268,7 +268,7 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         return f.forEachIncludingUnassigned(Lesson.class)
                 .filter(lesson -> lesson.getFixedRoom() != null
                         && lesson.getPeriod() != null
-                        && !StringUtils.hasText(lesson.getRequiredRoomType())
+                        && !RoomRequirement.isSpecial(lesson.getRequiredRoomType())
                         && (lesson.getRoom() == null
                         || !lesson.getFixedRoom().getId().equals(lesson.getRoom().getId())))
                 .penalize(HardSoftScore.ONE_HARD)

@@ -31,6 +31,7 @@ class EngineConstraintTest {
     private static final RoomSlot ROOM = new RoomSlot(1L, "301", "NORMAL", 50);
     private static final RoomSlot ROOM_B = new RoomSlot(3L, "303", "NORMAL", 50);
     private static final RoomSlot SMALL_ROOM = new RoomSlot(2L, "302", "NORMAL", 20);
+    private static final RoomSlot LAB = new RoomSlot(4L, "401", "LAB", 50);
 
     @AfterEach
     void resetSettings() {
@@ -207,16 +208,31 @@ class EngineConstraintTest {
     @Test
     void fixedRoomDoesNotFightASpecialRoomRequirement() {
         ConstraintSettingsHolder.set(ConstraintSettings.defaults());
-        Lesson lesson = new Lesson(1L, 1L, 1000L, "体育", 10L, 100L, null, "体育", "NORMAL", false, 40, 0);
+        Lesson lesson = new Lesson(1L, 1L, 1000L, "实验", 10L, 100L, null, "实验", "LAB", false, 40, 0);
         lesson.setPeriod(MON1);
-        lesson.setRoom(ROOM);
+        lesson.setRoom(LAB);
         lesson.setFixedRoom(ROOM_B);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM, ROOM_B, LAB));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+    }
+
+    @Test
+    void normalRoomTypeStillRequiresTheClassFixedRoom() {
+        ConstraintSettingsHolder.set(ConstraintSettings.defaults());
+        Lesson lesson = new Lesson(1L, 1L, 1000L, "数学", 10L, 100L, null, null, "NORMAL", false, 40, 0);
+        lesson.setPeriod(MON1);
+        lesson.setRoom(ROOM_B);
+        lesson.setFixedRoom(ROOM);
         TimetableSolution solution =
                 new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM, ROOM_B));
 
         scoreManager().updateScore(solution);
 
-        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().hardScore()).isEqualTo(-1);
     }
 
     @Test

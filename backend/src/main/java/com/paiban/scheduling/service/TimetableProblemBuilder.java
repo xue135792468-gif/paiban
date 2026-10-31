@@ -19,6 +19,7 @@ import com.paiban.scheduling.domain.TimetableDraft;
 import com.paiban.scheduling.domain.TimetableDraftRepository;
 import com.paiban.scheduling.solver.Lesson;
 import com.paiban.scheduling.solver.PeriodSlot;
+import com.paiban.scheduling.solver.RoomRequirement;
 import com.paiban.scheduling.solver.RoomSlot;
 import com.paiban.scheduling.solver.TimetableSolution;
 import java.util.ArrayDeque;
@@ -30,7 +31,6 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
 /** Builds the immutable solver problem from persisted semester data. */
 @Service
@@ -118,7 +118,7 @@ public class TimetableProblemBuilder {
             TeacherDto teacher = teachers.get(assignment.getTeacherId());
             int studentCount = adminClass == null ? 45 : adminClass.studentCount();
             String requiredRoomType = course == null ? null : course.requiredRoomType();
-            boolean specialRoom = StringUtils.hasText(requiredRoomType);
+            boolean specialRoom = RoomRequirement.isSpecial(requiredRoomType);
             RoomSlot fixedRoom = specialRoom ? null : fixedRooms.get(assignment.getAdminClassId());
             Deque<PeriodSlot> baselinePeriods = warmPeriods.get(assignmentKey(assignment));
             for (int index = 0; index < assignment.getWeeklyLessons(); index++) {
