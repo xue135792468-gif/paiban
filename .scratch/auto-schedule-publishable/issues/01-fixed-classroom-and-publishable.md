@@ -24,7 +24,7 @@ Status: done
 
 **门禁**
 
-- 后端测试 1023 个通过（0 失败，含审查修复后新增的固定教室空格复用用例）。
+- 后端测试 1026 个通过（0 失败，含审查修复后新增的固定教室空格复用、NORMAL 教室类型、基线 warm start 用例）。
 - `scheduling` e2e 5/5 通过；前端 lint、`DraftGrid` 单测、前端全量单测 442 通过。
 
 **线上草稿 9「最终验证」**
@@ -45,3 +45,10 @@ Status: done
 - `e7f3a20` fix(scheduling): seed the solver from the published baseline
 - `74d2cab` fix(scheduling): warm-start from the baseline or the oldest complete draft
 - `195fc09` test(scheduling): cover the import-draft warm start
+- `307ef07` refactor(scheduling): read the published baseline through its port
+- `5685953` test(frontend): assert timetables hide rooms; record the review follow-up
+- `1eacb20` fix(scheduling): treat NORMAL as an ordinary room requirement
+
+## 复审遗留
+
+本次复审的 5 张 follow-up 票见 `issues/02` 至 `issues/06`，状态均为 `needs-triage`；它们不影响本次「有基线/完整导入草稿时达到直接发布标准」的验收。
