@@ -53,7 +53,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class TimetableExportService {
 
     public record Cell(Long classId, Long courseId, String courseName, String teacherName,
-                       String roomName, String color) {}
+                       String color) {}
 
     public record Grid(String title, List<Integer> days, List<Row> rows, Map<String, Cell> cells) {}
 
@@ -398,7 +398,6 @@ public class TimetableExportService {
                             entry.courseId(),
                             entry.courseName(),
                             entry.teacherName(),
-                            entry.roomName(),
                             course == null ? null : course.getColor()));
         }
         return new Grid(title, days, rows, cells);

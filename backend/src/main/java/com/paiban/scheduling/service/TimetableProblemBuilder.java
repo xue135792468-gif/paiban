@@ -21,8 +21,6 @@ import com.paiban.scheduling.solver.Lesson;
 import com.paiban.scheduling.solver.PeriodSlot;
 import com.paiban.scheduling.solver.RoomSlot;
 import com.paiban.scheduling.solver.TimetableSolution;
-import com.paiban.timetable.domain.TimetableEntry;
-import com.paiban.timetable.domain.TimetableEntryRepository;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -42,7 +40,7 @@ public class TimetableProblemBuilder {
     private final RoomRepository roomRepository;
     private final AssignmentRepository assignmentRepository;
     private final SemesterRepository semesterRepository;
-    private final TimetableEntryRepository timetableEntries;
+    private final SemesterBaselineQuery baselines;
     private final TimetableDraftRepository drafts;
     private final DraftLessonRepository draftLessons;
     private final FoundationService foundation;
@@ -52,7 +50,7 @@ public class TimetableProblemBuilder {
             RoomRepository roomRepository,
             AssignmentRepository assignmentRepository,
             SemesterRepository semesterRepository,
-            TimetableEntryRepository timetableEntries,
+            SemesterBaselineQuery baselines,
             TimetableDraftRepository drafts,
             DraftLessonRepository draftLessons,
             FoundationService foundation) {
@@ -60,7 +58,7 @@ public class TimetableProblemBuilder {
         this.roomRepository = roomRepository;
         this.assignmentRepository = assignmentRepository;
         this.semesterRepository = semesterRepository;
-        this.timetableEntries = timetableEntries;
+        this.baselines = baselines;
         this.drafts = drafts;
         this.draftLessons = draftLessons;
         this.foundation = foundation;
@@ -108,11 +106,13 @@ public class TimetableProblemBuilder {
         Map<Long, RoomSlot> fixedRooms = fixedRooms(semesterId, classes, roomSlots);
         Map<Long, PeriodSlot> periodById = new HashMap<>();
         periodSlots.forEach(slot -> periodById.put(slot.getId(), slot));
-        Map<String, Deque<PeriodSlot>> warmPeriods = warmPeriods(semesterId, periodById);
+        List<Assignment> assignments = assignmentRepository.findBySemesterId(semesterId);
+        Map<AssignmentKey, Deque<PeriodSlot>> warmPeriods =
+                warmPeriods(semesterId, periodById, assignments);
 
         List<Lesson> lessons = new ArrayList<>();
         long lessonId = 1;
-        for (Assignment assignment : assignmentRepository.findBySemesterId(semesterId)) {
+        for (Assignment assignment : assignments) {
             ClassDto adminClass = classes.get(assignment.getAdminClassId());
             CourseDto course = courses.get(assignment.getCourseId());
             TeacherDto teacher = teachers.get(assignment.getTeacherId());
@@ -160,17 +160,21 @@ public class TimetableProblemBuilder {
      * complete schedule. If the baseline is empty, the oldest complete draft (normally the
      * import) seeds the same way.
      */
-    private Map<String, Deque<PeriodSlot>> warmPeriods(
-            Long semesterId, Map<Long, PeriodSlot> periodById) {
-        Map<String, Deque<PeriodSlot>> baseline = new HashMap<>();
-        timetableEntries.findBySemesterId(semesterId).stream()
-                .sorted(Comparator.comparing(TimetableEntry::getId))
-                .forEach(entry -> addPeriod(
-                        baseline, entry.getAdminClassId(), entry.getCourseId(), entry.getTeacherId(),
-                        entry.getPeriodId(), periodById));
+    private Map<AssignmentKey, Deque<PeriodSlot>> warmPeriods(
+            Long semesterId, Map<Long, PeriodSlot> periodById, List<Assignment> assignments) {
+        Map<AssignmentKey, Deque<PeriodSlot>> baseline = new HashMap<>();
+        baselines.publishedLessons(semesterId).stream()
+                .sorted(Comparator.comparing(SemesterBaselineQuery.PublishedLesson::periodId))
+                .forEach(lesson -> addPeriodIfKnown(
+                        baseline, lesson.adminClassId(), lesson.courseId(), lesson.teacherId(),
+                        lesson.periodId(), periodById));
         if (!baseline.isEmpty()) {
             return baseline;
         }
+
+        Map<AssignmentKey, Integer> required = new HashMap<>();
+        assignments.forEach(assignment -> required.merge(
+                assignmentKey(assignment), assignment.getWeeklyLessons(), Integer::sum));
 
         List<TimetableDraft> existing = drafts.findBySemesterIdOrderByCreatedAtDesc(semesterId);
         for (int i = existing.size() - 1; i >= 0; i--) {
@@ -179,25 +183,37 @@ public class TimetableProblemBuilder {
             if (rows.isEmpty() || rows.stream().anyMatch(row -> row.getPeriodId() == null)) {
                 continue;
             }
-            Map<String, Deque<PeriodSlot>> byAssignment = new HashMap<>();
+            Map<AssignmentKey, Deque<PeriodSlot>> byAssignment = new HashMap<>();
             boolean usable = true;
             for (DraftLesson row : rows) {
-                if (!addPeriod(byAssignment, row.getAdminClassId(), row.getCourseId(),
+                if (!addPeriodIfKnown(byAssignment, row.getAdminClassId(), row.getCourseId(),
                         row.getTeacherId(), row.getPeriodId(), periodById)) {
                     usable = false;
                     break;
                 }
             }
-            if (usable) {
+            if (usable && isComplete(byAssignment, required)) {
                 return byAssignment;
             }
         }
         return Map.of();
     }
 
-    /** Adds one period to the assignment's queue; false when the period is unknown. */
-    private static boolean addPeriod(
-            Map<String, Deque<PeriodSlot>> byAssignment, Long classId, Long courseId,
+    /** A draft is complete when every assignment has all of its weekly lessons seeded. */
+    private static boolean isComplete(
+            Map<AssignmentKey, Deque<PeriodSlot>> byAssignment,
+            Map<AssignmentKey, Integer> required) {
+        return required.entrySet().stream().allMatch(entry ->
+                byAssignment.getOrDefault(entry.getKey(), new ArrayDeque<>()).size()
+                        >= entry.getValue());
+    }
+
+    /**
+     * Adds one period to the assignment's queue; false when the period is unknown, i.e.
+     * the row points at a period id that is not part of this semester.
+     */
+    private static boolean addPeriodIfKnown(
+            Map<AssignmentKey, Deque<PeriodSlot>> byAssignment, Long classId, Long courseId,
             Long teacherId, Long periodId, Map<Long, PeriodSlot> periodById) {
         PeriodSlot slot = periodId == null ? null : periodById.get(periodId);
         if (slot == null) {
@@ -208,14 +224,17 @@ public class TimetableProblemBuilder {
         return true;
     }
 
-    private static String assignmentKey(Assignment assignment) {
+    private static AssignmentKey assignmentKey(Assignment assignment) {
         return assignmentKey(
                 assignment.getAdminClassId(), assignment.getCourseId(), assignment.getTeacherId());
     }
 
-    private static String assignmentKey(Long classId, Long courseId, Long teacherId) {
-        return classId + "|" + courseId + "|" + teacherId;
+    private static AssignmentKey assignmentKey(Long classId, Long courseId, Long teacherId) {
+        return new AssignmentKey(classId, courseId, teacherId);
     }
+
+    /** The identity a lesson row shares with its teaching assignment. */
+    private record AssignmentKey(Long classId, Long courseId, Long teacherId) {}
 
     /**
      * Resolves each class's own ordinary classroom with the same deterministic name the

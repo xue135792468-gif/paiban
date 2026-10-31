@@ -73,6 +73,22 @@ class RoomFillPlannerTest {
     }
 
     @Test
+    void reusesAnExistingRoomWhoseNameHasPadding() {
+        Plan plan = RoomFillPlanner.plan(
+                SEMESTER,
+                List.of(new ClassInfo(1L, "八（1）班", "八年级", 45)),
+                List.of(gap(11L, 1L, 45)),
+                List.of(new ExistingRoom(
+                        7L, "  " + SEMESTER + "-八年级八（1）班-固定教室  ", "NORMAL", 45)),
+                Map.of());
+
+        assertThat(plan.classes()).singleElement().satisfies(classPlan -> {
+            assertThat(classPlan.action()).isEqualTo(RoomFillPlanner.ACTION_REUSE);
+            assertThat(classPlan.roomId()).isEqualTo(7L);
+        });
+    }
+
+    @Test
     void aSameNamedRoomTooSmallIsRefusedInsteadOfExpanded() {
         Plan plan = RoomFillPlanner.plan(
                 SEMESTER,

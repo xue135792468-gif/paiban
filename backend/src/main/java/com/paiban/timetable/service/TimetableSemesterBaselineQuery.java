@@ -6,6 +6,7 @@ import com.paiban.timetable.domain.TimetableEntryRepository;
 import com.paiban.timetable.domain.TimetablePublishRepository;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Component;
@@ -26,6 +27,21 @@ public class TimetableSemesterBaselineQuery implements SemesterBaselineQuery {
     @Override
     public boolean hasPublishedBaseline(Long semesterId) {
         return publishes.findFirstBySemesterIdOrderByPublishedAtDesc(semesterId).isPresent();
+    }
+
+    @Override
+    public List<PublishedLesson> publishedLessons(Long semesterId) {
+        return List.copyOf(entries.findBySemesterId(semesterId).stream()
+                .filter(entry -> entry.getAdminClassId() != null
+                        && entry.getCourseId() != null
+                        && entry.getTeacherId() != null
+                        && entry.getPeriodId() != null)
+                .map(entry -> new PublishedLesson(
+                        entry.getAdminClassId(),
+                        entry.getCourseId(),
+                        entry.getTeacherId(),
+                        entry.getPeriodId()))
+                .toList());
     }
 
     @Override

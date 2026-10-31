@@ -1,5 +1,6 @@
 package com.paiban.scheduling.service;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -11,7 +12,18 @@ import java.util.Set;
  */
 public interface SemesterBaselineQuery {
 
+    /**
+     * One published lesson, just enough for the scheduling module to seed a warm start.
+     * This is the scheduling module's only port for reading the published baseline; it
+     * exists so this module never depends on the timetable repositories directly.
+     */
+    record PublishedLesson(
+            Long adminClassId, Long courseId, Long teacherId, Long periodId) {}
+
     boolean hasPublishedBaseline(Long semesterId);
+
+    /** Every published lesson of this semester; empty when there is no baseline. */
+    List<PublishedLesson> publishedLessons(Long semesterId);
 
     /**
      * {@code roomId → admin class ids} as published for this semester; empty when there is

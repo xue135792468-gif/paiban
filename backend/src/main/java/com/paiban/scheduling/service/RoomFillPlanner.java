@@ -139,7 +139,7 @@ public final class RoomFillPlanner {
         Map<Long, ClassInfo> classById = new HashMap<>();
         classes.forEach(info -> classById.put(info.id(), info));
         Map<String, ExistingRoom> roomByName = new LinkedHashMap<>();
-        rooms.forEach(room -> roomByName.putIfAbsent(room.name(), room));
+        rooms.forEach(room -> roomByName.putIfAbsent(normalize(room.name()), room));
 
         Map<Long, List<LessonGap>> gapsByClass = new LinkedHashMap<>();
         for (LessonGap gap : gaps) {
@@ -188,7 +188,7 @@ public final class RoomFillPlanner {
                                 + " 个字符，请先缩短学期或班级名称"));
                 continue;
             }
-            ExistingRoom existing = roomByName.get(name);
+            ExistingRoom existing = roomByName.get(normalize(name));
             if (existing == null) {
                 plans.add(new ClassPlan(
                         classId, info.name(), info.studentCount(), requiredCapacity,

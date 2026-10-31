@@ -23,7 +23,6 @@ import com.paiban.scheduling.domain.TimetableDraft;
 import com.paiban.scheduling.domain.TimetableDraftRepository;
 import com.paiban.scheduling.solver.Lesson;
 import com.paiban.scheduling.solver.TimetableSolution;
-import com.paiban.timetable.domain.TimetableEntryRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +38,7 @@ class TimetableProblemBuilderTest {
         RoomRepository roomRepository = mock(RoomRepository.class);
         AssignmentRepository assignmentRepository = mock(AssignmentRepository.class);
         SemesterRepository semesterRepository = mock(SemesterRepository.class);
-        TimetableEntryRepository entryRepository = mock(TimetableEntryRepository.class);
+        SemesterBaselineQuery baselines = mock(SemesterBaselineQuery.class);
         TimetableDraftRepository draftRepository = mock(TimetableDraftRepository.class);
         DraftLessonRepository draftLessonRepository = mock(DraftLessonRepository.class);
         FoundationService foundation = mock(FoundationService.class);
@@ -77,7 +76,7 @@ class TimetableProblemBuilderTest {
         when(foundation.teachersById()).thenReturn(Map.of(1L,
                 new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null)));
 
-        when(entryRepository.findBySemesterId(1L)).thenReturn(List.of());
+        when(baselines.publishedLessons(1L)).thenReturn(List.of());
 
         TimetableDraft importDraft = new TimetableDraft();
         importDraft.setId(5L);
@@ -89,7 +88,7 @@ class TimetableProblemBuilderTest {
 
         TimetableSolution solution = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
-                entryRepository, draftRepository, draftLessonRepository, foundation)
+                baselines, draftRepository, draftLessonRepository, foundation)
                 .build(1L);
 
         assertThat(solution.getLessons()).hasSize(2);
