@@ -7,7 +7,7 @@
 - `.scratch/HANDOFF.md` — **接手进度先读这份**：线上状态、红线、待办票与推进路线
 - `README.md` — 启动、测试、部署与实现说明
 - `CODING_STANDARDS.md` — 评审时的判断标准（审计、事务、权限、测试、前端拆分）
-- `docs/adr/` — 29 份决策记录，改行为前先找对应 ADR
+- `docs/adr/` — 33 份决策记录，改行为前先找对应 ADR
 - `GLOSSARY.md` — 领域术语：行政班、授课任务、基线、调代
 - `.scratch/phase1-mvp/` — 一期规格、15 张票据与 PR 记录
 - `.scratch/phase2-ai/` — 二期规格、6 张票据、跨票据接口契约

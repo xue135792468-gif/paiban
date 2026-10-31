@@ -21,3 +21,4 @@ Status: needs-triage
 - [ ] `TimetableProblemBuilder` 判断专用教室时同时读课程元数据与已配置的 `COURSE_REQUIRED_ROOM_TYPE` 条目，避免固定教室与配置要求互斥。
 - [ ] `RoomFillService.needsSpecialRoom` 的 `requireOutdoor` 分支与 builder 的 `RoomRequirement.isSpecial` 口径统一（或明确两者语义不同）。
 - [ ] 测试覆盖上述四类坏数据与配置型教室要求。
+- [ ] 统一 `requiredRoomType` 的规范化比较口径：`TimetableProblemBuilder` 用 trim/忽略大小写判断专用类型，而 `ConstraintChecker`、`PaibanConstraintProvider`、`SwapPlanner` 仍按原始值精确比较，`" NORMAL "`、小写等写法会造成 builder 与校验侧误判；需统一规范（或明确规范化边界），并覆盖 `requireOutdoor` 在 `TimetableProblemBuilder` 与 `RoomFillService` 之间的口径差异。

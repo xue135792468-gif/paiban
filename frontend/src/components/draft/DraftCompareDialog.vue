@@ -17,7 +17,6 @@
           <el-table-column prop="periodLabel" label="课节" width="96" />
           <el-table-column prop="courseName" label="课程" width="96" />
           <el-table-column prop="teacherName" label="教师" width="96" />
-          <el-table-column prop="roomName" label="教室" width="96" />
         </el-table>
       </div>
       <div class="compare-side">
@@ -31,7 +30,6 @@
           <el-table-column prop="periodLabel" label="课节" width="96" />
           <el-table-column prop="courseName" label="课程" width="96" />
           <el-table-column prop="teacherName" label="教师" width="96" />
-          <el-table-column prop="roomName" label="教室" width="96" />
         </el-table>
       </div>
     </div>
