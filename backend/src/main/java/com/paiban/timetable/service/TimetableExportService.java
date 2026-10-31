@@ -161,8 +161,7 @@ public class TimetableExportService {
                             pdfCell.setPhrase(new Phrase("", bodyFont));
                         } else {
                             pdfCell.setPhrase(new Phrase(
-                                    cell.courseName() + "\n" + nullSafe(cell.teacherName()) + "\n"
-                                            + nullSafe(cell.roomName()), bodyFont));
+                                    cell.courseName() + "\n" + nullSafe(cell.teacherName()), bodyFont));
                             pdfCell.setBackgroundColor(hexColor(cell.color(), cell.courseId()));
                         }
                         table.addCell(pdfCell);
@@ -267,8 +266,7 @@ public class TimetableExportService {
                     excelCell.setCellValue("");
                     excelCell.setCellStyle(bodyStyle);
                 } else {
-                    excelCell.setCellValue(cell.courseName() + "\n" + nullSafe(cell.teacherName())
-                            + (cell.roomName() == null ? "" : "\n" + cell.roomName()));
+                    excelCell.setCellValue(cell.courseName() + "\n" + nullSafe(cell.teacherName()));
                     CellStyle style = courseStyles.computeIfAbsent(
                             String.valueOf(cell.courseId()),
                             key -> courseStyle(workbook, cell.color(), cell.courseId()));

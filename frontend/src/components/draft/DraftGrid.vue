@@ -42,7 +42,7 @@
             <div class="lesson-course">{{ lesson.courseName }}</div>
             <div class="lesson-meta">
               {{ lesson.teacherName }}
-              <span v-if="lesson.roomName"> · {{ lesson.roomName }}</span>
+              <span v-if="showRoom !== false && lesson.roomName"> · {{ lesson.roomName }}</span>
             </div>
           </div>
         </template>
@@ -58,23 +58,35 @@ import { computed } from 'vue'
 import { courseColor } from './colors'
 import type { DraftCourse, DraftLesson, DraftPeriod, MoveTargetState } from './types'
 
-const props = defineProps<{
-  periods: DraftPeriod[]
-  lessons: DraftLesson[]
-  courses: DraftCourse[]
-  draggable: boolean
-  draggedLessonId?: number | null
-  /** null while the move-targets request is in flight; empty map means "no target". */
-  targets?: Record<number, MoveTargetState> | null
-  /** Lessons the preview wants to call out, for example the two affected cells. */
-  highlightLessonIds?: number[]
-  /** Lessons that must be flagged as a hard conflict, for example duplicate import rows. */
-  conflictLessonIds?: number[]
-  /** Lessons worth a look but not a conflict, for example a placeholder teacher name. */
-  warningLessonIds?: number[]
-  /** Narrower columns for the side-by-side preview. */
-  compact?: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    periods: DraftPeriod[]
+    lessons: DraftLesson[]
+    courses: DraftCourse[]
+    draggable: boolean
+    draggedLessonId?: number | null
+    /** null while the move-targets request is in flight; empty map means "no target". */
+    targets?: Record<number, MoveTargetState> | null
+    /** Lessons the preview wants to call out, for example the two affected cells. */
+    highlightLessonIds?: number[]
+    /** Lessons that must be flagged as a hard conflict, for example duplicate import rows. */
+    conflictLessonIds?: number[]
+    /** Lessons worth a look but not a conflict, for example a placeholder teacher name. */
+    warningLessonIds?: number[]
+    /** Narrower columns for the side-by-side preview. */
+    compact?: boolean
+    /** The timetable pages hide rooms; the import preview keeps them for row checks. */
+    showRoom?: boolean
+  }>(),
+  {
+    draggedLessonId: null,
+    targets: null,
+    highlightLessonIds: () => [],
+    conflictLessonIds: () => [],
+    warningLessonIds: () => [],
+    showRoom: true,
+  },
+)
 
 const emit = defineEmits<{
   (e: 'drag-start', lesson: DraftLesson): void

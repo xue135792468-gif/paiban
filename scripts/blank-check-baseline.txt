@@ -51,7 +51,7 @@ backend/src/main/java/com/paiban/scheduling/service/SchedulingService.java	1
 backend/src/main/java/com/paiban/scheduling/service/SubjectMatch.java	2
 backend/src/main/java/com/paiban/scheduling/solver/ConstraintSettings.java	2
 backend/src/main/java/com/paiban/scheduling/solver/PaibanConstraintProvider.java	2
-backend/src/main/java/com/paiban/substitution/plan/SwapPlanner.java	2
+backend/src/main/java/com/paiban/substitution/plan/SwapPlanner.java	1
 backend/src/main/java/com/paiban/substitution/service/SubstitutionQueryService.java	1
 backend/src/main/java/com/paiban/substitution/service/SubstitutionRecommendationService.java	8
 backend/src/main/java/com/paiban/substitution/service/SubstitutionRequestService.java	3

@@ -82,6 +82,14 @@ describe('DraftGrid', () => {
     expect(lessons[1].classes()).not.toContain('conflict')
   })
 
+  it('课表页面不显示教室，导入预览仍保留教室', () => {
+    const hidden = mountGrid({ lessons: [lesson(1, 1, 1)], showRoom: false })
+    expect(hidden.get('.lesson').text()).not.toContain('101')
+
+    const shown = mountGrid({ lessons: [lesson(1, 1, 1)] })
+    expect(shown.get('.lesson').text()).toContain('101')
+  })
+
   it('作息没有起止时间时不显示时间占位', () => {
     const wrapper = mountGrid({ lessons: [lesson(1, 1, 1)] })
 

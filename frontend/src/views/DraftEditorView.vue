@@ -102,6 +102,7 @@
           :draggable="draftEditable"
           :dragged-lesson-id="dragged?.id ?? null"
           :targets="dragTargets"
+          :show-room="false"
           @drag-start="onDragStart"
           @drag-end="onDragEnd"
           @drop-cell="onDropCell"

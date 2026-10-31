@@ -37,10 +37,12 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         ConstraintSettings s = ConstraintSettingsHolder.get();
         List<Constraint> constraints = new ArrayList<>();
 
-        // Structural constraints that are always on: every lesson must be placed and
-        // course metadata (required room type) is part of the school's data model.
+        // Structural constraints that are always on: every lesson must be placed,
+        // course metadata (required room type) is part of the school's data model, and a
+        // class's ordinary lessons stay in the class's own classroom.
         constraints.add(unassignedLesson(factory));
         constraints.add(courseRoomTypeMetadata(factory, s));
+        constraints.add(classFixedRoom(factory));
 
         addSwitch(constraints, s, ConstraintType.TEACHER_CONFLICT, teacherConflict(factory, s));
         addSwitch(constraints, s, ConstraintType.CLASS_CONFLICT, classConflict(factory, s));
@@ -246,6 +248,23 @@ public class PaibanConstraintProvider implements ConstraintProvider {
                         && lesson.getRoom().getCapacity() < lesson.getStudentCount())
                 .penalize(penalty(s, ConstraintType.ROOM_CAPACITY_FIT))
                 .asConstraint(ConstraintType.ROOM_CAPACITY_FIT.getDisplayName());
+    }
+
+    /**
+     * A class's own classroom is an invariant, not a preference: with interchangeable
+     * rooms the solver otherwise scatters every class over the whole building. Lessons
+     * whose course names a special room type are exempt — the course requirement owns
+     * their room, and {@link #courseRoomTypeMetadata} scores it.
+     */
+    private Constraint classFixedRoom(ConstraintFactory f) {
+        return f.forEach(Lesson.class)
+                .filter(lesson -> lesson.getFixedRoom() != null
+                        && lesson.getPeriod() != null
+                        && !StringUtils.hasText(lesson.getRequiredRoomType())
+                        && (lesson.getRoom() == null
+                        || !lesson.getFixedRoom().getId().equals(lesson.getRoom().getId())))
+                .penalize(HardSoftScore.ONE_HARD)
+                .asConstraint("班级固定教室");
     }
 
     // ---------- entry-backed prohibitions ----------

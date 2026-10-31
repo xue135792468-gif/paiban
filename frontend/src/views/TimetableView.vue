@@ -114,12 +114,7 @@
                       {{ cellAt(day, row.periodNo)!.substitutionType === 'SWAP' ? '调' : '代' }}
                     </el-tag>
                   </div>
-                  <div class="lesson-meta">
-                    {{ cellAt(day, row.periodNo)!.teacherName }}
-                    <span v-if="cellAt(day, row.periodNo)!.roomName">
-                      · {{ cellAt(day, row.periodNo)!.roomName }}
-                    </span>
-                  </div>
+                  <div class="lesson-meta">{{ cellAt(day, row.periodNo)!.teacherName }}</div>
                 </div>
               </el-tooltip>
               <div v-else class="empty-cell">—</div>

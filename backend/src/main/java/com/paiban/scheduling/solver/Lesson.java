@@ -35,6 +35,13 @@ public class Lesson {
     @PlanningVariable(valueRangeProviderRefs = "roomRange", allowsUnassigned = true)
     private RoomSlot room;
 
+    /**
+     * The class's own classroom, resolved from the fixed-room naming convention. Not a
+     * planning variable: it is a fact the solver must keep when the course has no special
+     * room requirement. Null means "no fixed room known", and the room stays free.
+     */
+    private RoomSlot fixedRoom;
+
     public Lesson(Long id, Long assignmentId, Long courseId, String courseName, Long teacherId,
                   Long adminClassId, Long headTeacherId, String teacherSubject, String requiredRoomType,
                   boolean allowConsecutive, int studentCount, int lessonIndex) {

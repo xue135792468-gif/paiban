@@ -93,6 +93,40 @@ public final class RoomFillPlanner {
     }
 
     /**
+     * Resolves the fixed room of every class by the same deterministic name. The solver
+     * uses this to keep a class's ordinary lessons in its own room; a missing room, a
+     * room smaller than the class, or one room claimed by two classes is omitted so the
+     * caller can fall back to free room assignment instead of forcing a conflict.
+     */
+    public static Map<Long, ExistingRoom> fixedRooms(
+            String semesterName, List<ClassInfo> classes, List<ExistingRoom> rooms) {
+        Map<String, ExistingRoom> roomByName = new LinkedHashMap<>();
+        rooms.forEach(room -> roomByName.putIfAbsent(normalize(room.name()), room));
+
+        Map<Long, ExistingRoom> fixed = new LinkedHashMap<>();
+        for (ClassInfo info : classes) {
+            if (info.studentCount() <= 0) {
+                continue;
+            }
+            String expected = roomName(semesterName, info.gradeName(), info.name());
+            ExistingRoom room = roomByName.get(normalize(expected));
+            if (room != null
+                    && ROOM_TYPE_NORMAL.equals(room.type())
+                    && room.capacity() >= info.studentCount()) {
+                fixed.put(info.id(), room);
+            }
+        }
+        Map<Long, Long> classCountByRoom = new HashMap<>();
+        fixed.values().forEach(room -> classCountByRoom.merge(room.id(), 1L, Long::sum));
+        fixed.entrySet().removeIf(entry -> classCountByRoom.getOrDefault(entry.getValue().id(), 0L) > 1);
+        return fixed;
+    }
+
+    private static String normalize(String name) {
+        return name == null ? "" : name.trim();
+    }
+
+    /**
      * Plans one room per class with at least one empty room. Classes are ordered by
      * name so the preview and the apply step list them identically.
      */

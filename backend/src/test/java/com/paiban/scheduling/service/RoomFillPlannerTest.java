@@ -245,6 +245,35 @@ class RoomFillPlannerTest {
                 .containsExactly(RoomFillPlanner.ROOM_OWNER_UNKNOWN);
     }
 
+    @Test
+    void fixedRoomsMatchTheClassRoomNameIgnoringPadding() {
+        Map<Long, ExistingRoom> fixed = RoomFillPlanner.fixedRooms(
+                SEMESTER,
+                List.of(new ClassInfo(1L, "八（1）班", "八年级", 45)),
+                List.of(new ExistingRoom(7L, " " + SEMESTER + "-八年级八（1）班-固定教室  ", "NORMAL", 45)));
+
+        assertThat(fixed).containsEntry(1L, new ExistingRoom(
+                7L, " " + SEMESTER + "-八年级八（1）班-固定教室  ", "NORMAL", 45));
+    }
+
+    @Test
+    void fixedRoomsSkipMissingTooSmallAndSharedRooms() {
+        Map<Long, ExistingRoom> fixed = RoomFillPlanner.fixedRooms(
+                SEMESTER,
+                List.of(
+                        new ClassInfo(1L, "八（1）班", "八年级", 45),
+                        new ClassInfo(2L, "八（2）班", "八年级", 45),
+                        new ClassInfo(3L, "八（3）班", "八年级", 45),
+                        new ClassInfo(4L, "八（4）班", "八年级", 45)),
+                List.of(
+                        new ExistingRoom(7L, SEMESTER + "-八年级八（1）班-固定教室", "NORMAL", 40),
+                        new ExistingRoom(8L, SEMESTER + "-八年级八（2）班-固定教室", "NORMAL", 45),
+                        new ExistingRoom(8L, SEMESTER + "-八年级八（3）班-固定教室", "NORMAL", 45)));
+
+        // 1 is too small; 2 and 3 claim the same room; 4 has no room at all.
+        assertThat(fixed).isEmpty();
+    }
+
     private static LessonGap gap(long lessonId, long classId, int studentCount) {
         return new LessonGap(lessonId, classId, studentCount, "语文", false, false);
     }

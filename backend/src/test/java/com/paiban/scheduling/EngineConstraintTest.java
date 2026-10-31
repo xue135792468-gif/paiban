@@ -175,6 +175,51 @@ class EngineConstraintTest {
     }
 
     @Test
+    void fixedRoomKeepsTheClassInItsOwnClassroom() {
+        ConstraintSettingsHolder.set(ConstraintSettings.defaults());
+        Lesson lesson = new Lesson(1L, 1L, 1000L, "数学", 10L, 100L, null, null, null, false, 40, 0);
+        lesson.setPeriod(MON1);
+        lesson.setRoom(ROOM_B);
+        lesson.setFixedRoom(ROOM);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isEqualTo(-1);
+    }
+
+    @Test
+    void fixedRoomIsSatisfiedByTheClassroomItself() {
+        ConstraintSettingsHolder.set(ConstraintSettings.defaults());
+        Lesson lesson = new Lesson(1L, 1L, 1000L, "数学", 10L, 100L, null, null, null, false, 40, 0);
+        lesson.setPeriod(MON1);
+        lesson.setRoom(ROOM);
+        lesson.setFixedRoom(ROOM);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+    }
+
+    @Test
+    void fixedRoomDoesNotFightASpecialRoomRequirement() {
+        ConstraintSettingsHolder.set(ConstraintSettings.defaults());
+        Lesson lesson = new Lesson(1L, 1L, 1000L, "体育", 10L, 100L, null, "体育", "NORMAL", false, 40, 0);
+        lesson.setPeriod(MON1);
+        lesson.setRoom(ROOM);
+        lesson.setFixedRoom(ROOM_B);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+    }
+
+    @Test
     void unassignedLessonIsPenalized() {
         ConstraintSettingsHolder.set(ConstraintSettings.defaults());
         Lesson lesson = new Lesson(1L, 1L, 1000L, "数学", 10L, 100L, null, null, null, false, 40, 0);
