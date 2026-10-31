@@ -220,6 +220,40 @@ class EngineConstraintTest {
     }
 
     @Test
+    void anUnassignedLessonCostsMoreThanASingleConflict() {
+        ConstraintSettingsHolder.set(ConstraintSettings.defaults());
+        Lesson hole = new Lesson(1L, 1L, 1000L, "数学", 10L, 100L, null, null, null, false, 40, 0);
+        hole.setRoom(ROOM);
+        TimetableSolution holeSolution =
+                new TimetableSolution(List.of(hole), List.of(MON1, MON2, MON5), List.of(ROOM, ROOM_B));
+        Lesson first = lesson(2, 10, 100, 1000, MON1, ROOM);
+        Lesson second = lesson(3, 11, 100, 1001, MON1, ROOM_B);
+        TimetableSolution conflictSolution =
+                new TimetableSolution(List.of(first, second), List.of(MON1, MON2, MON5), List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(holeSolution);
+        scoreManager().updateScore(conflictSolution);
+
+        assertThat(holeSolution.getScore().hardScore())
+                .isLessThan(conflictSolution.getScore().hardScore());
+    }
+
+    @Test
+    void aLessonWithAPeriodButNoRoomIsAlsoAFixedRoomViolation() {
+        ConstraintSettingsHolder.set(ConstraintSettings.defaults());
+        Lesson lesson = new Lesson(1L, 1L, 1000L, "数学", 10L, 100L, null, null, null, false, 40, 0);
+        lesson.setPeriod(MON1);
+        lesson.setRoom(null);
+        lesson.setFixedRoom(ROOM);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isLessThanOrEqualTo(-2);
+    }
+
+    @Test
     void unassignedLessonIsPenalized() {
         ConstraintSettingsHolder.set(ConstraintSettings.defaults());
         Lesson lesson = new Lesson(1L, 1L, 1000L, "数学", 10L, 100L, null, null, null, false, 40, 0);

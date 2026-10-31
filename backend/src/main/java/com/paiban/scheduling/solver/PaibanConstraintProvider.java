@@ -186,10 +186,18 @@ public class PaibanConstraintProvider implements ConstraintProvider {
 
     // ---------- hard constraints ----------
 
+    /**
+     * A hole must cost more than a single conflict. Timefold's {@code forEach} family
+     * silently skips an entity while any planning variable is null, so a hole otherwise
+     * hides from the teacher/class/room penalties it would cause and becomes exactly as
+     * cheap as one conflict — the solver then parks the last few lessons in "unassigned"
+     * and keeps them there. Ten hard points make a complete schedule (even one with a
+     * handful of conflicts to fix by hand) strictly preferable to leaving lessons out.
+     */
     private Constraint unassignedLesson(ConstraintFactory f) {
         return f.forEachIncludingUnassigned(Lesson.class)
                 .filter(lesson -> lesson.getPeriod() == null || lesson.getRoom() == null)
-                .penalize(HardSoftScore.ONE_HARD)
+                .penalize(HardSoftScore.ofHard(10))
                 .asConstraint("课节未排");
     }
 
@@ -200,7 +208,7 @@ public class PaibanConstraintProvider implements ConstraintProvider {
      * substitution planner all read the same effective value.
      */
     private Constraint courseRoomTypeMetadata(ConstraintFactory f, ConstraintSettings s) {
-        return f.forEach(Lesson.class)
+        return f.forEachIncludingUnassigned(Lesson.class)
                 .filter(lesson -> lesson.getPeriod() != null
                         && lesson.getRequiredRoomType() != null
                         && StringUtils.hasText(lesson.getRequiredRoomType())
@@ -257,7 +265,7 @@ public class PaibanConstraintProvider implements ConstraintProvider {
      * their room, and {@link #courseRoomTypeMetadata} scores it.
      */
     private Constraint classFixedRoom(ConstraintFactory f) {
-        return f.forEach(Lesson.class)
+        return f.forEachIncludingUnassigned(Lesson.class)
                 .filter(lesson -> lesson.getFixedRoom() != null
                         && lesson.getPeriod() != null
                         && !StringUtils.hasText(lesson.getRequiredRoomType())
