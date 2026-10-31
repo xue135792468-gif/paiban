@@ -13,6 +13,10 @@ import com.paiban.foundation.web.FoundationDtos.CourseDto;
 import com.paiban.foundation.web.FoundationDtos.TeacherDto;
 import com.paiban.scheduling.domain.Assignment;
 import com.paiban.scheduling.domain.AssignmentRepository;
+import com.paiban.scheduling.domain.DraftLesson;
+import com.paiban.scheduling.domain.DraftLessonRepository;
+import com.paiban.scheduling.domain.TimetableDraft;
+import com.paiban.scheduling.domain.TimetableDraftRepository;
 import com.paiban.scheduling.solver.Lesson;
 import com.paiban.scheduling.solver.PeriodSlot;
 import com.paiban.scheduling.solver.RoomSlot;
@@ -39,6 +43,8 @@ public class TimetableProblemBuilder {
     private final AssignmentRepository assignmentRepository;
     private final SemesterRepository semesterRepository;
     private final TimetableEntryRepository timetableEntries;
+    private final TimetableDraftRepository drafts;
+    private final DraftLessonRepository draftLessons;
     private final FoundationService foundation;
 
     public TimetableProblemBuilder(
@@ -47,12 +53,16 @@ public class TimetableProblemBuilder {
             AssignmentRepository assignmentRepository,
             SemesterRepository semesterRepository,
             TimetableEntryRepository timetableEntries,
+            TimetableDraftRepository drafts,
+            DraftLessonRepository draftLessons,
             FoundationService foundation) {
         this.periodRepository = periodRepository;
         this.roomRepository = roomRepository;
         this.assignmentRepository = assignmentRepository;
         this.semesterRepository = semesterRepository;
         this.timetableEntries = timetableEntries;
+        this.drafts = drafts;
+        this.draftLessons = draftLessons;
         this.foundation = foundation;
     }
 
@@ -145,22 +155,57 @@ public class TimetableProblemBuilder {
      * local search starts from a publishable solution. Assignments that were edited after
      * publishing (or have no baseline entry) keep their unassigned periods and are filled
      * by the construction phase as before.
+     *
+     * <p>A new semester has no baseline yet, but the imported workbook draft is already a
+     * complete schedule. If the baseline is empty, the oldest complete draft (normally the
+     * import) seeds the same way.
      */
     private Map<String, Deque<PeriodSlot>> warmPeriods(
             Long semesterId, Map<Long, PeriodSlot> periodById) {
-        Map<String, Deque<PeriodSlot>> byAssignment = new HashMap<>();
+        Map<String, Deque<PeriodSlot>> baseline = new HashMap<>();
         timetableEntries.findBySemesterId(semesterId).stream()
                 .sorted(Comparator.comparing(TimetableEntry::getId))
-                .forEach(entry -> {
-                    PeriodSlot slot = periodById.get(entry.getPeriodId());
-                    if (slot == null) {
-                        return;
-                    }
-                    byAssignment.computeIfAbsent(
-                            assignmentKey(entry.getAdminClassId(), entry.getCourseId(), entry.getTeacherId()),
-                            key -> new ArrayDeque<>()).add(slot);
-                });
-        return byAssignment;
+                .forEach(entry -> addPeriod(
+                        baseline, entry.getAdminClassId(), entry.getCourseId(), entry.getTeacherId(),
+                        entry.getPeriodId(), periodById));
+        if (!baseline.isEmpty()) {
+            return baseline;
+        }
+
+        List<TimetableDraft> existing = drafts.findBySemesterIdOrderByCreatedAtDesc(semesterId);
+        for (int i = existing.size() - 1; i >= 0; i--) {
+            TimetableDraft draft = existing.get(i);
+            List<DraftLesson> rows = draftLessons.findByDraftIdOrderByIdAsc(draft.getId());
+            if (rows.isEmpty() || rows.stream().anyMatch(row -> row.getPeriodId() == null)) {
+                continue;
+            }
+            Map<String, Deque<PeriodSlot>> byAssignment = new HashMap<>();
+            boolean usable = true;
+            for (DraftLesson row : rows) {
+                if (!addPeriod(byAssignment, row.getAdminClassId(), row.getCourseId(),
+                        row.getTeacherId(), row.getPeriodId(), periodById)) {
+                    usable = false;
+                    break;
+                }
+            }
+            if (usable) {
+                return byAssignment;
+            }
+        }
+        return Map.of();
+    }
+
+    /** Adds one period to the assignment's queue; false when the period is unknown. */
+    private static boolean addPeriod(
+            Map<String, Deque<PeriodSlot>> byAssignment, Long classId, Long courseId,
+            Long teacherId, Long periodId, Map<Long, PeriodSlot> periodById) {
+        PeriodSlot slot = periodId == null ? null : periodById.get(periodId);
+        if (slot == null) {
+            return false;
+        }
+        byAssignment.computeIfAbsent(
+                assignmentKey(classId, courseId, teacherId), key -> new ArrayDeque<>()).add(slot);
+        return true;
     }
 
     private static String assignmentKey(Assignment assignment) {
