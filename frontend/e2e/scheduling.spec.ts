@@ -244,6 +244,8 @@ test('场景 1：录入数据 → 自动排课 → 发布 → 查看课表', asy
   await page.getByRole('button', { name: '打开草稿' }).first().click()
   await expect(page).toHaveURL(/\/admin\/drafts\/\d+/)
   await expect(page.locator('.lesson').first()).toBeVisible()
+  // ADR-0031: the class timetable never shows the room, so the meta line has no "· room" tail.
+  await expect(page.locator('.grid .lesson .lesson-meta').first()).not.toContainText('·')
 
   await page.getByRole('button', { name: '发布课表' }).click()
   await page.getByRole('button', { name: '确定' }).click()
@@ -251,6 +253,7 @@ test('场景 1：录入数据 → 自动排课 → 发布 → 查看课表', asy
 
   await page.goto('/timetable')
   await expect(page.locator('.lesson').first()).toBeVisible()
+  await expect(page.locator('.grid .lesson .lesson-meta').first()).not.toContainText('·')
 })
 
 test('场景 3：未启用钉钉时系统完整可用', async ({ page }) => {
