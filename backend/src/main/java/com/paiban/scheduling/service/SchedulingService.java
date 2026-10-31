@@ -3,6 +3,9 @@ package com.paiban.scheduling.service;
 import ai.timefold.solver.core.api.score.buildin.hardsoft.HardSoftScore;
 import ai.timefold.solver.core.api.solver.Solver;
 import ai.timefold.solver.core.api.solver.SolverFactory;
+import ai.timefold.solver.core.config.constructionheuristic.ConstructionHeuristicPhaseConfig;
+import ai.timefold.solver.core.config.constructionheuristic.ConstructionHeuristicType;
+import ai.timefold.solver.core.config.localsearch.LocalSearchPhaseConfig;
 import ai.timefold.solver.core.config.solver.SolverConfig;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.AdminClass;
@@ -163,10 +166,18 @@ public class SchedulingService {
             if (problem.getLessons().isEmpty()) {
                 throw new IllegalStateException("当前学期没有可排的授课任务");
             }
+            // CHEAPEST_INSERTION builds a much better first solution than the default
+            // first-fit heuristic on a tight timetable: it costs every lesson/period slot
+            // before committing, so teacher conflicts are avoided up front instead of
+            // being left for local search to untangle.
             SolverConfig solverConfig = new SolverConfig()
                     .withSolutionClass(TimetableSolution.class)
                     .withEntityClasses(Lesson.class)
                     .withConstraintProviderClass(PaibanConstraintProvider.class)
+                    .withPhases(
+                            new ConstructionHeuristicPhaseConfig()
+                                    .withConstructionHeuristicType(ConstructionHeuristicType.CHEAPEST_INSERTION),
+                            new LocalSearchPhaseConfig())
                     .withTerminationSpentLimit(Duration.ofSeconds(job.getSolveSeconds()));
             Solver<TimetableSolution> solver =
                     SolverFactory.<TimetableSolution>create(solverConfig).buildSolver();
