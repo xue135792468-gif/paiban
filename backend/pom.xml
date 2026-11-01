@@ -174,8 +174,10 @@
           <!-- Several worktrees run tests at once; without an explicit heap the JVM
                picks a share of total RAM and Timefold's Chunk::new fails on native memory.
                Mockito's inline mock maker self-attaches; allowing that avoids the slower
-               external attach that some Windows security agents block. -->
-          <argLine>-Xmx2g -XX:MaxMetaspaceSize=512m -Djdk.attach.allowAttachSelf=true</argLine>
+               external attach that some Windows security agents block.
+               Testcontainers' shaded docker-java defaults to Docker API 1.32, while newer
+               hosts require 1.40+; this JVM system property is the key it actually reads. -->
+          <argLine>-Xmx2g -XX:MaxMetaspaceSize=512m -Djdk.attach.allowAttachSelf=true -Dapi.version=1.43</argLine>
           <includes>
             <include>**/*Test.java</include>
             <include>**/*Tests.java</include>
