@@ -297,6 +297,30 @@ class RoomFillPlannerTest {
         assertThat(fixed.get(5L).id()).isEqualTo(9L);
     }
 
+    @Test
+    void fixedRoomsFallsBackToAUniqueSuffixFromAnotherSemester() {
+        // Rooms are global: a new semester copied from an old one keeps the old
+        // semester's room names, so the exact name no longer matches.
+        Map<Long, ExistingRoom> fixed = RoomFillPlanner.fixedRooms(
+                "Acceptance-2027-S2",
+                List.of(new ClassInfo(1L, "八（1）班", "八年级", 45)),
+                List.of(new ExistingRoom(7L, "1-八年级八（1）班-固定教室", "NORMAL", 45)));
+
+        assertThat(fixed.get(1L).id()).isEqualTo(7L);
+    }
+
+    @Test
+    void fixedRoomsDoesNotGuessWhenTwoSemestersShareTheSuffix() {
+        Map<Long, ExistingRoom> fixed = RoomFillPlanner.fixedRooms(
+                "Acceptance-2027-S2",
+                List.of(new ClassInfo(1L, "八（1）班", "八年级", 45)),
+                List.of(
+                        new ExistingRoom(7L, "1-八年级八（1）班-固定教室", "NORMAL", 45),
+                        new ExistingRoom(8L, "2-八年级八（1）班-固定教室", "NORMAL", 45)));
+
+        assertThat(fixed).doesNotContainKey(1L);
+    }
+
     private static LessonGap gap(long lessonId, long classId, int studentCount) {
         return new LessonGap(lessonId, classId, studentCount, "语文", false, false);
     }

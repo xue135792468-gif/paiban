@@ -109,6 +109,9 @@ public final class RoomFillPlanner {
         for (ClassInfo info : classes) {
             String expected = roomName(semesterName, info.gradeName(), info.name());
             ExistingRoom room = roomByName.get(normalize(expected));
+            if (room == null) {
+                room = uniqueRoomBySuffix(info, rooms);
+            }
             if (room != null) {
                 fixed.put(info.id(), room);
             }
@@ -117,6 +120,28 @@ public final class RoomFillPlanner {
         fixed.values().forEach(room -> classCountByRoom.merge(room.id(), 1L, Long::sum));
         fixed.entrySet().removeIf(entry -> classCountByRoom.getOrDefault(entry.getValue().id(), 0L) > 1);
         return fixed;
+    }
+
+    /**
+     * Rooms are global and keep their name when a new semester copies an old one's
+     * structure, so a class copied into "Acceptance-2027-S2" still points at
+     * {@code 1-八年级八（1）班-固定教室}. The grade + class + suffix is the stable part;
+     * a single match is safe to reuse. Two matches cannot tell which semester's room is
+     * this class's, so we do not guess and leave the class unpinned for a person to fix.
+     */
+    private static ExistingRoom uniqueRoomBySuffix(ClassInfo info, List<ExistingRoom> rooms) {
+        String grade = info.gradeName() == null ? "" : info.gradeName().trim();
+        String suffix = normalize(grade + info.name() + "-固定教室");
+        ExistingRoom candidate = null;
+        for (ExistingRoom room : rooms) {
+            if (normalize(room.name()).endsWith(suffix)) {
+                if (candidate != null) {
+                    return null;
+                }
+                candidate = room;
+            }
+        }
+        return candidate;
     }
 
     private static String normalize(String name) {
