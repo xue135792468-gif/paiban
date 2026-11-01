@@ -2,7 +2,14 @@ package com.paiban.substitution.plan;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.paiban.scheduling.domain.ConstraintConfig;
+import com.paiban.scheduling.domain.ConstraintEntry;
+import com.paiban.scheduling.domain.ConstraintType;
+import com.paiban.scheduling.solver.ConstraintSettings;
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -114,6 +121,123 @@ class SwapPlannerTest {
                 assertThat(move.fromDate()).isEqualTo(PlanFixtures.date(1).plusDays(7));
             }
         });
+    }
+
+    @Test
+    void findsKnownThreeCourseCycleDespiteTemporarySameCourseCollision() {
+        PlanFixtures.Builder builder = base()
+                .settings(sameCourseOncePerDay());
+        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
+        long second = builder.addLesson(CLASS_1, 2, 2, 2L, 2, 1);
+        long third = builder.addLesson(CLASS_1, 1, 3, 3L, 2, 2);
+        PlanSnapshot snapshot = builder.build();
+
+        List<PlanMove> knownCycle = List.of(
+                move(first, 1, 1, 1, 1, 1, 2, 1, 0),
+                move(second, 2, 2, 2, 2, 1, 2, 2, 1),
+                move(third, 1, 3, 3, 2, 2, 1, 1, 2));
+        assertThat(PlanVerifier.verify(snapshot, knownCycle, PlanVerifier.Kind.SWAP, -1).passed())
+                .isTrue();
+
+        PlanningResult result = SwapPlanner.plan(
+                snapshot,
+                new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
+                        PlanFixtures.periodId(2, 1)),
+                SwapPlanner.Options.of(2, 6, RankingPreset.MIN_IMPACT));
+
+        assertThat(result.candidates()).isNotEmpty();
+        CandidatePlan plan = result.candidates().get(0);
+        assertThat(plan.moves()).extracting(PlanMove::entryId)
+                .containsExactlyInAnyOrder(first, second, third);
+        assertThat(plan.moves()).anySatisfy(move -> {
+            if (move.entryId() == first) {
+                assertThat(move.toDate()).isEqualTo(PlanFixtures.date(2));
+                assertThat(move.toPeriodId()).isEqualTo(PlanFixtures.periodId(2, 1));
+            }
+        });
+        PlanVerifier.Result verification = PlanVerifier.verify(
+                snapshot, plan.moves(), PlanVerifier.Kind.SWAP, plan.softPenalty());
+        assertThat(verification.issues()).isEmpty();
+        assertThat(verification.passed()).isTrue();
+    }
+
+    @Test
+    void finalHardRuleStillRejectsCycleThatLeavesSameCourseCollision() {
+        PlanFixtures.Builder builder = base()
+                .settings(sameCourseOncePerDay());
+        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
+        builder.addLesson(CLASS_1, 2, 2, 2L, 2, 1);
+        builder.addLesson(CLASS_1, 1, 3, 3L, 2, 2);
+        // Teacher 3 is already teaching another class in the source slot, so the
+        // third lesson cannot move back and the collision cannot be repaired.
+        builder.lesson(CLASS_2, 3, 3, 3L, 1, 1);
+        PlanSnapshot snapshot = builder.build();
+
+        PlanningResult result = SwapPlanner.plan(
+                snapshot,
+                new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
+                        PlanFixtures.periodId(2, 1)),
+                SwapPlanner.Options.of(2, 6, RankingPreset.MIN_IMPACT));
+
+        assertThat(result.candidates()).isEmpty();
+    }
+
+    @Test
+    void budgetExhaustionDoesNotClaimNoSolution() {
+        PlanFixtures.Builder builder = base()
+                .settings(sameCourseOncePerDay());
+        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
+        builder.addLesson(CLASS_1, 2, 2, 2L, 2, 1);
+        builder.addLesson(CLASS_1, 1, 3, 3L, 2, 2);
+        PlanSnapshot snapshot = builder.build();
+
+        PlanningResult result = SwapPlanner.plan(
+                snapshot,
+                new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
+                        PlanFixtures.periodId(2, 1)),
+                new SwapPlanner.Options(2, 6, RankingPreset.MIN_IMPACT, 1, 200));
+
+        assertThat(result.candidates()).isEmpty();
+        assertThat(result.timedOut()).isTrue();
+        assertThat(result.diagnoses()).extracting(PlanDiagnosis::code)
+                .contains("SEARCH_BUDGET")
+                .doesNotContain("NO_SOLUTION");
+        assertThat(result.diagnoses()).anySatisfy(diagnosis -> {
+            if ("SEARCH_BUDGET".equals(diagnosis.code())) {
+                assertThat(diagnosis.message()).contains("不能据此判定无解");
+            }
+        });
+    }
+
+    @Test
+    void findsSecondKnownCycleWithSameCourseObstacleOnADifferentLayout() {
+        PlanFixtures.Builder builder = base()
+                .settings(sameCourseOncePerDay());
+        long wednesdayFirst = builder.addLesson(CLASS_1, 1, 1, 1L, 3, 1);
+        long fridaySecond = builder.addLesson(CLASS_1, 2, 2, 2L, 5, 2);
+        long fridayThird = builder.addLesson(CLASS_1, 1, 3, 3L, 5, 3);
+        PlanSnapshot snapshot = builder.build();
+
+        List<PlanMove> knownCycle = List.of(
+                move(wednesdayFirst, 1, 1, 1, 3, 1, 5, 2, 0),
+                move(fridaySecond, 2, 2, 2, 5, 2, 5, 3, 1),
+                move(fridayThird, 1, 3, 3, 5, 3, 3, 1, 2));
+        assertThat(PlanVerifier.verify(snapshot, knownCycle, PlanVerifier.Kind.SWAP, -1).passed())
+                .isTrue();
+
+        PlanningResult result = SwapPlanner.plan(
+                snapshot,
+                new SwapPlanner.Request(CLASS_1, wednesdayFirst, PlanFixtures.date(3),
+                        PlanFixtures.periodId(5, 2)),
+                SwapPlanner.Options.of(3, 6, RankingPreset.MIN_IMPACT));
+
+        assertThat(result.candidates()).isNotEmpty();
+        CandidatePlan plan = result.candidates().get(0);
+        assertThat(plan.moves()).extracting(PlanMove::entryId)
+                .containsExactlyInAnyOrder(wednesdayFirst, fridaySecond, fridayThird);
+        assertThat(PlanVerifier.verify(
+                snapshot, plan.moves(), PlanVerifier.Kind.SWAP, plan.softPenalty()).passed())
+                .isTrue();
     }
 
     @Test
@@ -446,5 +570,54 @@ class SwapPlannerTest {
             builder.room(teacher, "教室" + teacher, "NORMAL", 50);
         }
         return builder;
+    }
+
+    private static PlanMove move(long entryId, long courseId, long teacherId, long roomId,
+                                 int fromDay, int fromPeriodNo,
+                                 int toDay, int toPeriodNo, int order) {
+        return new PlanMove(entryId, CLASS_1, courseId, teacherId, roomId,
+                PlanFixtures.periodId(fromDay, fromPeriodNo), fromDay, fromPeriodNo,
+                PlanFixtures.date(fromDay),
+                PlanFixtures.periodId(toDay, toPeriodNo), toDay, toPeriodNo,
+                PlanFixtures.date(toDay), order);
+    }
+
+    private static ConstraintSettings sameCourseOncePerDay() {
+        ObjectMapper mapper = new ObjectMapper();
+        List<ConstraintConfig> configs = List.of(
+                config(ConstraintType.TEACHER_CONFLICT, true, 100, mapper),
+                config(ConstraintType.CLASS_CONFLICT, true, 100, mapper),
+                config(ConstraintType.ROOM_CONFLICT, true, 100, mapper),
+                config(ConstraintType.ROOM_CAPACITY_FIT, true, 100, mapper),
+                config(ConstraintType.SAME_COURSE_ONCE_PER_DAY, true, 100, mapper));
+        return ConstraintSettings.from(configs, List.of(entry(
+                ConstraintType.SAME_COURSE_ONCE_PER_DAY, mapper)), mapper);
+    }
+
+    private static ConstraintConfig config(
+            ConstraintType type, boolean hard, int weight, ObjectMapper mapper) {
+        ConstraintConfig config = new ConstraintConfig();
+        config.setType(type.name());
+        config.setHard(hard);
+        config.setWeight(weight);
+        config.setEnabled(true);
+        try {
+            config.setParamsJson(mapper.writeValueAsString(Map.of()));
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
+        return config;
+    }
+
+    private static ConstraintEntry entry(ConstraintType type, ObjectMapper mapper) {
+        ConstraintEntry entry = new ConstraintEntry();
+        entry.setType(type.name());
+        entry.setCreatedAt(Instant.EPOCH);
+        try {
+            entry.setParamsJson(mapper.writeValueAsString(Map.of()));
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
+        return entry;
     }
 }

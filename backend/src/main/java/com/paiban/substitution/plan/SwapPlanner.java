@@ -362,13 +362,16 @@ public final class SwapPlanner {
             List<PlanDiagnosis> diagnoses;
             if (top.isEmpty()) {
                 diagnoses = new ArrayList<>(blocked.values());
-                diagnoses.add(new PlanDiagnosis(
-                        "NO_SOLUTION",
-                        "窗口内没有满足硬约束的置换环；可以换一个目标节次或扩大搜索窗口",
-                        request.entryId(), request.targetPeriodId()));
                 if (timedOut) {
-                    diagnoses.add(new PlanDiagnosis("SEARCH_BUDGET", "搜索超出预算，结果可能不完整",
-                            request.entryId(), null));
+                    diagnoses.add(new PlanDiagnosis(
+                            "SEARCH_BUDGET",
+                            "搜索超出预算，窗口内结果未完整检查；不能据此判定无解",
+                            request.entryId(), request.targetPeriodId()));
+                } else {
+                    diagnoses.add(new PlanDiagnosis(
+                            "NO_SOLUTION",
+                            "窗口内没有满足硬约束的置换环；可以换一个目标节次或扩大搜索窗口",
+                            request.entryId(), request.targetPeriodId()));
                 }
             } else {
                 diagnoses = List.of();
@@ -549,18 +552,10 @@ public final class SwapPlanner {
                     "该课程在 " + label + " 禁排", lesson.entryId(), target.id()));
             return false;
         }
-        Control oncePerDay = settings.match(ConstraintType.SAME_COURSE_ONCE_PER_DAY,
-                entry -> ConstraintEntryMatcher.courseOrAll(entry, lesson.courseId()));
-        if (oncePerDay != null && oncePerDay.hard()
-                && day.lessons().stream().anyMatch(other -> other.classId() == lesson.classId()
-                        && other.courseId() == lesson.courseId()
-                        && other.periodId() != target.id()
-                        && other.entryId() != lesson.entryId()
-                        && other.entryId() != vacatingEntryId)) {
-            reasons.add(new PlanDiagnosis("SAME_COURSE_PER_DAY",
-                    "本班当天已有同一门课程", lesson.entryId(), target.id()));
-            return false;
-        }
+        // Same-course-per-day is not a safe edge rejection: another same-day lesson of
+        // that course can itself be moved out by a later extension of the cycle. The
+        // final whole-plan score below checks the configured hard rule after all moves
+        // are applied, so pruning here would reject the known legal three-course cycle.
         return true;
     }
 
