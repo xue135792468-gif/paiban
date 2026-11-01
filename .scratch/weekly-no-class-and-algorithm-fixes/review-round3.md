@@ -1,0 +1,17 @@
+# 最后有界补丁的 Fresh 核对
+
+固定目标4ea9444，比较9663852..4ea9444。两位新的只读核对者分别检查Standards与Spec，范围仅group生成器、公开往返回归测试、ADR0025与交付记录；不扩展为整体算法评判，不自行运行测试。
+
+## Standards
+
+PASS，0项新增发现。确认hydrate在构建row前预留、restoreRows赋值前预留；group生成遇撞跳过并登记，其他prefix保持；预留集合不在多draft间清空。手工演算三张group-3/6/9加载后seed6，新增依次entry7/slot8，group9被跳过成为group10。没有改旧groupKey或entry id，没有后端协议变动。
+
+Standards：0项发现；无待修规范问题。未执行测试或完整门禁。
+
+## Spec
+
+PASS，0项新增发现。确认公开回归从四卡到payload再reload仍四卡/四组，第4条class21、period4独立保留；旧身份赋值不变。ADR明确预算只属plan（默认50000、固定200ms），verify无该参数且仅0/1，与CLI/README一致。
+
+Spec：0项发现；上一轮文档问题已修。未执行浏览器、全量或真实PostgreSQL，不把实现者测试声明当成核对者亲跑结果。
+
+主模型已读实际diff、保留原始失败用例并核对交付。至此本批接受的修复项均已处理，后续进入源码冻结的完整运行验收。
