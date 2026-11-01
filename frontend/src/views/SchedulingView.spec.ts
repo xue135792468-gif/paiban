@@ -125,4 +125,20 @@ describe('空白学期的 warm start 提示', () => {
     expect(wrapper.text()).not.toContain('本次将从零搜索')
     wrapper.unmount()
   })
+
+  it('来源为 DRAFT 时不显示提示', async () => {
+    const draftJob = { ...runningJob, warmStartSource: 'DRAFT' }
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/semesters') return Promise.resolve({ data: [SEMESTER] })
+      if (url === '/semesters/current') return Promise.resolve({ status: 200, data: SEMESTER })
+      if (url === '/scheduling-jobs') return Promise.resolve({ data: [draftJob] })
+      if (url === '/scheduling-jobs/1') return Promise.resolve({ data: draftJob })
+      return Promise.resolve({ data: [] })
+    })
+
+    const { wrapper } = await mountScheduling()
+
+    expect(wrapper.text()).not.toContain('本次将从零搜索')
+    wrapper.unmount()
+  })
 })

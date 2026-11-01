@@ -141,30 +141,7 @@
             show-icon
           />
 
-          <div class="metric-grid">
-            <div class="metric-item">
-              <span class="metric-label">当前求解得分</span>
-              <span class="metric-value">{{ activeJob.score || '暂无得分' }}</span>
-            </div>
-            <div class="metric-item">
-              <span class="metric-label">已耗时</span>
-              <span class="metric-value">{{ Math.round((activeJob.elapsedMs || 0) / 1000) }} 秒</span>
-            </div>
-            <div class="metric-item">
-              <span class="metric-label">预计剩余</span>
-              <span class="metric-value">
-                {{ activeJob.status === 'RUNNING' ? Math.max(0, Math.round((activeJob.estimatedRemainingMs || 0) / 1000)) + ' 秒' : '—' }}
-              </span>
-            </div>
-            <div class="metric-item">
-              <span class="metric-label">设定时长</span>
-              <span class="metric-value">{{ activeJob.solveSeconds }} 秒</span>
-            </div>
-            <div class="metric-item">
-              <span class="metric-label">创建时间</span>
-              <span class="metric-value">{{ formatDateTime(activeJob.createdAt) }}</span>
-            </div>
-          </div>
+          <SchedulingJobMetrics :job="activeJob" />
 
           <el-alert
             v-if="activeJob.status === 'FAILED'"
@@ -312,8 +289,10 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
+import SchedulingJobMetrics from '@/components/scheduling/SchedulingJobMetrics.vue'
 import { useAuthStore } from '@/stores/auth'
 import { serverMessage } from '@/api/errors'
+import { formatDateTime } from '@/utils/datetime'
 
 interface Semester {
   id: number
@@ -414,24 +393,6 @@ function getJobStatusTag(status?: string | null): {
       return { type: 'info', label: '已取消' }
     default:
       return { type: 'info', label: status || '未知' }
-  }
-}
-
-function formatDateTime(val?: string | null) {
-  if (!val) return '-'
-  try {
-    const d = new Date(val)
-    if (isNaN(d.getTime())) return val
-    const pad = (n: number) => String(n).padStart(2, '0')
-    const y = d.getFullYear()
-    const m = pad(d.getMonth() + 1)
-    const day = pad(d.getDate())
-    const h = pad(d.getHours())
-    const min = pad(d.getMinutes())
-    const s = pad(d.getSeconds())
-    return `${y}-${m}-${day} ${h}:${min}:${s}`
-  } catch {
-    return val
   }
 }
 
@@ -817,33 +778,6 @@ h2 {
 
 .progress-wrapper {
   padding: 4px 0;
-}
-
-.metric-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
-  background: #ffffff;
-  padding: 12px 16px;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-}
-
-.metric-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.metric-label {
-  font-size: 12px;
-  color: var(--paiban-muted);
-}
-
-.metric-value {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--paiban-ink);
 }
 
 .job-error-alert {
