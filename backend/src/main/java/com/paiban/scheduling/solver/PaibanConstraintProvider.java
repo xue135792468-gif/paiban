@@ -466,7 +466,7 @@ public class PaibanConstraintProvider implements ConstraintProvider {
      * 单独计一次分，软权重自然累加（1 格扣 1 份权重，3 格扣 3 份）。当天首末之外
      * 的空位（边缘无课）不在区间内，因此不计。
      */
-    static boolean isInternalGap(List<Integer> usedPeriodNos, PeriodSlot slot) {
+    private boolean isInternalGap(List<Integer> usedPeriodNos, PeriodSlot slot) {
         if (usedPeriodNos.isEmpty()) {
             return false;
         }

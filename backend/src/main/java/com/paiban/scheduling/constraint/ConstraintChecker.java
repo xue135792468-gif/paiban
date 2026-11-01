@@ -553,7 +553,7 @@ public final class ConstraintChecker {
      * 存在的 {@link PeriodView}，因此节次编号跨度不会凭空造出不存在的作息，当天
      * 边缘（首末之外）的空位也不计入。求解器、硬校验与软扣分共用这一含义。
      */
-    static int internalGapCount(ConstraintContext ctx, List<LessonView> classDayRows) {
+    private static int internalGapCount(ConstraintContext ctx, List<LessonView> classDayRows) {
         Set<Integer> used = new LinkedHashSet<>();
         int dayOfWeek = -1;
         for (LessonView lesson : classDayRows) {
