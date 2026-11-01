@@ -1,6 +1,6 @@
 # 接手说明（2026-10-25 会话交接）
 
-> **2026-11-01 每周留空与算法修正正在实施**：用户已显式调用implement-spec，覆盖下方“尚未实现/不自动实施”的规划快照。集成分支`codex/weekly-no-class`，工作目录`E:/排课系统/.worktrees/weekly-integration`；01–03修正、04单班闭环与05前端已合入，05后端进行中。04单班浏览器1/1、全目录/模板61项、AI解析9项、CLI18项、发布边界2项均有定向通过记录，数量可能重叠，不能累加作全量证明。尚待多班/容量浏览器、两轴复审和完整门禁；无Docker，本轮真实PostgreSQL尚未验证，未部署生产。详见[implementation-notes.md](weekly-no-class-and-algorithm-fixes/implementation-notes.md)及各delivery记录。主仓库main既有截图/原型不属于本任务，勿清理或提交。
+> **2026-11-01 每周留空与算法修正：实现后复审中**：用户已显式调用implement-spec，覆盖下方尚未实现的规划快照。集成分支codex/weekly-no-class，目录E:/排课系统/.worktrees/weekly-integration；01–05已实现并有定向/API/浏览器证据，详见[实施记录](weekly-no-class-and-algorithm-fixes/implementation-notes.md)及各delivery文件，不在本入口复制测试数字。主模型已独立判断三项算法修正；[两轴复核与处置](weekly-no-class-and-algorithm-fixes/review-round1.md)列出来源提示和测试接缝等集中修复项，之后fresh review与完整门禁。本机无Docker，最终版本拟由草稿PR的CI补真实PostgreSQL校验；未部署生产。主仓库main既有截图/原型不属于本任务，勿清理或提交。
 
 > **2026-11-01 六票已正式发布（尚未实现）**：用户要求修复主模型亲自审查发现的三项算法问题，并新增“每周不上课时段”；已选择第一版只做每周固定、全校或部分班级、原课时排到其他位置，不含具体日期停课。用户澄清并确认全天连续节次：上午4节+下午3节+晚上2节为第1–9节，晚自习只是时间段标签。规格和六张正式票在 [weekly-no-class-and-algorithm-fixes/spec.md](weekly-no-class-and-algorithm-fixes/spec.md) 与 [ticket-plan.md](weekly-no-class-and-algorithm-fixes/ticket-plan.md)，均已 `ready-for-agent`；未认领、未编码，初始frontier为01/02/03，03→04→05，06收口。01/03共用文件默认串行，02只在资源和写集合允许时独立并行。算法最终判断由主模型负责。本轮仅拆票发布，不自动实施或部署。审查反例和实现定位在该目录 `audit-evidence.md`。
 

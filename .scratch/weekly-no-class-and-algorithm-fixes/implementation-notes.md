@@ -20,6 +20,8 @@
 
 ## 验证记录
 
-01–03算法修正、04单班闭环、05前端已合入集成分支；05后端仍在独立分支实施。04单班Playwright实际1/1通过，全目录/模板61项通过，AI解析9项通过，CLI18项通过；发布/权限/版本/后续调课边界2项通过。各项证据见core-delivery、ui-delivery、catalogue-delivery、scope-ui-delivery、cli-delivery与published-delivery；有重复的定向测试数量不累加为独立总数。
+01–05代码已集成，定向/API/浏览器证据及各版本边界见backend-delivery、scope-ui-delivery、e2e-delivery、published-delivery和capacity-baseline-delivery。数量按各记录对应版本解读，不累加重叠测试。最终统一结果将写入06验收记录。
 
-尚未完成新增3场景浏览器合验、两轴复审与完整verify闸门。当前环境无Docker和本地PostgreSQL；H2通过不代表真实PostgreSQL已验证。未部署生产。
+主模型算法判断见algorithm-verdict.md。两轴首轮独立只读复核与主模型逐项处置见review-round1.md；唯一review-fix代理正在codex/weekly-review-fix落实接受项，之后fresh review。尚未跑冻结版本完整verify。
+
+当前本机无Docker或可用PostgreSQL；H2通过不代表真实数据库已验证。未部署生产，生产状态本轮未复验。
