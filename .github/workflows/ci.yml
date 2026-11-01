@@ -12,6 +12,11 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    # testcontainers' bundled docker-java defaults to Docker API 1.32; the
+    # hosted runner's daemon requires 1.40+. Pin a supported version so
+    # PostgresContainerIT can start instead of failing on the API handshake.
+    env:
+      DOCKER_API_VERSION: "1.43"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
