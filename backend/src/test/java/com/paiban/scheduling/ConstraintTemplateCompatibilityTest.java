@@ -368,6 +368,8 @@ class ConstraintTemplateCompatibilityTest extends ApiIntegrationTest {
 
         List<Map<String, Object>> configs = new ArrayList<>();
         // 19 entry-backed types, one grouped requirement each with its own soft weight.
+        configs.add(controlledHard("CLASS_UNAVAILABLE",
+                Map.of("classId", sourceClass, "dayOfWeek", 1, "periodNo", 1)));
         configs.add(controlled("TEACHER_UNAVAILABLE", 44,
                 Map.of("teacherId", teacher, "dayOfWeek", 1, "periodNo", 1)));
         configs.add(controlled("TEACHER_MEETING_BLOCKED", 44,
@@ -405,13 +407,13 @@ class ConstraintTemplateCompatibilityTest extends ApiIntegrationTest {
             configs.add(Map.of("type", type, "params", Map.of(), "weight", 100,
                     "hard", true, "enabled", true));
         }
-        assertThat(configs).hasSize(25);
+        assertThat(configs).hasSize(26);
         save(token, source, configs).then().statusCode(200);
 
         long templateId = saveTemplate(token, source, "全目录-" + TestData.suffix())
                 .then().statusCode(200)
-                .body("configCount", equalTo(25))
-                .body("entryCount", equalTo(19))
+                .body("configCount", equalTo(26))
+                .body("entryCount", equalTo(20))
                 .extract().jsonPath().getLong("id");
 
         as(token).queryParam("semesterId", target)
@@ -420,10 +422,11 @@ class ConstraintTemplateCompatibilityTest extends ApiIntegrationTest {
                 .then().statusCode(200);
 
         List<Map<String, Object>> restored = configs(token, target);
-        assertThat(restored).hasSize(25);
+        assertThat(restored).hasSize(26);
         List<Map<String, Object>> controlledRows = restored.stream()
                 .filter(row -> ((List<?>) row.get("entries")).size() == 1)
                 .filter(row -> !"TEACHER_CONFLICT".equals(row.get("type")))
+                .filter(row -> !"CLASS_UNAVAILABLE".equals(row.get("type")))
                 .toList();
         assertThat(controlledRows).hasSize(19);
         controlledRows.forEach(row -> {
@@ -435,6 +438,19 @@ class ConstraintTemplateCompatibilityTest extends ApiIntegrationTest {
             assertThat(entry.get("enabled")).isEqualTo(true);
         });
         // The class reference was explicitly rebound; the source id never leaked.
+        Map<String, Object> classUnavailable = byType(restored, "CLASS_UNAVAILABLE");
+        Map<?, ?> unavailableEntry = (Map<?, ?>) ((List<?>) classUnavailable.get("entries")).get(0);
+        assertThat(((Number) ((Map<?, ?>) unavailableEntry.get("params")).get("classId")).longValue())
+                .isEqualTo(targetClass);
+        assertThat(((Number) ((Map<?, ?>) unavailableEntry.get("params")).get("dayOfWeek")).intValue())
+                .isEqualTo(1);
+        assertThat(((Number) ((Map<?, ?>) unavailableEntry.get("params")).get("periodNo")).intValue())
+                .isEqualTo(1);
+        assertThat(unavailableEntry.get("groupKey")).isEqualTo("g-CLASS_UNAVAILABLE");
+        assertThat(unavailableEntry.get("hard")).isEqualTo(true);
+        assertThat(unavailableEntry.get("enabled")).isEqualTo(true);
+        assertThat(classUnavailable.get("hard")).isEqualTo(true);
+
         Map<String, Object> classMax = byType(restored, "CLASS_MAX_PER_DAY");
         Map<?, ?> classEntry = (Map<?, ?>) ((List<?>) classMax.get("entries")).get(0);
         assertThat(((Number) ((Map<?, ?>) classEntry.get("params")).get("classId")).longValue())
@@ -519,6 +535,22 @@ class ConstraintTemplateCompatibilityTest extends ApiIntegrationTest {
     }
 
     /** One entry-backed type whose single requirement carries a group and controls. */
+    private Map<String, Object> controlledHard(
+            String type, Map<String, Object> params) {
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("params", params);
+        entry.put("groupKey", "g-" + type);
+        entry.put("hard", true);
+        entry.put("weight", 100);
+        entry.put("enabled", true);
+        return Map.of(
+                "type", type,
+                "weight", 100,
+                "hard", true,
+                "enabled", true,
+                "entries", List.of(entry));
+    }
+
     private Map<String, Object> controlled(
             String type, int weight, Map<String, Object> params) {
         Map<String, Object> entry = new LinkedHashMap<>();
