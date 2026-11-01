@@ -1,4 +1,5 @@
 import { filledValues, hasValue } from './paramValues'
+import { weeklyClasses } from './weeklyScope'
 import type { EntryDraft, ParamDef, TypeDraft } from './types'
 
 /**
@@ -202,6 +203,19 @@ export function plannedEntries(row: TypeDraft): PlannedEntry[] {
           (param) => !param.required || hasValue(params[param.name]),
         )
         if (Object.keys(params).length === 0) {
+          return
+        }
+        if (row.code === 'CLASS_UNAVAILABLE') {
+          const classes = weeklyClasses(entry)
+          const targets = classes === null ? [null] : classes.length > 0 ? classes : [undefined]
+          targets.forEach((classId) => {
+            const scoped = { ...params }
+            delete scoped.classId
+            if (classId != null) scoped.classId = classId
+            push({ cardIndex, slotIndex,
+              id: slot.classEntryIds?.[String(classId ?? 'ALL')] ?? null,
+              params: scoped, complete: slotComplete && classId !== undefined, ...controls })
+          })
           return
         }
         push({

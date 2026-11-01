@@ -97,6 +97,10 @@
     </p>
 
     <div v-if="slotSet" class="entry-fields" data-testid="constraint-entry-slot-set">
+      <WeeklyClassScope
+        v-if="row.code === 'CLASS_UNAVAILABLE'" :entry="entry" :classes="classes"
+        :disabled="!editable" @update="(name, value) => emit('update', name, value)"
+      />
       <ParamField
         v-for="param in heads"
         :key="param.name"
@@ -167,6 +171,7 @@
 import { computed } from 'vue'
 import { ElButton, ElCheckbox, ElMessageBox, ElOption, ElSelect, ElSlider, ElSwitch } from 'element-plus'
 import ConstraintSlotRow from './ConstraintSlotRow.vue'
+import WeeklyClassScope from './WeeklyClassScope.vue'
 import ParamField from './ParamField.vue'
 import {
   allTargetLabel,
@@ -215,7 +220,7 @@ const emit = defineEmits<{
 }>()
 
 const slotSet = computed(() => isSlotSetType(props.row))
-const heads = computed(() => headParams(props.row))
+const heads = computed(() => props.row.code === 'CLASS_UNAVAILABLE' ? [] : headParams(props.row))
 
 const hardChoice = computed(() => {
   if (props.entry.hard == null) {

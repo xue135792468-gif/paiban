@@ -64,6 +64,8 @@ export interface ConstraintConfigDto {
  * these while a card of any other type owns none.
  */
 export interface SlotDraft {
+  /** Saved identities for each class in one weekly no-class slot. */
+  classEntryIds?: Record<string, number | null>
   key: string
   id: number | null
   dayOfWeek: number | null

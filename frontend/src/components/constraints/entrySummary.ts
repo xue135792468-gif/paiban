@@ -93,7 +93,12 @@ export function slotCardSummary(
   ctx: SummaryContext,
 ): string {
   const heads = headParams(row)
-  const headText = heads.length > 0
+  const headText = row.code === 'CLASS_UNAVAILABLE'
+    ? (entry.values.classScope === 'SELECTED' || entry.values.classId != null
+      ? ((entry.values.classIds as number[] | undefined) ?? [Number(entry.values.classId)])
+        .map((id) => ctx.classNames?.get(id) ?? `班级#${id}`).join('、') || '尚未选择班级'
+      : '全校（含以后新增班级）')
+    : heads.length > 0
     ? formatEntrySummary(heads, entry.values, ctx)
     : row.name
   const slots = entry.slots ?? []
