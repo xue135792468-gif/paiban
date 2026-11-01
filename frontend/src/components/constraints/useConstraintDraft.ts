@@ -147,12 +147,13 @@ function buildRow(type: ConstraintTypeDef, saved: ConstraintConfigDto | undefine
     categoryLabel: type.categoryLabel,
     params: type.params,
     slotGrouped: type.slotGrouped ?? false,
+    hardOnly: type.hardOnly ?? false,
     thresholdObjectField: type.thresholdObjectField ?? null,
     thresholdValueField: type.thresholdValueField ?? null,
     entries: entriesOf(type, saved),
     threshold,
     enabled: saved?.enabled ?? false,
-    hard: saved?.hard ?? type.defaultHard,
+    hard: type.hardOnly ? true : saved?.hard ?? type.defaultHard,
     weight: saved?.weight ?? type.defaultWeight,
   }
 }
@@ -310,7 +311,7 @@ export function useConstraintDraft() {
   function setHard(code: string, value: boolean) {
     const row = find(code)
     if (row) {
-      row.hard = value
+      row.hard = row.hardOnly ? true : value
     }
   }
 
@@ -422,7 +423,7 @@ export function useConstraintDraft() {
   function setEntryHard(code: string, key: string, value: boolean | null) {
     const entry = entryOf(code, key)
     if (entry) {
-      entry.hard = value
+      entry.hard = find(code)?.hardOnly ? true : value
     }
   }
 

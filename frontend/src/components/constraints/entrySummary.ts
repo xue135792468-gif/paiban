@@ -5,6 +5,7 @@ import type { EntryDraft, ParamDef, TypeDraft } from './types'
 export interface SummaryContext {
   teacherNames: Map<number, string>
   courseNames: Map<number, string>
+  classNames?: Map<number, string>
 }
 
 /** `周一第1节` — the compact form used inside a preference slot set. */
@@ -20,6 +21,8 @@ function paramText(param: ParamDef, value: unknown, ctx: SummaryContext): string
       return ctx.teacherNames.get(Number(value)) ?? `教师#${value}`
     case 'courseId':
       return ctx.courseNames.get(Number(value)) ?? `课程#${value}`
+    case 'classId':
+      return ctx.classNames?.get(Number(value)) ?? `行政班#${value}`
     case 'dayOfWeek':
       return dayLabel(value)
     case 'periodNo':

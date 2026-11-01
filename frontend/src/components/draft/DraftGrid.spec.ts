@@ -57,6 +57,39 @@ function mountGrid(props: Record<string, unknown>) {
 }
 
 describe('DraftGrid', () => {
+  it('主动留空有文字原因，不能作为拖入目标', async () => {
+    const wrapper = mountGrid({
+      draggable: true,
+      draggedLessonId: 9,
+      blockedPeriods: { 101: '本班每周不上课时段' },
+      targets: { 101: { available: true, conflicts: [] } },
+    })
+    expect(wrapper.get('.cell').text()).toContain('不上课')
+    expect(wrapper.get('.cell').attributes('title')).toBe('本班每周不上课时段')
+    expect(wrapper.get('.cell').classes()).toContain('invalid-target')
+    await wrapper.get('.cell').trigger('drop')
+    expect(wrapper.emitted('drop-cell')).toBeUndefined()
+  })
+
+  it('禁排位置已有课程时保留课程并标冲突，仍可把课程拖走', async () => {
+    const wrapper = mountGrid({
+      lessons: [lesson(1, 1, 1)],
+      draggable: true,
+      blockedPeriods: { 101: '本班每周不上课时段' },
+    })
+    expect(wrapper.get('.lesson').text()).toContain('课程1')
+    expect(wrapper.get('.lesson').classes()).toContain('conflict')
+    expect(wrapper.get('.cell').text()).toContain('占用了不上课时段')
+    await wrapper.get('.lesson').trigger('dragstart')
+    expect(wrapper.emitted('drag-start')).toHaveLength(1)
+  })
+
+  it('未传班级禁排映射的其他视角不显示主动留空', () => {
+    const wrapper = mountGrid({})
+    expect(wrapper.text()).not.toContain('不上课')
+    expect(wrapper.get('.cell').text()).toBe('—')
+  })
+
   it('同一格里的多节课都会渲染，用于导入预览里的硬冲突', () => {
     const wrapper = mountGrid({
       lessons: [lesson(1, 1, 1), lesson(2, 1, 1, { courseName: '数学', teacherName: '李四' })],

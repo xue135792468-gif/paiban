@@ -1,5 +1,12 @@
 /** View models shared by the draft editor, its grid and the adjust composable. */
 
+/** An explicitly unavailable weekly slot for one administrative class. */
+export interface BlockedClassSlot {
+  classId: number
+  periodId: number
+  reason: string
+}
+
 export interface Draft {
   id: number
   semesterId: number

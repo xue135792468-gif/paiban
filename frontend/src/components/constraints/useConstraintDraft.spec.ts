@@ -120,6 +120,23 @@ function hydrated(configs: ConstraintConfigDto[] = CONFIGS) {
 }
 
 describe('useConstraintDraft', () => {
+  it('不上课要求保存必须并可暂停，类型与条目都不能降成尽量', () => {
+    const draft = useConstraintDraft()
+    draft.hydrate([typeDef({ code: 'CLASS_UNAVAILABLE', hardOnly: true, slotGrouped: true,
+      params: TEACHER_SLOT_PARAMS.map((param) => param.name === 'teacherId'
+        ? { ...param, name: 'classId', label: '行政班' } : param),
+    })], [{ type: 'CLASS_UNAVAILABLE', hard: true, weight: 100, enabled: true, params: {},
+      entries: [{ id: 1, params: { classId: 5, dayOfWeek: 3, periodNo: 8 }, groupKey: 'weekly' }],
+    }], { isJunior: false })
+    const card = draft.rows.value[0].entries[0]
+    draft.setHard('CLASS_UNAVAILABLE', false)
+    draft.setEntryHard('CLASS_UNAVAILABLE', card.key, false)
+    draft.setEntryEnabled('CLASS_UNAVAILABLE', card.key, false)
+    expect(draft.payload()[0]).toMatchObject({ hard: true,
+      entries: [{ hard: true, enabled: false, params: { classId: 5, dayOfWeek: 3, periodNo: 8 } }],
+    })
+  })
+
   it('用目录构建全部类型，并把服务端条目还原成卡片', () => {
     const draft = hydrated()
     expect(draft.rows.value).toHaveLength(CATALOG.length)

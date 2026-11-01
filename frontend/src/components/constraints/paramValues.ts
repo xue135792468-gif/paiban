@@ -104,8 +104,12 @@ export function idOptions(
   param: ParamDef,
   teachers: Array<{ id: number; name: string }>,
   courses: Array<{ id: number; name: string }>,
+  classes: Array<{ id: number; name: string }> = [],
 ): Array<{ id: number; name: string }> {
   const lower = param.name.toLowerCase()
+  if (lower.includes('class')) {
+    return classes
+  }
   if (lower.includes('teacher')) {
     return teachers
   }

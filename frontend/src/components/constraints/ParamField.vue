@@ -11,7 +11,7 @@
     @update:model-value="(value: unknown) => emit('update', param.name, value)"
   >
     <el-option
-      v-for="option in idOptions(param, teachers, courses)"
+      v-for="option in idOptions(param, teachers, courses, classes)"
       :key="option.id"
       :label="option.name"
       :value="option.id"
@@ -128,6 +128,7 @@ const props = defineProps<{
   values: Record<string, unknown>
   teachers: OptionItem[]
   courses: OptionItem[]
+  classes?: OptionItem[]
   disabled: boolean
   testId: string
   /** The weekdays the semester actually has; absent falls back to 1–7. */

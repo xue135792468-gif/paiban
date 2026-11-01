@@ -16,6 +16,8 @@ export interface ParamDef {
 }
 
 export interface ConstraintTypeDef {
+  /** This type may be paused, but its requirements cannot become soft. */
+  hardOnly?: boolean
   code: string
   name: string
   category: string
@@ -132,6 +134,7 @@ export interface ThresholdDraft {
  * nothing but the switch for the 6 single-switch types.
  */
 export interface TypeDraft {
+  hardOnly?: boolean
   code: string
   name: string
   description: string
