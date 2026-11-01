@@ -1,6 +1,6 @@
 # 票据 03: 把 warm start 选择从 TimetableProblemBuilder 抽出去
 
-Status: ready-for-agent
+Status: done
 Category: enhancement
 Priority: P4
 **Spec:** ../spec.md
@@ -16,11 +16,11 @@ Priority: P4
 
 ## Acceptance
 
-- [ ] 新增 `WarmStartSeedService`（scheduling.service），builder 只依赖它和建题所需的仓储。
-- [ ] warm start 来源优先级仍是：已发布基线 > 最早完整草稿 > 无。
-- [ ] `TimetableProblemBuilderTest` 拆成两组：builder 建题/固定教室；warm start 选择与覆盖校验。
-- [ ] 修复草稿遍历的 N+1（一次取草稿列表，按需批量取行或只取候选草稿）。
-- [ ] 不改变 ADR-0033 的外部行为。
+- [x] 新增 `WarmStartSeedService`（scheduling.service），builder 只依赖它和建题所需的仓储。
+- [x] warm start 来源优先级仍是：已发布基线 > 最早完整草稿 > 无。
+- [x] `TimetableProblemBuilderTest` 拆成两组：builder 建题/固定教室；warm start 选择与覆盖校验。
+- [x] 修复草稿遍历的 N+1（一次取草稿列表，按需批量取行或只取候选草稿）。
+- [x] 不改变 ADR-0033 的外部行为。
 
 ## Comments
 
@@ -43,13 +43,19 @@ A dedicated service owns warm-start selection and seeding. It returns a per-assi
 - The builder constructor no longer takes draft repositories.
 
 **Acceptance criteria:**
-- [ ] Warm-start source priority is unchanged and covered by unit tests.
-- [ ] A draft missing any assignment's weekly lessons is skipped; the next complete draft is considered.
-- [ ] The builder test suite is split: problem construction/fixed rooms, and warm-start selection/coverage.
-- [ ] Draft traversal no longer issues one query per candidate draft.
-- [ ] `scheduling` still imports no timetable repository; `scripts/check-module-boundaries.sh` stays green.
+- [x] Warm-start source priority is unchanged and covered by unit tests.
+- [x] A draft missing any assignment's weekly lessons is skipped; the next complete draft is considered.
+- [x] The builder test suite is split: problem construction/fixed rooms, and warm-start selection/coverage.
+- [x] Draft traversal no longer issues one query per candidate draft.
+- [x] `scheduling` still imports no timetable repository; `scripts/check-module-boundaries.sh` stays green.
 
 **Out of scope:**
 - Changing the warm-start policy or the "complete draft" definition (ticket 06).
 - Fixed-room resolution or solver scoring.
 - Any UI change.
+
+## Delivery
+
+- 实现：`b365cdf`（抽取 + 单次批量草稿行查询；`DraftLessonRepository.findByDraftIdInOrderByDraftIdAscIdAsc`）。
+- `TimetableProblemBuilder` 依赖 8→6；`WarmStartSeedService` 持有基线/草稿仓储；来源优先级、选中结果、`warmStartSource` 完全不变。
+- 测试：`WarmStartSeedServiceTest` 8、`TimetableProblemBuilderTest` 4、`SchedulingIntegrationTest` 10；`scripts/check-module-boundaries.sh` 通过。

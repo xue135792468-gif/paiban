@@ -51,4 +51,4 @@ Status: done
 
 ## 复审遗留
 
-复审遗留（2026-11-01 triage）：02/05 已按用户决定「教室容量/可用性不作为约束」关闭为 `wontfix`；04 已按方案 A 完成（`288e073`）；03 为 `ready-for-agent`（P4 重构）；06 为 `ready-for-agent`（P2，完整草稿排除班级/教师冲突）；07 为 `ready-for-agent`（P3，空白学期提示）。它们不影响本次「有基线/完整导入草稿时达到直接发布标准」的验收。
+复审遗留（2026-11-01 完成）：02/05 已按用户决定「教室容量/可用性不作为约束」关闭为 `wontfix`；04 已完成（`288e073`）；06 已完成（`b075116`）；07 已完成（`eccc0c4` + `d02b1c1` + `936c779`，Flyway V44）；03 已完成（`b365cdf`）。最后一轮复审的 5 个非阻塞小项转入票 08（`needs-triage`）。全量后端 1036、前端 446、scheduling e2e 5/5；线上 job 11 / draft 12 `warmStartSource=BASELINE`、`0hard`、546/546、0 冲突、每班一间、`valid=true`；唯一拦截 `SEMESTER_ALREADY_PUBLISHED`。

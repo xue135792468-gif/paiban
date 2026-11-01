@@ -1,6 +1,6 @@
 # 票据 07: 空白学期从零搜索时给出可见提示
 
-Status: ready-for-agent
+Status: done
 Category: enhancement
 Priority: P3
 **Spec:** ../spec.md
@@ -16,11 +16,11 @@ Priority: P3
 
 ## Acceptance
 
-- [ ] 启动排课任务时，系统能区分并记录 warm start 来源：已发布基线 / 完整草稿 / 无。
-- [ ] 来源为「无」时，排课页的任务卡片显示信息性提示：该学期没有可用的已发布课表或完整导入草稿，本次从零搜索，可能仍需人工调整；可加长求解时间或先导入草稿。
-- [ ] 提示不阻塞提交、不改变求解行为、不伪装成发布拦截。
-- [ ] 空白学期的集成测试：启动任务 → 断言来源为「无」且提示可见 → 记录实际结果；不承诺 0 硬冲突。
-- [ ] 有基线或完整草稿的学期不显示该提示。
+- [x] 启动排课任务时，系统能区分并记录 warm start 来源：已发布基线 / 完整草稿 / 无。
+- [x] 来源为「无」时，排课页的任务卡片显示信息性提示：该学期没有可用的已发布课表或完整导入草稿，本次从零搜索，可能仍需人工调整；可加长求解时间或先导入草稿。
+- [x] 提示不阻塞提交、不改变求解行为、不伪装成发布拦截。
+- [x] 空白学期的集成测试：启动任务 → 断言来源为「无」且提示可见 → 记录实际结果；不承诺 0 硬冲突。
+- [x] 有基线或完整草稿的学期不显示该提示。
 
 ## Comments
 
@@ -42,13 +42,19 @@ The scheduling job exposes its warm-start source: published baseline, complete d
 - The scheduling page reads that field and renders the warning only for the "none" value.
 
 **Acceptance criteria:**
-- [ ] A job started in a semester with a published baseline reports that source and shows no warning.
-- [ ] A job started in a semester with a complete draft reports that source and shows no warning.
-- [ ] A job started in a blank semester reports "none" and shows the warning; the warning is informational only.
-- [ ] An integration test covers the blank-semester path and records the produced score without asserting 0 hard.
-- [ ] Existing scheduling tests and the scheduling e2e spec still pass.
+- [x] A job started in a semester with a published baseline reports that source and shows no warning.
+- [x] A job started in a semester with a complete draft reports that source and shows no warning.
+- [x] A job started in a blank semester reports "none" and shows the warning; the warning is informational only.
+- [x] An integration test covers the blank-semester path and records the produced score without asserting 0 hard.
+- [x] Existing scheduling tests and the scheduling e2e spec still pass.
 
 **Out of scope:**
 - Making a blank-semester run guarantee 0 hard conflicts.
 - Auto-importing a workbook or auto-creating a baseline.
 - Changing the solver configuration or the warm-start policy.
+
+## Delivery
+
+- 实现：`eccc0c4`（V44 + job 来源 + 前端提示）、`d02b1c1`（定向更新，避免覆盖并发取消）、`936c779`（SFC 抽组件 + DRAFT 前端用例）。
+- 测试：`SchedulingIntegrationTest` 10、`SchedulingView.spec` 5、全量后端 1036；快速门禁通过。
+- 部署：main `936c779`；Flyway **44**；job 11 / draft 12 `warmStartSource=BASELINE`、`0hard`、546/546、0 冲突、每班一间、`valid=true`；唯一拦截 `SEMESTER_ALREADY_PUBLISHED`。

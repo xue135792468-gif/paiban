@@ -1,6 +1,6 @@
 # 票据 06: warm start 的完整草稿要排除班级/教师冲突
 
-Status: ready-for-agent
+Status: done
 Category: bug
 Priority: P2
 **Spec:** ../spec.md
@@ -16,10 +16,10 @@ warm start 的「完整草稿」目前只检查：行非空、每个课节有作
 
 ## Acceptance
 
-- [ ] `isComplete` 增加冲突校验：同一 `(班级, 时段)` 与同一 `(教师, 时段)` 各只能出现一次；有重复则跳过该草稿，继续找下一份。
-- [ ] 增加一份带重复时段的草稿测试，证明它不会被选中。
-- [ ] 补一个「部分草稿（课时未备齐）被跳过」的单元测试，证明 `isComplete` 因覆盖校验不通过而不会选中该草稿。
-- [ ] 不改变 warm start 的来源优先级，不改变固定教室/评分逻辑。
+- [x] `isComplete` 增加冲突校验：同一 `(班级, 时段)` 与同一 `(教师, 时段)` 各只能出现一次；有重复则跳过该草稿，继续找下一份。
+- [x] 增加一份带重复时段的草稿测试，证明它不会被选中。
+- [x] 补一个「部分草稿（课时未备齐）被跳过」的单元测试，证明 `isComplete` 因覆盖校验不通过而不会选中该草稿。
+- [x] 不改变 warm start 的来源优先级，不改变固定教室/评分逻辑。
 
 ## Comments
 
@@ -41,13 +41,19 @@ When evaluating candidate drafts for warm start, a draft with any duplicate `(cl
 - The checks operate on the same `(class, course, teacher, period)` rows the seeding logic already reads.
 
 **Acceptance criteria:**
-- [ ] A draft with two lessons of the same class in one period is not selected.
-- [ ] A draft with two lessons of the same teacher in one period is not selected.
-- [ ] A draft missing weekly lessons is still skipped (existing coverage behavior).
-- [ ] A valid complete draft is still selected and seeds the same periods as before.
-- [ ] Unit tests cover the three rejected shapes and the accepted shape.
+- [x] A draft with two lessons of the same class in one period is not selected.
+- [x] A draft with two lessons of the same teacher in one period is not selected.
+- [x] A draft missing weekly lessons is still skipped (existing coverage behavior).
+- [x] A valid complete draft is still selected and seeds the same periods as before.
+- [x] Unit tests cover the three rejected shapes and the accepted shape.
 
 **Out of scope:**
 - The blank-semester UI warning and guarantee wording (ticket 07).
 - Re-validating drafts with the full constraint catalogue; only class/teacher period uniqueness is in scope.
 - Changing warm-start source priority or fixed-room logic.
+
+## Delivery
+
+- 实现：`b075116`；票据 03 抽取后，重复时段/覆盖不足测试位于 `WarmStartSeedServiceTest`。
+- 同班同节、同教师同节、缺课时/未知时段都会被跳过并继续下一份；来源优先级不变。
+- 测试：`WarmStartSeedServiceTest` 8、`SchedulingIntegrationTest` 10；全量后端 1036。
