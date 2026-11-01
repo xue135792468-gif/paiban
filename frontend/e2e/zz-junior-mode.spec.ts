@@ -52,6 +52,11 @@ test.describe('初中模式', () => {
     // 在本轮修订后保留入口（ADR-0018），逐项重要程度仍按需在条目上展开。
     await page.goto('/admin/constraints')
     await expect(page.locator('.constraint-card').first()).toBeVisible()
+    // 留空规则始终为硬约束；不要假定默认选中的类型支持“尽量”。
+    await page.locator('[data-type="CLASS_UNAVAILABLE"]').click()
+    await expect(page.locator('.constraint-controls').getByText('必须留空')).toBeVisible()
+    await expect(page.locator('.constraint-controls').getByText('尽量', { exact: true })).toHaveCount(0)
+    await page.locator('[data-type="TEACHER_UNAVAILABLE"]').click()
     await expect(page.locator('.constraint-controls').getByText('必须').first()).toBeVisible()
     await expect(page.locator('.constraint-controls').getByText('尽量').first()).toBeVisible()
     await expect(page.getByText('权重')).toHaveCount(0)

@@ -100,7 +100,7 @@ test.describe.serial('约束配置：收尾页面状态与证据', () => {
     await expect(page.getByTestId('constraint-nav-group')).toHaveCount(4)
     await expect(page.getByTestId('constraint-nav-group').first()).toContainText('冲突类')
 
-    await expect(page.getByTestId('constraint-summary-enabled')).toContainText(/已启用 \d+ \/ 25 类/)
+    await expect(page.getByTestId('constraint-summary-enabled')).toContainText(/已启用 \d+ \/ 26 类/)
     await expect(summaryEntries(page)).toContainText('具体条目 3 条')
     // 顶部条目数＝左侧每类条目数之和，两者出自同一份草稿状态。
     expect(await navEntryTotal(page)).toBe(3)
@@ -108,6 +108,7 @@ test.describe.serial('约束配置：收尾页面状态与证据', () => {
 
     // 开关型显示「开关」而不是条目数。
     await expect(navCount(page, '[data-type="TEACHER_CONFLICT"]')).toHaveText('开关')
+    await page.locator(TEACHER_UNAVAILABLE).click()
     await expect(page.getByTestId('constraint-panel-title')).toContainText('教师禁排时段')
 
     await capture(page, 'default')
