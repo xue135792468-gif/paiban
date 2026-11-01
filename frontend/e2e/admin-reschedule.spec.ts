@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type APIResponse, type Page } from '@playwright/test'
-import { API, apiCall, apiLogin, isoDate, newContext, publishDraft, solveDraft, uiLogin } from './helpers'
+import { API, apiCall, apiLogin, newContext, publishDraft, solveDraft, uiLogin } from './helpers'
 
 /** 不抛错的原始调用：冻结路径的 409 需要读取状态码与错误消息。 */
 async function apiCallRaw(
@@ -410,6 +410,10 @@ test('已开课的实例不可再操作：批准与预览都被截止拒绝且�
   // 先把它挡在截止检查之前——同样是「不可再操作」，且不产生任何写入。
   expect(cover.body.message).toContain('申请')
 
+  // 浏览器固定在种子周五：周三课明确已过去，不依赖运行当天是周几。
+  // 服务端仍使用真实时钟，上方批准/预览的截止与零写入断言保持不变。
+  await page.clock.setFixedTime(new Date(`${seed.friday}T12:00:00`))
+
   // 新界面语义（过去日期拦截上线后）：工作台不再允许选中过去日期/课卡，
   // 用户在界面上就无法发起已开课的调整；服务端截止仍由上面的 API 断言兜底。
   await uiLogin(page, 'admin', 'admin123')
@@ -426,15 +430,14 @@ test('已开课的实例不可再操作：批准与预览都被截止拒绝且�
   const dateInput = page.getByTestId('lesson-date').locator('input')
   await dateInput.fill(seed.wednesday)
   await dateInput.press('Tab')
-  await expect(dateInput).toHaveValue(isoDate(new Date()))
+  await expect(dateInput).toHaveValue(seed.friday)
   const cards = page.getByTestId('pick-lesson')
-  if ((await cards.count()) > 0) {
-    await expect(cards.first()).toHaveAttribute('aria-disabled', 'true')
-    await expect(cards.first()).toBeDisabled()
-    await cards.first().dispatchEvent('click')
-    await expect(page.getByTestId('wizard-next-1')).toBeDisabled()
-    await expect(page.getByTestId('picked-summary')).toHaveCount(0)
-  }
+  await expect(cards).toHaveCount(1)
+  await expect(cards.first()).toHaveAttribute('aria-disabled', 'true')
+  await expect(cards.first()).toBeDisabled()
+  await cards.first().dispatchEvent('click')
+  await expect(page.getByTestId('wizard-next-1')).toBeDisabled()
+  await expect(page.getByTestId('picked-summary')).toHaveCount(0)
 
   // 零写入：没有任何生效行；待批申请仍只有教师那一单（失败的批准未改动它），
   // 管理端两次被拒的预览也没有产生新申请。

@@ -1,6 +1,6 @@
 # 六张正式实现票据
 
-Status: done
+Status: in-progress
 日期：2026-11-01
 用户已在澄清全天连续节次编号后要求正式拆分，并随后显式调用 implement-spec 授权实施。集成分支 codex/weekly-no-class；各票状态以单票记录为准，六票已按依赖完成实现、复审和完整门禁，结果与外部数据库验证边界见[统一验收](acceptance.md)。未部署生产。
 
@@ -30,3 +30,6 @@ Status: done
 5. 当前实施按依赖推进；生产部署另行交付具体版本与验证结果。
 
 每张票包含完整交付、验收清单和真实阻塞关系；初始可开工集合为01、02、03。其余票必须等待前置完成。源规格见[spec.md](spec.md)，审查反例见[audit-evidence.md](audit-evidence.md)。
+
+
+2026-11-02 CI follow-up：旧日期假设已修复，仅测试变更；06重新in-progress，等待新冻结版本完整门禁，当前阶段以clock-fixture-delivery.md为准。

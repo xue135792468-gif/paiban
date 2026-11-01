@@ -1,5 +1,8 @@
 # 06 统一验收记录
 
+> 当前追加状态：c37a70b的CI backend含真实PostgreSQL通过，但旧浏览器测试在周一暴露日期假设（140通过1失败）。仅该测试已修正并定向通过；06重开等待新冻结版本完整复验，见[clock-fixture-delivery](clock-fixture-delivery.md)。下方为2c2e52f完整运行的历史通过记录，不冒充后续版本。
+
+
 当前阶段：六票实现、主模型算法判断、两轴复审和本地完整门禁已完成。最终同提交GitHub CI的真实PostgreSQL检查是发布前的外部验证；本机没有Docker，不将H2替代它。本轮未合并main、未部署生产。
 
 ## 版本与范围

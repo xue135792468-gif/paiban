@@ -1,6 +1,6 @@
 # 每周不上课时段与三项算法修复
 
-Status: done
+Status: in-progress
 日期：2026-11-01（Asia/Shanghai）
 基点：main `4c1cc191bcd286e99e42e4e4a8b7a3ebcd68ba1d`
 阶段：六票实现、两轴复审与冻结版本完整门禁已完成，详见[统一验收](acceptance.md)。本地无Docker，真实PostgreSQL以最终同提交PR检查为准；未部署生产。
@@ -120,3 +120,6 @@ Status: done
 - 用户已要求统筹推进、修复算法，并指定算法判断由主模型完成。实现可按项目模型分工委派，最终算法正确性与审查由主模型承担。
 - 工作流：规格/拆票确认→正式票据→按依赖实施→回归与两轴评审→完整门禁→交付。2026-11-01用户显式调用implement-spec后已进入实施；当前证据以implementation-notes与各交付记录为准，本规格本身不是验收证明。
 - 票据拆分见 [ticket-plan.md](ticket-plan.md)，复现事实见 [audit-evidence.md](audit-evidence.md)。
+
+
+2026-11-02 CI follow-up：旧日期假设已修复，仅测试变更；06重新in-progress，等待新冻结版本完整门禁，当前阶段以clock-fixture-delivery.md为准。
