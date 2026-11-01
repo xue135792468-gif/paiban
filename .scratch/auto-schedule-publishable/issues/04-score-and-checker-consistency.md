@@ -36,7 +36,12 @@ Priority: P1
 - 前端：`DraftStats` 显示「求解得分」+「参考值；手工调整后可能过期」；草稿列表/任务历史/比较框统一用「求解得分」；比较框提示改为「发布以整草稿校验为准」。
 - 测试：`SchedulingIntegrationTest` 9、`DraftStats` 2 + `SchedulingView` 2、scheduling e2e 5/5；`npm run lint`、`npm run build` 通过。
 - 部署：`288e073` 已重建 backend/frontend；四容器 healthy，bundle 含「求解得分」。
-- 复审备注（2026-11-01）：三场景的“数量映射”由现有 `DraftPublishReadiness` / blocker 测试覆盖；本票新增的是 `DraftStats` 标签测试和 `moveLesson` 分数保留的回归测试。若需要一条显式三场景测试，见票 08 第 5 项。
+- 复审备注（2026-11-01，票 08 第 5 项收尾）：未排课 / 班级冲突 / 缺教室三场景不新增专门的显式测试，改为引用现有覆盖——
+  - 未排课、缺教室的数量映射与文案：`DraftPublishReadinessTest.missingRoomsAndUnscheduledLessonsAreCountedSeparately`；
+  - 班级冲突计数进入 `hardConflicts`：`DraftValidatorTest.duplicateLessonIdDoesNotDuplicateConflicts`（`CLASS_CONFLICT` → `hardConflicts = 1`）；
+  - 缺教室走 blocker 而非 `hardConflicts`：`DraftValidatorTest.wholeDraftCheckReportsMissingRoomsAsABlockerNotAConflict`；
+  - 未排课 blocker 在整草稿校验中的计数：`DraftValidatorTest.wholeDraftCheckSeparatesUnscheduledLessonsFromDanglingPeriods`。
+  本票新增的是 `DraftStats` 标签测试和 `moveLesson` 分数保留的回归测试。
 
 ## Triage Notes
 

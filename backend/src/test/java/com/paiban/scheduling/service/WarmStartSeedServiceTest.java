@@ -122,6 +122,25 @@ class WarmStartSeedServiceTest {
     }
 
     @Test
+    void sameClassDifferentTeachersInOnePeriodIsRejected() {
+        when(baselines.publishedLessons(1L)).thenReturn(List.of());
+        when(drafts.findBySemesterIdOrderByCreatedAtDesc(1L))
+                .thenReturn(List.of(draft(6L, "2026-01-01T00:00:00Z")));
+        // Both assignments are fully covered and the teachers differ, so only the class
+        // double-booking in period 11 can reject this draft.
+        when(draftLessons.findByDraftIdInOrderByDraftIdAscIdAsc(anyList())).thenReturn(List.of(
+                rowWithCourse(1L, 6L, 1L, 1L, 1L, 11L),
+                rowWithCourse(2L, 6L, 1L, 2L, 2L, 11L)));
+
+        WarmStartSeedService.WarmStartSeed seed = service.seed(1L, PERIODS, List.of(
+                assignment(21L, 1L, 1L, 1L, 1),
+                assignment(22L, 1L, 2L, 2L, 1)));
+
+        assertThat(seed.source()).isEqualTo("NONE");
+        assertThat(seed.periods()).isEmpty();
+    }
+
+    @Test
     void skipsADraftWithOneTeacherInTwoClassesAtTheSamePeriod() {
         when(baselines.publishedLessons(1L)).thenReturn(List.of());
         when(drafts.findBySemesterIdOrderByCreatedAtDesc(1L))
@@ -149,6 +168,24 @@ class WarmStartSeedServiceTest {
 
         WarmStartSeedService.WarmStartSeed seed =
                 service.seed(1L, PERIODS, List.of(assignment(21L, 1L, 1L, 1L, 1)));
+
+        assertThat(seed.source()).isEqualTo("NONE");
+        assertThat(seed.periods()).isEmpty();
+    }
+
+    @Test
+    void rowsWithNullClassOrTeacherAreSkippedWithoutCrash() {
+        when(baselines.publishedLessons(1L)).thenReturn(List.of());
+        when(drafts.findBySemesterIdOrderByCreatedAtDesc(1L))
+                .thenReturn(List.of(draft(6L, "2026-01-01T00:00:00Z")));
+        // A partial import can leave one owner null; the row must be treated as an
+        // incomplete match instead of blowing up in the uniqueness maps.
+        when(draftLessons.findByDraftIdInOrderByDraftIdAscIdAsc(anyList())).thenReturn(List.of(
+                rowWithOwners(1L, 6L, null, 1L, 11L),
+                rowWithOwners(2L, 6L, 1L, null, 12L)));
+
+        WarmStartSeedService.WarmStartSeed seed =
+                service.seed(1L, PERIODS, List.of(assignment(21L, 1L, 1L, 1L, 2)));
 
         assertThat(seed.source()).isEqualTo("NONE");
         assertThat(seed.periods()).isEmpty();
@@ -188,11 +225,26 @@ class WarmStartSeedServiceTest {
 
     private static DraftLesson row(
             long id, long draftId, long classId, long teacherId, Long periodId) {
+        return draftRow(id, draftId, classId, 1L, teacherId, periodId);
+    }
+
+    private static DraftLesson rowWithCourse(
+            long id, long draftId, long classId, long courseId, long teacherId, Long periodId) {
+        return draftRow(id, draftId, classId, courseId, teacherId, periodId);
+    }
+
+    private static DraftLesson rowWithOwners(
+            long id, long draftId, Long classId, Long teacherId, Long periodId) {
+        return draftRow(id, draftId, classId, 1L, teacherId, periodId);
+    }
+
+    private static DraftLesson draftRow(
+            long id, long draftId, Long classId, Long courseId, Long teacherId, Long periodId) {
         DraftLesson row = new DraftLesson();
         row.setId(id);
         row.setDraftId(draftId);
         row.setAdminClassId(classId);
-        row.setCourseId(1L);
+        row.setCourseId(courseId);
         row.setTeacherId(teacherId);
         row.setPeriodId(periodId);
         return row;
