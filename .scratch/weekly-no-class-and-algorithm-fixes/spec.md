@@ -1,9 +1,9 @@
 # 每周不上课时段与三项算法修复
 
-Status: in-progress
+Status: done
 日期：2026-11-01（Asia/Shanghai）
 基点：main `4c1cc191bcd286e99e42e4e4a8b7a3ebcd68ba1d`
-阶段：用户已显式调用 implement-spec 授权实施；在 codex/weekly-no-class 集成分支按依赖推进，尚未完成整体评审与门禁，不部署生产。
+阶段：六票实现、两轴复审与冻结版本完整门禁已完成，详见[统一验收](acceptance.md)。本地无Docker，真实PostgreSQL以最终同提交PR检查为准；未部署生产。
 
 ## Problem Statement
 

@@ -1,11 +1,11 @@
 # 05: 多班/全校留空与课时放不下的解释
 
-Status: in-progress
+Status: done
 Priority: P1
 **What to build:** 教务一次配置多个班或全校，并在可用位置不足时获得可执行的说明。
 **Blocked by:** 04
 **Spec:** ../spec.md
-**Gate:** 实现与定向验收已完成，三个Playwright场景通过；等待06复审和冻结版本完整门禁，状态仍为in-progress。
+**Gate:** 已实现、集成、复审，并通过冻结版本完整门禁。最终执行结果、跳过项和真实数据库边界见../acceptance.md；未部署。
 
 - [x] 明确选择“全校/指定班级”，后者支持多选且不能为空；共享分组保存/恢复一致，全校覆盖后续新增班级。
 - [x] 多条规则取并集，重叠只计一次；暂停一条后其他覆盖仍生效，指定班级不误转换全校。
@@ -19,3 +19,6 @@ Priority: P1
 ## Delivery
 
 后端89f3eef、前端8b543f6、浏览器脚本1acf0e3已合入。后端235项广定向及队列3项通过，三条Playwright实际3/3通过；旧版容量API对照2项均失败，新版均通过。证据见backend-delivery、scope-ui-delivery、capacity-baseline-delivery、e2e-delivery与published-delivery。无新增迁移；尚未全量/真实PostgreSQL验收，未部署。
+
+
+2026-11-02最终收口：本票接受项已实现并经复审，冻结版本完整门禁通过；最终结论以[统一验收](../acceptance.md)为准，以上定向与待验描述为当时快照。

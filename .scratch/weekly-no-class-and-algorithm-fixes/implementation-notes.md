@@ -22,6 +22,6 @@
 
 01–05代码已集成，定向/API/浏览器证据及各版本边界见backend-delivery、scope-ui-delivery、e2e-delivery、published-delivery和capacity-baseline-delivery。数量按各记录对应版本解读，不累加重叠测试。最终统一结果将写入06验收记录。
 
-主模型算法判断见algorithm-verdict.md。两轴首轮独立只读复核与主模型逐项处置见review-round1.md；唯一review-fix代理正在codex/weekly-review-fix落实接受项，之后fresh review。尚未跑冻结版本完整verify。
+2026-11-02收口：主模型算法判断、两轴集中修复与fresh review完成；最终冻结版本完整verify通过，所有票据done。统一统计、失败历史、源码tree与真实数据库外部检查边界见acceptance.md。执行者worktree与任务临时进程已清理。
 
 当前本机无Docker或可用PostgreSQL；H2通过不代表真实数据库已验证。未部署生产，生产状态本轮未复验。

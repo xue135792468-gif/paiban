@@ -1,11 +1,11 @@
 # 01: 晚自习上限只统计真正晚自习
 
-Status: in-progress
+Status: done
 Priority: P1
 **What to build:** 设置晚自习上限后，白天课程不再被误算，原有全局与班级例外照常生效。
 **Blocked by:** None
 **Spec:** ../spec.md
-**Gate:** 规格与拆票已确认并发布；已认领、已定向实现。done 待集成评审与完整门禁（票 06）。
+**Gate:** 已实现、集成、复审，并通过冻结版本完整门禁。最终执行结果、跳过项和真实数据库边界见../acceptance.md；未部署。
 
 - [x] 先以“上限0且只有上午课”固定求解/校验分歧，证明旧行为失败。
 - [x] 上午、下午不计入；晚自习恰好达到/超过上限的裁决正确。
@@ -14,7 +14,7 @@ Priority: P1
 - [x] 求解与校验对是否超限一致；本票不扩大到所有阈值评分梯度重写。
 - [x] 定向回归通过并记录真实命令、退出码、版本与剩余问题，最终全量由06收口。
 
-## Delivery（implemented awaiting integration）
+## Delivery（历史定向记录；最终收口见06）
 
 - 分支：`codex/weekly-t01`，基点/集成 tip `5b2a7ae`；改动 `PaibanConstraintProvider.java` + `EngineConstraintTest.java` + `ConstraintCheckerTest.java`（本票）。
 - 根因：`PaibanConstraintProvider` 的 `EVENING_MAX` 走通用 `addThreshold`，按 `Lesson::getAdminClassId` 分组后统计当天**所有**课节；`ConstraintChecker.checkAggregates`/`softPenalty` 早已只收集 `period.section() == PeriodSection.EVENING`，故求解 `-1hard` 而校验 `0` 违规。
@@ -26,3 +26,6 @@ Priority: P1
   - `ConstraintCheckerTest`（HTTP 草稿校验同一 `ConstraintChecker`）：白天不计入、晚自习计入、班级例外替换全局（仅 2 班报 `EVENING_MAX`）、停用配置不产生约束、软设置对白天 0 分、对晚自习按权重 40 分。
 - 定向命令与退出码：`source .tools/env.sh; cd backend; MAVEN_OPTS="-Xmx512m" ./mvnw -B -DforkCount=0 -Dtest="EngineConstraintTest,ConstraintCheckerTest" test` → `Tests run: 56, Failures: 0, Errors: 0, Skipped: 0`，`BUILD SUCCESS`，退出码 0（EngineConstraintTest 47、ConstraintCheckerTest 9）。
 - 边界与未验证项：未单独跑 HTTP 端点；其余裁决入口中 `DraftValidator`（`/validation`、发布前校验）复用同一 `ConstraintChecker`（本就直接只算晚自习），求解器经草稿产生课程。完整门禁、两轴复审与交付由票 06 收口；真实 PostgreSQL 走部署门禁或同提交 CI。
+
+
+2026-11-02最终收口：本票接受项已实现并经复审，冻结版本完整门禁通过；最终结论以[统一验收](../acceptance.md)为准，以上定向与待验描述为当时快照。

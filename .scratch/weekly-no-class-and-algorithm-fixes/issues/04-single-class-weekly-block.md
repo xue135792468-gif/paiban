@@ -1,11 +1,11 @@
 # 04: 一个班每周指定位置不上课的完整闭环
 
-Status: in-progress
+Status: done
 Priority: P1
 **What to build:** 教务给一个行政班设置每周若干课节不上课，保存后排课、拖拽、发布和后续调课共同遵守。
 **Blocked by:** 03
 **Spec:** ../spec.md
-**Gate:** 实现与定向验收已完成，三个Playwright场景通过；等待06复审和冻结版本完整门禁，状态仍为in-progress。
+**Gate:** 已实现、集成、复审，并通过冻结版本完整门禁。最终执行结果、跳过项和真实数据库边界见../acceptance.md；未部署。
 
 - [x] 既有约束页中可选一个本学期班级与多课节、保存/刷新回显、暂停/删除；新类型默认无效，始终硬约束，权限和配置版本受保护。
 - [x] 第8、第9节等晚间课节与白天一样可直接选择；不另立晚间课表、不减少或重复统计周课时。
@@ -21,3 +21,6 @@ Priority: P1
 ## Delivery
 
 核心5d92b58、前端d13bdda、AI622c9ae、全目录46fead7均已合入。核心117项、AI9项、目录/模板61项、单班Playwright1/1通过；后续CLI18项与发布边界2项另有记录，不累加重叠数量。见core-delivery、ui-delivery、catalogue-delivery、cli-delivery、published-delivery。无新增迁移。05负责多班/全校及工作区完整往返，06做最后复审和完整门禁。
+
+
+2026-11-02最终收口：本票接受项已实现并经复审，冻结版本完整门禁通过；最终结论以[统一验收](../acceptance.md)为准，以上定向与待验描述为当时快照。

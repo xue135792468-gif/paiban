@@ -1,11 +1,11 @@
 # 03: 空堂越多代价越高，求解与校验一致
 
-Status: in-progress
+Status: done
 Priority: P2
 **What to build:** 相同规则下，算法能区分空1节与空3节，优先减少可避免空堂。
 **Blocked by:** None
 **Spec:** ../spec.md
-**Gate:** 规格与拆票已确认并发布；已认领、已定向实现。done 待集成评审与完整门禁（票 06）。
+**Gate:** 已实现、集成、复审，并通过冻结版本完整门禁。最终执行结果、跳过项和真实数据库边界见../acceptance.md；未部署。
 
 - [x] 先固定审查证据A2：软权重40时，1个有效空位扣40、3个扣120；旧求解实现不能通过该断言。
 - [x] 同班最早与最晚课程之间，只统计真实存在且允许上课的空位置；当天边缘无课不计内部空堂。
@@ -14,7 +14,7 @@ Priority: P2
 - [x] 覆盖多个班级、多天、无空堂、多个空堂及不连续作息编号，避免只测一个分数。
 - [x] 定向回归通过，主模型确认评分含义，最终全量由06收口。
 
-## Delivery（implemented awaiting integration）
+## Delivery（历史定向记录；最终收口见06）
 
 - 分支：`codex/weekly-t03`，基点 `2352f04`（含票01晚自习计数的既有修复，未回退）；报告前合入集成 tip `2c54457`（票02 调课环修复），未更新集成分支。改动 `PaibanConstraintProvider.java` + `ConstraintChecker.java` + `EngineConstraintTest.java` + `ConstraintCheckerTest.java`（本票）。
 - 根因：求解器 `classGapMinimized` 只用 `periodNos` 排序后按 `sorted[i]-sorted[i-1]-1` 推算空位，再按「班级/星期」整组扣一次权重；作息缺号（真实只有第1、3节）时凭空造出第2节，且空3格仍只扣一份，故审查证据A2 两个输入都是 `0hard/-40soft`。校验器 `checkClassGap`/`softPenalty` 用 `max-min+1-used.size()`，在同一缺号课表上也会虚增一格。
@@ -28,3 +28,6 @@ Priority: P2
 - 合并后复跑（合入 `2c54457`，含票02 `SwapPlanner`）：主命令 `Tests run: 66, Failures: 0, Errors: 0, Skipped: 0`；扩展集（加票02 的 `SwapPlannerTest` 24 项）`Tests run: 154, Failures: 0, Errors: 0, Skipped: 0`；`SwapPlanPropertyTest` `Tests run: 1, Failures: 0`。三条命令退出码均为 0。
 - 覆盖：公共 `ScoreManager` 评分（1格扣40、3格扣120、缺号作息不虚构第2节、跨班跨天 4 格 -160、排满一天 0、硬配置仅在有真实空位时阻断、关闭不作用）与公共 `ConstraintChecker`（`softPenalty` 40/120、`checkHard` 真实空位才报违规、缺号作息不报、跨班跨天 160、首末之外不计），无 private 反射。
 - 边界与未验证项：本票只跑定向单元/纯 seam 测试，没有执行 HTTP 端点校验与 `ConstraintCatalogueAcceptanceTest` 等 `@SpringBootTest`（`test` profile 是内嵌 `jdbc:h2:mem:paiban_test`，本票未运行该层，不据此推断通过）；该 HTTP 集成层、Playwright 与完整门禁由票06 收口，真实 PostgreSQL 走部署门禁或同提交 CI。票01 的 `EVENING_MAX` 计数谓词未被本票触碰。
+
+
+2026-11-02最终收口：本票接受项已实现并经复审，冻结版本完整门禁通过；最终结论以[统一验收](../acceptance.md)为准，以上定向与待验描述为当时快照。

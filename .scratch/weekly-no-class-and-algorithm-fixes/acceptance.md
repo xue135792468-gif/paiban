@@ -1,32 +1,47 @@
 # 06 统一验收记录
 
-当前阶段：源码与修复已收口，完整运行门禁尚未开始。各票仍in-progress，不能把定向通过当整批done。
+当前阶段：六票实现、主模型算法判断、两轴复审和本地完整门禁已完成。最终同提交GitHub CI的真实PostgreSQL检查是发布前的外部验证；本机没有Docker，不将H2替代它。本轮未合并main、未部署生产。
 
 ## 版本与范围
 
 - 集成分支：codex/weekly-no-class。
 - 原始基点：4c1cc191bcd286e99e42e4e4a8b7a3ebcd68ba1d。
-- 最后产品代码提交：4ea9444f1d5518b01477467cef7cc61bcdf2e78e。
-- 冻结源码tree：backend `8413a91b92c6cd3723011b0a7a7622050e6f8922`；frontend `822887dbaf86d805ba973056b84b7baffac25b55`；scripts `db843f8b157b4610141022fd9d3ddc879aeb4b0c`。
-- 无新增Flyway迁移，仓库最高V44；未部署生产或修改正式基线。
+- 最后产品逻辑提交：4ea9444f1d5518b01477467cef7cc61bcdf2e78e；其后274216b、2c2e52f仅修目录/浏览器断言与帮助文字。
+- 最终完整运行SHA：2c2e52fba165b269288af5c5eaf00731b4b65a16。
+- 冻结tree：backend `0c10a163060c2a2c06f7f319056f79bbe7ba4a5a`；frontend `39c79ffe8fec4ea3f61b186f8d38d17b4e52b1dd`；scripts `db843f8b157b4610141022fd9d3ddc879aeb4b0c`。
+- 完整运行后仅允许交付文档与截图变更。无新增Flyway迁移，最高V44；未修改正式基线。
 
 ## 评审与算法判断
 
-主模型独立判断见[algorithm-verdict.md](algorithm-verdict.md)。两轴首轮与处置、集中修复后的fresh review、最后分组碰撞修复核对分别见[round1](review-round1.md)、[round2](review-round2.md)、[round3](review-round3.md)。最后一轮Standards与Spec均无新增发现；保留的两项设计选择有明确理由，不作为未修缺陷藏起。
+主模型亲自完成[算法判断](algorithm-verdict.md)，结论限本批修正合格，不宣称全局最优。两轴处置及fresh review见[round1](review-round1.md)、[round2](review-round2.md)、[round3](review-round3.md)。接受项均已修复；两项保留设计有明确理由。最终目录/浏览器兼容补丁另经独立只读核对，保留旧断言含义并扩展新硬规则界面检查。
 
-## 执行记录
+## 最终完整运行
 
-| 层次 | 当前状态 | 证据与边界 |
+2026-11-01 23:35:30至2026-11-02 00:09（Asia/Shanghai），在隔离集成worktree运行 `bash scripts/verify.sh --full`，原始退出码 **0**，终行 `==> verify: ok`。运行期间未改源码或测试，结束后再次核对SHA及三个tree未变。
+
+| 层次 | 实际结果 | 边界 |
 |---|---|---|
-| 三算法反例与有界样本 | 定向完成 | 01–03票内各版本红绿记录，不累加重叠数 |
-| 单班/多班/全校/容量/模板/工作区 | 定向完成 | core/backend/scope-ui及published等delivery |
-| 灰格/拖拽/发布/新班/容量浏览器 | 前版三场景通过，新版范围title待全量执行 | e2e-delivery；后续补丁只追加范围断言 |
-| 分组身份追加反例 | 定向完成 | group-identity-delivery，原版四卡恢复三卡，修复后保持四卡 |
-| 冻结版完整verify.sh --full | 待执行 | 启动后记录实际SHA、退出码与统计 |
-| 真实PostgreSQL | 不计入本地H2 | 本机无Docker；最终同提交CI检查为交付依据 |
+| 后端Maven verify | 1110项，0失败、0错误、8跳过 | DeepSeekManualIT 2、PerformanceBenchmarkIT 2、PostgresContainerIT 4按设置跳过 |
+| 前端lint/build | 通过 | 未以构建代替运行 |
+| 前端单元测试 | 61文件、465项全部通过 | 同冻结版本 |
+| 仓库检查 | 全部通过 | SFC/local dates/e2e helper/isBlank/模块边界/迁移/票状态/AI超时 |
+| Playwright | **141/141通过**，13.3分钟 | 单worker、隔离端口28080/25173；新规则三场景和初中模式均实际执行 |
+| 真实PostgreSQL | 本地未运行 | 以该分支最终提交的PR checks和backend日志为外部证据，必须确认PostgresContainerIT正数执行且skipped=0 |
 
-定向历史数据分别保留在各delivery中，不能把不同版本、重叠用例加成一个虚构总数。本文件只汇总最后完整运行结果。
+参数：PAIBAN_MVN_EXTRA_ARGS=-DforkCount=0，VITEST_MAX_WORKERS=4，MAVEN_OPTS含-Xmx2048m；临时文件与截图均定向到当前worktree。doctor资源足够，但Docker/独立数据库缺失，非“全绿”。
+
+最终完整日志SHA-256：BAF9C67768DCB6A883EAC5411B81C1F58D38C5FE18057E7D4E2B3D6D5352C109。日志和运行缓存为任务临时文件，统计与哈希落盘后清理。
+
+## 失败历史与修正
+
+1. 82c9b66首次完整运行后端1110项中2失败，8跳过：旧entry-backed计数19实际20。前端/浏览器未启动。修正保留原19成员、加入新类型并验证非threshold；定向27项通过。见[catalogue-gate-delivery](catalogue-gate-delivery.md)。
+2. 274216b第二次完整运行后端、前端与仓库检查通过；浏览器133通过、3失败、5串行未运行。两处旧25目录断言和一处默认类型假设已修正；后续定向还发现并修复教师标题默认选择假设，最终三个spec10/10通过。见[e2e-catalogue-gate-delivery](e2e-catalogue-gate-delivery.md)。
+3. 2c2e52f重新完整运行得到上方退出0；没有用定向结果拼成整轮通过。
+
+历史定向数据见各delivery，不能累加不同版本及重叠测试。容量旧版公开API对照、分组碰撞反例、发布基线保护与权限/并发版本均有独立证据。
 
 ## 发布与保护
 
-发布边界、备份和回滚要求见[release-handoff.md](release-handoff.md)及部署跑册。本轮仅开发/验证；主仓库main原有17张已修改截图与其他原型资料不属于本任务，已核对main基点未改、没有暂存这些文件。任务临时worktree与进程在交付前清理。
+见[发布交接](release-handoff.md)及部署跑册。所有执行者worktree已移除，保留集成worktree；测试进程已退出、隔离端口释放。仅保留本功能三张验收截图，任务额外截图及缓存清理。主仓库main原有17张修改截图与其他原型不属于本任务，未暂存或清理。
+
+本记录不声称自然语言支持新第26类、不声称性能基准或真实模型测试已运行。发布后新增规则不自动改写既有基线；仅支持每周固定留空。

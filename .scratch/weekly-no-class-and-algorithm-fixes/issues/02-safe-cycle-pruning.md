@@ -1,11 +1,11 @@
 # 02: 不提前漏掉合法的三课置换环
 
-Status: in-progress
+Status: done
 Priority: P1
 **What to build:** 合法的多人调课不会因为尚未完成的中间状态被误报无解。
 **Blocked by:** None
 **Spec:** ../spec.md
-**Gate:** 规格与拆票已确认；已由 `codex/weekly-t02` 认领，定向回归完成，待最终集成验收。
+**Gate:** 已实现、集成、复审，并通过冻结版本完整门禁。最终执行结果、跳过项和真实数据库边界见../acceptance.md；未部署。
 
 - [x] 将审查证据A3做成回归：独立校验接受已知三课环，而现有搜索找不到；修复后产生满足该目标的合法候选。
 - [x] 提前排除只使用对后续扩展安全的条件；每个候选同时应用全部移动后检查最终硬约束。
@@ -25,3 +25,6 @@ Priority: P1
 - 红：`C:\Users\liu\AppData\Local\Programs\GitPortable\bin\bash.exe -lc "source .tools/env.sh; cd backend; MAVEN_OPTS='-Xmx512m' ./mvnw -B -DforkCount=0 -Dtest=SwapPlannerTest,PlanVerifierTest,SwapPlanPropertyTest test > ../t02-red.log 2>&1"`；结果 `BUILD FAILURE`，`Tests run: 29, Failures: 2, Errors: 0, Skipped: 0`，失败为 A3 搜索和预算文案。
 - 绿：同一命令输出到 `../t02-green-review.log`；结果 `exit=0`，`BUILD SUCCESS`，`Tests run: 33, Failures: 0, Errors: 0, Skipped: 0`（`PlanVerifierTest` 8、`SwapPlannerTest` 24、`SwapPlanPropertyTest` 1；200 个固定 seed 属性测试通过）。合入集成 `codex/weekly-no-class` 最新 tip `2352f04` 后用同一命令复跑也 `exit=0`、`Tests run: 33, Failures: 0, Errors: 0, Skipped: 0`。
 - 临时日志仅在当前 worktree，报告前清理；未跑全量 / e2e / 生产 / 外网。
+
+
+2026-11-02最终收口：本票接受项已实现并经复审，冻结版本完整门禁通过；最终结论以[统一验收](../acceptance.md)为准，以上定向与待验描述为当时快照。

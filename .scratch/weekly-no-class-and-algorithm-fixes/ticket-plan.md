@@ -1,8 +1,8 @@
 # 六张正式实现票据
 
-Status: in-progress
+Status: done
 日期：2026-11-01
-用户已在澄清全天连续节次编号后要求正式拆分，并随后显式调用 implement-spec 授权实施。集成分支 codex/weekly-no-class；各票状态以单票记录为准，未完成最终评审/门禁时不得报告整批完成。
+用户已在澄清全天连续节次编号后要求正式拆分，并随后显式调用 implement-spec 授权实施。集成分支 codex/weekly-no-class；各票状态以单票记录为准，六票已按依赖完成实现、复审和完整门禁，结果与外部数据库验证边界见[统一验收](acceptance.md)。未部署生产。
 
 | 票 | 完整交付 | Blocked by |
 |---|---|---|
