@@ -50,6 +50,7 @@ public final class SubstitutionCli {
     public static final int EXIT_OK = 0;
     public static final int EXIT_ERROR = 1;
     public static final int EXIT_NO_SOLUTION = 2;
+    public static final int EXIT_SEARCH_BUDGET = 3;
 
     private static final ObjectMapper MAPPER = new ObjectMapper().registerModule(new JavaTimeModule());
 
@@ -92,12 +93,16 @@ public final class SubstitutionCli {
     private static int plan(String[] args, PrintStream out, PrintStream err) throws Exception {
         Map<String, String> options = parse(args);
         requireKnown(options, "--snapshot", "--request", "--format", "--window",
-                "--max-teachers", "--preset");
+                "--max-teachers", "--preset", "--node-budget");
         Path snapshotPath = requirePath(options, "--snapshot");
         Path requestPath = requirePath(options, "--request");
         String format = options.getOrDefault("--format", "json");
         int window = intOption(options, "--window", SwapPlanner.Options.DEFAULT_WINDOW_DAYS);
         int maxTeachers = intOption(options, "--max-teachers", SwapPlanner.Options.DEFAULT_MAX_TEACHERS);
+        int nodeBudget = intOption(options, "--node-budget", 50_000);
+        if (nodeBudget <= 0) {
+            throw new IllegalArgumentException("--node-budget 必须大于 0");
+        }
         String presetCode = options.getOrDefault("--preset", "min-impact");
         if (!List.of("min-impact", "min-teachers", "stable-timetable").contains(presetCode)) {
             throw new IllegalArgumentException("未知排序预设: " + presetCode);
@@ -117,20 +122,21 @@ public final class SubstitutionCli {
         PlanningResult result = SwapPlanner.plan(
                 snapshot,
                 new SwapPlanner.Request(request.classId, request.entryId, request.date, request.targetPeriodId),
-                new SwapPlanner.Options(window, maxTeachers, preset, 50_000, 200));
+                new SwapPlanner.Options(window, maxTeachers, preset, nodeBudget, 200));
 
         if ("table".equalsIgnoreCase(format)) {
             printPlanTable(result, out);
         } else {
             out.println(MAPPER.writeValueAsString(new PlanOutput(
                     SCHEMA_VERSION, "plan",
-                    result.candidates().isEmpty() ? "NO_SOLUTION" : "OK",
+                    result.candidates().isEmpty() ? (result.timedOut() ? "SEARCH_BUDGET" : "NO_SOLUTION") : "OK",
                     preset.code(),
                     result.candidates().stream().map(SubstitutionCli::candidateOut).toList(),
                     result.diagnoses().stream().map(SubstitutionCli::diagnosisOut).toList(),
                     result.nodesVisited())));
         }
-        return result.candidates().isEmpty() ? EXIT_NO_SOLUTION : EXIT_OK;
+        return result.candidates().isEmpty()
+                ? (result.timedOut() ? EXIT_SEARCH_BUDGET : EXIT_NO_SOLUTION) : EXIT_OK;
     }
 
     // ----------------------------------------------------------------- verify
@@ -266,6 +272,10 @@ public final class SubstitutionCli {
                     row.setType(constraint.type);
                     row.setParamsJson(MAPPER.writeValueAsString(
                             entry.params == null ? Map.of() : entry.params));
+                    row.setEnabled(entry.enabled == null || entry.enabled);
+                    row.setHard(entry.hard);
+                    row.setWeight(entry.weight);
+                    row.setGroupKey(entry.groupKey);
                     entries.add(row);
                     hasEntries = true;
                 }
@@ -273,7 +283,8 @@ public final class SubstitutionCli {
                 // that is now entry-backed the map is exactly its single entry, so the
                 // old file keeps meaning what it meant (an empty list still means
                 // "not configured").
-                if (!hasEntries && constraint.params != null && isEntryBacked(constraint.type)) {
+                if (constraint.entries == null && !hasEntries && constraint.params != null
+                        && isEntryBacked(constraint.type)) {
                     ConstraintEntry row = new ConstraintEntry();
                     row.setId(++order);
                     row.setType(constraint.type);
@@ -322,7 +333,7 @@ public final class SubstitutionCli {
 
     private static void printPlanTable(PlanningResult result, PrintStream out) {
         if (result.candidates().isEmpty()) {
-            out.println("NO_SOLUTION");
+            out.println(result.timedOut() ? "SEARCH_BUDGET" : "NO_SOLUTION");
             result.diagnoses().forEach(diagnosis ->
                     out.println("- " + diagnosis.code() + " " + diagnosis.message()));
             return;
@@ -393,11 +404,11 @@ public final class SubstitutionCli {
         stream.println("用法:");
         stream.println("  plan   --snapshot <快照.json> --request <请求.json> [--window 7] "
                 + "[--max-teachers 6] [--preset min-impact|min-teachers|stable-timetable] "
-                + "[--format json|table]");
+                + "[--node-budget 50000] [--format json|table]");
         stream.println("  verify --before <改动前.json> --after <改动后.json> [--format json|table]");
         stream.println("  verify --snapshot <快照.json> --plan <方案.json> [--kind SWAP|COVER] "
                 + "[--format json|table]");
-        stream.println("退出码: 0 有解/通过, 2 无解, 1 错误/违规");
+        stream.println("退出码: 0 有解/通过, 2 当前范围无解, 3 搜索预算耗尽（尚不能判断有无解）, 1 错误/违规");
     }
 
     // ------------------------------------------------------------------ json
@@ -502,6 +513,10 @@ public final class SubstitutionCli {
     public static class EntryJson {
         public Long id;
         public Map<String, Object> params;
+        public Boolean enabled;
+        public Boolean hard;
+        public Integer weight;
+        public String groupKey;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
