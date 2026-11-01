@@ -26,8 +26,12 @@ class EngineConstraintTest {
     private static final PeriodSlot MON1 = new PeriodSlot(1L, 1, 1, PeriodSection.MORNING, true, false, false);
     private static final PeriodSlot MON2 = new PeriodSlot(2L, 1, 2, PeriodSection.MORNING, false, false, false);
     private static final PeriodSlot MON3 = new PeriodSlot(5L, 1, 3, PeriodSection.MORNING, false, false, false);
+    private static final PeriodSlot MON4 = new PeriodSlot(7L, 1, 4, PeriodSection.MORNING, false, false, false);
     private static final PeriodSlot MON5 = new PeriodSlot(3L, 1, 5, PeriodSection.AFTERNOON, false, false, true);
     private static final PeriodSlot EVEN1 = new PeriodSlot(4L, 1, 9, PeriodSection.EVENING, false, true, false);
+    private static final PeriodSlot TUE1 = new PeriodSlot(8L, 2, 1, PeriodSection.MORNING, true, false, false);
+    private static final PeriodSlot TUE2 = new PeriodSlot(9L, 2, 2, PeriodSection.MORNING, false, false, false);
+    private static final PeriodSlot TUE3 = new PeriodSlot(10L, 2, 3, PeriodSection.MORNING, false, false, false);
     /** A mid-numbered slot whose section label says evening: the count must follow the label. */
     private static final PeriodSlot SECTION_EVENING =
             new PeriodSlot(6L, 1, 7, PeriodSection.EVENING, false, false, true);
@@ -565,12 +569,150 @@ class EngineConstraintTest {
         Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
         Lesson b = lesson(2, 11, 100, 1001, MON5, ROOM_B);
         TimetableSolution solution =
-                new TimetableSolution(List.of(a, b), List.of(MON1, MON5), List.of(ROOM, ROOM_B));
+                new TimetableSolution(List.of(a, b), mondayOneToFive(), List.of(ROOM, ROOM_B));
 
         scoreManager().updateScore(solution);
 
         assertThat(solution.getScore().hardScore()).isZero();
         assertThat(solution.getScore().softScore()).isLessThan(0);
+    }
+
+    /**
+     * 票03：空堂软评分按「真实存在的作息里、首末课程之间未占的每一格」计分。
+     * 连续 1..5 节时，课在 1 与 3 只空出第 2 节（权重 40 → -40）；课在 1 与 5
+     * 空出第 2、3、4 节（-120）。旧实现按节次编号跨度推算出空位却只扣一次，
+     * 因此第二个断言在修复前必然失败。
+     */
+    @Test
+    void classGapSoftScoreCountsEveryRealEmptyPeriod() {
+        ConstraintSettingsHolder.set(settings(ConstraintType.CLASS_GAP_MINIMIZED, false, 40, Map.of()));
+        Lesson early = lesson(1, 10, 100, 1000, MON1, ROOM);
+        Lesson mid = lesson(2, 11, 100, 1001, MON3, ROOM_B);
+        TimetableSolution oneGap =
+                new TimetableSolution(List.of(early, mid), mondayOneToFive(), List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(oneGap);
+
+        assertThat(oneGap.getScore().hardScore()).isZero();
+        assertThat(oneGap.getScore().softScore()).isEqualTo(-40);
+
+        Lesson first = lesson(3, 12, 100, 1002, MON1, ROOM);
+        Lesson last = lesson(4, 13, 100, 1003, MON5, ROOM_B);
+        TimetableSolution threeGaps =
+                new TimetableSolution(List.of(first, last), mondayOneToFive(), List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(threeGaps);
+
+        assertThat(threeGaps.getScore().hardScore()).isZero();
+        assertThat(threeGaps.getScore().softScore()).isEqualTo(-120);
+    }
+
+    /**
+     * 票03：作息里不存在的节次编号不能被编造成空堂。周一只有第 1、3 节时，
+     * 首末之间没有任何真实课节，两侧都不该扣分。
+     */
+    @Test
+    void classGapSoftScoreIgnoresPeriodNumbersTheSchoolDoesNotUse() {
+        ConstraintSettingsHolder.set(settings(ConstraintType.CLASS_GAP_MINIMIZED, false, 40, Map.of()));
+        Lesson first = lesson(1, 10, 100, 1000, MON1, ROOM);
+        Lesson third = lesson(2, 11, 100, 1001, MON3, ROOM_B);
+        TimetableSolution solution = new TimetableSolution(
+                List.of(first, third), List.of(MON1, MON3), List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().softScore()).isZero();
+    }
+
+    /** 票03：空堂数按班级/星期分别累计，跨班跨天逐格相加（4 格 × 40 = -160）。 */
+    @Test
+    void classGapSoftScoreSumsAcrossClassesAndDays() {
+        ConstraintSettingsHolder.set(settings(ConstraintType.CLASS_GAP_MINIMIZED, false, 40, Map.of()));
+        List<PeriodSlot> periods = List.of(
+                MON1, MON2, MON3, MON4, MON5, TUE1, TUE2, TUE3);
+        List<Lesson> lessons = List.of(
+                lesson(1, 10, 100, 1000, MON1, ROOM),
+                lesson(2, 11, 100, 1001, MON3, ROOM),
+                lesson(3, 12, 200, 1002, MON1, ROOM),
+                lesson(4, 13, 200, 1003, MON3, ROOM),
+                lesson(5, 14, 200, 1004, MON5, ROOM),
+                lesson(6, 10, 100, 1000, TUE1, ROOM),
+                lesson(7, 11, 100, 1001, TUE3, ROOM));
+        TimetableSolution solution =
+                new TimetableSolution(lessons, periods, List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().softScore()).isEqualTo(-160);
+    }
+
+    /** 票03：连续排满的当天没有空堂。 */
+    @Test
+    void classGapSoftScoreIsZeroForAPackedDay() {
+        ConstraintSettingsHolder.set(settings(ConstraintType.CLASS_GAP_MINIMIZED, false, 40, Map.of()));
+        TimetableSolution solution = new TimetableSolution(
+                List.of(
+                        lesson(1, 10, 100, 1000, MON1, ROOM),
+                        lesson(2, 11, 100, 1001, MON2, ROOM),
+                        lesson(3, 12, 100, 1002, MON3, ROOM)),
+                mondayOneToFive(), List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().softScore()).isZero();
+    }
+
+    /** 票03：硬配置只在真实存在空堂时产生硬违规，未启用则完全不作用。 */
+    @Test
+    void classGapHardControlBlocksOnlyWhenARealGapExists() {
+        ConstraintSettingsHolder.set(settings(ConstraintType.CLASS_GAP_MINIMIZED, true, 40, Map.of()));
+        TimetableSolution withGap = new TimetableSolution(
+                List.of(
+                        lesson(1, 10, 100, 1000, MON1, ROOM),
+                        lesson(2, 11, 100, 1001, MON3, ROOM_B)),
+                mondayOneToFive(), List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(withGap);
+
+        assertThat(withGap.getScore().hardScore()).isLessThan(0);
+
+        TimetableSolution noRealGap = new TimetableSolution(
+                List.of(
+                        lesson(1, 10, 100, 1000, MON1, ROOM),
+                        lesson(2, 11, 100, 1001, MON3, ROOM_B)),
+                List.of(MON1, MON3), List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(noRealGap);
+
+        assertThat(noRealGap.getScore().hardScore()).isZero();
+    }
+
+    /** 票03：类型关闭时空堂既不阻断也不扣分。 */
+    @Test
+    void classGapSwitchOffScoresNothing() {
+        com.paiban.scheduling.domain.ConstraintConfig disabled =
+                config(ConstraintType.CLASS_GAP_MINIMIZED, true, 40, Map.of());
+        disabled.setEnabled(false);
+        ConstraintSettingsHolder.set(ConstraintSettings.from(
+                List.of(disabled), new com.fasterxml.jackson.databind.ObjectMapper()));
+        TimetableSolution solution = new TimetableSolution(
+                List.of(
+                        lesson(1, 10, 100, 1000, MON1, ROOM),
+                        lesson(2, 11, 100, 1001, MON3, ROOM_B)),
+                mondayOneToFive(), List.of(ROOM, ROOM_B));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().softScore()).isZero();
+    }
+
+    /** 周一完整 1..5 节的作息事实，供空堂用例复用。 */
+    private static List<PeriodSlot> mondayOneToFive() {
+        return List.of(MON1, MON2, MON3, MON4, MON5);
     }
 
     @Test

@@ -453,9 +453,27 @@ public class PaibanConstraintProvider implements ConstraintProvider {
                         Lesson::getAdminClassId,
                         lesson -> lesson.getPeriod().getDayOfWeek(),
                         ConstraintCollectors.toList(lesson -> lesson.getPeriod().getPeriodNo()))
-                .filter((classId, day, periodNos) -> gapCount(periodNos) > 0)
+                .join(PeriodSlot.class,
+                        Joiners.equal((classId, day, periodNos) -> day, PeriodSlot::getDayOfWeek))
+                .filter((classId, day, periodNos, slot) -> isInternalGap(periodNos, slot))
                 .penalize(penalty(s, type))
                 .asConstraint(type.getDisplayName());
+    }
+
+    /**
+     * 票03：某班某天首末课程之间、真实存在且未被占用的课节。判断只与求解输入的
+     * {@link PeriodSlot} 事实 join，所以学校不使用的节次编号不会被编造成空堂；每格
+     * 单独计一次分，软权重自然累加（1 格扣 1 份权重，3 格扣 3 份）。当天首末之外
+     * 的空位（边缘无课）不在区间内，因此不计。
+     */
+    static boolean isInternalGap(List<Integer> usedPeriodNos, PeriodSlot slot) {
+        if (usedPeriodNos.isEmpty()) {
+            return false;
+        }
+        int first = usedPeriodNos.stream().mapToInt(Integer::intValue).min().orElse(0);
+        int last = usedPeriodNos.stream().mapToInt(Integer::intValue).max().orElse(0);
+        int periodNo = slot.getPeriodNo();
+        return periodNo > first && periodNo < last && !usedPeriodNos.contains(periodNo);
     }
 
     private void addHeadTeacherFirstPeriod(
@@ -561,14 +579,5 @@ public class PaibanConstraintProvider implements ConstraintProvider {
             best = Math.max(best, run);
         }
         return best;
-    }
-
-    private int gapCount(List<Integer> periodNos) {
-        List<Integer> sorted = periodNos.stream().distinct().sorted().toList();
-        int gaps = 0;
-        for (int i = 1; i < sorted.size(); i++) {
-            gaps += Math.max(0, sorted.get(i) - sorted.get(i - 1) - 1);
-        }
-        return gaps;
     }
 }

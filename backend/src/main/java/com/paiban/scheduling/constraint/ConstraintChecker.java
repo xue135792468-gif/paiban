@@ -541,18 +541,43 @@ public final class ConstraintChecker {
             if (touched != null && !touched.classDay().contains(entry.getKey())) {
                 continue;
             }
-            Set<Integer> used = new LinkedHashSet<>();
-            entry.getValue().forEach(lesson -> used.add(ctx.periods().get(lesson.periodId()).periodNo()));
-            if (used.isEmpty()) {
-                continue;
-            }
-            int span = used.stream().mapToInt(Integer::intValue).max().orElse(0)
-                    - used.stream().mapToInt(Integer::intValue).min().orElse(0) + 1;
-            if (span > used.size()) {
+            if (internalGapCount(ctx, entry.getValue()) > 0) {
                 out.add(new ConstraintViolation("CLASS_GAP_MINIMIZED",
                         className(ctx, objectIdOf(entry.getKey())) + " 的课表存在空堂", null, true));
             }
         }
+    }
+
+    /**
+     * 票03：某班某天真实存在、且未被课程占用的内部空位数。只数首末课程之间真实
+     * 存在的 {@link PeriodView}，因此节次编号跨度不会凭空造出不存在的作息，当天
+     * 边缘（首末之外）的空位也不计入。求解器、硬校验与软扣分共用这一含义。
+     */
+    static int internalGapCount(ConstraintContext ctx, List<LessonView> classDayRows) {
+        Set<Integer> used = new LinkedHashSet<>();
+        int dayOfWeek = -1;
+        for (LessonView lesson : classDayRows) {
+            PeriodView period = periodOf(ctx, lesson);
+            if (period == null) {
+                continue;
+            }
+            dayOfWeek = period.dayOfWeek();
+            used.add(period.periodNo());
+        }
+        if (used.isEmpty()) {
+            return 0;
+        }
+        int first = used.stream().mapToInt(Integer::intValue).min().orElse(0);
+        int last = used.stream().mapToInt(Integer::intValue).max().orElse(0);
+        int gaps = 0;
+        for (PeriodView period : ctx.periods().values()) {
+            if (period.dayOfWeek() == dayOfWeek
+                    && period.periodNo() > first && period.periodNo() < last
+                    && !used.contains(period.periodNo())) {
+                gaps++;
+            }
+        }
+        return gaps;
     }
 
     private static void checkTeacherMaxConsecutive(
@@ -721,14 +746,7 @@ public final class ConstraintChecker {
         Control gap = settings.control(ConstraintType.CLASS_GAP_MINIMIZED);
         if (gap != null && !gap.hard()) {
             for (List<LessonView> rows : classDay.values()) {
-                Set<Integer> used = new LinkedHashSet<>();
-                rows.forEach(lesson -> used.add(ctx.periods().get(lesson.periodId()).periodNo()));
-                if (used.isEmpty()) {
-                    continue;
-                }
-                int span = used.stream().mapToInt(Integer::intValue).max().orElse(0)
-                        - used.stream().mapToInt(Integer::intValue).min().orElse(0) + 1;
-                total += gap.weight() * Math.max(0, span - used.size());
+                total += gap.weight() * internalGapCount(ctx, rows);
             }
         }
 
