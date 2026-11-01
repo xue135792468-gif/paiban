@@ -51,4 +51,4 @@ Status: done
 
 ## 复审遗留
 
-复审遗留（2026-11-01 完成）：02/05 已按用户决定「教室容量/可用性不作为约束」关闭为 `wontfix`；04 已完成（`288e073`）；06 已完成（`b075116`）；07 已完成（`eccc0c4` + `d02b1c1` + `936c779`，Flyway V44）；03 已完成（`b365cdf`）。最后一轮复审的 5 个非阻塞小项转入票 08（`needs-triage`）。全量后端 1036、前端 446、scheduling e2e 5/5；线上 job 11 / draft 12 `warmStartSource=BASELINE`、`0hard`、546/546、0 冲突、每班一间、`valid=true`；唯一拦截 `SEMESTER_ALREADY_PUBLISHED`。
+复审遗留（2026-11-01 完成）：02/05 已按用户决定「教室容量/可用性不作为约束」关闭为 `wontfix`；04 已完成（`288e073`）；06 已完成（`b075116`）；07 已完成（`eccc0c4` + `d02b1c1` + `936c779`，Flyway V44）；03 已完成（`b365cdf`）。最后一轮复审的 5 个非阻塞小项转入票 08（`needs-triage`）。全量后端 1036、前端 446、scheduling e2e 5/5；线上 job 11 / draft 12 `warmStartSource=BASELINE`、`0hard`、546/546、0 冲突、每班一间、`valid=true`；唯一拦截 `SEMESTER_ALREADY_PUBLISHED`。2026-11-01 新学期端到端验收也通过：semester 2 复制结构 + 导入 546 行 → job 13 / draft 15 `DRAFT`、`0hard`、`publishable=true`、发布 546 节；验收中发现并修复跨学期固定教室后缀匹配，见票 09。

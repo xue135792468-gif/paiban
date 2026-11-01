@@ -30,6 +30,10 @@ Status: done
 - **已有已发布基线，或已有完整导入草稿的学期**：自动排课草稿必须满足以上全部验收标准；warm start 从这份完整课表起步。
 - **既没有基线、也没有完整导入草稿的空白学期**：没有可靠的初始解，走评分修复 + `CHEAPEST_INSERTION` 的从零搜索；不承诺一次到 0 硬冲突，需要在页面上提示用户可能需要加长求解时间或先导入草稿。后续见 [issues/06](issues/06-warm-start-completeness-and-blank-semester.md)。
 
+## 已验收（2026-11-01）
+
+- 新学期 `Acceptance-2027-S2`：复制学期 1 结构 → 导入 546 行 → job 13 / draft 15 `warmStartSource=DRAFT`、`0hard`、`publishable=true`，发布 `entryCount=546`；班级视图 39 节。该验收同时暴露并修复了跨学期固定教室后缀匹配问题，见 [issues/09](issues/09-cross-semester-fixed-room-suffix.md)。
+
 ## 相关决策
 
 - [ADR-0031](../../docs/adr/0031-fixed-classroom-for-auto-scheduling.md)：固定教室 + 课表不展示教室。
