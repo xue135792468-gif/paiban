@@ -27,8 +27,10 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -184,8 +186,17 @@ public class TimetableProblemBuilder {
                 continue;
             }
             Map<AssignmentKey, Deque<PeriodSlot>> byAssignment = new HashMap<>();
+            Map<Long, Set<Long>> periodsByClass = new HashMap<>();
+            Map<Long, Set<Long>> periodsByTeacher = new HashMap<>();
             boolean usable = true;
             for (DraftLesson row : rows) {
+                // A complete draft that already double-books a class or a teacher is not a
+                // publishable starting point; skip it and keep looking for a clean one.
+                if (!firstTime(periodsByClass, row.getAdminClassId(), row.getPeriodId())
+                        || !firstTime(periodsByTeacher, row.getTeacherId(), row.getPeriodId())) {
+                    usable = false;
+                    break;
+                }
                 if (!addPeriodIfKnown(byAssignment, row.getAdminClassId(), row.getCourseId(),
                         row.getTeacherId(), row.getPeriodId(), periodById)) {
                     usable = false;
@@ -197,6 +208,11 @@ public class TimetableProblemBuilder {
             }
         }
         return Map.of();
+    }
+
+    /** True when this (owner, period) pair has not been seen before in the draft. */
+    private static boolean firstTime(Map<Long, Set<Long>> seen, Long ownerId, Long periodId) {
+        return seen.computeIfAbsent(ownerId, key -> new HashSet<>()).add(periodId);
     }
 
     /** A draft is complete when every assignment has all of its weekly lessons seeded. */
