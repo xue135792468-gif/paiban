@@ -8,10 +8,15 @@ import com.paiban.scheduling.domain.ConstraintEntry;
 import com.paiban.scheduling.domain.ConstraintType;
 import com.paiban.scheduling.solver.ConstraintSettings;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class SwapPlannerTest {
 
@@ -149,12 +154,13 @@ class SwapPlannerTest {
         CandidatePlan plan = result.candidates().get(0);
         assertThat(plan.moves()).extracting(PlanMove::entryId)
                 .containsExactlyInAnyOrder(first, second, third);
-        assertThat(plan.moves()).anySatisfy(move -> {
-            if (move.entryId() == first) {
-                assertThat(move.toDate()).isEqualTo(PlanFixtures.date(2));
-                assertThat(move.toPeriodId()).isEqualTo(PlanFixtures.periodId(2, 1));
-            }
-        });
+        assertThat(plan.moves())
+                .filteredOn(move -> move.entryId() == first)
+                .singleElement()
+                .satisfies(move -> {
+                    assertThat(move.toDate()).isEqualTo(PlanFixtures.date(2));
+                    assertThat(move.toPeriodId()).isEqualTo(PlanFixtures.periodId(2, 1));
+                });
         PlanVerifier.Result verification = PlanVerifier.verify(
                 snapshot, plan.moves(), PlanVerifier.Kind.SWAP, plan.softPenalty());
         assertThat(verification.issues()).isEmpty();
@@ -202,42 +208,85 @@ class SwapPlannerTest {
         assertThat(result.diagnoses()).extracting(PlanDiagnosis::code)
                 .contains("SEARCH_BUDGET")
                 .doesNotContain("NO_SOLUTION");
-        assertThat(result.diagnoses()).anySatisfy(diagnosis -> {
-            if ("SEARCH_BUDGET".equals(diagnosis.code())) {
-                assertThat(diagnosis.message()).contains("不能据此判定无解");
-            }
-        });
+        assertThat(result.diagnoses())
+                .filteredOn(diagnosis -> "SEARCH_BUDGET".equals(diagnosis.code()))
+                .singleElement()
+                .satisfies(diagnosis ->
+                        assertThat(diagnosis.message()).contains("不能据此判定无解"));
     }
 
-    @Test
-    void findsSecondKnownCycleWithSameCourseObstacleOnADifferentLayout() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("boundedKnownCycles")
+    void findsKnownCycleInBoundedSmallLayout(String label, KnownCycleCase testCase) {
         PlanFixtures.Builder builder = base()
                 .settings(sameCourseOncePerDay());
-        long wednesdayFirst = builder.addLesson(CLASS_1, 1, 1, 1L, 3, 1);
-        long fridaySecond = builder.addLesson(CLASS_1, 2, 2, 2L, 5, 2);
-        long fridayThird = builder.addLesson(CLASS_1, 1, 3, 3L, 5, 3);
+        long[] entryIds = new long[testCase.lessons().size()];
+        for (int i = 0; i < entryIds.length; i++) {
+            LessonSeed lesson = testCase.lessons().get(i);
+            entryIds[i] = builder.addLesson(CLASS_1, lesson.courseId(), lesson.teacherId(),
+                    lesson.roomId(), lesson.dayOfWeek(), lesson.periodNo());
+        }
         PlanSnapshot snapshot = builder.build();
 
-        List<PlanMove> knownCycle = List.of(
-                move(wednesdayFirst, 1, 1, 1, 3, 1, 5, 2, 0),
-                move(fridaySecond, 2, 2, 2, 5, 2, 5, 3, 1),
-                move(fridayThird, 1, 3, 3, 5, 3, 3, 1, 2));
+        LessonSeed target = testCase.lessons().get(testCase.targetIndex());
+        List<PlanMove> knownCycle = testCase.moves().stream()
+                .map(spec -> move(entryIds[spec.entryIndex()],
+                        testCase.lessons().get(spec.entryIndex()).courseId(),
+                        testCase.lessons().get(spec.entryIndex()).teacherId(),
+                        testCase.lessons().get(spec.entryIndex()).roomId(),
+                        spec.fromDayOfWeek(), spec.fromPeriodNo(),
+                        spec.toDayOfWeek(), spec.toPeriodNo(), spec.order()))
+                .toList();
         assertThat(PlanVerifier.verify(snapshot, knownCycle, PlanVerifier.Kind.SWAP, -1).passed())
                 .isTrue();
 
+        LessonSeed source = testCase.lessons().get(testCase.sourceIndex());
         PlanningResult result = SwapPlanner.plan(
                 snapshot,
-                new SwapPlanner.Request(CLASS_1, wednesdayFirst, PlanFixtures.date(3),
-                        PlanFixtures.periodId(5, 2)),
-                SwapPlanner.Options.of(3, 6, RankingPreset.MIN_IMPACT));
+                new SwapPlanner.Request(CLASS_1, entryIds[testCase.sourceIndex()],
+                        PlanFixtures.date(source.dayOfWeek()),
+                        PlanFixtures.periodId(target.dayOfWeek(), target.periodNo())),
+                SwapPlanner.Options.of(testCase.searchWindowDays(), 6, RankingPreset.MIN_IMPACT));
 
-        assertThat(result.candidates()).isNotEmpty();
+        assertThat(result.candidates()).as(label).isNotEmpty();
         CandidatePlan plan = result.candidates().get(0);
         assertThat(plan.moves()).extracting(PlanMove::entryId)
-                .containsExactlyInAnyOrder(wednesdayFirst, fridaySecond, fridayThird);
+                .containsExactlyInAnyOrderElementsOf(
+                        Arrays.stream(entryIds).boxed().toList());
         assertThat(PlanVerifier.verify(
                 snapshot, plan.moves(), PlanVerifier.Kind.SWAP, plan.softPenalty()).passed())
                 .isTrue();
+    }
+
+    static Stream<Arguments> boundedKnownCycles() {
+        return Stream.of(
+                Arguments.of("周三第1节到周五第2节", new KnownCycleCase(
+                        3,
+                        List.of(new LessonSeed(1, 1, 1, 3, 1),
+                                new LessonSeed(2, 2, 2, 5, 2),
+                                new LessonSeed(1, 3, 3, 5, 3)),
+                        1,
+                        List.of(new MoveSeed(0, 3, 1, 5, 2, 0),
+                                new MoveSeed(1, 5, 2, 5, 3, 1),
+                                new MoveSeed(2, 5, 3, 3, 1, 2)))),
+                Arguments.of("周一第1节到周三第2节", new KnownCycleCase(
+                        3,
+                        List.of(new LessonSeed(1, 1, 1, 1, 1),
+                                new LessonSeed(2, 2, 2, 3, 2),
+                                new LessonSeed(1, 3, 3, 3, 4)),
+                        1,
+                        List.of(new MoveSeed(0, 1, 1, 3, 2, 0),
+                                new MoveSeed(1, 3, 2, 3, 4, 1),
+                                new MoveSeed(2, 3, 4, 1, 1, 2)))),
+                Arguments.of("周二第2节到周四第1节", new KnownCycleCase(
+                        3,
+                        List.of(new LessonSeed(1, 1, 1, 2, 2),
+                                new LessonSeed(2, 2, 2, 4, 1),
+                                new LessonSeed(1, 3, 3, 4, 3)),
+                        1,
+                        List.of(new MoveSeed(0, 2, 2, 4, 1, 0),
+                                new MoveSeed(1, 4, 1, 4, 3, 1),
+                                new MoveSeed(2, 4, 3, 2, 2, 2)))));
     }
 
     @Test
@@ -580,6 +629,20 @@ class SwapPlannerTest {
                 PlanFixtures.date(fromDay),
                 PlanFixtures.periodId(toDay, toPeriodNo), toDay, toPeriodNo,
                 PlanFixtures.date(toDay), order);
+    }
+
+    private record LessonSeed(long courseId, long teacherId, long roomId,
+                              int dayOfWeek, int periodNo) {}
+
+    private record MoveSeed(int entryIndex, int fromDayOfWeek, int fromPeriodNo,
+                            int toDayOfWeek, int toPeriodNo, int order) {}
+
+    private record KnownCycleCase(int searchWindowDays, List<LessonSeed> lessons,
+                                  int targetIndex, List<MoveSeed> moves) {
+
+        int sourceIndex() {
+            return 0;
+        }
     }
 
     private static ConstraintSettings sameCourseOncePerDay() {
