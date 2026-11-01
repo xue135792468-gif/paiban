@@ -20,8 +20,8 @@ public final class SchedulingDtos {
 
     public record JobDto(Long id, Long semesterId, String status, String score, int progress,
                          long elapsedMs, long estimatedRemainingMs, String errorMessage, Long draftId,
-                         String draftName, int solveSeconds, Instant createdAt, Instant startedAt,
-                         Instant finishedAt) {}
+                         String draftName, String warmStartSource, int solveSeconds, Instant createdAt,
+                         Instant startedAt, Instant finishedAt) {}
 
     public record DraftDto(Long id, Long semesterId, String name, String status, int scoreHard,
                            int scoreSoft, String createdBy, Instant createdAt, long lessonCount) {}

@@ -86,11 +86,13 @@ class TimetableProblemBuilderTest {
         when(draftLessonRepository.findByDraftIdOrderByIdAsc(5L)).thenReturn(List.of(
                 row(1L, 11L), row(2L, 12L)));
 
-        TimetableSolution solution = new TimetableProblemBuilder(
+        TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
                 baselines, draftRepository, draftLessonRepository, foundation)
-                .build(1L);
+                .buildWithWarmStart(1L);
+        TimetableSolution solution = built.solution();
 
+        assertThat(built.warmStartSource()).isEqualTo("DRAFT");
         assertThat(solution.getLessons()).hasSize(2);
         assertThat(solution.getLessons()).extracting(lesson -> lesson.getPeriod().getId())
                 .containsExactlyInAnyOrder(11L, 12L);
@@ -207,15 +209,60 @@ class TimetableProblemBuilderTest {
                 new SemesterBaselineQuery.PublishedLesson(1L, 1L, 1L, 11L)));
         when(draftRepository.findBySemesterIdOrderByCreatedAtDesc(1L)).thenReturn(List.of());
 
-        TimetableSolution solution = new TimetableProblemBuilder(
+        TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
                 baselines, draftRepository, draftLessonRepository, foundation)
-                .build(1L);
+                .buildWithWarmStart(1L);
+        TimetableSolution solution = built.solution();
 
+        assertThat(built.warmStartSource()).isEqualTo("BASELINE");
         assertThat(solution.getLessons()).hasSize(1);
         Lesson lesson = solution.getLessons().get(0);
         assertThat(lesson.getPeriod().getId()).isEqualTo(11L);
         assertThat(lesson.getFixedRoom().getId()).isEqualTo(7L);
+    }
+
+    @Test
+    void blankSemesterReportsNoneAndLeavesPeriodsUnassigned() {
+        PeriodRepository periodRepository = mock(PeriodRepository.class);
+        RoomRepository roomRepository = mock(RoomRepository.class);
+        AssignmentRepository assignmentRepository = mock(AssignmentRepository.class);
+        SemesterRepository semesterRepository = mock(SemesterRepository.class);
+        SemesterBaselineQuery baselines = mock(SemesterBaselineQuery.class);
+        TimetableDraftRepository draftRepository = mock(TimetableDraftRepository.class);
+        DraftLessonRepository draftLessonRepository = mock(DraftLessonRepository.class);
+        FoundationService foundation = mock(FoundationService.class);
+
+        Semester semester = new Semester();
+        semester.setId(1L);
+        semester.setName("2025-2026学年第一学期");
+        when(semesterRepository.findById(1L)).thenReturn(Optional.of(semester));
+
+        when(periodRepository.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(1L))
+                .thenReturn(List.of(period(11L, 1), period(12L, 2)));
+        when(roomRepository.findAllByOrderByNameAsc()).thenReturn(List.of());
+
+        Assignment assignment = assignment(21L, 1L, 1L, 1L, 1);
+        when(assignmentRepository.findBySemesterId(1L)).thenReturn(List.of(assignment));
+
+        when(foundation.classesById(1L)).thenReturn(Map.of(1L,
+                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null)));
+        when(foundation.coursesById()).thenReturn(Map.of(1L,
+                new CourseDto(1L, "语文", null, false, false, null, null)));
+        when(foundation.teachersById()).thenReturn(Map.of(1L,
+                new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null)));
+
+        when(baselines.publishedLessons(1L)).thenReturn(List.of());
+        when(draftRepository.findBySemesterIdOrderByCreatedAtDesc(1L)).thenReturn(List.of());
+
+        TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
+                periodRepository, roomRepository, assignmentRepository, semesterRepository,
+                baselines, draftRepository, draftLessonRepository, foundation)
+                .buildWithWarmStart(1L);
+
+        assertThat(built.warmStartSource()).isEqualTo("NONE");
+        assertThat(built.solution().getLessons()).hasSize(1);
+        assertThat(built.solution().getLessons().get(0).getPeriod()).isNull();
     }
 
     @Test

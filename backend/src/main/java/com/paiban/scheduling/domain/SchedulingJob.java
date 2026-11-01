@@ -52,6 +52,9 @@ public class SchedulingJob {
     @Column(name = "draft_name", length = 100)
     private String draftName;
 
+    @Column(name = "warm_start_source", length = 20)
+    private String warmStartSource;
+
     @Column(name = "solve_seconds", nullable = false)
     private int solveSeconds = 60;
 

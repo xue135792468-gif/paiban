@@ -133,6 +133,14 @@
             />
           </div>
 
+          <el-alert
+            v-if="activeJob.warmStartSource === 'NONE'"
+            title="该学期没有可用的已发布课表或完整导入草稿，本次将从零搜索，可能仍需人工调整；可加长求解时间或先导入草稿。"
+            type="warning"
+            :closable="false"
+            show-icon
+          />
+
           <div class="metric-grid">
             <div class="metric-item">
               <span class="metric-label">当前求解得分</span>
@@ -326,6 +334,7 @@ interface JobItem {
   errorMessage?: string | null
   draftId?: number | null
   draftName?: string | null
+  warmStartSource?: 'BASELINE' | 'DRAFT' | 'NONE' | string | null
   solveSeconds: number
   createdAt: string
   startedAt?: string | null

@@ -66,8 +66,16 @@ public class TimetableProblemBuilder {
         this.foundation = foundation;
     }
 
+    /** The solver problem plus where its warm start came from: BASELINE, DRAFT or NONE. */
+    public record BuiltProblem(TimetableSolution solution, String warmStartSource) {}
+
     @Transactional(readOnly = true)
     public TimetableSolution build(Long semesterId) {
+        return buildWithWarmStart(semesterId).solution();
+    }
+
+    @Transactional(readOnly = true)
+    public BuiltProblem buildWithWarmStart(Long semesterId) {
         List<Period> periods = periodRepository.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(semesterId);
         Map<Integer, List<Period>> byDay = new HashMap<>();
         periods.forEach(period -> byDay.computeIfAbsent(period.getDayOfWeek(), key -> new ArrayList<>()).add(period));
@@ -109,8 +117,8 @@ public class TimetableProblemBuilder {
         Map<Long, PeriodSlot> periodById = new HashMap<>();
         periodSlots.forEach(slot -> periodById.put(slot.getId(), slot));
         List<Assignment> assignments = assignmentRepository.findBySemesterId(semesterId);
-        Map<AssignmentKey, Deque<PeriodSlot>> warmPeriods =
-                warmPeriods(semesterId, periodById, assignments);
+        WarmStart warmStart = warmPeriods(semesterId, periodById, assignments);
+        Map<AssignmentKey, Deque<PeriodSlot>> warmPeriods = warmStart.periods();
 
         List<Lesson> lessons = new ArrayList<>();
         long lessonId = 1;
@@ -147,7 +155,7 @@ public class TimetableProblemBuilder {
                 lessons.add(lesson);
             }
         }
-        return new TimetableSolution(lessons, periodSlots, roomSlots);
+        return new BuiltProblem(new TimetableSolution(lessons, periodSlots, roomSlots), warmStart.source());
     }
 
     /**
@@ -162,7 +170,7 @@ public class TimetableProblemBuilder {
      * complete schedule. If the baseline is empty, the oldest complete draft (normally the
      * import) seeds the same way.
      */
-    private Map<AssignmentKey, Deque<PeriodSlot>> warmPeriods(
+    private WarmStart warmPeriods(
             Long semesterId, Map<Long, PeriodSlot> periodById, List<Assignment> assignments) {
         Map<AssignmentKey, Deque<PeriodSlot>> baseline = new HashMap<>();
         baselines.publishedLessons(semesterId).stream()
@@ -171,7 +179,7 @@ public class TimetableProblemBuilder {
                         baseline, lesson.adminClassId(), lesson.courseId(), lesson.teacherId(),
                         lesson.periodId(), periodById));
         if (!baseline.isEmpty()) {
-            return baseline;
+            return new WarmStart(baseline, "BASELINE");
         }
 
         Map<AssignmentKey, Integer> required = new HashMap<>();
@@ -204,11 +212,14 @@ public class TimetableProblemBuilder {
                 }
             }
             if (usable && isComplete(byAssignment, required)) {
-                return byAssignment;
+                return new WarmStart(byAssignment, "DRAFT");
             }
         }
-        return Map.of();
+        return new WarmStart(Map.of(), "NONE");
     }
+
+    /** Seeded periods plus the label of where they came from. */
+    private record WarmStart(Map<AssignmentKey, Deque<PeriodSlot>> periods, String source) {}
 
     /** True when this (owner, period) pair has not been seen before in the draft. */
     private static boolean firstTime(Map<Long, Set<Long>> seen, Long ownerId, Long periodId) {

@@ -162,7 +162,15 @@ public class SchedulingService {
             // so the solver cannot read a different rule set.
             ConstraintSettings settings = constraints.settings(job.getSemesterId());
             ConstraintSettingsHolder.set(settings);
-            TimetableSolution problem = problemBuilder.build(job.getSemesterId());
+            TimetableProblemBuilder.BuiltProblem built =
+                    problemBuilder.buildWithWarmStart(job.getSemesterId());
+            // markRunning is a bulk update that bypasses the entity read above, so that
+            // instance is stale; re-read it before saving, otherwise this write would put
+            // the job back to PENDING and clear started_at.
+            job = jobs.findById(jobId).orElse(job);
+            job.setWarmStartSource(built.warmStartSource());
+            jobs.save(job);
+            TimetableSolution problem = built.solution();
             if (problem.getLessons().isEmpty()) {
                 throw new IllegalStateException("当前学期没有可排的授课任务");
             }
@@ -503,6 +511,7 @@ public class SchedulingService {
                 job.getErrorMessage(),
                 job.getDraftId(),
                 job.getDraftName(),
+                job.getWarmStartSource(),
                 job.getSolveSeconds(),
                 job.getCreatedAt(),
                 job.getStartedAt(),

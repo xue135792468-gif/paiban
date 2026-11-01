@@ -112,6 +112,24 @@ class SchedulingIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void blankSemesterReportsNoWarmStartSource() {
+        String token = adminToken();
+        // prepare() never publishes a baseline and never creates an import draft, so this
+        // semester has nothing to warm start from. The solver result itself is not asserted
+        // here: a from-scratch run is best effort by design.
+        Fixture fixture = prepare(token, TestData.suffix(), 2, 3, 2);
+
+        long jobId = as(token).queryParam("semesterId", fixture.semesterId())
+                .body(Map.of("maxSeconds", 5))
+                .when().post("/api/scheduling-jobs")
+                .then().statusCode(200).extract().jsonPath().getLong("id");
+
+        Map<String, Object> job = awaitJob(token, jobId, 60);
+        assertThat(job.get("status")).isEqualTo("COMPLETED");
+        assertThat(job.get("warmStartSource")).isEqualTo("NONE");
+    }
+
+    @Test
     void onlyOneJobMayRunPerSemester() {
         String token = adminToken();
         Fixture fixture = prepare(token, TestData.suffix(), 2, 3, 2);
