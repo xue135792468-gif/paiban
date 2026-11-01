@@ -165,11 +165,9 @@ public class SchedulingService {
             TimetableProblemBuilder.BuiltProblem built =
                     problemBuilder.buildWithWarmStart(job.getSemesterId());
             // markRunning is a bulk update that bypasses the entity read above, so that
-            // instance is stale; re-read it before saving, otherwise this write would put
-            // the job back to PENDING and clear started_at.
-            job = jobs.findById(jobId).orElse(job);
-            job.setWarmStartSource(built.warmStartSource());
-            jobs.save(job);
+            // instance is stale; write only the warm-start source with a targeted update
+            // instead of saving the entity, which could overwrite a concurrent CANCELLED.
+            jobs.updateWarmStartSource(jobId, built.warmStartSource());
             TimetableSolution problem = built.solution();
             if (problem.getLessons().isEmpty()) {
                 throw new IllegalStateException("当前学期没有可排的授课任务");

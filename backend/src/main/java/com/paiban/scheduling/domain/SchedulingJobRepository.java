@@ -28,4 +28,15 @@ public interface SchedulingJobRepository extends JpaRepository<SchedulingJob, Lo
     @Query("update SchedulingJob j set j.status = 'RUNNING', j.startedAt = :startedAt "
             + "where j.id = :id and j.status = 'PENDING'")
     int markRunning(@Param("id") Long id, @Param("startedAt") Instant startedAt);
+
+    /**
+     * Writes only the warm-start source. The worker re-reads the job after
+     * markRunning, but saving that whole entity could race with a concurrent
+     * cancel and overwrite CANCELLED back to RUNNING, so this stays a targeted
+     * update instead of an entity save.
+     */
+    @Modifying
+    @Transactional
+    @Query("update SchedulingJob j set j.warmStartSource = :source where j.id = :id")
+    int updateWarmStartSource(@Param("id") Long id, @Param("source") String source);
 }
