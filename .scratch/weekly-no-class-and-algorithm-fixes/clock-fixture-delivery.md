@@ -6,6 +6,6 @@ c37a70b的CI run 41325539556：frontend、deploy-scripts、backend通过。后�
 
 最小修正只改该e2e：在UI部分用page.clock.setFixedTime固定浏览器在种子周五中午，预期日期守卫回到种子周五；周三课明确为过去，保持禁用、合成点击无选中与零写入断言。去掉if(cards.count()>0)可选分支，要求确有一张课卡，避免静默跳过。服务端与此前409/批准/预览/零写入仍使用真实时钟；没有改生产源码。
 
-实际定向运行：scripts/e2e.sh e2e/admin-reschedule.spec.ts -g 已开课，1/1通过，退出0，1.7分钟。浏览器单场景13.9秒。最终整体门禁须在修正后的冻结版本重新执行，当前06因新发现重开，不能拿之前2c2e52f全量绿冒充新版本全量绿。
+实际定向运行：scripts/e2e.sh e2e/admin-reschedule.spec.ts -g 已开课，1/1通过，退出0，1.7分钟。浏览器单场景13.9秒。当时06因新发现重开，不能拿之前2c2e52f全量绿冒充新版本全量绿；现77e8129已重新完整运行退出0，06重新关闭，最终数据见acceptance.md。
 
 CI原始证据：https://github.com/xue135792468-gif/paiban/actions/runs/41325539556 。
