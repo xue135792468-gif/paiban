@@ -57,6 +57,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 @Service
 public class SchedulingService {
@@ -74,6 +75,7 @@ public class SchedulingService {
     private final AdminClassRepository adminClasses;
     private final SemesterService semesters;
     private final ConstraintService constraints;
+    private final ClassCapacityService capacity;
     private final TimetableProblemBuilder problemBuilder;
     private final DraftValidator validator;
     private final TaskExecutor executor;
@@ -93,6 +95,7 @@ public class SchedulingService {
             AdminClassRepository adminClasses,
             SemesterService semesters,
             ConstraintService constraints,
+            ClassCapacityService capacity,
             TimetableProblemBuilder problemBuilder,
             DraftValidator validator,
             @Qualifier("schedulingExecutor") TaskExecutor executor,
@@ -108,6 +111,7 @@ public class SchedulingService {
         this.adminClasses = adminClasses;
         this.semesters = semesters;
         this.constraints = constraints;
+        this.capacity = capacity;
         this.problemBuilder = problemBuilder;
         this.validator = validator;
         this.executor = executor;
@@ -131,6 +135,12 @@ public class SchedulingService {
             }
             if (rooms.count() == 0) {
                 throw ApiException.badRequest("请先配置教室再提交排课");
+            }
+            // Necessary condition only: an obvious shortage is explained before a job
+            // is created. Assignments, drafts and published baselines stay untouched.
+            String shortage = capacity.message(resolved, constraints.settings(resolved));
+            if (StringUtils.hasText(shortage)) {
+                throw ApiException.badRequest(shortage);
             }
             SchedulingJob job = new SchedulingJob();
             job.setSemesterId(resolved);
@@ -162,6 +172,12 @@ public class SchedulingService {
             // Same snapshot builder as the draft check and the substitution verifier,
             // so the solver cannot read a different rule set.
             ConstraintSettings settings = constraints.settings(job.getSemesterId());
+            // The queued job used the settings at submission; rules may have changed
+            // while it waited, so the real start re-checks against the current ones.
+            String shortage = capacity.message(job.getSemesterId(), settings);
+            if (StringUtils.hasText(shortage)) {
+                throw new IllegalStateException(shortage);
+            }
             ConstraintSettingsHolder.set(settings);
             TimetableProblemBuilder.BuiltProblem built =
                     problemBuilder.buildWithWarmStart(job.getSemesterId(), settings);

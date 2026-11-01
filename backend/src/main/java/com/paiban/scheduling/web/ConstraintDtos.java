@@ -74,8 +74,22 @@ public final class ConstraintDtos {
     /** A dry run of a configuration: no writes and no version advance. */
     public record ConstraintPreviewRequest(List<ConstraintConfigRequest> configs) {}
 
+    /**
+     * A dry run answers two separate questions: {@code errors}/{@code invalidReferences}
+     * say whether the configuration may be saved, {@code warnings} say whether the
+     * resulting weekly capacity is enough. Warnings never block a save — the page keeps
+     * showing them and only a real solve refuses to start. The two-argument form is
+     * kept for callers that only render the refusals.
+     */
     public record ConstraintPreviewDto(List<String> errors,
-                                       List<TemplateReferenceIssue> invalidReferences) {}
+                                       List<TemplateReferenceIssue> invalidReferences,
+                                       List<String> warnings) {
+
+        public ConstraintPreviewDto(
+                List<String> errors, List<TemplateReferenceIssue> invalidReferences) {
+            this(errors, invalidReferences, List.of());
+        }
+    }
 
     /**
      * One saved effective configuration with the decisions that produced it, the

@@ -74,6 +74,7 @@ public class ConstraintConfigService {
     private final PeriodRepository periods;
     private final AdminClassRepository adminClasses;
     private final ConstraintAuditService auditService;
+    private final ClassCapacityService capacity;
     private final ObjectMapper objectMapper;
 
     public ConstraintConfigService(
@@ -87,6 +88,7 @@ public class ConstraintConfigService {
             PeriodRepository periods,
             AdminClassRepository adminClasses,
             ConstraintAuditService auditService,
+            ClassCapacityService capacity,
             ObjectMapper objectMapper) {
         this.configs = configs;
         this.states = states;
@@ -98,6 +100,7 @@ public class ConstraintConfigService {
         this.periods = periods;
         this.adminClasses = adminClasses;
         this.auditService = auditService;
+        this.capacity = capacity;
         this.objectMapper = objectMapper;
     }
 
@@ -176,7 +179,63 @@ public class ConstraintConfigService {
             Long semesterId, List<ConstraintConfigRequest> requests) {
         Long resolved = resolveSemester(semesterId);
         Planning planning = plan(resolved, requests, existingEntries(resolved));
-        return new ConstraintPreviewDto(planning.errors(), planning.references());
+        return new ConstraintPreviewDto(
+                planning.errors(), planning.references(), warningsOf(resolved, planning));
+    }
+
+    /**
+     * The capacity warnings of a <em>valid</em> plan: the unsaved rules are turned into
+     * the same immutable {@link ConstraintSettings} snapshot the solver reads, then the
+     * pure capacity check explains any class whose weekly lessons no longer fit. An
+     * invalid plan has no meaningful capacity answer, so it returns no warnings; the
+     * save path is unaffected either way.
+     */
+    private List<String> warningsOf(Long resolved, Planning planning) {
+        if (!refusalErrors(planning).isEmpty()) {
+            return List.of();
+        }
+        String message = capacity.message(resolved, settingsOf(planning));
+        return StringUtils.hasText(message) ? List.of(message) : List.of();
+    }
+
+    /**
+     * Builds the effective settings of a plan without writing anything. It reuses the
+     * planned mapping and {@link ConstraintSettings} itself, so there is no second
+     * parser that could disagree with what a save would store.
+     */
+    private ConstraintSettings settingsOf(Planning planning) {
+        List<ConstraintConfig> configs = new ArrayList<>();
+        List<ConstraintEntry> rows = new ArrayList<>();
+        long rowId = 0;
+        for (PlannedConfig planned : planning.configs()) {
+            ConstraintConfig config = new ConstraintConfig();
+            config.setType(planned.type().name());
+            config.setWeight(planned.weight());
+            config.setHard(planned.hard());
+            config.setEnabled(planned.enabled());
+            config.setParamsJson("{}");
+            configs.add(config);
+            for (PlannedEntry entry : planned.entries()) {
+                ConstraintEntry row = new ConstraintEntry();
+                row.setId(++rowId);
+                row.setType(planned.type().name());
+                row.setEnabled(entry.enabled());
+                row.setHard(entry.hard());
+                row.setWeight(entry.weight());
+                row.setGroupKey(entry.groupKey());
+                row.setParamsJson(writeParams(entry.params()));
+                rows.add(row);
+            }
+        }
+        return ConstraintSettings.from(configs, rows, objectMapper);
+    }
+
+    private String writeParams(Map<String, Object> params) {
+        try {
+            return objectMapper.writeValueAsString(params == null ? Map.of() : params);
+        } catch (JsonProcessingException ex) {
+            throw new IllegalArgumentException("约束参数无法序列化", ex);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -672,14 +731,22 @@ public class ConstraintConfigService {
                     claimedEntries, references, errors);
         }
         rejectInconsistentGroups(type, planned, defaultHard, defaultWeight, errors);
+        Set<String> mixedScopeGroups = rejectMixedClassScope(type, planned, errors);
+        rejectIncompleteClassSlotGroup(type, planned, mixedScopeGroups, errors);
         rejectContradictoryScalars(type, planned, errors);
         rejectDuplicateThresholdScopes(type, planned, errors);
         return new EntryPlan(planned, references);
     }
 
-    /** A duplicate is the same parameters with the same effective controls. */
+    /**
+     * A duplicate is the same parameters with the same effective controls. Only for
+     * {@code CLASS_UNAVAILABLE} is the requirement ({@code groupKey}) part of the
+     * identity: two cards may overlap the same slot, while the same card may not repeat
+     * a row. Every other type — including the other slot-grouped ones — keeps its
+     * pre-ticket-05 signature, so their legacy dedup is unchanged.
+     */
     private record EntrySignature(Map<String, Object> params, boolean enabled,
-                                  boolean hard, int weight) {}
+                                  boolean hard, int weight, String group) {}
 
     private String normalizeGroupKey(
             String raw, ConstraintType type, int position, List<String> errors) {
@@ -732,6 +799,111 @@ public class ConstraintConfigService {
     }
 
     /**
+     * 票05：一条「每周不上课时段」要求要么是全校，要么是若干指定行政班。两种范围混在同
+     * 一个 {@code groupKey} 里会让“暂停一条仍被另一条覆盖”变成逐行猜测，所以整个请求被
+     * 拒绝，用户必须把它拆成两条要求。只有带分组的行参与；旧的逐行配置保持原义。
+     *
+     * @return 出现混用的 groupKey，供矩形校验跳过这些组
+     */
+    private Set<String> rejectMixedClassScope(
+            ConstraintType type, List<PlannedEntry> planned, List<String> errors) {
+        Set<String> mixed = new LinkedHashSet<>();
+        if (type != ConstraintType.CLASS_UNAVAILABLE) {
+            return mixed;
+        }
+        Map<String, PlannedEntry> firstSchool = new LinkedHashMap<>();
+        Map<String, PlannedEntry> firstSelected = new LinkedHashMap<>();
+        for (PlannedEntry entry : planned) {
+            String group = entry.groupKey();
+            if (group == null) {
+                continue;
+            }
+            boolean wholeSchool = entry.params().get("classId") == null;
+            if (wholeSchool) {
+                firstSchool.putIfAbsent(group, entry);
+            } else {
+                firstSelected.putIfAbsent(group, entry);
+            }
+            PlannedEntry counterpart = wholeSchool
+                    ? firstSelected.get(group) : firstSchool.get(group);
+            if (counterpart != null && mixed.add(group)) {
+                errors.add(location(type, entry.position()) + ": 与第" + counterpart.position()
+                        + " 条属于同一条要求，但把全校与指定班级混在一起；"
+                        + "请拆成「全校」和「指定班级」两条不同的要求");
+            }
+        }
+        return mixed;
+    }
+
+    /**
+     * 票05：一条「每周不上课时段」要求展开后必须是完整的「班级 × 时段」矩形。
+     *
+     * <p>少一行就会在载入时被编辑器补成别的组合（或漏掉一个班/一节），保存后自动排课
+     * 的禁排范围因此和用户选中的范围不一致。这里在写入前拒绝缺角的要求，并指出缺了
+     * 哪个组合。只有条目已完整结构（星期/节次都能解析）时才判断，参数错误另行报告。
+     */
+    private void rejectIncompleteClassSlotGroup(
+            ConstraintType type, List<PlannedEntry> planned, Set<String> skippedGroups,
+            List<String> errors) {
+        if (type != ConstraintType.CLASS_UNAVAILABLE) {
+            return;
+        }
+        Map<String, List<PlannedEntry>> byGroup = new LinkedHashMap<>();
+        for (PlannedEntry entry : planned) {
+            if (entry.groupKey() == null || skippedGroups.contains(entry.groupKey())) {
+                continue;
+            }
+            byGroup.computeIfAbsent(entry.groupKey(), key -> new ArrayList<>()).add(entry);
+        }
+        for (List<PlannedEntry> rows : byGroup.values()) {
+            if (rows.size() < 2) {
+                continue;
+            }
+            boolean incompleteParams = rows.stream().anyMatch(row ->
+                    row.params().get("dayOfWeek") == null || row.params().get("periodNo") == null);
+            if (incompleteParams) {
+                continue;
+            }
+            Set<Long> classes = new LinkedHashSet<>();
+            Set<String> slots = new LinkedHashSet<>();
+            Set<String> present = new LinkedHashSet<>();
+            for (PlannedEntry row : rows) {
+                Long classId = ConstraintSettings.longValue(row.params().get("classId"));
+                Integer day = ConstraintSettings.intValue(row.params().get("dayOfWeek"));
+                Integer periodNo = ConstraintSettings.intValue(row.params().get("periodNo"));
+                classes.add(classId);
+                slots.add(day + "-" + periodNo);
+                present.add(comboKey(classId, day, periodNo));
+            }
+            int expected = classes.size() * slots.size();
+            if (present.size() >= expected) {
+                continue;
+            }
+            List<String> missing = new ArrayList<>();
+            for (Long classId : classes) {
+                for (String slot : slots) {
+                    String[] parts = slot.split("-");
+                    Integer day = Integer.valueOf(parts[0]);
+                    Integer periodNo = Integer.valueOf(parts[1]);
+                    if (!present.contains(comboKey(classId, day, periodNo))) {
+                        missing.add((classId == null ? "全校" : "班级#" + classId)
+                                + " 星期" + day + "第" + periodNo + "节");
+                    }
+                }
+            }
+            errors.add(location(type, rows.get(rows.size() - 1).position())
+                    + ": 同一条要求必须展开为完整的「班级×时段」组合，当前缺少 "
+                    + (expected - present.size()) + " 个（"
+                    + String.join("；", missing.subList(0, Math.min(3, missing.size())))
+                    + "）；请补齐后再保存，避免载入后自动补出其他班级的禁排");
+        }
+    }
+
+    private static String comboKey(Long classId, Integer day, Integer periodNo) {
+        return (classId == null ? "all" : "class" + classId) + "@" + day + "-" + periodNo;
+    }
+
+    /**
      * At most one entry per threshold scope: one global default and one exception per
      * object. Two entries for the same scope would leave "which value applies" to the
      * read order, so the whole request is rejected instead (ticket-10 spec: duplicate
@@ -777,7 +949,8 @@ public class ConstraintConfigService {
             return;
         }
         EntrySignature signature = new EntrySignature(params, entry.enabled(),
-                effectiveHard(entry, defaultHard), effectiveWeight(entry, defaultWeight));
+                effectiveHard(entry, defaultHard), effectiveWeight(entry, defaultWeight),
+                type == ConstraintType.CLASS_UNAVAILABLE ? entry.groupKey() : null);
         Integer first = seen.putIfAbsent(signature, entry.position());
         if (first != null) {
             errors.add(location(type, entry.position()) + ": 与第" + first + " 条完全相同，重复条目已拒绝");
@@ -1070,6 +1243,13 @@ public class ConstraintConfigService {
         Map<String, Object> normalized = new LinkedHashMap<>();
         for (Param param : type.getParams()) {
             Object value = source.get(param.name());
+            if (isBlankNoClassClassId(type, param, value)) {
+                // 省略（或 JSON null）才是全校；显式空白字符串无法区分「写错了」和
+                // 「没选」，会悄悄退化成全校，因此明确拒绝。
+                errors.add(prefix + "参数「" + plainLabel(param.label()) + "」不能是空白字符串；"
+                        + "全校范围请省略该参数或传 null");
+                continue;
+            }
             if (value == null || (value instanceof String text && !StringUtils.hasText(text))) {
                 if (param.required()) {
                     errors.add(prefix + "参数「" + param.label() + "」不能为空");
@@ -1114,6 +1294,15 @@ public class ConstraintConfigService {
             return type.getDisplayName();
         }
         return type.getDisplayName() + "(" + type.name() + ") 第" + position + " 条";
+    }
+
+    /** 一个显式空白、而非省略的 CLASS_UNAVAILABLE classId：拒绝，绝不当作全校。 */
+    private static boolean isBlankNoClassClassId(
+            ConstraintType type, Param param, Object value) {
+        return type == ConstraintType.CLASS_UNAVAILABLE
+                && "classId".equals(param.name())
+                && value instanceof String text
+                && !StringUtils.hasText(text);
     }
 
     private Integer asInteger(Object value) {
