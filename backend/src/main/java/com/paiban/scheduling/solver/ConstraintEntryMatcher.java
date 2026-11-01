@@ -14,6 +14,12 @@ public final class ConstraintEntryMatcher {
 
     private ConstraintEntryMatcher() {}
 
+    /** The class and weekly slot named by one no-class entry. */
+    public static boolean classSlot(Map<String, Object> entry, Long classId, int dayOfWeek, int periodNo) {
+        return Objects.equals(ConstraintSettings.longValue(entry.get("classId")), classId)
+                && slot(entry, dayOfWeek, periodNo);
+    }
+
     /** The entry names exactly this course (entries that require a target course). */
     public static boolean course(Map<String, Object> entry, Long courseId) {
         return Objects.equals(ConstraintParams.courseId(entry), courseId);

@@ -14,6 +14,8 @@ import com.paiban.foundation.web.FoundationDtos.TeacherDto;
 import com.paiban.scheduling.domain.Assignment;
 import com.paiban.scheduling.domain.AssignmentRepository;
 import com.paiban.scheduling.solver.Lesson;
+import com.paiban.scheduling.solver.ConstraintSettings;
+import com.paiban.scheduling.solver.ConstraintSettingsHolder;
 import com.paiban.scheduling.solver.PeriodSlot;
 import com.paiban.scheduling.solver.RoomRequirement;
 import com.paiban.scheduling.solver.RoomSlot;
@@ -63,6 +65,11 @@ public class TimetableProblemBuilder {
 
     @Transactional(readOnly = true)
     public BuiltProblem buildWithWarmStart(Long semesterId) {
+        return buildWithWarmStart(semesterId, ConstraintSettingsHolder.get());
+    }
+
+    @Transactional(readOnly = true)
+    public BuiltProblem buildWithWarmStart(Long semesterId, ConstraintSettings settings) {
         List<Period> periods = periodRepository.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(semesterId);
         Map<Integer, List<Period>> byDay = new HashMap<>();
         periods.forEach(period -> byDay.computeIfAbsent(period.getDayOfWeek(), key -> new ArrayList<>()).add(period));
@@ -138,7 +145,11 @@ public class TimetableProblemBuilder {
                     lesson.setRoom(fixedRoom);
                 }
                 if (baselinePeriods != null && !baselinePeriods.isEmpty()) {
-                    lesson.setPeriod(baselinePeriods.poll());
+                    PeriodSlot proposed = baselinePeriods.poll();
+                    if (!settings.classUnavailable(assignment.getAdminClassId(),
+                            proposed.getDayOfWeek(), proposed.getPeriodNo())) {
+                        lesson.setPeriod(proposed);
+                    }
                 }
                 lessons.add(lesson);
             }

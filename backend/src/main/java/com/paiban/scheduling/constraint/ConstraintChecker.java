@@ -125,6 +125,11 @@ public final class ConstraintChecker {
             out.add(new ConstraintViolation("PERIOD", "所选课节不存在", lesson.id(), true));
             return;
         }
+        if (ctx.settings().classUnavailable(lesson.classId(), period.dayOfWeek(), period.periodNo())) {
+            out.add(new ConstraintViolation("CLASS_UNAVAILABLE",
+                    className(ctx, lesson.classId()) + " 的 " + periodLabel(period) + " 是不上课时段",
+                    lesson.id(), true));
+        }
         CourseView course = lesson.courseId() == null ? null : ctx.courses().get(lesson.courseId());
         RoomView room = lesson.roomId() == null ? null : ctx.rooms().get(lesson.roomId());
         String courseName = course == null ? "课程" : course.name();
@@ -573,7 +578,9 @@ public final class ConstraintChecker {
         for (PeriodView period : ctx.periods().values()) {
             if (period.dayOfWeek() == dayOfWeek
                     && period.periodNo() > first && period.periodNo() < last
-                    && !used.contains(period.periodNo())) {
+                    && !used.contains(period.periodNo())
+                    && !ctx.settings().classUnavailable(classDayRows.get(0).classId(),
+                            period.dayOfWeek(), period.periodNo())) {
                 gaps++;
             }
         }

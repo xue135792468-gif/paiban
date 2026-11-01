@@ -54,6 +54,7 @@ public class ConstraintService {
                         type.getDefaultWeight(),
                         type.isEntryBacked(),
                         type.isSlotGrouped(),
+                        type.isHardOnly(),
                         type.thresholdScope() == null ? null : type.thresholdScope().objectField(),
                         type.thresholdScope() == null ? null : type.thresholdScope().valueField(),
                         type.getParams().stream().map(this::toDto).toList()))

@@ -385,6 +385,9 @@ public class ConstraintConfigService {
                 errors.add(type.getDisplayName() + ": 权重必须在 0-100 之间");
             }
             boolean hard = request.hard() == null ? type.isDefaultHard() : request.hard();
+            if (type.isHardOnly() && !hard) {
+                errors.add(type.getDisplayName() + ": 必须是硬约束，不能改为尽量");
+            }
             EntryPlan entries = planEntries(
                     type, request, hard, weight, timetable, existingEntries, claimedEntries, errors);
             references.addAll(entries.references());
@@ -650,6 +653,9 @@ public class ConstraintConfigService {
         for (int index = 0; index < requested.size(); index++) {
             ConstraintEntryRequest raw = requested.get(index);
             int position = index + 1;
+            if (type.isHardOnly() && raw != null && Boolean.FALSE.equals(raw.hard())) {
+                errors.add(location(type, position) + ": 必须留空，不能改为尽量");
+            }
             Map<String, Object> params = validateParams(
                     type, raw == null ? null : raw.params(), position, errors);
             Integer weight = raw == null ? null : raw.weight();
@@ -872,7 +878,7 @@ public class ConstraintConfigService {
         }
         String location = location(type, position);
         switch (type) {
-            case TEACHER_UNAVAILABLE, TEACHER_PREFERRED_SLOT, COURSE_UNAVAILABLE ->
+            case TEACHER_UNAVAILABLE, TEACHER_PREFERRED_SLOT, COURSE_UNAVAILABLE, CLASS_UNAVAILABLE ->
                     requireSlot(location, params, timetable, errors);
             case TEACHER_DAY_OFF -> requireDay(location, params, timetable, errors);
             case TEACHER_MEETING_BLOCKED -> {

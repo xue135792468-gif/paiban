@@ -467,6 +467,12 @@ public final class SwapPlanner {
         DaySchedule day = search.schedule(date);
         String label = label(target);
 
+        if (settings.classUnavailable(lesson.classId(), target.dayOfWeek(), target.periodNo())) {
+            reasons.add(new PlanDiagnosis("CLASS_UNAVAILABLE",
+                    "本班在 " + label + " 不上课", lesson.entryId(), target.id()));
+            return false;
+        }
+
         if (blocked(settings, ConstraintType.TEACHER_CONFLICT)
                 && day.lessons().stream().anyMatch(other -> other.teacherId() == lesson.teacherId()
                         && other.periodId() == target.id()

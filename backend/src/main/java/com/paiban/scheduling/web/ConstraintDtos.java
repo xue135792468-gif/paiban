@@ -22,7 +22,7 @@ public final class ConstraintDtos {
      */
     public record ConstraintTypeDto(String code, String name, String category, String categoryLabel,
                                     String description, boolean defaultHard, int defaultWeight,
-                                    boolean entryBacked, boolean slotGrouped,
+                                    boolean entryBacked, boolean slotGrouped, boolean hardOnly,
                                     String thresholdObjectField,
                                     String thresholdValueField, List<ParamDefDto> params) {}
 

@@ -43,6 +43,7 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         constraints.add(unassignedLesson(factory));
         constraints.add(courseRoomTypeMetadata(factory, s));
         constraints.add(classFixedRoom(factory));
+        constraints.add(classUnavailable(factory, s));
 
         addSwitch(constraints, s, ConstraintType.TEACHER_CONFLICT, teacherConflict(factory, s));
         addSwitch(constraints, s, ConstraintType.CLASS_CONFLICT, classConflict(factory, s));
@@ -445,6 +446,15 @@ public class PaibanConstraintProvider implements ConstraintProvider {
 
     // ---------- remaining switches ----------
 
+    private Constraint classUnavailable(ConstraintFactory factory, ConstraintSettings settings) {
+        return factory.forEachIncludingUnassigned(Lesson.class)
+                .filter(lesson -> lesson.getPeriod() != null && settings.classUnavailable(
+                        lesson.getAdminClassId(), lesson.getPeriod().getDayOfWeek(),
+                        lesson.getPeriod().getPeriodNo()))
+                .penalize(HardSoftScore.ONE_HARD)
+                .asConstraint(ConstraintType.CLASS_UNAVAILABLE.getDisplayName());
+    }
+
     private Constraint classGapMinimized(ConstraintFactory f, ConstraintSettings s) {
         ConstraintType type = ConstraintType.CLASS_GAP_MINIMIZED;
         return f.forEach(Lesson.class)
@@ -455,7 +465,8 @@ public class PaibanConstraintProvider implements ConstraintProvider {
                         ConstraintCollectors.toList(lesson -> lesson.getPeriod().getPeriodNo()))
                 .join(PeriodSlot.class,
                         Joiners.equal((classId, day, periodNos) -> day, PeriodSlot::getDayOfWeek))
-                .filter((classId, day, periodNos, slot) -> isInternalGap(periodNos, slot))
+                .filter((classId, day, periodNos, slot) -> isInternalGap(periodNos, slot)
+                        && !s.classUnavailable(classId, day, slot.getPeriodNo()))
                 .penalize(penalty(s, type))
                 .asConstraint(type.getDisplayName());
     }

@@ -34,6 +34,7 @@ import com.paiban.scheduling.solver.Lesson;
 import com.paiban.scheduling.solver.PaibanConstraintProvider;
 import com.paiban.scheduling.solver.TimetableSolution;
 import com.paiban.scheduling.web.SchedulingDtos.DraftDetailDto;
+import com.paiban.scheduling.web.SchedulingDtos.BlockedSlotDto;
 import com.paiban.scheduling.web.SchedulingDtos.DraftDto;
 import com.paiban.scheduling.web.SchedulingDtos.DraftLessonDto;
 import com.paiban.scheduling.web.SchedulingDtos.JobDto;
@@ -163,7 +164,7 @@ public class SchedulingService {
             ConstraintSettings settings = constraints.settings(job.getSemesterId());
             ConstraintSettingsHolder.set(settings);
             TimetableProblemBuilder.BuiltProblem built =
-                    problemBuilder.buildWithWarmStart(job.getSemesterId());
+                    problemBuilder.buildWithWarmStart(job.getSemesterId(), settings);
             // markRunning is a bulk update that bypasses the entity read above, so that
             // instance is stale; write only the warm-start source with a targeted update
             // instead of saving the entity, which could overwrite a concurrent CANCELLED.
@@ -403,8 +404,17 @@ public class SchedulingService {
                 .map(room -> new RoomDto(
                         room.getId(), room.getName(), room.getCapacity(), room.getType(), room.getBuilding()))
                 .toList();
+        ConstraintSettings settings = constraints.settings(draft.getSemesterId());
+        List<BlockedSlotDto> blockedSlots = new ArrayList<>();
+        for (Long classId : classMap.keySet().stream().sorted().toList()) {
+            for (PeriodDto period : periodDtos) {
+                if (settings.classUnavailable(classId, period.dayOfWeek(), period.periodNo())) {
+                    blockedSlots.add(new BlockedSlotDto(classId, period.id(), "本班每周不上课时段"));
+                }
+            }
+        }
         return new DraftDetailDto(
-                toDto(draft, rows.size()), lessons, periodDtos, roomDtos);
+                toDto(draft, rows.size()), lessons, periodDtos, roomDtos, blockedSlots);
     }
 
     @Transactional
@@ -442,7 +452,9 @@ public class SchedulingService {
     @Transactional
     public MoveResult moveLesson(Long draftId, Long lessonId, Long periodId, Long roomId, boolean force) {
         DraftValidator.ValidationResult result = validator.validateMove(draftId, lessonId, periodId, roomId);
-        if (!result.valid() && !force) {
+        boolean unavailable = result.conflicts().stream()
+                .anyMatch(conflict -> "CLASS_UNAVAILABLE".equals(conflict.type()));
+        if (!result.valid() && (!force || unavailable)) {
             return new MoveResult(false, false, result.hardConflicts(), result.conflicts());
         }
         DraftLesson lesson = draftLessons.findById(lessonId)

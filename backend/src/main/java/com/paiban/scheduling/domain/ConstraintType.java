@@ -20,6 +20,10 @@ public enum ConstraintType {
             "同一教师在同一课节只能出现在一个班级", List.of()),
     CLASS_CONFLICT("班级不冲突", Category.CONFLICT, true, 100,
             "同一班级在同一课节只能有一门课", List.of()),
+    CLASS_UNAVAILABLE("每周不上课时段", Category.PEDAGOGY, true, 100,
+            "指定行政班每周这些课节必须留空，原有周课时安排到其他位置",
+            List.of(Param.id("classId", "行政班"), Param.day("dayOfWeek", "星期"),
+                    Param.period("periodNo", "第几节"))),
     ROOM_CONFLICT("教室不冲突", Category.RESOURCE, true, 100,
             "同一教室在同一课节只能被一节课占用", List.of()),
     ROOM_CAPACITY_FIT("教室容量足够", Category.RESOURCE, true, 100,
@@ -112,6 +116,7 @@ public enum ConstraintType {
      * types never join it.
      */
     private static final Set<ConstraintType> ENTRY_BACKED = EnumSet.of(
+            CLASS_UNAVAILABLE,
             TEACHER_UNAVAILABLE,
             TEACHER_MEETING_BLOCKED,
             COURSE_REQUIRED_ROOM_TYPE,
@@ -139,6 +144,7 @@ public enum ConstraintType {
      * but the editor uses it to render one card per requirement.
      */
     private static final Set<ConstraintType> SLOT_GROUPED = EnumSet.of(
+            CLASS_UNAVAILABLE,
             TEACHER_UNAVAILABLE,
             TEACHER_MEETING_BLOCKED,
             TEACHER_PREFERRED_SLOT,
@@ -272,6 +278,14 @@ public enum ConstraintType {
      */
     public boolean isEntryBacked() {
         return ENTRY_BACKED.contains(this);
+    }
+
+    public boolean isHardOnly() {
+        return this == CLASS_UNAVAILABLE;
+    }
+
+    public boolean supportsNaturalLanguage() {
+        return this != CLASS_UNAVAILABLE;
     }
 
     /**
