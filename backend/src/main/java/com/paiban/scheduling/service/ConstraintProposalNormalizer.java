@@ -38,6 +38,9 @@ public final class ConstraintProposalNormalizer {
     public static final String UNSUPPORTED = "UNSUPPORTED";
     public static final String INVALID = "INVALID";
 
+    /** The one sentence the manual-only weekly no-class type must always carry. */
+    static final String MANUAL_WEEKLY_NO_CLASS = "请手动设置每周不上课时段";
+
     public record TeacherRef(long id, String name, String subject) {}
 
     public record CourseRef(long id, String name, String subject, String requiredRoomType) {}
@@ -137,6 +140,16 @@ public final class ConstraintProposalNormalizer {
                     Map.of(), List.of(), List.of());
         }
 
+        if (!type.supportsNaturalLanguage()) {
+            // A manual-only type has no sentence shape: its per-class slot rows cannot
+            // be derived from one requirement without guessing, so it stays visible
+            // but never becomes saveable, even when the model already said READY.
+            return proposal(proposalId, sourceText, type.name(), type.getDisplayName(),
+                    "INHERIT", type.isDefaultHard(),
+                    type.isDefaultHard() ? null : type.getDefaultWeight(),
+                    UNSUPPORTED, explanation, manualOnlyReason(type), Map.of(), List.of(), List.of());
+        }
+
         if (UNSUPPORTED.equals(modelStatus)) {
             return proposal(proposalId, sourceText, type.name(), type.getDisplayName(),
                     "INHERIT", type.isDefaultHard(), type.isDefaultHard() ? null : type.getDefaultWeight(),
@@ -156,6 +169,18 @@ public final class ConstraintProposalNormalizer {
                     effectiveWeight(node, type), status, explanation,
                     !StringUtils.hasText(modelReason) ? "这条要求还需要补充信息" : modelReason,
                     Map.of(), List.of(), candidates);
+        }
+
+        String className = text(node, "className");
+        if (StringUtils.hasText(className) && !supportsClassScope(type)) {
+            // The model narrowed the requirement to one class, but this type has no
+            // classId scope: recording it would silently become a school-wide rule.
+            return proposal(proposalId, sourceText, type.name(), type.getDisplayName(),
+                    strengthOf(node, type), effectiveHard(node, type), effectiveWeight(node, type),
+                    UNSUPPORTED, explanation,
+                    "「" + type.getDisplayName() + "」不支持按行政班限定范围，未把「" + className
+                            + "」的要求扩大为全校范围；请手动设置或改说教师/课程范围",
+                    Map.of(), List.of(), List.of());
         }
 
         String strength = strengthOf(node, type);
@@ -421,6 +446,18 @@ public final class ConstraintProposalNormalizer {
     }
 
     // ------------------------------------------------------------------ names
+
+    private static String manualOnlyReason(ConstraintType type) {
+        if (type == ConstraintType.CLASS_UNAVAILABLE) {
+            return "「" + type.getDisplayName() + "」不支持自然语言建议，" + MANUAL_WEEKLY_NO_CLASS;
+        }
+        return "「" + type.getDisplayName() + "」不支持自然语言建议，请手动设置";
+    }
+
+    /** True when the type's own parameter schema carries a classId scope. */
+    private static boolean supportsClassScope(ConstraintType type) {
+        return type.getParams().stream().anyMatch(param -> "classId".equals(param.name()));
+    }
 
     /** The choices the server can show for names the model left unresolved. */
     private static List<ProposalCandidateDto> candidatesFor(JsonNode node, Context context) {

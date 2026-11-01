@@ -20,6 +20,7 @@ public class ConstraintProposalPrompt {
 
     public String system() {
         String catalogue = List.of(ConstraintType.values()).stream()
+                .filter(ConstraintType::supportsNaturalLanguage)
                 .map(this::describe)
                 .collect(Collectors.joining("\n"));
         return """
@@ -72,6 +73,10 @@ public class ConstraintProposalPrompt {
                 8. “每天/每个班/全部课程”等全体范围要明确表达；不要用空列表表示全体。
                 9. 只输出 JSON，不要 Markdown、不要解释文字；explanation 和 reason 各用一句话，
                    不要展开推理。
+                10. 按行政班设置的「每周不上课时段」只能由用户手动设置，不在可用类型中：
+                    用户提出这类要求时 status=UNSUPPORTED，reason 写明「请手动设置每周不上课时段」，
+                    不得改用其他类型近似。行政班范围只在类型明确支持班级时填写，
+                    否则不要把某个班的要求扩大成全校教师或全校课程的限制。
                 """.formatted(catalogue);
     }
 
