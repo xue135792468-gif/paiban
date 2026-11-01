@@ -44,12 +44,13 @@ class ConstraintScopedThresholdsCheckerTest {
         assertThat(List.of(ConstraintType.values()).stream()
                 .filter(ConstraintType::isEntryBacked)
                 .toList())
-                .hasSize(19)
+                .hasSize(20)
                 .contains(ConstraintType.TEACHER_MAX_PER_DAY,
                         ConstraintType.CLASS_MAX_PER_DAY,
                         ConstraintType.COURSE_MAX_PER_DAY,
                         ConstraintType.EVENING_MAX,
-                        ConstraintType.TEACHER_MAX_CONSECUTIVE)
+                        ConstraintType.TEACHER_MAX_CONSECUTIVE,
+                        ConstraintType.CLASS_UNAVAILABLE)
                 .doesNotContain(ConstraintType.TEACHER_CONFLICT,
                         ConstraintType.CLASS_GAP_MINIMIZED);
 
@@ -70,6 +71,7 @@ class ConstraintScopedThresholdsCheckerTest {
         assertThat(ConstraintType.TEACHER_MAX_CONSECUTIVE.thresholdScope().valueField())
                 .isEqualTo("maxConsecutive");
         assertThat(ConstraintType.TEACHER_CONFLICT.thresholdScope()).isNull();
+        assertThat(ConstraintType.CLASS_UNAVAILABLE.thresholdScope()).isNull();
     }
 
     @Test
