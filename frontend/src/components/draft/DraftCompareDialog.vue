@@ -33,7 +33,7 @@
         </el-table>
       </div>
     </div>
-    <p class="compare-hint">得分越高越好（硬分必须为 0 才能发布）。</p>
+    <p class="compare-hint">发布以整草稿校验为准；求解得分仅作参考。</p>
   </el-dialog>
 </template>
 
@@ -61,7 +61,7 @@ const compareLessonsB = ref<DraftLesson[]>([])
 function draftSummary(id: number | null) {
   const draft = allDrafts.value.find((item) => item.id === id)
   if (!draft) return ''
-  return `${draft.scoreHard} hard / ${draft.scoreSoft} soft · ${draft.lessonCount} 节`
+  return `求解得分：${draft.scoreHard} hard / ${draft.scoreSoft} soft · ${draft.lessonCount} 节`
 }
 
 async function loadCompareSide(side: 'A' | 'B') {

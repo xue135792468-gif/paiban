@@ -451,8 +451,8 @@ public class SchedulingService {
         }
         lesson.setPeriodId(periodId);
         lesson.setRoomId(roomId);
-        TimetableDraft draft = requireDraft(draftId);
-        draft.setScoreHard(-result.hardConflicts());
+        // The stored score is the solver's last result; a manual move does not rewrite it.
+        // The current publish verdict comes from the draft validation endpoint instead.
         return new MoveResult(true, result.valid(), result.hardConflicts(), result.conflicts());
     }
 

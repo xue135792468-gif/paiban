@@ -135,7 +135,7 @@
 
           <div class="metric-grid">
             <div class="metric-item">
-              <span class="metric-label">当前得分</span>
+              <span class="metric-label">当前求解得分</span>
               <span class="metric-value">{{ activeJob.score || '暂无得分' }}</span>
             </div>
             <div class="metric-item">
@@ -192,7 +192,7 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="硬分/软分" min-width="180">
+          <el-table-column label="求解得分" min-width="180">
             <template #default="{ row }">
               <span>{{ row.scoreHard }} hard / {{ row.scoreSoft }} soft</span>
             </template>
@@ -240,7 +240,7 @@
         <EmptyStateGuide
           v-if="!jobsLoading && jobs.length === 0"
           title="还没有排课历史"
-          description="每次提交的排课任务都会记录在这里，包括状态、得分与耗时。"
+          description="每次提交的排课任务都会记录在这里，包括状态、求解得分与耗时。"
           help-slug="scheduling"
           help-anchor="run"
         />
@@ -262,7 +262,7 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="得分" min-width="160">
+          <el-table-column label="求解得分" min-width="160">
             <template #default="{ row }">
               {{ row.score || '-' }}
             </template>

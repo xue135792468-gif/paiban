@@ -5,8 +5,9 @@
       <span class="stat-value" :class="{ danger: hardConflicts > 0 }">{{ hardConflicts }}</span>
     </div>
     <div class="stat">
-      <span class="stat-label">得分</span>
+      <span class="stat-label">求解得分</span>
       <span class="stat-value">{{ scoreLabel }}</span>
+      <span class="stat-hint">参考值；手工调整后可能过期</span>
     </div>
     <div class="stat">
       <span class="stat-label">课节数</span>
@@ -51,6 +52,10 @@ defineProps<{
 .stat-value {
   font-size: 18px;
   font-weight: 600;
+}
+.stat-hint {
+  color: var(--paiban-muted);
+  font-size: 12px;
 }
 .danger {
   color: #e45656;

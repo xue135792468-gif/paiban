@@ -293,6 +293,9 @@ class SchedulingIntegrationTest extends ApiIntegrationTest {
         Map<String, Object> job = awaitJob(token, jobId, 60);
         long draftId = ((Number) job.get("draftId")).longValue();
 
+        int originalScore = as(token).when().get("/api/timetable-drafts/" + draftId)
+                .then().statusCode(200).extract().jsonPath().getInt("draft.scoreHard");
+
         List<Map<String, Object>> lessons = as(token).when().get("/api/timetable-drafts/" + draftId)
                 .then().statusCode(200).extract().jsonPath().getList("lessons");
         Map<String, Object> first = lessons.get(0);
@@ -322,6 +325,14 @@ class SchedulingIntegrationTest extends ApiIntegrationTest {
                 .when().patch("/api/timetable-drafts/" + draftId + "/lessons/" + lessonId)
                 .then().statusCode(200)
                 .body("saved", equalTo(true));
+
+        int scoreAfterForce = as(token).when().get("/api/timetable-drafts/" + draftId)
+                .then().statusCode(200).extract().jsonPath().getInt("draft.scoreHard");
+        assertThat(scoreAfterForce).isEqualTo(originalScore);
+
+        as(token).when().get("/api/timetable-drafts/" + draftId + "/validation")
+                .then().statusCode(200)
+                .body("hardConflicts", greaterThanOrEqualTo(1));
     }
 
     @Test
