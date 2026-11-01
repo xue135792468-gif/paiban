@@ -20,7 +20,7 @@ import {
 } from './proposalApply'
 import type { ConstraintProposal } from './useConstraintAi'
 import { hasValue } from './paramValues'
-import { restoreWeeklyCards } from './weeklyScope'
+import { isWeeklyNoClass, restoreWeeklyCards } from './weeklyScope'
 import type {
   ConstraintConfigDto,
   ConstraintConfigRequest,
@@ -93,7 +93,7 @@ function entriesOf(type: ConstraintTypeDef, saved: ConstraintConfigDto | undefin
   if (savedEntries.length === 0) {
     return []
   }
-  if (type.code === 'CLASS_UNAVAILABLE') return restoreWeeklyCards(savedEntries, nextKey)
+  if (isWeeklyNoClass(type)) return restoreWeeklyCards(savedEntries, nextKey)
   if (isSlotSetType(type)) {
     const cards = new Map<string, EntryDraft>()
     savedEntries.forEach((entry, index) => {
@@ -337,7 +337,7 @@ export function useConstraintDraft() {
       row.entries.push({
         key: nextKey('entry'),
         id: null,
-        values: row.code === 'CLASS_UNAVAILABLE' ? { classScope: 'ALL', classIds: [] } : {},
+        values: isWeeklyNoClass(row) ? { classScope: 'ALL', classIds: [] } : {},
         slots: [emptySlot()],
         groupKey: nextKey('group'),
         enabled: true,

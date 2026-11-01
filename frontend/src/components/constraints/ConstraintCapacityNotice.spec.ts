@@ -26,4 +26,32 @@ describe('capacity preview', () => {
     expect(http.post).toHaveBeenCalledTimes(2)
     wrapper.unmount()
   })
+
+  it('没有学期或配置还没填完时，不发请求也不显示提示', async () => {
+    vi.useFakeTimers()
+    const wrapper = mount(ConstraintCapacityNotice, {
+      props: { semesterId: null, configs: [], incomplete: false },
+    })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(http.post).not.toHaveBeenCalled()
+
+    await wrapper.setProps({ semesterId: 1, incomplete: true })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(http.post).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="constraint-capacity-warning"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('检查失败时给出可读提示，而不是静默通过', async () => {
+    vi.useFakeTimers()
+    vi.mocked(http.post).mockRejectedValueOnce(new Error('offline'))
+    const wrapper = mount(ConstraintCapacityNotice, {
+      props: { semesterId: 1, configs: [], incomplete: false },
+    })
+    await vi.advanceTimersByTimeAsync(350)
+    await flushPromises()
+    expect(wrapper.get('[data-testid="constraint-capacity-warning"]').text())
+      .toContain('暂时无法检查课时容量')
+    wrapper.unmount()
+  })
 })

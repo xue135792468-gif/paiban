@@ -468,7 +468,7 @@ public final class SwapPlanner {
         String label = label(target);
 
         if (settings.classUnavailable(lesson.classId(), target.dayOfWeek(), target.periodNo())) {
-            reasons.add(new PlanDiagnosis("CLASS_UNAVAILABLE",
+            reasons.add(new PlanDiagnosis(ConstraintType.CLASS_UNAVAILABLE.name(),
                     "本班在 " + label + " 不上课", lesson.entryId(), target.id()));
             return false;
         }

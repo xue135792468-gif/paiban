@@ -1,8 +1,28 @@
 import type { ConstraintEntryDto, EntryDraft } from './types'
 
-/** Legacy scalar selections remain selected; only an explicit global scope is global. */
+/**
+ * The one place that recognizes the weekly no-class type. Everything else in the
+ * constraint page asks this instead of comparing the code itself, so a rename or a
+ * second weekly type cannot leave a stray literal behind.
+ */
+export function isWeeklyNoClass(row: { code: string }): boolean {
+  return row.code === 'CLASS_UNAVAILABLE'
+}
+
+/**
+ * The classes one weekly no-class card targets, or null for the whole school:
+ * - an explicit `ALL` is the whole school, including classes created later;
+ * - an explicit `SELECTED` is only ever the class list — while it is still empty the
+ *   card is "待选班级" and must never widen to whole school;
+ * - a legacy payload without an explicit scope keeps its old meaning: the class list
+ *   when present, otherwise its scalar `classId`, otherwise the whole school.
+ */
 export function weeklyClasses(entry: EntryDraft): number[] | null {
-  if (entry.values.classScope === 'ALL') return null
+  const scope = entry.values.classScope
+  if (scope === 'ALL') return null
+  if (scope === 'SELECTED') {
+    return Array.isArray(entry.values.classIds) ? (entry.values.classIds as number[]) : []
+  }
   if (Array.isArray(entry.values.classIds)) return entry.values.classIds as number[]
   return entry.values.classId == null ? null : [Number(entry.values.classId)]
 }

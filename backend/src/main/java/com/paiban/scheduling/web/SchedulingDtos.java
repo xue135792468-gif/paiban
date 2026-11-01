@@ -35,12 +35,7 @@ public final class SchedulingDtos {
 
     public record DraftDetailDto(DraftDto draft, List<DraftLessonDto> lessons,
                                  List<PeriodDto> periods, List<RoomDto> rooms,
-                                 List<BlockedSlotDto> blockedSlots) {
-        public DraftDetailDto(DraftDto draft, List<DraftLessonDto> lessons,
-                              List<PeriodDto> periods, List<RoomDto> rooms) {
-            this(draft, lessons, periods, rooms, List.of());
-        }
-    }
+                                 List<BlockedSlotDto> blockedSlots) {}
 
     public record ValidateMoveRequest(@NotNull(message = "课节不能为空") Long lessonId,
                                       Long periodId, Long roomId) {}

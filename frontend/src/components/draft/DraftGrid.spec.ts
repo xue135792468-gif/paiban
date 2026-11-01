@@ -61,11 +61,11 @@ describe('DraftGrid', () => {
     const wrapper = mountGrid({
       draggable: true,
       draggedLessonId: 9,
-      blockedPeriods: { 101: '本班每周不上课时段' },
+      blockedPeriods: { 101: '指定班级规则（本班）' },
       targets: { 101: { available: true, conflicts: [] } },
     })
     expect(wrapper.get('.cell').text()).toContain('不上课')
-    expect(wrapper.get('.cell').attributes('title')).toBe('本班每周不上课时段')
+    expect(wrapper.get('.cell').attributes('title')).toBe('指定班级规则（本班）')
     expect(wrapper.get('.cell').classes()).toContain('invalid-target')
     await wrapper.get('.cell').trigger('drop')
     expect(wrapper.emitted('drop-cell')).toBeUndefined()
@@ -82,6 +82,13 @@ describe('DraftGrid', () => {
     expect(wrapper.get('.cell').text()).toContain('占用了不上课时段')
     await wrapper.get('.lesson').trigger('dragstart')
     expect(wrapper.emitted('drag-start')).toHaveLength(1)
+  })
+
+  it('留空灰格的 title 原样显示后端给出的来源，重叠时两种都显示', () => {
+    const wrapper = mountGrid({ blockedPeriods: { 101: '全校规则、指定班级规则（本班）' } })
+    expect(wrapper.get('.cell').attributes('title')).toBe('全校规则、指定班级规则（本班）')
+    expect(wrapper.get('.cell').text()).toContain('不上课')
+    expect(wrapper.get('.cell').classes()).toContain('blocked-slot')
   })
 
   it('未传班级禁排映射的其他视角不显示主动留空', () => {

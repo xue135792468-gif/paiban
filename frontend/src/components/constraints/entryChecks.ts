@@ -12,7 +12,7 @@ import {
 import { filledValues, hasValue, roomTypeLabel } from './paramValues'
 import type { SummaryContext } from './entrySummary'
 import type { TypeDraft } from './types'
-import { weeklyClasses } from './weeklyScope'
+import { isWeeklyNoClass, weeklyClasses } from './weeklyScope'
 
 /**
  * What makes two entries the same requirement: the same parameters with the same
@@ -28,7 +28,9 @@ function signatureOf(entry: PlannedEntry, row: TypeDraft): string {
   const hard = entry.hard ?? row.hard
   const weight = entry.weight ?? row.weight
   return `${params}|enabled=${entry.enabled ?? true}|hard=${hard}|weight=${weight}`
-    + (row.code === 'CLASS_UNAVAILABLE' ? `|group=${entry.groupKey ?? entry.cardIndex}` : '')
+    // The server reads an absent group key as one identity, so two ungrouped rows
+    // collide there; the prediction must not invent a per-card group for them.
+    + (isWeeklyNoClass(row) ? `|group=${entry.groupKey ?? ''}` : '')
 }
 
 /**
@@ -77,7 +79,7 @@ export function missingParamWarnings(rows: TypeDraft[]): string[] {
     }
     row.entries.forEach((entry, index) => {
       const card = index + 1
-      if (row.code === 'CLASS_UNAVAILABLE' && weeklyClasses(entry)?.length === 0) {
+      if (isWeeklyNoClass(row) && weeklyClasses(entry)?.length === 0) {
         warnings.push(`「${row.name}」第${card}条请选择至少一个班级，或明确选择全校`)
       }
       if (isSlotSetType(row)) {

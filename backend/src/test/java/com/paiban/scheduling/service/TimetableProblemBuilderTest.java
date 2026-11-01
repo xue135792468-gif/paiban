@@ -20,6 +20,7 @@ import com.paiban.foundation.web.FoundationDtos.CourseDto;
 import com.paiban.foundation.web.FoundationDtos.TeacherDto;
 import com.paiban.scheduling.domain.Assignment;
 import com.paiban.scheduling.domain.AssignmentRepository;
+import com.paiban.scheduling.solver.ConstraintSettings;
 import com.paiban.scheduling.solver.Lesson;
 import com.paiban.scheduling.solver.PeriodSlot;
 import com.paiban.scheduling.solver.TimetableSolution;
@@ -82,7 +83,7 @@ class TimetableProblemBuilderTest {
         TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
                 warmStart, foundation)
-                .buildWithWarmStart(1L);
+                .buildWithWarmStart(1L, ConstraintSettings.defaults());
         TimetableSolution solution = built.solution();
 
         assertThat(built.warmStartSource()).isEqualTo("DRAFT");
@@ -202,7 +203,7 @@ class TimetableProblemBuilderTest {
         TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
                 warmStart, foundation)
-                .buildWithWarmStart(1L);
+                .buildWithWarmStart(1L, ConstraintSettings.defaults());
         TimetableSolution solution = built.solution();
 
         assertThat(built.warmStartSource()).isEqualTo("BASELINE");
@@ -246,7 +247,7 @@ class TimetableProblemBuilderTest {
         TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
                 warmStart, foundation)
-                .buildWithWarmStart(1L);
+                .buildWithWarmStart(1L, ConstraintSettings.defaults());
 
         assertThat(built.warmStartSource()).isEqualTo("NONE");
         assertThat(built.solution().getLessons()).hasSize(1);

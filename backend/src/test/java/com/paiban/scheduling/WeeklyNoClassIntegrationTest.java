@@ -72,7 +72,8 @@ class WeeklyNoClassIntegrationTest extends ApiIntegrationTest {
         as(f.token()).get("/api/timetable-drafts/" + f.draftId()).then().statusCode(200)
                 .body("blockedSlots", hasSize(1))
                 .body("blockedSlots[0].classId", equalTo((int) f.classId()))
-                .body("blockedSlots[0].periodId", equalTo((int) f.blockedPeriod()));
+                .body("blockedSlots[0].periodId", equalTo((int) f.blockedPeriod()))
+                .body("blockedSlots[0].reason", equalTo("指定班级规则（本班）"));
         for (boolean force : List.of(false, true)) {
             as(f.token()).body(Map.of("periodId", f.blockedPeriod(), "roomId", f.roomId(), "force", force))
                     .patch("/api/timetable-drafts/" + f.draftId() + "/lessons/" + f.lessonId())

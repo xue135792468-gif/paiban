@@ -34,11 +34,13 @@ test('单班每周留空：设置与刷新、排课、拖入拒绝和发布校�
     const before = await apiCall(api, token, 'get', `/timetable-drafts/${draftId}`)
     const blocked = before.blockedSlots.find((item: { classId: number }) => item.classId === seed.classId)
     expect(blocked).toBeTruthy()
+    expect(blocked.reason).toBe('指定班级规则（本班）')
     expect(before.lessons).toHaveLength(4)
     expect(before.lessons.every((lesson: { periodId: number }) => lesson.periodId !== blocked.periodId)).toBe(true)
     await page.goto(`/admin/drafts/${draftId}`)
     const blockedCell = page.locator(`.cell[data-period-id="${blocked.periodId}"]`)
     await expect(blockedCell).toContainText('不上课')
+    await expect(blockedCell).toHaveAttribute('title', '指定班级规则（本班）')
     const source = before.lessons[0]
     await page.locator(`.lesson[data-lesson-id="${source.id}"]`).dragTo(blockedCell)
     const rejected = await apiCall(api, token, 'patch', `/timetable-drafts/${draftId}/lessons/${source.id}`, {
@@ -103,6 +105,8 @@ test('多个班级与全校范围：刷新不丢班级，新班继承全校规�
     expect(draft.blockedSlots.map((item: { classId: number }) => item.classId).sort())
       .toEqual([seed.classId, second.id].sort())
     expect(draft.blockedSlots.some((item: { classId: number }) => item.classId === third.id)).toBe(false)
+    expect(new Set(draft.blockedSlots.map((item: { reason: string }) => item.reason)))
+      .toEqual(new Set(['指定班级规则（本班）']))
     await page.getByTestId('constraint-entry').first().getByText('全校', { exact: true }).click()
     await page.getByTestId('constraint-save').click()
     await expect(page.getByTestId('constraint-unsaved')).toHaveCount(0)
@@ -111,6 +115,8 @@ test('多个班级与全校范围：刷新不丢班级，新班继承全校规�
     const global = await apiCall(api, token, 'get', `/timetable-drafts/${globalId}`)
     expect(new Set(global.blockedSlots.map((item: { classId: number }) => item.classId)))
       .toEqual(new Set([seed.classId, second.id, third.id, future.id]))
+    expect(new Set(global.blockedSlots.map((item: { reason: string }) => item.reason)))
+      .toEqual(new Set(['全校规则']))
     expect(global.lessons).toHaveLength(16)
     await capture(page, 'weekly-no-class-scope')
   } finally { await api.dispose() }

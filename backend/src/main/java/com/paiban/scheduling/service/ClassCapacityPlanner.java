@@ -87,16 +87,6 @@ public final class ClassCapacityPlanner {
                 .toList();
     }
 
-    /** How many distinct positions one class may still use. */
-    public static int availablePositions(
-            List<Slot> slots, Long classId, ConstraintSettings settings) {
-        if (slots == null || slots.isEmpty()) {
-            return 0;
-        }
-        Set<Slot> distinct = new LinkedHashSet<>(slots);
-        return availablePositions(distinct, classId, settings);
-    }
-
     private static int availablePositions(
             Set<Slot> distinctSlots, Long classId, ConstraintSettings settings) {
         int available = 0;

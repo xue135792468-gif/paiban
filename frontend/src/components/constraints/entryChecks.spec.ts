@@ -33,6 +33,12 @@ const THRESHOLD_PARAMS: ParamDef[] = [
   { name: 'maxPerDay', label: '每天最多节数', type: 'INT', required: true, min: 1, max: 12 },
 ]
 
+const CLASS_PARAMS: ParamDef[] = [
+  { name: 'classId', label: '班级', type: 'ID', required: false },
+  { name: 'dayOfWeek', label: '星期', type: 'DAY', required: true },
+  { name: 'periodNo', label: '节次', type: 'PERIOD', required: true },
+]
+
 const ctx = {
   teacherNames: new Map([[1, '张伟']]),
   courseNames: new Map([
@@ -115,6 +121,20 @@ describe('重复条目提示', () => {
       entries: [entry('e1', { teacherId: 1 }), entry('e2', { teacherId: 1 })],
     })
     expect(duplicateMessages(draftRow)).toEqual({})
+  })
+
+  it('每周不上课的两条无分组条目仍算重复（服务端把空分组当同一组）', () => {
+    const draftRow = row({
+      code: 'CLASS_UNAVAILABLE',
+      name: '每周不上课时段',
+      slotGrouped: true,
+      params: CLASS_PARAMS,
+      entries: [
+        entry('e1', {}, [{ key: 's1', id: 1, dayOfWeek: 1, periodNo: 1 }]),
+        entry('e2', {}, [{ key: 's2', id: 2, dayOfWeek: 1, periodNo: 1 }]),
+      ],
+    })
+    expect(duplicateMessages(draftRow)).toEqual({ 1: ['与第 1 条完全相同，保存会被拒绝。'] })
   })
 })
 

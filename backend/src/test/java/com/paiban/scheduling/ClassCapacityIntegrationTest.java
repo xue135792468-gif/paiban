@@ -1,20 +1,28 @@
 package com.paiban.scheduling;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.nullValue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 
 import com.paiban.support.ApiIntegrationTest;
 import com.paiban.support.ScheduleFixture;
 import com.paiban.support.TestData;
 import io.restassured.response.Response;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 /**
  * 票05 容量：40 个真实位置、两门课 20+19=39 节、重叠后净禁排 2 个位置时，保存、
@@ -23,6 +31,25 @@ import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 class ClassCapacityIntegrationTest extends ApiIntegrationTest {
+
+    /**
+     * The solver pool has one thread, but this case drives the queue instead of filling
+     * it: the runnable the service dispatches is captured, so the test itself decides
+     * when the solve starts and no real work outlives the assertions. The override is
+     * local to this class's context, so the other cases keep the real dispatcher.
+     */
+    @MockitoBean(name = "schedulingExecutor")
+    private TaskExecutor schedulingExecutor;
+
+    private final AtomicReference<Runnable> queuedWork = new AtomicReference<>();
+
+    @BeforeEach
+    void captureDispatchedSolve() {
+        doAnswer(invocation -> {
+            queuedWork.set(invocation.getArgument(0));
+            return null;
+        }).when(schedulingExecutor).execute(any(Runnable.class));
+    }
 
     @Test
     void previewWarnsAboutOneMissingSlotButSaveIsStillAllowed() {
@@ -72,45 +99,39 @@ class ClassCapacityIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void queuedJobRechecksTheCurrentSettingsBeforeSolving() throws Exception {
+    void queuedJobRechecksTheCurrentSettingsBeforeSolving() {
         String token = adminToken();
         Fixture fixture = fixtureWith39Lessons(token);
         // One blocked slot leaves exactly 39 positions, so the submission is accepted.
         saveBan(token, fixture, 1, 1);
 
-        long blocker = -1;
-        long queued = -1;
-        try {
-            blocker = smallJob(token);
-            Response accepted = as(token).queryParam("semesterId", fixture.semesterId())
-                    .body(Map.of("maxSeconds", 20)).post("/api/scheduling-jobs");
-            accepted.then().statusCode(200);
-            queued = accepted.jsonPath().getLong("id");
-            assertThat(status(token, queued)).isEqualTo("PENDING");
+        Response accepted = as(token).queryParam("semesterId", fixture.semesterId())
+                .body(Map.of("maxSeconds", 20)).post("/api/scheduling-jobs");
+        accepted.then().statusCode(200);
+        long queued = accepted.jsonPath().getLong("id");
+        assertThat(status(token, queued)).isEqualTo("PENDING");
+        Runnable solve = queuedWork.get();
+        assertThat(solve).as("提交后作业已交给求解队列").isNotNull();
 
-            // The requirement tightens while the job waits: two distinct slots now blocked.
-            saveBan(token, fixture, 1, 1, 1, 2);
-            // Still queued, so the solve has not read the old settings yet.
-            assertThat(status(token, queued)).isEqualTo("PENDING");
+        // The requirement tightens while the job waits: two distinct slots now blocked.
+        saveBan(token, fixture, 1, 1, 1, 2);
+        // Still PENDING: the dispatched work has not run, so the old settings are still
+        // the ones in force. This is the interrupted state the real queue produces.
+        assertThat(status(token, queued)).isEqualTo("PENDING");
 
-            as(token).delete("/api/scheduling-jobs/" + blocker).then().statusCode(200);
+        // Run exactly the work the queue would have run.
+        solve.run();
 
-            Map<String, Object> job = awaitTerminal(token, queued);
-            assertThat(job.get("status")).isEqualTo("FAILED");
-            assertThat(String.valueOf(job.get("errorMessage"))).contains(fixture.className())
-                    .contains("39").contains("38").contains("1");
-            assertThat(job.get("draftId")).isNull();
-            as(token).queryParam("semesterId", fixture.semesterId()).get("/api/timetable-drafts")
-                    .then().statusCode(200).body("$", hasSize(0));
-            as(token).queryParam("semesterId", fixture.semesterId()).get("/api/assignments")
-                    .then().statusCode(200).body("$", hasSize(2));
-        } finally {
-            // Never leave solver work behind for the following test classes, whether the
-            // assertions above passed or threw.
-            cancelQuietly(token, blocker);
-            cancelQuietly(token, queued);
-            awaitSettled(token, blocker, queued);
-        }
+        String errorMessage = as(token).get("/api/scheduling-jobs/" + queued).then().statusCode(200)
+                .body("status", equalTo("FAILED")).body("draftId", nullValue())
+                .extract().jsonPath().getString("errorMessage");
+        assertThat(errorMessage).contains(fixture.className())
+                .contains("39").contains("38").contains("1");
+        as(token).queryParam("semesterId", fixture.semesterId()).get("/api/timetable-drafts")
+                .then().statusCode(200).body("$", hasSize(0));
+        as(token).queryParam("semesterId", fixture.semesterId()).get("/api/assignments")
+                .then().statusCode(200).body("$", hasSize(2))
+                .body("weeklyLessons", containsInAnyOrder(20, 19));
     }
 
     // ------------------------------------------------------------------ helpers
@@ -141,77 +162,9 @@ class ClassCapacityIntegrationTest extends ApiIntegrationTest {
                 .post("/api/assignments").then().statusCode(200);
     }
 
-    /** Another semester's tiny job occupies the single solver thread so this one queues. */
-    private long smallJob(String token) {
-        long semester = TestData.semesterStarting(token, ScheduleFixture.nextMonday());
-        as(token).body(Map.of("morningCount", 2, "afternoonCount", 0, "eveningCount", 0,
-                        "days", List.of(1)))
-                .post("/api/semesters/" + semester + "/periods/default").then().statusCode(200);
-        String suffix = TestData.suffix();
-        long grade = TestData.grade(token, semester, "占位年级" + suffix);
-        long classId = TestData.adminClass(token, semester, grade, "占位班" + suffix);
-        TestData.room(token, "占位教室" + suffix);
-        assign(token, classId, TestData.course(token, "占位课" + suffix),
-                TestData.teacher(token, "占位师" + suffix), 1);
-        return as(token).queryParam("semesterId", semester).body(Map.of("maxSeconds", 30))
-                .post("/api/scheduling-jobs").then().statusCode(200)
-                .extract().jsonPath().getLong("id");
-    }
-
     private String status(String token, long jobId) {
         return as(token).get("/api/scheduling-jobs/" + jobId).then().statusCode(200)
                 .extract().jsonPath().getString("status");
-    }
-
-    private Map<String, Object> awaitTerminal(String token, long jobId) throws InterruptedException {
-        long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
-        Map<String, Object> job = Map.of();
-        while (System.nanoTime() < deadline) {
-            job = as(token).get("/api/scheduling-jobs/" + jobId).then().statusCode(200)
-                    .extract().jsonPath().getMap("$");
-            if (List.of("COMPLETED", "FAILED", "CANCELLED").contains(String.valueOf(job.get("status")))) {
-                return job;
-            }
-            Thread.sleep(100);
-        }
-        return job;
-    }
-
-    private void cancelQuietly(String token, long jobId) {
-        if (jobId <= 0) {
-            return;
-        }
-        try {
-            as(token).delete("/api/scheduling-jobs/" + jobId);
-        } catch (RuntimeException ignored) {
-            // Cleanup only: the job may already be terminal or the context may be closing.
-        }
-    }
-
-    private void awaitSettled(String token, long... jobIds) throws InterruptedException {
-        long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
-        for (long jobId : jobIds) {
-            if (jobId <= 0) {
-                continue;
-            }
-            while (System.nanoTime() < deadline) {
-                String current = statusQuietly(token, jobId);
-                if (current == null
-                        || List.of("COMPLETED", "FAILED", "CANCELLED").contains(current)) {
-                    break;
-                }
-                cancelQuietly(token, jobId);
-                Thread.sleep(100);
-            }
-        }
-    }
-
-    private String statusQuietly(String token, long jobId) {
-        try {
-            return status(token, jobId);
-        } catch (RuntimeException ex) {
-            return null;
-        }
     }
 
     private void saveBan(String token, Fixture fixture, int... dayPeriods) {

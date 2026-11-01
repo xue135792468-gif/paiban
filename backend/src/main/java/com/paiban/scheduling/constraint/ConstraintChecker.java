@@ -126,7 +126,7 @@ public final class ConstraintChecker {
             return;
         }
         if (ctx.settings().classUnavailable(lesson.classId(), period.dayOfWeek(), period.periodNo())) {
-            out.add(new ConstraintViolation("CLASS_UNAVAILABLE",
+            out.add(new ConstraintViolation(ConstraintType.CLASS_UNAVAILABLE.name(),
                     className(ctx, lesson.classId()) + " 的 " + periodLabel(period) + " 是不上课时段",
                     lesson.id(), true));
         }

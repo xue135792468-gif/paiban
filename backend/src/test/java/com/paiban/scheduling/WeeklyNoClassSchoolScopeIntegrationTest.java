@@ -41,6 +41,7 @@ class WeeklyNoClassSchoolScopeIntegrationTest extends ApiIntegrationTest {
 
         assertThat(blocked).extracting(row -> ((Number) row.get("classId")).longValue())
                 .containsExactlyInAnyOrder(first, second);
+        assertThat(blocked).extracting(row -> row.get("reason")).containsOnly("全校规则");
     }
 
     @Test
@@ -60,6 +61,8 @@ class WeeklyNoClassSchoolScopeIntegrationTest extends ApiIntegrationTest {
         assertThat(blocked).extracting(row -> ((Number) row.get("classId")).longValue())
                 .containsExactlyInAnyOrder(banned, otherBanned)
                 .doesNotContain(untouched);
+        assertThat(blocked).extracting(row -> row.get("reason"))
+                .containsOnly("指定班级规则（本班）");
     }
 
     @Test
@@ -98,6 +101,8 @@ class WeeklyNoClassSchoolScopeIntegrationTest extends ApiIntegrationTest {
                 entry(classId, 1, 2, "group-a"),
                 entry(classId, 1, 1, "group-b"))))).then().statusCode(200);
         assertThat(blockedSlots(token, draft)).hasSize(2);
+        // 两条指定班级要求压住同一格：来源只说一次「指定班级」。
+        assertThat(reasons(token, draft)).containsOnly("指定班级规则（本班）");
 
         save(token, semester, List.of(banConfig(List.of(
                 paused(classId, 1, 1, "group-a"),
@@ -110,6 +115,32 @@ class WeeklyNoClassSchoolScopeIntegrationTest extends ApiIntegrationTest {
                 paused(classId, 1, 2, "group-a"),
                 paused(classId, 1, 1, "group-b"))))).then().statusCode(200);
         assertThat(blockedSlots(token, draft)).isEmpty();
+    }
+
+    @Test
+    void blockedReasonNamesTheEffectiveSourcesAndForgetsPausedOnes() {
+        String token = adminToken();
+        long semester = semesterWithPeriods(token, 2, List.of(1, 2));
+        long classId = adminClass(token, semester, "来源甲");
+        long draft = draftFor(semester);
+
+        // 全校与指定班级两条要求压住同一格：两种来源都点名。
+        save(token, semester, List.of(banConfig(List.of(
+                entry(null, 1, 1, "school"),
+                entry(classId, 1, 1, "class-own"))))).then().statusCode(200);
+        assertThat(reasons(token, draft)).containsExactly("全校规则、指定班级规则（本班）");
+
+        // 暂停全校那条：只剩本班的来源，句子跟着缩。
+        save(token, semester, List.of(banConfig(List.of(
+                paused(null, 1, 1, "school"),
+                entry(classId, 1, 1, "class-own"))))).then().statusCode(200);
+        assertThat(reasons(token, draft)).containsExactly("指定班级规则（本班）");
+
+        // 两条都暂停：来源随规则一起消失。
+        save(token, semester, List.of(banConfig(List.of(
+                paused(null, 1, 1, "school"),
+                paused(classId, 1, 1, "class-own"))))).then().statusCode(200);
+        assertThat(reasons(token, draft)).isEmpty();
     }
 
     @Test
@@ -327,6 +358,12 @@ class WeeklyNoClassSchoolScopeIntegrationTest extends ApiIntegrationTest {
     private List<Map<String, Object>> blockedSlots(String token, long draftId) {
         return as(token).get("/api/timetable-drafts/" + draftId)
                 .then().statusCode(200).extract().jsonPath().getList("blockedSlots");
+    }
+
+    /** The reason sentence of every blocked slot of one draft. */
+    private List<String> reasons(String token, long draftId) {
+        return blockedSlots(token, draftId).stream()
+                .map(row -> String.valueOf(row.get("reason"))).toList();
     }
 
     private long version(String token, long semester) {

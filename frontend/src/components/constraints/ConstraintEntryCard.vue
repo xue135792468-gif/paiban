@@ -98,7 +98,7 @@
 
     <div v-if="slotSet" class="entry-fields" data-testid="constraint-entry-slot-set">
       <WeeklyClassScope
-        v-if="row.code === 'CLASS_UNAVAILABLE'" :entry="entry" :classes="classes"
+        v-if="weeklyNoClass" :entry="entry" :classes="classes"
         :disabled="!editable" @update="(name, value) => emit('update', name, value)"
       />
       <ParamField
@@ -181,6 +181,7 @@ import {
 } from './entryModel'
 import { formatEntrySummary, slotCardSummary } from './entrySummary'
 import { fieldTestId } from './paramValues'
+import { isWeeklyNoClass } from './weeklyScope'
 import type { EntryDraft, OptionItem, TypeDraft } from './types'
 
 /**
@@ -220,7 +221,8 @@ const emit = defineEmits<{
 }>()
 
 const slotSet = computed(() => isSlotSetType(props.row))
-const heads = computed(() => props.row.code === 'CLASS_UNAVAILABLE' ? [] : headParams(props.row))
+const weeklyNoClass = computed(() => isWeeklyNoClass(props.row))
+const heads = computed(() => (weeklyNoClass.value ? [] : headParams(props.row)))
 
 const hardChoice = computed(() => {
   if (props.entry.hard == null) {

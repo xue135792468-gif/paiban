@@ -1,5 +1,6 @@
 import { allTargetLabel, headParams } from './entryModel'
 import { dayLabel, hasValue, roomTypeLabel } from './paramValues'
+import { isWeeklyNoClass, weeklyClasses } from './weeklyScope'
 import type { EntryDraft, ParamDef, TypeDraft } from './types'
 
 export interface SummaryContext {
@@ -93,11 +94,11 @@ export function slotCardSummary(
   ctx: SummaryContext,
 ): string {
   const heads = headParams(row)
-  const headText = row.code === 'CLASS_UNAVAILABLE'
-    ? (entry.values.classScope === 'SELECTED' || entry.values.classId != null
-      ? ((entry.values.classIds as number[] | undefined) ?? [Number(entry.values.classId)])
-        .map((id) => ctx.classNames?.get(id) ?? `班级#${id}`).join('、') || '尚未选择班级'
-      : '全校（含以后新增班级）')
+  const classes = weeklyClasses(entry)
+  const headText = isWeeklyNoClass(row)
+    ? (classes === null
+      ? '全校（含以后新增班级）'
+      : classes.map((id) => ctx.classNames?.get(id) ?? `班级#${id}`).join('、') || '尚未选择班级')
     : heads.length > 0
     ? formatEntrySummary(heads, entry.values, ctx)
     : row.name
