@@ -1,6 +1,9 @@
 package com.paiban.scheduling.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -17,30 +20,25 @@ import com.paiban.foundation.web.FoundationDtos.CourseDto;
 import com.paiban.foundation.web.FoundationDtos.TeacherDto;
 import com.paiban.scheduling.domain.Assignment;
 import com.paiban.scheduling.domain.AssignmentRepository;
-import com.paiban.scheduling.domain.DraftLesson;
-import com.paiban.scheduling.domain.DraftLessonRepository;
-import com.paiban.scheduling.domain.TimetableDraft;
-import com.paiban.scheduling.domain.TimetableDraftRepository;
 import com.paiban.scheduling.solver.Lesson;
+import com.paiban.scheduling.solver.PeriodSlot;
 import com.paiban.scheduling.solver.TimetableSolution;
-import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
-/** The problem builder seeds a new semester from its complete import draft. */
+/** The problem builder turns assignments and the warm-start seed into solver lessons. */
 class TimetableProblemBuilderTest {
 
     @Test
-    void seedsPeriodsFromTheOldestCompleteDraftAndPinsTheClassRoom() {
+    void seedsLessonsFromTheWarmStartAndPinsTheClassRoom() {
         PeriodRepository periodRepository = mock(PeriodRepository.class);
         RoomRepository roomRepository = mock(RoomRepository.class);
         AssignmentRepository assignmentRepository = mock(AssignmentRepository.class);
         SemesterRepository semesterRepository = mock(SemesterRepository.class);
-        SemesterBaselineQuery baselines = mock(SemesterBaselineQuery.class);
-        TimetableDraftRepository draftRepository = mock(TimetableDraftRepository.class);
-        DraftLessonRepository draftLessonRepository = mock(DraftLessonRepository.class);
+        WarmStartSeedService warmStart = mock(WarmStartSeedService.class);
         FoundationService foundation = mock(FoundationService.class);
 
         Semester semester = new Semester();
@@ -76,19 +74,14 @@ class TimetableProblemBuilderTest {
         when(foundation.teachersById()).thenReturn(Map.of(1L,
                 new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null)));
 
-        when(baselines.publishedLessons(1L)).thenReturn(List.of());
-
-        TimetableDraft importDraft = new TimetableDraft();
-        importDraft.setId(5L);
-        importDraft.setSemesterId(1L);
-        importDraft.setCreatedAt(Instant.now());
-        when(draftRepository.findBySemesterIdOrderByCreatedAtDesc(1L)).thenReturn(List.of(importDraft));
-        when(draftLessonRepository.findByDraftIdOrderByIdAsc(5L)).thenReturn(List.of(
-                row(1L, 11L), row(2L, 12L)));
+        when(warmStart.seed(eq(1L), anyMap(), anyList())).thenReturn(new WarmStartSeedService.WarmStartSeed(
+                Map.of(new AssignmentKey(1L, 1L, 1L),
+                        new ArrayDeque<>(List.of(slot(11L, 1), slot(12L, 2)))),
+                "DRAFT"));
 
         TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
-                baselines, draftRepository, draftLessonRepository, foundation)
+                warmStart, foundation)
                 .buildWithWarmStart(1L);
         TimetableSolution solution = built.solution();
 
@@ -110,9 +103,7 @@ class TimetableProblemBuilderTest {
         RoomRepository roomRepository = mock(RoomRepository.class);
         AssignmentRepository assignmentRepository = mock(AssignmentRepository.class);
         SemesterRepository semesterRepository = mock(SemesterRepository.class);
-        SemesterBaselineQuery baselines = mock(SemesterBaselineQuery.class);
-        TimetableDraftRepository draftRepository = mock(TimetableDraftRepository.class);
-        DraftLessonRepository draftLessonRepository = mock(DraftLessonRepository.class);
+        WarmStartSeedService warmStart = mock(WarmStartSeedService.class);
         FoundationService foundation = mock(FoundationService.class);
 
         Semester semester = new Semester();
@@ -147,12 +138,12 @@ class TimetableProblemBuilderTest {
         when(foundation.teachersById()).thenReturn(Map.of(1L,
                 new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null)));
 
-        when(baselines.publishedLessons(1L)).thenReturn(List.of());
-        when(draftRepository.findBySemesterIdOrderByCreatedAtDesc(1L)).thenReturn(List.of());
+        when(warmStart.seed(eq(1L), anyMap(), anyList()))
+                .thenReturn(new WarmStartSeedService.WarmStartSeed(Map.of(), "NONE"));
 
         TimetableSolution solution = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
-                baselines, draftRepository, draftLessonRepository, foundation)
+                warmStart, foundation)
                 .build(1L);
 
         assertThat(solution.getLessons()).hasSize(1);
@@ -162,14 +153,12 @@ class TimetableProblemBuilderTest {
     }
 
     @Test
-    void publishedBaselineSeedsThePeriodAndKeepsTheClassRoom() {
+    void passesTheBaselineSourceAndSeededPeriodThrough() {
         PeriodRepository periodRepository = mock(PeriodRepository.class);
         RoomRepository roomRepository = mock(RoomRepository.class);
         AssignmentRepository assignmentRepository = mock(AssignmentRepository.class);
         SemesterRepository semesterRepository = mock(SemesterRepository.class);
-        SemesterBaselineQuery baselines = mock(SemesterBaselineQuery.class);
-        TimetableDraftRepository draftRepository = mock(TimetableDraftRepository.class);
-        DraftLessonRepository draftLessonRepository = mock(DraftLessonRepository.class);
+        WarmStartSeedService warmStart = mock(WarmStartSeedService.class);
         FoundationService foundation = mock(FoundationService.class);
 
         Semester semester = new Semester();
@@ -205,13 +194,14 @@ class TimetableProblemBuilderTest {
         when(foundation.teachersById()).thenReturn(Map.of(1L,
                 new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null)));
 
-        when(baselines.publishedLessons(1L)).thenReturn(List.of(
-                new SemesterBaselineQuery.PublishedLesson(1L, 1L, 1L, 11L)));
-        when(draftRepository.findBySemesterIdOrderByCreatedAtDesc(1L)).thenReturn(List.of());
+        when(warmStart.seed(eq(1L), anyMap(), anyList())).thenReturn(new WarmStartSeedService.WarmStartSeed(
+                Map.of(new AssignmentKey(1L, 1L, 1L),
+                        new ArrayDeque<>(List.of(slot(11L, 1)))),
+                "BASELINE"));
 
         TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
-                baselines, draftRepository, draftLessonRepository, foundation)
+                warmStart, foundation)
                 .buildWithWarmStart(1L);
         TimetableSolution solution = built.solution();
 
@@ -228,9 +218,7 @@ class TimetableProblemBuilderTest {
         RoomRepository roomRepository = mock(RoomRepository.class);
         AssignmentRepository assignmentRepository = mock(AssignmentRepository.class);
         SemesterRepository semesterRepository = mock(SemesterRepository.class);
-        SemesterBaselineQuery baselines = mock(SemesterBaselineQuery.class);
-        TimetableDraftRepository draftRepository = mock(TimetableDraftRepository.class);
-        DraftLessonRepository draftLessonRepository = mock(DraftLessonRepository.class);
+        WarmStartSeedService warmStart = mock(WarmStartSeedService.class);
         FoundationService foundation = mock(FoundationService.class);
 
         Semester semester = new Semester();
@@ -252,110 +240,17 @@ class TimetableProblemBuilderTest {
         when(foundation.teachersById()).thenReturn(Map.of(1L,
                 new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null)));
 
-        when(baselines.publishedLessons(1L)).thenReturn(List.of());
-        when(draftRepository.findBySemesterIdOrderByCreatedAtDesc(1L)).thenReturn(List.of());
+        when(warmStart.seed(eq(1L), anyMap(), anyList()))
+                .thenReturn(new WarmStartSeedService.WarmStartSeed(Map.of(), "NONE"));
 
         TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
-                baselines, draftRepository, draftLessonRepository, foundation)
+                warmStart, foundation)
                 .buildWithWarmStart(1L);
 
         assertThat(built.warmStartSource()).isEqualTo("NONE");
         assertThat(built.solution().getLessons()).hasSize(1);
         assertThat(built.solution().getLessons().get(0).getPeriod()).isNull();
-    }
-
-    @Test
-    void skipsADraftWithTwoLessonsOfTheSameClassInOnePeriod() {
-        Assignment assignment = assignment(21L, 1L, 1L, 1L, 2);
-
-        TimetableSolution solution = solve(
-                List.of(assignment),
-                List.of(draft(6L)),
-                Map.of(6L, List.of(
-                        row(1L, 6L, 1L, 1L, 11L),
-                        row(2L, 6L, 1L, 1L, 11L))));
-
-        assertThat(solution.getLessons()).hasSize(2);
-        assertThat(solution.getLessons()).allSatisfy(lesson -> assertThat(lesson.getPeriod()).isNull());
-    }
-
-    @Test
-    void skipsADraftWithOneTeacherInTwoClassesAtTheSamePeriod() {
-        // Each assignment is fully covered, but the shared teacher is double-booked at period 11.
-        Assignment first = assignment(21L, 1L, 1L, 1L, 1);
-        Assignment second = assignment(22L, 2L, 1L, 1L, 1);
-
-        TimetableSolution solution = solve(
-                List.of(first, second),
-                List.of(draft(7L)),
-                Map.of(7L, List.of(
-                        row(1L, 7L, 1L, 1L, 11L),
-                        row(2L, 7L, 2L, 1L, 11L))));
-
-        assertThat(solution.getLessons()).hasSize(2);
-        assertThat(solution.getLessons()).allSatisfy(lesson -> assertThat(lesson.getPeriod()).isNull());
-    }
-
-    @Test
-    void skipsAPartialDraft() {
-        Assignment assignment = assignment(21L, 1L, 1L, 1L, 2);
-
-        TimetableSolution solution = solve(
-                List.of(assignment),
-                List.of(draft(8L)),
-                Map.of(8L, List.of(row(1L, 8L, 1L, 1L, 11L))));
-
-        assertThat(solution.getLessons()).hasSize(2);
-        assertThat(solution.getLessons()).allSatisfy(lesson -> assertThat(lesson.getPeriod()).isNull());
-    }
-
-    private static TimetableSolution solve(
-            List<Assignment> assignments,
-            List<TimetableDraft> drafts,
-            Map<Long, List<DraftLesson>> rowsByDraft) {
-        PeriodRepository periodRepository = mock(PeriodRepository.class);
-        RoomRepository roomRepository = mock(RoomRepository.class);
-        AssignmentRepository assignmentRepository = mock(AssignmentRepository.class);
-        SemesterRepository semesterRepository = mock(SemesterRepository.class);
-        SemesterBaselineQuery baselines = mock(SemesterBaselineQuery.class);
-        TimetableDraftRepository draftRepository = mock(TimetableDraftRepository.class);
-        DraftLessonRepository draftLessonRepository = mock(DraftLessonRepository.class);
-        FoundationService foundation = mock(FoundationService.class);
-
-        Semester semester = new Semester();
-        semester.setId(1L);
-        semester.setName("2025-2026学年第一学期");
-        when(semesterRepository.findById(1L)).thenReturn(Optional.of(semester));
-
-        when(periodRepository.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(1L))
-                .thenReturn(List.of(period(11L, 1), period(12L, 2)));
-
-        Room room = new Room();
-        room.setId(7L);
-        room.setName("2025-2026学年第一学期-八年级八（1）班-固定教室");
-        room.setType("NORMAL");
-        room.setCapacity(45);
-        when(roomRepository.findAllByOrderByNameAsc()).thenReturn(List.of(room));
-
-        when(assignmentRepository.findBySemesterId(1L)).thenReturn(assignments);
-        when(foundation.classesById(1L)).thenReturn(Map.of(
-                1L, new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null),
-                2L, new ClassDto(2L, "八（2）班", 1L, "八年级", null, null, 45, null)));
-        when(foundation.coursesById()).thenReturn(Map.of(1L,
-                new CourseDto(1L, "语文", null, false, false, null, null)));
-        when(foundation.teachersById()).thenReturn(Map.of(1L,
-                new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null)));
-
-        when(baselines.publishedLessons(1L)).thenReturn(List.of());
-        when(draftRepository.findBySemesterIdOrderByCreatedAtDesc(1L)).thenReturn(drafts);
-        rowsByDraft.forEach((draftId, rows) ->
-                when(draftLessonRepository.findByDraftIdOrderByIdAsc(draftId)).thenReturn(rows));
-
-        return new TimetableProblemBuilder(
-                periodRepository, roomRepository, assignmentRepository, semesterRepository,
-                baselines, draftRepository, draftLessonRepository, foundation)
-                .build(1L);
     }
 
     private static Assignment assignment(
@@ -370,14 +265,6 @@ class TimetableProblemBuilderTest {
         return assignment;
     }
 
-    private static TimetableDraft draft(long id) {
-        TimetableDraft draft = new TimetableDraft();
-        draft.setId(id);
-        draft.setSemesterId(1L);
-        draft.setCreatedAt(Instant.now());
-        return draft;
-    }
-
     private static Period period(long id, int periodNo) {
         Period period = new Period();
         period.setId(id);
@@ -389,26 +276,7 @@ class TimetableProblemBuilderTest {
         return period;
     }
 
-    private static DraftLesson row(long id, long periodId) {
-        DraftLesson row = new DraftLesson();
-        row.setId(id);
-        row.setDraftId(5L);
-        row.setAdminClassId(1L);
-        row.setCourseId(1L);
-        row.setTeacherId(1L);
-        row.setPeriodId(periodId);
-        return row;
-    }
-
-    private static DraftLesson row(
-            long id, long draftId, long classId, long teacherId, Long periodId) {
-        DraftLesson row = new DraftLesson();
-        row.setId(id);
-        row.setDraftId(draftId);
-        row.setAdminClassId(classId);
-        row.setCourseId(1L);
-        row.setTeacherId(teacherId);
-        row.setPeriodId(periodId);
-        return row;
+    private static PeriodSlot slot(long id, int periodNo) {
+        return new PeriodSlot(id, 1, periodNo, PeriodSection.MORNING, periodNo == 1, false, false);
     }
 }

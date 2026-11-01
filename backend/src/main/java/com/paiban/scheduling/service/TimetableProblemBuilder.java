@@ -13,24 +13,17 @@ import com.paiban.foundation.web.FoundationDtos.CourseDto;
 import com.paiban.foundation.web.FoundationDtos.TeacherDto;
 import com.paiban.scheduling.domain.Assignment;
 import com.paiban.scheduling.domain.AssignmentRepository;
-import com.paiban.scheduling.domain.DraftLesson;
-import com.paiban.scheduling.domain.DraftLessonRepository;
-import com.paiban.scheduling.domain.TimetableDraft;
-import com.paiban.scheduling.domain.TimetableDraftRepository;
 import com.paiban.scheduling.solver.Lesson;
 import com.paiban.scheduling.solver.PeriodSlot;
 import com.paiban.scheduling.solver.RoomRequirement;
 import com.paiban.scheduling.solver.RoomSlot;
 import com.paiban.scheduling.solver.TimetableSolution;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,9 +35,7 @@ public class TimetableProblemBuilder {
     private final RoomRepository roomRepository;
     private final AssignmentRepository assignmentRepository;
     private final SemesterRepository semesterRepository;
-    private final SemesterBaselineQuery baselines;
-    private final TimetableDraftRepository drafts;
-    private final DraftLessonRepository draftLessons;
+    private final WarmStartSeedService warmStart;
     private final FoundationService foundation;
 
     public TimetableProblemBuilder(
@@ -52,17 +43,13 @@ public class TimetableProblemBuilder {
             RoomRepository roomRepository,
             AssignmentRepository assignmentRepository,
             SemesterRepository semesterRepository,
-            SemesterBaselineQuery baselines,
-            TimetableDraftRepository drafts,
-            DraftLessonRepository draftLessons,
+            WarmStartSeedService warmStart,
             FoundationService foundation) {
         this.periodRepository = periodRepository;
         this.roomRepository = roomRepository;
         this.assignmentRepository = assignmentRepository;
         this.semesterRepository = semesterRepository;
-        this.baselines = baselines;
-        this.drafts = drafts;
-        this.draftLessons = draftLessons;
+        this.warmStart = warmStart;
         this.foundation = foundation;
     }
 
@@ -117,8 +104,9 @@ public class TimetableProblemBuilder {
         Map<Long, PeriodSlot> periodById = new HashMap<>();
         periodSlots.forEach(slot -> periodById.put(slot.getId(), slot));
         List<Assignment> assignments = assignmentRepository.findBySemesterId(semesterId);
-        WarmStart warmStart = warmPeriods(semesterId, periodById, assignments);
-        Map<AssignmentKey, Deque<PeriodSlot>> warmPeriods = warmStart.periods();
+        WarmStartSeedService.WarmStartSeed seed =
+                warmStart.seed(semesterId, periodById, assignments);
+        Map<AssignmentKey, Deque<PeriodSlot>> warmPeriods = seed.periods();
 
         List<Lesson> lessons = new ArrayList<>();
         long lessonId = 1;
@@ -130,7 +118,7 @@ public class TimetableProblemBuilder {
             String requiredRoomType = course == null ? null : course.requiredRoomType();
             boolean specialRoom = RoomRequirement.isSpecial(requiredRoomType);
             RoomSlot fixedRoom = specialRoom ? null : fixedRooms.get(assignment.getAdminClassId());
-            Deque<PeriodSlot> baselinePeriods = warmPeriods.get(assignmentKey(assignment));
+            Deque<PeriodSlot> baselinePeriods = warmPeriods.get(AssignmentKey.of(assignment));
             for (int index = 0; index < assignment.getWeeklyLessons(); index++) {
                 Lesson lesson = new Lesson(
                         lessonId++,
@@ -155,113 +143,9 @@ public class TimetableProblemBuilder {
                 lessons.add(lesson);
             }
         }
-        return new BuiltProblem(new TimetableSolution(lessons, periodSlots, roomSlots), warmStart.source());
+        return new BuiltProblem(
+                new TimetableSolution(lessons, periodSlots, roomSlots), seed.source());
     }
-
-    /**
-     * The published baseline, when it exists, is already complete and conflict-free, so
-     * it is a far better starting point than an empty grid. Timefold's construction phase
-     * only fills uninitialized lessons; the ones seeded here keep their baseline period and
-     * local search starts from a publishable solution. Assignments that were edited after
-     * publishing (or have no baseline entry) keep their unassigned periods and are filled
-     * by the construction phase as before.
-     *
-     * <p>A new semester has no baseline yet, but the imported workbook draft is already a
-     * complete schedule. If the baseline is empty, the oldest complete draft (normally the
-     * import) seeds the same way.
-     */
-    private WarmStart warmPeriods(
-            Long semesterId, Map<Long, PeriodSlot> periodById, List<Assignment> assignments) {
-        Map<AssignmentKey, Deque<PeriodSlot>> baseline = new HashMap<>();
-        baselines.publishedLessons(semesterId).stream()
-                .sorted(Comparator.comparing(SemesterBaselineQuery.PublishedLesson::periodId))
-                .forEach(lesson -> addPeriodIfKnown(
-                        baseline, lesson.adminClassId(), lesson.courseId(), lesson.teacherId(),
-                        lesson.periodId(), periodById));
-        if (!baseline.isEmpty()) {
-            return new WarmStart(baseline, "BASELINE");
-        }
-
-        Map<AssignmentKey, Integer> required = new HashMap<>();
-        assignments.forEach(assignment -> required.merge(
-                assignmentKey(assignment), assignment.getWeeklyLessons(), Integer::sum));
-
-        List<TimetableDraft> existing = drafts.findBySemesterIdOrderByCreatedAtDesc(semesterId);
-        for (int i = existing.size() - 1; i >= 0; i--) {
-            TimetableDraft draft = existing.get(i);
-            List<DraftLesson> rows = draftLessons.findByDraftIdOrderByIdAsc(draft.getId());
-            if (rows.isEmpty() || rows.stream().anyMatch(row -> row.getPeriodId() == null)) {
-                continue;
-            }
-            Map<AssignmentKey, Deque<PeriodSlot>> byAssignment = new HashMap<>();
-            Map<Long, Set<Long>> periodsByClass = new HashMap<>();
-            Map<Long, Set<Long>> periodsByTeacher = new HashMap<>();
-            boolean usable = true;
-            for (DraftLesson row : rows) {
-                // A complete draft that already double-books a class or a teacher is not a
-                // publishable starting point; skip it and keep looking for a clean one.
-                if (!firstTime(periodsByClass, row.getAdminClassId(), row.getPeriodId())
-                        || !firstTime(periodsByTeacher, row.getTeacherId(), row.getPeriodId())) {
-                    usable = false;
-                    break;
-                }
-                if (!addPeriodIfKnown(byAssignment, row.getAdminClassId(), row.getCourseId(),
-                        row.getTeacherId(), row.getPeriodId(), periodById)) {
-                    usable = false;
-                    break;
-                }
-            }
-            if (usable && isComplete(byAssignment, required)) {
-                return new WarmStart(byAssignment, "DRAFT");
-            }
-        }
-        return new WarmStart(Map.of(), "NONE");
-    }
-
-    /** Seeded periods plus the label of where they came from. */
-    private record WarmStart(Map<AssignmentKey, Deque<PeriodSlot>> periods, String source) {}
-
-    /** True when this (owner, period) pair has not been seen before in the draft. */
-    private static boolean firstTime(Map<Long, Set<Long>> seen, Long ownerId, Long periodId) {
-        return seen.computeIfAbsent(ownerId, key -> new HashSet<>()).add(periodId);
-    }
-
-    /** A draft is complete when every assignment has all of its weekly lessons seeded. */
-    private static boolean isComplete(
-            Map<AssignmentKey, Deque<PeriodSlot>> byAssignment,
-            Map<AssignmentKey, Integer> required) {
-        return required.entrySet().stream().allMatch(entry ->
-                byAssignment.getOrDefault(entry.getKey(), new ArrayDeque<>()).size()
-                        >= entry.getValue());
-    }
-
-    /**
-     * Adds one period to the assignment's queue; false when the period is unknown, i.e.
-     * the row points at a period id that is not part of this semester.
-     */
-    private static boolean addPeriodIfKnown(
-            Map<AssignmentKey, Deque<PeriodSlot>> byAssignment, Long classId, Long courseId,
-            Long teacherId, Long periodId, Map<Long, PeriodSlot> periodById) {
-        PeriodSlot slot = periodId == null ? null : periodById.get(periodId);
-        if (slot == null) {
-            return false;
-        }
-        byAssignment.computeIfAbsent(
-                assignmentKey(classId, courseId, teacherId), key -> new ArrayDeque<>()).add(slot);
-        return true;
-    }
-
-    private static AssignmentKey assignmentKey(Assignment assignment) {
-        return assignmentKey(
-                assignment.getAdminClassId(), assignment.getCourseId(), assignment.getTeacherId());
-    }
-
-    private static AssignmentKey assignmentKey(Long classId, Long courseId, Long teacherId) {
-        return new AssignmentKey(classId, courseId, teacherId);
-    }
-
-    /** The identity a lesson row shares with its teaching assignment. */
-    private record AssignmentKey(Long classId, Long courseId, Long teacherId) {}
 
     /**
      * Resolves each class's own ordinary classroom with the same deterministic name the
