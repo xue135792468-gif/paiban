@@ -23,5 +23,5 @@ Priority: P1
 ### 定向回归证据
 
 - 红：`C:\Users\liu\AppData\Local\Programs\GitPortable\bin\bash.exe -lc "source .tools/env.sh; cd backend; MAVEN_OPTS='-Xmx512m' ./mvnw -B -DforkCount=0 -Dtest=SwapPlannerTest,PlanVerifierTest,SwapPlanPropertyTest test > ../t02-red.log 2>&1"`；结果 `BUILD FAILURE`，`Tests run: 29, Failures: 2, Errors: 0, Skipped: 0`，失败为 A3 搜索和预算文案。
-- 绿：同一命令输出到 `../t02-green-review.log`；结果 `exit=0`，`BUILD SUCCESS`，`Tests run: 33, Failures: 0, Errors: 0, Skipped: 0`（`PlanVerifierTest` 8、`SwapPlannerTest` 24、`SwapPlanPropertyTest` 1；200 个固定 seed 属性测试通过）。
-- 临时日志仅在当前 worktree，提交前清理；未跑全量 / e2e / 生产 / 外网。
+- 绿：同一命令输出到 `../t02-green-review.log`；结果 `exit=0`，`BUILD SUCCESS`，`Tests run: 33, Failures: 0, Errors: 0, Skipped: 0`（`PlanVerifierTest` 8、`SwapPlannerTest` 24、`SwapPlanPropertyTest` 1；200 个固定 seed 属性测试通过）。合入集成 `codex/weekly-no-class` 最新 tip `2352f04` 后用同一命令复跑也 `exit=0`、`Tests run: 33, Failures: 0, Errors: 0, Skipped: 0`。
+- 临时日志仅在当前 worktree，报告前清理；未跑全量 / e2e / 生产 / 外网。
