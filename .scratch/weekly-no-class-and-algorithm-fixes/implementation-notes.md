@@ -20,4 +20,6 @@
 
 ## 验证记录
 
-尚未完成任何实现票的集成验收；红绿/定向结果以各票Delivery为准，最终06汇总实际门禁。
+01–03算法修正、04单班闭环、05前端已合入集成分支；05后端仍在独立分支实施。04单班Playwright实际1/1通过，全目录/模板61项通过，AI解析9项通过，CLI18项通过；发布/权限/版本/后续调课边界2项通过。各项证据见core-delivery、ui-delivery、catalogue-delivery、scope-ui-delivery、cli-delivery与published-delivery；有重复的定向测试数量不累加为独立总数。
+
+尚未完成新增3场景浏览器合验、两轴复审与完整verify闸门。当前环境无Docker和本地PostgreSQL；H2通过不代表真实PostgreSQL已验证。未部署生产。

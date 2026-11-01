@@ -118,5 +118,5 @@ Status: in-progress
 ## Further Notes
 
 - 用户已要求统筹推进、修复算法，并指定算法判断由主模型完成。实现可按项目模型分工委派，最终算法正确性与审查由主模型承担。
-- 工作流：规格/拆票确认→正式票据→按依赖实施→回归与两轴评审→完整门禁→交付；当前已到正式票据发布，本文件不是已实现证明。
+- 工作流：规格/拆票确认→正式票据→按依赖实施→回归与两轴评审→完整门禁→交付。2026-11-01用户显式调用implement-spec后已进入实施；当前证据以implementation-notes与各交付记录为准，本规格本身不是验收证明。
 - 票据拆分见 [ticket-plan.md](ticket-plan.md)，复现事实见 [audit-evidence.md](audit-evidence.md)。

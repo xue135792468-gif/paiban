@@ -1,5 +1,7 @@
 # 接手说明（2026-10-25 会话交接）
 
+> **2026-11-01 每周留空与算法修正正在实施**：用户已显式调用implement-spec，覆盖下方“尚未实现/不自动实施”的规划快照。集成分支`codex/weekly-no-class`，工作目录`E:/排课系统/.worktrees/weekly-integration`；01–03修正、04单班闭环与05前端已合入，05后端进行中。04单班浏览器1/1、全目录/模板61项、AI解析9项、CLI18项、发布边界2项均有定向通过记录，数量可能重叠，不能累加作全量证明。尚待多班/容量浏览器、两轴复审和完整门禁；无Docker，本轮真实PostgreSQL尚未验证，未部署生产。详见[implementation-notes.md](weekly-no-class-and-algorithm-fixes/implementation-notes.md)及各delivery记录。主仓库main既有截图/原型不属于本任务，勿清理或提交。
+
 > **2026-11-01 六票已正式发布（尚未实现）**：用户要求修复主模型亲自审查发现的三项算法问题，并新增“每周不上课时段”；已选择第一版只做每周固定、全校或部分班级、原课时排到其他位置，不含具体日期停课。用户澄清并确认全天连续节次：上午4节+下午3节+晚上2节为第1–9节，晚自习只是时间段标签。规格和六张正式票在 [weekly-no-class-and-algorithm-fixes/spec.md](weekly-no-class-and-algorithm-fixes/spec.md) 与 [ticket-plan.md](weekly-no-class-and-algorithm-fixes/ticket-plan.md)，均已 `ready-for-agent`；未认领、未编码，初始frontier为01/02/03，03→04→05，06收口。01/03共用文件默认串行，02只在资源和写集合允许时独立并行。算法最终判断由主模型负责。本轮仅拆票发布，不自动实施或部署。审查反例和实现定位在该目录 `audit-evidence.md`。
 
 > **2026-11-01 追记（票 08 收尾 + 测试数据清理）**：票 08 完成：补了两个隔离测试（草稿行 null class/teacher 不崩且跳过；同班不同教师同节只由班级唯一性拦截），`WarmStartSource` 枚举与 `TimetableProblemBuilder.build()` 薄包装记为 `wontfix`（字符串仅三处、`build()` 仍被 `PerformanceBenchmarkIT` 使用）；票 04 的三场景说明改为引用现有 `DraftPublishReadiness`/`DraftValidator` 测试。线上清理：先备份 `paiban-pre-cleanup-20261101T092450Z.sql.gz`（180740B，gzip 通过），只通过 DELETE API 删除 **DRAFT** 草稿 2–14；保留已发布草稿 **1**（学期1）和 **15**（学期2），当前学期 1，两学期各 546 条已发布课表（`timetable_entry` 1092 行）。**没有**删除已发布学期 2（应用按设计拒绝删除已发布课表；如需彻底移除，需另做带备份的 SQL 级清理）。票 08 提交 `9308a40` 的 CI 首次因 runner 下载 Maven 发行包失败（`wget`，测试未开始），重跑 backend job 后 **四 job 全绿**。
