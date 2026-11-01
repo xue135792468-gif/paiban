@@ -28,6 +28,9 @@ class EngineConstraintTest {
     private static final PeriodSlot MON3 = new PeriodSlot(5L, 1, 3, PeriodSection.MORNING, false, false, false);
     private static final PeriodSlot MON5 = new PeriodSlot(3L, 1, 5, PeriodSection.AFTERNOON, false, false, true);
     private static final PeriodSlot EVEN1 = new PeriodSlot(4L, 1, 9, PeriodSection.EVENING, false, true, false);
+    /** A mid-numbered slot whose section label says evening: the count must follow the label. */
+    private static final PeriodSlot SECTION_EVENING =
+            new PeriodSlot(6L, 1, 7, PeriodSection.EVENING, false, false, true);
     private static final RoomSlot ROOM = new RoomSlot(1L, "301", "NORMAL", 50);
     private static final RoomSlot ROOM_B = new RoomSlot(3L, "303", "NORMAL", 50);
     private static final RoomSlot SMALL_ROOM = new RoomSlot(2L, "302", "NORMAL", 20);
@@ -328,6 +331,76 @@ class EngineConstraintTest {
         scoreManager().updateScore(solution);
 
         assertThat(solution.getScore().hardScore()).isLessThan(0);
+    }
+
+    /**
+     * Ticket 01 counterexample: with {@code maxPerDay=0} a class whose only lesson is in the
+     * morning must not be charged against the evening-study cap. The cap counts the
+     * {@link PeriodSection#EVENING} section, not "everything on the day".
+     */
+    @Test
+    void eveningMaxDoesNotCountMorningLessons() {
+        ConstraintSettingsHolder.set(settings(ConstraintType.EVENING_MAX, true, 100, Map.of("maxPerDay", 0)));
+        Lesson lesson = lesson(1, 10, 100, 1000, MON1, ROOM);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(lesson), List.of(MON1, EVEN1), List.of(ROOM));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().softScore()).isZero();
+    }
+
+    /** The cap is about evening-study, so afternoon study slots stay out of the count too. */
+    @Test
+    void eveningMaxDoesNotCountAfternoonLessons() {
+        ConstraintSettingsHolder.set(settings(ConstraintType.EVENING_MAX, true, 100, Map.of("maxPerDay", 0)));
+        Lesson lesson = lesson(1, 10, 100, 1000, MON5, ROOM);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(lesson), List.of(MON1, MON5, EVEN1), List.of(ROOM));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().softScore()).isZero();
+    }
+
+    /** The count is keyed by the section label, not by a hardcoded "8th/9th period" number. */
+    @Test
+    void eveningMaxCountsBySectionLabelNotPeriodNumber() {
+        ConstraintSettingsHolder.set(settings(ConstraintType.EVENING_MAX, true, 100, Map.of("maxPerDay", 0)));
+        Lesson lesson = lesson(1, 10, 100, 1000, SECTION_EVENING, ROOM);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(lesson), List.of(MON1, SECTION_EVENING), List.of(ROOM));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isLessThan(0);
+    }
+
+    @Test
+    void eveningMaxExactlyAtLimitIsNotAHardViolation() {
+        ConstraintSettingsHolder.set(settings(ConstraintType.EVENING_MAX, true, 100, Map.of("maxPerDay", 1)));
+        Lesson lesson = lesson(1, 10, 100, 1000, EVEN1, ROOM);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(lesson), List.of(MON1, EVEN1), List.of(ROOM));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+    }
+
+    @Test
+    void eveningMaxSoftControlPenalizesExcess() {
+        ConstraintSettingsHolder.set(settings(ConstraintType.EVENING_MAX, false, 40, Map.of("maxPerDay", 0)));
+        Lesson lesson = lesson(1, 10, 100, 1000, EVEN1, ROOM);
+        TimetableSolution solution =
+                new TimetableSolution(List.of(lesson), List.of(MON1, EVEN1), List.of(ROOM));
+
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        assertThat(solution.getScore().softScore()).isLessThan(0);
     }
 
     @Test

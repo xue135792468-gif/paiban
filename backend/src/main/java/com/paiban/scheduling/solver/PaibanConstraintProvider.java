@@ -84,7 +84,8 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         addThreshold(factory, constraints, s, ConstraintType.TEACHER_MAX_PER_DAY, Lesson::getTeacherId);
         addThreshold(factory, constraints, s, ConstraintType.CLASS_MAX_PER_DAY, Lesson::getAdminClassId);
         addCourseThreshold(factory, constraints, s);
-        addThreshold(factory, constraints, s, ConstraintType.EVENING_MAX, Lesson::getAdminClassId);
+        addThreshold(factory, constraints, s, ConstraintType.EVENING_MAX, Lesson::getAdminClassId,
+                lesson -> lesson.getPeriod().getSection() == PeriodSection.EVENING);
         addProhibition(factory, constraints, s, ConstraintType.SPORT_NOT_FIRST_AFTERNOON,
                 lesson -> lesson.getPeriod().isFirstAfternoon(),
                 lesson -> sportControl(s, ConstraintType.SPORT_NOT_FIRST_AFTERNOON, lesson));
@@ -330,9 +331,15 @@ public class PaibanConstraintProvider implements ConstraintProvider {
     private void addThreshold(
             ConstraintFactory f, List<Constraint> out, ConstraintSettings s,
             ConstraintType type, Function<Lesson, Long> objectOf) {
+        addThreshold(f, out, s, type, objectOf, lesson -> true);
+    }
+
+    private void addThreshold(
+            ConstraintFactory f, List<Constraint> out, ConstraintSettings s,
+            ConstraintType type, Function<Lesson, Long> objectOf, Predicate<Lesson> counts) {
         for (Control control : controlsOf(s, type)) {
             out.add(f.forEach(Lesson.class)
-                    .filter(lesson -> lesson.getPeriod() != null)
+                    .filter(lesson -> lesson.getPeriod() != null && counts.test(lesson))
                     .groupBy(
                             objectOf,
                             lesson -> lesson.getPeriod().getDayOfWeek(),
