@@ -1,6 +1,6 @@
 # 票据 02: 合并 RoomFillPlanner 的固定教室匹配逻辑
 
-Status: needs-triage
+Status: wontfix
 **Spec:** ../spec.md
 **来源:** 2026-10-31 code-review Standards 判断项
 
@@ -18,3 +18,7 @@ Status: needs-triage
 - [ ] `RoomFillPlannerTest` 覆盖：同名带空格、容量不足、非 NORMAL、两个班抢同一间房。
 - [ ] `fixedRooms` 与 `plan` 对同一组输入给出同一间房/同一拒绝理由。
 - [ ] 不改求解器评分与课表展示行为。
+
+## Comments
+
+用户 2026-11-01 决定「人数无所谓，教室默认都装得下」，容量基准不再是问题；`plan` 的容量推算只服务「补固定教室」创建动作，与求解固定教室不必强行合并，故关闭。

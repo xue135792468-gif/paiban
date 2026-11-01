@@ -14,6 +14,8 @@ Status: needs-triage
 
 用户看到「得分 -10 hard」但校验说「0 硬冲突」，会以为哪里算错了。
 
+用户已确认教室不作为约束：固定教室只约束求解器，不进入 `ConstraintChecker`。本票不再讨论它是否进入校验，范围收敛为求解得分与校验 `hardConflicts`/publish blocker 的显示口径统一，以及 `moveLesson` 的覆写问题。
+
 ## Why
 
 展示口径不一致会掩盖真实违规，也让回归测试无法用一个分数判断草稿质量。固定教室规则目前只约束求解器，手工把课拖到别班教室不会被校验拦住。
@@ -21,7 +23,6 @@ Status: needs-triage
 ## Acceptance
 
 - [ ] 明确一个「草稿硬违规」的统一口径：求解得分、校验 `hardConflicts`、publish blocker 三者可解释地对应。
-- [ ] 决定「班级固定教室」是否进入 `ConstraintChecker`（若进入，手工移动也要被校验拦住；若不进入，UI 明确标注它是求解偏好）。
 - [ ] 移除或解释 `moveLesson` 里 `scoreHard = -hardConflicts` 的覆写，避免两套刻度。
 - [ ] 更新 `DraftStats`/校验面板文案（如「求解得分」vs「硬冲突」）。
 - [ ] 测试：未排课、固定教室、班级冲突三种情况的分数与 blocker 数量一一对应。

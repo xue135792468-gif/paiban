@@ -94,9 +94,11 @@ public final class RoomFillPlanner {
 
     /**
      * Resolves the fixed room of every class by the same deterministic name. The solver
-     * uses this to keep a class's ordinary lessons in its own room; a missing room, a
-     * room smaller than the class, or one room claimed by two classes is omitted so the
-     * caller can fall back to free room assignment instead of forcing a conflict.
+     * uses this to keep a class's ordinary lessons in its own room. Capacity and room
+     * type are not constraints: the user confirmed that every classroom is large enough
+     * and that a room always exists. Only a missing name or one room claimed by two
+     * classes is omitted, so the caller can fall back to free room assignment instead of
+     * forcing a conflict.
      */
     public static Map<Long, ExistingRoom> fixedRooms(
             String semesterName, List<ClassInfo> classes, List<ExistingRoom> rooms) {
@@ -105,14 +107,9 @@ public final class RoomFillPlanner {
 
         Map<Long, ExistingRoom> fixed = new LinkedHashMap<>();
         for (ClassInfo info : classes) {
-            if (info.studentCount() <= 0) {
-                continue;
-            }
             String expected = roomName(semesterName, info.gradeName(), info.name());
             ExistingRoom room = roomByName.get(normalize(expected));
-            if (room != null
-                    && ROOM_TYPE_NORMAL.equals(room.type())
-                    && room.capacity() >= info.studentCount()) {
+            if (room != null) {
                 fixed.put(info.id(), room);
             }
         }

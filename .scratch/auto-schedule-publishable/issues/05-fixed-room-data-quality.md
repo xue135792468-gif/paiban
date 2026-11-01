@@ -1,6 +1,6 @@
 # 票据 05: 固定教室缺失/冲突时给出可见提示
 
-Status: needs-triage
+Status: wontfix
 **Spec:** ../spec.md
 **来源:** 2026-10-31 code-review Spec 缺失项
 
@@ -22,3 +22,7 @@ Status: needs-triage
 - [ ] `RoomFillService.needsSpecialRoom` 的 `requireOutdoor` 分支与 builder 的 `RoomRequirement.isSpecial` 口径统一（或明确两者语义不同）。
 - [ ] 测试覆盖上述四类坏数据与配置型教室要求。
 - [ ] 统一 `requiredRoomType` 的规范化比较口径：`TimetableProblemBuilder` 用 trim/忽略大小写判断专用类型，而 `ConstraintChecker`、`PaibanConstraintProvider`、`SwapPlanner` 仍按原始值精确比较，`" NORMAL "`、小写等写法会造成 builder 与校验侧误判；需统一规范（或明确规范化边界），并覆盖 `requireOutdoor` 在 `TimetableProblemBuilder` 与 `RoomFillService` 之间的口径差异。
+
+## Comments
+
+用户 2026-11-01 决定「教室不用管，肯定是有教室的」，缺教室/容量/类型提示不在范围内；保留「一房两班」防护即可。配置型教室要求若将来真启用，再另开票。

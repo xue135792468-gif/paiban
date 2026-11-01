@@ -273,21 +273,28 @@ class RoomFillPlannerTest {
     }
 
     @Test
-    void fixedRoomsSkipMissingTooSmallAndSharedRooms() {
+    void fixedRoomsOnlySkipsMissingAndSharedRooms() {
         Map<Long, ExistingRoom> fixed = RoomFillPlanner.fixedRooms(
                 SEMESTER,
                 List.of(
                         new ClassInfo(1L, "八（1）班", "八年级", 45),
                         new ClassInfo(2L, "八（2）班", "八年级", 45),
                         new ClassInfo(3L, "八（3）班", "八年级", 45),
-                        new ClassInfo(4L, "八（4）班", "八年级", 45)),
+                        new ClassInfo(4L, "八（4）班", "八年级", 45),
+                        new ClassInfo(5L, "八（5）班", "八年级", 45)),
                 List.of(
-                        new ExistingRoom(7L, SEMESTER + "-八年级八（1）班-固定教室", "NORMAL", 40),
+                        // Too small and the wrong type: still adopted, neither is a constraint.
+                        new ExistingRoom(7L, SEMESTER + "-八年级八（1）班-固定教室", "LAB", 20),
                         new ExistingRoom(8L, SEMESTER + "-八年级八（2）班-固定教室", "NORMAL", 45),
-                        new ExistingRoom(8L, SEMESTER + "-八年级八（3）班-固定教室", "NORMAL", 45)));
+                        new ExistingRoom(8L, SEMESTER + "-八年级八（3）班-固定教室", "NORMAL", 45),
+                        new ExistingRoom(
+                                9L, " " + SEMESTER + "-八年级八（5）班-固定教室  ", "NORMAL", 45)));
 
-        // 1 is too small; 2 and 3 claim the same room; 4 has no room at all.
-        assertThat(fixed).isEmpty();
+        // 1 is adopted despite capacity/type; 2 and 3 claim the same room; 4 has no room;
+        // 5 matches ignoring padding.
+        assertThat(fixed).containsOnlyKeys(1L, 5L);
+        assertThat(fixed.get(1L).id()).isEqualTo(7L);
+        assertThat(fixed.get(5L).id()).isEqualTo(9L);
     }
 
     private static LessonGap gap(long lessonId, long classId, int studentCount) {
