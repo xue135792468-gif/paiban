@@ -3,7 +3,7 @@
 Status: done
 日期：2026-11-01（Asia/Shanghai）
 基点：main `4c1cc191bcd286e99e42e4e4a8b7a3ebcd68ba1d`
-阶段：六票实现、两轴复审与冻结版本完整门禁已完成，详见[统一验收](acceptance.md)。本地无Docker，真实PostgreSQL以最终同提交PR检查为准；未部署生产。
+阶段：六票实现、两轴复审与冻结版本完整门禁已完成，详见[统一验收](acceptance.md)。本地无Docker，真实PostgreSQL以最终同提交PR检查为准；已按2026-11-02后续明确授权合并部署，详见[deployment.md](deployment.md)。
 
 ## Problem Statement
 

@@ -1,5 +1,7 @@
 # 接手说明（2026-10-25 会话交接）
 
+> **2026-11-02 每周留空与算法修正已合并上线**：用户明确授权合并部署，PR #21已合并main；应用镜像构建自d76709c，与已验收PR内容一致。数据库备份和回退镜像已保存；线上健康、数据保护与新规则入口已检查，详见[部署回执](weekly-no-class-and-algorithm-fixes/deployment.md)。原有正式课表和约束未改。下方“未部署”均为前阶段快照；旧页面如仍显示旧内容，按Ctrl+F5或使用回执中的发布入口。
+
 > **2026-11-02 每周留空与三项算法修正：开发验收完成，未部署**：六票已实现并复审，集成分支codex/weekly-no-class，目录E:/排课系统/.worktrees/weekly-integration。主模型亲自判断本批算法修正合格；冻结版本完整门禁已通过，全部统计、失败历史和源码tree见[统一验收](weekly-no-class-and-algorithm-fixes/acceptance.md)，不在入口复制数字。本机无Docker，真实PostgreSQL前版CI已实跑通过；CI旧日期fixture也已修正并重新完整门禁通过，最终提交检查见[PR #21](https://github.com/xue135792468-gif/paiban/pull/21)。未合并main、未部署生产；仅保留集成worktree，执行者与任务临时进程已清理。主仓库既有截图/原型未动。下方“尚未实现”是旧规划快照。
 
 > **2026-11-01 六票已正式发布（尚未实现）**：用户要求修复主模型亲自审查发现的三项算法问题，并新增“每周不上课时段”；已选择第一版只做每周固定、全校或部分班级、原课时排到其他位置，不含具体日期停课。用户澄清并确认全天连续节次：上午4节+下午3节+晚上2节为第1–9节，晚自习只是时间段标签。规格和六张正式票在 [weekly-no-class-and-algorithm-fixes/spec.md](weekly-no-class-and-algorithm-fixes/spec.md) 与 [ticket-plan.md](weekly-no-class-and-algorithm-fixes/ticket-plan.md)，均已 `ready-for-agent`；未认领、未编码，初始frontier为01/02/03，03→04→05，06收口。01/03共用文件默认串行，02只在资源和写集合允许时独立并行。算法最终判断由主模型负责。本轮仅拆票发布，不自动实施或部署。审查反例和实现定位在该目录 `audit-evidence.md`。

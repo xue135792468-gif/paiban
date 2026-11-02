@@ -3,7 +3,7 @@
 > 最终追加状态：CI周一日期假设已修正并经独立核对。77e8129重新完整verify通过；06重新关闭。此前CI真实PostgreSQL已实际通过，最终同提交结果以[PR #21](https://github.com/xue135792468-gif/paiban/pull/21)检查和backend日志为准。
 
 
-当前阶段：六票实现、主模型算法判断、两轴复审和本地完整门禁已完成。最终同提交GitHub CI的真实PostgreSQL检查是发布前的外部验证；本机没有Docker，不将H2替代它。本轮未合并main、未部署生产。
+当前阶段：六票实现、主模型算法判断、两轴复审和本地完整门禁已完成。最终同提交GitHub CI的真实PostgreSQL检查是发布前的外部验证；本机没有Docker，不将H2替代它。开发阶段未部署；2026-11-02后续用户已明确授权并完成合并部署，见[deployment.md](deployment.md)。
 
 ## 版本与范围
 
