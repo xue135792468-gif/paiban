@@ -175,7 +175,6 @@ test('场景 1b：草稿拖拽冲突高亮与移动', async ({ page }) => {
   await expect(page.locator('.lesson').first()).toBeVisible()
 
   const source = await page.locator('.cell:has(.lesson)').first().locator('.lesson').elementHandle()
-  const conflictCell = await page.locator('.cell:has(.lesson)').nth(1).elementHandle()
   const undoButton = page.getByRole('button', { name: /撤销/ })
   const waitForReload = () =>
     page.waitForResponse(
@@ -183,15 +182,14 @@ test('场景 1b：草稿拖拽冲突高亮与移动', async ({ page }) => {
         response.request().method() === 'GET' && response.url().endsWith(`/api/timetable-drafts/${draftId}`),
     )
   expect(source).not.toBeNull()
-  expect(conflictCell).not.toBeNull()
   await expect(undoButton).toBeDisabled()
 
+  // The old "swap candidate drawer" path is gone: an occupied same-class cell is now a
+  // direct exchange, covered end to end in draft-drag.spec.ts. This scenario keeps the
+  // drag-target highlighting and the empty-cell move/undo contract.
   await fireDrag(page, source!, 'dragstart')
   await expect(page.locator('.cell.invalid-target').first()).toBeVisible({ timeout: 20_000 })
-  await dropOn(page, conflictCell!)
-  await expect(page.getByText('换课候选')).toBeVisible()
-  await page.locator('.el-drawer__close-btn').click()
-  await expect(page.getByText('换课候选')).toBeHidden()
+  await fireDrag(page, source!, 'dragend')
 
   await fireDrag(page, source!, 'dragstart')
   await expect(page.locator('.cell.valid-target:not(:has(.lesson))').first()).toBeVisible({

@@ -467,6 +467,7 @@ public class SchedulingService {
                     return new DraftLessonDto(
                             row.getId(),
                             row.getAssignmentId(),
+                            row.getLessonIndex(),
                             row.getCourseId(),
                             course == null ? null : course.getName(),
                             row.getTeacherId(),

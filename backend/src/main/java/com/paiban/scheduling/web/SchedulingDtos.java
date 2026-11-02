@@ -35,11 +35,11 @@ public final class SchedulingDtos {
                            int scoreSoft, String createdBy, Instant createdAt, long lessonCount,
                            long version) {}
 
-    public record DraftLessonDto(Long id, Long assignmentId, Long courseId, String courseName,
-                                 Long teacherId, String teacherName, Long classId, String className,
-                                 int studentCount, Long periodId, Integer dayOfWeek, Integer periodNo,
-                                 String section, String periodLabel, Long roomId, String roomName,
-                                 boolean locked) {}
+    public record DraftLessonDto(Long id, Long assignmentId, int lessonIndex, Long courseId,
+                                 String courseName, Long teacherId, String teacherName,
+                                 Long classId, String className, int studentCount, Long periodId,
+                                 Integer dayOfWeek, Integer periodNo, String section,
+                                 String periodLabel, Long roomId, String roomName, boolean locked) {}
 
     public record BlockedSlotDto(Long classId, Long periodId, String reason) {}
 

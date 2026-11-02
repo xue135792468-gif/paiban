@@ -216,6 +216,9 @@ class SchedulingIntegrationTest extends ApiIntegrationTest {
         List<Map<String, Object>> lessons = as(token).when().get("/api/timetable-drafts/" + draftId)
                 .then().statusCode(200).extract().jsonPath().getList("lessons");
         Map<String, Object> first = lessons.get(0);
+        // The draft-detail contract carries the stable half of a lesson's identity, so
+        // the UI can pair the same lesson across two drafts without relying on row ids.
+        assertThat(first.get("lessonIndex")).isInstanceOf(Number.class);
         long classId = ((Number) first.get("classId")).longValue();
 
         Map<String, Object> sameClassOther = lessons.stream()
