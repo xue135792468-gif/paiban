@@ -37,7 +37,7 @@ cd backend && ./mvnw -B verify
 ```
 
 结果：`Tests run: 1195, Failures: 0, Errors: 0, Skipped: 8`，`BUILD SUCCESS`。
-跳过项为 `PostgresContainerIT`（本机无 Docker；CI 或 `--deploy` 才实跑真实 PostgreSQL）。
+8 个跳过项为 4 个 `PostgresContainerIT`（本机无 Docker）、2 个 `DeepSeekManualIT`、2 个 `PerformanceBenchmarkIT`；真实 PostgreSQL 需 CI 或 `--deploy`。
 
 新增/重点覆盖：
 - `DraftLockIntegrationTest`：双线程持有草稿行锁时，锁定写请求确实等待；版本过期/混合批次零写入。
@@ -65,6 +65,10 @@ cd /e/paiban-wt/draft-swap-locks && bash scripts/e2e.sh
 ```
 
 结果：`161 passed (16.4m)`，`exit 0`。失败用例未复现，且所有本次新增 spec（`draft-drag`、`draft-locks`、`draft-optimize`、`settings-policy`）均通过。
+
+### 复审后最终修复
+
+Fresh Review 发现连续撤销两次旧 move/swap 时第二次仍使用第一次写入的版本号，已改为使用当前版本（`context.expectedVersion ?? lastVersion ?? entry.version`），并补“连续两次 swap 后连续撤销”单测；方案应用的审计改为记录真实 Principal。最终修复后定向复核：`useDraftAdjust.spec.ts` 26 项通过、`DraftChangeIntegrationTest` + `DraftCyclePlanIntegrationTest` 18 项通过、`draft-drag.spec.ts` E2E 8/8 通过；完整套件未再重复 40 分钟全量，生产差异仅这两处。
 
 ### 仓库级检查
 

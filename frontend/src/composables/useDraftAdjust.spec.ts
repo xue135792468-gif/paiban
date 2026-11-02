@@ -48,6 +48,29 @@ function fakeNotify() {
 }
 
 describe('useDraftAdjust', () => {
+  it('consecutive legacy undos use the version each earlier undo produced', async () => {
+    const versions = [2, 3, 4, 5]
+    let postCalls = 0
+    const { client, posts } = fakeClient(undefined, async () => ({
+      data: {
+        saved: true,
+        valid: true,
+        version: versions[postCalls++],
+        type: 'INTRA_CLASS',
+        conflicts: [],
+        warnings: [],
+      },
+    }))
+    const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
+
+    await adjust.swap({ id: 11 }, { lessonId: 12 }, false)
+    await adjust.swap({ id: 13 }, { lessonId: 14 }, false)
+    expect((await adjust.undo()).undone).toBe(true)
+    expect(posts[2].body).toMatchObject({ expectedVersion: 3 })
+    expect((await adjust.undo()).undone).toBe(true)
+    expect(posts[3].body).toMatchObject({ expectedVersion: 4 })
+  })
+
   it('legacy move and swap undo send the version produced by that write', async () => {
     const { client, calls, posts } = fakeClient(
       async () => ({ data: { saved: true, valid: true, version: 5, conflicts: [] } }),

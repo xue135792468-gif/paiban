@@ -463,8 +463,11 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
           periodId: entry.from.periodId,
           roomId: entry.from.roomId,
         }
-        // A stale undo must not replay onto someone else's newer timetable.
-        if (entry.version != null) body.expectedVersion = entry.version
+        // Use the current version, not the version captured at write time: an earlier
+        // undo (or anyone else's edit) has already advanced it. entry.version is only
+        // a fallback for a caller that has no current version yet.
+        const expectedVersion = context.expectedVersion ?? lastVersion.value ?? entry.version
+        if (expectedVersion != null) body.expectedVersion = expectedVersion
         const { data } = await client.patch(lessonUrl(entry.lessonId), body)
         if (!data.saved) {
           notify.error('撤销失败：课表可能已被其他调整修改，请刷新后重试')
@@ -478,7 +481,8 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
           targetLessonId: entry.targetLessonId,
           swapRooms: entry.swapRooms,
         }
-        if (entry.version != null) body.expectedVersion = entry.version
+        const expectedVersion = context.expectedVersion ?? lastVersion.value ?? entry.version
+        if (expectedVersion != null) body.expectedVersion = expectedVersion
         const { data } = await client.post(swapUrl(), body)
         if (!data.saved) {
           notify.error('撤销失败：课表可能已被其他调整修改，请刷新后重试')

@@ -7,6 +7,7 @@ import com.paiban.scheduling.web.DraftCyclePlanDtos.ApplyResponse;
 import com.paiban.scheduling.web.DraftCyclePlanDtos.SearchRequest;
 import com.paiban.scheduling.web.DraftCyclePlanDtos.SearchResponse;
 import jakarta.validation.Valid;
+import java.security.Principal;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -36,7 +37,7 @@ public class DraftCyclePlanController {
     @PostMapping("/timetable-drafts/{id}/cycle-plans/apply")
     @PreAuthorize("hasAuthority('" + Permissions.TIMETABLE_EDIT + "')")
     public ApplyResponse apply(
-            @PathVariable Long id, @Valid @RequestBody ApplyRequest request) {
-        return service.apply(id, request);
+            @PathVariable Long id, @Valid @RequestBody ApplyRequest request, Principal principal) {
+        return service.apply(id, request, principal == null ? "system" : principal.getName());
     }
 }

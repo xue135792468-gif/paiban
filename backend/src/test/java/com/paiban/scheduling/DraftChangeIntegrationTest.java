@@ -6,6 +6,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.hasSize;
 
+import com.paiban.foundation.domain.AuditLogRepository;
 import com.paiban.scheduling.domain.ConstraintConfig;
 import com.paiban.scheduling.domain.ConstraintConfigRepository;
 import com.paiban.scheduling.domain.ConstraintType;
@@ -47,6 +48,9 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
     @Autowired
     private ConstraintConfigRepository constraintConfigs;
 
+    @Autowired
+    private AuditLogRepository auditLogs;
+
     private record World(long semesterId, List<Long> periods, long classA, long classB, long classC,
                          long classD, long classE, long chinese, long math, long teacherA,
                          long teacherB, long room1, long room2, long room3, long room4,
@@ -83,6 +87,12 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
         assertThat(draftLessons.findById(b).orElseThrow().getPeriodId())
                 .isEqualTo(world.periods().get(0));
         assertThat(version(draftId)).isEqualTo(1);
+        assertThat(auditLogs.findTop100ByOrderByCreatedAtDesc())
+                .anySatisfy(log -> {
+                    assertThat(log.getAction()).isEqualTo("DRAFT_CHANGE");
+                    assertThat(log.getEntityType()).isEqualTo("DRAFT_LESSON");
+                    assertThat(log.getSuccessRows()).isEqualTo(2);
+                });
     }
 
     @Test

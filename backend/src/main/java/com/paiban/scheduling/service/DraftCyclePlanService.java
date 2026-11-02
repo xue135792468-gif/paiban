@@ -196,7 +196,7 @@ public class DraftCyclePlanService {
     }
 
     @Transactional
-    public ApplyResponse apply(Long draftId, ApplyRequest request) {
+    public ApplyResponse apply(Long draftId, ApplyRequest request, String actor) {
         TimetableDraft draft = guard.lockEditable(draftId, request.expectedVersion());
         DraftCyclePlanToken token = tokens.findWithLockByToken(request.token())
                 .orElseThrow(() -> ApiException.notFound("方案不存在或已失效"));
@@ -247,7 +247,7 @@ public class DraftCyclePlanService {
         }
 
         ChangeResult result = changeService.apply(draftId, new ChangeRequest(
-                items, draft.getVersion(), validator.rulesFingerprint(draftId), true));
+                items, draft.getVersion(), validator.rulesFingerprint(draftId), true), actor);
         boolean tokenUsed = result.saved();
         if (tokenUsed) {
             token.setUsedAt(now);

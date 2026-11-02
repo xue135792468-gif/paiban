@@ -40,9 +40,11 @@ async function openPlanPanel(page: Page, seed: DraftDragScenario): Promise<void>
     const body = await response.json()
     expect(body.status).toBe('FOUND')
     expect(body.plans.length).toBeGreaterThan(0)
-    if ((await page.getByTestId('cycle-plan-0').count()) > 0) {
-      await expect(page.getByTestId('cycle-plan-0')).toBeVisible()
+    try {
+      await page.getByTestId('cycle-plan-0').waitFor({ state: 'visible', timeout: 5_000 })
       return
+    } catch {
+      // The panel did not render in time; retry the no-write search once.
     }
   }
   await expect(page.getByTestId('cycle-plan-0')).toBeVisible()
