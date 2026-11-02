@@ -21,3 +21,10 @@ Priority: P3
 https://github.com/xue135792468-gif/paiban/actions/runs/41366293444/job/125027043940
 
 失败时桌面产品与真实PostgreSQL测试通过；同源树后续CI另以执行结果为准。该票与每周留空功能的六票分开跟踪。
+
+
+## 2026-11-02 只读复核
+
+UI顾问读取截图与trace后指出日期选择器的退场过渡。主模型独立核对trace回值：documentDelta=4、innerDelta=0；本地依赖date-picker.scss第16行固定width:322px。顾问从DOM快照确认body下日历popper带退场class，连左右边框总宽324px，在320px视口恰好产生4px；该候选比随机课卡文字更吻合证据。
+
+建议先在Tab后等待日期弹层真正隐藏，再保留原≤1px断言进行定向验证；不要用固定睡眠或放宽阈值替代。此处尚未实施修正，当前票保持needs-triage。原图与首次失败执行保留，同源树复验不代表这个时序缺陷已修复。
