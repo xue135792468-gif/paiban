@@ -183,7 +183,10 @@ class SchedulingIntegrationTest extends ApiIntegrationTest {
                 .body(Map.of("maxSeconds", 5))
                 .when().post("/api/scheduling-jobs")
                 .then().statusCode(200).extract().jsonPath().getLong("id");
-        Map<String, Object> job = awaitJob(token, nextJob, 30);
+        // The cancelled solver may need its full 60s limit to unwind if cancellation
+        // lands in the narrow window before terminateEarly takes effect; the next job
+        // is queued behind it on the single solver thread, so allow that budget here.
+        Map<String, Object> job = awaitJob(token, nextJob, 90);
         assertThat(job.get("status")).isEqualTo("COMPLETED");
     }
 
