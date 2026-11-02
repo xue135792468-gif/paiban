@@ -37,6 +37,13 @@ Status: accepted
 - 同一应用因网络重试不能发生二次交换；方案凭证一次性或幂等，旧凭证不能复用为反向交换。
 - 方案预览不产生业务写入；取消无副作用。过期、无可用方案、未搜完与规则冲突分别反馈，前端不可把缺少候选当作已交换。
 
+### 4.1 已实现契约（04 落地）
+
+- 搜索：`POST /api/timetable-drafts/{id}/cycle-plans/search`，权限 `timetable:edit`。请求 `{"sourceLessonId","targetPeriodId","targetLessonId","expectedVersion","rulesFingerprint","nodeBudget","timeBudgetMs"}`；两个预算为空时用默认 200000 节点 / 1500 毫秒。响应 `{"status","message","version","fingerprint","plans"}`，`status` 为 `FOUND` / `NONE` / `BUDGET_EXHAUSTED`；`plans` 最多 3 个，每个含 `token`、`kind`（`DIRECT`/`CYCLE`）、`moves[{lessonId,fromPeriodId,toPeriodId,teacherId,courseId,classId}]`、`movedLessons`、`affectedTeachers`、`affectedDays`、`softPenaltyAfter`、`softPenaltyDelta`、`expiresAt`。搜索不改 `draft_lesson`、不改锁定、不 bump `version`，只写 token 行。
+- 应用：`POST /api/timetable-drafts/{id}/cycle-plans/apply`，权限 `timetable:edit`。请求 `{"token","expectedVersion"}`；响应 `{saved,valid,version,hardConflicts,softPenaltyBefore,softPenaltyAfter,softPenaltyDelta,addedConflicts,remainingConflicts,conflicts,tokenUsed}`。
+- 凭证：服务端一次性 token，有效期 **10 分钟**；`usedAt` 非空后再次应用返回 409。token 绑定 draft 版本、规则指纹、共享策略指纹、全部草稿课节（含锁定）、学期授课任务、来源/落点。
+- 错误码：来源/落点/中间课锁定、跨班落点、同格多课、`targetLessonId` 不符 → 409；来源不存在或 token 不存在 → 404；未排课/落点不在本学期间 → 400；已发布/归档 → 400；权限不足 → 403；过期、已应用、课表/规则/设置变化 → 409。以上拒绝均零写入。
+
 ## 5. 指定草稿继续优化（07提供，08消费）
 
 - 旧启动请求省略来源时保持既有策略；新增显式sourceDraftId模式，源学期、任务、锁定与授课身份快照共同参与输入。

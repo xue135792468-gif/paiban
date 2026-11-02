@@ -29,6 +29,16 @@ public class DraftWriteGuard {
     public TimetableDraft lockEditable(Long draftId, Long expectedVersion) {
         TimetableDraft draft = drafts.findWithLockById(draftId)
                 .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
+        requireEditable(draft, expectedVersion);
+        return draft;
+    }
+
+    /**
+     * The read-only half of {@link #lockEditable}: same status and version refusal,
+     * without taking the row lock. Search endpoints use it so a preview never blocks
+     * an editor and never bumps the version.
+     */
+    public void requireEditable(TimetableDraft draft, Long expectedVersion) {
         String status = draft.getStatus();
         if (!"DRAFT".equals(status)) {
             if ("PUBLISHED".equals(status)) {
@@ -42,7 +52,6 @@ public class DraftWriteGuard {
         if (expectedVersion != null && expectedVersion != draft.getVersion()) {
             throw ApiException.conflict("课表已被其他人修改，请刷新后重试");
         }
-        return draft;
     }
 
     /** A locked lesson fixes its period and teacher, whatever the action is called. */

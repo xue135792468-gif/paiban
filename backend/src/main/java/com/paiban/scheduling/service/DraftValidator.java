@@ -164,6 +164,43 @@ public class DraftValidator {
             int softPenaltyAfter) {}
 
     /**
+     * A read-only planning view of one lesson. It deliberately carries no JPA entity:
+     * the pure cycle planner and its unit tests only need these values, and copying
+     * them is what keeps the planner free of a persistence context.
+     */
+    public record PlanLesson(Long id, Long assignmentId, int lessonIndex, Long classId,
+                             Long courseId, Long teacherId, Long periodId, Long roomId,
+                             int studentCount, boolean locked) {}
+
+    /**
+     * Everything a plan search needs: the draft row (for version and semester), the
+     * immutable lesson view and the shared rule context. {@code draft} stays an entity
+     * because the search only reads its id, semester and version.
+     */
+    public record PlanningSnapshot(TimetableDraft draft, List<PlanLesson> lessons,
+                                   ConstraintContext context) {}
+
+    /** The load-once view used by the cycle search and by {@link #assess}. */
+    @Transactional(readOnly = true)
+    public PlanningSnapshot planningSnapshot(Long draftId) {
+        Snapshot snapshot = snapshot(draftId);
+        List<PlanLesson> lessons = snapshot.lessons.stream().map(L::toPlanLesson).toList();
+        return new PlanningSnapshot(snapshot.draft, lessons, snapshot.context);
+    }
+
+    /**
+     * Same whole-draft judgement as {@link #assessChanges}, but against an already
+     * loaded planning snapshot so a search evaluates many candidates from one read.
+     */
+    public ChangeAssessment assess(PlanningSnapshot planning, List<LessonChange> changes) {
+        Snapshot snapshot = new Snapshot(
+                planning.draft(),
+                planning.lessons().stream().map(L::of).toList(),
+                planning.context());
+        return assessSnapshot(snapshot, changes);
+    }
+
+    /**
      * Applies every change to an in-memory copy first, then compares the whole draft
      * before and after by stable violation key. A move into a slot that another lesson
      * is leaving in the same request is therefore not reported as a conflict. A
@@ -172,7 +209,10 @@ public class DraftValidator {
      */
     @Transactional(readOnly = true)
     public ChangeAssessment assessChanges(Long draftId, List<LessonChange> changes) {
-        Snapshot snapshot = snapshot(draftId);
+        return assess(planningSnapshot(draftId), changes);
+    }
+
+    private ChangeAssessment assessSnapshot(Snapshot snapshot, List<LessonChange> changes) {
         List<LessonView> beforeViews = viewsOf(snapshot);
         List<ConstraintViolation> beforeViolations =
                 ConstraintChecker.check(snapshot.context(), beforeViews, null);
@@ -521,24 +561,48 @@ public class DraftValidator {
     private static final class L {
         private Long id;
         private Long assignmentId;
+        private int lessonIndex;
         private Long courseId;
         private Long teacherId;
         private Long classId;
         private Long periodId;
         private Long roomId;
         private int studentCount;
+        private boolean locked;
 
         static L of(DraftLesson lesson) {
             L copy = new L();
             copy.id = lesson.getId();
             copy.assignmentId = lesson.getAssignmentId();
+            copy.lessonIndex = lesson.getLessonIndex();
             copy.courseId = lesson.getCourseId();
             copy.teacherId = lesson.getTeacherId();
             copy.classId = lesson.getAdminClassId();
             copy.periodId = lesson.getPeriodId();
             copy.roomId = lesson.getRoomId();
             copy.studentCount = lesson.getStudentCount();
+            copy.locked = lesson.isLocked();
             return copy;
+        }
+
+        static L of(PlanLesson lesson) {
+            L copy = new L();
+            copy.id = lesson.id();
+            copy.assignmentId = lesson.assignmentId();
+            copy.lessonIndex = lesson.lessonIndex();
+            copy.courseId = lesson.courseId();
+            copy.teacherId = lesson.teacherId();
+            copy.classId = lesson.classId();
+            copy.periodId = lesson.periodId();
+            copy.roomId = lesson.roomId();
+            copy.studentCount = lesson.studentCount();
+            copy.locked = lesson.locked();
+            return copy;
+        }
+
+        PlanLesson toPlanLesson() {
+            return new PlanLesson(id, assignmentId, lessonIndex, classId, courseId, teacherId,
+                    periodId, roomId, studentCount, locked);
         }
 
         LessonView toView() {
@@ -549,12 +613,14 @@ public class DraftValidator {
             L copy = new L();
             copy.id = id;
             copy.assignmentId = assignmentId;
+            copy.lessonIndex = lessonIndex;
             copy.courseId = courseId;
             copy.teacherId = teacherId;
             copy.classId = classId;
             copy.periodId = periodId;
             copy.roomId = roomId;
             copy.studentCount = studentCount;
+            copy.locked = locked;
             return copy;
         }
     }
