@@ -931,6 +931,127 @@ export async function dragCardToCell(page: Page, from: Locator, to: Locator): Pr
   await page.waitForTimeout(50)
 }
 
+// ------------------------------------------------- 票 05/06/08 草稿详情页公共交互
+/** 草稿详情接口的宽类型：三个草稿 spec 各自只读自己关心的字段。 */
+export interface DraftDetailView {
+  draft: { id?: number; name?: string; version: number }
+  lessons: Array<{
+    id: number
+    classId?: number
+    assignmentId?: number
+    periodId: number | null
+    courseName?: string
+    locked?: boolean
+  }>
+}
+
+/** 草稿网格里的一格（按节次 id 定位，不依赖行列顺序）。 */
+export function gridCell(page: Page, periodId: number): Locator {
+  return page.locator(`.grid-card .cell[data-period-id="${periodId}"]`)
+}
+
+/** 网格里的一张课卡（按课节 id 定位；同门课一周多节也互不串）。 */
+export function lessonCard(page: Page, lessonId: number): Locator {
+  return page.locator(`.grid-card .lesson[data-lesson-id="${lessonId}"]`)
+}
+
+/** 管理员登录 → 打开草稿详情 → 等网格首格渲染。 */
+export async function openDraft(page: Page, draftId: number): Promise<void> {
+  await uiLogin(page, 'admin', 'admin123')
+  await page.goto(`/admin/drafts/${draftId}`)
+  await expect(page.locator('.grid-card .cell').first()).toBeVisible()
+}
+
+/** 在「按行政班」视角里选中班级，等触发器回填班级名。 */
+export async function selectClass(page: Page, className: string): Promise<void> {
+  const select = page.locator('.controls .el-select')
+  await select.click()
+  await page
+    .locator('.el-select-dropdown:visible .el-select-dropdown__item')
+    .filter({ hasText: className })
+    .first()
+    .click()
+  await expect(select).toContainText(className)
+}
+
+/** 切到「按教师」视角并选中教师（先点视角标签，再选下拉）。 */
+export async function selectTeacher(page: Page, teacherName: string): Promise<void> {
+  await page.getByText('按教师', { exact: true }).click()
+  const select = page.locator('.controls .el-select')
+  await select.click()
+  await page
+    .locator('.el-select-dropdown:visible .el-select-dropdown__item')
+    .filter({ hasText: teacherName })
+    .first()
+    .click()
+  await expect(select).toContainText(teacherName)
+}
+
+/** 等草稿详情重新拉取（写操作成功后前端会刷新权威状态）。 */
+export function waitForDraftReload(page: Page, draftId: number) {
+  return page.waitForResponse(
+    (response) =>
+      response.request().method() === 'GET' &&
+      response.url().endsWith(`/api/timetable-drafts/${draftId}`),
+  )
+}
+
+/** 等一次草稿变更提交（POST /changes），断言状态码用它的返回值。 */
+export function waitForChanges(page: Page, draftId: number) {
+  return page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.url().endsWith(`/api/timetable-drafts/${draftId}/changes`),
+  )
+}
+
+/** 等一次锁批量写入（PUT /lessons/locks）。 */
+export function waitForLocks(page: Page, draftId: number) {
+  return page.waitForResponse(
+    (response) =>
+      response.request().method() === 'PUT' &&
+      response.url().endsWith(`/api/timetable-drafts/${draftId}/lessons/locks`),
+  )
+}
+
+/** 走 API 读草稿详情；非 2xx 直接抛错（apiCall 已带状态与响应体）。 */
+export async function draftDetail(
+  api: APIRequestContext,
+  draftId: number,
+): Promise<DraftDetailView> {
+  const token = await apiLogin(api)
+  return apiCall(api, token, 'get', `/timetable-drafts/${draftId}`)
+}
+
+/**
+ * 通过 API 批量上/解锁：先读当前 version 再带 expectedVersion 写入，断言 200。
+ * 集成/优化类用例用它把前置状态摆好，不依赖 UI 点击。
+ */
+export async function lockLessons(
+  api: APIRequestContext,
+  seed: { draftId: number },
+  lessonIds: number[],
+  locked: boolean,
+): Promise<void> {
+  const token = await apiLogin(api)
+  const current = await draftDetail(api, seed.draftId)
+  const response = await api.put(`${API}/timetable-drafts/${seed.draftId}/lessons/locks`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { lessonIds, locked, expectedVersion: current.draft.version },
+  })
+  expect(response.status()).toBe(200)
+}
+
+/** 点选一张课卡，等右侧控制区回填课程名（选中态已成）。 */
+export async function openLesson(page: Page, lessonId: number): Promise<void> {
+  await lessonCard(page, lessonId).click()
+}
+
+/** 课节在草稿里的节次 id；未排课返回 null。 */
+export function positionOf(detail: DraftDetailView, lessonId: number): number | null {
+  return detail.lessons.find((lesson) => lesson.id === lessonId)?.periodId ?? null
+}
+
 // ---------------------------------------------------------------- 票 05 草稿拖拽
 /**
  * Three same-class lessons on day 1 (periods 1-3) plus two other-class lessons.

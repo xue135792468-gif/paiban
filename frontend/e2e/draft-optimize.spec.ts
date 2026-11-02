@@ -3,10 +3,12 @@ import {
   API,
   apiCall,
   apiLogin,
+  draftDetail,
+  lockLessons,
   newContext,
+  openDraft,
   seedDraftLockScenario,
-  uiLogin,
-  type DraftLockScenario,
+  selectClass,
 } from './helpers'
 
 /**
@@ -20,11 +22,6 @@ import {
  * `src/components/draft/OptimizationJobPanel.spec.ts`; this spec never asserts
  * "publishable" from a job status.
  */
-
-interface DraftDetailView {
-  draft: { id: number; name: string; version: number }
-  lessons: Array<{ id: number; assignmentId: number; locked: boolean; periodId: number | null }>
-}
 
 interface JobView {
   id: number
@@ -56,16 +53,6 @@ test.afterAll(async () => {
   await setSchoolType('junior')
 })
 
-async function detail(api: APIRequestContext, draftId: number): Promise<DraftDetailView> {
-  const token = await apiLogin(api)
-  return api.get(`${API}/timetable-drafts/${draftId}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  }).then(async (response) => {
-    expect(response.status()).toBe(200)
-    return response.json()
-  })
-}
-
 async function listJobs(api: APIRequestContext, semesterId: number): Promise<JobView[]> {
   const token = await apiLogin(api)
   const response = await api.get(`${API}/scheduling-jobs?semesterId=${semesterId}`, {
@@ -73,38 +60,6 @@ async function listJobs(api: APIRequestContext, semesterId: number): Promise<Job
   })
   expect(response.status()).toBe(200)
   return response.json()
-}
-
-async function lockLessons(
-  api: APIRequestContext,
-  seed: DraftLockScenario,
-  lessonIds: number[],
-  locked: boolean,
-): Promise<void> {
-  const token = await apiLogin(api)
-  const current = await detail(api, seed.draftId)
-  const response = await api.put(`${API}/timetable-drafts/${seed.draftId}/lessons/locks`, {
-    headers: { Authorization: `Bearer ${token}` },
-    data: { lessonIds, locked, expectedVersion: current.draft.version },
-  })
-  expect(response.status()).toBe(200)
-}
-
-async function openDraft(page: Page, draftId: number): Promise<void> {
-  await uiLogin(page, 'admin', 'admin123')
-  await page.goto(`/admin/drafts/${draftId}`)
-  await expect(page.locator('.grid-card .cell').first()).toBeVisible()
-}
-
-async function selectClass(page: Page, className: string): Promise<void> {
-  const select = page.locator('.controls .el-select')
-  await select.click()
-  await page
-    .locator('.el-select-dropdown:visible .el-select-dropdown__item')
-    .filter({ hasText: className })
-    .first()
-    .click()
-  await expect(select).toContainText(className)
 }
 
 async function startFromDialog(page: Page, maxSeconds: string): Promise<void> {
@@ -121,7 +76,7 @@ test('从当前草稿继续优化：原稿保留、锁继承、比较自动配�
   const api = await newContext()
   const seed = await seedDraftLockScenario(api)
   await lockLessons(api, seed, [seed.mathLessonIds[0]], true)
-  const before = await detail(api, seed.draftId)
+  const before = await draftDetail(api, seed.draftId)
 
   const postRequests: string[] = []
   page.on('request', (request) => {
@@ -136,7 +91,9 @@ test('从当前草稿继续优化：原稿保留、锁继承、比较自动配�
 
   await page.getByTestId('optimization-continue').click()
   const dialog = page.getByTestId('optimization-launch-dialog')
-  await expect(dialog).toContainText(before.draft.name)
+  const sourceDraftName = before.draft.name
+  expect(sourceDraftName).toBeTruthy()
+  await expect(dialog).toContainText(sourceDraftName!)
   await expect(dialog).toContainText('锁定 1 节会继承')
   await startFromDialog(page, '3')
 
@@ -151,14 +108,14 @@ test('从当前草稿继续优化：原稿保留、锁继承、比较自动配�
   expect(newDraftId).not.toBe(seed.draftId)
 
   // The source draft is untouched: same version and the same single lock.
-  const afterSource = await detail(api, seed.draftId)
+  const afterSource = await draftDetail(api, seed.draftId)
   expect(afterSource.draft.version).toBe(before.draft.version)
   expect(afterSource.lessons.filter((lesson) => lesson.locked).map((lesson) => lesson.id)).toEqual([
     seed.mathLessonIds[0],
   ])
 
   // The new draft inherits the lock by stable identity, and it survives a reload.
-  const afterNew = await detail(api, newDraftId)
+  const afterNew = await draftDetail(api, newDraftId)
   const lockedNew = afterNew.lessons.filter((lesson) => lesson.locked)
   expect(lockedNew).toHaveLength(1)
   expect(lockedNew[0].assignmentId).toBe(afterSource.lessons.find((lesson) => lesson.id === seed.mathLessonIds[0])?.assignmentId)
@@ -182,7 +139,7 @@ test('从当前草稿继续优化：原稿保留、锁继承、比较自动配�
 test('全部课节锁定时入口禁用并说明原因，不产生任务', async ({ page }) => {
   const api = await newContext()
   const seed = await seedDraftLockScenario(api)
-  const all = await detail(api, seed.draftId)
+  const all = await draftDetail(api, seed.draftId)
   await lockLessons(
     api,
     seed,

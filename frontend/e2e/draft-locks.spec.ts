@@ -1,107 +1,22 @@
-import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import {
   API,
   apiLogin,
+  draftDetail,
   dragCardToCell,
+  gridCell,
+  lessonCard,
+  lockLessons,
   newContext,
+  openDraft,
+  openLesson,
+  positionOf,
   seedDraftLockScenario,
-  uiLogin,
-  type DraftLockScenario,
+  selectClass,
+  selectTeacher,
+  waitForDraftReload,
+  waitForLocks,
 } from './helpers'
-
-interface DraftDetailView {
-  draft: { version: number }
-  lessons: Array<{ id: number; locked: boolean; periodId: number | null }>
-}
-
-function gridCell(page: Page, periodId: number): Locator {
-  return page.locator(`.grid-card .cell[data-period-id="${periodId}"]`)
-}
-
-function lessonCard(page: Page, lessonId: number): Locator {
-  return page.locator(`.grid-card .lesson[data-lesson-id="${lessonId}"]`)
-}
-
-async function openDraft(page: Page, draftId: number): Promise<void> {
-  await uiLogin(page, 'admin', 'admin123')
-  await page.goto(`/admin/drafts/${draftId}`)
-  await expect(page.locator('.grid-card .cell').first()).toBeVisible()
-}
-
-async function selectClass(page: Page, className: string): Promise<void> {
-  const select = page.locator('.controls .el-select')
-  await select.click()
-  await page
-    .locator('.el-select-dropdown:visible .el-select-dropdown__item')
-    .filter({ hasText: className })
-    .first()
-    .click()
-  await expect(select).toContainText(className)
-}
-
-async function selectTeacher(page: Page, teacherName: string): Promise<void> {
-  await page.getByText('按教师', { exact: true }).click()
-  const select = page.locator('.controls .el-select')
-  await select.click()
-  await page
-    .locator('.el-select-dropdown:visible .el-select-dropdown__item')
-    .filter({ hasText: teacherName })
-    .first()
-    .click()
-  await expect(select).toContainText(teacherName)
-}
-
-function waitForLocks(page: Page, draftId: number) {
-  return page.waitForResponse(
-    (response) =>
-      response.request().method() === 'PUT' &&
-      response.url().endsWith(`/api/timetable-drafts/${draftId}/lessons/locks`),
-  )
-}
-
-function waitForDraftReload(page: Page, draftId: number) {
-  return page.waitForResponse(
-    (response) =>
-      response.request().method() === 'GET' &&
-      response.url().endsWith(`/api/timetable-drafts/${draftId}`),
-  )
-}
-
-async function draftDetail(api: APIRequestContext, draftId: number): Promise<DraftDetailView> {
-  const token = await apiLogin(api)
-  return apiCallDetail(api, token, draftId)
-}
-
-async function apiCallDetail(
-  api: APIRequestContext,
-  token: string,
-  draftId: number,
-): Promise<DraftDetailView> {
-  const response = await api.get(`${API}/timetable-drafts/${draftId}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  expect(response.status()).toBe(200)
-  return response.json()
-}
-
-async function lockViaApi(
-  api: APIRequestContext,
-  seed: DraftLockScenario,
-  lessonIds: number[],
-  locked: boolean,
-): Promise<void> {
-  const token = await apiLogin(api)
-  const detail = await apiCallDetail(api, token, seed.draftId)
-  const response = await api.put(`${API}/timetable-drafts/${seed.draftId}/lessons/locks`, {
-    headers: { Authorization: `Bearer ${token}` },
-    data: { lessonIds, locked, expectedVersion: detail.draft.version },
-  })
-  expect(response.status()).toBe(200)
-}
-
-async function openLesson(page: Page, lessonId: number): Promise<void> {
-  await lessonCard(page, lessonId).click()
-}
 
 test('单节锁定后出现锁标记，刷新仍在；解锁后标记消失', async ({ page }) => {
   const api = await newContext()
@@ -185,21 +100,27 @@ test('多选两节一起锁定，确认框写明范围与数量，多选模式�
   await expect(lessonCard(page, seed.mathLessonIds[1])).not.toHaveAttribute('data-locked', 'true')
 
   const before = await draftDetail(api, seed.draftId)
-  let changesRequested = false
+  let changesRequested = 0
   page.on('request', (request) => {
     if (request.method() === 'POST' && request.url().endsWith('/changes')) {
-      changesRequested = true
+      changesRequested += 1
     }
   })
-  await dragCardToCell(
-    page,
-    lessonCard(page, seed.chineseLessonId),
-    gridCell(page, seed.emptyPeriod),
-  )
-  await page.waitForTimeout(300)
-  expect(changesRequested).toBe(false)
-  const after = await draftDetail(api, seed.draftId)
-  expect(after.draft.version).toBe(before.draft.version)
+  // 多选模式下拖拽是空操作：交互零副作用，整体重试（CI 下 pointerup 偶发丢失），
+  // 以 API 里的位置与版本不变为准，不只依赖 UI 文案。
+  const chinesePeriod = positionOf(before, seed.chineseLessonId)
+  await expect(async () => {
+    await dragCardToCell(
+      page,
+      lessonCard(page, seed.chineseLessonId),
+      gridCell(page, seed.emptyPeriod),
+    )
+    await page.waitForTimeout(300)
+    const after = await draftDetail(api, seed.draftId)
+    expect(positionOf(after, seed.chineseLessonId)).toBe(chinesePeriod)
+    expect(after.draft.version).toBe(before.draft.version)
+  }).toPass({ timeout: 20_000 })
+  expect(changesRequested).toBe(0)
 })
 
 test('按天与全班批量锁定数量准确；教师视角的范围项禁用', async ({ page }) => {
@@ -261,7 +182,7 @@ test('混合无效批次整批拒绝，不出现部分锁定', async ({ page }) 
   await selectClass(page, seed.className)
 
   const token = await apiLogin(api)
-  const before = await apiCallDetail(api, token, seed.draftId)
+  const before = await draftDetail(api, seed.draftId)
   const response = await api.put(`${API}/timetable-drafts/${seed.draftId}/lessons/locks`, {
     headers: { Authorization: `Bearer ${token}` },
     data: {
@@ -282,18 +203,26 @@ test('混合无效批次整批拒绝，不出现部分锁定', async ({ page }) 
 test('锁定课不能拖拽、换课或调整位置，提示先解锁且不写入', async ({ page }) => {
   const api = await newContext()
   const seed = await seedDraftLockScenario(api)
-  await lockViaApi(api, seed, [seed.mathLessonIds[0]], true)
+  await lockLessons(api, seed, [seed.mathLessonIds[0]], true)
   await openDraft(page, seed.draftId)
   await selectClass(page, seed.className)
   await expect(lessonCard(page, seed.mathLessonIds[0])).toHaveAttribute('data-locked', 'true')
   const before = await draftDetail(api, seed.draftId)
+  const lockedPeriod = positionOf(before, seed.mathLessonIds[0])
 
-  await dragCardToCell(
-    page,
-    lessonCard(page, seed.mathLessonIds[0]),
-    gridCell(page, seed.emptyPeriod),
-  )
-  await expect(page.getByText('该课节已锁定，请先解锁后再移动')).toBeVisible()
+  // 锁定课拖拽是空操作：整体重试（pointerup 偶发丢失），以提示 + API 位置/版本
+  // 不变为准，不只依赖 toast。
+  await expect(async () => {
+    await dragCardToCell(
+      page,
+      lessonCard(page, seed.mathLessonIds[0]),
+      gridCell(page, seed.emptyPeriod),
+    )
+    await expect(page.getByText('该课节已锁定，请先解锁后再移动').first()).toBeVisible()
+    const after = await draftDetail(api, seed.draftId)
+    expect(positionOf(after, seed.mathLessonIds[0])).toBe(lockedPeriod)
+    expect(after.draft.version).toBe(before.draft.version)
+  }).toPass({ timeout: 20_000 })
 
   await openLesson(page, seed.mathLessonIds[0])
   await page.getByRole('button', { name: '换课', exact: true }).click()

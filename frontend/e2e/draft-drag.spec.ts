@@ -1,86 +1,22 @@
-import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import {
   API,
   apiCall,
   apiLogin,
+  draftDetail,
   dragCardToCell,
+  gridCell,
+  lessonCard,
   newContext,
+  openDraft,
+  positionOf,
   seedDraftDragScenario,
-  uiLogin,
+  selectClass,
+  selectTeacher,
+  waitForChanges,
+  waitForDraftReload,
   type DraftDragScenario,
 } from './helpers'
-
-interface DraftDetailView {
-  draft: { version: number }
-  lessons: Array<{
-    id: number
-    classId: number
-    periodId: number | null
-    courseName: string
-  }>
-}
-
-function gridCell(page: Page, periodId: number): Locator {
-  return page.locator(`.grid-card .cell[data-period-id="${periodId}"]`)
-}
-
-function lessonCard(page: Page, lessonId: number): Locator {
-  return page.locator(`.grid-card .lesson[data-lesson-id="${lessonId}"]`)
-}
-
-async function openDraft(page: Page, draftId: number): Promise<void> {
-  await uiLogin(page, 'admin', 'admin123')
-  await page.goto(`/admin/drafts/${draftId}`)
-  await expect(page.locator('.grid-card .cell').first()).toBeVisible()
-}
-
-async function selectClass(page: Page, className: string): Promise<void> {
-  const select = page.locator('.controls .el-select')
-  await select.click()
-  await page
-    .locator('.el-select-dropdown:visible .el-select-dropdown__item')
-    .filter({ hasText: className })
-    .first()
-    .click()
-  await expect(select).toContainText(className)
-}
-
-async function selectTeacher(page: Page, teacherName: string): Promise<void> {
-  await page.getByText('按教师', { exact: true }).click()
-  const select = page.locator('.controls .el-select')
-  await select.click()
-  await page
-    .locator('.el-select-dropdown:visible .el-select-dropdown__item')
-    .filter({ hasText: teacherName })
-    .first()
-    .click()
-  await expect(select).toContainText(teacherName)
-}
-
-function waitForDraftReload(page: Page, draftId: number) {
-  return page.waitForResponse(
-    (response) =>
-      response.request().method() === 'GET' &&
-      response.url().endsWith(`/api/timetable-drafts/${draftId}`),
-  )
-}
-
-function waitForChanges(page: Page, draftId: number) {
-  return page.waitForResponse(
-    (response) =>
-      response.request().method() === 'POST' &&
-      response.url().endsWith(`/api/timetable-drafts/${draftId}/changes`),
-  )
-}
-
-async function draftDetail(api: APIRequestContext, draftId: number): Promise<DraftDetailView> {
-  const token = await apiLogin(api)
-  return apiCall(api, token, 'get', `/timetable-drafts/${draftId}`)
-}
-
-function positionOf(detail: DraftDetailView, lessonId: number): number | null {
-  return detail.lessons.find((lesson) => lesson.id === lessonId)?.periodId ?? null
-}
 
 async function drag(page: Page, seed: DraftDragScenario, toPeriodId: number) {
   await dragCardToCell(page, lessonCard(page, seed.lessonAId), gridCell(page, toPeriodId))
@@ -138,7 +74,7 @@ test('拖到空格直接移动，原位留空，重载后保持', async ({ page 
   await reload
 
   await expect(gridCell(page, seed.emptyPeriod)).toContainText(seed.courseAName)
-  await expect(page.locator(`.grid-card .lesson[data-lesson-id="${seed.lessonAId}"]`)).toHaveCount(1)
+  await expect(lessonCard(page, seed.lessonAId)).toHaveCount(1)
   expect(await gridCell(page, seed.periodA).innerText()).not.toContain(seed.courseAName)
 
   await page.reload()
