@@ -18,7 +18,7 @@ import com.paiban.substitution.plan.PlanMove;
 import com.paiban.substitution.plan.PlanSnapshot;
 import com.paiban.substitution.plan.PlanVerifier;
 import com.paiban.substitution.plan.PlanningResult;
-import com.paiban.substitution.plan.RankingPreset;
+import com.paiban.common.policy.ExchangeRankingPreset;
 import com.paiban.substitution.plan.SwapPlanner;
 import java.io.PrintStream;
 import java.nio.file.Files;
@@ -107,7 +107,7 @@ public final class SubstitutionCli {
         if (!List.of("min-impact", "min-teachers", "stable-timetable").contains(presetCode)) {
             throw new IllegalArgumentException("未知排序预设: " + presetCode);
         }
-        RankingPreset preset = RankingPreset.fromCode(presetCode);
+        ExchangeRankingPreset preset = ExchangeRankingPreset.fromCode(presetCode);
 
         PlanSnapshot snapshot = readSnapshot(snapshotPath);
         RequestJson request = MAPPER.readValue(requestPath.toFile(), RequestJson.class);

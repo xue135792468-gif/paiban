@@ -1,5 +1,6 @@
 package com.paiban.substitution.plan;
 
+import com.paiban.common.policy.ExchangeRankingPreset;
 import com.paiban.foundation.domain.PeriodSection;
 import com.paiban.scheduling.constraint.ConstraintChecker;
 import com.paiban.scheduling.constraint.ConstraintContext.CourseView;
@@ -75,7 +76,7 @@ public final class SwapPlanner {
         }
     }
 
-    public record Options(int searchWindowDays, int maxTeachers, RankingPreset preset,
+    public record Options(int searchWindowDays, int maxTeachers, ExchangeRankingPreset preset,
                           int nodeBudget, int timeBudgetMs) {
 
         public static final int DEFAULT_WINDOW_DAYS = 7;
@@ -84,17 +85,26 @@ public final class SwapPlanner {
         public Options {
             searchWindowDays = Math.max(1, Math.min(30, searchWindowDays));
             maxTeachers = Math.max(2, Math.min(10, maxTeachers));
-            preset = preset == null ? RankingPreset.MIN_IMPACT : preset;
+            preset = preset == null ? ExchangeRankingPreset.MIN_IMPACT : preset;
             nodeBudget = nodeBudget <= 0 ? 50_000 : nodeBudget;
             timeBudgetMs = timeBudgetMs <= 0 ? 200 : timeBudgetMs;
         }
 
         public static Options defaults() {
-            return new Options(DEFAULT_WINDOW_DAYS, DEFAULT_MAX_TEACHERS, RankingPreset.MIN_IMPACT, 50_000, 200);
+            return new Options(DEFAULT_WINDOW_DAYS, DEFAULT_MAX_TEACHERS, ExchangeRankingPreset.MIN_IMPACT, 50_000, 200);
         }
 
-        public static Options of(int windowDays, int maxTeachers, RankingPreset preset) {
+        public static Options of(int windowDays, int maxTeachers, ExchangeRankingPreset preset) {
             return new Options(windowDays, maxTeachers, preset, 50_000, 200);
+        }
+
+        /**
+         * The component is still named {@code maxTeachers} to avoid a wide rename,
+         * but it has always capped the cycle length, i.e. the number of moved
+         * lessons. New code and UI copy should use this name.
+         */
+        public int maxMovedLessons() {
+            return maxTeachers;
         }
     }
 

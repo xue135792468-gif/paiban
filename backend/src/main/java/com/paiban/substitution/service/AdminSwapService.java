@@ -24,7 +24,7 @@ import com.paiban.substitution.plan.PlanMove;
 import com.paiban.substitution.plan.PlanSnapshot;
 import com.paiban.substitution.plan.PlanVerifier;
 import com.paiban.substitution.plan.PlanningResult;
-import com.paiban.substitution.plan.RankingPreset;
+import com.paiban.common.policy.ExchangeRankingPreset;
 import com.paiban.substitution.plan.SwapPlanner;
 import com.paiban.substitution.service.LessonDeadline.ChangedSlot;
 import com.paiban.substitution.service.PlanSnapshotFactory.SwapPlannerOptions;
@@ -209,9 +209,9 @@ public class AdminSwapService {
 
         SwapPlannerOptions options = snapshots.swapOptions();
         // 排序预设缺省时用设置中心的默认值（StringUtils.hasText：新增代码的空白判断规范）。
-        RankingPreset preset = !StringUtils.hasText(body.rankingPreset())
+        ExchangeRankingPreset preset = !StringUtils.hasText(body.rankingPreset())
                 ? options.preset()
-                : RankingPreset.fromCode(body.rankingPreset());
+                : ExchangeRankingPreset.fromCode(body.rankingPreset());
         // 冻结槽（票 07）：窗口内本班当前安排已开始的槽位交给求解器跳过——
         // 部分已开始的旧环里，不碰冻结实例的合法新方案要能被找到。
         Set<FrozenSlot> frozenSlots = frozenSlotsInWindow(snapshot, classId,

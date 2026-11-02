@@ -2,6 +2,7 @@ package com.paiban.substitution.plan;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.paiban.common.policy.ExchangeRankingPreset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -35,7 +36,7 @@ class SwapPlanPropertyTest {
                     snapshot,
                     new SwapPlanner.Request(classId, sourceEntry, PlanFixtures.date(day),
                             PlanFixtures.periodId(day, targetNo)),
-                    new SwapPlanner.Options(7, 6, RankingPreset.MIN_IMPACT, 5_000, 30));
+                    new SwapPlanner.Options(7, 6, ExchangeRankingPreset.MIN_IMPACT, 5_000, 30));
 
             assertThat(result.candidates()).as("seed " + seed).isNotEmpty();
             for (CandidatePlan plan : result.candidates()) {

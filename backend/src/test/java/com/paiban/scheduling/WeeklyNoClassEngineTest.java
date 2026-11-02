@@ -23,7 +23,7 @@ import com.paiban.substitution.plan.PlanFixtures;
 import com.paiban.substitution.plan.PlanMove;
 import com.paiban.substitution.plan.PlanSnapshot;
 import com.paiban.substitution.plan.PlanVerifier;
-import com.paiban.substitution.plan.RankingPreset;
+import com.paiban.common.policy.ExchangeRankingPreset;
 import com.paiban.substitution.plan.SwapPlanner;
 import java.time.Instant;
 import java.util.HashMap;
@@ -73,7 +73,7 @@ class WeeklyNoClassEngineTest {
         long b = builder.addLesson(1, 2, 2, 2L, 1, 2);
         PlanSnapshot snapshot = builder.build();
         var result = SwapPlanner.plan(snapshot, new SwapPlanner.Request(1, a,
-                PlanFixtures.MONDAY, 102), SwapPlanner.Options.of(1, 2, RankingPreset.MIN_IMPACT));
+                PlanFixtures.MONDAY, 102), SwapPlanner.Options.of(1, 2, ExchangeRankingPreset.MIN_IMPACT));
         assertThat(result.candidates()).isEmpty();
         assertThat(result.diagnoses()).extracting(d -> d.code()).contains("CLASS_UNAVAILABLE");
         var moves = List.of(
