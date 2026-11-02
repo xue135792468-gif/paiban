@@ -203,7 +203,9 @@ export function useDraftLocks(options: DraftLocksOptions) {
       const lesson = lessonById.value.get(id)
       return !lesson || lesson.periodId == null
     })
-    if (hasUnassigned) {
+    // Locking needs a real position; unlocking an unassigned lesson is a harmless
+    // no-op the server accepts, so the client must not invent a stricter rule.
+    if (locked && hasUnassigned) {
       notify.warning('所选包含未排课节，不能锁定')
       return { ok: false, updated: 0 }
     }

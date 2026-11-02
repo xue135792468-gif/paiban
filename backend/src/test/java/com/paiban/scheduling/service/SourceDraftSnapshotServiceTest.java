@@ -44,7 +44,7 @@ class SourceDraftSnapshotServiceTest {
     @Test
     void capturesRowsIndexesCurrentTeacherLocksAndFingerprint() {
         TimetableDraft draft = draft(5L, 1L, "DRAFT", 3L, "导入草稿");
-        when(drafts.findById(5L)).thenReturn(Optional.of(draft));
+        when(drafts.findWithLockById(5L)).thenReturn(Optional.of(draft));
         List<Assignment> semesterAssignments = List.of(
                 assignment(10L, 1L, 1L, 100L, 1L, 2),
                 assignment(11L, 1L, 2L, 200L, 2L, 1));
@@ -79,7 +79,7 @@ class SourceDraftSnapshotServiceTest {
     @Test
     void jsonRoundTripKeepsTheFrozenSnapshot() {
         TimetableDraft draft = draft(5L, 1L, "DRAFT", 0L, "草稿");
-        when(drafts.findById(5L)).thenReturn(Optional.of(draft));
+        when(drafts.findWithLockById(5L)).thenReturn(Optional.of(draft));
         when(assignments.findBySemesterId(1L))
                 .thenReturn(List.of(assignment(10L, 1L, 1L, 100L, 1L, 1)));
         when(draftLessons.findByDraftIdOrderByIdAsc(5L))
@@ -95,7 +95,7 @@ class SourceDraftSnapshotServiceTest {
 
     @Test
     void missingDraftIsNotFound() {
-        when(drafts.findById(5L)).thenReturn(Optional.empty());
+        when(drafts.findWithLockById(5L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.capture(5L, 1L))
                 .isInstanceOfSatisfying(ApiException.class,
@@ -104,7 +104,7 @@ class SourceDraftSnapshotServiceTest {
 
     @Test
     void draftFromAnotherSemesterIsRejected() {
-        when(drafts.findById(5L)).thenReturn(Optional.of(draft(5L, 2L, "DRAFT", 0L, "别的学期")));
+        when(drafts.findWithLockById(5L)).thenReturn(Optional.of(draft(5L, 2L, "DRAFT", 0L, "别的学期")));
 
         assertThatThrownBy(() -> service.capture(5L, 1L))
                 .isInstanceOfSatisfying(ApiException.class, ex -> {
@@ -115,7 +115,7 @@ class SourceDraftSnapshotServiceTest {
 
     @Test
     void publishedDraftIsRejected() {
-        when(drafts.findById(5L)).thenReturn(Optional.of(draft(5L, 1L, "PUBLISHED", 0L, "已发布")));
+        when(drafts.findWithLockById(5L)).thenReturn(Optional.of(draft(5L, 1L, "PUBLISHED", 0L, "已发布")));
 
         assertThatThrownBy(() -> service.capture(5L, 1L))
                 .isInstanceOfSatisfying(ApiException.class, ex -> {
@@ -126,7 +126,7 @@ class SourceDraftSnapshotServiceTest {
 
     @Test
     void emptyDraftIsRejected() {
-        when(drafts.findById(5L)).thenReturn(Optional.of(draft(5L, 1L, "DRAFT", 0L, "空")));
+        when(drafts.findWithLockById(5L)).thenReturn(Optional.of(draft(5L, 1L, "DRAFT", 0L, "空")));
         when(draftLessons.findByDraftIdOrderByIdAsc(5L)).thenReturn(List.of());
 
         assertThatThrownBy(() -> service.capture(5L, 1L))
@@ -138,7 +138,7 @@ class SourceDraftSnapshotServiceTest {
 
     @Test
     void unknownAssignmentIsRejected() {
-        when(drafts.findById(5L)).thenReturn(Optional.of(draft(5L, 1L, "DRAFT", 0L, "草稿")));
+        when(drafts.findWithLockById(5L)).thenReturn(Optional.of(draft(5L, 1L, "DRAFT", 0L, "草稿")));
         when(assignments.findBySemesterId(1L)).thenReturn(List.of());
         when(draftLessons.findByDraftIdOrderByIdAsc(5L))
                 .thenReturn(List.of(row(10L, 0, 1L, 100L, 1L, null, false)));
@@ -239,7 +239,7 @@ class SourceDraftSnapshotServiceTest {
     @Test
     void requireAssignmentsUnchangedDetectsEveryEdit() {
         TimetableDraft draft = draft(5L, 1L, "DRAFT", 0L, "草稿");
-        when(drafts.findById(5L)).thenReturn(Optional.of(draft));
+        when(drafts.findWithLockById(5L)).thenReturn(Optional.of(draft));
         when(draftLessons.findByDraftIdOrderByIdAsc(5L))
                 .thenReturn(List.of(row(10L, 0, 1L, 1L, 100L, null, false)));
         when(teachers.findAllById(any())).thenReturn(List.of(teacher(100L)));
@@ -267,7 +267,7 @@ class SourceDraftSnapshotServiceTest {
     }
 
     private void prepare(List<Assignment> semesterAssignments, List<DraftLesson> rows) {
-        when(drafts.findById(5L)).thenReturn(Optional.of(draft(5L, 1L, "DRAFT", 0L, "草稿")));
+        when(drafts.findWithLockById(5L)).thenReturn(Optional.of(draft(5L, 1L, "DRAFT", 0L, "草稿")));
         when(assignments.findBySemesterId(1L)).thenReturn(semesterAssignments);
         when(draftLessons.findByDraftIdOrderByIdAsc(5L)).thenReturn(rows);
         List<Teacher> known = new ArrayList<>();

@@ -8,15 +8,25 @@ import com.paiban.scheduling.domain.DraftLesson;
 import com.paiban.scheduling.domain.DraftLessonRepository;
 import com.paiban.scheduling.domain.TimetableDraft;
 import com.paiban.scheduling.domain.TimetableDraftRepository;
+import com.paiban.scheduling.service.DraftLockService;
+import com.paiban.scheduling.service.DraftWriteGuard;
 import com.paiban.support.ApiIntegrationTest;
 import com.paiban.support.TestData;
 import io.restassured.response.Response;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Ticket 01: locks are persisted, survive a reload, and every draft write entry point
@@ -37,6 +47,15 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
 
     @Autowired
     private DraftLessonRepository draftLessons;
+
+    @Autowired
+    private DraftWriteGuard guard;
+
+    @Autowired
+    private DraftLockService lockService;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     private record World(long semesterId, List<Long> periods, long classA, long classB,
                          long chinese, long math, long english,
@@ -314,6 +333,47 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
     }
 
     // ---------- fixtures ----------
+
+    @Test
+    void aLockWriteWaitsForTheDraftRowLockInsteadOfRacingIt() throws Exception {
+        String token = adminToken();
+        World world = world(token);
+        Seeded seeded = seedMainDraft(world);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        CountDownLatch held = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            Future<?> holder = pool.submit(() -> new TransactionTemplate(transactionManager)
+                    .executeWithoutResult(status -> {
+                        guard.lockEditable(seeded.draftId(), null);
+                        held.countDown();
+                        try {
+                            release.await(5, TimeUnit.SECONDS);
+                        } catch (InterruptedException ex) {
+                            Thread.currentThread().interrupt();
+                        }
+                    }));
+            assertThat(held.await(5, TimeUnit.SECONDS)).isTrue();
+
+            Future<?> writer = pool.submit(() -> lockService.setLocked(
+                    seeded.draftId(), List.of(seeded.chineseA()), true, null, "test"));
+            try {
+                writer.get(300, TimeUnit.MILLISECONDS);
+                throw new AssertionError("the lock write should wait for the draft row lock");
+            } catch (TimeoutException expected) {
+                // Still waiting, exactly as the shared write protocol requires.
+            }
+
+            release.countDown();
+            holder.get(5, TimeUnit.SECONDS);
+            writer.get(5, TimeUnit.SECONDS);
+            DraftLesson locked = draftLessons.findById(seeded.chineseA()).orElseThrow();
+            assertThat(locked.isLocked()).isTrue();
+        } finally {
+            release.countDown();
+            pool.shutdownNow();
+        }
+    }
 
     private World world(String token) {
         long semesterId = TestData.semester(token);

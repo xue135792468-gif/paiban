@@ -17,7 +17,10 @@ interface GetCall {
   config?: { params?: Record<string, unknown> }
 }
 
-function fakeClient(reply?: (url: string, body: PatchCall['body']) => Promise<any>) {
+function fakeClient(
+  reply?: (url: string, body: PatchCall['body']) => Promise<any>,
+  postReply?: (url: string, body: unknown) => Promise<any>,
+) {
   const calls: PatchCall[] = []
   const posts: PostCall[] = []
   const gets: GetCall[] = []
@@ -33,6 +36,7 @@ function fakeClient(reply?: (url: string, body: PatchCall['body']) => Promise<an
     }),
     post: vi.fn(async (url: string, body: unknown) => {
       posts.push({ url, body })
+      if (postReply) return postReply(url, body)
       return { data: { saved: true, valid: true, hardConflicts: 0, type: 'INTRA_CLASS', conflicts: [], warnings: [] } }
     }),
   }
@@ -44,6 +48,24 @@ function fakeNotify() {
 }
 
 describe('useDraftAdjust', () => {
+  it('legacy move and swap undo send the version produced by that write', async () => {
+    const { client, calls, posts } = fakeClient(
+      async () => ({ data: { saved: true, valid: true, version: 5, conflicts: [] } }),
+      async () => ({
+        data: { saved: true, valid: true, version: 9, type: 'INTRA_CLASS', conflicts: [], warnings: [] },
+      }),
+    )
+    const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
+
+    await adjust.move({ id: 11, periodId: 100, roomId: 5 }, { periodId: 200 })
+    await adjust.undo()
+    expect(calls[1].body.expectedVersion).toBe(5)
+
+    await adjust.swap({ id: 11 }, { lessonId: 12 }, false)
+    await adjust.undo()
+    expect(posts[1].body).toMatchObject({ expectedVersion: 9 })
+  })
+
   it('undo sends the lesson back to its original period and room', async () => {
     const { client, calls } = fakeClient()
     const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })

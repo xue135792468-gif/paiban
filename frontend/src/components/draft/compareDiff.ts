@@ -45,11 +45,9 @@ function dayOf(lesson: DraftLesson): number | null {
 /**
  * Builds the lesson identity map for one draft.
  *
- * The contract identity is `(assignmentId, lessonIndex)`, but the detail API does
- * not expose `lessonIndex` yet. Draft rows are created in assignment/lesson order
- * and manual edits never renumber them, so the rank inside one assignment (rows
- * arrive ordered by id) is the same ordinal. If a future payload does send
- * `lessonIndex`, that value wins and nothing else changes.
+ * The contract identity is `(assignmentId, lessonIndex)`. The detail API now sends
+ * `lessonIndex`; the id-order rank is only a compatibility fallback for an older
+ * payload, because rows arrive ordered by id and manual edits never renumber them.
  */
 export function lessonKeyMap(lessons: DraftLesson[]): Map<string, DraftLesson> {
   const rankByAssignment = new Map<number, number>()

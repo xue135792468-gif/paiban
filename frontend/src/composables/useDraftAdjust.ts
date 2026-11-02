@@ -72,8 +72,20 @@ export interface UndoContext {
 
 /** Moves are undone by moving back; a swap is its own inverse. */
 export type UndoEntry =
-  | { kind: 'move'; lessonId: number; from: { periodId: number | null; roomId: number | null } }
-  | { kind: 'swap'; lessonId: number; targetLessonId: number; swapRooms: boolean }
+  | {
+      kind: 'move'
+      lessonId: number
+      from: { periodId: number | null; roomId: number | null }
+      /** Version produced by this write; undo must match it or be refused. */
+      version?: number
+    }
+  | {
+      kind: 'swap'
+      lessonId: number
+      targetLessonId: number
+      swapRooms: boolean
+      version?: number
+    }
   /** One atomic action; the items are already inverted for the undo call. */
   | { kind: 'changes'; items: DraftChangeItem[]; label: string }
 
@@ -169,10 +181,12 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
       // undo sends periodId null, which the server reads as "back to unassigned".
       const changed = fromPeriodId !== target.periodId || (lesson.roomId ?? null) !== roomId
       if (changed) {
+        remember(data.version)
         push({
           kind: 'move',
           lessonId: lesson.id,
           from: { periodId: fromPeriodId, roomId: lesson.roomId ?? null },
+          version: data.version,
         })
       }
       notify.success('已移动课节')
@@ -202,11 +216,13 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
       if (!data.saved) {
         return { saved: false, type: data.type, conflicts: data.conflicts ?? [], warnings }
       }
+      remember(data.version)
       push({
         kind: 'swap',
         lessonId: lesson.id,
         targetLessonId: candidate.lessonId,
         swapRooms,
+        version: data.version,
       })
       notify.success('已换课')
       return { saved: true, type: data.type, conflicts: [], warnings }
@@ -443,10 +459,13 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
         }
         remember(data.version)
       } else if (entry.kind === 'move') {
-        const { data } = await client.patch(lessonUrl(entry.lessonId), {
+        const body: Record<string, unknown> = {
           periodId: entry.from.periodId,
           roomId: entry.from.roomId,
-        })
+        }
+        // A stale undo must not replay onto someone else's newer timetable.
+        if (entry.version != null) body.expectedVersion = entry.version
+        const { data } = await client.patch(lessonUrl(entry.lessonId), body)
         if (!data.saved) {
           notify.error('撤销失败：课表可能已被其他调整修改，请刷新后重试')
           return { undone: false, conflicts: data.conflicts ?? [] }
@@ -454,11 +473,13 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
         remember(data.version)
       } else {
         // Swapping the same pair again restores both lessons.
-        const { data } = await client.post(swapUrl(), {
+        const body: Record<string, unknown> = {
           lessonId: entry.lessonId,
           targetLessonId: entry.targetLessonId,
           swapRooms: entry.swapRooms,
-        })
+        }
+        if (entry.version != null) body.expectedVersion = entry.version
+        const { data } = await client.post(swapUrl(), body)
         if (!data.saved) {
           notify.error('撤销失败：课表可能已被其他调整修改，请刷新后重试')
           return { undone: false, conflicts: data.conflicts ?? [] }

@@ -68,13 +68,15 @@ public class SourceDraftSnapshotService {
     }
 
     /**
-     * Validates and freezes one draft. Every refusal happens before a job exists. The
-     * checks are ordered from the draft itself, to its lesson rows, to the teaching
-     * assignments, so the message names the first thing that is wrong.
+     * Validates and freezes one draft. The draft row is locked for the capture so a
+     * concurrent editor cannot change rows between the version/row reads; the snapshot
+     * is one point in time, never a mix of two. Every refusal happens before a job
+     * exists. The checks are ordered from the draft itself, to its lesson rows, to the
+     * teaching assignments, so the message names the first thing that is wrong.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public SourceDraftSnapshot capture(Long draftId, Long expectedSemesterId) {
-        TimetableDraft draft = drafts.findById(draftId)
+        TimetableDraft draft = drafts.findWithLockById(draftId)
                 .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
         Long semesterId = draft.getSemesterId();
         if (expectedSemesterId != null && !expectedSemesterId.equals(semesterId)) {

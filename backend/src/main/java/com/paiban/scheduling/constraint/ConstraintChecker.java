@@ -218,7 +218,7 @@ public final class ConstraintChecker {
             out.add(new ConstraintViolation("TEACHER_CONFLICT",
                     teacherName(ctx, a.teacherId()) + " 此时在 " + className(ctx, b.classId())
                             + " 有 " + courseName(ctx, b.courseId()) + "课（" + periodLabel(periodA) + "）",
-                    a.id(), true));
+                    a.id(), true, ConstraintViolation.pairKey("TEACHER_CONFLICT", a.id(), b.id())));
         }
         Control classConflict = settings.control(ConstraintType.CLASS_CONFLICT);
         if (classConflict != null && classConflict.hard()
@@ -226,7 +226,7 @@ public final class ConstraintChecker {
             out.add(new ConstraintViolation("CLASS_CONFLICT",
                     className(ctx, a.classId()) + " 在 " + periodLabel(periodA)
                             + " 已排 " + courseName(ctx, b.courseId()),
-                    a.id(), true));
+                    a.id(), true, ConstraintViolation.pairKey("CLASS_CONFLICT", a.id(), b.id())));
         }
         Control roomConflict = settings.control(ConstraintType.ROOM_CONFLICT);
         if (roomConflict != null && roomConflict.hard()
@@ -234,7 +234,7 @@ public final class ConstraintChecker {
             out.add(new ConstraintViolation("ROOM_CONFLICT",
                     "教室「" + roomName(ctx, a.roomId()) + "」在 " + periodLabel(periodA)
                             + " 已被 " + className(ctx, b.classId()) + " 占用",
-                    a.id(), true));
+                    a.id(), true, ConstraintViolation.pairKey("ROOM_CONFLICT", a.id(), b.id())));
         }
     }
 
@@ -441,7 +441,7 @@ public final class ConstraintChecker {
             out.add(new ConstraintViolation("SAME_COURSE_PER_DAY",
                     className(ctx, objectIdOf(key)) + " 的 " + courseName(ctx, courseId)
                             + " 一天最多排一节（" + String.join(" / ", labels) + "）",
-                    null, true, "SAME_COURSE_PER_DAY|" + key));
+                    null, true, "SAME_COURSE_PER_DAY|" + key, rows.size()));
         }
 
         for (Map.Entry<String, List<LessonView>> entry : classCourseDay.entrySet()) {
@@ -453,7 +453,7 @@ public final class ConstraintChecker {
             if (control != null && control.hard() && entry.getValue().size() > 1) {
                 out.add(new ConstraintViolation("COURSE_SPREAD",
                         "同一课程没有分散到不同天（当天 " + entry.getValue().size() + " 节）",
-                        null, true, "COURSE_SPREAD|" + entry.getKey()));
+                        null, true, "COURSE_SPREAD|" + entry.getKey(), entry.getValue().size()));
             }
         }
 
@@ -496,7 +496,7 @@ public final class ConstraintChecker {
             if (message != null) {
                 out.add(new ConstraintViolation(
                         message.code(), message.message(), null, true,
-                        type.name() + "|" + entry.getKey()));
+                        type.name() + "|" + entry.getKey(), count));
             }
         }
     }
@@ -549,10 +549,11 @@ public final class ConstraintChecker {
             if (touched != null && !touched.classDay().contains(entry.getKey())) {
                 continue;
             }
-            if (internalGapCount(ctx, entry.getValue()) > 0) {
+            int gaps = internalGapCount(ctx, entry.getValue());
+            if (gaps > 0) {
                 out.add(new ConstraintViolation("CLASS_GAP_MINIMIZED",
                         className(ctx, objectIdOf(entry.getKey())) + " 的课表存在空堂", null, true,
-                        "CLASS_GAP_MINIMIZED|" + entry.getKey()));
+                        "CLASS_GAP_MINIMIZED|" + entry.getKey(), gaps));
             }
         }
     }
@@ -617,7 +618,7 @@ public final class ConstraintChecker {
                     if (run > max) {
                         out.add(new ConstraintViolation("TEACHER_MAX_CONSECUTIVE",
                                 "教师连续上课 " + run + " 节，超过上限 " + max, null, true,
-                                "TEACHER_MAX_CONSECUTIVE|" + entry.getKey()));
+                                "TEACHER_MAX_CONSECUTIVE|" + entry.getKey(), run));
                     }
                     run = 1;
                 }

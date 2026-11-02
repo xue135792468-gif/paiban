@@ -6,6 +6,8 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 
+import com.paiban.scheduling.domain.Assignment;
+import com.paiban.scheduling.domain.AssignmentRepository;
 import com.paiban.scheduling.domain.ConstraintConfig;
 import com.paiban.scheduling.domain.ConstraintConfigRepository;
 import com.paiban.scheduling.domain.ConstraintType;
@@ -54,6 +56,9 @@ class DraftCyclePlanIntegrationTest extends ApiIntegrationTest {
 
     @Autowired
     private DraftCyclePlanTokenRepository cycleTokens;
+
+    @Autowired
+    private AssignmentRepository assignments;
 
     private record World(long semesterId, List<Long> periods, long classA, long classB, long classC,
                          long chinese, long math, long english, long teacherA, long teacherB,
@@ -188,6 +193,52 @@ class DraftCyclePlanIntegrationTest extends ApiIntegrationTest {
                 .body("message", containsString("课表已变化"));
         assertThat(lessonPeriod(policy.source())).isEqualTo(world.periods().get(0));
         assertThat(version(policy.draftId())).isZero();
+    }
+
+    @Test
+    void lockingAnIntermediateLessonAfterPreviewInvalidatesTheToken() {
+        String token = adminToken();
+        World world = world(token);
+        Scenario scenario = threeLessonCycle(world);
+        String planToken = searchToken(token, scenario.draftId(), scenario.source(),
+                world.periods().get(1), scenario.target(), 0L);
+
+        as(token).body(Map.of("lessonIds", List.of(scenario.intermediate()), "locked", true,
+                        "expectedVersion", version(scenario.draftId())))
+                .when().put(LOCKS.formatted(scenario.draftId()))
+                .then().statusCode(200);
+
+        as(token).body(Map.of("token", planToken, "expectedVersion", 1))
+                .when().post(APPLY.formatted(scenario.draftId()))
+                .then().statusCode(409)
+                .body("message", containsString("课表已变化"));
+        assertThat(version(scenario.draftId())).isEqualTo(1);
+        assertThat(lessonPeriod(scenario.source())).isEqualTo(world.periods().get(0));
+    }
+
+    @Test
+    void assignmentChangeAfterPreviewInvalidatesTheToken() {
+        String token = adminToken();
+        World world = world(token);
+        Scenario scenario = threeLessonCycle(world);
+        String planToken = searchToken(token, scenario.draftId(), scenario.source(),
+                world.periods().get(1), scenario.target(), 0L);
+
+        Assignment assignment = new Assignment();
+        assignment.setSemesterId(world.semesterId());
+        assignment.setAdminClassId(world.classA());
+        assignment.setTeachingClassId(world.classA());
+        assignment.setCourseId(world.chinese());
+        assignment.setTeacherId(world.teacherA());
+        assignment.setWeeklyLessons(2);
+        assignments.save(assignment);
+
+        as(token).body(Map.of("token", planToken, "expectedVersion", 0))
+                .when().post(APPLY.formatted(scenario.draftId()))
+                .then().statusCode(409)
+                .body("message", containsString("课表已变化"));
+        assertThat(version(scenario.draftId())).isZero();
+        assertThat(lessonPeriod(scenario.source())).isEqualTo(world.periods().get(0));
     }
 
     @Test

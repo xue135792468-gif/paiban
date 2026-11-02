@@ -172,6 +172,8 @@ export interface DraftChangeResult {
   addedConflicts: DraftViolation[]
   remainingConflicts: DraftViolation[]
   conflicts: DraftViolation[]
+  /** Present on the cycle-plan apply response; false means the token was not consumed. */
+  tokenUsed?: boolean
 }
 
 export interface DraftViolation {
@@ -180,6 +182,8 @@ export interface DraftViolation {
   message: string
   lessonId: number | null
   severity: number
+  /** Severity of the fact: one pair conflict is 1, a two-lesson aggregate bucket is 2. */
+  weight?: number
 }
 
 export interface CyclePlanMove {

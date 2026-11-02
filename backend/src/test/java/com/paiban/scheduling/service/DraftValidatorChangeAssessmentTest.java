@@ -50,6 +50,7 @@ class DraftValidatorChangeAssessmentTest {
     private static final long P4 = 104L;
     private static final long P5 = 105L;
     private static final long P6 = 106L;
+    private static final long P7 = 107L;
 
     private static final long CLASS_1 = 201L;
     private static final long CLASS_2 = 202L;
@@ -102,7 +103,7 @@ class DraftValidatorChangeAssessmentTest {
 
         when(periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(SEMESTER_ID)).thenReturn(List.of(
                 period(P1, 1), period(P2, 2), period(P3, 3), period(P4, 4),
-                period(P5, 5), period(P6, 6)));
+                period(P5, 5), period(P6, 6), periodOn(P7, 2, 1)));
         when(rooms.findAll()).thenReturn(List.of(
                 room(ROOM_1, "教室1"), room(ROOM_2, "教室2"), room(ROOM_3, "教室3"),
                 room(ROOM_4, "教室4"), room(ROOM_5, "教室5")));
@@ -151,9 +152,9 @@ class DraftValidatorChangeAssessmentTest {
                 new LessonChange(LESSON_3, P4, ROOM_3, TEACHER_1)));
 
         assertThat(assessment.allowed()).isFalse();
-        assertThat(assessment.added())
-                .extracting(DraftValidator.Violation::key)
-                .containsExactly("TEACHER_CONFLICT|L|" + LESSON_3);
+        assertThat(assessment.added()).hasSize(1);
+        assertThat(assessment.added().get(0).key()).startsWith("TEACHER_CONFLICT|L|");
+        assertThat(assessment.added().get(0).key()).contains(String.valueOf(LESSON_3));
     }
 
     @Test
@@ -183,6 +184,43 @@ class DraftValidatorChangeAssessmentTest {
         assertThat(improved.after()).hasSize(1);
         assertThat(improved.allowed()).isTrue();
         assertThat(improved.added()).isEmpty();
+    }
+
+    @Test
+    void growingAnAggregateBucketFromTwoToThreeIsRefusedEvenThoughItIsStillOneRow() {
+        useSameCourseSettings();
+        useLessons(
+                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1, ROOM_1),
+                lesson(LESSON_2, CHINESE, TEACHER_2, CLASS_1, P2, ROOM_2),
+                lesson(LESSON_3, CHINESE, TEACHER_4, CLASS_1, P7, ROOM_3));
+
+        ChangeAssessment assessment = validator.assessChanges(DRAFT_ID, List.of(
+                new LessonChange(LESSON_3, P3, ROOM_3, TEACHER_4)));
+
+        assertThat(assessment.before()).hasSize(1);
+        assertThat(assessment.before().get(0).weight()).isEqualTo(2);
+        assertThat(assessment.after()).hasSize(1);
+        assertThat(assessment.after().get(0).weight()).isEqualTo(3);
+        assertThat(assessment.added()).hasSize(1);
+        assertThat(assessment.allowed()).isFalse();
+    }
+
+    @Test
+    void movingAPairConflictToADifferentCounterpartIsANewFactAndIsRefused() {
+        useLessons(
+                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1, ROOM_1),
+                lesson(LESSON_2, MATH, TEACHER_1, CLASS_2, P1, ROOM_2),
+                lesson(LESSON_3, CHINESE, TEACHER_1, CLASS_3, P2, ROOM_3));
+
+        // Before: lesson 1 conflicts with lesson 2. After: it conflicts with lesson 3.
+        ChangeAssessment assessment = validator.assessChanges(DRAFT_ID, List.of(
+                new LessonChange(LESSON_1, P2, ROOM_1, TEACHER_1)));
+
+        assertThat(assessment.before()).hasSize(1);
+        assertThat(assessment.after()).hasSize(1);
+        assertThat(assessment.added()).hasSize(1);
+        assertThat(assessment.added().get(0).key()).contains("TEACHER_CONFLICT");
+        assertThat(assessment.allowed()).isFalse();
     }
 
     @Test
@@ -283,10 +321,14 @@ class DraftValidatorChangeAssessmentTest {
     }
 
     private static Period period(long id, int periodNo) {
+        return periodOn(id, 1, periodNo);
+    }
+
+    private static Period periodOn(long id, int dayOfWeek, int periodNo) {
         Period period = new Period();
         period.setId(id);
         period.setSemesterId(SEMESTER_ID);
-        period.setDayOfWeek(1);
+        period.setDayOfWeek(dayOfWeek);
         period.setPeriodNo(periodNo);
         period.setLabel("第" + periodNo + "节");
         period.setSection(PeriodSection.MORNING);

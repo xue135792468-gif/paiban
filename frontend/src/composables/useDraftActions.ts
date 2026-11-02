@@ -21,16 +21,22 @@ export function useDraftActions(options: DraftActionsOptions) {
 
   async function rename() {
     if (!options.detail.value) return
+    let value: string
     try {
-      const { value } = await ElMessageBox.prompt('输入新的草稿名称', '重命名草稿', {
+      const result = await ElMessageBox.prompt('输入新的草稿名称', '重命名草稿', {
         inputValue: options.detail.value.draft.name,
         inputValidator: (input) => Boolean(input && input.trim()),
       })
+      value = result.value
+    } catch {
+      return
+    }
+    try {
       await http.put(`/timetable-drafts/${options.draftId}/name`, { name: value })
       ElMessage.success('已重命名')
       await options.reload()
-    } catch {
-      // cancelled
+    } catch (error) {
+      ElMessage.error(serverMessage(error, '重命名失败'))
     }
   }
 

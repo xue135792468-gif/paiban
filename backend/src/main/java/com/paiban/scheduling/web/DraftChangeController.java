@@ -5,6 +5,7 @@ import com.paiban.scheduling.service.DraftChangeService;
 import com.paiban.scheduling.web.DraftChangeDtos.ChangeRequest;
 import com.paiban.scheduling.web.DraftChangeDtos.ChangeResult;
 import jakarta.validation.Valid;
+import java.security.Principal;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,7 +31,7 @@ public class DraftChangeController {
     @PostMapping("/timetable-drafts/{id}/changes")
     @PreAuthorize("hasAuthority('" + Permissions.TIMETABLE_EDIT + "')")
     public ChangeResult apply(
-            @PathVariable Long id, @Valid @RequestBody ChangeRequest request) {
-        return service.apply(id, request);
+            @PathVariable Long id, @Valid @RequestBody ChangeRequest request, Principal principal) {
+        return service.apply(id, request, principal == null ? "system" : principal.getName());
     }
 }

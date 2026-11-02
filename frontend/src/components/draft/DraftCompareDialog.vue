@@ -71,7 +71,9 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import { http } from '@/api/http'
+import { serverMessage } from '@/api/errors'
 import { compareDrafts, summaryLines } from './compareDiff'
 import type { Draft, DraftLesson } from './types'
 
@@ -134,8 +136,9 @@ async function loadCompareSide(side: 'A' | 'B') {
       const dayB = b.dayOfWeek ?? 9
       return dayA !== dayB ? dayA - dayB : (a.periodNo ?? 99) - (b.periodNo ?? 99)
     })
-  } catch {
+  } catch (error) {
     target.value = []
+    ElMessage.error(serverMessage(error, '加载比较草稿失败'))
   } finally {
     loaded.value = true
   }

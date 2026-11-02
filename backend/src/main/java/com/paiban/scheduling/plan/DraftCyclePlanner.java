@@ -65,12 +65,19 @@ public final class DraftCyclePlanner {
 
         public static final int DEFAULT_NODE_BUDGET = 200_000;
         public static final int DEFAULT_TIME_BUDGET_MS = 1_500;
+        /** A client may lower the budget for tests, but never raise it past these caps. */
+        public static final int MAX_NODE_BUDGET = 1_000_000;
+        public static final int MAX_TIME_BUDGET_MS = 5_000;
 
         public Options {
             maxMovedLessons = Math.max(2, Math.min(10, maxMovedLessons));
             preset = preset == null ? ExchangeRankingPreset.MIN_IMPACT : preset;
-            nodeBudget = nodeBudget <= 0 ? DEFAULT_NODE_BUDGET : nodeBudget;
-            timeBudgetMs = timeBudgetMs <= 0 ? DEFAULT_TIME_BUDGET_MS : timeBudgetMs;
+            nodeBudget = nodeBudget <= 0
+                    ? DEFAULT_NODE_BUDGET
+                    : Math.min(nodeBudget, MAX_NODE_BUDGET);
+            timeBudgetMs = timeBudgetMs <= 0
+                    ? DEFAULT_TIME_BUDGET_MS
+                    : Math.min(timeBudgetMs, MAX_TIME_BUDGET_MS);
         }
 
         public static Options defaults(int maxMovedLessons, ExchangeRankingPreset preset) {

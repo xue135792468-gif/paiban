@@ -1,6 +1,8 @@
 package com.paiban.scheduling.service;
 
 import com.paiban.common.web.ApiException;
+import com.paiban.foundation.domain.AuditLog;
+import com.paiban.foundation.domain.AuditLogRepository;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
 import com.paiban.foundation.domain.RoomRepository;
@@ -40,6 +42,7 @@ public class DraftChangeService {
     private final PeriodRepository periods;
     private final TeacherRepository teachers;
     private final RoomRepository rooms;
+    private final AuditLogRepository auditLogs;
 
     public DraftChangeService(
             DraftWriteGuard guard,
@@ -48,7 +51,8 @@ public class DraftChangeService {
             DraftLessonRepository draftLessons,
             PeriodRepository periods,
             TeacherRepository teachers,
-            RoomRepository rooms) {
+            RoomRepository rooms,
+            AuditLogRepository auditLogs) {
         this.guard = guard;
         this.validator = validator;
         this.constraints = constraints;
@@ -56,10 +60,17 @@ public class DraftChangeService {
         this.periods = periods;
         this.teachers = teachers;
         this.rooms = rooms;
+        this.auditLogs = auditLogs;
+    }
+
+    /** Plan application and internal callers have no request principal; keep them working. */
+    @Transactional
+    public ChangeResult apply(Long draftId, ChangeRequest request) {
+        return apply(draftId, request, "system");
     }
 
     @Transactional
-    public ChangeResult apply(Long draftId, ChangeRequest request) {
+    public ChangeResult apply(Long draftId, ChangeRequest request, String actor) {
         TimetableDraft draft = guard.lockEditable(draftId, request.expectedVersion());
         List<LessonChangeItem> items = request.changes();
         if (items == null || items.isEmpty()) {
@@ -115,6 +126,13 @@ public class DraftChangeService {
         }
         draftLessons.saveAll(changed);
         guard.bump(draft);
+        auditLogs.save(new AuditLog(
+                actor == null ? "system" : actor,
+                "DRAFT_CHANGE",
+                "DRAFT_LESSON",
+                "draftId=" + draftId + ", lessons=" + changed.size() + ", version=" + draft.getVersion(),
+                changed.size(),
+                0));
         return new ChangeResult(
                 true, true, draft.getVersion(), hardConflicts,
                 assessment.softPenaltyBefore(), assessment.softPenaltyAfter(), delta,

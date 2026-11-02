@@ -19,6 +19,7 @@ import com.paiban.scheduling.solver.ConstraintSettings;
 import com.paiban.scheduling.web.SchedulingDtos.LessonOverride;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -144,8 +145,14 @@ public class DraftValidator {
         return constraints.settings(draft.getSemesterId()).fingerprint();
     }
 
-    /** One rule hit with a stable key and an explicit severity, used for before/after comparison. */
-    public record Violation(String key, String code, String message, Long lessonId, int severity) {}
+    /**
+     * One rule hit with a stable key, a hard/soft severity and the weight of the fact
+     * (one pair conflict is 1; a two-lesson same-course day is 2). The comparison uses
+     * the key for identity and the weight for "did it get worse", so a repair may keep
+     * a key while reducing its weight, but may never raise it.
+     */
+    public record Violation(String key, String code, String message, Long lessonId,
+                            int severity, int weight) {}
 
     /**
      * Entire-draft verdict for one atomic change list. {@code allowed} is true only when
@@ -239,27 +246,31 @@ public class DraftValidator {
     private static Violation toViolation(ConstraintViolation violation) {
         return new Violation(
                 violation.key(), violation.code(), violation.message(), violation.lessonId(),
-                violation.hard() ? 1 : 0);
+                violation.hard() ? 1 : 0, violation.weight());
     }
 
     /**
-     * The after-violations whose stable key appears more often than before: a brand new
-     * key, or one extra hit of an existing one. Message, teacher or class names and
-     * counts never take part in this comparison.
+     * The after facts whose stable key is new or whose total weight is higher than
+     * before. Message, teacher or class names and counts never take part in the
+     * identity; a bucket that grows from two lessons to three raises its weight even
+     * though it still produces one violation row.
      */
     private static List<Violation> excess(
             List<ConstraintViolation> before, List<ConstraintViolation> after) {
-        Map<String, Integer> counts = new HashMap<>();
-        before.forEach(violation -> counts.merge(violation.key(), 1, Integer::sum));
-        List<Violation> added = new ArrayList<>();
+        Map<String, Integer> beforeWeights = new HashMap<>();
+        before.forEach(violation -> beforeWeights.merge(violation.key(), violation.weight(), Integer::sum));
+        Map<String, Integer> afterWeights = new LinkedHashMap<>();
+        Map<String, ConstraintViolation> afterByKey = new LinkedHashMap<>();
         for (ConstraintViolation violation : after) {
-            int remaining = counts.getOrDefault(violation.key(), 0);
-            if (remaining > 0) {
-                counts.put(violation.key(), remaining - 1);
-            } else {
-                added.add(toViolation(violation));
-            }
+            afterWeights.merge(violation.key(), violation.weight(), Integer::sum);
+            afterByKey.putIfAbsent(violation.key(), violation);
         }
+        List<Violation> added = new ArrayList<>();
+        afterWeights.forEach((key, weight) -> {
+            if (weight > beforeWeights.getOrDefault(key, 0)) {
+                added.add(toViolation(afterByKey.get(key)));
+            }
+        });
         return added;
     }
 
