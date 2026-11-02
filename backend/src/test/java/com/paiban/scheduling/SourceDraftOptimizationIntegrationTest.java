@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 
+import com.paiban.foundation.domain.TeachingClassRepository;
 import com.paiban.scheduling.domain.Assignment;
 import com.paiban.scheduling.domain.AssignmentRepository;
 import com.paiban.scheduling.domain.DraftLesson;
@@ -47,6 +48,9 @@ class SourceDraftOptimizationIntegrationTest extends ApiIntegrationTest {
 
     @Autowired
     private SchedulingJobRepository jobs;
+
+    @Autowired
+    private TeachingClassRepository teachingClasses;
 
     private record World(long semesterId, List<Long> periods, long classA, long classB,
                          long chinese, long math, long teacherA, long teacherB, long teacherC,
@@ -317,7 +321,10 @@ class SourceDraftOptimizationIntegrationTest extends ApiIntegrationTest {
         Assignment assignment = new Assignment();
         assignment.setSemesterId(semesterId);
         assignment.setAdminClassId(classId);
-        assignment.setTeachingClassId(classId);
+        // The teaching-class id is a different identity from the admin-class id.
+        assignment.setTeachingClassId(teachingClasses.findByAdminClassId(classId)
+                .orElseThrow()
+                .getId());
         assignment.setCourseId(courseId);
         assignment.setTeacherId(teacherId);
         assignment.setWeeklyLessons(weekly);

@@ -6,6 +6,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 
+import com.paiban.foundation.domain.TeachingClassRepository;
 import com.paiban.scheduling.domain.Assignment;
 import com.paiban.scheduling.domain.AssignmentRepository;
 import com.paiban.scheduling.domain.ConstraintConfig;
@@ -59,6 +60,9 @@ class DraftCyclePlanIntegrationTest extends ApiIntegrationTest {
 
     @Autowired
     private AssignmentRepository assignments;
+
+    @Autowired
+    private TeachingClassRepository teachingClasses;
 
     private record World(long semesterId, List<Long> periods, long classA, long classB, long classC,
                          long chinese, long math, long english, long teacherA, long teacherB,
@@ -227,7 +231,9 @@ class DraftCyclePlanIntegrationTest extends ApiIntegrationTest {
         Assignment assignment = new Assignment();
         assignment.setSemesterId(world.semesterId());
         assignment.setAdminClassId(world.classA());
-        assignment.setTeachingClassId(world.classA());
+        assignment.setTeachingClassId(teachingClasses.findByAdminClassId(world.classA())
+                .orElseThrow()
+                .getId());
         assignment.setCourseId(world.chinese());
         assignment.setTeacherId(world.teacherA());
         assignment.setWeeklyLessons(2);
