@@ -101,6 +101,10 @@ test('场景 2：教师提交调代 → 教务审批 → 通知与课表叠加',
   await page.goto('/timetable')
   await page.getByPlaceholder('选择日期').fill(effectiveDate)
   await page.getByPlaceholder('选择日期').press('Enter')
+  // The seeded teacher owns the baseline entries; one is covered on this week.
+  // A zero-tag assertion also passes on the previous week, so wait for the
+  // actual expected rows before reading a count used by the next-week check.
+  await expect(page.locator('.lesson')).toHaveCount(entries.length - 1)
   await expect(page.locator('.lesson .el-tag', { hasText: '代' })).toHaveCount(0)
   const lessonsOnLessonWeek = await page.locator('.lesson').count()
 

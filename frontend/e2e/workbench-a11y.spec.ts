@@ -140,6 +140,9 @@ test('320×700：导航隐藏、步骤 1 按天列表、无横向滚动', async 
   const dateInput = page.getByTestId('lesson-date').locator('input')
   await dateInput.fill(seed.lessonDate)
   await dateInput.press('Tab')
+  // The calendar is teleported into body and remains 324px wide while its
+  // closing transition runs; measure the settled workbench, after it is hidden.
+  await expect(page.locator('.el-picker__popper:visible')).toHaveCount(0)
   await expect(page.getByTestId('pick-lesson').first()).toBeVisible({ timeout: 20_000 })
 
   // 步骤 1 是按天列表（网格与列表二选一渲染，不是 CSS 隐藏）。
