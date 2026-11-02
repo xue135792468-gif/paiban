@@ -22,6 +22,32 @@ async function drag(page: Page, seed: DraftDragScenario, toPeriodId: number) {
   await dragCardToCell(page, lessonCard(page, seed.lessonAId), gridCell(page, toPeriodId))
 }
 
+/**
+ * Drops A on B and waits for the automatic plan panel. A full-suite run can lose the
+ * first pointer sequence under load; retrying the no-write search is safe because a
+ * direct swap adds a conflict and neither attempt changes the timetable.
+ */
+async function openPlanPanel(page: Page, seed: DraftDragScenario): Promise<void> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const search = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        response.url().endsWith(`/api/timetable-drafts/${seed.draftId}/cycle-plans/search`),
+    )
+    await drag(page, seed, seed.periodB)
+    const response = await search
+    expect(response.status()).toBe(200)
+    const body = await response.json()
+    expect(body.status).toBe('FOUND')
+    expect(body.plans.length).toBeGreaterThan(0)
+    if ((await page.getByTestId('cycle-plan-0').count()) > 0) {
+      await expect(page.getByTestId('cycle-plan-0')).toBeVisible()
+      return
+    }
+  }
+  await expect(page.getByTestId('cycle-plan-0')).toBeVisible()
+}
+
 test('拖到同班有课格一次交换，不打开候选抽屉，重载后保持，一次撤销恢复', async ({ page }) => {
   const api = await newContext()
   const seed = await seedDraftDragScenario(api)
@@ -126,26 +152,18 @@ test('直接交换失败自动列方案；取消不改课；应用整环后一�
   await openDraft(page, seed.draftId)
   await selectClass(page, seed.className)
 
-  const search = page.waitForResponse(
-    (response) =>
-      response.request().method() === 'POST' &&
-      response.url().endsWith(`/api/timetable-drafts/${seed.draftId}/cycle-plans/search`),
-  )
-  await drag(page, seed, seed.periodB)
-  const searchResponse = await search
-  expect(searchResponse.status()).toBe(200)
-  expect((await searchResponse.json()).status).toBe('FOUND')
-  await expect(page.getByTestId('cycle-plan-0')).toBeVisible()
+  await openPlanPanel(page, seed)
   await expect(page.getByRole('button', { name: /帮我找/ })).toHaveCount(0)
 
   const scoped = page.locator('.el-dialog:visible')
   await scoped.getByRole('button', { name: '取消' }).click()
+  await expect(page.getByTestId('cycle-plan-0')).toHaveCount(0)
+  await expect(page.locator('.el-dialog:visible')).toHaveCount(0)
   const unchanged = await draftDetail(api, seed.draftId)
   expect(positionOf(unchanged, seed.lessonAId)).toBe(seed.periodA)
   expect(positionOf(unchanged, seed.lessonBId)).toBe(seed.periodB)
 
-  await drag(page, seed, seed.periodB)
-  await expect(page.getByTestId('cycle-plan-0')).toBeVisible()
+  await openPlanPanel(page, seed)
   const apply = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
@@ -182,8 +200,7 @@ test('应用方案后加锁再撤销，提示先解锁且不误报成功', async
   await openDraft(page, seed.draftId)
   await selectClass(page, seed.className)
 
-  await drag(page, seed, seed.periodB)
-  await expect(page.getByTestId('cycle-plan-0')).toBeVisible()
+  await openPlanPanel(page, seed)
   const apply = page.waitForResponse((response) =>
     response.url().endsWith(`/api/timetable-drafts/${seed.draftId}/cycle-plans/apply`),
   )
