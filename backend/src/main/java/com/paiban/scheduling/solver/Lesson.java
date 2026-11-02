@@ -42,6 +42,18 @@ public class Lesson {
      */
     private RoomSlot fixedRoom;
 
+    /**
+     * The period this lesson must keep because the source draft marked it locked, or
+     * {@code null} when it is free to move. It is enforced by a hard constraint, so it
+     * is not merely a warm-start hint. The teacher is a fact (not a planning variable),
+     * so locking the teacher is done by building the lesson with the source draft's
+     * current teacher.
+     */
+    private Long lockedPeriodId;
+
+    /** Whether the new draft must inherit the lock marker of this lesson. */
+    private boolean locked;
+
     public Lesson(Long id, Long assignmentId, Long courseId, String courseName, Long teacherId,
                   Long adminClassId, Long headTeacherId, String teacherSubject, String requiredRoomType,
                   boolean allowConsecutive, int studentCount, int lessonIndex) {

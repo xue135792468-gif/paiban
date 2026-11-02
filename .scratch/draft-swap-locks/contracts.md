@@ -52,6 +52,14 @@ Status: accepted
 - 返回原draftId、新draftId（若产生）、任务状态、实际来源版本及合规/阻碍，不以任务结束等价于可发布。
 - 源安排在快照后被改变时，要么使用已完整固化并标识的快照，要么拒绝过期请求；不得混合不同时刻数据。锁定冲突、全锁无自由度及不完整任务匹配均有明确反馈。
 
+### 5.1 已实现契约（07 落地）
+
+- 启动：`POST /api/scheduling-jobs?semesterId=`（权限 `scheduling:run`）。请求体新增可空 `sourceDraftId`；省略时走原有默认来源（`BASELINE` / 最早完整 `DRAFT` / `NONE`），语义不变。显式来源时 `warmStartSource=SOURCE_DRAFT`，不会回退到基线或别的草稿。
+- 快照：启动时校验来源属于当前学期、状态为 `DRAFT`、有课节、授课任务映射完整（每个学期任务恰好 `weeklyLessons` 行、`lessonIndex` 覆盖 `0..n-1`、班级/课程与任务一致、教师存在），并把 `(assignmentId, lessonIndex)`、当前教师、时段、锁定与任务指纹冻结在 job 上；运行期间只读冻结快照。
+- 锁定：锁定课以求解硬约束保持原 `periodId`，教师取来源草稿当前教师（保留手工跨班换人），新稿按稳定身份继承 `locked` 标记；原草稿及其 `version` 不变，新稿另建、行 id 全新。全锁返回 409。
+- 状态：来源/学期/已发布/无课节/映射不一致/未知引用 → 400（全锁 → 409），且不创建 job。运行中任务变更（指纹不符）、快照损坏或锁无法保持 → job `FAILED`、零新稿。求解完成但未达发布标准 → job `COMPLETED` 且 `resultPublishable=false`、`resultBlockers` 列出原因，不宣称可发布。
+- `JobDto` 末尾新增 `sourceDraftId`、`sourceDraftVersion`、`inheritedLockCount`、`resultPublishable`、`resultBlockers`（后者按换行拆分，无则空列表）。旧字段与顺序不变。
+
 ## 6. 验证边界
 
 - 01/02/03/04/07后端定向验收，05/06/08各自交互E2E；09最后冻结整合版本全量验收。
