@@ -441,7 +441,7 @@ public final class ConstraintChecker {
             out.add(new ConstraintViolation("SAME_COURSE_PER_DAY",
                     className(ctx, objectIdOf(key)) + " 的 " + courseName(ctx, courseId)
                             + " 一天最多排一节（" + String.join(" / ", labels) + "）",
-                    null, true));
+                    null, true, "SAME_COURSE_PER_DAY|" + key));
         }
 
         for (Map.Entry<String, List<LessonView>> entry : classCourseDay.entrySet()) {
@@ -453,7 +453,7 @@ public final class ConstraintChecker {
             if (control != null && control.hard() && entry.getValue().size() > 1) {
                 out.add(new ConstraintViolation("COURSE_SPREAD",
                         "同一课程没有分散到不同天（当天 " + entry.getValue().size() + " 节）",
-                        null, true));
+                        null, true, "COURSE_SPREAD|" + entry.getKey()));
             }
         }
 
@@ -494,7 +494,9 @@ public final class ConstraintChecker {
             }
             ThresholdMessage message = fact.message(entry.getKey(), count);
             if (message != null) {
-                out.add(new ConstraintViolation(message.code(), message.message(), null, true));
+                out.add(new ConstraintViolation(
+                        message.code(), message.message(), null, true,
+                        type.name() + "|" + entry.getKey()));
             }
         }
     }
@@ -529,7 +531,8 @@ public final class ConstraintChecker {
             for (int i = 1; i < periodNos.size(); i++) {
                 if (periodNos.get(i) - periodNos.get(i - 1) > 1) {
                     out.add(new ConstraintViolation("CONSECUTIVE_LESSONS",
-                            "连堂课没有安排在相邻节次", null, true));
+                            "连堂课没有安排在相邻节次", null, true,
+                            "CONSECUTIVE_LESSONS|" + entry.getKey()));
                 }
             }
         }
@@ -548,7 +551,8 @@ public final class ConstraintChecker {
             }
             if (internalGapCount(ctx, entry.getValue()) > 0) {
                 out.add(new ConstraintViolation("CLASS_GAP_MINIMIZED",
-                        className(ctx, objectIdOf(entry.getKey())) + " 的课表存在空堂", null, true));
+                        className(ctx, objectIdOf(entry.getKey())) + " 的课表存在空堂", null, true,
+                        "CLASS_GAP_MINIMIZED|" + entry.getKey()));
             }
         }
     }
@@ -612,7 +616,8 @@ public final class ConstraintChecker {
                 } else {
                     if (run > max) {
                         out.add(new ConstraintViolation("TEACHER_MAX_CONSECUTIVE",
-                                "教师连续上课 " + run + " 节，超过上限 " + max, null, true));
+                                "教师连续上课 " + run + " 节，超过上限 " + max, null, true,
+                                "TEACHER_MAX_CONSECUTIVE|" + entry.getKey()));
                     }
                     run = 1;
                 }
