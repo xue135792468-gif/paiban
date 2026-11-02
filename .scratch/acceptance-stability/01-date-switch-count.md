@@ -1,6 +1,6 @@
 # 01: 代课切周测试等待真实课表落地
 
-Status: in-progress
+Status: done
 Priority: P2
 
 ## 问题与修正
@@ -12,4 +12,4 @@ CI41368221373的substitution.spec.ts:112预期5张课卡而实际4张，其余14
 - [x] 保留红证据并核对种子/公开基线与一次性代课语义。
 - [x] 只补条件等待，不用固定睡眠，不放宽断言。
 - [x] 本机与320px/键盘用例合跑3项通过，独立只读核对无发现。
-- [ ] 同提交CI全量通过后收口，见release-gate.md。
+- [x] 同提交CI全量通过并收口，见release-gate.md。

@@ -1,5 +1,7 @@
 # 接手说明（2026-10-25 会话交接）
 
+> **2026-11-02 发布验收收口**：两处旧E2E条件等待已修正，8953961完整CI通过，票据已done，详见[测试稳定性门禁](acceptance-stability/release-gate.md)。业务源码保持已部署版本，无需重建应用；备份、数据保护和线上入口见下方部署回执。后续仅文档收口提交。
+
 > **2026-11-02 每周留空与算法修正已合并上线**：用户明确授权合并部署，PR #21已合并main；应用镜像构建自d76709c，与已验收PR内容一致。数据库备份和回退镜像已保存；线上健康、数据保护与新规则入口已检查，详见[部署回执](weekly-no-class-and-algorithm-fixes/deployment.md)。原有正式课表和约束未改。下方“未部署”均为前阶段快照；旧页面如仍显示旧内容，按Ctrl+F5或使用回执中的发布入口。
 
 > **2026-11-02 每周留空与三项算法修正：开发验收完成，未部署**：六票已实现并复审，集成分支codex/weekly-no-class，目录E:/排课系统/.worktrees/weekly-integration。主模型亲自判断本批算法修正合格；冻结版本完整门禁已通过，全部统计、失败历史和源码tree见[统一验收](weekly-no-class-and-algorithm-fixes/acceptance.md)，不在入口复制数字。本机无Docker，真实PostgreSQL前版CI已实跑通过；CI旧日期fixture也已修正并重新完整门禁通过，最终提交检查见[PR #21](https://github.com/xue135792468-gif/paiban/pull/21)。未合并main、未部署生产；仅保留集成worktree，执行者与任务临时进程已清理。主仓库既有截图/原型未动。下方“尚未实现”是旧规划快照。

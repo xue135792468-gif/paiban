@@ -11,3 +11,10 @@
 fresh只读核对确认：等待位于320场景原Tab之后，原document/inner≤1px与完整后续操作保留；代课原下周+1和标签断言保留。无P级发现。未新增接口或测试接缝，沿用已授权公开页面与API。
 
 本机没有Docker；本补丁仅测试等待，不重复未变业务代码的本地全量Maven。最终同提交CI执行完整backend/frontend/e2e/deploy-scripts并确认真实PostgresContainerIT；通过前两票保持in-progress，不把3项定向当全量。
+
+
+## 最终CI收口
+
+补丁895396165eeb0c2a033b546e831f9aa13cac4c3e的[CI41370590575](https://github.com/xue135792468-gif/paiban/actions/runs/41370590575)四job全部success，已读取实际job日志核对：后端1110项0失败0错误4项手动/性能跳过，PostgresContainerIT实际4项0失败0错误0跳过；前端61文件465项通过；Playwright141/141通过，两条原失败场景实际执行成功。两票现done。
+
+后续仅文档提交。前端业务src tree仍8f5c1a93ecf39e07d6acce981976e68f1faaa5a0，与生产构建d76709c一致；不重建/重启应用。失败证据和最初错误放置等待的过程均保留，不把第一次错误位置通过当最终修复证据。
