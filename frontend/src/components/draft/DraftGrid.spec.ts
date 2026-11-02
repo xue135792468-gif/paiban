@@ -39,6 +39,7 @@ function lesson(
     dayOfWeek,
     periodNo,
     roomName: '101',
+    locked: false,
     ...overrides,
   }
 }
@@ -144,5 +145,43 @@ describe('DraftGrid', () => {
     })
 
     expect(wrapper.get('.row-time').text()).toBe('08:00-08:45')
+  })
+
+  it('锁定课节带 locked 标记、data-locked、锁字与 aria 说明', () => {
+    const wrapper = mountGrid({
+      lessons: [lesson(1, 1, 1, { locked: true })],
+      lockedLessonIds: [1],
+    })
+
+    const card = wrapper.get('.lesson')
+    expect(card.classes()).toContain('locked')
+    expect(card.attributes('data-locked')).toBe('true')
+    expect(card.attributes('tabindex')).toBe('0')
+    expect(card.text()).toContain('锁')
+    expect(card.attributes('aria-label')).toContain('课程1')
+    expect(card.attributes('aria-label')).toContain('教师1')
+    expect(card.attributes('aria-label')).toContain('已锁定')
+  })
+
+  it('未锁定的课节没有锁定标记但仍可聚焦', () => {
+    const wrapper = mountGrid({ lessons: [lesson(1, 1, 1)], lockedLessonIds: [2] })
+
+    const card = wrapper.get('.lesson')
+    expect(card.classes()).not.toContain('locked')
+    expect(card.attributes('data-locked')).toBeUndefined()
+    expect(card.text()).not.toContain('锁')
+    expect(card.attributes('aria-label')).not.toContain('已锁定')
+  })
+
+  it('Enter 与 Space 都触发 lesson-activate，用于等价键盘入口', async () => {
+    const wrapper = mountGrid({ lessons: [lesson(1, 1, 1)] })
+    const card = wrapper.get('.lesson')
+
+    await card.trigger('keydown', { key: 'Enter' })
+    await card.trigger('keydown', { key: ' ' })
+
+    const events = wrapper.emitted('lesson-activate') ?? []
+    expect(events).toHaveLength(2)
+    expect(events[0][0]).toMatchObject({ id: 1 })
   })
 })

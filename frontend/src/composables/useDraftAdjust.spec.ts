@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { useDraftAdjust, type DraftAdjustClient } from './useDraftAdjust'
+import type { DraftLesson } from '@/components/draft/types'
 
 interface PatchCall {
   url: string
@@ -294,5 +295,329 @@ describe('useDraftAdjust', () => {
       },
     ])
     expect(response).toEqual({ lessonId: 1, intraClass: [], crossClass: [] })
+  })
+})
+
+function changeReply(overrides: Record<string, unknown> = {}) {
+  return {
+    data: {
+      saved: true,
+      valid: true,
+      version: 5,
+      hardConflicts: 0,
+      softPenaltyBefore: 0,
+      softPenaltyAfter: 0,
+      softPenaltyDelta: 0,
+      addedConflicts: [],
+      remainingConflicts: [],
+      conflicts: [],
+      ...overrides,
+    },
+  }
+}
+
+function draftLesson(overrides: Partial<DraftLesson> & { id: number }): DraftLesson {
+  return {
+    assignmentId: overrides.id,
+    courseId: 1,
+    courseName: '数学',
+    teacherId: 9,
+    teacherName: '张老师',
+    classId: 3,
+    studentCount: 40,
+    periodId: 100,
+    roomId: 5,
+    locked: false,
+    ...overrides,
+  }
+}
+
+describe('useDraftAdjust atomic change sets', () => {
+  it('moveTo sends one /changes item with source guards and pushes the inverse', async () => {
+    const { client, posts } = fakeClient()
+    client.post = vi.fn(async (url: string, body: unknown) => {
+      posts.push({ url, body })
+      return changeReply()
+    })
+    const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
+
+    const outcome = await adjust.moveTo(
+      { id: 11, periodId: 100, roomId: 5, teacherId: 9 },
+      200,
+      4,
+      'fp-1',
+    )
+
+    expect(outcome.saved).toBe(true)
+    expect(posts).toEqual([
+      {
+        url: '/timetable-drafts/7/changes',
+        body: {
+          changes: [
+            {
+              lessonId: 11,
+              toPeriodId: 200,
+              toTeacherId: null,
+              toRoomId: null,
+              expectedPeriodId: 100,
+              expectedTeacherId: 9,
+              expectedRoomId: 5,
+            },
+          ],
+          expectedVersion: 4,
+          rulesFingerprint: 'fp-1',
+          verifySource: true,
+        },
+      },
+    ])
+    expect(adjust.undoStack.value).toEqual([
+      {
+        kind: 'changes',
+        label: '已移动课节',
+        items: [
+          {
+            lessonId: 11,
+            toPeriodId: 100,
+            toTeacherId: 9,
+            toRoomId: 5,
+            expectedPeriodId: 200,
+            expectedTeacherId: 9,
+            expectedRoomId: 5,
+          },
+        ],
+      },
+    ])
+  })
+
+  it('swapLessons exchanges only the periods and records one undo step', async () => {
+    const { client, posts } = fakeClient()
+    client.post = vi.fn(async (url: string, body: unknown) => {
+      posts.push({ url, body })
+      return changeReply({ version: 6 })
+    })
+    const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
+
+    await adjust.swapLessons(
+      { id: 11, periodId: 100, roomId: 5, teacherId: 9 },
+      { id: 12, periodId: 200, roomId: 6, teacherId: 10 },
+      5,
+      'fp-2',
+    )
+
+    expect(posts[0].body).toEqual({
+      changes: [
+        {
+          lessonId: 11,
+          toPeriodId: 200,
+          toTeacherId: null,
+          toRoomId: null,
+          expectedPeriodId: 100,
+          expectedTeacherId: 9,
+          expectedRoomId: 5,
+        },
+        {
+          lessonId: 12,
+          toPeriodId: 100,
+          toTeacherId: null,
+          toRoomId: null,
+          expectedPeriodId: 200,
+          expectedTeacherId: 10,
+          expectedRoomId: 6,
+        },
+      ],
+      expectedVersion: 5,
+      rulesFingerprint: 'fp-2',
+      verifySource: true,
+    })
+    expect(adjust.undoCount.value).toBe(1)
+    expect(adjust.undoStack.value[0]).toMatchObject({ kind: 'changes', label: '已交换两节课' })
+  })
+
+  it('applyPlan posts the token and records every inverse move as one step', async () => {
+    const { client, posts } = fakeClient()
+    client.post = vi.fn(async (url: string, body: unknown) => {
+      posts.push({ url, body })
+      return changeReply({ version: 8 })
+    })
+    const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
+    const lessons = [
+      draftLesson({ id: 11, periodId: 200, roomId: 5, teacherId: 9 }),
+      draftLesson({ id: 12, periodId: 300, roomId: 6, teacherId: 10 }),
+    ]
+    const plan = {
+      token: 'tok-1',
+      kind: 'CYCLE' as const,
+      moves: [
+        { lessonId: 11, fromPeriodId: 100, toPeriodId: 200, teacherId: 9, courseId: 1, classId: 3 },
+        { lessonId: 12, fromPeriodId: 200, toPeriodId: 300, teacherId: 10, courseId: 2, classId: 3 },
+      ],
+      movedLessons: 2,
+      affectedTeachers: 2,
+      affectedDays: 1,
+      softPenaltyAfter: 0,
+      softPenaltyDelta: 0,
+      expiresAt: '2026-01-01T00:00:00Z',
+    }
+
+    const outcome = await adjust.applyPlan(plan, 7, lessons)
+
+    expect(outcome.saved).toBe(true)
+    expect(posts[0]).toEqual({
+      url: '/timetable-drafts/7/cycle-plans/apply',
+      body: { token: 'tok-1', expectedVersion: 7 },
+    })
+    expect(adjust.undoStack.value).toEqual([
+      {
+        kind: 'changes',
+        label: '联动方案',
+        items: [
+          {
+            lessonId: 11,
+            toPeriodId: 100,
+            toTeacherId: 9,
+            toRoomId: 5,
+            expectedPeriodId: 200,
+            expectedTeacherId: 9,
+            expectedRoomId: 5,
+          },
+          {
+            lessonId: 12,
+            toPeriodId: 200,
+            toTeacherId: 10,
+            toRoomId: 6,
+            expectedPeriodId: 300,
+            expectedTeacherId: 10,
+            expectedRoomId: 6,
+          },
+        ],
+      },
+    ])
+  })
+
+  it('undo sends the whole inverse change set with the current version and pops on success', async () => {
+    const { client, posts } = fakeClient()
+    client.post = vi.fn(async (url: string, body: unknown) => {
+      posts.push({ url, body })
+      return changeReply({ version: 5 + posts.length })
+    })
+    const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
+
+    await adjust.moveTo({ id: 11, periodId: 100, roomId: 5, teacherId: 9 }, 200, 4, 'fp-1')
+    const outcome = await adjust.undo({ expectedVersion: 5, rulesFingerprint: 'fp-current' })
+
+    expect(outcome.undone).toBe(true)
+    expect(posts[1]).toEqual({
+      url: '/timetable-drafts/7/changes',
+      body: {
+        changes: [
+          {
+            lessonId: 11,
+            toPeriodId: 100,
+            toTeacherId: 9,
+            toRoomId: 5,
+            expectedPeriodId: 200,
+            expectedTeacherId: 9,
+            expectedRoomId: 5,
+          },
+        ],
+        expectedVersion: 5,
+        rulesFingerprint: 'fp-current',
+        verifySource: true,
+      },
+    })
+    expect(adjust.canUndo.value).toBe(false)
+  })
+
+  it('keeps the change-set undo entry when the undo answers 409 and surfaces the reason', async () => {
+    const notify = fakeNotify()
+    let calls = 0
+    const { client } = fakeClient()
+    client.post = vi.fn(async () => {
+      calls += 1
+      if (calls === 1) return changeReply()
+      throw { response: { status: 409, data: { message: '该课节已锁定，请先解锁' } } }
+    })
+    const adjust = useDraftAdjust(7, { client, notify })
+
+    await adjust.moveTo({ id: 11, periodId: 100, roomId: 5, teacherId: 9 }, 200, 4, 'fp-1')
+    const outcome = await adjust.undo({ expectedVersion: 5, rulesFingerprint: 'fp-1' })
+
+    expect(outcome.undone).toBe(false)
+    expect(adjust.undoCount.value).toBe(1)
+    expect(notify.error).toHaveBeenCalledWith('该课节已锁定，请先解锁')
+  })
+
+
+  it('does not record a change set the server refuses and exposes its added conflicts', async () => {
+    const conflict = {
+      key: 'k',
+      code: 'CLASS_CONFLICT',
+      message: '本班已有课',
+      lessonId: 11,
+      severity: 1,
+    }
+    const { client } = fakeClient()
+    client.post = vi.fn(async () =>
+      changeReply({ saved: false, version: 4, addedConflicts: [conflict], conflicts: [conflict] }),
+    )
+    const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
+
+    const outcome = await adjust.moveTo(
+      { id: 11, periodId: 100, roomId: 5, teacherId: 9 },
+      200,
+      4,
+      'fp-1',
+    )
+
+    expect(outcome.saved).toBe(false)
+    expect(outcome.addedConflicts).toEqual([conflict])
+    expect(outcome.conflicts).toEqual([
+      { type: 'CLASS_CONFLICT', message: '本班已有课', lessonId: 11 },
+    ])
+    expect(adjust.canUndo.value).toBe(false)
+  })
+
+  it('keeps at most 20 atomic steps', async () => {
+    const { client } = fakeClient()
+    client.post = vi.fn(async () => changeReply())
+    const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
+
+    for (let index = 1; index <= 25; index += 1) {
+      await adjust.moveTo(
+        { id: index, periodId: index * 10, roomId: null, teacherId: 9 },
+        index * 10 + 1,
+        4,
+        'fp',
+      )
+    }
+
+    expect(adjust.undoCount.value).toBe(20)
+    expect(adjust.undoStack.value[0]).toMatchObject({
+      kind: 'changes',
+      items: [{ lessonId: 6 }],
+    })
+  })
+
+  it('returns readable search results and leaves the stack untouched', async () => {
+    const { client, posts } = fakeClient()
+    client.post = vi.fn(async (url: string, body: unknown) => {
+      posts.push({ url, body })
+      return {
+        data: {
+          status: 'NONE',
+          message: '当前范围和上限内没有可用方案',
+          version: 4,
+          fingerprint: 'fp',
+          plans: [],
+        },
+      }
+    })
+    const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
+
+    const result = await adjust.searchPlans(11, 200, 12, 4, 'fp')
+
+    expect(result?.status).toBe('NONE')
+    expect(posts[0].url).toBe('/timetable-drafts/7/cycle-plans/search')
+    expect(adjust.canUndo.value).toBe(false)
   })
 })
