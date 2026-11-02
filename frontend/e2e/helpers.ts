@@ -1134,3 +1134,210 @@ export async function seedDraftDragScenario(
     ambiguousPeriod: periodIds['2-2'],
   }
 }
+
+// ------------------------------------------------------------ 票 06 草稿锁定
+/**
+ * One class with three same-course math lessons on Monday plus one Chinese and
+ * one English lesson, and a second class with two lessons. The three math
+ * lessons share course/teacher/class and differ only by `lessonIndex`, which is
+ * exactly the "same course twice a week" case locking must not confuse.
+ */
+export interface DraftLockScenario {
+  semesterId: number
+  draftId: number
+  classId: number
+  className: string
+  otherClassId: number
+  otherClassName: string
+  mathTeacherName: string
+  mathCourseName: string
+  chineseCourseName: string
+  mathLessonIds: number[]
+  chineseLessonId: number
+  englishLessonId: number
+  otherChineseLessonId: number
+  otherEnglishLessonId: number
+  mondayPeriodIds: number[]
+  emptyPeriod: number
+}
+
+export async function seedDraftLockScenario(context: APIRequestContext): Promise<DraftLockScenario> {
+  const token = await apiLogin(context)
+  const suffix = Math.random().toString(36).slice(2, 8)
+  const semester = await apiCall(context, token, 'post', '/semesters', {
+    name: `E2E锁定-${suffix}`,
+    startDate: SEED_MONDAY_ISO,
+    endDate: SEED_END_ISO,
+  })
+  await apiCall(context, token, 'post', `/semesters/${semester.id}/set-current`)
+  await apiCall(context, token, 'post', `/semesters/${semester.id}/periods/default`, {
+    morningCount: 6,
+    afternoonCount: 0,
+    eveningCount: 0,
+    days: [1, 2],
+  })
+  const periodRows = await apiCall(context, token, 'get', `/semesters/${semester.id}/periods`)
+  const periodIds: Record<string, number> = {}
+  for (const row of periodRows) {
+    periodIds[`${row.dayOfWeek}-${row.periodNo}`] = row.id
+  }
+
+  const grade = await apiCall(context, token, 'post', `/grades?semesterId=${semester.id}`, {
+    name: `锁定高一${suffix}`,
+    sortOrder: 1,
+  })
+  const className = `锁定1班${suffix}`
+  const class1 = await apiCall(context, token, 'post', `/classes?semesterId=${semester.id}`, {
+    gradeId: grade.id,
+    name: className,
+    studentCount: 45,
+  })
+  const otherClassName = `锁定2班${suffix}`
+  const class2 = await apiCall(context, token, 'post', `/classes?semesterId=${semester.id}`, {
+    gradeId: grade.id,
+    name: otherClassName,
+    studentCount: 44,
+  })
+
+  const mathTeacherName = `锁定数学${suffix}`
+  const mathTeacher = await apiCall(context, token, 'post', '/teachers', {
+    name: mathTeacherName,
+    employeeNo: `L1-${suffix}`,
+    subject: '数学',
+  })
+  const chineseTeacher = await apiCall(context, token, 'post', '/teachers', {
+    name: `锁定语文${suffix}`,
+    employeeNo: `L2-${suffix}`,
+    subject: '语文',
+  })
+  const englishTeacher = await apiCall(context, token, 'post', '/teachers', {
+    name: `锁定英语${suffix}`,
+    employeeNo: `L3-${suffix}`,
+    subject: '英语',
+  })
+
+  const mathCourseName = `锁定数学课${suffix}`
+  const chineseCourseName = `锁定语文课${suffix}`
+  const math = await apiCall(context, token, 'post', '/courses', {
+    name: mathCourseName,
+    subject: '数学',
+    allowConsecutive: false,
+  })
+  const chinese = await apiCall(context, token, 'post', '/courses', {
+    name: chineseCourseName,
+    subject: '语文',
+    allowConsecutive: false,
+  })
+  const english = await apiCall(context, token, 'post', '/courses', {
+    name: `锁定英语课${suffix}`,
+    subject: '英语',
+    allowConsecutive: false,
+  })
+
+  const rooms: number[] = []
+  for (let index = 1; index <= 7; index++) {
+    const room = await apiCall(context, token, 'post', '/rooms', {
+      name: `锁定教室${index}${suffix}`,
+      capacity: 50,
+      type: 'NORMAL',
+    })
+    rooms.push(room.id)
+  }
+
+  await apiCall(context, token, 'post', '/assignments', {
+    classId: class1.id,
+    courseId: math.id,
+    teacherId: mathTeacher.id,
+    weeklyLessons: 3,
+  })
+  await apiCall(context, token, 'post', '/assignments', {
+    classId: class1.id,
+    courseId: chinese.id,
+    teacherId: chineseTeacher.id,
+    weeklyLessons: 1,
+  })
+  await apiCall(context, token, 'post', '/assignments', {
+    classId: class1.id,
+    courseId: english.id,
+    teacherId: englishTeacher.id,
+    weeklyLessons: 1,
+  })
+  await apiCall(context, token, 'post', '/assignments', {
+    classId: class2.id,
+    courseId: chinese.id,
+    teacherId: chineseTeacher.id,
+    weeklyLessons: 1,
+  })
+  await apiCall(context, token, 'post', '/assignments', {
+    classId: class2.id,
+    courseId: english.id,
+    teacherId: englishTeacher.id,
+    weeklyLessons: 1,
+  })
+
+  const draftId = await solveDraft(context, semester.id)
+  const solved = await apiCall(context, token, 'get', `/timetable-drafts/${draftId}`)
+  const mathLessons = solved.lessons
+    .filter((lesson: any) => lesson.classId === class1.id && lesson.courseId === math.id)
+    .sort((a: any, b: any) => a.id - b.id)
+  const chineseLesson = solved.lessons.find(
+    (lesson: any) => lesson.classId === class1.id && lesson.courseId === chinese.id,
+  )
+  const englishLesson = solved.lessons.find(
+    (lesson: any) => lesson.classId === class1.id && lesson.courseId === english.id,
+  )
+  const otherChineseLesson = solved.lessons.find(
+    (lesson: any) => lesson.classId === class2.id && lesson.courseId === chinese.id,
+  )
+  const otherEnglishLesson = solved.lessons.find(
+    (lesson: any) => lesson.classId === class2.id && lesson.courseId === english.id,
+  )
+  if (
+    mathLessons.length !== 3 ||
+    !chineseLesson ||
+    !englishLesson ||
+    !otherChineseLesson ||
+    !otherEnglishLesson
+  ) {
+    throw new Error('solver did not create every seeded lock lesson')
+  }
+
+  const place = async (lessonId: number, key: string, roomId: number) => {
+    await apiCall(context, token, 'patch', `/timetable-drafts/${draftId}/lessons/${lessonId}`, {
+      periodId: periodIds[key],
+      roomId,
+      force: true,
+    })
+  }
+  const mondayPeriodIds = [
+    periodIds['1-1'],
+    periodIds['1-3'],
+    periodIds['1-5'],
+  ]
+  await place(mathLessons[0].id, '1-1', rooms[0])
+  await place(mathLessons[1].id, '1-3', rooms[1])
+  await place(mathLessons[2].id, '1-5', rooms[2])
+  await place(chineseLesson.id, '1-2', rooms[3])
+  await place(englishLesson.id, '2-1', rooms[4])
+  await place(otherChineseLesson.id, '2-2', rooms[5])
+  await place(otherEnglishLesson.id, '2-3', rooms[6])
+
+  return {
+    semesterId: semester.id,
+    draftId,
+    classId: class1.id,
+    className,
+    otherClassId: class2.id,
+    otherClassName,
+    mathTeacherName,
+    mathCourseName,
+    chineseCourseName,
+    mathLessonIds: mathLessons.map((lesson: any) => lesson.id),
+    chineseLessonId: chineseLesson.id,
+    englishLessonId: englishLesson.id,
+    otherChineseLessonId: otherChineseLesson.id,
+    otherEnglishLessonId: otherEnglishLesson.id,
+    mondayPeriodIds,
+    emptyPeriod: periodIds['2-6'],
+  }
+}

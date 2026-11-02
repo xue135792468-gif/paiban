@@ -33,21 +33,25 @@
             class="lesson"
             :data-lesson-id="lesson.id"
             :data-locked="lockedIds.has(lesson.id) ? 'true' : undefined"
+            :data-selected="selectionMode && selectedIds.has(lesson.id) ? 'true' : undefined"
             :class="{
               dragging: draggedLessonId === lesson.id,
               highlight: highlightedIds.has(lesson.id),
               conflict: conflictIds.has(lesson.id) || Boolean(blockedReason(day, row.periodNo)),
               warning: warningIds.has(lesson.id),
               locked: lockedIds.has(lesson.id),
+              selected: selectionMode && selectedIds.has(lesson.id),
             }"
             :style="{ background: courseColor(courses, lesson.courseId) }"
             tabindex="0"
             :aria-label="lessonAria(lesson, day, row.periodNo)"
-            :draggable="draggable"
-            @dragstart="emit('drag-start', lesson)"
+            :aria-pressed="selectionMode ? selectedIds.has(lesson.id) : undefined"
+            :draggable="draggable && !selectionMode"
+            @dragstart="onLessonDragStart(lesson, $event)"
             @dragend="emit('drag-end')"
-            @keydown.enter.prevent="emit('lesson-activate', lesson)"
-            @keydown.space.prevent="emit('lesson-activate', lesson)"
+            @click="onLessonClick(lesson, $event)"
+            @keydown.enter.prevent="onLessonKey(lesson)"
+            @keydown.space.prevent="onLessonKey(lesson)"
           >
             <div class="lesson-course">
               {{ lesson.courseName }}
@@ -98,6 +102,9 @@ const props = withDefaults(
     blockedPeriods?: Record<number, string>
     /** Lessons pinned by the server; shown with a marker and excluded from drag writes. */
     lockedLessonIds?: number[]
+    /** Multi-select mode: clicking a card selects it instead of starting a drag. */
+    selectionMode?: boolean
+    selectedLessonIds?: number[]
   }>(),
   {
     draggedLessonId: null,
@@ -108,6 +115,8 @@ const props = withDefaults(
     showRoom: true,
     blockedPeriods: () => ({}),
     lockedLessonIds: () => [],
+    selectionMode: false,
+    selectedLessonIds: () => [],
   },
 )
 
@@ -117,6 +126,7 @@ const emit = defineEmits<{
   (e: 'drop-cell', payload: { day: number; periodNo: number; periodId: number }): void
   (e: 'cell-click', payload: { day: number; periodNo: number }): void
   (e: 'lesson-activate', lesson: DraftLesson): void
+  (e: 'toggle-select', lesson: DraftLesson): void
 }>()
 
 const days = computed(() => {
@@ -134,6 +144,8 @@ const conflictIds = computed(() => new Set(props.conflictLessonIds ?? []))
 const warningIds = computed(() => new Set(props.warningLessonIds ?? []))
 
 const lockedIds = computed(() => new Set(props.lockedLessonIds ?? []))
+
+const selectedIds = computed(() => new Set(props.selectedLessonIds ?? []))
 
 const periodRows = computed(() => {
   const map = new Map<number, { periodNo: number; time: string; section: string }>()
@@ -206,6 +218,27 @@ function cellClass(day: number, periodNo: number) {
   const state = props.targets[periodId]
   if (!state) return 'invalid-target'
   return state.available ? 'valid-target' : 'invalid-target'
+}
+
+function onLessonClick(lesson: DraftLesson, event: MouseEvent) {
+  // Ordinary mode keeps the old behaviour: the click bubbles to the cell and
+  // selects the lesson there. Selection mode owns the click and never drags.
+  if (!props.selectionMode) return
+  event.stopPropagation()
+  emit('toggle-select', lesson)
+}
+
+function onLessonDragStart(lesson: DraftLesson, event: DragEvent) {
+  if (props.selectionMode) {
+    event.preventDefault()
+    return
+  }
+  emit('drag-start', lesson)
+}
+
+function onLessonKey(lesson: DraftLesson) {
+  if (props.selectionMode) emit('toggle-select', lesson)
+  else emit('lesson-activate', lesson)
 }
 
 function onDrop(day: number, periodNo: number) {
@@ -328,6 +361,10 @@ function onDrop(day: number, periodNo: number) {
 }
 .lesson.locked {
   border: 1px dashed #5c6b8a;
+}
+/* Inset ring keeps the locked dashed border and the conflict outline visible. */
+.lesson.selected {
+  box-shadow: inset 0 0 0 3px #409eff;
 }
 .lesson:focus-visible {
   outline: 2px solid #409eff;
