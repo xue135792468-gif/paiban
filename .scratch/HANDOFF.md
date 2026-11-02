@@ -1,5 +1,7 @@
 # 接手说明（2026-10-25 会话交接）
 
+> **2026-11-02 草稿拖拽换位、联动方案与批量锁定：九票已实现、两轴复审、分阶段全量验收通过，未合并 main、未部署**：集成分支 `codex/draft-swap-locks`（worktree `E:/paiban-wt/draft-swap-locks`，基点 `4353a16`）。九票 01–09 全部 done；后端 `./mvnw -B verify` 1195 项 0 失败（8 跳过，`PostgresContainerIT` 因本机无 Docker 未跑），前端 549 项单测通过，整套 Playwright 161/161 通过（同一提交）。实现：持久化课节锁定与版本/行锁协议、整单变更与稳定违规加权、草稿与调代共用策略、同班本周闭环搜索与一次性 token、直接拖拽交换/自动方案/整单撤销、单节与批量锁定、显式来源草稿继续优化与锁定继承、继续优化入口与新旧稿比较。完整证据见 [统一验收](draft-swap-locks/acceptance.md)。剩余：真实 PostgreSQL 迁移/行锁待同提交 CI 或 `--deploy`；`verify.sh --full` 曾出现一次无关 `admin-reschedule` 导航超时，单独整套 E2E 复跑全绿；合并与部署需用户明确授权。线上仍是上一轮已部署版本。
+
 > **2026-11-02 草稿拖拽换位、联动方案与批量锁定：九票已发布，尚未实现**：用户完成grill-with-docs的15项选择，确认方案后明确“开始拆票发布”。[规格](draft-swap-locks/spec.md)、[九票路线](draft-swap-locks/ticket-plan.md)和[跨票契约](draft-swap-locks/contracts.md)为后续入口，决策见ADR-0034。全部票ready-for-agent、未认领，初始frontier为01/03；共享编辑器与SchedulingService的票按路线串行集成。合法A/B一拖交换，失败自动列最多三种联动方案；批量锁定时间与教师；与调代共用课节上限/排序，日期窗口仅用于发布后；指定当前草稿继续优化并保留锁生成新稿。最终算法判断由主模型负责。本轮只发布文档，不自动实施、合并功能或部署；线上仍为上一轮已部署版本。
 
 > **2026-11-02 发布验收收口**：两处旧E2E条件等待已修正，8953961完整CI通过，票据已done，详见[测试稳定性门禁](acceptance-stability/release-gate.md)。业务源码保持已部署版本，无需重建应用；备份、数据保护和线上入口见下方部署回执。后续仅文档收口提交。

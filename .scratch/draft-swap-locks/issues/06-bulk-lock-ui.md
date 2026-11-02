@@ -100,6 +100,7 @@ bash scripts/e2e.sh e2e/draft-locks.spec.ts e2e/draft-drag.spec.ts e2e/swap.spec
 - 批量确认由 composable 内 `ElMessageBox` 完成，视图只 bind；若后续拆 `DraftLockToolbar`，确认文案测试需同步迁移。
 - E2E 混合失败用例走 API 直调（UI 无法稳定构造越界 id），后端 `DraftLockIntegrationTest` 另覆盖未排课/他稿/空批次。
 - 撤销因后加锁失败沿用 05 的 E2E 用例（`draft-drag.spec.ts`），本票未重复。
+- 09 复审补充：客户端解锁未排课节不再比服务端更严（服务端只拒绝“锁定”无位置课节）；E2E 公共 helper 已收敛到 `helpers.ts`。
 - 全量门禁、真实 PostgreSQL 与合并发布由 09 统一执行。
 
 ## Comments

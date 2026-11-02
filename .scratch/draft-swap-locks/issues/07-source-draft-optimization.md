@@ -103,6 +103,7 @@ cd backend
 - 所有测试使用 H2 的 PostgreSQL 兼容模式；`TEXT`/`INT` 列类型与真实 PostgreSQL 的差异由 09 复核。
 - 求解失败/任务变化路径只断言 `FAILED` 与零新稿，未做真实并发压测；并发保护仍沿用“单个求解线程 + 版本/指纹校验”。
 - 结果发布判定复用 `DraftValidator.validateDraft` 与 `DraftPublishReadiness`；若后续 08 调整阻碍文案或代码，本票只保存 message 文本，需要跟随更新。
+- 09 复审补充：`capture` 已改为在事务内 `findWithLockById` 读取来源草稿，避免把两个时刻的行拼进快照；07/04 测试夹具改用真实教学班 id，避免全量顺序变化时外键失败。
 - 全量门禁、合并与发布由 09 统一执行。
 
 ## Comments

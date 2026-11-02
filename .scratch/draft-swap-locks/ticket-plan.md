@@ -1,8 +1,8 @@
 # 九张正式实现票据
 
-Status: ready-for-agent
+Status: done
 日期：2026-11-02
-用户完成15项选择，并明确要求“开始拆票发布”，视为确认完整规格并授权发布票据；不视为认领、编码、合并或部署授权。
+用户完成15项选择，并明确要求“开始拆票发布”，视为确认完整规格并授权发布票据；不视为认领、编码、合并或部署授权。九票已全部实现、复审并分阶段全量验收；验收证据见 [acceptance.md](acceptance.md)。仍未合并 main、未部署，需用户后续授权。
 
 ## 票据与依赖
 
@@ -18,7 +18,7 @@ Status: ready-for-agent
 | [08 继续优化入口、来源提示与新旧草稿比较](issues/08-optimization-entry-and-compare.md) | 05、06、07 |
 | [09 整体验收、两轴复审与交付记录](issues/09-integrate-and-accept.md) | 01、02、03、04、05、06、07、08 |
 
-全部九票均ready-for-agent、Owner unassigned、验收项未完成；存在前置票的必须等待，不因状态ready就提前执行。
+全部九票均已 done、验收项已完成（09 的“真实 PostgreSQL 待验证”除外）；实现与复审记录见各票 Delivery，统一证据见 [acceptance.md](acceptance.md)。
 规格见[spec.md](spec.md)，跨票边界见[contracts.md](contracts.md)，决策背景见[ADR-0034](../../docs/adr/0034-draft-locks-and-shared-exchange-policy.md)。
 
 ## 推进路线

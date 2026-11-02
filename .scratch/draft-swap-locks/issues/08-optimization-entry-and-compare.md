@@ -94,9 +94,9 @@ Owner: worker
 
 ### 剩余问题
 
-1. `scheduling.spec.ts › 场景 1b` 是 05 语义变更后的过期断言（基线上同样失败），应由 09 统一收尾时按 05 的新交互改写。
-2. 草稿详情 DTO 仍未暴露 `lessonIndex`，`compareDiff` 暂以「同一 assignment 内按 id 顺序的序号」代替；服务端一旦返回该字段即自动改用（函数已支持，含单测）。
+1. 09 已按 05 新交互改写 `scheduling.spec.ts › 场景 1b`（直接拖拽交换不再打开候选抽屉），并跑通。
+2. 09 已给草稿详情 DTO 补 `lessonIndex`；比较以 `assignmentId:lessonIndex` 为准，id 顺序仅作旧载荷兼容兜底。
 3. `resultPublishable=false` 的 E2E 场景难以稳定构造，由 `OptimizationJobPanel.spec.ts` 的单测覆盖两种完成态；E2E 未断言任何“可发布”。
-4. 未运行全量 `scripts/verify.sh`（按票面要求由 09 统一执行），未启动 Docker。
+4. 09 已执行后端全量（1195 项）、前端单测（549 项）与整套 Playwright（161 passed）；真实 PostgreSQL 待 CI/`--deploy`。
 
 ## Comments

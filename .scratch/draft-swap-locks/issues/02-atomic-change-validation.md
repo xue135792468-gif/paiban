@@ -98,6 +98,7 @@ cd backend
 - 本票按施工单只做后端；`PATCH /lessons/{id}` 与 `POST /swap` 的响应字段与 force 语义保持不变，未改造它们走新比较逻辑（04/05 消费 `/changes`）。
 - 软分 delta 只覆盖 `ConstraintChecker.softPenalty` 已实现的软规则；默认学期配置仅三条硬规则时前后软分均为 0，属预期。
 - 未做真实并发压测，交错场景用「两个客户端都持旧版本」的 HTTP 不变量覆盖（第二请求 409、落库行不变）。
+- 09 复审补充：违规比较从“同 key 次数”升级为“同 key 权重和”；聚合桶由 2 节变 3 节、配对冲突从 A-B 换成 A-C 都会判为新增/加重。新增 `DraftValidatorChangeAssessmentTest` 两个反例，后端全量 1195 项通过。
 - 全量门禁与发布由 09 统一执行。
 
 ## Comments

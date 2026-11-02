@@ -55,6 +55,6 @@ SettingsService与RankingPreset定向后端测试；设置组件单测和设置�
   - `npx vitest run --no-file-parallelism src/components/settings/SubstitutionPolicyCard.spec.ts` → 0（4 tests）
   - `bash scripts/e2e.sh e2e/settings-policy.spec.ts` → 0（1 passed；隔离端口 28080/25173，结束时 API 恢复原值）
   - `bash scripts/check-module-boundaries.sh` → 0
-- 剩余问题：按票面约定，全量 `verify.sh` 由 09 执行；本票只跑了新增 E2E 单 spec，未跑整套 E2E。
+- 剩余问题：09 已在集成分支执行后端全量 `./mvnw -B verify`（1195 项，0 失败，含全部调代审批/重校验集成测试）与整套 Playwright（161 passed）；真实 PostgreSQL 仍待 CI/`--deploy`。
 
 ## Comments

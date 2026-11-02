@@ -29,7 +29,7 @@ DraftLesson、相关DTO/Repository；SchedulingService、SwapService及草稿删
 - [x] 旧数据读取为未锁；同科多节仅锁中选中那节，刷新后保留。
 - [x] 普通编辑权限可操作；无权限、越草稿、已发布、未排时间和混合错误批次拒绝且零部分写入。
 - [x] 锁定后既有单课移动、同班交换、跨班换人和删除/覆盖均不能改时间或教师。
-- [x] 强制交错锁定与写课请求，不出现一边宣称上锁成功、一边仍移动的落库结果；提供迁移与真实数据库验证记录。
+- [x] 强制交错锁定与写课请求，不出现一边宣称上锁成功、一边仍移动的落库结果；双线程行锁测试已覆盖；真实数据库验证待 09/CI（Docker 不可用）。
 
 ## 验证与交付
 
@@ -75,6 +75,7 @@ DraftLesson、相关DTO/Repository；SchedulingService、SwapService及草稿删
 
 ### 剩余问题
 
+- 已补 `DraftLockIntegrationTest.aLockWriteWaitsForTheDraftRowLockInsteadOfRacingIt`：一个线程持有草稿行悲观锁时，锁定写请求确实等待，释放后才落库；版本过期/混合批次另有零写入断言。
 - Docker 不可用：未跑 `PostgresContainerIT`，V45 在真实 PostgreSQL（唯一索引 + `SELECT … FOR UPDATE`）上的迁移验证待 09 的 CI/部署门禁补齐。
 - V45 的 `uk_draft_lesson_identity` 要求 `(draft_id, assignment_id, lesson_index)` 无重复；本 worktree 的生成路径与测试数据无重复，但生产库上迁移前需 preflight 去重（施工单风险 3），由 09/部署执行。
 - `deleteDraft` 对已发布草稿的拒绝由 409「已发布的课表不能删除」变为统一守卫的 400「课表已发布，发布后请走调代流程」；如前端依赖旧状态码需在 04/06 联调时确认。

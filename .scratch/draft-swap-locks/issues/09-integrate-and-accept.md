@@ -1,9 +1,9 @@
 # 09 整体验收、两轴复审与交付记录
 
-Status: ready-for-agent
+Status: done
 Type: task
 Blocked by: 01、02、03、04、05、06、07、08
-Owner: unassigned
+Owner: ZCode Agent
 日期：2026-11-02
 
 ## 目标与输入
@@ -28,10 +28,10 @@ Owner: unassigned
 
 ## 验收清单
 
-- [ ] spec全部验收场景有对应证据，两个视角和等价键盘操作可用，锁保护无接口旁路。
-- [ ] 三课环不漏搜、边界上限/排序、超时/无解、并发过期均正确；旧违规能修复而新违规不能混入。
-- [ ] 单元/集成/前端/E2E与仓库门禁实跑成功；真实PostgreSQL未跑则明确待验证，不能判部署就绪。
-- [ ] 所有票状态与Delivery一致；公开结果区分代码完成、真实数据库验证、合并和部署；无任务临时文件/服务进程遗留。
+- [x] spec全部验收场景有对应证据，两个视角和等价键盘操作可用，锁保护无接口旁路。
+- [x] 三课环不漏搜、边界上限/排序、超时/无解、并发过期均正确；旧违规能修复而新违规不能混入。
+- [x] 单元/集成/前端/E2E与仓库门禁实跑成功；真实PostgreSQL未跑则明确待验证，不能判部署就绪。
+- [x] 所有票状态与Delivery一致；公开结果区分代码完成、真实数据库验证、合并和部署；无任务临时文件/服务进程遗留。
 
 ## 验证与交付
 
@@ -42,6 +42,14 @@ Owner: unassigned
 
 ## Delivery
 
-尚未认领、尚未实现；当前仅发布票据。
+已实现并完成复审、集成修复与分阶段全量验收；未合并 main、未部署生产。
+
+- 分支：`codex/draft-swap-locks`（基点 `4353a16`），集成 worktree `E:/paiban-wt/draft-swap-locks`。
+- 完整验收记录：[acceptance.md](../acceptance.md)。
+- 后端：`./mvnw -B verify` → `Tests run: 1195, Failures: 0, Errors: 0, Skipped: 8`，BUILD SUCCESS；跳过 `PostgresContainerIT`（Docker 不可用）。
+- 前端：`npm run lint`、`npx vue-tsc -b`、`npx vitest run` → 71 files / 549 tests passed。
+- E2E：同一提交 `bash scripts/e2e.sh` → `161 passed (16.4m)`，exit 0。`verify.sh --full` 的 E2E 阶段曾出现一次无关 `admin-reschedule` 导航超时（160 passed / 1 failed），单独整套复跑全绿。
+- 两轴复审修复：违规加权/配对冲突身份、旧撤销版本、来源快照行锁、搜索预算上限、发布行锁、变更审计、详情 `lessonIndex`、E2E helper 收敛与重试、旧 `scheduling.spec.ts` 更新、教学班外键夹具修复。
+- 剩余：真实 PostgreSQL 迁移/行锁需同提交 CI 或 `--deploy` 验证；合并/部署需用户明确授权；`DELETE` 已发布草稿状态码由 409 变 400（新增字段均为追加）。
 
 ## Comments
