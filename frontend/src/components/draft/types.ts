@@ -57,6 +57,11 @@ export interface DraftValidation {
 export interface DraftLesson {
   id: number
   assignmentId: number
+  /**
+   * Ordinal of this lesson inside its assignment. Not sent by the detail API yet;
+   * `compareDiff` falls back to the id-order rank when it is absent.
+   */
+  lessonIndex?: number | null
   courseId: number
   courseName?: string
   teacherId: number
