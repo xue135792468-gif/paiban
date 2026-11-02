@@ -1,5 +1,6 @@
 package com.paiban.common.settings;
 
+import com.paiban.common.policy.ExchangeRankingPreset;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -110,9 +111,20 @@ public class SettingsService {
         return clampInt(get(SUBSTITUTION_SEARCH_WINDOW_DAYS, "7"), 1, 30, 7);
     }
 
-    /** Hard cap on swap-cycle length; 6 by default, 2-10. */
-    public int substitutionMaxPlanTeachers() {
+    /** Maximum lessons a single exchange plan may move (the cycle length); 6 by default, 2-10. */
+    public int exchangeMaxMovedLessons() {
         return clampInt(get(SUBSTITUTION_MAX_PLAN_TEACHERS, "6"), 2, 10, 6);
+    }
+
+    /**
+     * Legacy name for {@link #exchangeMaxMovedLessons()}.
+     *
+     * @deprecated the setting has always capped the number of moved lessons,
+     *     not the number of distinct teachers; use {@link #exchangeMaxMovedLessons()}.
+     */
+    @Deprecated
+    public int substitutionMaxPlanTeachers() {
+        return exchangeMaxMovedLessons();
     }
 
     /** min-impact | min-teachers | stable-timetable. */
@@ -122,6 +134,11 @@ public class SettingsService {
             case "min-impact", "min-teachers", "stable-timetable" -> value;
             default -> "min-impact";
         };
+    }
+
+    /** The shared ordering preset resolved from the legacy ranking-preset key. */
+    public ExchangeRankingPreset exchangeRankingPreset() {
+        return ExchangeRankingPreset.fromCode(substitutionRankingPreset());
     }
 
     /** User accounts that always receive substitution notices, on top of the scope. */

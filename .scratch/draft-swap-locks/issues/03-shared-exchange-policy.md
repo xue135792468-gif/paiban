@@ -1,9 +1,9 @@
 # 03 共用方案策略与设置名称校正
 
-Status: ready-for-agent
+Status: done
 Type: task
 Blocked by: 无
-Owner: unassigned
+Owner: worker
 日期：2026-11-02
 
 ## 目标与输入
@@ -26,10 +26,10 @@ SettingsService、SubstitutionPolicyCard、共享方案策略/排序边界、必
 
 ## 验收清单
 
-- [ ] 旧配置不丢失，默认与边界校验不变，旧客户端调用保持兼容。
-- [ ] 同一教师参与多节时，上限按移动课节数控制、去重教师数另计。
-- [ ] 三种排序行为不退化为固定课程数优先；草稿与调代能取得相同策略值和指纹。
-- [ ] 设置页及说明展示适用范围，原调课生成/排序/审批回归通过。
+- [x] 旧配置不丢失，默认与边界校验不变，旧客户端调用保持兼容。
+- [x] 同一教师参与多节时，上限按移动课节数控制、去重教师数另计。
+- [x] 三种排序行为不退化为固定课程数优先；草稿与调代能取得相同策略值和指纹。
+- [x] 设置页及说明展示适用范围，原调课生成/排序/审批回归通过。
 
 ## 验证与交付
 
@@ -40,6 +40,21 @@ SettingsService与RankingPreset定向后端测试；设置组件单测和设置�
 
 ## Delivery
 
-尚未认领、尚未实现；当前仅发布票据。
+已实现并提交。
+
+- 分支 / 基点 / 提交：`codex/t03-shared-policy`，基点 `codex/draft-swap-locks`，实现提交 `5130d90d829e26817387d74399f73626d17646e7`。
+- 共享策略（新中立包 `common/policy`）：`ExchangePlanMetrics`、`ExchangeRankingPreset`、`ExchangePolicySnapshot`、`ExchangePolicyService`。快照字段 `maxMovedLessons` / `rankingPreset` / `fingerprint`；指纹为 `SHA-256(maxMovedLessons + "|" + preset.code())`（UTF-8，64 位 hex）。
+- 排序键与旧 `RankingPreset` 完全一致（最小影响：影响天数→同周→去重教师数→软损失→环长；最少教师：去重教师数→影响天数→同周→软损失→环长；最稳课表：软损失→影响天数→同周→去重教师数→环长），仅在全部键并列后才追加 `stableKey()` 终局 tie-break。
+- 后端改动：`common/policy/*`（新增）、`SettingsService`（`exchangeMaxMovedLessons` / `exchangeRankingPreset`，旧 `substitutionMaxPlanTeachers` 标 `@Deprecated` 委托）、`SettingsController` 文案、删除 `substitution/plan/RankingPreset.java`、`CandidatePlan` 实现指标接口并新增 `stableKey()`、`SwapPlanner` 新增 `maxMovedLessons()`、`PlanSnapshotFactory` 经 `ExchangePolicyService` 取值并把指纹放进 `SwapPlannerOptions`、`AdminSwapService` / `SubstitutionMapper` / `SubstitutionCli` 更新 import、`scripts/check-module-boundaries.sh` 新增 `scheduling→substitution` 禁止规则。
+- 前端改动：`SubstitutionPolicyCard.vue` 标签与提示（最多变动几节课、2–10 节、去重教师数另计、两处共用；搜索窗口仅用于发布后调课）、`help/docs/settings.md`、`help/docs/substitution.md`。
+- 测试新增：`SettingsPolicyTest`（默认/旧 key clamp/旧方法一致/三预设指纹可区分且稳定）、`ExchangeRankingPresetTest`（三套键序、全并列时 stableKey、重复稳定）、`SubstitutionPolicyCard.spec.ts`、`e2e/settings-policy.spec.ts`；同步更新 `PlanSnapshotFactoryTest` 与排序相关测试的 import。
+- 验证命令与真实退出码（在本 worktree 执行）：
+  - `./mvnw -B -DskipTests compile` → 0
+  - `./mvnw -B -DforkCount=0 -Dtest=SettingsIntegrationTest,SettingsPolicyTest,ExchangeRankingPresetTest,PlanSnapshotFactoryTest,SwapPlannerTest,SwapPlanPropertyTest test` → 0（41 tests，0 failures）
+  - `npm run lint` → 0
+  - `npx vitest run --no-file-parallelism src/components/settings/SubstitutionPolicyCard.spec.ts` → 0（4 tests）
+  - `bash scripts/e2e.sh e2e/settings-policy.spec.ts` → 0（1 passed；隔离端口 28080/25173，结束时 API 恢复原值）
+  - `bash scripts/check-module-boundaries.sh` → 0
+- 剩余问题：按票面约定，全量 `verify.sh` 由 09 执行；本票只跑了新增 E2E 单 spec，未跑整套 E2E。
 
 ## Comments

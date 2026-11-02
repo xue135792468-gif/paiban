@@ -3,6 +3,7 @@ package com.paiban.substitution.plan;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.paiban.common.policy.ExchangeRankingPreset;
 import com.paiban.scheduling.domain.ConstraintConfig;
 import com.paiban.scheduling.domain.ConstraintEntry;
 import com.paiban.scheduling.domain.ConstraintType;
@@ -111,7 +112,7 @@ class SwapPlannerTest {
         PlanningResult result = SwapPlanner.plan(
                 snapshot,
                 new SwapPlanner.Request(CLASS_1, fridayFirst, friday, PlanFixtures.periodId(5, 2)),
-                SwapPlanner.Options.of(7, 6, RankingPreset.MIN_IMPACT));
+                SwapPlanner.Options.of(7, 6, ExchangeRankingPreset.MIN_IMPACT));
 
         assertThat(result.candidates()).isNotEmpty();
         CandidatePlan plan = result.candidates().get(0);
@@ -148,7 +149,7 @@ class SwapPlannerTest {
                 snapshot,
                 new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
                         PlanFixtures.periodId(2, 1)),
-                SwapPlanner.Options.of(2, 6, RankingPreset.MIN_IMPACT));
+                SwapPlanner.Options.of(2, 6, ExchangeRankingPreset.MIN_IMPACT));
 
         assertThat(result.candidates()).isNotEmpty();
         CandidatePlan plan = result.candidates().get(0);
@@ -183,7 +184,7 @@ class SwapPlannerTest {
                 snapshot,
                 new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
                         PlanFixtures.periodId(2, 1)),
-                SwapPlanner.Options.of(2, 6, RankingPreset.MIN_IMPACT));
+                SwapPlanner.Options.of(2, 6, ExchangeRankingPreset.MIN_IMPACT));
 
         assertThat(result.candidates()).isEmpty();
     }
@@ -201,7 +202,7 @@ class SwapPlannerTest {
                 snapshot,
                 new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
                         PlanFixtures.periodId(2, 1)),
-                new SwapPlanner.Options(2, 6, RankingPreset.MIN_IMPACT, 1, 200));
+                new SwapPlanner.Options(2, 6, ExchangeRankingPreset.MIN_IMPACT, 1, 200));
 
         assertThat(result.candidates()).isEmpty();
         assertThat(result.timedOut()).isTrue();
@@ -246,7 +247,7 @@ class SwapPlannerTest {
                 new SwapPlanner.Request(CLASS_1, entryIds[testCase.sourceIndex()],
                         PlanFixtures.date(source.dayOfWeek()),
                         PlanFixtures.periodId(target.dayOfWeek(), target.periodNo())),
-                SwapPlanner.Options.of(testCase.searchWindowDays(), 6, RankingPreset.MIN_IMPACT));
+                SwapPlanner.Options.of(testCase.searchWindowDays(), 6, ExchangeRankingPreset.MIN_IMPACT));
 
         assertThat(result.candidates()).as(label).isNotEmpty();
         CandidatePlan plan = result.candidates().get(0);
@@ -302,7 +303,7 @@ class SwapPlannerTest {
                 snapshot,
                 new SwapPlanner.Request(CLASS_1, fridayFirst, PlanFixtures.date(5),
                         PlanFixtures.periodId(5, 2)),
-                SwapPlanner.Options.of(2, 6, RankingPreset.MIN_IMPACT));
+                SwapPlanner.Options.of(2, 6, ExchangeRankingPreset.MIN_IMPACT));
 
         assertThat(result.candidates()).isEmpty();
     }
@@ -320,7 +321,7 @@ class SwapPlannerTest {
                 snapshot,
                 new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
                         PlanFixtures.periodId(1, 2)),
-                SwapPlanner.Options.of(7, 2, RankingPreset.MIN_IMPACT));
+                SwapPlanner.Options.of(7, 2, ExchangeRankingPreset.MIN_IMPACT));
 
         assertThat(result.candidates()).isEmpty();
     }
@@ -331,13 +332,13 @@ class SwapPlannerTest {
         CandidatePlan crossDayTwoTeachers = new CandidatePlan(List.of(), 2, 2, 0, 2, false);
 
         assertThat(List.of(sameDayThreeTeachers, crossDayTwoTeachers).stream()
-                .sorted(RankingPreset.MIN_IMPACT.comparator()).toList())
+                .sorted(ExchangeRankingPreset.MIN_IMPACT.comparator()).toList())
                 .containsExactly(sameDayThreeTeachers, crossDayTwoTeachers);
         assertThat(List.of(sameDayThreeTeachers, crossDayTwoTeachers).stream()
-                .sorted(RankingPreset.MIN_TEACHERS.comparator()).toList())
+                .sorted(ExchangeRankingPreset.MIN_TEACHERS.comparator()).toList())
                 .containsExactly(crossDayTwoTeachers, sameDayThreeTeachers);
         assertThat(List.of(sameDayThreeTeachers, crossDayTwoTeachers).stream()
-                .sorted(RankingPreset.STABLE_TIMETABLE.comparator()).toList())
+                .sorted(ExchangeRankingPreset.STABLE_TIMETABLE.comparator()).toList())
                 .containsExactly(sameDayThreeTeachers, crossDayTwoTeachers);
     }
 
@@ -356,7 +357,7 @@ class SwapPlannerTest {
                 snapshot,
                 new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
                         PlanFixtures.periodId(3, 1), nextWednesday),
-                SwapPlanner.Options.of(10, 6, RankingPreset.MIN_IMPACT));
+                SwapPlanner.Options.of(10, 6, ExchangeRankingPreset.MIN_IMPACT));
 
         assertThat(result.candidates()).isNotEmpty();
         CandidatePlan plan = result.candidates().get(0);
@@ -384,7 +385,7 @@ class SwapPlannerTest {
                 snapshot,
                 new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
                         PlanFixtures.periodId(1, 2), nextMonday),
-                SwapPlanner.Options.of(8, 6, RankingPreset.MIN_IMPACT));
+                SwapPlanner.Options.of(8, 6, ExchangeRankingPreset.MIN_IMPACT));
 
         assertThat(result.candidates()).isNotEmpty();
         assertThat(result.candidates().get(0).moves()).anySatisfy(move -> {
@@ -435,7 +436,7 @@ class SwapPlannerTest {
                 snapshot,
                 new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
                         PlanFixtures.periodId(3, 1), PlanFixtures.date(1).minusDays(1)),
-                SwapPlanner.Options.of(10, 6, RankingPreset.MIN_IMPACT));
+                SwapPlanner.Options.of(10, 6, ExchangeRankingPreset.MIN_IMPACT));
 
         assertThat(result.candidates()).isEmpty();
         assertThat(result.diagnoses()).extracting(PlanDiagnosis::code)
@@ -454,7 +455,7 @@ class SwapPlannerTest {
                 snapshot,
                 new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
                         PlanFixtures.periodId(3, 1), PlanFixtures.date(1).plusDays(8)),
-                SwapPlanner.Options.of(7, 6, RankingPreset.MIN_IMPACT));
+                SwapPlanner.Options.of(7, 6, ExchangeRankingPreset.MIN_IMPACT));
 
         assertThat(result.candidates()).isEmpty();
         assertThat(result.diagnoses()).extracting(PlanDiagnosis::code)
@@ -474,7 +475,7 @@ class SwapPlannerTest {
                 snapshot,
                 new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
                         PlanFixtures.periodId(4, 1), PlanFixtures.MONDAY.plusDays(10)),
-                SwapPlanner.Options.of(30, 6, RankingPreset.MIN_IMPACT));
+                SwapPlanner.Options.of(30, 6, ExchangeRankingPreset.MIN_IMPACT));
 
         assertThat(result.candidates()).isEmpty();
         assertThat(result.diagnoses()).extracting(PlanDiagnosis::code)
@@ -492,7 +493,7 @@ class SwapPlannerTest {
                 snapshot,
                 new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
                         PlanFixtures.periodId(3, 4), PlanFixtures.date(3)),
-                SwapPlanner.Options.of(7, 6, RankingPreset.MIN_IMPACT));
+                SwapPlanner.Options.of(7, 6, ExchangeRankingPreset.MIN_IMPACT));
 
         assertThat(result.candidates()).isEmpty();
         assertThat(result.diagnoses()).extracting(PlanDiagnosis::code)
@@ -511,7 +512,7 @@ class SwapPlannerTest {
                 snapshot,
                 new SwapPlanner.Request(CLASS_1, first, PlanFixtures.date(1),
                         PlanFixtures.periodId(3, 1), PlanFixtures.date(2)),
-                SwapPlanner.Options.of(7, 6, RankingPreset.MIN_IMPACT));
+                SwapPlanner.Options.of(7, 6, ExchangeRankingPreset.MIN_IMPACT));
 
         assertThat(result.candidates()).isEmpty();
         assertThat(result.diagnoses()).extracting(PlanDiagnosis::code)

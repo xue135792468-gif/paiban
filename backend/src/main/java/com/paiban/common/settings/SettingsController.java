@@ -184,7 +184,7 @@ public class SettingsController {
             requireIntInRange(key, value, 1, 30, "调课搜索窗口必须在 1 到 30 天之间");
         }
         if (SettingsService.SUBSTITUTION_MAX_PLAN_TEACHERS.equals(key)) {
-            requireIntInRange(key, value, 2, 10, "调课方案教师数必须在 2 到 10 之间");
+            requireIntInRange(key, value, 2, 10, "最多变动课节数必须在 2 到 10 之间");
         }
         if (SettingsService.SUBSTITUTION_RANKING_PRESET.equals(key)
                 && !List.of("min-impact", "min-teachers", "stable-timetable").contains(value)) {

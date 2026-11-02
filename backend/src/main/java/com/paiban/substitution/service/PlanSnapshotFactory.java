@@ -1,5 +1,8 @@
 package com.paiban.substitution.service;
 
+import com.paiban.common.policy.ExchangePolicyService;
+import com.paiban.common.policy.ExchangePolicySnapshot;
+import com.paiban.common.policy.ExchangeRankingPreset;
 import com.paiban.common.settings.SettingsService;
 import com.paiban.foundation.domain.AdminClassRepository;
 import com.paiban.foundation.domain.CourseRepository;
@@ -46,6 +49,7 @@ public class PlanSnapshotFactory {
     private final SubstitutionRepository substitutions;
     private final ConstraintService constraints;
     private final SettingsService settings;
+    private final ExchangePolicyService exchangePolicy;
 
     public PlanSnapshotFactory(
             SemesterService semesters,
@@ -57,7 +61,8 @@ public class PlanSnapshotFactory {
             TimetableEntryRepository entries,
             SubstitutionRepository substitutions,
             ConstraintService constraints,
-            SettingsService settings) {
+            SettingsService settings,
+            ExchangePolicyService exchangePolicy) {
         this.semesters = semesters;
         this.periods = periods;
         this.rooms = rooms;
@@ -68,6 +73,7 @@ public class PlanSnapshotFactory {
         this.substitutions = substitutions;
         this.constraints = constraints;
         this.settings = settings;
+        this.exchangePolicy = exchangePolicy;
     }
 
     @Transactional(readOnly = true)
@@ -120,14 +126,24 @@ public class PlanSnapshotFactory {
     }
 
     public SwapPlannerOptions swapOptions() {
+        // The shared policy is the one place that reads the moved-lesson cap and
+        // ranking preset, so the draft search and the published planner cannot
+        // drift apart. The search window is not part of the shared policy.
+        ExchangePolicySnapshot policy = exchangePolicy.current();
         return new SwapPlannerOptions(
                 settings.substitutionSearchWindowDays(),
-                settings.substitutionMaxPlanTeachers(),
-                com.paiban.substitution.plan.RankingPreset.fromCode(
-                        settings.substitutionRankingPreset()));
+                policy.maxMovedLessons(),
+                policy.rankingPreset(),
+                policy.fingerprint());
     }
 
     /** Settings resolved to planner options; kept next to the snapshot adapter. */
     public record SwapPlannerOptions(int windowDays, int maxTeachers,
-                                     com.paiban.substitution.plan.RankingPreset preset) {}
+                                     ExchangeRankingPreset preset, String fingerprint) {
+
+        /** Alias with the setting's real name: it caps the moved lessons. */
+        public int maxMovedLessons() {
+            return maxTeachers;
+        }
+    }
 }
