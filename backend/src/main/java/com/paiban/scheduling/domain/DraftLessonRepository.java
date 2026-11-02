@@ -16,6 +16,9 @@ public interface DraftLessonRepository extends JpaRepository<DraftLesson, Long> 
 
     long countByDraftId(Long draftId);
 
+    /** Number of locked lessons in one draft, used before deleting the draft. */
+    long countByDraftIdAndLockedTrue(Long draftId);
+
     long countByAdminClassId(Long adminClassId);
 
     /** Number of draft lessons still pointing at any of these period rows. */

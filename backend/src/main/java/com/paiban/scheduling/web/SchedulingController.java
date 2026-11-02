@@ -116,7 +116,8 @@ public class SchedulingController {
                 lessonId,
                 request.periodId(),
                 request.roomId(),
-                Boolean.TRUE.equals(request.force()));
+                Boolean.TRUE.equals(request.force()),
+                request.expectedVersion());
     }
 
     @PutMapping("/timetable-drafts/{id}/name")

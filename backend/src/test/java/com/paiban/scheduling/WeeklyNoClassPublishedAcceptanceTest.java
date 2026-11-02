@@ -115,7 +115,8 @@ class WeeklyNoClassPublishedAcceptanceTest extends ApiIntegrationTest {
         for (int i = 0; i < 2; i++) {
             DraftLesson row = new DraftLesson();
             row.setDraftId(draft.getId());
-            row.setAssignmentId(0L);
+            // V45 identity is (draft, assignment, lesson index): each row is its own lesson.
+            row.setAssignmentId((long) i + 1);
             row.setLessonIndex(1);
             row.setAdminClassId(klass);
             row.setCourseId(i == 0 ? course : otherCourse);

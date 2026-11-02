@@ -42,4 +42,8 @@ public class TimetableDraft {
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
+
+    /** Optimistic version bumped by every draft write; sent back by clients as expectedVersion. */
+    @Column(name = "version", nullable = false)
+    private long version;
 }

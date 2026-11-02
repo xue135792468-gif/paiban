@@ -80,6 +80,7 @@ public class SchedulingService {
     private final ClassCapacityService capacity;
     private final TimetableProblemBuilder problemBuilder;
     private final DraftValidator validator;
+    private final DraftWriteGuard guard;
     private final TaskExecutor executor;
     private final int defaultSolveSeconds;
     private final Map<Long, Solver<TimetableSolution>> runningSolvers = new ConcurrentHashMap<>();
@@ -100,6 +101,7 @@ public class SchedulingService {
             ClassCapacityService capacity,
             TimetableProblemBuilder problemBuilder,
             DraftValidator validator,
+            DraftWriteGuard guard,
             @Qualifier("schedulingExecutor") TaskExecutor executor,
             @Value("${paiban.scheduling.max-solve-seconds:60}") int defaultSolveSeconds) {
         this.jobs = jobs;
@@ -116,6 +118,7 @@ public class SchedulingService {
         this.capacity = capacity;
         this.problemBuilder = problemBuilder;
         this.validator = validator;
+        this.guard = guard;
         this.executor = executor;
         this.defaultSolveSeconds = defaultSolveSeconds;
     }
@@ -403,7 +406,8 @@ public class SchedulingService {
                             period == null ? null : period.getSection().name(),
                             period == null ? null : "周" + period.getDayOfWeek() + "第" + period.getPeriodNo() + "节",
                             row.getRoomId(),
-                            room == null ? null : room.getName());
+                            room == null ? null : room.getName(),
+                            row.isLocked());
                 })
                 .toList();
 
@@ -480,9 +484,9 @@ public class SchedulingService {
 
     @Transactional
     public void deleteDraft(Long draftId) {
-        TimetableDraft draft = requireDraft(draftId);
-        if ("PUBLISHED".equals(draft.getStatus())) {
-            throw ApiException.conflict("已发布的课表不能删除");
+        TimetableDraft draft = guard.lockEditable(draftId, null);
+        if (draftLessons.countByDraftIdAndLockedTrue(draftId) > 0) {
+            throw ApiException.conflict("草稿含锁定课节，请先解锁后再删除");
         }
         draftLessons.deleteByDraftId(draftId);
         drafts.delete(draft);
@@ -504,43 +508,48 @@ public class SchedulingService {
     }
 
     @Transactional
-    public MoveResult moveLesson(Long draftId, Long lessonId, Long periodId, Long roomId, boolean force) {
-        DraftValidator.ValidationResult result = validator.validateMove(draftId, lessonId, periodId, roomId);
-        boolean unavailable = result.conflicts().stream()
-                .anyMatch(conflict ->
-                        ConstraintType.CLASS_UNAVAILABLE.name().equals(conflict.type()));
-        if (!result.valid() && (!force || unavailable)) {
-            return new MoveResult(false, false, result.hardConflicts(), result.conflicts());
-        }
+    public MoveResult moveLesson(
+            Long draftId, Long lessonId, Long periodId, Long roomId, boolean force, Long expectedVersion) {
+        TimetableDraft draft = guard.lockEditable(draftId, expectedVersion);
         DraftLesson lesson = draftLessons.findById(lessonId)
                 .orElseThrow(() -> ApiException.notFound("课节不存在: " + lessonId));
         if (!lesson.getDraftId().equals(draftId)) {
             throw ApiException.badRequest("课节不属于该草稿");
         }
+        guard.requireUnlocked(lesson, "移动");
         // A forced move bypasses the "period missing" hard conflict, so the reference is
         // checked here instead of relying on the draft_lesson.period_id foreign key.
-        if (periodId != null && !periods.existsById(periodId)) {
-            throw ApiException.badRequest("课节对应的作息时段不存在: " + periodId);
+        if (periodId != null) {
+            Period period = periods.findById(periodId)
+                    .orElseThrow(() -> ApiException.badRequest("课节对应的作息时段不存在: " + periodId));
+            if (!draft.getSemesterId().equals(period.getSemesterId())) {
+                throw ApiException.badRequest("作息时段不属于该学期");
+            }
+        }
+        DraftValidator.ValidationResult result = validator.validateMove(draftId, lessonId, periodId, roomId);
+        boolean unavailable = result.conflicts().stream()
+                .anyMatch(conflict ->
+                        ConstraintType.CLASS_UNAVAILABLE.name().equals(conflict.type()));
+        if (!result.valid() && (!force || unavailable)) {
+            return new MoveResult(false, false, result.hardConflicts(), result.conflicts(), draft.getVersion());
         }
         lesson.setPeriodId(periodId);
         lesson.setRoomId(roomId);
+        guard.bump(draft);
         // The stored score is the solver's last result; a manual move does not rewrite it.
         // The current publish verdict comes from the draft validation endpoint instead.
-        return new MoveResult(true, result.valid(), result.hardConflicts(), result.conflicts());
+        return new MoveResult(true, result.valid(), result.hardConflicts(), result.conflicts(), draft.getVersion());
     }
 
     /**
      * The write path for the explicit "fill fixed rooms" action (ticket 07): assigns a
      * room only to lessons whose {@code roomId} is still empty, so a value a person
      * entered by hand survives. The caller owns the transaction and the all-or-nothing
-     * decision; this method refuses a published draft like every other edit.
+     * decision. Locks fix period and teacher only, so a locked lesson can still get a room.
      */
     @Transactional
     public int fillMissingRooms(Long draftId, Map<Long, Long> roomIdByLesson) {
-        TimetableDraft draft = requireDraft(draftId);
-        if ("PUBLISHED".equals(draft.getStatus())) {
-            throw ApiException.conflict("已发布的课表不能修改");
-        }
+        TimetableDraft draft = guard.lockEditable(draftId, null);
         int assigned = 0;
         for (Map.Entry<Long, Long> entry : roomIdByLesson.entrySet()) {
             DraftLesson lesson = draftLessons.findById(entry.getKey())
@@ -552,6 +561,9 @@ public class SchedulingService {
                 lesson.setRoomId(entry.getValue());
                 assigned++;
             }
+        }
+        if (assigned > 0) {
+            guard.bump(draft);
         }
         return assigned;
     }
@@ -593,6 +605,7 @@ public class SchedulingService {
                 draft.getScoreSoft(),
                 draft.getCreatedBy(),
                 draft.getCreatedAt(),
-                lessonCount);
+                lessonCount,
+                draft.getVersion());
     }
 }
