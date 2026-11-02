@@ -34,6 +34,16 @@
       @fill-rooms="roomFillVisible = true"
     />
 
+    <DraftOptimizationSection
+      v-if="detail?.draft.status === 'DRAFT'"
+      :draft="detail?.draft ?? null"
+      :source-draft-id="draftId"
+      :semester-id="detail?.draft.semesterId"
+      :can-optimize="canOptimize"
+      :locked-count="lockedCount"
+      :lesson-count="detail?.lessons.length ?? 0"
+    />
+
     <RoomFillDialog v-model="roomFillVisible" :draft-id="draftId" @applied="load" />
 
     <el-card shadow="never" class="control-card">
@@ -149,6 +159,8 @@
       v-model="compareVisible"
       :draft-id="draftId"
       :semester-id="detail?.draft.semesterId"
+      :source-draft-id="compareSourceId"
+      :compare-with-draft-id="draftId"
     />
 
     <el-drawer
@@ -188,17 +200,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { http } from '@/api/http'
-import { serverMessage } from '@/api/errors'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import DraftGrid from '@/components/draft/DraftGrid.vue'
 import DraftCompareDialog from '@/components/draft/DraftCompareDialog.vue'
 import DraftStats from '@/components/draft/DraftStats.vue'
 import DraftPublishBlockers from '@/components/draft/DraftPublishBlockers.vue'
+import DraftOptimizationSection from '@/components/draft/DraftOptimizationSection.vue'
 import RoomFillDialog from '@/components/draft/RoomFillDialog.vue'
 import SwapCandidatePanel from '@/components/draft/SwapCandidatePanel.vue'
 import DualTimetablePreview from '@/components/draft/DualTimetablePreview.vue'
@@ -213,6 +224,9 @@ import { useDraftDrop } from '@/composables/useDraftDrop'
 import { useCyclePlans } from '@/composables/useCyclePlans'
 import { useSwapFlow } from '@/composables/useSwapFlow'
 import { useDraftLocks } from '@/composables/useDraftLocks'
+import { useUndoShortcut } from '@/composables/useUndoShortcut'
+import { useDraftCompareQuery } from '@/composables/useDraftCompareQuery'
+import { useDraftActions } from '@/composables/useDraftActions'
 import type { CyclePlan, DraftConflict, DraftLesson } from '@/components/draft/types'
 
 const route = useRoute()
@@ -225,6 +239,11 @@ const canEdit = computed(() => auth.hasPermission('timetable:edit'))
 const canPublish = computed(() => auth.hasPermission('timetable:publish'))
 // Filling rooms needs two permissions; that pair is defined in the auth store.
 const canFillRooms = computed(() => auth.canFillDraftRooms)
+const canOptimize = computed(() => auth.hasPermission('scheduling:run'))
+const lockedCount = computed(
+  () => (detail.value?.lessons ?? []).filter((lesson) => lesson.locked).length,
+)
+const { compareVisible, compareSourceId, openCompare } = useDraftCompareQuery()
 
 const adjust = useDraftAdjust(draftId)
 const { undoCount, canUndo, undoing, busy, undo } = adjust
@@ -301,7 +320,6 @@ const dragged = ref<DraftLesson | null>(null)
 const dragTargets = ref<Record<number, { available: boolean; conflicts: DraftConflict[] }> | null>(null)
 const conflictVisible = ref(false)
 const cellConflicts = ref<DraftConflict[]>([])
-const compareVisible = ref(false)
 const roomFillVisible = ref(false)
 const targetVisible = ref(false)
 
@@ -456,78 +474,16 @@ async function undoMove() {
   }
 }
 
-function onKeydown(event: KeyboardEvent) {
-  if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z') return
-  const target = event.target as HTMLElement | null
-  const tag = target?.tagName?.toLowerCase()
-  if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) return
-  if (!canUndo.value || busy.value) return
-  event.preventDefault()
-  void undoMove()
-}
+useUndoShortcut({ canUndo, busy, undo: undoMove })
 
-async function rename() {
-  if (!detail.value) return
-  try {
-    const { value } = await ElMessageBox.prompt('输入新的草稿名称', '重命名草稿', {
-      inputValue: detail.value.draft.name,
-      inputValidator: (input) => Boolean(input && input.trim()),
-    })
-    await http.put(`/timetable-drafts/${draftId}/name`, { name: value })
-    ElMessage.success('已重命名')
-    await load()
-  } catch {
-    // cancelled
-  }
-}
-
-async function publishDraft() {
-  if (!detail.value) return
-  try {
-    await ElMessageBox.confirm(
-      '发布后该草稿将成为正式课表基线，后续变更需走调代流程。确定发布？',
-      '发布课表',
-      { type: 'warning' },
-    )
-  } catch {
-    return
-  }
-  try {
-    const { data } = await http.post(`/timetable-drafts/${draftId}/publish`)
-    ElMessage.success(`课表已发布，共 ${data.entryCount} 节课`)
-    await load()
-  } catch (e: any) {
-    ElMessage.error(serverMessage(e, '发布失败'))
-  }
-}
-
-async function removeDraft() {
-  try {
-    await ElMessageBox.confirm('确定删除该草稿吗？删除后无法恢复。', '删除草稿', { type: 'warning' })
-  } catch {
-    return
-  }
-  try {
-    await http.delete(`/timetable-drafts/${draftId}`)
-    ElMessage.success('已删除')
-    router.push('/admin/scheduling')
-  } catch (e: any) {
-    ElMessage.error(serverMessage(e, '删除失败'))
-  }
-}
-
-async function openCompare() {
-  if (isJunior.value) return
-  compareVisible.value = true
-}
-
-onMounted(() => {
-  window.addEventListener('keydown', onKeydown)
-  void load()
+const { rename, publish: publishDraft, remove: removeDraft } = useDraftActions({
+  draftId,
+  detail,
+  reload: load,
 })
 
-onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onKeydown)
+onMounted(() => {
+  void load()
 })
 </script>
 
