@@ -44,6 +44,7 @@ DraftEditorView、useDraftAdjust、draft/DraftGrid与新增方案预览组件、
 **实现分支**：`codex/t05-direct-drag`（worktree `E:/paiban-wt/t05-drag`）
 **基点**：`codex/draft-swap-locks`（含 01/02/03/04，HEAD `96838d8`）
 **提交**：`feat(draft): direct drag swap, cycle plans and change-set undo`
+**主审补口子追加提交**：`fix(draft): send expected version from explicit swap flow`（显式「换课」入口的 `/swap`/`PATCH` 也携带 `expectedVersion`，旧预览不再覆盖他人修改）
 
 ### 改动文件
 
@@ -83,7 +84,7 @@ npm run lint
 npx vue-tsc -b
 # EXIT=0
 npx vitest run --no-file-parallelism src/composables/useDraftAdjust.spec.ts src/composables/useDraftDrop.spec.ts src/components/draft/DraftGrid.spec.ts src/components/draft/CyclePlanPanel.spec.ts
-# EXIT=0；Test Files 4 passed；Tests 49 passed
+# EXIT=0；Test Files 4 passed；Tests 52 passed（补口子后 useDraftAdjust 24 条）
 bash /e/paiban-wt/t05-drag/scripts/check-sfc-size.sh
 # EXIT=0（DraftEditorView.vue 554 行）
 bash /e/paiban-wt/t05-drag/scripts/check-e2e-helpers.sh
@@ -95,6 +96,24 @@ bash scripts/e2e.sh e2e/draft-drag.spec.ts e2e/swap.spec.ts
 ```
 
 未运行全量 `verify.sh`、未起 Docker（按票面约束，留给 09）。
+
+### 主审补口子（追加提交）验证
+
+```bash
+cd /e/paiban-wt/t05-drag/frontend
+npm run lint
+# EXIT=0
+npx vue-tsc -b
+# EXIT=0
+npx vitest run --no-file-parallelism src/composables/useDraftAdjust.spec.ts src/composables/useSwapFlow.spec.ts
+# EXIT=0；Test Files 2 passed；Tests 27 passed（useDraftAdjust 24 + useSwapFlow 3）
+
+cd /e/paiban-wt/t05-drag
+bash scripts/e2e.sh e2e/swap.spec.ts e2e/draft-drag.spec.ts
+# EXIT=0；12 passed（swap 4 条 + draft-drag 8 条）
+```
+
+补口子内容：`useDraftAdjust.swap(..., expectedVersion?)` 与 `move(..., expectedVersion?)` 在调用方提供版本时写入请求体；`useSwapFlow` 新增 `getVersion`，`confirm()` 在确认瞬间读取当前草稿版本；`DraftEditorView` 注入 `detail.draft.version`。旧调用不传版本仍保持原请求体。
 
 ### 剩余问题
 

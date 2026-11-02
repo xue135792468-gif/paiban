@@ -4,7 +4,7 @@ import type { DraftLesson } from '@/components/draft/types'
 
 interface PatchCall {
   url: string
-  body: { periodId: number | null; roomId: number | null }
+  body: { periodId: number | null; roomId: number | null; expectedVersion?: number }
 }
 
 interface PostCall {
@@ -618,6 +618,64 @@ describe('useDraftAdjust atomic change sets', () => {
 
     expect(result?.status).toBe('NONE')
     expect(posts[0].url).toBe('/timetable-drafts/7/cycle-plans/search')
+    expect(adjust.canUndo.value).toBe(false)
+  })
+})
+
+describe('useDraftAdjust stale-safe legacy writes', () => {
+  it('swap sends expectedVersion when the editor knows the draft version', async () => {
+    const { client, posts } = fakeClient()
+    client.post = vi.fn(async (url: string, body: unknown) => {
+      posts.push({ url, body })
+      return { data: { saved: true, valid: true, type: 'INTRA_CLASS', conflicts: [], warnings: [] } }
+    })
+    const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
+
+    const outcome = await adjust.swap({ id: 11 }, { lessonId: 12 }, false, 7)
+
+    expect(outcome.saved).toBe(true)
+    expect(posts).toEqual([
+      {
+        url: '/timetable-drafts/7/swap',
+        body: {
+          lessonId: 11,
+          targetLessonId: 12,
+          swapRooms: false,
+          expectedVersion: 7,
+        },
+      },
+    ])
+  })
+
+  it('move can also send expectedVersion without changing the old two-argument call', async () => {
+    const { client, calls } = fakeClient()
+    const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
+
+    await adjust.move(
+      { id: 11, periodId: 100, roomId: 5, teacherId: 9 },
+      { periodId: 200 },
+      7,
+    )
+
+    expect(calls[0]).toEqual({
+      url: '/timetable-drafts/7/lessons/11',
+      body: { periodId: 200, roomId: 5, expectedVersion: 7 },
+    })
+  })
+
+  it('returns a readable rejection on 409 and never records an undo entry', async () => {
+    const notify = fakeNotify()
+    const { client } = fakeClient()
+    client.post = vi.fn(async () => {
+      throw { response: { status: 409, data: { message: '课表已被其他人修改，请刷新后重试' } } }
+    })
+    const adjust = useDraftAdjust(7, { client, notify })
+
+    const outcome = await adjust.swap({ id: 11 }, { lessonId: 12 }, false, 7)
+
+    expect(outcome.saved).toBe(false)
+    expect(outcome.error).toBe('课表已被其他人修改，请刷新后重试')
+    expect(notify.error).toHaveBeenCalledWith('课表已被其他人修改，请刷新后重试')
     expect(adjust.canUndo.value).toBe(false)
   })
 })

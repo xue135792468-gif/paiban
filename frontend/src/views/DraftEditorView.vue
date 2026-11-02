@@ -243,7 +243,11 @@ const {
   confirm: confirmSwap,
   closePanel,
   closePreview,
-} = useSwapFlow({ adjust })
+} = useSwapFlow({
+  adjust,
+  // Read at confirm time: an old preview must not overwrite a newer draft version.
+  getVersion: () => detail.value?.draft.version ?? null,
+})
 
 const {
   loading,

@@ -151,14 +151,17 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
   async function move(
     lesson: LessonPosition,
     target: { periodId: number; roomId?: number | null },
+    expectedVersion?: number,
   ): Promise<MoveOutcome> {
     const roomId = target.roomId ?? lesson.roomId ?? null
     const fromPeriodId = lesson.periodId ?? null
     try {
-      const { data } = await client.patch(lessonUrl(lesson.id), {
+      const body: Record<string, unknown> = {
         periodId: target.periodId,
         roomId,
-      })
+      }
+      if (expectedVersion != null) body.expectedVersion = expectedVersion
+      const { data } = await client.patch(lessonUrl(lesson.id), body)
       if (!data.saved) {
         return { saved: false, conflicts: data.conflicts ?? [] }
       }
@@ -185,13 +188,16 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
     lesson: Pick<DraftLesson, 'id'>,
     candidate: { lessonId: number },
     swapRooms = false,
+    expectedVersion?: number,
   ): Promise<SwapOutcome> {
     try {
-      const { data } = await client.post(swapUrl(), {
+      const body: Record<string, unknown> = {
         lessonId: lesson.id,
         targetLessonId: candidate.lessonId,
         swapRooms,
-      })
+      }
+      if (expectedVersion != null) body.expectedVersion = expectedVersion
+      const { data } = await client.post(swapUrl(), body)
       const warnings: string[] = data.warnings ?? []
       if (!data.saved) {
         return { saved: false, type: data.type, conflicts: data.conflicts ?? [], warnings }
