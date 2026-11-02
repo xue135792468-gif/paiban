@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
 import com.paiban.foundation.domain.PeriodSection;
@@ -20,6 +21,9 @@ import com.paiban.foundation.web.FoundationDtos.CourseDto;
 import com.paiban.foundation.web.FoundationDtos.TeacherDto;
 import com.paiban.scheduling.domain.Assignment;
 import com.paiban.scheduling.domain.AssignmentRepository;
+import com.paiban.scheduling.domain.ConstraintConfig;
+import com.paiban.scheduling.domain.ConstraintEntry;
+import com.paiban.scheduling.domain.ConstraintType;
 import com.paiban.scheduling.solver.ConstraintSettings;
 import com.paiban.scheduling.solver.Lesson;
 import com.paiban.scheduling.solver.PeriodSlot;
@@ -252,6 +256,131 @@ class TimetableProblemBuilderTest {
         assertThat(built.warmStartSource()).isEqualTo("NONE");
         assertThat(built.solution().getLessons()).hasSize(1);
         assertThat(built.solution().getLessons().get(0).getPeriod()).isNull();
+    }
+
+    @Test
+    void buildFromSourceSeedsTheFrozenArrangementAndPinsLocksWithTheSourceTeacher() {
+        PeriodRepository periodRepository = mock(PeriodRepository.class);
+        RoomRepository roomRepository = mock(RoomRepository.class);
+        AssignmentRepository assignmentRepository = mock(AssignmentRepository.class);
+        SemesterRepository semesterRepository = mock(SemesterRepository.class);
+        WarmStartSeedService warmStart = mock(WarmStartSeedService.class);
+        FoundationService foundation = mock(FoundationService.class);
+
+        Semester semester = new Semester();
+        semester.setId(1L);
+        semester.setName("2025-2026学年第一学期");
+        when(semesterRepository.findById(1L)).thenReturn(Optional.of(semester));
+        when(periodRepository.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(1L))
+                .thenReturn(List.of(period(11L, 1), period(12L, 2)));
+
+        Room room = new Room();
+        room.setId(7L);
+        room.setName("2025-2026学年第一学期-八年级八（1）班-固定教室");
+        room.setType("NORMAL");
+        room.setCapacity(45);
+        when(roomRepository.findAllByOrderByNameAsc()).thenReturn(List.of(room));
+
+        when(assignmentRepository.findBySemesterId(1L))
+                .thenReturn(List.of(assignment(21L, 1L, 1L, 1L, 2)));
+
+        when(foundation.classesById(1L)).thenReturn(Map.of(1L,
+                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null)));
+        when(foundation.coursesById()).thenReturn(Map.of(1L,
+                new CourseDto(1L, "语文", null, false, false, null, null)));
+        when(foundation.teachersById()).thenReturn(Map.of(
+                1L, new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null),
+                99L, new TeacherDto(99L, "李四", null, null, null, null, true, null, null, null, null)));
+
+        SourceDraftSnapshot snapshot = new SourceDraftSnapshot(9L, "来源草稿", 4L, "fingerprint",
+                List.of(
+                        new SourceDraftSnapshot.SourceLesson(21L, 0, 1L, 1L, 99L, 45, 11L, null, true),
+                        new SourceDraftSnapshot.SourceLesson(21L, 1, 1L, 1L, 1L, 45, 12L, null, false)));
+
+        TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
+                periodRepository, roomRepository, assignmentRepository, semesterRepository,
+                warmStart, foundation)
+                .buildFromSource(1L, ConstraintSettings.defaults(), snapshot);
+
+        assertThat(built.warmStartSource()).isEqualTo("SOURCE_DRAFT");
+        assertThat(built.solution().getLessons()).hasSize(2);
+        Lesson locked = built.solution().getLessons().get(0);
+        assertThat(locked.isLocked()).isTrue();
+        assertThat(locked.getLockedPeriodId()).isEqualTo(11L);
+        assertThat(locked.getPeriod().getId()).isEqualTo(11L);
+        // The current draft teacher wins over the assignment's teacher (manual exchange).
+        assertThat(locked.getTeacherId()).isEqualTo(99L);
+        assertThat(locked.getFixedRoom().getId()).isEqualTo(7L);
+
+        Lesson free = built.solution().getLessons().get(1);
+        assertThat(free.isLocked()).isFalse();
+        assertThat(free.getLockedPeriodId()).isNull();
+        assertThat(free.getPeriod().getId()).isEqualTo(12L);
+        assertThat(free.getTeacherId()).isEqualTo(1L);
+    }
+
+    @Test
+    void buildFromSourceKeepsLockedSlotEvenWhenBlockedButSkipsBlockedFreeSlot() {
+        PeriodRepository periodRepository = mock(PeriodRepository.class);
+        RoomRepository roomRepository = mock(RoomRepository.class);
+        AssignmentRepository assignmentRepository = mock(AssignmentRepository.class);
+        SemesterRepository semesterRepository = mock(SemesterRepository.class);
+        WarmStartSeedService warmStart = mock(WarmStartSeedService.class);
+        FoundationService foundation = mock(FoundationService.class);
+
+        Semester semester = new Semester();
+        semester.setId(1L);
+        semester.setName("2025-2026学年第一学期");
+        when(semesterRepository.findById(1L)).thenReturn(Optional.of(semester));
+        when(periodRepository.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(1L))
+                .thenReturn(List.of(period(11L, 1), period(12L, 2)));
+        when(roomRepository.findAllByOrderByNameAsc()).thenReturn(List.of());
+        when(assignmentRepository.findBySemesterId(1L))
+                .thenReturn(List.of(assignment(21L, 1L, 1L, 1L, 2)));
+        when(foundation.classesById(1L)).thenReturn(Map.of(1L,
+                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null)));
+        when(foundation.coursesById()).thenReturn(Map.of(1L,
+                new CourseDto(1L, "语文", null, false, false, null, null)));
+        when(foundation.teachersById()).thenReturn(Map.of(1L,
+                new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null)));
+
+        SourceDraftSnapshot snapshot = new SourceDraftSnapshot(9L, "来源草稿", 0L, "fingerprint",
+                List.of(
+                        new SourceDraftSnapshot.SourceLesson(21L, 0, 1L, 1L, 1L, 45, 11L, null, false),
+                        new SourceDraftSnapshot.SourceLesson(21L, 1, 1L, 1L, 1L, 45, 12L, null, true)));
+        ConstraintSettings settings = classUnavailableSettings(1L, 1, 1, 2);
+
+        TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
+                periodRepository, roomRepository, assignmentRepository, semesterRepository,
+                warmStart, foundation)
+                .buildFromSource(1L, settings, snapshot);
+
+        assertThat(built.solution().getLessons().get(0).getPeriod()).isNull();
+        Lesson locked = built.solution().getLessons().get(1);
+        assertThat(locked.getPeriod().getId()).isEqualTo(12L);
+        assertThat(locked.getLockedPeriodId()).isEqualTo(12L);
+    }
+
+    private static ConstraintSettings classUnavailableSettings(
+            long classId, int dayOfWeek, int... periodNos) {
+        ConstraintConfig config = new ConstraintConfig();
+        config.setType(ConstraintType.CLASS_UNAVAILABLE.name());
+        config.setEnabled(true);
+        config.setHard(true);
+        config.setWeight(100);
+        config.setParamsJson("{}");
+        List<ConstraintEntry> entries = new java.util.ArrayList<>();
+        for (int periodNo : periodNos) {
+            ConstraintEntry entry = new ConstraintEntry();
+            entry.setId((long) periodNo);
+            entry.setType(ConstraintType.CLASS_UNAVAILABLE.name());
+            entry.setEnabled(true);
+            entry.setGroupKey("test-unavailable");
+            entry.setParamsJson("{\"dayOfWeek\":" + dayOfWeek + ",\"periodNo\":" + periodNo
+                    + ",\"classId\":" + classId + "}");
+            entries.add(entry);
+        }
+        return ConstraintSettings.from(List.of(config), entries, new ObjectMapper());
     }
 
     private static Assignment assignment(
