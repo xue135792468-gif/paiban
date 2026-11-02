@@ -1,10 +1,12 @@
 import { allTargetLabel, headParams } from './entryModel'
 import { dayLabel, hasValue, roomTypeLabel } from './paramValues'
+import { isWeeklyNoClass, weeklyClasses } from './weeklyScope'
 import type { EntryDraft, ParamDef, TypeDraft } from './types'
 
 export interface SummaryContext {
   teacherNames: Map<number, string>
   courseNames: Map<number, string>
+  classNames?: Map<number, string>
 }
 
 /** `周一第1节` — the compact form used inside a preference slot set. */
@@ -20,6 +22,8 @@ function paramText(param: ParamDef, value: unknown, ctx: SummaryContext): string
       return ctx.teacherNames.get(Number(value)) ?? `教师#${value}`
     case 'courseId':
       return ctx.courseNames.get(Number(value)) ?? `课程#${value}`
+    case 'classId':
+      return ctx.classNames?.get(Number(value)) ?? `行政班#${value}`
     case 'dayOfWeek':
       return dayLabel(value)
     case 'periodNo':
@@ -90,7 +94,12 @@ export function slotCardSummary(
   ctx: SummaryContext,
 ): string {
   const heads = headParams(row)
-  const headText = heads.length > 0
+  const classes = weeklyClasses(entry)
+  const headText = isWeeklyNoClass(row)
+    ? (classes === null
+      ? '全校（含以后新增班级）'
+      : classes.map((id) => ctx.classNames?.get(id) ?? `班级#${id}`).join('、') || '尚未选择班级')
+    : heads.length > 0
     ? formatEntrySummary(heads, entry.values, ctx)
     : row.name
   const slots = entry.slots ?? []

@@ -17,7 +17,10 @@
         v-for="day in days"
         :key="`c-${day}-${row.periodNo}`"
         class="cell"
+        :data-period-id="periodIdByCell[`${day}-${row.periodNo}`]"
         :class="cellClass(day, row.periodNo)"
+        :title="blockedReason(day, row.periodNo) || undefined"
+        :aria-disabled="blockedReason(day, row.periodNo) ? 'true' : undefined"
         @dragover.prevent
         @dragenter.prevent
         @drop.prevent="onDrop(day, row.periodNo)"
@@ -28,10 +31,11 @@
             v-for="lesson in lessonsAt(day, row.periodNo)"
             :key="lesson.id"
             class="lesson"
+            :data-lesson-id="lesson.id"
             :class="{
               dragging: draggedLessonId === lesson.id,
               highlight: highlightedIds.has(lesson.id),
-              conflict: conflictIds.has(lesson.id),
+              conflict: conflictIds.has(lesson.id) || Boolean(blockedReason(day, row.periodNo)),
               warning: warningIds.has(lesson.id),
             }"
             :style="{ background: courseColor(courses, lesson.courseId) }"
@@ -46,7 +50,11 @@
             </div>
           </div>
         </template>
+        <div v-else-if="blockedReason(day, row.periodNo)" class="no-class">不上课</div>
         <div v-else class="empty-cell">—</div>
+        <div v-if="blockedReason(day, row.periodNo) && lessonsAt(day, row.periodNo).length" class="blocked-conflict">
+          占用了不上课时段，可将课程移走
+        </div>
       </div>
     </template>
   </div>
@@ -77,6 +85,8 @@ const props = withDefaults(
     compact?: boolean
     /** The timetable pages hide rooms; the import preview keeps them for row checks. */
     showRoom?: boolean
+    /** Supplied only for the selected administrative class, never a teacher/room. */
+    blockedPeriods?: Record<number, string>
   }>(),
   {
     draggedLessonId: null,
@@ -85,6 +95,7 @@ const props = withDefaults(
     conflictLessonIds: () => [],
     warningLessonIds: () => [],
     showRoom: true,
+    blockedPeriods: () => ({}),
   },
 )
 
@@ -158,7 +169,15 @@ function lessonsAt(day: number, periodNo: number) {
   return lessonsByCell.value[`${day}-${periodNo}`] ?? []
 }
 
+function blockedReason(day: number, periodNo: number): string {
+  const periodId = periodIdByCell.value[`${day}-${periodNo}`]
+  return periodId == null ? '' : props.blockedPeriods[periodId] ?? ''
+}
+
 function cellClass(day: number, periodNo: number) {
+  if (blockedReason(day, periodNo)) {
+    return props.draggedLessonId == null ? 'blocked-slot' : 'blocked-slot invalid-target'
+  }
   if (props.draggedLessonId == null) return ''
   const periodId = periodIdByCell.value[`${day}-${periodNo}`]
   if (!periodId) return ''
@@ -169,6 +188,7 @@ function cellClass(day: number, periodNo: number) {
 }
 
 function onDrop(day: number, periodNo: number) {
+  if (blockedReason(day, periodNo)) return
   const periodId = periodIdByCell.value[`${day}-${periodNo}`]
   if (!periodId) return
   emit('drop-cell', { day, periodNo, periodId })
@@ -228,6 +248,18 @@ function onDrop(day: number, periodNo: number) {
   flex-direction: column;
   gap: 4px;
   align-items: stretch;
+}
+.cell.blocked-slot {
+  background: repeating-linear-gradient(135deg, #f1f3f5, #f1f3f5 8px, #f8f9fa 8px, #f8f9fa 16px);
+}
+.no-class {
+  margin: auto;
+  color: #60666f;
+  font-size: 12px;
+}
+.blocked-conflict {
+  color: #b42318;
+  font-size: 11px;
 }
 .cell.valid-target {
   background: #e8f7ee;

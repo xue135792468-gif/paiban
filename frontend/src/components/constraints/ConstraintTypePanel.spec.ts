@@ -65,6 +65,27 @@ function mountPanel(props: Record<string, unknown>, rowValue: TypeDraft) {
 }
 
 describe('ConstraintTypePanel', () => {
+  it('每周不上课固定必须，显示班名和连续编号第8节，可暂停', () => {
+    const wrapper = mountPanel({}, row({
+      code: 'CLASS_UNAVAILABLE',
+      name: '每周不上课时段',
+      hardOnly: true,
+      slotGrouped: true,
+      params: [
+        { name: 'classId', label: '行政班', type: 'ID', required: true },
+        { name: 'dayOfWeek', label: '星期', type: 'DAY', required: true },
+        { name: 'periodNo', label: '第几节', type: 'PERIOD', required: true },
+      ],
+      entries: [{ key: 'c1', id: null, values: { classId: 5 },
+        slots: [{ key: 's1', id: null, dayOfWeek: 3, periodNo: 8 }] }],
+    }))
+    expect(wrapper.get('[data-testid="constraint-hard-only"]').text()).toContain('必须')
+    expect(wrapper.find('[data-testid="constraint-hard-group"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="constraint-entry-hard"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="constraint-entry-summary"]').text()).toBe('高一1班 · 周三第8节')
+    expect(wrapper.find('[data-testid="constraint-entry-enabled"]').exists()).toBe(true)
+  })
+
   it('硬约束隐藏权重，软约束显示权重', () => {
     const hard = mountPanel({}, row({ code: 'X', params: COURSE_PARAMS }))
     expect(hard.find('[data-testid="constraint-weight"]').exists()).toBe(false)

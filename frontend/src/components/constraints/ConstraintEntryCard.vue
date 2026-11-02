@@ -29,6 +29,7 @@
         @update:model-value="(value: string | number | boolean | undefined) => emit('set-enabled', Boolean(value))"
       />
       <el-select
+        v-if="!row.hardOnly"
         :model-value="hardChoice"
         size="small"
         :disabled="!editable"
@@ -40,7 +41,8 @@
         <el-option value="hard" label="必须" />
         <el-option value="soft" label="尽量" />
       </el-select>
-      <template v-if="effectiveHard === false">
+      <span v-else data-testid="constraint-entry-hard-only">必须留空</span>
+      <template v-if="!row.hardOnly && effectiveHard === false">
         <el-checkbox
           :model-value="entry.weight !== null && entry.weight !== undefined"
           :disabled="!editable"
@@ -95,6 +97,10 @@
     </p>
 
     <div v-if="slotSet" class="entry-fields" data-testid="constraint-entry-slot-set">
+      <WeeklyClassScope
+        v-if="weeklyNoClass" :entry="entry" :classes="classes"
+        :disabled="!editable" @update="(name, value) => emit('update', name, value)"
+      />
       <ParamField
         v-for="param in heads"
         :key="param.name"
@@ -102,6 +108,7 @@
         :values="entry.values"
         :teachers="teachers"
         :courses="courses"
+        :classes="classes"
         :disabled="!editable"
         :test-id="`constraint-entry-${fieldTestId(param.name)}`"
         @update="(name: string, value: unknown) => emit('update', name, value)"
@@ -164,6 +171,7 @@
 import { computed } from 'vue'
 import { ElButton, ElCheckbox, ElMessageBox, ElOption, ElSelect, ElSlider, ElSwitch } from 'element-plus'
 import ConstraintSlotRow from './ConstraintSlotRow.vue'
+import WeeklyClassScope from './WeeklyClassScope.vue'
 import ParamField from './ParamField.vue'
 import {
   allTargetLabel,
@@ -173,6 +181,7 @@ import {
 } from './entryModel'
 import { formatEntrySummary, slotCardSummary } from './entrySummary'
 import { fieldTestId } from './paramValues'
+import { isWeeklyNoClass } from './weeklyScope'
 import type { EntryDraft, OptionItem, TypeDraft } from './types'
 
 /**
@@ -189,6 +198,7 @@ const props = defineProps<{
   isJunior: boolean
   teachers: OptionItem[]
   courses: OptionItem[]
+  classes?: OptionItem[]
   /** The weekdays and period numbers the semester actually has. */
   dayOptions?: number[]
   periodsByDay?: Record<number, number[]>
@@ -211,7 +221,8 @@ const emit = defineEmits<{
 }>()
 
 const slotSet = computed(() => isSlotSetType(props.row))
-const heads = computed(() => headParams(props.row))
+const weeklyNoClass = computed(() => isWeeklyNoClass(props.row))
+const heads = computed(() => (weeklyNoClass.value ? [] : headParams(props.row)))
 
 const hardChoice = computed(() => {
   if (props.entry.hard == null) {
@@ -220,7 +231,7 @@ const hardChoice = computed(() => {
   return props.entry.hard ? 'hard' : 'soft'
 })
 
-const effectiveHard = computed(() => props.entry.hard ?? props.row.hard)
+const effectiveHard = computed(() => props.row.hardOnly ? true : props.entry.hard ?? props.row.hard)
 const effectiveWeight = computed(() => props.entry.weight ?? props.row.weight)
 
 const effectiveText = computed(() => {
@@ -247,6 +258,7 @@ function onHardChoice(value: string | number | boolean | undefined) {
 const ctx = computed(() => ({
   teacherNames: new Map(props.teachers.map((teacher) => [teacher.id, teacher.name])),
   courseNames: new Map(props.courses.map((course) => [course.id, course.name])),
+  classNames: new Map((props.classes ?? []).map((item) => [item.id, item.name])),
 }))
 
 const summary = computed(() =>

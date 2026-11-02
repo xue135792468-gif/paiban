@@ -110,6 +110,10 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
                         List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL),
                                 lesson(1, 3, Course.MATH, Teacher.OTHER, Class.A, Room.NORMAL)),
                         "CLASS_GAP_MINIMIZED", true)),
+                Arguments.of(new Case("班级不上课", "CLASS_UNAVAILABLE", false, true, 100,
+                        List.of(params("classId", Class.A, "dayOfWeek", 1, "periodNo", 1)),
+                        List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL)),
+                        "CLASS_UNAVAILABLE", false)),
                 Arguments.of(new Case("班主任第一节", "HEAD_TEACHER_FIRST_PERIOD", true, true, 20, null,
                         List.of(lesson(1, 2, Course.CHINESE, Teacher.HEAD, Class.A, Room.NORMAL)),
                         "HEAD_TEACHER_FIRST_PERIOD", true)),
@@ -274,6 +278,13 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
         long draftId = draft(world, spec.lessons());
 
         // Type says soft, entry says hard: the requirement must block.
+        if (ConstraintType.valueOf(spec.type()).isHardOnly()) {
+            // A hard-only rule refuses both downgrade routes; enforcement is proved
+            // by everyCatalogueTypeActuallyTakesEffect rather than a soft fixture.
+            save(token, world, List.of(config(spec, world, false, true))).then().statusCode(400);
+            save(token, world, List.of(config(spec, world, true, false))).then().statusCode(400);
+            return;
+        }
         save(token, world, List.of(config(spec, world, false, true))).then().statusCode(200);
         assertThat(conflictCodes(token, draftId))
                 .as("%s 的条目设为必须后应阻断", spec.type())
@@ -292,13 +303,13 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
                 .isPositive();
     }
 
-    /** A 25th type must not silently skip acceptance: the table and the enum move together. */
+    /** A new type must not silently skip acceptance: the table and the enum move together. */
     @Test
     void theTableCoversTheWholeCatalogue() {
         Set<String> covered = catalogue()
                 .map(arguments -> ((Case) arguments.get()[0]).type())
                 .collect(Collectors.toSet());
-        assertThat(covered).hasSize(25);
+        assertThat(covered).hasSize(26);
         assertThat(covered).containsExactlyInAnyOrderElementsOf(
                 Arrays.stream(ConstraintType.values()).map(Enum::name).toList());
     }

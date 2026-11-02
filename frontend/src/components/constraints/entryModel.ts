@@ -1,4 +1,5 @@
 import { filledValues, hasValue } from './paramValues'
+import { isWeeklyNoClass, weeklyClasses } from './weeklyScope'
 import type { EntryDraft, ParamDef, TypeDraft } from './types'
 
 /**
@@ -202,6 +203,23 @@ export function plannedEntries(row: TypeDraft): PlannedEntry[] {
           (param) => !param.required || hasValue(params[param.name]),
         )
         if (Object.keys(params).length === 0) {
+          return
+        }
+        if (isWeeklyNoClass(row)) {
+          const classes = weeklyClasses(entry)
+          if (classes !== null && classes.length === 0) {
+            // 显式「指定班级」但还没选班：这条不写进载荷，绝不回落成全校禁排。
+            return
+          }
+          const targets = classes === null ? [null] : classes
+          targets.forEach((classId) => {
+            const scoped = { ...params }
+            delete scoped.classId
+            if (classId != null) scoped.classId = classId
+            push({ cardIndex, slotIndex,
+              id: slot.classEntryIds?.[String(classId ?? 'ALL')] ?? null,
+              params: scoped, complete: slotComplete, ...controls })
+          })
           return
         }
         push({

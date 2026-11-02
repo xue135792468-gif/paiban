@@ -14,6 +14,28 @@ public final class ConstraintEntryMatcher {
 
     private ConstraintEntryMatcher() {}
 
+    /**
+     * The class and weekly slot named by one no-class entry.
+     *
+     * <p>Only an absent (or explicit JSON {@code null}) {@code classId} is the
+     * whole-school scope; it covers every administrative class, including ones created
+     * later. Any other value that does not parse — a blank string, text, or a number
+     * that names no class — never widens to whole school: it matches nothing, so a
+     * broken or stale reference cannot silently ban every class.
+     */
+    public static boolean classSlot(Map<String, Object> entry, Long classId, int dayOfWeek, int periodNo) {
+        return classTarget(entry, classId) && slot(entry, dayOfWeek, periodNo);
+    }
+
+    private static boolean classTarget(Map<String, Object> entry, Long classId) {
+        Object raw = entry.get("classId");
+        if (raw == null) {
+            return true;
+        }
+        Long configured = ConstraintSettings.longValue(raw);
+        return configured != null && Objects.equals(configured, classId);
+    }
+
     /** The entry names exactly this course (entries that require a target course). */
     public static boolean course(Map<String, Object> entry, Long courseId) {
         return Objects.equals(ConstraintParams.courseId(entry), courseId);

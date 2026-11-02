@@ -113,6 +113,9 @@ public final class ConstraintSettings {
                 continue;
             }
             List<EntryRule> active = activeEntries(type, config, entriesByType, mapper);
+            if (type.isHardOnly() && (!config.isHard() || active.stream().anyMatch(entry -> !entry.hard()))) {
+                throw new IllegalArgumentException(type.getDisplayName() + "必须是硬约束，不能改为尽量");
+            }
             if (active.isEmpty() && !type.isEntryBacked()) {
                 Map<String, Object> legacy = readParams(config.getParamsJson(), mapper);
                 if (!legacy.isEmpty()) {
@@ -123,6 +126,12 @@ public final class ConstraintSettings {
             rules.put(type, new Rule(config.isHard(), config.getWeight(), requirementsOf(active)));
         }
         return new ConstraintSettings(rules);
+    }
+
+    /** Shared by scoring, draft edits, publication and dated substitutions. */
+    public boolean classUnavailable(Long classId, int dayOfWeek, int periodNo) {
+        return match(ConstraintType.CLASS_UNAVAILABLE,
+                entry -> ConstraintEntryMatcher.classSlot(entry, classId, dayOfWeek, periodNo)) != null;
     }
 
     private static List<EntryRule> activeEntries(

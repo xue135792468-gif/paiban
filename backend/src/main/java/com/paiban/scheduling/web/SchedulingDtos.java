@@ -31,8 +31,11 @@ public final class SchedulingDtos {
                                  int studentCount, Long periodId, Integer dayOfWeek, Integer periodNo,
                                  String section, String periodLabel, Long roomId, String roomName) {}
 
+    public record BlockedSlotDto(Long classId, Long periodId, String reason) {}
+
     public record DraftDetailDto(DraftDto draft, List<DraftLessonDto> lessons,
-                                 List<PeriodDto> periods, List<RoomDto> rooms) {}
+                                 List<PeriodDto> periods, List<RoomDto> rooms,
+                                 List<BlockedSlotDto> blockedSlots) {}
 
     public record ValidateMoveRequest(@NotNull(message = "课节不能为空") Long lessonId,
                                       Long periodId, Long roomId) {}

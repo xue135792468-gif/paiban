@@ -22,7 +22,7 @@ public final class ConstraintDtos {
      */
     public record ConstraintTypeDto(String code, String name, String category, String categoryLabel,
                                     String description, boolean defaultHard, int defaultWeight,
-                                    boolean entryBacked, boolean slotGrouped,
+                                    boolean entryBacked, boolean slotGrouped, boolean hardOnly,
                                     String thresholdObjectField,
                                     String thresholdValueField, List<ParamDefDto> params) {}
 
@@ -74,8 +74,15 @@ public final class ConstraintDtos {
     /** A dry run of a configuration: no writes and no version advance. */
     public record ConstraintPreviewRequest(List<ConstraintConfigRequest> configs) {}
 
+    /**
+     * A dry run answers two separate questions: {@code errors}/{@code invalidReferences}
+     * say whether the configuration may be saved, {@code warnings} say whether the
+     * resulting weekly capacity is enough. Warnings never block a save — the page keeps
+     * showing them and only a real solve refuses to start.
+     */
     public record ConstraintPreviewDto(List<String> errors,
-                                       List<TemplateReferenceIssue> invalidReferences) {}
+                                       List<TemplateReferenceIssue> invalidReferences,
+                                       List<String> warnings) {}
 
     /**
      * One saved effective configuration with the decisions that produced it, the

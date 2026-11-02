@@ -102,6 +102,8 @@
           :draggable="draftEditable"
           :dragged-lesson-id="dragged?.id ?? null"
           :targets="dragTargets"
+          :blocked-periods="blockedPeriods"
+          :conflict-lesson-ids="validation?.conflicts.map((item) => item.lessonId).filter((id) => id != null) ?? []"
           :show-room="false"
           @drag-start="onDragStart"
           @drag-end="onDragEnd"
@@ -209,8 +211,10 @@ import { courseColor } from '@/components/draft/colors'
 import { canPublishNow } from '@/components/draft/publishBlockers'
 import { useDraftAdjust } from '@/composables/useDraftAdjust'
 import { useSwapFlow } from '@/composables/useSwapFlow'
+import { blockedPeriodsForClass } from '@/components/draft/availability'
 import type {
   Draft,
+  BlockedClassSlot,
   DraftConflict,
   DraftCourse,
   DraftLesson,
@@ -257,13 +261,16 @@ const {
 } = useSwapFlow({ adjust })
 
 const loading = ref(false)
-type DraftDetail = { draft: Draft; lessons: DraftLesson[]; periods: DraftPeriod[]; rooms: DraftRoom[] }
+type DraftDetail = { draft: Draft; lessons: DraftLesson[]; periods: DraftPeriod[]; rooms: DraftRoom[]; blockedSlots?: BlockedClassSlot[] }
 const detail = ref<DraftDetail | null>(null)
 const draftEditable = computed(() => canEdit.value && detail.value?.draft.status === 'DRAFT')
 const validation = ref<DraftValidation | null>(null)
 const courses = ref<DraftCourse[]>([])
 const viewMode = ref<'class' | 'teacher' | 'room'>('class')
 const targetId = ref<number | null>(null)
+const blockedPeriods = computed(() => viewMode.value === 'class'
+  ? blockedPeriodsForClass(detail.value?.blockedSlots ?? [], targetId.value)
+  : {})
 const drawerVisible = ref(false)
 const dragged = ref<DraftLesson | null>(null)
 const dragTargets = ref<Record<number, MoveTargetState> | null>(null)

@@ -175,7 +175,7 @@ test.describe.serial('约束配置：教师禁排多条条目', () => {
     expect(navEntriesOf(await navCounts())).toBe(1)
 
     const enabledText = await page.getByTestId('constraint-summary-enabled').innerText()
-    expect(enabledText).toMatch(/已启用 \d+ \/ 25 类/)
+    expect(enabledText).toMatch(/已启用 \d+ \/ 26 类/)
 
     // 开关型在左侧标注「开关」而不是 0 条。
     await expect(

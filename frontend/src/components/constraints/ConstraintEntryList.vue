@@ -14,6 +14,7 @@
       :is-junior="isJunior"
       :teachers="teachers"
       :courses="courses"
+      :classes="classes"
       :day-options="dayOptions"
       :periods-by-day="periodsByDay"
       :server-errors="entryErrorsOf(row, index, entryErrors)"
@@ -60,6 +61,7 @@ const props = defineProps<{
   isJunior: boolean
   teachers: OptionItem[]
   courses: OptionItem[]
+  classes?: OptionItem[]
   dayOptions?: number[]
   periodsByDay?: Record<number, number[]>
   entryErrors: Record<number, string[]>

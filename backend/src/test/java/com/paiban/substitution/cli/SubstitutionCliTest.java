@@ -31,6 +31,55 @@ class SubstitutionCliTest {
     }
 
     @Test
+    void exhaustedSearchIsUnknownRatherThanProofOfNoSolutionInBothFormats() throws Exception {
+        for (String format : List.of("json", "table")) {
+            Run run = run("plan", "--snapshot", DIR + "snapshot.json", "--request", DIR + "request.json",
+                    "--node-budget", "1", "--format", format);
+            assertThat(run.code()).isEqualTo(3);
+            assertThat(run.out()).contains("SEARCH_BUDGET").doesNotContain("NO_SOLUTION");
+            if ("json".equals(format)) {
+                JsonNode json = MAPPER.readTree(run.out());
+                assertThat(json.get("status").asText()).isEqualTo("SEARCH_BUDGET");
+                assertThat(json.get("candidates")).isEmpty();
+            }
+        }
+        Run invalid = run("plan", "--snapshot", DIR + "snapshot.json", "--request", DIR + "request.json",
+                "--node-budget", "0");
+        assertThat(invalid.code()).isEqualTo(1);
+    }
+
+    @Test
+    void weeklyNoClassCliUsesEntryPauseAndRefusesSoftDowngrade() throws Exception {
+        var snapshot = MAPPER.readTree(Path.of(DIR, "snapshot.json").toFile());
+        var constraints = (com.fasterxml.jackson.databind.node.ArrayNode) snapshot.get("constraints");
+        var config = constraints.addObject();
+        config.put("type", "CLASS_UNAVAILABLE").put("enabled", true).put("hard", true);
+        // A legacy params value must not replace an explicitly empty entries array.
+        config.putObject("params").put("classId", 1).put("dayOfWeek", 1).put("periodNo", 2);
+        var entries = config.putArray("entries");
+        Path file = Files.createTempFile(Path.of("target"), "weekly-cli-", ".json");
+        try {
+            MAPPER.writeValue(file.toFile(), snapshot);
+            assertThat(run("plan", "--snapshot", file.toString(), "--request", DIR + "request.json").code()).isZero();
+            var entry = entries.addObject();
+            entry.putObject("params").put("classId", 1).put("dayOfWeek", 1).put("periodNo", 2);
+            entry.put("enabled", false);
+            MAPPER.writeValue(file.toFile(), snapshot);
+            assertThat(run("plan", "--snapshot", file.toString(), "--request", DIR + "request.json").code()).isZero();
+            entry.put("enabled", true);
+            MAPPER.writeValue(file.toFile(), snapshot);
+            Run blocked = run("plan", "--snapshot", file.toString(), "--request", DIR + "request.json");
+            assertThat(blocked.code()).isEqualTo(2);
+            assertThat(blocked.out()).contains("CLASS_UNAVAILABLE");
+            entry.put("hard", false);
+            MAPPER.writeValue(file.toFile(), snapshot);
+            Run soft = run("plan", "--snapshot", file.toString(), "--request", DIR + "request.json");
+            assertThat(soft.code()).isEqualTo(1);
+            assertThat(soft.err()).contains("硬约束");
+        } finally { Files.deleteIfExists(file); }
+    }
+
+    @Test
     void planProducesThreeMovesAndExitsZero() throws Exception {
         Run run = run("plan", "--snapshot", DIR + "snapshot.json", "--request", DIR + "request.json");
 

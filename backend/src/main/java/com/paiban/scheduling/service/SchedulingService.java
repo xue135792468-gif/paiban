@@ -22,6 +22,7 @@ import com.paiban.foundation.service.SemesterService;
 import com.paiban.foundation.web.SemesterDtos.PeriodDto;
 import com.paiban.foundation.web.FoundationDtos.RoomDto;
 import com.paiban.scheduling.domain.AssignmentRepository;
+import com.paiban.scheduling.domain.ConstraintType;
 import com.paiban.scheduling.domain.DraftLesson;
 import com.paiban.scheduling.domain.DraftLessonRepository;
 import com.paiban.scheduling.domain.SchedulingJob;
@@ -30,10 +31,12 @@ import com.paiban.scheduling.domain.TimetableDraft;
 import com.paiban.scheduling.domain.TimetableDraftRepository;
 import com.paiban.scheduling.solver.ConstraintSettings;
 import com.paiban.scheduling.solver.ConstraintSettingsHolder;
+import com.paiban.scheduling.solver.ConstraintEntryMatcher;
 import com.paiban.scheduling.solver.Lesson;
 import com.paiban.scheduling.solver.PaibanConstraintProvider;
 import com.paiban.scheduling.solver.TimetableSolution;
 import com.paiban.scheduling.web.SchedulingDtos.DraftDetailDto;
+import com.paiban.scheduling.web.SchedulingDtos.BlockedSlotDto;
 import com.paiban.scheduling.web.SchedulingDtos.DraftDto;
 import com.paiban.scheduling.web.SchedulingDtos.DraftLessonDto;
 import com.paiban.scheduling.web.SchedulingDtos.JobDto;
@@ -56,6 +59,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 @Service
 public class SchedulingService {
@@ -73,6 +77,7 @@ public class SchedulingService {
     private final AdminClassRepository adminClasses;
     private final SemesterService semesters;
     private final ConstraintService constraints;
+    private final ClassCapacityService capacity;
     private final TimetableProblemBuilder problemBuilder;
     private final DraftValidator validator;
     private final TaskExecutor executor;
@@ -92,6 +97,7 @@ public class SchedulingService {
             AdminClassRepository adminClasses,
             SemesterService semesters,
             ConstraintService constraints,
+            ClassCapacityService capacity,
             TimetableProblemBuilder problemBuilder,
             DraftValidator validator,
             @Qualifier("schedulingExecutor") TaskExecutor executor,
@@ -107,6 +113,7 @@ public class SchedulingService {
         this.adminClasses = adminClasses;
         this.semesters = semesters;
         this.constraints = constraints;
+        this.capacity = capacity;
         this.problemBuilder = problemBuilder;
         this.validator = validator;
         this.executor = executor;
@@ -130,6 +137,12 @@ public class SchedulingService {
             }
             if (rooms.count() == 0) {
                 throw ApiException.badRequest("请先配置教室再提交排课");
+            }
+            // Necessary condition only: an obvious shortage is explained before a job
+            // is created. Assignments, drafts and published baselines stay untouched.
+            String shortage = capacity.message(resolved, constraints.settings(resolved));
+            if (StringUtils.hasText(shortage)) {
+                throw ApiException.badRequest(shortage);
             }
             SchedulingJob job = new SchedulingJob();
             job.setSemesterId(resolved);
@@ -161,9 +174,15 @@ public class SchedulingService {
             // Same snapshot builder as the draft check and the substitution verifier,
             // so the solver cannot read a different rule set.
             ConstraintSettings settings = constraints.settings(job.getSemesterId());
+            // The queued job used the settings at submission; rules may have changed
+            // while it waited, so the real start re-checks against the current ones.
+            String shortage = capacity.message(job.getSemesterId(), settings);
+            if (StringUtils.hasText(shortage)) {
+                throw new IllegalStateException(shortage);
+            }
             ConstraintSettingsHolder.set(settings);
             TimetableProblemBuilder.BuiltProblem built =
-                    problemBuilder.buildWithWarmStart(job.getSemesterId());
+                    problemBuilder.buildWithWarmStart(job.getSemesterId(), settings);
             // markRunning is a bulk update that bypasses the entity read above, so that
             // instance is stale; write only the warm-start source with a targeted update
             // instead of saving the entity, which could overwrite a concurrent CANCELLED.
@@ -403,8 +422,53 @@ public class SchedulingService {
                 .map(room -> new RoomDto(
                         room.getId(), room.getName(), room.getCapacity(), room.getType(), room.getBuilding()))
                 .toList();
+        ConstraintSettings settings = constraints.settings(draft.getSemesterId());
+        List<BlockedSlotDto> blockedSlots = new ArrayList<>();
+        for (Long classId : classMap.keySet().stream().sorted().toList()) {
+            for (PeriodDto period : periodDtos) {
+                String reason = blockedSlotReason(
+                        settings, classId, period.dayOfWeek(), period.periodNo());
+                if (reason != null) {
+                    blockedSlots.add(new BlockedSlotDto(classId, period.id(), reason));
+                }
+            }
+        }
         return new DraftDetailDto(
-                toDto(draft, rows.size()), lessons, periodDtos, roomDtos);
+                toDto(draft, rows.size()), lessons, periodDtos, roomDtos, blockedSlots);
+    }
+
+    /**
+     * Why one class's slot is blocked, named by the requirement that actually covers it.
+     * A whole-school rule and this class's own rule are reported apart — and both when
+     * they overlap — so the tooltip says which requirement a person has to edit. Pausing
+     * a requirement removes it from the snapshot, so its source disappears with it.
+     *
+     * <p>The matching itself stays in {@link ConstraintEntryMatcher}: asking it about
+     * {@code null} as the class is how that matcher expresses "the whole-school entry",
+     * so the page's wording cannot drift from what the solver evaluates. Only a slot
+     * something actually covers gets a reason at all.
+     */
+    private static String blockedSlotReason(
+            ConstraintSettings settings, Long classId, int dayOfWeek, int periodNo) {
+        boolean wholeSchool = false;
+        boolean selectedClass = false;
+        for (Map<String, Object> entry : settings.entries(ConstraintType.CLASS_UNAVAILABLE)) {
+            if (!ConstraintEntryMatcher.classSlot(entry, classId, dayOfWeek, periodNo)) {
+                continue;
+            }
+            if (ConstraintEntryMatcher.classSlot(entry, null, dayOfWeek, periodNo)) {
+                wholeSchool = true;
+            } else {
+                selectedClass = true;
+            }
+        }
+        if (!wholeSchool && !selectedClass) {
+            return null;
+        }
+        if (wholeSchool && selectedClass) {
+            return "全校规则、指定班级规则（本班）";
+        }
+        return wholeSchool ? "全校规则" : "指定班级规则（本班）";
     }
 
     @Transactional
@@ -442,7 +506,10 @@ public class SchedulingService {
     @Transactional
     public MoveResult moveLesson(Long draftId, Long lessonId, Long periodId, Long roomId, boolean force) {
         DraftValidator.ValidationResult result = validator.validateMove(draftId, lessonId, periodId, roomId);
-        if (!result.valid() && !force) {
+        boolean unavailable = result.conflicts().stream()
+                .anyMatch(conflict ->
+                        ConstraintType.CLASS_UNAVAILABLE.name().equals(conflict.type()));
+        if (!result.valid() && (!force || unavailable)) {
             return new MoveResult(false, false, result.hardConflicts(), result.conflicts());
         }
         DraftLesson lesson = draftLessons.findById(lessonId)

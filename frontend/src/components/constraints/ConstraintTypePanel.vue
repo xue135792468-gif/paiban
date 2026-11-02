@@ -17,6 +17,7 @@
           @update:model-value="(value: string | number | boolean | undefined) => emit('toggle-enabled', Boolean(value))"
         />
         <el-radio-group
+          v-if="!row.hardOnly"
           :model-value="row.hard"
           size="small"
           :disabled="!canManage || !row.enabled"
@@ -26,10 +27,11 @@
           <el-radio-button :value="true">{{ isJunior ? '必须' : '硬约束' }}</el-radio-button>
           <el-radio-button :value="false">{{ isJunior ? '尽量' : '软约束' }}</el-radio-button>
         </el-radio-group>
+        <span v-else data-testid="constraint-hard-only">必须留空</span>
         <InfoTooltip field="constraint.hard" />
 
         <!-- 硬约束的权重没有意义：ADR-0028 把硬/软与权重留在类型级，只在软约束上显示权重。 -->
-        <div v-if="!isJunior && !row.hard" class="weight-box" data-testid="constraint-weight">
+        <div v-if="!row.hardOnly && !isJunior && !row.hard" class="weight-box" data-testid="constraint-weight">
           <span class="weight-label">
             权重 {{ row.weight }}
             <InfoTooltip field="constraint.weight" />
@@ -64,7 +66,8 @@
 
     <template v-else-if="isEntryType(row)">
       <p v-if="isSlotSetType(row)" class="panel-hint" data-testid="constraint-slot-note">
-        同一条要求可包含多个时段，整体编辑、暂停或删除；每个时段共用这条要求的必须/尽量与重要程度。
+        <template v-if="row.hardOnly">同一条要求可包含多个时段，整体启用、暂停或删除；启用时必须留空。</template>
+        <template v-else>同一条要求可包含多个时段，整体编辑、暂停或删除；每个时段共用这条要求的必须/尽量与重要程度。</template>
       </p>
       <ConstraintEntryList
         :row="row"
@@ -72,6 +75,7 @@
         :is-junior="isJunior"
         :teachers="teachers"
         :courses="courses"
+        :classes="objectOptions.classId"
         :day-options="dayOptions"
         :periods-by-day="periodsByDay"
         :entry-errors="entryErrors"

@@ -16,6 +16,8 @@ export interface ParamDef {
 }
 
 export interface ConstraintTypeDef {
+  /** This type may be paused, but its requirements cannot become soft. */
+  hardOnly?: boolean
   code: string
   name: string
   category: string
@@ -62,6 +64,8 @@ export interface ConstraintConfigDto {
  * these while a card of any other type owns none.
  */
 export interface SlotDraft {
+  /** Saved identities for each class in one weekly no-class slot. */
+  classEntryIds?: Record<string, number | null>
   key: string
   id: number | null
   dayOfWeek: number | null
@@ -132,6 +136,7 @@ export interface ThresholdDraft {
  * nothing but the switch for the 6 single-switch types.
  */
 export interface TypeDraft {
+  hardOnly?: boolean
   code: string
   name: string
   description: string

@@ -20,6 +20,7 @@ import {
 } from './proposalApply'
 import type { ConstraintProposal } from './useConstraintAi'
 import { hasValue } from './paramValues'
+import { isWeeklyNoClass, restoreWeeklyCards } from './weeklyScope'
 import type {
   ConstraintConfigDto,
   ConstraintConfigRequest,
@@ -35,9 +36,44 @@ import type {
 
 let keySeed = 0
 
+/**
+ * Group keys that already belong to a saved requirement. The counter is shared by the
+ * entry, slot and group prefixes, so after a reload it can land on a key that came from
+ * persisted data; remembering those keys keeps a new card from aliasing an existing
+ * requirement. It is module-scoped and never cleared: several drafts live side by side
+ * on one page, and a key reserved by one must stay unique for the others.
+ */
+const reservedGroupKeys = new Set<string>()
+
+/** Remember one saved identity, normalized the same way as a generated key. */
+function reserveGroupKey(raw: string | null | undefined) {
+  const key = raw?.trim()
+  if (key) {
+    reservedGroupKeys.add(key)
+  }
+}
+
+function reserveGroupKeysOfConfigs(configs: ConstraintConfigDto[]) {
+  configs.forEach((config) => {
+    (config.entries ?? []).forEach((entry) => reserveGroupKey(entry.groupKey))
+  })
+}
+
+function reserveGroupKeysOfRows(rows: TypeDraft[]) {
+  rows.forEach((row) => row.entries.forEach((entry) => reserveGroupKey(entry.groupKey)))
+}
+
 function nextKey(prefix: string): string {
   keySeed += 1
-  return `${prefix}-${keySeed}`
+  let key = `${prefix}-${keySeed}`
+  if (prefix === 'group') {
+    while (reservedGroupKeys.has(key)) {
+      keySeed += 1
+      key = `${prefix}-${keySeed}`
+    }
+    reservedGroupKeys.add(key)
+  }
+  return key
 }
 
 function emptySlot(): SlotDraft {
@@ -92,6 +128,7 @@ function entriesOf(type: ConstraintTypeDef, saved: ConstraintConfigDto | undefin
   if (savedEntries.length === 0) {
     return []
   }
+  if (isWeeklyNoClass(type)) return restoreWeeklyCards(savedEntries, nextKey)
   if (isSlotSetType(type)) {
     const cards = new Map<string, EntryDraft>()
     savedEntries.forEach((entry, index) => {
@@ -147,12 +184,13 @@ function buildRow(type: ConstraintTypeDef, saved: ConstraintConfigDto | undefine
     categoryLabel: type.categoryLabel,
     params: type.params,
     slotGrouped: type.slotGrouped ?? false,
+    hardOnly: type.hardOnly ?? false,
     thresholdObjectField: type.thresholdObjectField ?? null,
     thresholdValueField: type.thresholdValueField ?? null,
     entries: entriesOf(type, saved),
     threshold,
     enabled: saved?.enabled ?? false,
-    hard: saved?.hard ?? type.defaultHard,
+    hard: type.hardOnly ? true : saved?.hard ?? type.defaultHard,
     weight: saved?.weight ?? type.defaultWeight,
   }
 }
@@ -257,6 +295,9 @@ export function useConstraintDraft() {
   ) {
     isJuniorMode.value = options.isJunior
     catalogueTypes.value = types
+    // Reserve before any row is built: restoring cards and building slots advances the
+    // same counter that names new requirements.
+    reserveGroupKeysOfConfigs(configs)
     const saved = new Map(configs.map((config) => [config.type, config]))
     rows.value = types.map((type) => buildRow(type, saved.get(type.code)))
 
@@ -310,7 +351,7 @@ export function useConstraintDraft() {
   function setHard(code: string, value: boolean) {
     const row = find(code)
     if (row) {
-      row.hard = value
+      row.hard = row.hardOnly ? true : value
     }
   }
 
@@ -334,7 +375,7 @@ export function useConstraintDraft() {
       row.entries.push({
         key: nextKey('entry'),
         id: null,
-        values: {},
+        values: isWeeklyNoClass(row) ? { classScope: 'ALL', classIds: [] } : {},
         slots: [emptySlot()],
         groupKey: nextKey('group'),
         enabled: true,
@@ -422,7 +463,7 @@ export function useConstraintDraft() {
   function setEntryHard(code: string, key: string, value: boolean | null) {
     const entry = entryOf(code, key)
     if (entry) {
-      entry.hard = value
+      entry.hard = find(code)?.hardOnly ? true : value
     }
   }
 
@@ -518,6 +559,7 @@ export function useConstraintDraft() {
   }
 
   function restoreRows(snapshot: TypeDraft[]) {
+    reserveGroupKeysOfRows(snapshot)
     rows.value = snapshot
   }
 

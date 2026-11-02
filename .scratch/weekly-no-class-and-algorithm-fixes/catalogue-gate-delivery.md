@@ -1,0 +1,11 @@
+# 完整门禁中的目录兼容修正
+
+首次完整门禁冻结于82c9b66552b0b0f48b9a3ca8f9c62b0a5ab3fe98，退出1：后端1110项，失败2、错误0、跳过8。仅两处entry-backed目录仍断言19，新增CLASS_UNAVAILABLE后实际为20；前端和浏览器阶段未启动。
+
+保留全部原成员，将断言更新为20并明确包含新类型；额外断言新类型没有thresholdScope，避免把时段禁排当阈值。没有改产品Java代码。帮助页将过时的“24类”改为当前启用的软约束，避免把仅硬约束的新类型计入软评分。
+
+定向实跑ConstraintScopedThresholdsCheckerTest与ConstraintTargetEntriesCheckerTest：27项、0失败、0错误、0跳过，Maven BUILD SUCCESS，退出0。日志位于本工作区.scratch/catalogue-gate-green.log（临时文件，交付清理）。
+
+首次完整门禁跳过项：DeepSeekManualIT 2、PerformanceBenchmarkIT 2、PostgresContainerIT 4。真实PostgreSQL由同提交CI验证，本机H2不能替代。
+
+首次完整日志SHA-256：5014C85058CE8B29EA7BEA2F70372CB2E23129CF84AF7A30FC9681C5C8808768。修正合并后须重新完整运行，不沿用首次结果为通过。

@@ -82,6 +82,11 @@
         :saving="saving"
         @save="save"
       />
+      <ConstraintCapacityNotice
+        v-if="canManage"
+        :semester-id="semesterId" :configs="draft.payload()"
+        :incomplete="draft.warnings().length > 0"
+      />
 
       <el-alert
         v-if="conflicts.length > 0"
@@ -208,6 +213,7 @@ import ConstraintAiPanel from '@/components/constraints/ConstraintAiPanel.vue'
 import { useConstraintDraft } from '@/components/constraints/useConstraintDraft'
 import { useConstraintSave } from '@/components/constraints/useConstraintSave'
 import { useConstraintCollaboration } from '@/components/constraints/useConstraintCollaboration'
+import ConstraintCapacityNotice from '@/components/constraints/ConstraintCapacityNotice.vue'
 import type {
   ConstraintConfigDto,
   ConstraintTypeDef,
