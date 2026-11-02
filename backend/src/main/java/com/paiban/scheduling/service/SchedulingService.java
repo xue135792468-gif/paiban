@@ -438,7 +438,8 @@ public class SchedulingService {
             }
         }
         return new DraftDetailDto(
-                toDto(draft, rows.size()), lessons, periodDtos, roomDtos, blockedSlots);
+                toDto(draft, rows.size()), lessons, periodDtos, roomDtos, blockedSlots,
+                settings.fingerprint());
     }
 
     /**

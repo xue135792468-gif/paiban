@@ -65,7 +65,8 @@ public class DraftValidator {
             int hardConflicts,
             List<Conflict> conflicts,
             boolean publishable,
-            List<DraftPublishReadiness.Blocker> blockers) {}
+            List<DraftPublishReadiness.Blocker> blockers,
+            String rulesFingerprint) {}
 
     private final TimetableDraftRepository drafts;
     private final DraftLessonRepository draftLessons;
@@ -112,14 +113,14 @@ public class DraftValidator {
                 .orElseThrow(() -> ApiException.notFound("课节不存在: " + lessonId));
         moved.periodId = periodId;
         moved.roomId = roomId;
-        return resultOf(checkAffected(snapshot, Set.of(moved.id)));
+        return resultOf(snapshot, checkAffected(snapshot, Set.of(moved.id)));
     }
 
     @Transactional(readOnly = true)
     public ValidationResult validateMoves(Long draftId, List<LessonOverride> overrides) {
         Snapshot snapshot = snapshot(draftId);
         Set<Long> affected = applyOverrides(snapshot, overrides == null ? List.of() : overrides);
-        return resultOf(checkAffected(snapshot, affected));
+        return resultOf(snapshot, checkAffected(snapshot, affected));
     }
 
     /**
@@ -132,7 +133,108 @@ public class DraftValidator {
     @Transactional(readOnly = true)
     public ValidationResult validateChanges(Long draftId, List<LessonChange> changes) {
         Snapshot snapshot = snapshot(draftId);
-        return resultOf(checkAffected(snapshot, applyChanges(snapshot, changes)));
+        return resultOf(snapshot, checkAffected(snapshot, applyChanges(snapshot, changes)));
+    }
+
+    /** The fingerprint of the rules in force for this draft's semester. */
+    @Transactional(readOnly = true)
+    public String rulesFingerprint(Long draftId) {
+        TimetableDraft draft = drafts.findById(draftId)
+                .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
+        return constraints.settings(draft.getSemesterId()).fingerprint();
+    }
+
+    /** One rule hit with a stable key and an explicit severity, used for before/after comparison. */
+    public record Violation(String key, String code, String message, Long lessonId, int severity) {}
+
+    /**
+     * Entire-draft verdict for one atomic change list. {@code allowed} is true only when
+     * the change introduces no new stable key and does not make an existing key appear
+     * more often; pre-existing problems stay in {@code remaining} so the UI can keep
+     * showing them. The comparison is made on whole-draft snapshots after every change
+     * has been applied, never on a partially moved timetable.
+     */
+    public record ChangeAssessment(
+            boolean allowed,
+            List<Violation> before,
+            List<Violation> after,
+            List<Violation> added,
+            List<Violation> remaining,
+            int softPenaltyBefore,
+            int softPenaltyAfter) {}
+
+    /**
+     * Applies every change to an in-memory copy first, then compares the whole draft
+     * before and after by stable violation key. A move into a slot that another lesson
+     * is leaving in the same request is therefore not reported as a conflict. A
+     * nonexistent, foreign or duplicate row is applied as-is (last value wins) and never
+     * breaks the comparison; the write service rejects those inputs before calling this.
+     */
+    @Transactional(readOnly = true)
+    public ChangeAssessment assessChanges(Long draftId, List<LessonChange> changes) {
+        Snapshot snapshot = snapshot(draftId);
+        List<LessonView> beforeViews = viewsOf(snapshot);
+        List<ConstraintViolation> beforeViolations =
+                ConstraintChecker.check(snapshot.context(), beforeViews, null);
+        int softBefore = ConstraintChecker.softPenalty(snapshot.context(), beforeViews);
+
+        Snapshot after = snapshot.withFreshLessons();
+        applyChangesLenient(after, changes);
+        List<LessonView> afterViews = viewsOf(after);
+        List<ConstraintViolation> afterViolations =
+                ConstraintChecker.check(after.context(), afterViews, null);
+        int softAfter = ConstraintChecker.softPenalty(after.context(), afterViews);
+
+        List<Violation> before = beforeViolations.stream().map(DraftValidator::toViolation).toList();
+        List<Violation> remaining = afterViolations.stream().map(DraftValidator::toViolation).toList();
+        List<Violation> added = excess(beforeViolations, afterViolations);
+        return new ChangeAssessment(
+                added.isEmpty(), before, remaining, added, remaining, softBefore, softAfter);
+    }
+
+    private static List<LessonView> viewsOf(Snapshot snapshot) {
+        return snapshot.lessons.stream().map(L::toView).toList();
+    }
+
+    private static Violation toViolation(ConstraintViolation violation) {
+        return new Violation(
+                violation.key(), violation.code(), violation.message(), violation.lessonId(),
+                violation.hard() ? 1 : 0);
+    }
+
+    /**
+     * The after-violations whose stable key appears more often than before: a brand new
+     * key, or one extra hit of an existing one. Message, teacher or class names and
+     * counts never take part in this comparison.
+     */
+    private static List<Violation> excess(
+            List<ConstraintViolation> before, List<ConstraintViolation> after) {
+        Map<String, Integer> counts = new HashMap<>();
+        before.forEach(violation -> counts.merge(violation.key(), 1, Integer::sum));
+        List<Violation> added = new ArrayList<>();
+        for (ConstraintViolation violation : after) {
+            int remaining = counts.getOrDefault(violation.key(), 0);
+            if (remaining > 0) {
+                counts.put(violation.key(), remaining - 1);
+            } else {
+                added.add(toViolation(violation));
+            }
+        }
+        return added;
+    }
+
+    private static void applyChangesLenient(Snapshot snapshot, List<LessonChange> changes) {
+        Map<Long, L> byId = new HashMap<>();
+        snapshot.lessons.forEach(lesson -> byId.put(lesson.id, lesson));
+        for (LessonChange change : changes == null ? List.<LessonChange>of() : changes) {
+            L lesson = change.lessonId() == null ? null : byId.get(change.lessonId());
+            if (lesson == null) {
+                continue;
+            }
+            lesson.periodId = change.periodId();
+            lesson.roomId = change.roomId();
+            lesson.teacherId = change.teacherId();
+        }
     }
 
     /**
@@ -215,7 +317,8 @@ public class DraftValidator {
         List<DraftPublishReadiness.Blocker> blockers =
                 DraftPublishReadiness.blockers(factsOf(snapshot, conflicts.size()));
         return new ValidationResult(
-                contentComplete(blockers), conflicts.size(), conflicts, blockers.isEmpty(), blockers);
+                contentComplete(blockers), conflicts.size(), conflicts, blockers.isEmpty(), blockers,
+                snapshot.context().settings().fingerprint());
     }
 
     /**
@@ -270,7 +373,7 @@ public class DraftValidator {
         List<ValidationResult> results = new ArrayList<>(scenarios.size());
         for (List<LessonOverride> scenario : scenarios) {
             Snapshot copy = base.withFreshLessons();
-            results.add(resultOf(checkAffected(copy, applyOverrides(copy, scenario))));
+            results.add(resultOf(copy, checkAffected(copy, applyOverrides(copy, scenario))));
         }
         return results;
     }
@@ -286,7 +389,7 @@ public class DraftValidator {
         List<ValidationResult> results = new ArrayList<>(scenarios.size());
         for (List<LessonChange> scenario : scenarios) {
             Snapshot copy = base.withFreshLessons();
-            results.add(resultOf(checkAffected(copy, applyChanges(copy, scenario))));
+            results.add(resultOf(copy, checkAffected(copy, applyChanges(copy, scenario))));
         }
         return results;
     }
@@ -343,9 +446,10 @@ public class DraftValidator {
     }
 
     /** Local checks report conflicts only; they never gate on the rest of the draft. */
-    private ValidationResult resultOf(List<Conflict> conflicts) {
+    private ValidationResult resultOf(Snapshot snapshot, List<Conflict> conflicts) {
         boolean valid = conflicts.isEmpty();
-        return new ValidationResult(valid, conflicts.size(), conflicts, valid, List.of());
+        return new ValidationResult(valid, conflicts.size(), conflicts, valid, List.of(),
+                snapshot.context().settings().fingerprint());
     }
 
     private Snapshot snapshot(Long draftId) {
