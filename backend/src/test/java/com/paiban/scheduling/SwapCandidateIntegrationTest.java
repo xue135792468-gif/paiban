@@ -144,7 +144,8 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
             World world, long classId, long courseId, long teacherId, int periodIndex, String room) {
         DraftLesson lesson = new DraftLesson();
         lesson.setDraftId(world.draftId());
-        lesson.setAssignmentId(0L);
+        // V45: (draft, assignment, lesson index) is unique, so hand-built rows get their own id.
+        lesson.setAssignmentId(draftLessons.countByDraftId(world.draftId()) + 1);
         lesson.setLessonIndex(1);
         lesson.setCourseId(courseId);
         lesson.setTeacherId(teacherId);
@@ -492,8 +493,10 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
                 for (int repeat = 0; repeat < 4; repeat++) {
                     DraftLesson lesson = new DraftLesson();
                     lesson.setDraftId(draftId);
-                    lesson.setAssignmentId(0L);
-                    lesson.setLessonIndex(repeat + 1);
+                    // One row = one concrete lesson of its own assignment (V45 unique identity).
+                    lesson.setAssignmentId((long) (classIndex * subjects.length * 4
+                            + subjectIndex * 4 + repeat + 1));
+                    lesson.setLessonIndex(1);
                     lesson.setCourseId(courseRows.get(subjectIndex).getId());
                     lesson.setTeacherId(teacherRows.get(
                             classIndex * subjects.length * 4 + subjectIndex * 4 + repeat).getId());
