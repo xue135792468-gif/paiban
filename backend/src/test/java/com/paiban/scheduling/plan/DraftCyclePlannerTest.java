@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paiban.common.policy.ExchangeRankingPreset;
 import com.paiban.foundation.domain.AdminClass;
 import com.paiban.foundation.domain.AdminClassRepository;
@@ -16,6 +17,8 @@ import com.paiban.foundation.domain.Room;
 import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
+import com.paiban.scheduling.domain.ConstraintConfig;
+import com.paiban.scheduling.domain.ConstraintType;
 import com.paiban.scheduling.domain.DraftLesson;
 import com.paiban.scheduling.domain.DraftLessonRepository;
 import com.paiban.scheduling.domain.TimetableDraft;
@@ -26,10 +29,12 @@ import com.paiban.scheduling.plan.DraftCyclePlanner.Options;
 import com.paiban.scheduling.plan.DraftCyclePlanner.Result;
 import com.paiban.scheduling.service.ConstraintService;
 import com.paiban.scheduling.service.DraftValidator;
+import com.paiban.scheduling.service.DraftValidator.PlanLesson;
 import com.paiban.scheduling.service.SemesterBaselineQuery;
 import com.paiban.scheduling.solver.ConstraintSettings;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -74,7 +79,9 @@ class DraftCyclePlannerTest {
 
     private DraftValidator validator;
     private DraftLessonRepository draftLessons;
+    private ConstraintService constraints;
     private TimetableDraft draft;
+    private final ObjectMapper mapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
@@ -85,7 +92,7 @@ class DraftCyclePlannerTest {
         CourseRepository courses = mock(CourseRepository.class);
         TeacherRepository teachers = mock(TeacherRepository.class);
         AdminClassRepository adminClasses = mock(AdminClassRepository.class);
-        ConstraintService constraints = mock(ConstraintService.class);
+        constraints = mock(ConstraintService.class);
         SemesterBaselineQuery baselines = mock(SemesterBaselineQuery.class);
         when(constraints.settings(SEMESTER_ID)).thenReturn(ConstraintSettings.defaults());
 
@@ -246,7 +253,69 @@ class DraftCyclePlannerTest {
         assertThat(cycle.impactTeachers()).isEqualTo(3);
     }
 
+    @Test
+    void twoSameClassLessonsThatBothMoveAreNotTreatedAsAStayingOccupant() {
+        PlanLesson first = planLesson(1L, CLASS_1, P3);
+        PlanLesson second = planLesson(2L, CLASS_1, P3);
+
+        // Both occupants leave: the slot is vacated, so this must not prune it.
+        assertThat(DraftCyclePlanner.hasStayingSameClass(
+                List.of(first, second), CLASS_1, Set.of(1L, 2L))).isFalse();
+        // One occupant stays: landing there would leave a class conflict.
+        assertThat(DraftCyclePlanner.hasStayingSameClass(
+                List.of(first, second), CLASS_1, Set.of(1L))).isTrue();
+        // A different class never blocks this class's own landing.
+        assertThat(DraftCyclePlanner.hasStayingSameClass(
+                List.of(planLesson(3L, CLASS_2, P3)), CLASS_1, Set.of())).isFalse();
+    }
+
+    @Test
+    void aSoftRoomConflictOnTheOnlyEscapeSlotIsNotPrunedAway() {
+        useHardTeacherSoftRoomSettings();
+        // The direct swap adds a hard teacher conflict at P1, so it is refused. The only
+        // cycle needs T to land on P3 where another class already uses its room; that is
+        // a soft room conflict, which the final assessment scores but does not block. A
+        // hardness-blind pruning rule would drop the only legal plan.
+        useLessons(
+                lesson(SOURCE, CHINESE, TEACHER_A, CLASS_1, P1, ROOM_1),
+                lesson(TARGET, MATH, TEACHER_B, CLASS_1, P2, ROOM_2),
+                lesson(INTERMEDIATE, ENGLISH, TEACHER_C, CLASS_1, P3, ROOM_3),
+                lesson(900L, PHYSICS, TEACHER_B, CLASS_2, P1, ROOM_4),
+                lesson(910L, PHYSICS, TEACHER_C, CLASS_2, P2, ROOM_2),
+                lesson(911L, PHYSICS, TEACHER_A, CLASS_2, P3, ROOM_2));
+
+        Result result = plan(SOURCE, P2, 3, 5_000);
+
+        assertThat(result.budgetExhausted()).isFalse();
+        assertThat(result.candidates()).isNotEmpty();
+        assertThat(result.candidates().get(0).moves()).containsExactlyInAnyOrder(
+                new Move(SOURCE, P1, P2),
+                new Move(TARGET, P2, P3),
+                new Move(INTERMEDIATE, P3, P1));
+    }
+
     // ------------------------------------------------------------------ fixtures
+
+    private void useHardTeacherSoftRoomSettings() {
+        when(constraints.settings(SEMESTER_ID)).thenReturn(ConstraintSettings.from(
+                List.of(conflictConfig(ConstraintType.TEACHER_CONFLICT, true),
+                        conflictConfig(ConstraintType.ROOM_CONFLICT, false)),
+                mapper));
+    }
+
+    private static ConstraintConfig conflictConfig(ConstraintType type, boolean hard) {
+        ConstraintConfig config = new ConstraintConfig();
+        config.setType(type.name());
+        config.setHard(hard);
+        config.setWeight(40);
+        config.setEnabled(true);
+        config.setParamsJson("{}");
+        return config;
+    }
+
+    private static PlanLesson planLesson(long id, long classId, Long periodId) {
+        return new PlanLesson(id, id, 1, classId, CHINESE, TEACHER_A, periodId, ROOM_1, 45, false);
+    }
 
     private void useThreeLessonCycle() {
         useLessons(

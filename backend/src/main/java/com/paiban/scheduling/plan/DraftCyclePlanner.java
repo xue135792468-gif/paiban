@@ -3,6 +3,8 @@ package com.paiban.scheduling.plan;
 import com.paiban.common.policy.ExchangePlanMetrics;
 import com.paiban.common.policy.ExchangeRankingPreset;
 import com.paiban.scheduling.constraint.ConstraintContext.PeriodView;
+import com.paiban.scheduling.domain.ConstraintType;
+import com.paiban.scheduling.solver.ConstraintSettings.Control;
 import com.paiban.scheduling.service.DraftValidator;
 import com.paiban.scheduling.service.DraftValidator.ChangeAssessment;
 import com.paiban.scheduling.service.DraftValidator.LessonChange;
@@ -133,6 +135,19 @@ public final class DraftCyclePlanner {
         return new Result(ranked, search.budgetExhausted, search.nodes, search.verified);
     }
 
+    /**
+     * True when a lesson of this class at the slot is not part of the moves, so landing
+     * there would leave a class conflict (or a locked lesson that cannot be pushed).
+     * Two same-class lessons that both move are not a reason to prune: the final
+     * whole-table check decides whether the resulting table is legal.
+     */
+    static boolean hasStayingSameClass(List<PlanLesson> occupants, Long classId,
+                                       Set<Long> moving) {
+        return occupants.stream()
+                .filter(occupant -> Objects.equals(occupant.classId(), classId))
+                .anyMatch(occupant -> !moving.contains(occupant.id()));
+    }
+
     private static String stableKey(List<Move> moves) {
         List<Move> sorted = new ArrayList<>(moves);
         sorted.sort(Comparator.comparing(Move::lessonId));
@@ -230,11 +245,12 @@ public final class DraftCyclePlanner {
         }
 
         /**
-         * Necessary conditions only. A slot is rejected when, after this plan, a lesson
-         * that stays behind would share the displaced lesson's teacher or room, when the
-         * class cannot attend that slot at all, when the slot holds more than one lesson
-         * of this class (ambiguous), or when a locked same-class lesson would have to
-         * move. The independent verifier still has the final word.
+         * Necessary conditions only. A slot is rejected when a lesson of this class that
+         * is not moving would stay behind, when the class cannot attend that slot at all,
+         * or — only while the matching rule is hard — when a staying lesson would share
+         * the displaced lesson's teacher or room. Soft conflicts are deliberately not
+         * pruned: they belong to the final whole-table soft score. The independent
+         * verifier still has the final word.
          */
         private boolean canLand(Long periodId, PlanLesson displaced, Set<Long> moving) {
             if (periodId == null) {
@@ -249,28 +265,29 @@ public final class DraftCyclePlanner {
                 return false;
             }
             List<PlanLesson> occupants = byPeriod.getOrDefault(periodId, List.of());
-            long sameClass = occupants.stream()
-                    .filter(lesson -> Objects.equals(lesson.classId(), source.classId()))
-                    .count();
-            if (sameClass > 1) {
+            if (hasStayingSameClass(occupants, source.classId(), moving)) {
                 return false;
             }
+            boolean teacherHard = isHard(ConstraintType.TEACHER_CONFLICT);
+            boolean roomHard = isHard(ConstraintType.ROOM_CONFLICT);
             for (PlanLesson occupant : occupants) {
                 if (moving.contains(occupant.id())) {
                     continue;
                 }
-                if (Objects.equals(occupant.classId(), source.classId())) {
+                if (teacherHard && Objects.equals(occupant.teacherId(), displaced.teacherId())) {
                     return false;
                 }
-                if (Objects.equals(occupant.teacherId(), displaced.teacherId())) {
-                    return false;
-                }
-                if (displaced.roomId() != null
+                if (roomHard && displaced.roomId() != null
                         && Objects.equals(occupant.roomId(), displaced.roomId())) {
                     return false;
                 }
             }
             return true;
+        }
+
+        private boolean isHard(ConstraintType type) {
+            Control control = snapshot.context().settings().control(type);
+            return control != null && control.hard();
         }
 
         private void complete() {

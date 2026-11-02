@@ -44,6 +44,7 @@ scheduling内新增周期换位规划/快照/独立验证/预览应用服务和�
 **实现分支**：`codex/t04-cycle-plans`（worktree `E:/paiban-wt/t04-cycles`）
 **基点**：`codex/draft-swap-locks`（含 01/02/03，HEAD `c893f7e`）
 **提交**：`feat(scheduling): search and atomically apply draft cycle plans`
+**复审修正**：追加提交 `fix(scheduling): keep legal cycles when pruning is not a hard rule`（`canLand` 改为只拒绝“不会移动的本班占用课”；教师/教室冲突仅在对应规则为硬约束时剪枝；软冲突交给 `assess` 全表判断）。
 
 ### 改动文件
 
@@ -81,10 +82,10 @@ cd backend
 # EXIT=0
 
 ./mvnw -B -DforkCount=0 -Dtest=DraftCyclePlannerTest,DraftCyclePlanIntegrationTest,DraftChangeIntegrationTest,DraftValidatorChangeAssessmentTest,SwapPlannerTest test
-# EXIT=0；Tests run: 54, Failures: 0, Errors: 0, Skipped: 0
+# EXIT=0；Tests run: 56, Failures: 0, Errors: 0, Skipped: 0
 ```
 
-- 纯规划反例：`DraftCyclePlannerTest` 8/8（直换、三课环、稳定性、上限、锁中间课、其他班教师剪枝+伪造复核、`nodeBudget=1`、去重教师数）EXIT=0。
+- 纯规划反例：`DraftCyclePlannerTest` 10/10（直换、三课环、稳定性、上限、锁中间课、其他班教师剪枝+伪造复核、`nodeBudget=1`、去重教师数；**复审修正后新增**：同格两节本班课都在 moving 时不算“不动的占用”、软房间冲突不被硬剪枝误杀）EXIT=0。
 - HTTP 全链路：`DraftCyclePlanIntegrationTest` 8/8（搜索零副作用、原子应用、重放/过期/伪造、他人移动/规则/设置失效、锁/跨班/同格多课、权限/已发布、并发同旧版本、三课环 validation 无新增硬冲突）EXIT=0。
 - 仓库检查：`scripts/check-module-boundaries.sh` EXIT=0；`scripts/check-blank-checks.sh` EXIT=0；`scripts/check-migrations.sh` EXIT=0（迁移版本唯一）。
 - 按票面要求未运行全量 `verify.sh`、未起 Docker。
