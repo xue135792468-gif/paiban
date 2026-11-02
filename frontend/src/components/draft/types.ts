@@ -208,3 +208,11 @@ export interface CyclePlanSearch {
   fingerprint: string
   plans: CyclePlan[]
 }
+
+/** `PUT /timetable-drafts/{id}/lessons/locks`; `updated` counts rows that really changed. */
+export interface LockResult {
+  requested: number
+  updated: number
+  locked: boolean
+  version: number
+}

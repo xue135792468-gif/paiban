@@ -44,11 +44,22 @@
         :selected-lesson="selectedLesson"
         :draft-editable="draftEditable"
         :unassigned-count="unassigned.length"
+        :selection-mode="selectionMode"
+        :selected-count="selectedCount"
+        :selected-lesson-locked="selectedLesson?.locked ?? false"
+        :can-use-class-scope="canUseClassScope"
+        :day-options="dayOptions"
+        :class-scope-count="classScopeCount"
         @view-change="resetTarget"
-        @swap="openForSelected"
+        @swap="openSwapForSelected"
         @adjust-position="openTargetDialog"
         @toggle-drawer="drawerVisible = !drawerVisible"
         @clear-selection="clearSelection"
+        @toggle-selection="toggleSelectionMode"
+        @lock-single="lockSingle"
+        @unlock-single="unlockSingle"
+        @batch-lock="confirmBatch"
+        @clear-multi-selection="clearLockSelection"
       />
     </el-card>
 
@@ -58,8 +69,10 @@
           :periods="detail?.periods ?? []"
           :lessons="filteredLessons"
           :courses="courses"
-          :draggable="draftEditable"
+          :draggable="draftEditable && !selectionMode"
           :dragged-lesson-id="dragged?.id ?? null"
+          :selection-mode="selectionMode"
+          :selected-lesson-ids="selectedIds"
           :targets="dragTargets"
           :blocked-periods="blockedPeriods"
           :conflict-lesson-ids="validation?.conflicts.map((item) => item.lessonId).filter((id) => id != null) ?? []"
@@ -70,6 +83,7 @@
           @drop-cell="onDropCell"
           @cell-click="onCellClick"
           @lesson-activate="onLessonActivate"
+          @toggle-select="onToggleSelect"
         />
       </el-card>
 
@@ -198,6 +212,7 @@ import { useDraftEditor } from '@/composables/useDraftEditor'
 import { useDraftDrop } from '@/composables/useDraftDrop'
 import { useCyclePlans } from '@/composables/useCyclePlans'
 import { useSwapFlow } from '@/composables/useSwapFlow'
+import { useDraftLocks } from '@/composables/useDraftLocks'
 import type { CyclePlan, DraftConflict, DraftLesson } from '@/components/draft/types'
 
 const route = useRoute()
@@ -272,6 +287,15 @@ const {
   lessonAt,
 } = useDraftEditor({ draftId, canEdit, onLoaded: () => clearSelection() })
 
+const locks = useDraftLocks({
+  draftId, detail, draftEditable, viewMode, targetId, reload: load, notify: ElMessage,
+})
+const {
+  selectionMode, selectedIds, selectedCount, dayOptions, classScopeCount, canUseClassScope,
+  lockedLessonIds, toggleSelectionMode, clearSelection: clearLockSelection, confirmBatch,
+} = locks
+const { toggle: toggleLockSelection, lockSingle, unlockSingle } = locks
+
 const drawerVisible = ref(false)
 const dragged = ref<DraftLesson | null>(null)
 const dragTargets = ref<Record<number, { available: boolean; conflicts: DraftConflict[] }> | null>(null)
@@ -280,10 +304,6 @@ const cellConflicts = ref<DraftConflict[]>([])
 const compareVisible = ref(false)
 const roomFillVisible = ref(false)
 const targetVisible = ref(false)
-
-const lockedLessonIds = computed(
-  () => (detail.value?.lessons ?? []).filter((lesson) => lesson.locked).map((lesson) => lesson.id),
-)
 
 const lockedPeriodIds = computed(() =>
   (detail.value?.lessons ?? [])
@@ -345,6 +365,7 @@ async function onDropCell(payload: { day: number; periodNo: number; periodId: nu
 }
 
 function onCellClick(payload: { day: number; periodNo: number }) {
+  if (selectionMode.value) return
   const lesson = lessonAt(payload.day, payload.periodNo)
   if (!lesson) return
   selectLesson(lesson)
@@ -355,11 +376,25 @@ function onCellClick(payload: { day: number; periodNo: number }) {
 }
 
 function onLessonActivate(lesson: DraftLesson) {
+  if (selectionMode.value) {
+    toggleLockSelection(lesson.id)
+    return
+  }
   selectLesson(lesson)
+}
+
+function onToggleSelect(lesson: DraftLesson) {
+  toggleLockSelection(lesson.id)
+}
+
+function openSwapForSelected() {
+  if (selectedLesson.value?.locked) return ElMessage.warning('该课节已锁定，先解锁后再换课')
+  openForSelected()
 }
 
 function openTargetDialog() {
   if (!selectedLesson.value || selectedLesson.value.periodId == null) return
+  if (selectedLesson.value.locked) return ElMessage.warning('该课节已锁定，先解锁后再调整位置')
   targetVisible.value = true
 }
 

@@ -5,6 +5,7 @@ import type {
   DraftChangeResult,
   DraftDetail,
   DraftValidation,
+  LockResult,
 } from '@/components/draft/types'
 
 /**
@@ -62,6 +63,18 @@ export async function searchCyclePlans(
       rulesFingerprint: request.rulesFingerprint,
     },
   )
+  return data
+}
+
+/**
+ * Locks or unlocks concrete lessons. The client expands "this day"/"the whole
+ * class" into lesson ids; the server validates the batch atomically (contracts §1).
+ */
+export async function setLocks(
+  draftId: number,
+  body: { lessonIds: number[]; locked: boolean; expectedVersion: number },
+): Promise<LockResult> {
+  const { data } = await http.put<LockResult>(`/timetable-drafts/${draftId}/lessons/locks`, body)
   return data
 }
 
