@@ -346,6 +346,7 @@ export function buildTimetableGridFor(
       section: '',
       roomId: null,
       roomName: text(values.roomName),
+      locked: false,
     })
 
     if (day == null || periodNo == null) {
