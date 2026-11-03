@@ -73,9 +73,9 @@ class TimetableProblemBuilderTest {
         when(assignmentRepository.findBySemesterId(1L)).thenReturn(List.of(assignment));
 
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
-                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null)));
+                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
         when(foundation.coursesById()).thenReturn(Map.of(1L,
-                new CourseDto(1L, "语文", null, false, false, null, null)));
+                new CourseDto(1L, "语文", null, false, false, null, null, true)));
         when(foundation.teachersById()).thenReturn(Map.of(1L,
                 new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null)));
 
@@ -136,10 +136,10 @@ class TimetableProblemBuilderTest {
         when(assignmentRepository.findBySemesterId(1L)).thenReturn(List.of(assignment));
 
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
-                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null)));
+                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
         // NORMAL is the ordinary classroom, so the class room stays pinned.
         when(foundation.coursesById()).thenReturn(Map.of(1L,
-                new CourseDto(1L, "语文", null, false, false, "NORMAL", null)));
+                new CourseDto(1L, "语文", null, false, false, "NORMAL", null, true)));
         when(foundation.teachersById()).thenReturn(Map.of(1L,
                 new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null)));
 
@@ -193,9 +193,9 @@ class TimetableProblemBuilderTest {
         when(assignmentRepository.findBySemesterId(1L)).thenReturn(List.of(assignment));
 
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
-                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null)));
+                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
         when(foundation.coursesById()).thenReturn(Map.of(1L,
-                new CourseDto(1L, "语文", null, false, false, "NORMAL", null)));
+                new CourseDto(1L, "语文", null, false, false, "NORMAL", null, true)));
         when(foundation.teachersById()).thenReturn(Map.of(1L,
                 new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null)));
 
@@ -239,9 +239,9 @@ class TimetableProblemBuilderTest {
         when(assignmentRepository.findBySemesterId(1L)).thenReturn(List.of(assignment));
 
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
-                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null)));
+                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
         when(foundation.coursesById()).thenReturn(Map.of(1L,
-                new CourseDto(1L, "语文", null, false, false, null, null)));
+                new CourseDto(1L, "语文", null, false, false, null, null, true)));
         when(foundation.teachersById()).thenReturn(Map.of(1L,
                 new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null)));
 
@@ -285,9 +285,9 @@ class TimetableProblemBuilderTest {
                 .thenReturn(List.of(assignment(21L, 1L, 1L, 1L, 2)));
 
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
-                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null)));
+                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
         when(foundation.coursesById()).thenReturn(Map.of(1L,
-                new CourseDto(1L, "语文", null, false, false, null, null)));
+                new CourseDto(1L, "语文", null, false, false, null, null, true)));
         when(foundation.teachersById()).thenReturn(Map.of(
                 1L, new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null),
                 99L, new TeacherDto(99L, "李四", null, null, null, null, true, null, null, null, null)));
@@ -338,9 +338,9 @@ class TimetableProblemBuilderTest {
         when(assignmentRepository.findBySemesterId(1L))
                 .thenReturn(List.of(assignment(21L, 1L, 1L, 1L, 2)));
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
-                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null)));
+                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
         when(foundation.coursesById()).thenReturn(Map.of(1L,
-                new CourseDto(1L, "语文", null, false, false, null, null)));
+                new CourseDto(1L, "语文", null, false, false, null, null, true)));
         when(foundation.teachersById()).thenReturn(Map.of(1L,
                 new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null)));
 

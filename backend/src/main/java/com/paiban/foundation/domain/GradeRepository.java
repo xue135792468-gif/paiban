@@ -8,6 +8,9 @@ public interface GradeRepository extends JpaRepository<Grade, Long> {
 
     List<Grade> findBySemesterIdOrderBySortOrderAscNameAsc(Long semesterId);
 
+    /** Management list: soft-deleted rows disappear, disabled ones stay visible. */
+    List<Grade> findBySemesterIdAndDeletedAtIsNullOrderBySortOrderAscNameAsc(Long semesterId);
+
     Optional<Grade> findBySemesterIdAndName(Long semesterId, String name);
 
     boolean existsBySemesterIdAndName(Long semesterId, String name);

@@ -3,6 +3,7 @@ package com.paiban.foundation;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 
 import com.paiban.support.ApiIntegrationTest;
@@ -171,7 +172,7 @@ class FoundationIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void deletingTeacherClearsHeadTeacherReference() {
+    void deletingTeacherHidesItFromTheListAndKeepsTheClassRow() {
         String token = adminToken();
         long semesterId = TestData.semester(token);
         String suffix = TestData.suffix();
@@ -187,9 +188,15 @@ class FoundationIntegrationTest extends ApiIntegrationTest {
 
         as(token).when().delete("/api/teachers/" + teacherId).then().statusCode(200);
 
+        // Ticket 03: deletion is soft. The row (and the class's head teacher link) stay
+        // so a restore brings everything back; the list simply stops showing it.
+        as(token).when().get("/api/teachers")
+                .then().statusCode(200)
+                .body("id", not(hasItem((int) teacherId)));
+
         as(token).queryParam("semesterId", semesterId)
                 .when().get("/api/classes")
-                .then().body("find { it.id == " + classId + " }.headTeacherId", equalTo(null));
+                .then().body("find { it.id == " + classId + " }.headTeacherId", equalTo((int) teacherId));
     }
 
     @Test

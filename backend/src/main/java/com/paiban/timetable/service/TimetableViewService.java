@@ -111,10 +111,12 @@ public class TimetableViewService {
     public SchoolTimetableDto schoolView(String view, LocalDate date) {
         Long semesterId = semesters.requireCurrent().getId();
         Map<Long, Substitution> overlay = overlayMap(semesterId, view, date);
-        List<ClassDto> classes = adminClasses.findBySemesterIdOrderByGradeIdAscNameAsc(semesterId).stream()
+        List<ClassDto> classes = adminClasses
+                .findBySemesterIdAndDeletedAtIsNullOrderByGradeIdAscNameAsc(semesterId).stream()
                 .map(adminClass -> new ClassDto(
                         adminClass.getId(), adminClass.getName(), adminClass.getGradeId(), null,
-                        adminClass.getHeadTeacherId(), null, adminClass.getStudentCount(), null))
+                        adminClass.getHeadTeacherId(), null, adminClass.getStudentCount(), null,
+                        adminClass.isActive()))
                 .toList();
         List<TimetableEntryDto> all = enrich(entries.findBySemesterId(semesterId), semesterId).stream()
                 .map(dto -> apply(dto, overlay.get(dto.id()), semesterId))

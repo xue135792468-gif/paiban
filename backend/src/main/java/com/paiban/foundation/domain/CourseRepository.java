@@ -8,5 +8,8 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
 
     List<Course> findAllByOrderByNameAsc();
 
+    /** Management list: soft-deleted rows disappear, disabled ones stay visible. */
+    List<Course> findAllByDeletedAtIsNullOrderByNameAsc();
+
     Optional<Course> findByName(String name);
 }

@@ -33,7 +33,6 @@ public class SemesterService {
     private final PeriodRepository periods;
     private final com.paiban.timetable.domain.TimetableEntryRepository timetableEntries;
     private final com.paiban.scheduling.domain.DraftLessonRepository draftLessons;
-    private final com.paiban.scheduling.domain.TimetableDraftRepository drafts;
     private final ApplicationEventPublisher events;
 
     public SemesterService(
@@ -41,19 +40,17 @@ public class SemesterService {
             PeriodRepository periods,
             com.paiban.timetable.domain.TimetableEntryRepository timetableEntries,
             com.paiban.scheduling.domain.DraftLessonRepository draftLessons,
-            com.paiban.scheduling.domain.TimetableDraftRepository drafts,
             ApplicationEventPublisher events) {
         this.semesters = semesters;
         this.periods = periods;
         this.timetableEntries = timetableEntries;
         this.draftLessons = draftLessons;
-        this.drafts = drafts;
         this.events = events;
     }
 
     @Transactional(readOnly = true)
     public List<SemesterDto> list() {
-        return semesters.findAllByOrderByStartDateDesc().stream().map(this::toDto).toList();
+        return semesters.findAllByDeletedAtIsNullOrderByStartDateDesc().stream().map(this::toDto).toList();
     }
 
     @Transactional(readOnly = true)
@@ -91,22 +88,6 @@ public class SemesterService {
     }
 
     @Transactional
-    public void delete(Long id) {
-        Semester semester = lockSemester(id);
-        if (semester.isCurrent()) {
-            throw ApiException.conflict("不能删除当前学期，请先切换到其他学期");
-        }
-        if (timetableEntries.countBySemesterId(id) > 0) {
-            throw ApiException.conflict("该学期已发布课表，不能删除");
-        }
-        // Draft lessons now carry a foreign key to period, so the cascade that used to
-        // happen at the database level on semester delete has to run in FK order.
-        drafts.deleteBySemesterId(id);
-        periods.deleteBySemesterId(id);
-        semesters.delete(semester);
-    }
-
-    @Transactional
     public SemesterDto setCurrent(Long id) {
         Semester target = require(id);
         semesters.findAll().forEach(semester -> semester.setCurrent(semester.getId().equals(target.getId())));
@@ -115,18 +96,23 @@ public class SemesterService {
 
     @Transactional(readOnly = true)
     public Optional<SemesterDto> current() {
-        return semesters.findByCurrentTrue().map(this::toDto);
+        return semesters.findByCurrentTrue()
+                .filter(semester -> semester.getDeletedAt() == null)
+                .map(this::toDto);
     }
 
     @Transactional(readOnly = true)
     public Semester requireCurrent() {
         return semesters.findByCurrentTrue()
+                .filter(semester -> semester.getDeletedAt() == null)
                 .orElseThrow(() -> ApiException.badRequest("尚未设置当前学期，请先在“学期与作息”中设置"));
     }
 
     @Transactional(readOnly = true)
     public Semester require(Long id) {
-        return semesters.findById(id).orElseThrow(() -> ApiException.notFound("学期不存在: " + id));
+        return semesters.findById(id)
+                .filter(semester -> semester.getDeletedAt() == null)
+                .orElseThrow(() -> ApiException.notFound("学期不存在: " + id));
     }
 
     @Transactional(readOnly = true)
@@ -342,7 +328,8 @@ public class SemesterService {
                 semester.getName(),
                 semester.getStartDate(),
                 semester.getEndDate(),
-                semester.isCurrent());
+                semester.isCurrent(),
+                semester.isActive());
     }
 
     private PeriodDto toDto(Period period) {

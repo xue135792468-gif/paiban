@@ -8,6 +8,12 @@ public interface TeacherRepository extends JpaRepository<Teacher, Long> {
 
     List<Teacher> findAllByOrderByNameAsc();
 
+    /** Management list: soft-deleted rows disappear, disabled ones stay visible. */
+    List<Teacher> findAllByDeletedAtIsNullOrderByNameAsc();
+
+    /** Dropdown options: deleted and disabled teachers are both hidden. */
+    List<Teacher> findAllByDeletedAtIsNullAndActiveTrueOrderByNameAsc();
+
     List<Teacher> findByName(String name);
 
     Optional<Teacher> findByEmployeeNo(String employeeNo);
