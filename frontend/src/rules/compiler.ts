@@ -1,9 +1,16 @@
 /**
- * The sentence builder's compiler: it turns a requirement such as
- * "数学 每天最多 1 节" or "全校 周五第 7 节 不排" into the constraint rows the
- * rest of the system already evaluates. There is no second evaluator here — the
- * output is exactly `constraint_config` / `constraint_entry`, so the solver,
- * draft validation, substitution and the read-only CLI keep reading one snapshot.
+ * The sentence builder's compiler: it turns requirements such as
+ * "数学 每天最多 1 节" or "全校 周五第 7 节 不排，除了 九（2）班" into the
+ * constraint rows the rest of the system already evaluates. There is no second
+ * evaluator here — the output is exactly `constraint_config` / `constraint_entry`,
+ * so the solver, draft validation, substitution and the read-only CLI keep reading
+ * one snapshot.
+ *
+ * <p>A <em>card</em> is the page's unit: one to three sentences, one shared enable
+ * switch and one shared delete. A sentence is one requirement and owns one persisted
+ * group. Its {@code groupKey} is {@code "<cardId>:<index>"}; the single-sentence
+ * groups written by ticket 08 ({@code pt-<uuid>}, no colon) still read as one card
+ * each and are upgraded on edit.
  *
  * Everything in this file is pure: the page owns HTTP, this module owns the shape.
  */
@@ -17,6 +24,7 @@ import type {
 
 export type RuleStrength = 'HARD' | 'SOFT'
 export type RuleGroup = 'TIME' | 'QUANTITY' | 'SHAPE' | 'PRESET'
+export type RuleTargetGroup = 'SCHOOL' | 'CLASS' | 'TEACHER' | 'COURSE'
 
 export type RuleType =
   | 'CLASS_UNAVAILABLE'
@@ -100,6 +108,7 @@ const KNOWN_ENTRY_BACKED = new Set<string>([
 ])
 
 const SINGLE_ENTRY_KEY = 'single'
+const MAX_SENTENCES = 3
 
 type Target = 'CLASS' | 'TEACHER' | 'COURSE' | 'NONE'
 type CourseMode = 'ALL' | 'REQUIRED' | 'OPTIONAL'
@@ -262,14 +271,13 @@ export interface RuleInput {
   periodNos?: number[]
   amount?: number | null
   strength?: RuleStrength
+  /** School-scope CLASS_UNAVAILABLE sentences: the classes left out. */
+  exceptionClassIds?: number[]
 }
 
-/**
- * One editable rule card. `key` is the page's stable identity while editing;
- * `groupKey` is the persisted requirement identity (null for a legacy row that
- * never had one). `entryIds` lets an edit keep the row ids it already owns.
- */
-export interface RuleCard {
+/** One requirement sentence: one card line, one persisted group. */
+export interface RuleSentence {
+  /** Merge identity: `group:<groupKey>` for a stored row, `entry:<id>` for a legacy row. */
   key: string
   groupKey: string | null
   type: RuleType
@@ -282,6 +290,15 @@ export interface RuleCard {
   strength: RuleStrength
   enabled: boolean
   entryIds: Record<string, number>
+  exceptionClassIds: number[]
+}
+
+/** One editable rule card: one to three sentences sharing a switch and a delete. */
+export interface RuleCard {
+  key: string
+  cardId: string
+  enabled: boolean
+  sentences: RuleSentence[]
 }
 
 export interface RuleNames {
@@ -297,6 +314,12 @@ export interface MergeOptions {
    * omitted, the shape of the saved config is used instead.
    */
   entryBackedTypes?: ReadonlySet<string>
+  /** Every class of the semester; needed to expand and read "除了某班". */
+  classIds?: number[]
+}
+
+export interface StateOptions {
+  allClassIds?: number[]
 }
 
 export function isManagedType(type: string): type is RuleType {
@@ -358,26 +381,35 @@ function sameNumbers(left: number[], right: number[]): boolean {
 }
 
 type RuleShape = Pick<
-  RuleCard,
+  RuleSentence,
   'type' | 'classId' | 'teacherId' | 'courseId' | 'dayOfWeek' | 'periodNos' | 'amount'
->
+> & { exceptionClassIds?: number[] }
 
 /** The sentence the card shows: "数学 每天最多 1 节" / "全校 的 课 在 周五第 7 节 不排". */
 export function describeRule(parts: RuleShape, names: RuleNames, periods: PeriodOption[]): string {
   const type = parts.type
   const spec = RULE_SPECS[type]
-  const teacher = parts.teacherId === null ? '教师' : names.teacher(parts.teacherId)
-  const anyTeacher = parts.teacherId === null ? '所有教师' : teacher
-  const klass = parts.classId === null ? '全校' : names.klass(parts.classId)
-  const course = parts.courseId === null ? '全部课程' : names.course(parts.courseId)
-  const sport = parts.courseId === null ? '体育' : names.course(parts.courseId)
-  const amount = parts.amount === null ? 'N' : String(parts.amount)
-  const day = parts.dayOfWeek === null ? '（请选择星期）' : weekdayLabel(parts.dayOfWeek)
-  const time = timeLabel(parts.dayOfWeek, parts.periodNos, periods)
+  const teacher = parts.teacherId === null || parts.teacherId === undefined
+    ? '教师' : names.teacher(parts.teacherId)
+  const anyTeacher = parts.teacherId === null || parts.teacherId === undefined
+    ? '所有教师' : teacher
+  const klass = parts.classId === null || parts.classId === undefined
+    ? '全校' : names.klass(parts.classId)
+  const course = parts.courseId === null || parts.courseId === undefined
+    ? '全部课程' : names.course(parts.courseId)
+  const sport = parts.courseId === null || parts.courseId === undefined
+    ? '体育' : names.course(parts.courseId)
+  const amount = parts.amount === null || parts.amount === undefined ? 'N' : String(parts.amount)
+  const day = parts.dayOfWeek === null || parts.dayOfWeek === undefined
+    ? '（请选择星期）' : weekdayLabel(parts.dayOfWeek)
+  const time = timeLabel(parts.dayOfWeek ?? null, parts.periodNos ?? [], periods)
+  const exceptions = parts.exceptionClassIds?.length
+    ? `，除了 ${parts.exceptionClassIds.map((id) => names.klass(id)).join('、')}`
+    : ''
 
   switch (type) {
     case CLASS_UNAVAILABLE:
-      return `${klass} 的 课 在 ${time} 不排`
+      return `${klass} 的 课 在 ${time} 不排${exceptions}`
     case TEACHER_UNAVAILABLE:
       return `${teacher} 的 课 在 ${time} 不排`
     case COURSE_UNAVAILABLE:
@@ -389,7 +421,8 @@ export function describeRule(parts: RuleShape, names: RuleNames, periods: Period
     case CLASS_MAX_PER_DAY:
       return `${klass} 每天最多 ${amount} 节`
     case SAME_COURSE_ONCE_PER_DAY:
-      return parts.courseId === null ? '同一课程 每天最多 1 节' : `${course} 每天最多 1 节`
+      return parts.courseId === null || parts.courseId === undefined
+        ? '同一课程 每天最多 1 节' : `${course} 每天最多 1 节`
     case CONSECUTIVE_LESSONS:
       return `${course} 连堂 ${amount} 节`
     case COURSE_SPREAD:
@@ -415,34 +448,82 @@ export function describeRule(parts: RuleShape, names: RuleNames, periods: Period
   }
 }
 
+export function describeSentence(
+  sentence: RuleSentence,
+  names: RuleNames,
+  periods: PeriodOption[],
+): string {
+  return describeRule(sentence, names, periods)
+}
+
+/** One card's sentences, joined for a compact card line. */
 export function describeCard(card: RuleCard, names: RuleNames, periods: PeriodOption[]): string {
-  return describeRule(card, names, periods)
+  return card.sentences.map((sentence) => describeSentence(sentence, names, periods)).join('；')
 }
 
 /** The slots the requirement still needs before it can be saved. */
 export function missingParts(card: RuleShape): string[] {
   const spec = RULE_SPECS[card.type]
   const missing: string[] = []
-  if (spec.target === 'CLASS' && !spec.allowSchool && card.classId === null) {
+  if (spec.target === 'CLASS' && !spec.allowSchool && (card.classId ?? null) === null) {
     missing.push('选择班级')
   }
-  if (spec.target === 'TEACHER' && !spec.allowAnyTeacher && card.teacherId === null) {
+  if (spec.target === 'TEACHER' && !spec.allowAnyTeacher && (card.teacherId ?? null) === null) {
     missing.push('选择教师')
   }
-  if (spec.course === 'REQUIRED' && card.courseId === null) {
+  if (spec.course === 'REQUIRED' && (card.courseId ?? null) === null) {
     missing.push('选择课程')
   }
-  if (spec.day === 'REQUIRED' && card.dayOfWeek === null) {
+  if (spec.day === 'REQUIRED' && (card.dayOfWeek ?? null) === null) {
     missing.push('选择星期')
   }
-  if (spec.periods === 'REQUIRED' && card.periodNos.length === 0) {
+  if (spec.periods === 'REQUIRED' && (card.periodNos ?? []).length === 0) {
     missing.push('选择第几节')
   }
-  if (spec.amount && (card.amount === null
+  if (spec.amount && (card.amount === null || card.amount === undefined
     || card.amount < spec.amount.min || card.amount > spec.amount.max)) {
     missing.push(`填写${spec.amount.label}`)
   }
   return missing
+}
+
+/**
+ * Everything that keeps one sentence from being saved, including an exception that
+ * would leave no class behind. Empty string means "complete".
+ */
+export function sentenceProblem(sentence: RuleShape, allClassIds?: number[]): string {
+  const missing = missingParts(sentence)
+  if (missing.length > 0) {
+    return `还差：${missing.join('、')}`
+  }
+  const exceptions = sentence.exceptionClassIds ?? []
+  if (sentence.type === CLASS_UNAVAILABLE && (sentence.classId ?? null) === null
+    && exceptions.length > 0) {
+    if (!allClassIds || allClassIds.length === 0) {
+      return '还没有班级，无法展开「除了」'
+    }
+    const remaining = allClassIds.filter((id) => !exceptions.includes(id))
+    if (remaining.length === 0) {
+      return '「除了」不能覆盖全部班级'
+    }
+  }
+  return ''
+}
+
+/** The classes one sentence expands to when saved. */
+export function sentenceClasses(
+  sentence: RuleSentence,
+  allClassIds?: number[],
+): Array<number | null> {
+  if (sentence.type === CLASS_UNAVAILABLE && sentence.classId === null
+    && sentence.exceptionClassIds.length > 0) {
+    const ids = allClassIds ?? []
+    if (ids.length === 0) {
+      throw new Error('缺少班级名单，无法展开「除了」')
+    }
+    return ids.filter((id) => !sentence.exceptionClassIds.includes(id))
+  }
+  return [sentence.classId]
 }
 
 export function newGroupKey(): string {
@@ -452,42 +533,198 @@ export function newGroupKey(): string {
   return `pt-${uuid}`
 }
 
-export function newCardKey(): string {
-  return `new:${newGroupKey()}`
+/** A new card id; sentence groups append `:<index>` to it. */
+export function newCardId(): string {
+  return newGroupKey()
 }
 
-export function cardFromInput(input: RuleInput): RuleCard {
-  const spec = RULE_SPECS[input.type]
+export function newCardKey(): string {
+  return `new:${newCardId()}`
+}
+
+/** True when the stored group key is the new card form (`<cardId>:<index>`). */
+function groupIndex(groupKey: string | null): number | null {
+  const match = groupKey ? /^(.*):(\d+)$/.exec(groupKey) : null
+  return match ? Number(match[2]) : null
+}
+
+function cardIdOf(groupKey: string | null): string | null {
+  if (!groupKey) {
+    return null
+  }
+  const match = /^(.*):(\d+)$/.exec(groupKey)
+  return match ? match[1] : groupKey
+}
+
+function sentenceFromInput(input: RuleInput, groupKey: string | null): RuleSentence {
+  const rule = RULE_SPECS[input.type]
+  const isSchoolUnavailable = input.type === CLASS_UNAVAILABLE && (input.classId ?? null) === null
   return {
+    key: groupKey ? `group:${groupKey}` : `new:${newGroupKey()}`,
+    groupKey,
     type: input.type,
-    classId: spec.target === 'CLASS' ? toInteger(input.classId) : null,
-    teacherId: spec.target === 'TEACHER' ? toInteger(input.teacherId) : null,
-    courseId: spec.course === 'ALL' ? null : toInteger(input.courseId),
-    dayOfWeek: spec.day === 'REQUIRED' ? toInteger(input.dayOfWeek) : null,
-    periodNos: spec.periods === 'REQUIRED' ? normalizePeriods(input.periodNos ?? []) : [],
-    amount: spec.amount ? toInteger(input.amount) ?? spec.amount.defaultValue : null,
-    strength: spec.hardOnly ? 'HARD' : input.strength ?? 'HARD',
-    key: newCardKey(),
-    groupKey: newGroupKey(),
+    classId: rule.target === 'CLASS' ? toInteger(input.classId) : null,
+    teacherId: rule.target === 'TEACHER' ? toInteger(input.teacherId) : null,
+    courseId: rule.course === 'ALL' ? null : toInteger(input.courseId),
+    dayOfWeek: rule.day === 'REQUIRED' ? toInteger(input.dayOfWeek) : null,
+    periodNos: rule.periods === 'REQUIRED' ? normalizePeriods(input.periodNos ?? []) : [],
+    amount: rule.amount ? toInteger(input.amount) ?? rule.amount.defaultValue : null,
+    strength: rule.hardOnly ? 'HARD' : input.strength ?? 'HARD',
     enabled: true,
     entryIds: {},
+    exceptionClassIds: isSchoolUnavailable
+      ? Array.from(new Set(input.exceptionClassIds ?? [])).sort((left, right) => left - right)
+      : [],
   }
 }
 
+function cardOfSentences(cardId: string, sentences: RuleSentence[]): RuleCard {
+  return {
+    key: `card:${cardId}`,
+    cardId,
+    enabled: sentences.some((sentence) => sentence.enabled),
+    sentences,
+  }
+}
+
+/** One card holding the given sentences; every sentence gets `<cardId>:<index>`. */
+export function cardFromInputs(inputs: RuleInput[]): RuleCard {
+  const cardId = newCardId()
+  const limited = inputs.slice(0, MAX_SENTENCES)
+  return cardOfSentences(
+    cardId,
+    limited.map((input, index) => sentenceFromInput(input, `${cardId}:${index}`)),
+  )
+}
+
+export function cardFromInput(input: RuleInput): RuleCard {
+  return cardFromInputs([input])
+}
+
+/** One sentence of a form submission; its key names the stored sentence being edited. */
+export interface CardSentenceInput {
+  key: string | null
+  input: RuleInput
+}
+
 /**
- * One sentence compiled on its own. Used by tests and by callers that only need
- * the payload for a fresh rule; the page saves through `mergeRuleConfigs`.
+ * Applies a form submission to a card. Existing sentences keep their card id and,
+ * when the requirement type does not change, the row ids of their slots; other
+ * sentences of the card are untouched. A legacy `pt-<uuid>` card upgrades to
+ * `<cardId>:<index>` on its first edit.
  */
-export function compileRule(input: RuleInput): ConstraintConfigRequest {
+export function applyCardInputs(
+  initial: RuleCard | null,
+  payload: CardSentenceInput[],
+): RuleCard {
+  if (!initial) {
+    return cardFromInputs(payload.map((item) => item.input))
+  }
+  const byKey = new Map(initial.sentences.map((sentence) => [sentence.key, sentence]))
+  const used = new Set<number>()
+  const reserved = new Set<number>()
+  initial.sentences.forEach((sentence) => {
+    const index = groupIndex(sentence.groupKey)
+    if (index !== null) {
+      reserved.add(index)
+    }
+  })
+  const nextFree = () => {
+    let index = 0
+    while (used.has(index) || reserved.has(index)) {
+      index += 1
+    }
+    return index
+  }
+  const sentences = payload.slice(0, MAX_SENTENCES).map((item) => {
+    const existing = item.key ? byKey.get(item.key) : undefined
+    if (!existing) {
+      const index = nextFree()
+      used.add(index)
+      return sentenceFromInput(item.input, `${initial.cardId}:${index}`)
+    }
+    const index = groupIndex(existing.groupKey) ?? nextFree()
+    used.add(index)
+    const typeChanged = existing.type !== item.input.type
+    const groupKey = `${initial.cardId}:${index}`
+    return {
+      ...sentenceFromInput(item.input, groupKey),
+      key: `group:${groupKey}`,
+      enabled: existing.enabled,
+      entryIds: typeChanged ? {} : existing.entryIds,
+    }
+  })
+  return { ...initial, sentences }
+}
+
+/** A copy with a fresh card id: same sentences, no stored row ids. */
+export function duplicateCard(card: RuleCard): RuleCard {
+  const cardId = newCardId()
+  return cardOfSentences(
+    cardId,
+    card.sentences.map((sentence, index) => ({
+      ...sentence,
+      key: `group:${cardId}:${index}`,
+      groupKey: `${cardId}:${index}`,
+      entryIds: {},
+      periodNos: [...sentence.periodNos],
+      exceptionClassIds: [...sentence.exceptionClassIds],
+    })),
+  )
+}
+
+/** The shared switch: on/off applies to every sentence of the card. */
+export function toggleCard(card: RuleCard, enabled: boolean): RuleCard {
+  return {
+    ...card,
+    enabled,
+    sentences: card.sentences.map((sentence) => ({ ...sentence, enabled })),
+  }
+}
+
+/** One sentence compiled on its own. Used by tests and by callers that only need a payload. */
+export function compileRule(input: RuleInput, options: MergeOptions = {}): ConstraintConfigRequest {
   const card = cardFromInput(input)
-  const missing = missingParts(card)
+  const sentence = card.sentences[0]
+  const missing = missingParts(sentence)
   if (missing.includes('选择第几节')) {
     throw new Error('规则至少要选择一个节次')
   }
   if (missing.length > 0) {
     throw new Error(`规则缺少：${missing.join('、')}`)
   }
-  return configFromCard(card)
+  return configFromSentence(sentence, options)
+}
+
+function configFromSentence(
+  sentence: RuleSentence,
+  options: MergeOptions,
+): ConstraintConfigRequest {
+  const spec = RULE_SPECS[sentence.type]
+  if (isSwitchRule(sentence.type)) {
+    return {
+      type: sentence.type,
+      params: {},
+      weight: spec.defaultWeight,
+      hard: sentence.strength === 'HARD',
+      enabled: sentence.enabled,
+    }
+  }
+  return {
+    type: sentence.type,
+    entries: sentenceEntries(sentence, options),
+    weight: spec.defaultWeight,
+    hard: true,
+    enabled: sentence.enabled,
+  }
+}
+
+/** The save request for one card alone, merged onto nothing (the impact preview). */
+export function cardConfigs(
+  card: RuleCard,
+  options: MergeOptions = {},
+): ConstraintConfigRequest[] {
+  return configsFromCards([], [card], options)
 }
 
 /** The save request for the whole semester: other types are carried over untouched. */
@@ -498,6 +735,7 @@ export function configsFromCards(
 ): ConstraintConfigRequest[] {
   const existingByType = new Map<string, ConstraintConfigDto>()
   existing.forEach((config) => existingByType.set(config.type, config))
+  const sentences = cards.flatMap((card) => card.sentences)
 
   const result: ConstraintConfigRequest[] = []
   const handled = new Set<string>()
@@ -508,15 +746,15 @@ export function configsFromCards(
       continue
     }
     handled.add(type)
-    const cardsForType = cards.filter((card) => card.type === type)
+    const typeSentences = sentences.filter((sentence) => sentence.type === type)
     if (isSwitchRule(type)) {
-      const card = cardsForType[0]
-      if (card) {
-        result.push(configFromCard(card))
+      const sentence = typeSentences[0]
+      if (sentence) {
+        result.push(configFromSentence(sentence, options))
       }
       continue
     }
-    const cardByIdentity = new Map(cardsForType.map((card) => [card.key, card]))
+    const byKey = new Map(typeSentences.map((sentence) => [sentence.key, sentence]))
     const entries: SaveEntry[] = []
     // Pre-ADR rows kept a single value in `params_json`. The sentence model cannot
     // render that shape, but dropping it would silently erase a rule the advanced
@@ -530,9 +768,10 @@ export function configsFromCards(
         groupKey: null,
       })
     }
+    const groups = groupEntries(config)
     const representable = new Set(
-      groupEntries(config)
-        .filter((group) => cardFromGroup(type, group, config))
+      groups
+        .filter((group) => sentenceFromGroup(type, group, config, options))
         .map((group) => group.identity),
     )
     const emitted = new Set<string>()
@@ -546,14 +785,14 @@ export function configsFromCards(
         return
       }
       emitted.add(identity)
-      const card = cardByIdentity.get(identity)
-      if (card) {
-        entries.push(...cardEntries(card))
+      const sentence = byKey.get(identity)
+      if (sentence) {
+        entries.push(...sentenceEntries(sentence, options))
       }
     })
-    for (const card of cardsForType) {
-      if (!emitted.has(card.key)) {
-        entries.push(...cardEntries(card))
+    for (const sentence of typeSentences) {
+      if (!emitted.has(sentence.key)) {
+        entries.push(...sentenceEntries(sentence, options))
       }
     }
     if (entries.length === 0) {
@@ -564,8 +803,8 @@ export function configsFromCards(
       entries,
       weight: config.weight ?? RULE_SPECS[type].defaultWeight,
       hard: config.hard ?? true,
-      enabled: cardEnabled(cardsForType) || (config.enabled !== false
-        && entries.some((entry) => entry.enabled !== false)),
+      enabled: typeSentences.some((sentence) => sentence.enabled)
+        || (config.enabled !== false && entries.some((entry) => entry.enabled !== false)),
     })
   }
 
@@ -573,14 +812,15 @@ export function configsFromCards(
     if (handled.has(type) || existingByType.has(type)) {
       continue
     }
-    if (isSwitchRule(type)) {
-      const card = cards.find((item) => item.type === type)
-      if (card) {
-        result.push(configFromCard(card))
-      }
+    const typeSentences = sentences.filter((sentence) => sentence.type === type)
+    if (typeSentences.length === 0) {
       continue
     }
-    const entries = cards.filter((card) => card.type === type).flatMap(cardEntries)
+    if (isSwitchRule(type)) {
+      result.push(configFromSentence(typeSentences[0], options))
+      continue
+    }
+    const entries = typeSentences.flatMap((sentence) => sentenceEntries(sentence, options))
     if (entries.length === 0) {
       continue
     }
@@ -589,14 +829,76 @@ export function configsFromCards(
       entries,
       weight: RULE_SPECS[type].defaultWeight,
       hard: true,
-      enabled: true,
+      enabled: typeSentences.some((sentence) => sentence.enabled),
     })
   }
   return result
 }
 
-function cardEnabled(cards: RuleCard[]): boolean {
-  return cards.some((card) => card.enabled)
+function sentenceEntries(sentence: RuleSentence, options: MergeOptions): SaveEntry[] {
+  const spec = RULE_SPECS[sentence.type]
+  const hard = spec.hardOnly || sentence.strength === 'HARD'
+  if (spec.periods === 'REQUIRED') {
+    const day = sentence.dayOfWeek ?? 0
+    const classes = sentenceClasses(sentence, options.classIds)
+    const exceptionSentence = sentence.exceptionClassIds.length > 0
+    return classes.flatMap((classId) =>
+      normalizePeriods(sentence.periodNos).map((periodNo) => {
+        const params: Record<string, unknown> = {}
+        if (classId !== null) {
+          params.classId = classId
+        }
+        if (sentence.teacherId !== null) {
+          params.teacherId = sentence.teacherId
+        }
+        if (sentence.courseId !== null) {
+          params.courseId = sentence.courseId
+        }
+        params.dayOfWeek = day
+        params.periodNo = periodNo
+        const key = exceptionSentence && classId !== null
+          ? `${classId}:${slotKey(day, periodNo)}`
+          : slotKey(day, periodNo)
+        return {
+          id: sentence.entryIds[key] ?? null,
+          params,
+          enabled: sentence.enabled,
+          hard,
+          weight: null,
+          groupKey: sentence.groupKey,
+        }
+      }),
+    )
+  }
+  return [{
+    id: sentence.entryIds[SINGLE_ENTRY_KEY] ?? null,
+    params: singleParams(sentence),
+    enabled: sentence.enabled,
+    hard,
+    weight: null,
+    groupKey: sentence.groupKey,
+  }]
+}
+
+function singleParams(sentence: RuleSentence): Record<string, unknown> {
+  const spec = RULE_SPECS[sentence.type]
+  const params: Record<string, unknown> = {}
+  if (spec.target === 'CLASS' && sentence.classId !== null) {
+    params.classId = sentence.classId
+  }
+  if (spec.target === 'TEACHER' && sentence.teacherId !== null) {
+    params.teacherId = sentence.teacherId
+  }
+  if (spec.target === 'COURSE' && sentence.courseId !== null) {
+    params.courseId = sentence.courseId
+  }
+  if (spec.amount && sentence.amount !== null) {
+    params[spec.amount.field] = sentence.amount
+  }
+  if (spec.day === 'REQUIRED') {
+    params.dayOfWeek = sentence.dayOfWeek
+  }
+  return params
 }
 
 interface EntryGroup {
@@ -630,36 +932,37 @@ function identityOfEntry(entry: ConstraintEntryDto, index: number): string {
  * (or one single-value requirement). A stored group that says anything else is not
  * a card; it stays in the advanced page and is preserved on save.
  */
-function cardFromGroup(
+function sentenceFromGroup(
   type: RuleType,
   group: EntryGroup,
   config: ConstraintConfigDto,
-): RuleCard | null {
+  options: MergeOptions,
+): RuleSentence | null {
   const spec = RULE_SPECS[type]
   if (isSwitchRule(type)) {
     return null
   }
   if (spec.periods === 'REQUIRED') {
-    return slotCard(type, group, config)
+    return slotSentence(type, group, config, options)
   }
   if (group.entries.length !== 1) {
     return null
   }
   const entry = group.entries[0]
   const params = entry.params ?? {}
-  const card = singleCard(type, params, entry, config, group)
-  return card
+  return singleSentence(type, params, entry, config, group)
 }
 
-function slotCard(
+function slotSentence(
   type: RuleType,
   group: EntryGroup,
   config: ConstraintConfigDto,
-): RuleCard | null {
+  options: MergeOptions,
+): RuleSentence | null {
   const spec = RULE_SPECS[type]
   const days = new Set<number>()
-  const periods = new Set<number>()
   const objects = new Set<number | null>()
+  const periodsByObject = new Map<number | null, number[]>()
   for (const entry of group.entries) {
     const params = entry.params ?? {}
     if (!allowedKeys(params, spec, false)) {
@@ -670,51 +973,113 @@ function slotCard(
     if (day === null || periodNo === null) {
       return null
     }
+    const object = objectValue(spec, params)
     days.add(day)
-    periods.add(periodNo)
-    objects.add(objectValue(spec, params))
+    objects.add(object)
+    const list = periodsByObject.get(object) ?? []
+    list.push(periodNo)
+    periodsByObject.set(object, list)
   }
-  if (days.size !== 1 || objects.size !== 1) {
+  if (days.size !== 1) {
     return null
   }
-  const object = Array.from(objects)[0] ?? null
-  if (objectRequired(spec) && object === null) {
+  const exception = exceptionScope(spec, objects, periodsByObject, options)
+  if (exception === 'INVALID') {
     return null
+  }
+  let classId: number | null = null
+  let exceptionClassIds: number[] = []
+  if (exception) {
+    exceptionClassIds = exception
+  } else {
+    if (objects.size !== 1) {
+      return null
+    }
+    const object = Array.from(objects)[0] ?? null
+    if (objectRequired(spec) && object === null) {
+      return null
+    }
+    classId = spec.target === 'CLASS' ? object : null
   }
   const entryIds: Record<string, number> = {}
+  const exceptionSentence = exceptionClassIds.length > 0
   group.entries.forEach((entry) => {
     if (entry.id === null) {
       return
     }
     const day = toInteger(entry.params?.dayOfWeek)
     const periodNo = toInteger(entry.params?.periodNo)
-    if (day !== null && periodNo !== null) {
-      entryIds[slotKey(day, periodNo)] = entry.id
+    const object = objectValue(spec, entry.params ?? {})
+    if (day === null || periodNo === null) {
+      return
     }
+    const key = exceptionSentence && object !== null
+      ? `${object}:${slotKey(day, periodNo)}`
+      : slotKey(day, periodNo)
+    entryIds[key] = entry.id
   })
   return {
     key: group.identity,
     groupKey: group.groupKey,
     type,
-    classId: spec.target === 'CLASS' ? object : null,
-    teacherId: spec.target === 'TEACHER' ? object : null,
-    courseId: spec.target === 'COURSE' ? object : null,
+    classId,
+    teacherId: spec.target === 'TEACHER' ? firstObject(objects) : null,
+    courseId: spec.target === 'COURSE' ? firstObject(objects) : null,
     dayOfWeek: Array.from(days)[0],
-    periodNos: normalizePeriods(Array.from(periods)),
+    periodNos: normalizePeriods(Array.from(new Set(
+      Array.from(periodsByObject.values()).flat(),
+    ))),
     amount: null,
     strength: strengthOf(group.entries, config, spec),
     enabled: group.entries.every((entry) => entry.enabled !== false) && config.enabled !== false,
     entryIds,
+    exceptionClassIds,
   }
 }
 
-function singleCard(
+function firstObject(objects: Set<number | null>): number | null {
+  return Array.from(objects)[0] ?? null
+}
+
+/**
+ * A school-scope CLASS_UNAVAILABLE group stored as one row per class is an
+ * exception sentence: every class except the ones named gets the slot. Anything
+ * else (mixed scopes, different slot sets) is not representable here.
+ */
+function exceptionScope(
+  spec: RuleSpec,
+  objects: Set<number | null>,
+  periodsByObject: Map<number | null, number[]>,
+  options: MergeOptions,
+): number[] | null | 'INVALID' {
+  const allClasses = options.classIds ?? []
+  if (spec.type !== CLASS_UNAVAILABLE || spec.target !== 'CLASS' || allClasses.length === 0) {
+    return null
+  }
+  if (objects.has(null) || objects.size < 2) {
+    return null
+  }
+  const presented = Array.from(objects)
+    .filter((value): value is number => value !== null)
+  const remaining = allClasses.filter((id) => !presented.includes(id))
+  if (remaining.length === 0) {
+    return null
+  }
+  const slotSets = Array.from(periodsByObject.values())
+    .map((list) => normalizePeriods(list).join(','))
+  if (new Set(slotSets).size !== 1) {
+    return 'INVALID'
+  }
+  return remaining
+}
+
+function singleSentence(
   type: RuleType,
   params: Record<string, unknown>,
   entry: ConstraintEntryDto,
   config: ConstraintConfigDto,
   group: EntryGroup,
-): RuleCard | null {
+): RuleSentence | null {
   const spec = RULE_SPECS[type]
   if (!allowedKeys(params, spec, true)) {
     return null
@@ -750,6 +1115,7 @@ function singleCard(
     strength: strengthOf([entry], config, spec),
     enabled: entry.enabled !== false && config.enabled !== false,
     entryIds: entry.id === null ? {} : { [SINGLE_ENTRY_KEY]: entry.id },
+    exceptionClassIds: [],
   }
 }
 
@@ -810,14 +1176,24 @@ function strengthOf(
 }
 
 /** Cards the builder can render, read back from `constraint_state`. */
-export function cardsFromState(configs: ConstraintConfigDto[]): RuleCard[] {
-  const cards: RuleCard[] = []
+export function cardsFromState(
+  configs: ConstraintConfigDto[],
+  options: StateOptions = {},
+): RuleCard[] {
+  const sentencesByCard = new Map<string, RuleSentence[]>()
+  const append = (sentence: RuleSentence, cardId: string) => {
+    const list = sentencesByCard.get(cardId) ?? []
+    list.push(sentence)
+    sentencesByCard.set(cardId, list)
+  }
+  const mergedOptions: MergeOptions = { classIds: options.allClassIds }
   for (const config of configs) {
     if (!isManagedType(config.type)) {
       continue
     }
     if (isSwitchRule(config.type)) {
-      cards.push({
+      const cardId = `switch:${config.type}`
+      append({
         key: `switch:${config.type}`,
         groupKey: null,
         type: config.type,
@@ -830,100 +1206,25 @@ export function cardsFromState(configs: ConstraintConfigDto[]): RuleCard[] {
         strength: RULE_SPECS[config.type].hardOnly || config.hard ? 'HARD' : 'SOFT',
         enabled: config.enabled !== false,
         entryIds: {},
-      })
+        exceptionClassIds: [],
+      }, cardId)
       continue
     }
     for (const group of groupEntries(config)) {
-      const card = cardFromGroup(config.type, group, config)
-      if (card) {
-        cards.push(card)
+      const sentence = sentenceFromGroup(config.type, group, config, mergedOptions)
+      if (!sentence) {
+        continue
       }
+      const cardId = cardIdOf(sentence.groupKey) ?? sentence.key
+      append(sentence, cardId)
     }
   }
-  return cards
-}
-
-function cardEntries(card: RuleCard): SaveEntry[] {
-  const spec = RULE_SPECS[card.type]
-  if (isSwitchRule(card.type)) {
-    return []
-  }
-  const hard = spec.hardOnly || card.strength === 'HARD'
-  if (spec.periods === 'REQUIRED') {
-    return normalizePeriods(card.periodNos).map((periodNo) => ({
-      id: card.entryIds[slotKey(card.dayOfWeek ?? 0, periodNo)] ?? null,
-      params: slotParams(card, periodNo),
-      enabled: card.enabled,
-      hard,
-      weight: null,
-      groupKey: card.groupKey,
-    }))
-  }
-  return [{
-    id: card.entryIds[SINGLE_ENTRY_KEY] ?? null,
-    params: singleParams(card),
-    enabled: card.enabled,
-    hard,
-    weight: null,
-    groupKey: card.groupKey,
-  }]
-}
-
-function slotParams(card: RuleCard, periodNo: number): Record<string, unknown> {
-  const params: Record<string, unknown> = {}
-  if (card.classId !== null) {
-    params.classId = card.classId
-  }
-  if (card.teacherId !== null) {
-    params.teacherId = card.teacherId
-  }
-  if (card.courseId !== null) {
-    params.courseId = card.courseId
-  }
-  params.dayOfWeek = card.dayOfWeek
-  params.periodNo = periodNo
-  return params
-}
-
-function singleParams(card: RuleCard): Record<string, unknown> {
-  const spec = RULE_SPECS[card.type]
-  const params: Record<string, unknown> = {}
-  if (spec.target === 'CLASS' && card.classId !== null) {
-    params.classId = card.classId
-  }
-  if (spec.target === 'TEACHER' && card.teacherId !== null) {
-    params.teacherId = card.teacherId
-  }
-  if (spec.target === 'COURSE' && card.courseId !== null) {
-    params.courseId = card.courseId
-  }
-  if (spec.amount && card.amount !== null) {
-    params[spec.amount.field] = card.amount
-  }
-  if (spec.day === 'REQUIRED') {
-    params.dayOfWeek = card.dayOfWeek
-  }
-  return params
-}
-
-function configFromCard(card: RuleCard): ConstraintConfigRequest {
-  const spec = RULE_SPECS[card.type]
-  if (isSwitchRule(card.type)) {
-    return {
-      type: card.type,
-      params: {},
-      weight: spec.defaultWeight,
-      hard: card.strength === 'HARD',
-      enabled: card.enabled,
-    }
-  }
-  return {
-    type: card.type,
-    entries: cardEntries(card),
-    weight: spec.defaultWeight,
-    hard: true,
-    enabled: card.enabled,
-  }
+  return Array.from(sentencesByCard.entries())
+    .map(([cardId, sentences]) => {
+      const ordered = [...sentences].sort((left, right) =>
+        (groupIndex(left.groupKey) ?? 0) - (groupIndex(right.groupKey) ?? 0))
+      return cardOfSentences(cardId, ordered)
+    })
 }
 
 function toSaveEntry(entry: ConstraintEntryDto): SaveEntry {
@@ -996,7 +1297,10 @@ export function otherRuleCount(
  * weekdays, a global threshold default, …). They stay in the advanced page;
  * counting them keeps the page from implying they do not exist.
  */
-export function unrepresentedGroupCount(configs: ConstraintConfigDto[]): number {
+export function unrepresentedGroupCount(
+  configs: ConstraintConfigDto[],
+  options: StateOptions = {},
+): number {
   let count = 0
   for (const config of configs) {
     const type = config.type
@@ -1006,11 +1310,58 @@ export function unrepresentedGroupCount(configs: ConstraintConfigDto[]): number 
     if ((config.entries ?? []).length === 0 && Object.keys(config.params ?? {}).length > 0) {
       count += 1
     }
+    const merged: MergeOptions = { classIds: options.allClassIds }
     count += groupEntries(config).filter(
-      (group) => !cardFromGroup(type, group, config),
+      (group) => !sentenceFromGroup(type, group, config, merged),
     ).length
   }
   return count
+}
+
+/** The "对谁" bucket a card belongs to, used by the list's grouping. */
+export function cardTarget(card: RuleCard): RuleTargetGroup {
+  const targets = new Set<RuleTargetGroup>()
+  for (const sentence of card.sentences) {
+    const rule = RULE_SPECS[sentence.type]
+    if (rule.target === 'TEACHER') {
+      targets.add('TEACHER')
+    } else if (rule.target === 'CLASS') {
+      targets.add(sentence.classId === null ? 'SCHOOL' : 'CLASS')
+    } else if (rule.target === 'COURSE') {
+      targets.add('COURSE')
+    } else {
+      targets.add('SCHOOL')
+    }
+  }
+  if (targets.has('TEACHER')) return 'TEACHER'
+  if (targets.has('CLASS')) return 'CLASS'
+  if (targets.has('COURSE')) return 'COURSE'
+  return 'SCHOOL'
+}
+
+export const TARGET_LABELS: Record<RuleTargetGroup, string> = {
+  SCHOOL: '全校',
+  CLASS: '班级',
+  TEACHER: '教师',
+  COURSE: '课程',
+}
+
+/** The list's free-text filter: object names, sentence wording and the bucket name. */
+export function cardMatches(
+  card: RuleCard,
+  query: string,
+  names: RuleNames,
+  periods: PeriodOption[],
+): boolean {
+  const text = query.trim().toLowerCase()
+  if (text === '') {
+    return true
+  }
+  const haystack = [
+    TARGET_LABELS[cardTarget(card)],
+    ...card.sentences.map((sentence) => describeSentence(sentence, names, periods)),
+  ].join(' ').toLowerCase()
+  return haystack.includes(text)
 }
 
 /** `entryBacked` flags from `GET /constraint-types`. */

@@ -25,13 +25,21 @@ import {
   TEACHER_NO_FIRST_PERIOD,
   TEACHER_PREFERRED_SLOT,
   TEACHER_UNAVAILABLE,
+  applyCardInputs,
+  cardFromInputs,
+  cardMatches,
+  cardTarget,
   cardsFromState,
   compileRule,
   configsFromCards,
   describeCard,
+  duplicateCard,
   missingParts,
   otherRuleCount,
+  sentenceProblem,
+  toggleCard,
   unrepresentedGroupCount,
+  type CardSentenceInput,
   type PeriodOption,
   type RuleCard,
   type RuleNames,
@@ -77,6 +85,23 @@ function entriesOf(request: ConstraintConfigRequest): ConstraintEntryDto[] {
     hard: row.hard ?? null,
     weight: row.weight ?? null,
     groupKey: row.groupKey ?? null,
+  }))
+}
+
+function inputsOf(card: RuleCard): CardSentenceInput[] {
+  return card.sentences.map((sentence) => ({
+    key: sentence.key,
+    input: {
+      type: sentence.type,
+      classId: sentence.classId,
+      teacherId: sentence.teacherId,
+      courseId: sentence.courseId,
+      dayOfWeek: sentence.dayOfWeek,
+      periodNos: sentence.periodNos,
+      amount: sentence.amount,
+      strength: sentence.strength,
+      exceptionClassIds: sentence.exceptionClassIds,
+    },
   }))
 }
 
@@ -307,7 +332,8 @@ describe('state to cards', () => {
     expect(cards).toHaveLength(2)
     expect(describeCard(cards[0], names, periods)).toBe('王老师 的 课 在 周五下午 不排')
     expect(describeCard(cards[1], names, periods)).toBe('全校 的 课 在 周五第 7 节 不排')
-    expect(cards[0].entryIds).toEqual({ '5-5': 105, '5-6': 106, '5-7': 107, '5-8': 108 })
+    expect(cards[0].sentences[0].entryIds)
+      .toEqual({ '5-5': 105, '5-6': 106, '5-7': 107, '5-8': 108 })
   })
 
   it('renders quantity, shape and preset cards with human wording', () => {
@@ -322,7 +348,7 @@ describe('state to cards', () => {
     expect(describeCard(cards[1], names, periods)).toBe('数学 连堂 2 节')
     expect(describeCard(cards[2], names, periods)).toBe('数学 不在最后一节')
     expect(describeCard(cards[3], names, periods)).toBe('班级 不空堂')
-    expect(cards[3].type).toBe('CLASS_GAP_MINIMIZED')
+    expect(cards[3].sentences[0].type).toBe('CLASS_GAP_MINIMIZED')
   })
 
   it('keeps unrepresentable groups out of the sentence model', () => {
@@ -383,13 +409,13 @@ describe('merging into the whole semester configuration', () => {
   })
 
   it('deletes only the dropped group and pauses only the toggled one', () => {
-    const cards = cardsFromState(existing).filter((card) => card.groupKey !== 'pt-li')
+    const cards = cardsFromState(existing).filter((card) => card.cardId !== 'pt-li')
     const merged = configsFromCards(existing, cards, { entryBackedTypes })
     const teacher = merged.find((item) => item.type === 'TEACHER_UNAVAILABLE')
     expect(teacher?.entries?.map((row) => row.id)).toEqual([10, 11])
 
     const paused = cardsFromState(existing).map((card) =>
-      card.groupKey === 'pt-wang' ? { ...card, enabled: false } : card,
+      card.cardId === 'pt-wang' ? toggleCard(card, false) : card,
     )
     const pausedMerge = configsFromCards(existing, paused, { entryBackedTypes })
     expect(pausedMerge.find((item) => item.type === 'TEACHER_UNAVAILABLE')
@@ -400,20 +426,12 @@ describe('merging into the whole semester configuration', () => {
   it('adds a new sentence without disturbing the stored configuration', () => {
     const cards: RuleCard[] = [
       ...cardsFromState(existing),
-      {
-        key: 'new:1',
-        groupKey: 'pt-new',
+      cardFromInputs([{
         type: COURSE_MAX_PER_DAY,
-        classId: null,
-        teacherId: null,
         courseId: 9,
-        dayOfWeek: null,
-        periodNos: [],
         amount: 1,
         strength: 'HARD',
-        enabled: true,
-        entryIds: {},
-      },
+      }]),
     ]
     const merged = configsFromCards(existing, cards, { entryBackedTypes })
     const courseMax = merged.find((item) => item.type === 'COURSE_MAX_PER_DAY')
@@ -465,5 +483,187 @@ describe('merging into the whole semester configuration', () => {
     const active = new Set(['TEACHER_CONFLICT', 'CLASS_CONFLICT'])
     expect(otherRuleCount(configs)).toBe(2)
     expect(otherRuleCount(configs, active)).toBe(1)
+  })
+})
+
+describe('cards: multiple sentences and exceptions', () => {
+  const classIds = [1, 2, 3]
+  const options = { classIds }
+
+  function twoSentenceCard(): RuleCard {
+    return cardFromInputs([
+      { type: CLASS_UNAVAILABLE, dayOfWeek: 1, periodNos: [3] },
+      {
+        type: CLASS_UNAVAILABLE,
+        dayOfWeek: 2,
+        periodNos: [3],
+        exceptionClassIds: [2],
+      },
+    ])
+  }
+
+  it('expands 除了某班 into one row per remaining class with one group key', () => {
+    const request = compileRule({
+      type: CLASS_UNAVAILABLE,
+      dayOfWeek: 1,
+      periodNos: [3],
+      exceptionClassIds: [2],
+    }, options)
+    const rows = entriesOf(request)
+    expect(rows).toHaveLength(2)
+    expect(rows.map((row) => row.params)).toEqual([
+      { classId: 1, dayOfWeek: 1, periodNo: 3 },
+      { classId: 3, dayOfWeek: 1, periodNo: 3 },
+    ])
+    expect(new Set(rows.map((row) => row.groupKey)).size).toBe(1)
+    expect(rows[0].groupKey).toMatch(/^pt-/)
+  })
+
+  it('reads an exception group back as 全校 … 除了 X', () => {
+    const stored = [
+      config('CLASS_UNAVAILABLE', [
+        entry(1, { classId: 1, dayOfWeek: 1, periodNo: 3 }, { groupKey: 'pt-card:0' }),
+        entry(2, { classId: 3, dayOfWeek: 1, periodNo: 3 }, { groupKey: 'pt-card:0' }),
+      ]),
+    ]
+    const cards = cardsFromState(stored, { allClassIds: classIds })
+    expect(cards).toHaveLength(1)
+    const sentence = cards[0].sentences[0]
+    expect(sentence.classId).toBeNull()
+    expect(sentence.exceptionClassIds).toEqual([2])
+    expect(describeCard(cards[0], names, periods))
+      .toBe('全校 的 课 在 周一第 3 节 不排，除了 班级2')
+    expect(sentence.entryIds).toEqual({ '1:1-3': 1, '3:1-3': 2 })
+  })
+
+  it('keeps two sentences of one card in one config with ordered group keys', () => {
+    const card = twoSentenceCard()
+    expect(card.sentences.map((sentence) => sentence.groupKey)).toEqual([
+      `${card.cardId}:0`,
+      `${card.cardId}:1`,
+    ])
+    const merged = configsFromCards([], [card], options)
+    const unavailable = merged.find((item) => item.type === 'CLASS_UNAVAILABLE')
+    expect(unavailable?.entries).toHaveLength(3)
+    expect(unavailable?.entries?.map((row) => row.groupKey)).toEqual([
+      `${card.cardId}:0`,
+      `${card.cardId}:1`,
+      `${card.cardId}:1`,
+    ])
+    const second = unavailable?.entries?.filter((row) => row.groupKey === `${card.cardId}:1`)
+    expect(second?.map((row) => row.params.classId)).toEqual([1, 3])
+  })
+
+  it('edits one sentence and leaves the other group alone', () => {
+    const card = twoSentenceCard()
+    const first = card.sentences[0]
+    const second = card.sentences[1]
+    const edited = applyCardInputs(card, [
+      { key: first.key, input: { ...inputsOf(card)[0].input, periodNos: [4] } },
+      { key: second.key, input: inputsOf(card)[1].input },
+    ])
+    expect(edited.sentences[0].groupKey).toBe(first.groupKey)
+    expect(edited.sentences[0].periodNos).toEqual([4])
+    expect(edited.sentences[1].groupKey).toBe(second.groupKey)
+    expect(edited.sentences[1].exceptionClassIds).toEqual([2])
+    expect(edited.cardId).toBe(card.cardId)
+  })
+
+  it('deletes one sentence or the whole card without touching another card', () => {
+    const keep = cardFromInputs([{ type: COURSE_MAX_PER_DAY, courseId: 9, amount: 1 }])
+    const stored = [
+      config('CLASS_UNAVAILABLE', [
+        entry(1, { classId: 1, dayOfWeek: 1, periodNo: 3 }, { groupKey: 'pt-card:0' }),
+        entry(2, { dayOfWeek: 2, periodNo: 3 }, { groupKey: 'pt-card:1' }),
+      ]),
+      config('COURSE_MAX_PER_DAY', [
+        entry(3, { courseId: 9, maxPerDay: 1 }, { groupKey: `${keep.cardId}:0` }),
+      ]),
+    ]
+    const card = cardsFromState(stored, { allClassIds: classIds })[0]
+    const oneSentence = applyCardInputs(card, [inputsOf(card)[0]])
+    const merged = configsFromCards(stored, [oneSentence, keep], options)
+    const unavailable = merged.find((item) => item.type === 'CLASS_UNAVAILABLE')
+    expect(unavailable?.entries?.map((row) => row.id)).toEqual([1])
+    expect(unavailable?.entries?.[0].groupKey).toBe('pt-card:0')
+
+    const noCards = configsFromCards(stored, [keep], options)
+    expect(noCards.some((item) => item.type === 'CLASS_UNAVAILABLE')).toBe(false)
+    expect(noCards.find((item) => item.type === 'COURSE_MAX_PER_DAY')?.entries).toHaveLength(1)
+  })
+
+  it('duplicates a card with a new id and no stored row ids', () => {
+    const card = twoSentenceCard()
+    const copy = duplicateCard(card)
+    expect(copy.cardId).not.toBe(card.cardId)
+    expect(copy.sentences.map((sentence) => sentence.groupKey)).toEqual([
+      `${copy.cardId}:0`,
+      `${copy.cardId}:1`,
+    ])
+    expect(copy.sentences.every((sentence) => Object.keys(sentence.entryIds).length === 0)).toBe(true)
+    expect(copy.sentences[1].exceptionClassIds).toEqual([2])
+  })
+
+  it('refuses an exception that covers every class', () => {
+    expect(sentenceProblem({
+      type: CLASS_UNAVAILABLE,
+      classId: null,
+      teacherId: null,
+      courseId: null,
+      dayOfWeek: 1,
+      periodNos: [3],
+      amount: null,
+      exceptionClassIds: [1, 2, 3],
+    }, classIds)).toBe('「除了」不能覆盖全部班级')
+  })
+
+  it('upgrades a legacy single-sentence card to <cardId>:0 on edit', () => {
+    const legacy = cardsFromState([
+      config('CLASS_UNAVAILABLE', [
+        entry(9, { dayOfWeek: 5, periodNo: 7 }, { groupKey: 'pt-legacy' }),
+      ]),
+    ])[0]
+    const edited = applyCardInputs(legacy, [
+      { key: legacy.sentences[0].key, input: { type: CLASS_UNAVAILABLE, dayOfWeek: 5, periodNos: [6] } },
+    ])
+    expect(edited.cardId).toBe('pt-legacy')
+    expect(edited.sentences[0].groupKey).toBe('pt-legacy:0')
+    expect(edited.sentences[0].entryIds).toEqual({ '5-7': 9 })
+
+    const merged = configsFromCards(
+      [config('CLASS_UNAVAILABLE', [
+        entry(9, { dayOfWeek: 5, periodNo: 7 }, { groupKey: 'pt-legacy' }),
+      ])],
+      [edited],
+      options,
+    )
+    // The slot changed, so the old row is replaced instead of being reused.
+    expect(merged[0].entries?.map((row) => row.id)).toEqual([null])
+    expect(merged[0].entries?.[0].groupKey).toBe('pt-legacy:0')
+  })
+})
+
+describe('grouping and search', () => {
+  const classIds = [1, 2, 3]
+  const school = cardFromInputs([{ type: CLASS_UNAVAILABLE, dayOfWeek: 1, periodNos: [3] }])
+  const klass = cardFromInputs([{ type: CLASS_UNAVAILABLE, classId: 3, dayOfWeek: 2, periodNos: [1] }])
+  const teacher = cardFromInputs([{ type: TEACHER_UNAVAILABLE, teacherId: 7, dayOfWeek: 3, periodNos: [1] }])
+  const course = cardFromInputs([{ type: COURSE_MAX_PER_DAY, courseId: 9, amount: 1 }])
+
+  it('buckets a card by 对谁', () => {
+    expect(cardTarget(school)).toBe('SCHOOL')
+    expect(cardTarget(klass)).toBe('CLASS')
+    expect(cardTarget(teacher)).toBe('TEACHER')
+    expect(cardTarget(course)).toBe('COURSE')
+    expect(klass.sentences[0].exceptionClassIds).toEqual([])
+    expect(classIds).toHaveLength(3)
+  })
+
+  it('filters by object name, sentence wording and bucket label', () => {
+    expect(cardMatches(teacher, '王老师', names, periods)).toBe(true)
+    expect(cardMatches(teacher, '周五', names, periods)).toBe(false)
+    expect(cardMatches(course, '数学', names, periods)).toBe(true)
+    expect(cardMatches(school, '全校', names, periods)).toBe(true)
+    expect(cardMatches(school, '九', names, periods)).toBe(false)
   })
 })

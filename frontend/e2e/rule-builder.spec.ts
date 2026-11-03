@@ -95,6 +95,16 @@ test.describe('排课规则：句子积木', () => {
     await expect(page.getByTestId('rule-save')).toBeDisabled()
   }
 
+  /** Ticket 10: delete asks for confirmation after showing the rule's impact. */
+  async function confirmDelete(page: Page) {
+    const dialog = page.locator('.el-message-box')
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toContainText('影响')
+    await expect(dialog).toContainText('删除后不可恢复')
+    await dialog.locator('.el-message-box__btns .el-button--primary').click()
+    await expect(dialog).toBeHidden()
+  }
+
   test('创建全校与教师两条规则，保存后刷新仍在', async ({ page }) => {
     await uiLogin(page, 'admin', 'admin123')
     await page.goto('/rules')
@@ -230,12 +240,14 @@ test.describe('排课规则：句子积木', () => {
       (config: { type: string }) => config.type === 'CLASS_UNAVAILABLE',
     )
     expect(edited.entries[0].params.periodNo).toBe(6)
-    expect(edited.entries[0].groupKey).toBe('pt-e2e-school')
+    // 旧单句卡（pt-<uuid>）在第一次编辑后升级为 <cardId>:<句子序号>。
+    expect(edited.entries[0].groupKey).toBe('pt-e2e-school:0')
 
     const teacherCard = page
       .getByTestId('rule-card')
       .filter({ hasText: `${seed.teachers[0].name} 的 课 在 周五下午 不排` })
     await teacherCard.getByTestId('rule-delete').click()
+    await confirmDelete(page)
     await expect(page.getByTestId('rule-card')).toHaveCount(1)
     await saveRules(page)
 
