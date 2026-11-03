@@ -168,7 +168,7 @@ test('按天与全班批量锁定数量准确；教师视角的范围项禁用',
   await selectTeacher(page, seed.mathTeacherName)
   await page.getByTestId('scope-menu').click()
   await expect(
-    page.getByText('教师/教室视角只能按所选锁定，请切换到「按行政班」'),
+    page.getByText('教师视角只能按所选锁定，请切换到「按行政班」'),
   ).toBeVisible()
   await expect(
     page.locator('.el-dropdown-menu:visible .el-dropdown-menu__item').filter({ hasText: '锁定周一' }),

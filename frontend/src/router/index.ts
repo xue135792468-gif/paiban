@@ -199,12 +199,6 @@ export const routes: RouteRecordRaw[] = [
 
       // 系统页：保留路由，但不再出现在一级导航。
       {
-        path: 'admin/rooms',
-        name: 'rooms',
-        component: () => import('@/views/RoomsView.vue'),
-        meta: { title: '教室', permission: 'foundation:manage' },
-      },
-      {
         path: 'notifications',
         name: 'notifications',
         component: () => import('@/views/NotificationsView.vue'),
@@ -228,6 +222,9 @@ export const routes: RouteRecordRaw[] = [
       { path: 'admin/grades', redirect: '/data/grades' },
       { path: 'admin/classes', redirect: '/data/classes' },
       { path: 'admin/assignments', redirect: '/data/assignments' },
+      // Rooms are retired from the product; the page itself stays in the tree until the
+      // room model is physically removed.
+      { path: 'admin/rooms', redirect: '/data/semesters' },
       {
         path: 'admin/ai-import',
         redirect: (to) => ({ path: '/data/import', query: to.query }),

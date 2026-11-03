@@ -122,8 +122,10 @@ const FIELD_ORDER = [
   'periodNo',
   'courseName',
   'teacherName',
-  'roomName',
 ]
+
+/** Room values may still arrive from an old workbook, but they are not shown. */
+const HIDDEN_FIELDS = new Set(['roomName'])
 
 const columns = computed(() => {
   const present = new Set<string>()
@@ -131,7 +133,9 @@ const columns = computed(() => {
     Object.keys(row.values ?? {}).forEach((field) => present.add(field))
   }
   const ordered = FIELD_ORDER.filter((field) => present.has(field))
-  const rest = [...present].filter((field) => !FIELD_ORDER.includes(field))
+  const rest = [...present].filter(
+    (field) => !FIELD_ORDER.includes(field) && !HIDDEN_FIELDS.has(field),
+  )
   return [...ordered, ...rest].map((field) => ({ field, label: fieldLabel(field) }))
 })
 </script>

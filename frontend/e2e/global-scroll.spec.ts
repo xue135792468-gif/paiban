@@ -275,7 +275,7 @@ test.describe('同页筛选不回顶', () => {
     await solveAndPublish(request, seed)
     await uiLogin(page, 'admin', 'admin123')
     await page.goto('/workbench/timetable')
-    // 行政班/教师/教室视角是普通网格（只有全校视角才用虚拟表格），等格子渲染即可。
+    // 行政班/教师视角是普通网格（只有全校视角才用虚拟表格），等格子渲染即可。
     await expect(page.locator('.grid').first()).toBeVisible()
 
     // 内容高度/滚动能力在渲染完成前读数会偏低：轮询到可滚状态再继续。
@@ -296,17 +296,6 @@ test.describe('同页筛选不回顶', () => {
     await expect(baselineRadio).toBeInViewport()
     await baselineRadio.click()
     await expect(baselineRadio).toHaveClass(/is-active/)
-    await expect(async () => {
-      const current = await readScroll(page)
-      expect(current.mainTop).toBeGreaterThan(0)
-    }).toPass({ timeout: 5_000 })
-
-    // 切「教室」视角：内容同样是一周网格，切视图的查询状态变化同样不应回顶。
-    // （教师视角的网格可能短于视口，滚动会被合法夹紧；全校视角只在非初中模式显示。）
-    const roomRadio = page.locator('.el-radio-button', { hasText: '教室' })
-    await expect(roomRadio).toBeInViewport()
-    await roomRadio.click()
-    await expect(roomRadio).toHaveClass(/is-active/)
     await expect(async () => {
       const current = await readScroll(page)
       expect(current.mainTop).toBeGreaterThan(0)

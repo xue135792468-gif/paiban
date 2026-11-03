@@ -6,8 +6,8 @@
         <p class="subtitle">
           {{
             isJunior
-              ? '按行政班、教师或教室查看课表。调代生效的课节会标注「调」或「代」。'
-              : '按行政班、教师、教室或全校查看课表。调代生效的课节会标注「调」或「代」。'
+              ? '按行政班或教师查看课表。调代生效的课节会标注「调」或「代」。'
+              : '按行政班、教师或全校查看课表。调代生效的课节会标注「调」或「代」。'
           }}
           <InfoTooltip field="timetable.substitutionMark" />
         </p>
@@ -16,7 +16,6 @@
         <el-radio-group v-if="canViewAll || canViewClassScope" v-model="mode" @change="onModeChange">
           <el-radio-button v-if="canViewAll || headClasses.length > 0" value="class">行政班</el-radio-button>
           <el-radio-button value="teacher">教师</el-radio-button>
-          <el-radio-button v-if="canViewAll" value="room">教室</el-radio-button>
           <el-radio-button v-if="canViewAll && !isJunior" value="school">全校</el-radio-button>
         </el-radio-group>
         <el-tag v-else effect="plain">我的课表</el-tag>
@@ -146,8 +145,6 @@ interface Entry {
   courseName?: string
   teacherId: number
   teacherName?: string
-  roomId?: number
-  roomName?: string
   periodId: number
   dayOfWeek: number
   periodNo: number
@@ -195,7 +192,7 @@ const headClasses = computed(() =>
   classes.value.filter((item) => item.headTeacherId != null && item.headTeacherId === auth.user?.teacherId),
 )
 
-const mode = ref<'class' | 'teacher' | 'room' | 'school'>('class')
+const mode = ref<'class' | 'teacher' | 'school'>('class')
 const view = ref<'latest' | 'baseline'>('latest')
 const date = ref<string>(today())
 const targetId = ref<number | null>(null)
@@ -203,7 +200,6 @@ const entries = ref<Entry[]>([])
 const periods = ref<Period[]>([])
 const classes = ref<Option[]>([])
 const teachers = ref<Option[]>([])
-const rooms = ref<Option[]>([])
 const courses = ref<Course[]>([])
 const published = ref<PublishInfo | null | undefined>(undefined)
 const loading = ref(false)
@@ -231,8 +227,7 @@ const periodRows = computed(() => {
 
 const targets = computed(() => {
   if (mode.value === 'class') return canViewAll.value ? classes.value : headClasses.value
-  if (mode.value === 'teacher') return teachers.value
-  return rooms.value
+  return teachers.value
 })
 
 const hasData = computed(() => (mode.value === 'school' ? schoolGroups.value.length > 0 : entries.value.length > 0))
@@ -386,16 +381,14 @@ async function exportFile(format: string) {
 }
 
 onMounted(async () => {
-  const [classRes, teacherRes, roomRes, courseRes, currentRes] = await Promise.all([
+  const [classRes, teacherRes, courseRes, currentRes] = await Promise.all([
     http.get('/classes'),
     http.get('/teachers/options'),
-    http.get('/rooms'),
     http.get('/courses'),
     http.get('/semesters/current'),
   ])
   classes.value = classRes.data
   teachers.value = teacherRes.data
-  rooms.value = roomRes.data
   courses.value = courseRes.data
   if (currentRes.status !== 204 && currentRes.data) {
     const semesterId = currentRes.data.id

@@ -65,16 +65,6 @@ export const IMPORT_TARGETS: ImportTargetCard[] = [
     textPlaceholder: '',
   },
   {
-    code: 'room',
-    title: '教室',
-    available: false,
-    handles: '教室清单、场地安排表',
-    output: '教室档案：名称、容量、类型、楼栋',
-    limits: '即将支持，当前请用「教室」页面录入',
-    excelHint: '',
-    textPlaceholder: '',
-  },
-  {
     code: 'assignment',
     title: '授课任务',
     available: false,

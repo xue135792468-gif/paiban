@@ -31,13 +31,8 @@ import { useRouter } from 'vue-router'
 import { blockerTarget } from './publishBlockers'
 import type { DraftPublishBlocker } from './types'
 
-// A Boolean prop defaults to false in Vue, but here the action is available unless the
-// page says otherwise, so the default must be explicit.
-const props = withDefaults(
-  defineProps<{ blockers: DraftPublishBlocker[]; roomFill?: boolean }>(),
-  { roomFill: true },
-)
-const emit = defineEmits<{ (e: 'edit-lessons'): void; (e: 'fill-rooms'): void }>()
+const props = defineProps<{ blockers: DraftPublishBlocker[] }>()
+const emit = defineEmits<{ (e: 'edit-lessons'): void }>()
 
 const router = useRouter()
 
@@ -54,7 +49,7 @@ interface Row {
  */
 const rows = computed<Row[]>(() =>
   props.blockers.map((blocker) => {
-    const target = blockerTarget(blocker.action, { roomFill: props.roomFill !== false })
+    const target = blockerTarget(blocker.action)
     return {
       blocker,
       kind: target.kind,
@@ -67,10 +62,6 @@ const rows = computed<Row[]>(() =>
 function activate(row: Row) {
   if (row.kind === 'link') {
     void router.push(row.to)
-    return
-  }
-  if (row.kind === 'dialog') {
-    emit('fill-rooms')
     return
   }
   emit('edit-lessons')

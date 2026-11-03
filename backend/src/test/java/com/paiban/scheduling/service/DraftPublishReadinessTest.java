@@ -10,38 +10,35 @@ import org.junit.jupiter.api.Test;
 /** The publishing judgement on its own: no repositories, no Spring. */
 class DraftPublishReadinessTest {
 
-    private static Facts facts(int lessons, int unscheduled, int missingRooms, int invalidPeriods, int conflicts) {
-        return new Facts(false, lessons, unscheduled, missingRooms, invalidPeriods, conflicts, false);
+    private static Facts facts(int lessons, int unscheduled, int invalidPeriods, int conflicts) {
+        return new Facts(false, lessons, unscheduled, invalidPeriods, conflicts, false);
     }
 
     @Test
     void aCompleteDraftHasNoBlockers() {
-        assertThat(DraftPublishReadiness.blockers(facts(10, 0, 0, 0, 0))).isEmpty();
+        assertThat(DraftPublishReadiness.blockers(facts(10, 0, 0, 0))).isEmpty();
     }
 
     @Test
-    void missingRoomsAndUnscheduledLessonsAreCountedSeparately() {
-        List<Blocker> blockers = DraftPublishReadiness.blockers(facts(10, 2, 8, 1, 0));
+    void unscheduledLessonsAndInvalidPeriodsAreCountedSeparately() {
+        List<Blocker> blockers = DraftPublishReadiness.blockers(facts(10, 2, 1, 0));
 
         assertThat(blockers)
                 .extracting(Blocker::code)
                 .containsExactly(
                         DraftPublishReadiness.INVALID_PERIODS,
-                        DraftPublishReadiness.UNSCHEDULED_LESSONS,
-                        DraftPublishReadiness.MISSING_ROOMS);
+                        DraftPublishReadiness.UNSCHEDULED_LESSONS);
         assertThat(blockers).allSatisfy(blocker -> {
             assertThat(blocker.message()).isNotBlank();
             assertThat(blocker.action()).isNotBlank();
         });
         assertThat(blockers.get(1).count()).isEqualTo(2);
         assertThat(blockers.get(1).message()).contains("2");
-        assertThat(blockers.get(2).count()).isEqualTo(8);
-        assertThat(blockers.get(2).message()).contains("8");
     }
 
     @Test
     void anEmptyDraftSaysSoWithoutInventingCounts() {
-        List<Blocker> blockers = DraftPublishReadiness.blockers(facts(0, 0, 0, 0, 0));
+        List<Blocker> blockers = DraftPublishReadiness.blockers(facts(0, 0, 0, 0));
 
         assertThat(blockers).extracting(Blocker::code).containsExactly(DraftPublishReadiness.DRAFT_EMPTY);
         assertThat(blockers.get(0).count()).isZero();
@@ -49,7 +46,7 @@ class DraftPublishReadinessTest {
 
     @Test
     void statusBlockersComeFirstAndLastSoTheFirstReasonIsTheFirstFix() {
-        Facts everything = new Facts(true, 0, 1, 1, 1, 1, true);
+        Facts everything = new Facts(true, 0, 1, 1, 1, true);
 
         assertThat(DraftPublishReadiness.blockers(everything))
                 .extracting(Blocker::code)
@@ -58,7 +55,6 @@ class DraftPublishReadinessTest {
                         DraftPublishReadiness.DRAFT_EMPTY,
                         DraftPublishReadiness.INVALID_PERIODS,
                         DraftPublishReadiness.UNSCHEDULED_LESSONS,
-                        DraftPublishReadiness.MISSING_ROOMS,
                         DraftPublishReadiness.HARD_CONFLICTS,
                         DraftPublishReadiness.SEMESTER_ALREADY_PUBLISHED);
     }

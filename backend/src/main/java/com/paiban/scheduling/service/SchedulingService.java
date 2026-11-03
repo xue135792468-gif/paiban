@@ -157,6 +157,10 @@ public class SchedulingService {
             if (periods.countBySemesterId(resolved) == 0) {
                 throw ApiException.badRequest("请先配置作息表再提交排课");
             }
+            // Rooms are optional for publishing, but the solver still needs a non-empty
+            // room value range: Timefold skips an entity with any null planning variable
+            // in forEach, so a null room would hide teacher/class conflicts and leave the
+            // whole draft stacked in one slot. Removed together with the room model.
             if (rooms.count() == 0) {
                 throw ApiException.badRequest("请先配置教室再提交排课");
             }

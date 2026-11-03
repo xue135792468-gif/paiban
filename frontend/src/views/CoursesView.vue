@@ -3,7 +3,7 @@
     <div class="toolbar">
       <div>
         <h2>课程管理</h2>
-        <p class="subtitle">维护学校开设的课程科目，设定是否允许连堂、室外场地及专用教室类型要求。</p>
+        <p class="subtitle">维护学校开设的课程科目，设定是否允许连堂、是否需要室外场地。</p>
       </div>
       <div class="toolbar-actions">
         <el-button v-if="auth.hasPermission('foundation:manage')" @click="importVisible = true">
@@ -36,14 +36,6 @@
         <el-table-column prop="subject" label="所属学科" min-width="120">
           <template #default="{ row }">
             <span>{{ row.subject || '—' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="requiredRoomType" label="所需教室类型" min-width="130">
-          <template #default="{ row }">
-            <el-tag v-if="row.requiredRoomType" size="small">
-              {{ ROOM_TYPE_MAP[row.requiredRoomType] || row.requiredRoomType }}
-            </el-tag>
-            <span v-else class="muted">无特殊要求</span>
           </template>
         </el-table-column>
         <el-table-column prop="allowConsecutive" label="允许连堂" width="110">
@@ -95,21 +87,6 @@
         </el-form-item>
         <el-form-item label="所属学科" prop="subject">
           <el-input v-model="form.subject" placeholder="如：理科、文科、综合（选填）" />
-        </el-form-item>
-        <el-form-item label="教室要求" prop="requiredRoomType">
-          <el-select
-            v-model="form.requiredRoomType"
-            placeholder="无特殊要求（普通教室）"
-            clearable
-            style="width: 100%"
-          >
-            <el-option
-              v-for="item in ROOM_TYPE_OPTIONS"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
-          </el-select>
         </el-form-item>
         <el-form-item prop="allowConsecutive">
           <template #label>
@@ -179,22 +156,6 @@ interface Course {
   requiredRoomType?: string | null
   color?: string | null
 }
-
-const ROOM_TYPE_MAP: Record<string, string> = {
-  NORMAL: '普通教室',
-  LAB: '实验室',
-  PLAYGROUND: '操场/室外',
-  MULTIMEDIA: '多媒体',
-  OTHER: '其他',
-}
-
-const ROOM_TYPE_OPTIONS = [
-  { value: 'NORMAL', label: '普通教室' },
-  { value: 'LAB', label: '实验室' },
-  { value: 'PLAYGROUND', label: '操场/室外' },
-  { value: 'MULTIMEDIA', label: '多媒体' },
-  { value: 'OTHER', label: '其他' },
-]
 
 const predefineColors = [
   '#4F6EF7',

@@ -25,8 +25,6 @@ public final class DraftPublishReadiness {
     public static final String INVALID_PERIODS = "INVALID_PERIODS";
     /** A lesson has no period yet. */
     public static final String UNSCHEDULED_LESSONS = "UNSCHEDULED_LESSONS";
-    /** A lesson sits in the grid but has no room. */
-    public static final String MISSING_ROOMS = "MISSING_ROOMS";
     /** The 24 scheduling rules report at least one hard conflict. */
     public static final String HARD_CONFLICTS = "HARD_CONFLICTS";
     /** The semester already has a published baseline; it is read-only from here on. */
@@ -35,7 +33,6 @@ public final class DraftPublishReadiness {
     public static final String ACTION_NONE = "NONE";
     public static final String ACTION_VIEW_TIMETABLE = "VIEW_TIMETABLE";
     public static final String ACTION_EDIT_LESSONS = "EDIT_LESSONS";
-    public static final String ACTION_ASSIGN_ROOMS = "ASSIGN_ROOMS";
     public static final String ACTION_EDIT_PERIODS = "EDIT_PERIODS";
     public static final String ACTION_OPEN_SUBSTITUTIONS = "OPEN_SUBSTITUTIONS";
 
@@ -50,7 +47,6 @@ public final class DraftPublishReadiness {
             boolean published,
             int lessonCount,
             int unscheduledCount,
-            int missingRoomCount,
             int invalidPeriodCount,
             int hardConflicts,
             boolean semesterPublished) {}
@@ -80,13 +76,6 @@ public final class DraftPublishReadiness {
                     "还有 " + facts.unscheduledCount() + " 节课未排课",
                     facts.unscheduledCount(),
                     ACTION_EDIT_LESSONS));
-        }
-        if (facts.missingRoomCount() > 0) {
-            blockers.add(new Blocker(
-                    MISSING_ROOMS,
-                    "有 " + facts.missingRoomCount() + " 节课还没有分配教室",
-                    facts.missingRoomCount(),
-                    ACTION_ASSIGN_ROOMS));
         }
         if (facts.hardConflicts() > 0) {
             blockers.add(new Blocker(

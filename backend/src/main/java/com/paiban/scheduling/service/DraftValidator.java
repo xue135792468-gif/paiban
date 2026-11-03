@@ -353,8 +353,8 @@ public class DraftValidator {
 
     /**
      * Whole-draft check: the 24 conflict rules plus every publishing precondition, from
-     * the one judgement publishing itself uses ({@link DraftPublishReadiness}). A draft
-     * with lessons but no rooms is therefore not "valid" any more: it cannot be published.
+     * the one judgement publishing itself uses ({@link DraftPublishReadiness}). Rooms are
+     * not a publishing precondition: a lesson without a room is valid and publishable.
      *
      * <p>{@code valid} and {@code publishable} both come from this one list, differing only
      * in that the two terminal-state blockers ({@code DRAFT_PUBLISHED},
@@ -386,10 +386,9 @@ public class DraftValidator {
                 || DraftPublishReadiness.SEMESTER_ALREADY_PUBLISHED.equals(code);
     }
 
-    /** Counts the structural and resource gaps the publishing preconditions care about. */
+    /** Counts the structural gaps the publishing preconditions care about. */
     private DraftPublishReadiness.Facts factsOf(Snapshot snapshot, int hardConflicts) {
         int unscheduled = 0;
-        int missingRooms = 0;
         int invalidPeriods = 0;
         for (L lesson : snapshot.lessons) {
             if (lesson.periodId == null) {
@@ -397,15 +396,11 @@ public class DraftValidator {
             } else if (!snapshot.context.periods().containsKey(lesson.periodId)) {
                 invalidPeriods++;
             }
-            if (lesson.roomId == null) {
-                missingRooms++;
-            }
         }
         return new DraftPublishReadiness.Facts(
                 "PUBLISHED".equals(snapshot.draft.getStatus()),
                 snapshot.lessons.size(),
                 unscheduled,
-                missingRooms,
                 invalidPeriods,
                 hardConflicts,
                 baselines.hasPublishedBaseline(snapshot.draft.getSemesterId()));

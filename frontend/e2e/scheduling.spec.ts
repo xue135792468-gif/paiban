@@ -8,7 +8,6 @@ type Api = Awaited<ReturnType<typeof newContext>>
  * Toast wording is product copy and only ever a supporting signal: the assertions that
  * matter read the blockers, the button state and the API. Kept here so a rewording is one edit.
  */
-const TOAST_ROOMS_FILLED = /已新建 1 间教室/
 const TOAST_PUBLISHED = /课表已发布/
 
 /**
@@ -55,13 +54,7 @@ async function seedDraftWithoutRooms(api: Api) {
       force: true,
     })
   }
-  const classes = await apiCall(api, token, 'get', `/classes?semesterId=${seed.semesterId}`)
-  return {
-    draftId,
-    token,
-    className: classes[0].name as string,
-    lessonCount: detail.lessons.length as number,
-  }
+  return { draftId, token, lessons: detail.lessons as Array<{ id: number; periodId: number | null }> }
 }
 
 /** Rooms are global, so the count is how a duplicate creation shows up. */
@@ -69,100 +62,62 @@ async function roomCount(api: Api, token: string): Promise<number> {
   return (await apiCall(api, token, 'get', '/rooms')).length
 }
 
-test('场景 2：整草稿检查指出缺教室，一键补教室后即可发布', async ({ page }) => {
+test('场景 2：没有教室的草稿也能直接发布', async ({ page }) => {
   const api = await newContext()
-  const { draftId, token, className, lessonCount } = await seedDraftWithoutRooms(api)
+  const { draftId, token, lessons } = await seedDraftWithoutRooms(api)
 
   await uiLogin(page, 'admin', 'admin123')
   await page.goto(`/workbench/drafts/${draftId}`)
   await expect(page.locator('.lesson').first()).toBeVisible()
 
-  // The whole-draft check reports the gap the publisher would refuse (ticket 13), so
-  // the page has no green "passed" state and the publish button stays disabled.
-  const missingRooms = page.locator('[data-testid=publish-blocker][data-code=MISSING_ROOMS]')
-  await expect(missingRooms).toBeVisible()
-  await expect(missingRooms).toContainText(`有 ${lessonCount} 节课还没有分配教室`)
+  // Rooms are not a publishing precondition: no blocker, no green/red gate about rooms.
+  await expect(page.getByTestId('publish-blockers')).toHaveCount(0)
   const publish = page.getByRole('button', { name: '发布课表' })
-  await expect(publish).toBeDisabled()
+  await expect(publish).toBeEnabled()
 
   const before = await apiCall(api, token, 'get', `/timetable-drafts/${draftId}/validation`)
-  expect(before.publishable).toBe(false)
-  expect(before.blockers.map((blocker: { code: string }) => blocker.code)).toContain('MISSING_ROOMS')
+  expect(before.publishable).toBe(true)
+  expect(before.blockers).toEqual([])
+  expect(before.hardConflicts).toBe(0)
+  const draft = await apiCall(api, token, 'get', `/timetable-drafts/${draftId}`)
+  expect(draft.lessons.length).toBe(lessons.length)
+  expect(draft.lessons.every((lesson: { roomId?: number | null }) => lesson.roomId == null)).toBe(true)
+  await capture(page, 'draft_without_rooms_publishable')
 
-  // The preview names the class, how the capacity is derived and how many lessons it covers.
-  // The footer lives outside the body element that carries the test id, so the scope is
-  // the whole dialog that contains it.
-  const dialog = page.locator('.el-dialog').filter({ has: page.getByTestId('room-fill-dialog') })
-  await page.getByTestId('blocker-action-MISSING_ROOMS').click()
-  await expect(dialog.getByTestId('room-fill-dialog')).toBeVisible()
-  const planned = dialog.locator('.el-table__body tr').first()
-  await expect(planned).toContainText(className)
-  await expect(planned).toContainText('-固定教室')
-  await expect(planned).toContainText('新建')
-  await expect(planned.locator('td').nth(3)).toHaveText('45 人 · 45 座')
-  await expect(planned.locator('td').nth(4)).toHaveText(String(lessonCount))
-  await capture(page, 'room_fill_dialog_before_confirm')
-
-  // Opening the preview writes nothing, and reopening it does not stack up rooms.
   const roomsBefore = await roomCount(api, token)
-  await dialog.getByRole('button', { name: '取消' }).click()
-  await expect(dialog).toBeHidden()
-  await page.getByTestId('blocker-action-MISSING_ROOMS').click()
-  await expect(dialog.locator('.el-table__body tr')).toHaveCount(1)
-  expect(await roomCount(api, token)).toBe(roomsBefore)
-
-  await dialog.getByTestId('room-fill-confirm').click()
-  await expect(toast(page, TOAST_ROOMS_FILLED).first()).toBeVisible()
-
-  // The blocker is gone, publishing is allowed, and the room exists exactly once.
-  await expect(page.getByTestId('publish-blockers')).toHaveCount(0)
-  await expect(publish).toBeEnabled()
-  expect(await roomCount(api, token)).toBe(roomsBefore + 1)
-  const after = await apiCall(api, token, 'get', `/timetable-drafts/${draftId}/validation`)
-  expect(after.publishable).toBe(true)
-  expect(after.blockers).toEqual([])
-  const filled = await apiCall(api, token, 'get', `/timetable-drafts/${draftId}`)
-  expect(filled.lessons.every((lesson: { roomId: number | null }) => lesson.roomId !== null)).toBe(true)
-  await capture(page, 'room_fill_applied_draft_state')
-
   await publish.click()
   await page.getByRole('button', { name: '确定' }).click()
   await expect(toast(page, TOAST_PUBLISHED).first()).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('button', { name: '发布课表' })).toHaveCount(0)
   const published = await apiCall(api, token, 'get', `/timetable-drafts/${draftId}`)
   expect(published.draft.status).toBe('PUBLISHED')
-  expect(await roomCount(api, token)).toBe(roomsBefore + 1)
+  // Publishing never invents rooms.
+  expect(await roomCount(api, token)).toBe(roomsBefore)
 })
 
-test('场景 2b：重复执行补教室不会重复建室', async ({ page }) => {
+test('场景 2b：硬冲突仍然阻止发布', async ({ page }) => {
   const api = await newContext()
-  const { draftId, token } = await seedDraftWithoutRooms(api)
-  const before = await roomCount(api, token)
+  const { draftId, token, lessons } = await seedDraftWithoutRooms(api)
+  // Force a second lesson of the same class into the first lesson's slot. The whole-draft
+  // check must still refuse this independently of the missing rooms.
+  await apiCall(api, token, 'patch', `/timetable-drafts/${draftId}/lessons/${lessons[1].id}`, {
+    periodId: lessons[0].periodId,
+    roomId: null,
+    force: true,
+  })
 
-  // The preview is read-only: it may be asked for as often as the page likes.
-  const plan = await apiCall(api, token, 'get', `/timetable-drafts/${draftId}/room-fill/plan`)
-  expect(plan.applicable).toBe(true)
-  expect(plan.classes).toHaveLength(1)
-  expect(plan.createdRooms).toBe(1)
-  expect(await roomCount(api, token)).toBe(before)
+  const validation = await apiCall(api, token, 'get', `/timetable-drafts/${draftId}/validation`)
+  expect(validation.hardConflicts).toBeGreaterThan(0)
+  expect(validation.publishable).toBe(false)
+  expect(validation.blockers.map((blocker: { code: string }) => blocker.code)).toContain(
+    'HARD_CONFLICTS',
+  )
 
-  const first = await apiCall(api, token, 'post', `/timetable-drafts/${draftId}/room-fill`)
-  expect(first.createdRooms).toBe(1)
-  const after = await roomCount(api, token)
-  expect(after).toBe(before + 1)
-
-  // A second confirmation has no empty rooms left to fill, so nothing is created again.
-  const second = await apiCall(api, token, 'post', `/timetable-drafts/${draftId}/room-fill`)
-  expect(second.createdRooms).toBe(0)
-  expect(second.assignedLessons).toBe(0)
-  expect(await roomCount(api, token)).toBe(after)
-
-  // Nothing user-visible changed on the page either: no blocker, publishing allowed.
   await uiLogin(page, 'admin', 'admin123')
   await page.goto(`/workbench/drafts/${draftId}`)
   await expect(page.locator('.lesson').first()).toBeVisible()
-  await expect(page.getByTestId('publish-blockers')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: '发布课表' })).toBeEnabled()
+  await expect(page.locator('[data-testid=publish-blocker][data-code=HARD_CONFLICTS]')).toBeVisible()
+  await expect(page.getByRole('button', { name: '发布课表' })).toBeDisabled()
 })
 
 test('场景 1b：草稿拖拽冲突高亮与移动', async ({ page }) => {

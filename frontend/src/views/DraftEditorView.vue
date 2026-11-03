@@ -29,9 +29,7 @@
     <DraftPublishBlockers
       v-if="detail?.draft.status !== 'PUBLISHED'"
       :blockers="blockers"
-      :room-fill="canFillRooms"
       @edit-lessons="drawerVisible = true"
-      @fill-rooms="roomFillVisible = true"
     />
 
     <DraftOptimizationSection
@@ -43,8 +41,6 @@
       :locked-count="lockedCount"
       :lesson-count="detail?.lessons.length ?? 0"
     />
-
-    <RoomFillDialog v-model="roomFillVisible" :draft-id="draftId" @applied="load" />
 
     <el-card shadow="never" class="control-card">
       <DraftEditorControls
@@ -87,7 +83,6 @@
           :blocked-periods="blockedPeriods"
           :conflict-lesson-ids="validation?.conflicts.map((item) => item.lessonId).filter((id) => id != null) ?? []"
           :locked-lesson-ids="lockedLessonIds"
-          :show-room="false"
           @drag-start="onDragStart"
           @drag-end="onDragEnd"
           @drop-cell="onDropCell"
@@ -211,7 +206,6 @@ import DraftCompareDialog from '@/components/draft/DraftCompareDialog.vue'
 import DraftStats from '@/components/draft/DraftStats.vue'
 import DraftPublishBlockers from '@/components/draft/DraftPublishBlockers.vue'
 import DraftOptimizationSection from '@/components/draft/DraftOptimizationSection.vue'
-import RoomFillDialog from '@/components/draft/RoomFillDialog.vue'
 import SwapCandidatePanel from '@/components/draft/SwapCandidatePanel.vue'
 import DualTimetablePreview from '@/components/draft/DualTimetablePreview.vue'
 import DraftEditorToolbar from '@/components/draft/DraftEditorToolbar.vue'
@@ -238,8 +232,6 @@ const isJunior = computed(() => settings.schoolType === 'junior')
 const draftId = Number(route.params.id)
 const canEdit = computed(() => auth.hasPermission('timetable:edit'))
 const canPublish = computed(() => auth.hasPermission('timetable:publish'))
-// Filling rooms needs two permissions; that pair is defined in the auth store.
-const canFillRooms = computed(() => auth.canFillDraftRooms)
 const canOptimize = computed(() => auth.hasPermission('scheduling:run'))
 const lockedCount = computed(
   () => (detail.value?.lessons ?? []).filter((lesson) => lesson.locked).length,
@@ -322,7 +314,6 @@ const dragged = ref<DraftLesson | null>(null)
 const dragTargets = ref<Record<number, { available: boolean; conflicts: DraftConflict[] }> | null>(null)
 const conflictVisible = ref(false)
 const cellConflicts = ref<DraftConflict[]>([])
-const roomFillVisible = ref(false)
 const targetVisible = ref(false)
 
 const lockedPeriodIds = computed(() =>

@@ -6,7 +6,6 @@
     >
       <el-radio-button value="class">按行政班</el-radio-button>
       <el-radio-button value="teacher">按教师</el-radio-button>
-      <el-radio-button value="room">按教室</el-radio-button>
     </el-radio-group>
     <el-select
       :model-value="targetId"
@@ -103,7 +102,7 @@
               </el-dropdown-item>
             </template>
             <el-dropdown-item v-else disabled>
-              教师/教室视角只能按所选锁定，请切换到「按行政班」
+              教师视角只能按所选锁定，请切换到「按行政班」
             </el-dropdown-item>
           </el-dropdown-menu>
         </template>
@@ -131,7 +130,7 @@ import type { LockBatchPayload } from '@/composables/useDraftLocks'
 
 withDefaults(
   defineProps<{
-    viewMode: 'class' | 'teacher' | 'room'
+    viewMode: 'class' | 'teacher'
     targetId: number | null
     targetOptions: Array<{ id: number; name: string }>
     selectedLesson: DraftLesson | null
@@ -155,7 +154,7 @@ withDefaults(
 )
 
 const emit = defineEmits<{
-  (e: 'update:viewMode', value: 'class' | 'teacher' | 'room'): void
+  (e: 'update:viewMode', value: 'class' | 'teacher'): void
   (e: 'update:targetId', value: number | null): void
   (e: 'view-change'): void
   (e: 'swap'): void
@@ -170,7 +169,7 @@ const emit = defineEmits<{
 }>()
 
 function onViewChange(value: string | number | boolean | undefined) {
-  const next = value as 'class' | 'teacher' | 'room'
+  const next = value as 'class' | 'teacher'
   emit('update:viewMode', next)
   emit('view-change')
 }

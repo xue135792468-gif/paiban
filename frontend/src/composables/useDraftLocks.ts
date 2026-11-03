@@ -5,7 +5,7 @@ import { setLocks as apiSetLocks } from '@/api/draft'
 import type { DraftDetail, DraftLesson, LockResult } from '@/components/draft/types'
 
 export type DraftLockScope = 'selected' | 'class' | 'day'
-export type DraftLockViewMode = 'class' | 'teacher' | 'room'
+export type DraftLockViewMode = 'class' | 'teacher'
 
 export interface LockBatchPayload {
   scope: DraftLockScope
@@ -75,7 +75,7 @@ export function useDraftLocks(options: DraftLocksOptions) {
   )
   const selectedCount = computed(() => selectedIds.value.length)
 
-  /** Only the class view knows a single administrative class; teacher/room views do not. */
+  /** Only the class view knows a single administrative class; the teacher view does not. */
   const currentClassId = computed(() =>
     options.viewMode.value === 'class' ? options.targetId.value : null,
   )
@@ -90,9 +90,9 @@ export function useDraftLocks(options: DraftLocksOptions) {
     return lessons.value.filter((lesson) => {
       if (lesson.periodId == null) return false
       if (target == null) return true
-      if (options.viewMode.value === 'class') return lesson.classId === target
-      if (options.viewMode.value === 'teacher') return lesson.teacherId === target
-      return lesson.roomId === target
+      return options.viewMode.value === 'class'
+        ? lesson.classId === target
+        : lesson.teacherId === target
     })
   })
 
