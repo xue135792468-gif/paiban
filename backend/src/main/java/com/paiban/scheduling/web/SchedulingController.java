@@ -152,7 +152,12 @@ public class SchedulingController {
 
     @DeleteMapping("/timetable-drafts/{id}")
     @PreAuthorize("hasAuthority('" + Permissions.TIMETABLE_EDIT + "')")
-    public void delete(@PathVariable Long id) {
-        service.deleteDraft(id);
+    public void delete(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "false") boolean unlockLocked,
+            @RequestParam(required = false) Integer expectedLockedCount,
+            Principal principal) {
+        service.deleteDraft(id, unlockLocked, expectedLockedCount,
+                principal == null ? "system" : principal.getName());
     }
 }

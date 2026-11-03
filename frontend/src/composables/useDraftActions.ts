@@ -61,17 +61,27 @@ export function useDraftActions(options: DraftActionsOptions) {
   }
 
   async function remove() {
+    const lockedCount = (options.detail.value?.lessons ?? []).filter((lesson) => lesson.locked).length
+    const message =
+      lockedCount > 0
+        ? `该草稿含 ${lockedCount} 节锁定课节，删除会一并移除这些锁定，且无法恢复。确定解锁并删除？`
+        : '确定删除该草稿吗？删除后无法恢复。'
     try {
-      await ElMessageBox.confirm('确定删除该草稿吗？删除后无法恢复。', '删除草稿', { type: 'warning' })
+      await ElMessageBox.confirm(message, '删除草稿', { type: 'warning' })
     } catch {
       return
     }
     try {
-      await http.delete(`/timetable-drafts/${options.draftId}`)
+      await http.delete(`/timetable-drafts/${options.draftId}`, {
+        params: { unlockLocked: lockedCount > 0, expectedLockedCount: lockedCount },
+      })
       ElMessage.success('已删除')
       router.push('/admin/scheduling')
     } catch (error) {
       ElMessage.error(serverMessage(error, '删除失败'))
+      // A 409 means locks changed since the dialog was opened; refresh so the
+      // next attempt shows the current count and can be confirmed again.
+      await options.reload()
     }
   }
 

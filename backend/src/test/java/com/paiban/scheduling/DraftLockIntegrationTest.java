@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 
+import com.paiban.foundation.domain.AuditLogRepository;
 import com.paiban.scheduling.domain.DraftLesson;
 import com.paiban.scheduling.domain.DraftLessonRepository;
 import com.paiban.scheduling.domain.TimetableDraft;
@@ -47,6 +48,9 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
 
     @Autowired
     private DraftLessonRepository draftLessons;
+
+    @Autowired
+    private AuditLogRepository auditLogs;
 
     @Autowired
     private DraftWriteGuard guard;
@@ -216,7 +220,7 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
 
         as(token).when().delete(DRAFT.formatted(seeded.draftId()))
                 .then().statusCode(409)
-                .body("message", containsString("草稿含锁定课节"));
+                .body("message", containsString("草稿含 1 节锁定课节"));
         assertThat(drafts.findById(seeded.draftId())).isPresent();
 
         as(token).body(Map.of("lessonIds", List.of(seeded.chineseA()), "locked", false, "expectedVersion", 1))
@@ -239,6 +243,75 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
                 .body("version", equalTo(4));
 
         as(token).when().delete(DRAFT.formatted(seeded.draftId())).then().statusCode(200);
+    }
+
+    @Test
+    void deletingALockedDraftWithoutConfirmationKeepsTheDraftAndItsLesson() {
+        String token = adminToken();
+        World world = world(token);
+        Seeded seeded = seedMainDraft(world);
+        lockOne(token, seeded);
+
+        as(token).when().delete(DRAFT.formatted(seeded.draftId()))
+                .then().statusCode(409)
+                .body("message", containsString("草稿含 1 节锁定课节"));
+
+        assertThat(drafts.findById(seeded.draftId())).isPresent();
+        assertThat(draftLessons.findById(seeded.chineseA())).isPresent();
+    }
+
+    @Test
+    void confirmedDeleteRejectsAStaleLockedCount() {
+        String token = adminToken();
+        World world = world(token);
+        Seeded seeded = seedMainDraft(world);
+        lockOne(token, seeded);
+
+        as(token).when().delete(DRAFT.formatted(seeded.draftId()) + "?unlockLocked=true&expectedLockedCount=0")
+                .then().statusCode(409)
+                .body("message", containsString("锁定状态已变化"));
+
+        assertThat(drafts.findById(seeded.draftId())).isPresent();
+        assertThat(draftLessons.findById(seeded.chineseA()).orElseThrow().isLocked()).isTrue();
+    }
+
+    @Test
+    void confirmedDeleteRemovesTheDraftAndItsLockedLessons() {
+        String token = adminToken();
+        World world = world(token);
+        Seeded seeded = seedMainDraft(world);
+        lockOne(token, seeded);
+
+        as(token).when().delete(DRAFT.formatted(seeded.draftId()) + "?unlockLocked=true&expectedLockedCount=1")
+                .then().statusCode(200);
+
+        assertThat(drafts.findById(seeded.draftId())).isEmpty();
+        assertThat(draftLessons.findById(seeded.chineseA())).isEmpty();
+        assertThat(auditLogs.findTop100ByOrderByCreatedAtDesc())
+                .anySatisfy(log -> {
+                    assertThat(log.getAction()).isEqualTo("DRAFT_DELETE");
+                    assertThat(log.getEntityType()).isEqualTo("TIMETABLE_DRAFT");
+                    assertThat(log.getDetail())
+                            .contains("draftId=" + seeded.draftId())
+                            .contains("locked=1");
+                });
+    }
+
+    @Test
+    void unlockedDraftStillDeletesWithAPlainRequest() {
+        String token = adminToken();
+        World world = world(token);
+        Seeded seeded = seedMainDraft(world);
+
+        as(token).when().delete(DRAFT.formatted(seeded.draftId())).then().statusCode(200);
+
+        assertThat(drafts.findById(seeded.draftId())).isEmpty();
+    }
+
+    private void lockOne(String token, Seeded seeded) {
+        as(token).body(Map.of("lessonIds", List.of(seeded.chineseA()), "locked", true, "expectedVersion", 0))
+                .when().put(LOCKS.formatted(seeded.draftId()))
+                .then().statusCode(200);
     }
 
     @Test

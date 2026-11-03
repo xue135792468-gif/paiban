@@ -10,6 +10,8 @@ import ai.timefold.solver.core.config.solver.SolverConfig;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.AdminClass;
 import com.paiban.foundation.domain.AdminClassRepository;
+import com.paiban.foundation.domain.AuditLog;
+import com.paiban.foundation.domain.AuditLogRepository;
 import com.paiban.foundation.domain.Course;
 import com.paiban.foundation.domain.CourseRepository;
 import com.paiban.foundation.domain.Period;
@@ -84,6 +86,7 @@ public class SchedulingService {
     private final TimetableProblemBuilder problemBuilder;
     private final DraftValidator validator;
     private final DraftWriteGuard guard;
+    private final AuditLogRepository auditLogs;
     private final SourceDraftSnapshotService sourceSnapshots;
     private final TransactionTemplate transactions;
     private final TaskExecutor executor;
@@ -107,6 +110,7 @@ public class SchedulingService {
             TimetableProblemBuilder problemBuilder,
             DraftValidator validator,
             DraftWriteGuard guard,
+            AuditLogRepository auditLogs,
             SourceDraftSnapshotService sourceSnapshots,
             PlatformTransactionManager transactionManager,
             @Qualifier("schedulingExecutor") TaskExecutor executor,
@@ -126,6 +130,7 @@ public class SchedulingService {
         this.problemBuilder = problemBuilder;
         this.validator = validator;
         this.guard = guard;
+        this.auditLogs = auditLogs;
         this.sourceSnapshots = sourceSnapshots;
         this.transactions = new TransactionTemplate(transactionManager);
         this.executor = executor;
@@ -559,13 +564,27 @@ public class SchedulingService {
     }
 
     @Transactional
-    public void deleteDraft(Long draftId) {
+    public void deleteDraft(Long draftId, boolean unlockLocked, Integer expectedLockedCount, String actor) {
         TimetableDraft draft = guard.lockEditable(draftId, null);
-        if (draftLessons.countByDraftIdAndLockedTrue(draftId) > 0) {
-            throw ApiException.conflict("草稿含锁定课节，请先解锁后再删除");
+        int locked = (int) draftLessons.countByDraftIdAndLockedTrue(draftId);
+        // The default stays conservative: a plain DELETE never touches a locked lesson.
+        // Only the explicit "unlock and delete" confirmation may drop them, and the
+        // count the user saw has to match the count still in the draft.
+        if (locked > 0 && !unlockLocked) {
+            throw ApiException.conflict("草稿含 " + locked + " 节锁定课节，请先解锁后再删除");
+        }
+        if (locked > 0 && unlockLocked && expectedLockedCount != null && expectedLockedCount != locked) {
+            throw ApiException.conflict("锁定状态已变化，请刷新后重试");
         }
         draftLessons.deleteByDraftId(draftId);
         drafts.delete(draft);
+        auditLogs.save(new AuditLog(
+                actor == null ? "system" : actor,
+                "DRAFT_DELETE",
+                "TIMETABLE_DRAFT",
+                "draftId=" + draftId + ", locked=" + locked,
+                1,
+                0));
     }
 
     @Transactional(readOnly = true)

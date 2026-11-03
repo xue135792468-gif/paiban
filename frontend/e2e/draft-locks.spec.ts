@@ -282,3 +282,33 @@ test('键盘可完成选择、上锁与解锁，刷新后仍保留', async ({ pa
   await unlockReload
   await expect(lessonCard(page, seed.mathLessonIds[0])).not.toHaveAttribute('data-locked', 'true')
 })
+
+test('含锁定课节的草稿删除要求确认，确认后锁定随草稿一起移除', async ({ page }) => {
+  const api = await newContext()
+  const seed = await seedDraftLockScenario(api)
+  await lockLessons(api, seed, [seed.mathLessonIds[0]], true)
+  await openDraft(page, seed.draftId)
+  await selectClass(page, seed.className)
+  await expect(lessonCard(page, seed.mathLessonIds[0])).toHaveAttribute('data-locked', 'true')
+
+  await page.getByRole('button', { name: '删除', exact: true }).click()
+  const box = page.locator('.el-message-box:visible')
+  await expect(box).toContainText('含 1 节锁定课节')
+  await expect(box).toContainText('一并移除')
+
+  await box.getByRole('button', { name: '取消' }).click()
+  await expect(page.locator('.el-message-box:visible')).toHaveCount(0)
+  const stillThere = await draftDetail(api, seed.draftId)
+  expect(stillThere.draft.id).toBe(seed.draftId)
+
+  await page.getByRole('button', { name: '删除', exact: true }).click()
+  const confirmBox = page.locator('.el-message-box:visible')
+  await confirmBox.getByRole('button', { name: '确定' }).click()
+  await expect(page).toHaveURL(/\/admin\/scheduling/)
+
+  const token = await apiLogin(api)
+  const gone = await api.get(`${API}/timetable-drafts/${seed.draftId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  expect(gone.status()).toBe(404)
+})
