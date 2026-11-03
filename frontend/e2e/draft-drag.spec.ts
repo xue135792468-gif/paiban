@@ -200,7 +200,7 @@ test('同格多课不猜落点，提示先修复且不写入', async ({ page }) 
 
 test('直接交换失败自动列方案；取消不改课；应用整环后一次撤销整单还原', async ({ page }) => {
   const api = await newContext()
-  const seed = await seedDraftDragScenario(api)
+  const seed = await seedDraftDragScenario(api, { blockedOverlapTarget: true })
   await openDraft(page, seed.draftId)
   await selectClass(page, seed.className)
 

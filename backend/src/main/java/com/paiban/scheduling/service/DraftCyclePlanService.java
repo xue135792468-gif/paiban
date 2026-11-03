@@ -132,7 +132,9 @@ public class DraftCyclePlanService {
                 .toList();
         boolean foreign = occupants.stream()
                 .anyMatch(lesson -> !Objects.equals(lesson.classId(), source.classId()));
-        if (foreign) {
+        // Other classes sharing the same time are normal context, not a cross-class
+        // swap. Only a target with no same-class lesson at all is outside this search.
+        if (sameClass.isEmpty() && foreign) {
             throw ApiException.conflict("只能在本班范围内换位");
         }
         if (sameClass.size() > 1) {
