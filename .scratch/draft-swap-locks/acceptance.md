@@ -88,6 +88,12 @@ Fresh Review 发现连续撤销两次旧 move/swap 时第二次仍使用第一�
 - 证据：`DraftLockIntegrationTest` 15/15（默认拒绝、缺数量、数量过期、确认删除+审计、无锁删除）；E2E `draft-locks` 8/8（取消后草稿和锁定仍在、确认后跳转且 404）；`verify.sh --quick` 通过。
 - 状态：已通过 PR #25 合并（`e58de7c`）并部署；重建 backend + frontend，Flyway 仍 47。
 
+### 2026-11-03 排课列表页含锁草稿确认删除
+
+- 列表 `DraftDto` 增加 `lockedCount`；`deleteDraftWithConfirmation` 由草稿编辑器与排课列表共用：有锁确认文案带草稿名、锁定节数、会一并移除且无法恢复，确认按钮“解锁并删除”；取消零请求。
+- 证据：后端 `DraftLockIntegrationTest` 16/16；helper 单测 4/4；E2E `draft-locks` 9/9（列表取消保留、确认后行消失且 API 404）；`verify.sh --quick` 通过。
+- 状态：已通过 PR #26 合并（`c31dede`）并部署；重建 backend + frontend，Flyway 仍 47。
+
 ### 仓库级检查
 
 `check-module-boundaries.sh`、`check-migrations.sh`、`check-sfc-size.sh`、`check-e2e-helpers.sh`、`check-blank-checks.sh`、`check-ticket-status.sh` 在门禁中通过。

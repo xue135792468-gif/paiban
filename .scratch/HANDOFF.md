@@ -1,5 +1,7 @@
 # 接手说明（2026-10-25 会话交接）
 
+> **2026-11-03 第四次后续更新：排课列表页也支持确认删除含锁草稿，已合并部署**：PR [#26](https://github.com/xue135792468-gif/paiban/pull/26) 四 job 全绿，合并提交 `c31dede`。列表 `DraftDto` 增加 `lockedCount`；共享 `deleteDraftWithConfirmation` 由编辑器与列表页复用，有锁文案带草稿名、锁定数、“一并移除、无法恢复”，确认按钮“解锁并删除”。后端 16/16、helper 4/4、`draft-locks` E2E 9/9；备份 `paiban-pre-20261103T072936Z.sql.gz`（137,823 字节，gzip 通过）；重建 backend + frontend，四容器 healthy、两处 health 200、Flyway 仍 47。
+
 > **2026-11-03 第三次后续更新：含锁草稿确认后解锁删除，已合并部署**：PR [#25](https://github.com/xue135792468-gif/paiban/pull/25) 四 job 全绿，合并提交 `e58de7c`。默认 DELETE 含锁草稿仍 409；草稿编辑器确认框写明“含 N 节锁定、会一并移除、无法恢复”，确认后带 `unlockLocked=true&expectedLockedCount=N`；服务端行锁内复核数量，缺数量 400、数量变化 409，一致才删除并写 `DRAFT_DELETE` 审计。后端 15/15、`draft-locks` E2E 8/8；备份 `paiban-pre-20261103T061737Z.sql.gz`（141,594 字节，gzip 通过）；重建 backend + frontend，四容器 healthy、两处 health 200、Flyway 仍 47。排课列表页删除入口未改，含锁草稿仍会 409。
 
 > **2026-11-03 第二次后续修复：同班换位搜索被目标时间别班课误拦，已合并部署**：PR [#24](https://github.com/xue135792468-gif/paiban/pull/24) 四 job 全绿，合并提交 `f71264e`。直换因教师冲突失败后，自动方案搜索原先把目标时间的任何别班课都当跨班落点；现改为只有目标时间**没有本班课**且存在别班课时才拒绝，同班课 + 别班课并存继续搜索闭环。后端 `DraftCyclePlanIntegrationTest` 11/11、拖拽/换课 E2E 13/13；备份 `paiban-pre-20261103T045446Z.sql.gz`（141,062 字节，gzip 通过）；只重建 backend，四容器 healthy、两处 health 200、Flyway 仍 47。部署回执见 [deployment](draft-swap-locks/deployment.md)。

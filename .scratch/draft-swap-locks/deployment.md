@@ -54,6 +54,15 @@
 - 部署：服务器与 `origin/main` 一致；重建 backend + frontend 并 `up -d`。
 - 校验：4 容器 healthy；本机 HTTPS 与公网 health 均 200；Flyway 仍 47；前端 bundle 含“一并移除这些锁定”；backend 日志无 error/exception。无数据库迁移。
 
+## 2026-11-03 第四次后续更新：排课列表页支持确认删除含锁草稿
+
+- 用户要求：列表页删除也要同样的确认体验，不要在列表和编辑器之间来回。
+- PR：[#26](https://github.com/xue135792468-gif/paiban/pull/26)，四 job 全绿（backend 16m05s 含真实 PostgreSQL、e2e 18m33s、frontend、deploy-scripts）；合并提交 `c31dede`。
+- 改动：列表 `DraftDto` 增加 `lockedCount`；新增共享 helper `deleteDraftWithConfirmation`，编辑器与列表页共用；列表页删除成功后刷新，失败也刷新锁定数。
+- 备份：`~/backups/paiban/paiban-pre-20261103T072936Z.sql.gz`（137,823 字节，`gzip -t` 通过）。
+- 部署：服务器与 `origin/main` 一致；重建 backend + frontend 并 `up -d`。
+- 校验：4 容器 healthy；本机 HTTPS 与公网 health 均 200；Flyway 仍 47；前端 bundle 含“解锁并删除”“一并移除这些锁定”；无数据库迁移。
+
 ## 回滚
 
 - 代码：`cd ~/paiban && git reset --hard <上一个已知良好 commit>`，重跑构建与 `up -d`；不要加 `--build` 重建回滚镜像。
