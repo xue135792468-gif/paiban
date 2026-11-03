@@ -47,6 +47,19 @@ describe('useSwapFlow', () => {
     expect(flow.swapRooms.value).toBe(false)
   })
 
+  it('cross-class entry requests only cross-class candidates and hides the tabs', () => {
+    const adjust = fakeAdjust()
+    const flow = useSwapFlow({ adjust, notify: fakeNotify() })
+    const lesson = { id: 11, periodId: 100 } as DraftLesson
+
+    flow.selectLesson(lesson)
+    flow.openCrossClassForSelected()
+
+    expect(adjust.loadSwapCandidates).toHaveBeenCalledWith(11, false, 'CROSS_CLASS')
+    expect(flow.singleGroup.value).toBe(true)
+    expect(flow.initialGroup.value).toBe('CROSS_CLASS')
+  })
+
   it('confirm passes the current draft version to the swap request', async () => {
     const adjust = fakeAdjust()
     const swap = vi.fn(async () => ({

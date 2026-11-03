@@ -523,11 +523,12 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
   async function loadSwapCandidates(
     lessonId: number,
     includeUnavailable = false,
+    type: 'ALL' | 'INTRA_CLASS' | 'CROSS_CLASS' = 'ALL',
   ): Promise<SwapCandidatesResponse | null> {
     try {
       const { data } = await client.get(
         `/timetable-drafts/${draftId}/lessons/${lessonId}/swap-candidates`,
-        { params: { type: 'ALL', includeUnavailable } },
+        { params: { type, includeUnavailable } },
       )
       return {
         lessonId: data.lessonId,

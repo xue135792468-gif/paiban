@@ -225,12 +225,12 @@ test('锁定课不能拖拽、换课或调整位置，提示先解锁且不写�
   }).toPass({ timeout: 20_000 })
 
   await openLesson(page, seed.mathLessonIds[0])
-  await page.getByRole('button', { name: '换课', exact: true }).click()
+  await page.getByRole('button', { name: '跨班换人', exact: true }).click()
   await expect(page.getByText('该课节已锁定，先解锁后再换课')).toBeVisible()
   await expect(page.getByTestId('swap-candidate-panel')).toHaveCount(0)
 
-  await page.getByRole('button', { name: '调整位置' }).click()
-  await expect(page.getByText('该课节已锁定，先解锁后再调整位置')).toBeVisible()
+  await page.getByRole('button', { name: '选择位置' }).click()
+  await expect(page.getByText('该课节已锁定，先解锁后再选择位置')).toBeVisible()
   await expect(page.locator('.period-chip')).toHaveCount(0)
 
   const after = await draftDetail(api, seed.draftId)

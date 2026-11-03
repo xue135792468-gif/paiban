@@ -1066,6 +1066,7 @@ export interface DraftDragScenario {
   className: string
   otherClassId: number
   teacherAName: string
+  teacherBName: string
   lessonAId: number
   lessonBId: number
   lessonCId: number
@@ -1084,7 +1085,7 @@ export interface DraftDragScenario {
 
 export async function seedDraftDragScenario(
   context: APIRequestContext,
-  options: { ambiguous?: boolean } = {},
+  options: { ambiguous?: boolean; overlapTarget?: boolean } = {},
 ): Promise<DraftDragScenario> {
   const token = await apiLogin(context)
   const suffix = Math.random().toString(36).slice(2, 8)
@@ -1128,8 +1129,9 @@ export async function seedDraftDragScenario(
     employeeNo: `D1-${suffix}`,
     subject: '数学',
   })
+  const teacherBName = `语文老师${suffix}`
   const teacherB = await apiCall(context, token, 'post', '/teachers', {
-    name: `语文老师${suffix}`,
+    name: teacherBName,
     employeeNo: `D2-${suffix}`,
     subject: '语文',
   })
@@ -1229,8 +1231,15 @@ export async function seedDraftDragScenario(
     await place(class1Chinese.id, '1-2', rooms[1])
     await place(class1English.id, '1-3', rooms[2])
   }
-  await place(class2Chinese.id, '1-1', rooms[3])
-  await place(class2English.id, '2-1', rooms[4])
+  if (options.overlapTarget) {
+    // Keep a foreign lesson on the target slot (real timetables do) but move the
+    // other class's Chinese lesson away from the source slot so A/B swap is legal.
+    await place(class2Chinese.id, '2-2', rooms[3])
+    await place(class2English.id, '1-2', rooms[4])
+  } else {
+    await place(class2Chinese.id, '1-1', rooms[3])
+    await place(class2English.id, '2-1', rooms[4])
+  }
 
   return {
     semesterId: semester.id,
@@ -1239,6 +1248,7 @@ export async function seedDraftDragScenario(
     className,
     otherClassId: class2.id,
     teacherAName,
+    teacherBName,
     lessonAId: class1Math.id,
     lessonBId: class1Chinese.id,
     lessonCId: class1English.id,

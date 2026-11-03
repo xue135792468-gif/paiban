@@ -8,11 +8,12 @@
     </div>
 
     <div class="toolbar">
-      <el-radio-group v-model="groupMode" size="small">
+      <el-radio-group v-if="!singleGroup" v-model="groupMode" size="small">
         <el-radio-button value="ALL">全部</el-radio-button>
         <el-radio-button value="INTRA_CLASS">同班换位</el-radio-button>
         <el-radio-button value="CROSS_CLASS">跨班换人</el-radio-button>
       </el-radio-group>
+      <span v-else class="single-group-label">跨班换人</span>
       <el-switch
         :model-value="includeUnavailable"
         active-text="显示不可用"
@@ -136,6 +137,8 @@ const props = defineProps<{
   includeUnavailable: boolean
   /** The drop-on-occupied-cell flow opens straight into the same-class group. */
   initialGroup?: GroupMode
+  /** The explicit entry only covers cross-class teacher exchange; hide the tabs. */
+  singleGroup?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -160,8 +163,8 @@ const allCandidates = computed(() => [
 const options = computed(() => candidateFilterOptions(allCandidates.value))
 const groups = computed(() => groupCandidates(props.response ?? emptyResponse, filters.value))
 const total = computed(() => groups.value.intraClass.length + groups.value.crossClass.length)
-const showIntra = computed(() => groupMode.value !== 'CROSS_CLASS')
-const showCross = computed(() => groupMode.value !== 'INTRA_CLASS')
+const showIntra = computed(() => !props.singleGroup && groupMode.value !== 'CROSS_CLASS')
+const showCross = computed(() => props.singleGroup || groupMode.value !== 'INTRA_CLASS')
 const intraVisible = computed(() => groups.value.intraClass.slice(0, renderLimit))
 const crossVisible = computed(() => groups.value.crossClass.slice(0, renderLimit))
 const hasFilters = computed(
@@ -173,6 +176,11 @@ const hasFilters = computed(
 )
 const emptyText = computed(() => {
   if (hasFilters.value) return '没有符合筛选条件的候选'
+  if (props.singleGroup) {
+    return props.includeUnavailable
+      ? '没有跨班换人候选'
+      : '没有可用的跨班换人候选，可打开「显示不可用」查看原因'
+  }
   if (!props.includeUnavailable) return '没有可用的换课候选，可打开「显示不可用」查看原因'
   return '没有换课候选'
 })
@@ -221,6 +229,10 @@ watch(
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+.single-group-label {
+  font-size: 13px;
+  font-weight: 600;
 }
 .filters {
   display: flex;

@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     :model-value="modelValue"
-    title="调整位置"
+    title="选择位置"
     width="640px"
     @update:model-value="emit('update:modelValue', $event)"
   >

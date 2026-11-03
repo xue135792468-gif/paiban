@@ -38,6 +38,7 @@ export function useSwapFlow(options: SwapFlowOptions) {
   const candidatesLoading = ref(false)
   const includeUnavailable = ref(false)
   const initialGroup = ref<CandidateGroup>('ALL')
+  const singleGroup = ref(false)
   const previewVisible = ref(false)
   const previewCandidate = ref<SwapCandidate | null>(null)
   const swapRooms = ref(false)
@@ -58,7 +59,11 @@ export function useSwapFlow(options: SwapFlowOptions) {
     if (!lesson) return
     const seq = ++requestSeq
     candidatesLoading.value = true
-    const response = await adjust.loadSwapCandidates(lesson.id, includeUnavailable.value)
+    const response = await adjust.loadSwapCandidates(
+      lesson.id,
+      includeUnavailable.value,
+      singleGroup.value ? 'CROSS_CLASS' : 'ALL',
+    )
     if (seq !== requestSeq) return
     candidates.value = response
     candidatesLoading.value = false
@@ -71,13 +76,14 @@ export function useSwapFlow(options: SwapFlowOptions) {
   }
 
   /** Returns false when the lesson has no period yet, so the caller can keep the old behaviour. */
-  function openPanel(lesson: DraftLesson, group: CandidateGroup = 'ALL') {
+  function openPanel(lesson: DraftLesson, group: CandidateGroup = 'ALL', crossOnly = false) {
     if (lesson.periodId == null) {
       notify.warning('该课节尚未排入节次，无法换课')
       return false
     }
     panelLesson.value = lesson
     initialGroup.value = group
+    singleGroup.value = crossOnly
     includeUnavailable.value = false
     candidates.value = null
     previewCandidate.value = null
@@ -87,9 +93,13 @@ export function useSwapFlow(options: SwapFlowOptions) {
     return true
   }
 
-  function openForSelected() {
+  /**
+   * The explicit entry left after direct drag covers same-class moves/swaps. It
+   * only lists cross-class teacher exchanges, so the same-class path has one home.
+   */
+  function openCrossClassForSelected() {
     const lesson = selectedLesson.value
-    return lesson ? openPanel(lesson) : false
+    return lesson ? openPanel(lesson, 'CROSS_CLASS', true) : false
   }
 
   function selectCandidate(candidate: SwapCandidate) {
@@ -149,6 +159,7 @@ export function useSwapFlow(options: SwapFlowOptions) {
     candidatesLoading,
     includeUnavailable,
     initialGroup,
+    singleGroup,
     previewVisible,
     previewCandidate,
     swapRooms,
@@ -156,7 +167,7 @@ export function useSwapFlow(options: SwapFlowOptions) {
     selectLesson,
     clearSelection,
     openPanel,
-    openForSelected,
+    openCrossClassForSelected,
     setIncludeUnavailable,
     selectCandidate,
     confirm,
