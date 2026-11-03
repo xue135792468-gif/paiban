@@ -125,7 +125,7 @@ test('无学期时引导去学期页', async ({ page }) => {
     { path: '/data/grades', href: '/help/foundation#grades' },
     { path: '/data/classes', href: '/help/foundation#classes' },
     { path: '/data/assignments', href: '/help/scheduling#assignments' },
-    { path: '/rules', href: '/help/scheduling#constraints' },
+    { path: '/rules/advanced', href: '/help/scheduling#constraints' },
     { path: '/workbench', href: '/help/scheduling#run' },
   ]
 
@@ -165,7 +165,7 @@ test('排课草稿、排课历史与约束列表为空时显示引导', async ({
     )
   }
 
-  await page.goto('/rules')
+  await page.goto('/rules/advanced')
   const constraints = page
     .locator('[data-testid="empty-state-guide"]:visible')
     .filter({ has: page.getByRole('heading', { name: '还没有可配置的约束' }) })

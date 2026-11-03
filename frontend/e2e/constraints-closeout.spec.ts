@@ -93,7 +93,7 @@ test.describe.serial('约束配置：收尾页面状态与证据', () => {
 
   test('默认页：左侧四组导航 + 顶部三个计数 + 右侧面板，计数同源', async ({ page }) => {
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/rules')
+    await page.goto('/rules/advanced')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
 
     // 分组体现在左侧导航的分区标题上（变体 B），不再有折叠卡片。
@@ -133,7 +133,7 @@ test.describe.serial('约束配置：收尾页面状态与证据', () => {
     })
 
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/rules')
+    await page.goto('/rules/advanced')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
     await page.locator(TEACHER_UNAVAILABLE).click()
 
@@ -161,7 +161,7 @@ test.describe.serial('约束配置：收尾页面状态与证据', () => {
     ])
 
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/rules')
+    await page.goto('/rules/advanced')
     await page.locator(TEACHER_MAX).click()
 
     await expect(
@@ -181,7 +181,7 @@ test.describe.serial('约束配置：收尾页面状态与证据', () => {
     await saveEntries()
 
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/rules')
+    await page.goto('/rules/advanced')
     await expect(summaryEntries(page)).toContainText('具体条目 3 条')
 
     await page.getByTestId('constraint-template-save').click()
@@ -226,7 +226,7 @@ test.describe.serial('约束配置：收尾页面状态与证据', () => {
     const [first] = seed.teachers
 
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/rules')
+    await page.goto('/rules/advanced')
     await page.locator(TEACHER_UNAVAILABLE).click()
     await expect(entryCards(page)).toHaveCount(3)
 

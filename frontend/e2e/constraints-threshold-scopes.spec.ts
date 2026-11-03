@@ -24,7 +24,7 @@ test.describe.serial('约束配置：阈值全局默认与对象例外', () => {
   })
 
   async function openType(page: Page) {
-    await page.goto('/rules')
+    await page.goto('/rules/advanced')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
     await page.locator(TEACHER_MAX).click()
     await expect(page.getByTestId('constraint-panel-title')).toContainText('教师一天最多 N 节')
@@ -190,7 +190,7 @@ test.describe.serial('约束配置：阈值全局默认与对象例外', () => {
       ['TEACHER_MAX_CONSECUTIVE', '教师连续上课上限'],
     ]
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/rules')
+    await page.goto('/rules/advanced')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
     for (const [code, title] of types) {
       await page.locator(`[data-type="${code}"]`).click()
