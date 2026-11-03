@@ -43,7 +43,7 @@ public class ConstraintService {
     // ---------------------------------------------------------------- catalogue
 
     public List<ConstraintTypeDto> types() {
-        return List.of(ConstraintType.values()).stream()
+        return ConstraintType.activeValues().stream()
                 .map(type -> new ConstraintTypeDto(
                         type.name(),
                         type.getDisplayName(),

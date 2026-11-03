@@ -194,12 +194,13 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void intraClassCandidateRequiresRoomExchangeWhenKeepingRoomsConflicts() {
+    void roomsNoLongerBlockAnIntraClassSwap() {
         String token = adminToken();
         World world = world(token);
         long target = place(world, world.classA(), "语文", "张老师", 0, "教室1");
         long candidate = place(world, world.classA(), "数学", "李老师", 1, "教室2");
-        // Occupies 教室1 at the candidate's period, so keeping rooms blocks the swap.
+        // 教室1 is occupied at the candidate's period, which used to require a room
+        // exchange. Ticket 09 retired the room-conflict rule, so the swap is plain.
         place(world, world.classB(), "语文阅读", "王老师", 1, "教室1");
 
         Response response = candidates(token, world, target);
@@ -209,7 +210,7 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
         Map<String, Object> row = intra.get(0);
         assertThat(((Number) row.get("lessonId")).longValue()).isEqualTo(candidate);
         assertThat(row.get("available")).isEqualTo(true);
-        assertThat(row.get("roomSwapRequired")).isEqualTo(true);
+        assertThat(row.get("roomSwapRequired")).isEqualTo(false);
         assertThat((List<?>) row.get("conflicts")).isEmpty();
 
         as(token).body(Map.of(
@@ -383,7 +384,7 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void moveTargetsValidateEveryPeriodIndependentlyKeepingTheRoom() {
+    void moveTargetsValidateClassConflictsButNoLongerRooms() {
         String token = adminToken();
         World world = world(token);
         long target = place(world, world.classA(), "语文", "张老师", 0, "教室1");
@@ -413,10 +414,11 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
             assertThat(((Number) conflict.get("lessonId")).longValue()).isEqualTo(target);
         });
 
+        // 教室1 is used by another class here, but room conflict was retired in
+        // ticket 09, so only class/teacher conflicts decide availability.
         Map<String, Object> roomTaken = byPeriod.get(world.period(2));
-        assertThat(roomTaken.get("available")).isEqualTo(false);
-        assertThat((List<Map<String, Object>>) roomTaken.get("conflicts")).anySatisfy(conflict ->
-                assertThat(conflict.get("type")).isEqualTo("ROOM_CONFLICT"));
+        assertThat(roomTaken.get("available")).isEqualTo(true);
+        assertThat(((Number) roomTaken.get("hardConflicts")).intValue()).isZero();
 
         Map<String, Object> free = byPeriod.get(world.period(3));
         assertThat(free.get("available")).isEqualTo(true);

@@ -21,6 +21,7 @@ public class ConstraintProposalPrompt {
     public String system() {
         String catalogue = List.of(ConstraintType.values()).stream()
                 .filter(ConstraintType::supportsNaturalLanguage)
+                .filter(type -> !type.isRetired())
                 .map(this::describe)
                 .collect(Collectors.joining("\n"));
         return """

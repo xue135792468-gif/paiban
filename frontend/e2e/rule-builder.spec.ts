@@ -56,13 +56,29 @@ test.describe('排课规则：句子积木', () => {
   async function addTeacherAfternoonRule(page: Page, teacherName: string) {
     await page.getByTestId('rule-new').click()
     await expect(form(page)).toBeVisible()
-    await form(page).getByTestId('rule-scope').getByText('教师', { exact: true }).click()
+    await pickOption(form(page), 'rule-type', '教师 的 课 不排')
     await pickOption(form(page), 'rule-teacher', teacherName)
     await chooseDay(page, '周五')
     await form(page).getByTestId('rule-afternoon').click()
     await expect(form(page).getByTestId('rule-preview')).toContainText(
       `${teacherName} 的 课 在 周五下午 不排`,
     )
+    await form(page).getByTestId('rule-submit').click()
+  }
+
+  async function addCourseAmountRule(
+    page: Page,
+    typeLabel: string,
+    courseName: string,
+    amount: number,
+  ) {
+    await page.getByTestId('rule-new').click()
+    await expect(form(page)).toBeVisible()
+    await pickOption(form(page), 'rule-type', typeLabel)
+    await pickOption(form(page), 'rule-course', courseName)
+    const input = form(page).getByTestId('rule-amount').locator('input')
+    await input.fill(String(amount))
+    await input.press('Tab')
     await form(page).getByTestId('rule-submit').click()
   }
 
@@ -164,8 +180,8 @@ test.describe('排课规则：句子积木', () => {
             })),
           },
           {
-            type: 'COURSE_NOT_IN_EVENING',
-            params: { courseId: seed.courses[0].id },
+            type: 'TEACHER_CONFLICT',
+            params: {},
             weight: 100,
             hard: true,
             enabled: true,
@@ -232,10 +248,73 @@ test.describe('排课规则：句子积木', () => {
         .entries,
     ).toHaveLength(1)
     expect(
-      saved.configs.some((config: { type: string }) => config.type === 'COURSE_NOT_IN_EVENING'),
+      saved.configs.some((config: { type: string }) => config.type === 'TEACHER_CONFLICT'),
     ).toBe(true)
 
     await page.goto('/rules/advanced')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
+    await expect(page.getByTestId('constraint-nav-item')).toHaveCount(19)
+  })
+
+  test('创建数量型、形态型与预设规则，刷新后仍在', async ({ page }) => {
+    // 从空配置开始，避免前一条用例的分组行影响卡片数量。
+    const before = await state()
+    await apiCall(
+      api,
+      token,
+      'put',
+      '/constraints',
+      { configs: [] },
+      { semesterId: seed.semesterId, baseVersion: before.version },
+    )
+
+    await uiLogin(page, 'admin', 'admin123')
+    await page.goto('/rules')
+    await expect(page.getByTestId('rule-builder')).toBeVisible()
+
+    const math = seed.courses[0]
+    const chinese = seed.courses[1]
+
+    await addCourseAmountRule(page, '课程 每天最多 N 节', math.name, 1)
+    await expect(page.getByTestId('rule-card')).toHaveCount(1)
+    await expect(page.getByTestId('rule-sentence')).toHaveText(`${math.name} 每天最多 1 节`)
+
+    await addCourseAmountRule(page, '课程 连堂 N 节', chinese.name, 2)
+    await expect(page.getByTestId('rule-card')).toHaveCount(2)
+    await expect(page.getByText(`${chinese.name} 连堂 2 节`)).toBeVisible()
+
+    await page.getByTestId('rule-new').click()
+    await pickOption(form(page), 'rule-type', '体育 不在最后一节')
+    await expect(form(page).getByTestId('rule-preview')).toContainText('体育 不在最后一节')
+    await form(page).getByTestId('rule-submit').click()
+    await expect(page.getByTestId('rule-card')).toHaveCount(3)
+
+    await saveRules(page)
+
+    const saved = await state()
+    const courseMax = saved.configs.find(
+      (config: { type: string }) => config.type === 'COURSE_MAX_PER_DAY',
+    )
+    expect(courseMax.entries).toHaveLength(1)
+    expect(courseMax.entries[0].params).toEqual({ courseId: math.id, maxPerDay: 1 })
+
+    const consecutive = saved.configs.find(
+      (config: { type: string }) => config.type === 'CONSECUTIVE_LESSONS',
+    )
+    expect(consecutive.entries[0].params).toEqual({
+      courseId: chinese.id,
+      minConsecutive: 2,
+    })
+
+    const peLast = saved.configs.find(
+      (config: { type: string }) => config.type === 'PE_LAST_PERIOD_AVOID',
+    )
+    expect(peLast.entries[0].params).toEqual({})
+
+    await page.reload()
+    await expect(page.getByTestId('rule-card')).toHaveCount(3)
+    await expect(page.getByText(`${math.name} 每天最多 1 节`)).toBeVisible()
+    await expect(page.getByText(`${chinese.name} 连堂 2 节`)).toBeVisible()
+    await expect(page.getByText('体育 不在最后一节')).toBeVisible()
   })
 })

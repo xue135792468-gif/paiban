@@ -78,6 +78,8 @@
         :key="formKey"
         :initial="editingCard"
         :teachers="teachers"
+        :classes="classes"
+        :courses="courses"
         :days="availableDays"
         :periods="periods"
         @submit="onFormSubmit"
@@ -150,17 +152,20 @@ import type {
   OptionItem,
 } from '@/components/constraints/types'
 import {
+  cardFromInput,
   cardsFromState,
+  catalogueTypeCodes,
   configsFromCards,
   describeCard,
   entryBackedTypeCodes,
-  newCardKey,
+  isSwitchRule,
   newGroupKey,
   otherRuleCount,
   unrepresentedGroupCount,
   type PeriodOption,
   type RuleCard,
   type RuleInput,
+  type RuleNames,
 } from '@/rules/compiler'
 
 interface Semester {
@@ -183,11 +188,14 @@ interface PeriodDto {
 const semesters = ref<Semester[]>([])
 const semesterId = ref<number | null>(null)
 const teachers = ref<OptionItem[]>([])
+const classes = ref<OptionItem[]>([])
+const courses = ref<OptionItem[]>([])
 const periods = ref<PeriodOption[]>([])
 const configs = ref<ConstraintConfigDto[]>([])
 const baseVersion = ref(0)
 const cards = ref<RuleCard[]>([])
 const entryBackedTypes = ref<Set<string>>(new Set())
+const catalogueCodes = ref<Set<string>>(new Set())
 const loadedSignature = ref('')
 const loading = ref(false)
 const saving = ref(false)
@@ -202,11 +210,23 @@ const availableDays = computed(() =>
     (left, right) => left - right,
   ),
 )
-const teacherNames = computed(
-  () => new Map(teachers.value.map((teacher) => [teacher.id, teacher.name])),
-)
+const ruleNames = computed<RuleNames>(() => {
+  const teacherNames = new Map(teachers.value.map((teacher) => [teacher.id, teacher.name]))
+  const classNames = new Map(classes.value.map((item) => [item.id, item.name]))
+  const courseNames = new Map(courses.value.map((item) => [item.id, item.name]))
+  return {
+    teacher: (id) => teacherNames.get(id) ?? `教师${id}`,
+    course: (id) => courseNames.get(id) ?? `课程${id}`,
+    klass: (id) => classNames.get(id) ?? `班级${id}`,
+  }
+})
 const dirty = computed(() => signatureOf(cards.value) !== loadedSignature.value)
-const otherCount = computed(() => otherRuleCount(configs.value))
+const otherCount = computed(() =>
+  otherRuleCount(
+    configs.value,
+    catalogueCodes.value.size > 0 ? catalogueCodes.value : undefined,
+  ),
+)
 const unrepresentedCount = computed(() => unrepresentedGroupCount(configs.value))
 const editingCard = computed(
   () => cards.value.find((card) => card.key === editingKey.value) ?? null,
@@ -218,9 +238,12 @@ function signatureOf(rows: RuleCard[]): string {
       key: card.key,
       groupKey: card.groupKey,
       type: card.type,
+      classId: card.classId,
       teacherId: card.teacherId,
+      courseId: card.courseId,
       dayOfWeek: card.dayOfWeek,
       periodNos: [...card.periodNos].sort((left, right) => left - right),
+      amount: card.amount,
       strength: card.strength,
       enabled: card.enabled,
     })),
@@ -228,11 +251,7 @@ function signatureOf(rows: RuleCard[]): string {
 }
 
 function sentenceOf(card: RuleCard): string {
-  return describeCard(
-    card,
-    (id) => teacherNames.value.get(id) ?? `教师${id}`,
-    periods.value,
-  )
+  return describeCard(card, ruleNames.value, periods.value)
 }
 
 async function loadSemesters() {
@@ -254,9 +273,32 @@ async function loadTeachers() {
   teachers.value = (data ?? []).map((teacher) => ({ id: teacher.id, name: teacher.name }))
 }
 
+async function loadCourses() {
+  const { data } = await http.get<Array<{ id: number; name: string; active?: boolean }>>('/courses')
+  courses.value = (data ?? [])
+    .filter((course) => course.active !== false)
+    .map((course) => ({ id: course.id, name: course.name }))
+}
+
+async function loadClasses() {
+  if (semesterId.value === null) {
+    classes.value = []
+    return
+  }
+  const { data } = await http.get<Array<{ id: number; name: string; active?: boolean }>>(
+    '/classes',
+    { params: { semesterId: semesterId.value } },
+  )
+  classes.value = (data ?? [])
+    .filter((item) => item.active !== false)
+    .map((item) => ({ id: item.id, name: item.name }))
+}
+
 async function loadCatalogue() {
   const { data } = await http.get<ConstraintTypeDef[]>('/constraint-types')
-  entryBackedTypes.value = entryBackedTypeCodes(data ?? [])
+  const types = data ?? []
+  entryBackedTypes.value = entryBackedTypeCodes(types)
+  catalogueCodes.value = catalogueTypeCodes(types)
 }
 
 async function loadState() {
@@ -296,6 +338,7 @@ async function loadState() {
 
 async function onSemesterChange() {
   closeForm()
+  await loadClasses()
   await loadState()
 }
 
@@ -317,28 +360,30 @@ function closeForm() {
 }
 
 function onFormSubmit(input: RuleInput) {
-  const normalized: RuleInput = {
-    ...input,
-    periodNos: [...input.periodNos].sort((left, right) => left - right),
-    strength: input.type === 'CLASS_UNAVAILABLE' ? 'HARD' : input.strength,
-  }
+  const next = cardFromInput(input)
   if (editingKey.value !== null) {
     const index = cards.value.findIndex((card) => card.key === editingKey.value)
     if (index >= 0) {
       const current = cards.value[index]
-      // School and teacher rows live in two types; an id of the old type would be
-      // rejected by the server, so changing scope means starting without ids.
-      const entryIds = current.type === normalized.type ? current.entryIds : {}
-      cards.value[index] = { ...current, ...normalized, entryIds }
+      // Changing the requirement changes the storage type; an id of the old type
+      // would be rejected by the server, so such an edit starts without ids.
+      const typeChanged = current.type !== next.type
+      cards.value[index] = {
+        ...current,
+        ...next,
+        key: current.key,
+        groupKey: typeChanged ? newGroupKey() : current.groupKey,
+        enabled: current.enabled,
+        entryIds: typeChanged ? {} : current.entryIds,
+      }
     }
   } else {
-    cards.value.push({
-      ...normalized,
-      key: newCardKey(),
-      groupKey: newGroupKey(),
-      enabled: true,
-      entryIds: {},
-    })
+    // A switch rule has exactly one card; creating it again replaces the old one
+    // instead of sending two configs of the same type (the server refuses those).
+    if (isSwitchRule(next.type)) {
+      cards.value = cards.value.filter((card) => card.type !== next.type)
+    }
+    cards.value.push(next)
   }
   closeForm()
 }
@@ -400,9 +445,9 @@ async function reloadAfterConflict() {
 onMounted(async () => {
   loading.value = true
   try {
-    await Promise.all([loadSemesters(), loadTeachers(), loadCatalogue()])
+    await Promise.all([loadSemesters(), loadTeachers(), loadCatalogue(), loadCourses()])
     if (semesterId.value !== null) {
-      await loadState()
+      await Promise.all([loadClasses(), loadState()])
     }
   } catch (e: any) {
     errorMessage.value = serverMessage(e, '加载排课规则失败')

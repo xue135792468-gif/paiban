@@ -182,25 +182,6 @@ class ConstraintScopedThresholdsCheckerTest {
     }
 
     @Test
-    void eveningMaxCountsPerClassAndResolvesByAdministrativeClass() {
-        ConstraintSettings settings = threshold(ConstraintType.EVENING_MAX, true, 40,
-                Map.of("maxPerDay", 2),
-                Map.of("classId", CLASS_2, "maxPerDay", 1));
-
-        // Period 9 and 10 are the evening slots of the fixture (8 periods per day).
-        PlanSnapshot snapshot = base().periodsPerDay(10)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 1, 9)
-                .lesson(CLASS_1, COURSE_MATH, TEACHER_B, ROOM, 1, 10)
-                .lesson(CLASS_2, COURSE_CHINESE, TEACHER_A, ROOM, 1, 9)
-                .lesson(CLASS_2, COURSE_MATH, TEACHER_B, ROOM, 1, 10)
-                .build();
-
-        List<String> rows = codes(violations(settings, snapshot), "EVENING_MAX");
-        assertThat(rows).hasSize(1);
-        assertThat(rows.get(0)).contains("高一2班").contains("2").contains("1");
-    }
-
-    @Test
     void teacherMaxConsecutiveResolvesPerTeacher() {
         ConstraintSettings settings = threshold(ConstraintType.TEACHER_MAX_CONSECUTIVE, true, 45,
                 Map.of("maxConsecutive", 3),

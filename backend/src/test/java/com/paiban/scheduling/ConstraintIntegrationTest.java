@@ -1,7 +1,6 @@
 package com.paiban.scheduling;
 
 import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
@@ -26,20 +25,20 @@ class ConstraintIntegrationTest extends ApiIntegrationTest {
         as(token).queryParam("semesterId", semesterId)
                 .when().get("/api/constraints")
                 .then().statusCode(200)
-                .body("$", hasSize(3))
+                .body("$", hasSize(2))
                 .body("type", hasItem("TEACHER_CONFLICT"))
                 .body("type", hasItem("CLASS_CONFLICT"))
-                .body("type", hasItem("ROOM_CONFLICT"))
+                .body("type", not(hasItem("ROOM_CONFLICT")))
                 .body("type", not(hasItem("ROOM_CAPACITY_FIT")))
                 .body("find { it.type == 'TEACHER_CONFLICT' }.hard", equalTo(true))
                 .body("find { it.type == 'TEACHER_CONFLICT' }.enabled", equalTo(true));
     }
 
     @Test
-    void presetCatalogueHasAtLeastTwentyConstraintsWithSchemas() {
+    void presetCatalogueHasExactlyNineteenConstraintsWithSchemas() {
         as(adminToken()).when().get("/api/constraint-types")
                 .then().statusCode(200)
-                .body("size()", greaterThanOrEqualTo(20))
+                .body("size()", equalTo(19))
                 // Since ticket 10/04 a threshold declares its scope object first, so the
                 // same form can express a global default and per-object exceptions.
                 .body("find { it.code == 'TEACHER_MAX_PER_DAY' }.params[0].name", equalTo("teacherId"))

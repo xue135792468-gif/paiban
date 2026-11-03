@@ -71,19 +71,6 @@ class ConstraintTargetEntriesCheckerTest {
     }
 
     @Test
-    void twoCoursesEachStayOutOfTheEvening() {
-        ConstraintSettings settings = settings(ConstraintType.COURSE_NOT_IN_EVENING, true, 100,
-                Map.of("courseId", COURSE_CHINESE), Map.of("courseId", COURSE_MATH));
-        PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 1, 8)
-                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2, ROOM_NORMAL, 1, 8)
-                .lesson(PlanFixtures.CLASS_1, COURSE_ART, TEACHER_3, ROOM_LAB, 1, 7)
-                .build();
-
-        assertThat(codes(violations(settings, snapshot, 1), "COURSE_NOT_IN_EVENING")).hasSize(2);
-    }
-
-    @Test
     void teacherNoFirstPeriodCoversBothTeachers() {
         ConstraintSettings settings = settings(ConstraintType.TEACHER_NO_FIRST_PERIOD, true, 35,
                 Map.of("teacherId", TEACHER_1), Map.of("teacherId", TEACHER_2));
@@ -290,43 +277,6 @@ class ConstraintTargetEntriesCheckerTest {
         assertThat(ConstraintChecker.softPenalty(
                 withSettings(snapshot, soft).context(), viewsOn(snapshot, 1)))
                 .isEqualTo(60);
-    }
-
-    @Test
-    void courseRequiredRoomTypePerCourseDoesNotInterfere() {
-        ConstraintSettings settings = settings(ConstraintType.COURSE_REQUIRED_ROOM_TYPE, true, 100,
-                Map.of("courseId", COURSE_CHINESE, "roomType", "LAB"),
-                Map.of("courseId", COURSE_MATH, "roomType", "PLAYGROUND"));
-        PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 1, 1)
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_LAB, 1, 2)
-                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2, ROOM_PLAYGROUND, 1, 1)
-                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2, ROOM_NORMAL, 1, 2)
-                .build();
-
-        List<String> rows = codes(violations(settings, snapshot, 1), "ROOM_TYPE");
-        assertThat(rows).hasSize(2);
-        assertThat(rows).anyMatch(row -> row.startsWith("ROOM_TYPE@1000"));
-        assertThat(rows).anyMatch(row -> row.startsWith("ROOM_TYPE@1003"));
-    }
-
-    @Test
-    void meetingBlockedIsTheUnionOfItsSubjectEntries() {
-        ConstraintSettings settings = settings(ConstraintType.TEACHER_MEETING_BLOCKED, true, 100,
-                Map.of("subject", "语文", "dayOfWeek", 1, "periodNo", 2),
-                Map.of("dayOfWeek", 1, "periodNo", 3));
-        PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 1, 2)
-                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2, ROOM_NORMAL, 1, 2)
-                .lesson(PlanFixtures.CLASS_1, COURSE_MATH, TEACHER_2, ROOM_NORMAL, 1, 3)
-                .build();
-
-        // The blank-subject entry covers every subject at Mon-3; the 语文 entry only
-        // covers Chinese teachers at Mon-2.
-        List<String> rows = codes(violations(settings, snapshot, 1), "TEACHER_MEETING");
-        assertThat(rows).hasSize(2);
-        assertThat(rows).anyMatch(row -> row.startsWith("TEACHER_MEETING@1000"));
-        assertThat(rows).anyMatch(row -> row.startsWith("TEACHER_MEETING@1002"));
     }
 
     @Test

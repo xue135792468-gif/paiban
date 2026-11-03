@@ -16,9 +16,9 @@ const SLOT_PARAMS: ParamDef[] = [
   { name: 'periodNo', label: '第几节', type: 'PERIOD', required: true },
 ]
 
-const ROOM_PARAMS: ParamDef[] = [
+const CONSECUTIVE_PARAMS: ParamDef[] = [
   { name: 'courseId', label: '课程', type: 'ID', required: true },
-  { name: 'roomType', label: '教室类型', type: 'ROOM_TYPE', required: true },
+  { name: 'minConsecutive', label: '连排节数', type: 'INT', required: true, min: 2, max: 4 },
 ]
 
 const THRESHOLD_PARAMS: ParamDef[] = [
@@ -91,18 +91,18 @@ describe('建议加入的比较规则', () => {
     expect(sameControls(match!.card, draftRow, hard)).toBe(true)
   })
 
-  it('同一课程不同教室类型给出新旧差异', () => {
+  it('同一课程不同连排节数给出新旧差异', () => {
     const draftRow = row({
-      code: 'COURSE_REQUIRED_ROOM_TYPE',
-      params: ROOM_PARAMS,
-      entries: [entry({ courseId: 7, roomType: 'LAB' })],
+      code: 'CONSECUTIVE_LESSONS',
+      params: CONSECUTIVE_PARAMS,
+      entries: [entry({ courseId: 7, minConsecutive: 2 })],
     })
     const conflict = scalarConflict(draftRow, proposal({
-      type: 'COURSE_REQUIRED_ROOM_TYPE',
-      entries: [{ params: { courseId: 7, roomType: 'PLAYGROUND' } }],
+      type: 'CONSECUTIVE_LESSONS',
+      entries: [{ params: { courseId: 7, minConsecutive: 4 } }],
     }))
-    expect(conflict?.message).toContain('LAB')
-    expect(conflict?.message).toContain('PLAYGROUND')
+    expect(conflict?.message).toContain('2')
+    expect(conflict?.message).toContain('4')
   })
 
   it('阈值例外比全局更宽松时给出放宽说明', () => {

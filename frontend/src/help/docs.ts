@@ -30,7 +30,7 @@ const bodies = import.meta.glob('./docs/*.md', {
 const META: Record<HelpSlug, { title: string; summary: string; group: HelpGroupTitle }> = {
   foundation: {
     title: '基础数据',
-    summary: '年级、行政班、教师、教室、课程与批量导入',
+    summary: '年级、行政班、教师、课程与批量导入',
     group: '功能模块',
   },
   scheduling: {

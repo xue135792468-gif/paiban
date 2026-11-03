@@ -19,11 +19,6 @@ const SAME_COURSE_PARAMS: ParamDef[] = [
   { name: 'courseId', label: '课程（留空表示全部）', type: 'ID', required: false },
 ]
 
-const ROOM_TYPE_PARAMS: ParamDef[] = [
-  { name: 'courseId', label: '课程', type: 'ID', required: true },
-  { name: 'roomType', label: '教室类型', type: 'ROOM_TYPE', required: true },
-]
-
 const CONSECUTIVE_PARAMS: ParamDef[] = [
   { name: 'courseId', label: '课程', type: 'ID', required: true },
   { name: 'minConsecutive', label: '连排节数', type: 'INT', required: true, min: 2, max: 4 },
@@ -215,24 +210,6 @@ describe('保存前必填提示', () => {
 })
 
 describe('互斥条件预检', () => {
-  it('同一课程两个教室类型：指出课程、条号与两个值', () => {
-    const rows = [
-      row({
-        code: 'COURSE_REQUIRED_ROOM_TYPE',
-        name: '课程指定教室类型',
-        params: ROOM_TYPE_PARAMS,
-        entries: [
-          entry('e1', { courseId: 9, roomType: 'NORMAL' }),
-          entry('e2', { courseId: 4, roomType: 'NORMAL' }),
-          entry('e3', { courseId: 9, roomType: 'LAB' }),
-        ],
-      }),
-    ]
-    expect(scalarConflicts(rows, ctx)).toEqual([
-      '「课程指定教室类型」：课程「数学」在第 1、3 条给了不同的「教室类型」（普通教室 / 实验室），同一目标不能并存，保存会被拒绝。',
-    ])
-  })
-
   it('同一课程两个连排节数、两个上午截止，同样预检', () => {
     const rows = [
       row({
@@ -260,12 +237,12 @@ describe('互斥条件预检', () => {
   it('不同课程、相同取值、留空对象都不算冲突', () => {
     const rows = [
       row({
-        code: 'COURSE_REQUIRED_ROOM_TYPE',
-        name: '课程指定教室类型',
-        params: ROOM_TYPE_PARAMS,
+        code: 'CONSECUTIVE_LESSONS',
+        name: '连堂课连排',
+        params: CONSECUTIVE_PARAMS,
         entries: [
-          entry('e1', { courseId: 9, roomType: 'NORMAL' }),
-          entry('e2', { courseId: 4, roomType: 'LAB' }),
+          entry('e1', { courseId: 9, minConsecutive: 2 }),
+          entry('e2', { courseId: 4, minConsecutive: 4 }),
         ],
       }),
     ]

@@ -373,23 +373,27 @@ describe('保存 payload', () => {
     expect(payload.map((config) => config.weight)).toEqual([80, 30])
   })
 
-  it('教研禁排照样提交（含其条目），初中模式也要能编辑', () => {
+  it('课程禁排照样提交（含其条目），初中模式也要能编辑', () => {
     const rows = [
       row({
-        code: 'TEACHER_MEETING_BLOCKED',
+        code: 'COURSE_UNAVAILABLE',
         params: [
-          { name: 'subject', label: '学科（留空表示全部）', type: 'TEXT', required: false },
+          { name: 'courseId', label: '课程', type: 'ID', required: true },
           { name: 'dayOfWeek', label: '星期', type: 'DAY', required: true },
           { name: 'periodNo', label: '第几节', type: 'PERIOD', required: true },
         ],
         enabled: true,
-        entries: [entry('e1', {}, [{ key: 's1', id: null, dayOfWeek: 3, periodNo: 2 }])],
+        entries: [entry('e1', { courseId: 9 }, [{ key: 's1', id: null, dayOfWeek: 3, periodNo: 2 }])],
       }),
     ]
     expect(buildSavePayload(rows)).toEqual([
       {
-        type: 'TEACHER_MEETING_BLOCKED',
-        entries: [{ id: null, params: { dayOfWeek: 3, periodNo: 2 }, ...CONTROLS }],
+        type: 'COURSE_UNAVAILABLE',
+        entries: [{
+          id: null,
+          params: { courseId: 9, dayOfWeek: 3, periodNo: 2 },
+          ...CONTROLS,
+        }],
         weight: 100,
         hard: true,
         enabled: true,

@@ -9,7 +9,7 @@ import {
   targetUnresolved,
   type PlannedEntry,
 } from './entryModel'
-import { filledValues, hasValue, roomTypeLabel } from './paramValues'
+import { filledValues, hasValue } from './paramValues'
 import type { SummaryContext } from './entrySummary'
 import type { TypeDraft } from './types'
 import { isWeeklyNoClass, weeklyClasses } from './weeklyScope'
@@ -134,13 +134,12 @@ export function missingParamWarnings(rows: TypeDraft[]): string[] {
  * reject the whole save. Nothing is "fixed" silently — the user decides.
  */
 export const SCALAR_SPECS: Record<string, { object: string; scalars: string[] }> = {
-  COURSE_REQUIRED_ROOM_TYPE: { object: 'courseId', scalars: ['roomType'] },
   CONSECUTIVE_LESSONS: { object: 'courseId', scalars: ['minConsecutive'] },
   MAIN_SUBJECT_MORNING: { object: 'courseId', scalars: ['beforePeriodNo'] },
 }
 
-function displayValue(field: string, value: unknown): string {
-  return field === 'roomType' ? roomTypeLabel(value) : String(value)
+function displayValue(value: unknown): string {
+  return String(value)
 }
 
 interface ScalarConflict {
@@ -183,7 +182,7 @@ function scalarConflictBuckets(
         conflicts.push({
           positions,
           message: `「${row.name}」：课程「${objectName}」在第 ${positions.join('、')} 条给了不同的「${label}」（${distinct
-            .map((value) => displayValue(field, value))
+            .map((value) => displayValue(value))
             .join(' / ')}），同一目标不能并存，保存会被拒绝。`,
         })
       })

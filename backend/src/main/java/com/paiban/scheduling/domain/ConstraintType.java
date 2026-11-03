@@ -106,6 +106,23 @@ public enum ConstraintType {
             List.of());
 
     /**
+     * Types the product no longer offers (ticket 09). They stay as constants so old
+     * {@code constraint_config}/{@code constraint_entry} rows still deserialize, but
+     * they are excluded from the catalogue, from
+     * {@link com.paiban.scheduling.solver.ConstraintSettings} and from every
+     * solver/checker path. Removing the constants would make {@code valueOf} fail and
+     * silently erase old configurations.
+     */
+    private static final Set<ConstraintType> RETIRED = EnumSet.of(
+            ROOM_CONFLICT,
+            ROOM_CAPACITY_FIT,
+            COURSE_REQUIRED_ROOM_TYPE,
+            COURSE_NOT_IN_EVENING,
+            EVENING_MAX,
+            TEACHER_MEETING_BLOCKED,
+            HEAD_TEACHER_FIRST_PERIOD);
+
+    /**
      * The single registry that decides which types read their configuration from
      * entry rows. Every type listed here ignores {@code constraint_config.params_json}
      * during evaluation (V26/V27/V28 migrated the old single value into one entry row),
@@ -282,6 +299,16 @@ public enum ConstraintType {
 
     public boolean isHardOnly() {
         return this == CLASS_UNAVAILABLE;
+    }
+
+    /** True when the type is no longer offered and must never be evaluated. */
+    public boolean isRetired() {
+        return RETIRED.contains(this);
+    }
+
+    /** The catalogue as the API and every UI consume it: retired types excluded. */
+    public static List<ConstraintType> activeValues() {
+        return List.of(values()).stream().filter(type -> !type.isRetired()).toList();
     }
 
     public boolean supportsNaturalLanguage() {
