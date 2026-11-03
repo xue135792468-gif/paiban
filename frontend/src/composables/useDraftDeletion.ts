@@ -43,7 +43,7 @@ export async function deleteDraftWithConfirmation(
   const lockedCount = Math.max(0, draft.lockedCount ?? 0)
   const message =
     lockedCount > 0
-      ? `该草稿含 ${lockedCount} 节锁定课节，删除会一并移除这些锁定，且无法恢复。确定解锁并删除？`
+      ? `该草稿「${draft.name}」含 ${lockedCount} 节锁定课节，删除会一并移除这些锁定，且无法恢复。确定解锁并删除？`
       : `确定删除草稿「${draft.name}」吗？删除后无法恢复。`
 
   try {
