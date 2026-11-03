@@ -79,6 +79,7 @@ Fresh Review 发现连续撤销两次旧 move/swap 时第二次仍使用第一�
 - 证据：新增 E2E `同班交换不受同一时间其他班课程影响（真实课表常见）`（修复前无 `/changes` 请求、修复后 200 并完成交换），`draft-drag` 9/9、`swap` 4/4、`draft-locks` 8/8；前端全量 71 文件 / 553 单测通过。
 - 截图：[拖拽重叠场景](acceptance/draft-drag-overlap.png)、[跨班换人入口](acceptance/draft-cross-class-entry.png)。
 - 状态：已通过 PR #23 合并 main（`eb4d5ba`）并部署生产；服务器只重建 frontend，四容器 healthy、两处 health 200、Flyway 仍 47。
+- 后续补充（同一误判的另一处）：自动方案搜索也把“目标时间存在别班课”当成跨班，直换失败后本应搜索却报“只能在本班范围内换位”。已改为“只有目标时间没有本班课才拒绝”；`DraftCyclePlanIntegrationTest` 11/11、`draft-drag` + `swap` E2E 13/13 通过。该补丁截至本记录**尚未合并/部署**。
 
 ### 仓库级检查
 

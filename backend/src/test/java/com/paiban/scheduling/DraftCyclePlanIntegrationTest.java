@@ -101,6 +101,30 @@ class DraftCyclePlanIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void aForeignLessonAtTheTargetSlotDoesNotBlockCycleSearch() {
+        String token = adminToken();
+        World world = world(token);
+        Scenario scenario = threeLessonCycle(world);
+        // Real timetables usually have another class in the target slot. It is
+        // context, not a cross-class target: the same-class occupant still drives
+        // the swap and the 3-cycle must be found.
+        lesson(world, scenario.draftId(), 5L, world.classC(), world.chinese(),
+                world.teacherC(), world.periods().get(1), world.room5());
+
+        String planToken = searchToken(token, scenario.draftId(), scenario.source(),
+                world.periods().get(1), scenario.target(), 0L);
+        assertThat(planToken).isNotBlank();
+
+        as(token).body(Map.of("token", planToken, "expectedVersion", 0))
+                .when().post(APPLY.formatted(scenario.draftId()))
+                .then().statusCode(200)
+                .body("saved", equalTo(true));
+        assertThat(lessonPeriod(scenario.source())).isEqualTo(world.periods().get(1));
+        assertThat(lessonPeriod(scenario.target())).isEqualTo(world.periods().get(2));
+        assertThat(lessonPeriod(scenario.intermediate())).isEqualTo(world.periods().get(0));
+    }
+
+    @Test
     void applyMovesAllLessonsAtomicallyAndReplayIsRefused() {
         String token = adminToken();
         World world = world(token);

@@ -1085,7 +1085,7 @@ export interface DraftDragScenario {
 
 export async function seedDraftDragScenario(
   context: APIRequestContext,
-  options: { ambiguous?: boolean; overlapTarget?: boolean } = {},
+  options: { ambiguous?: boolean; overlapTarget?: boolean; blockedOverlapTarget?: boolean } = {},
 ): Promise<DraftDragScenario> {
   const token = await apiLogin(context)
   const suffix = Math.random().toString(36).slice(2, 8)
@@ -1231,7 +1231,13 @@ export async function seedDraftDragScenario(
     await place(class1Chinese.id, '1-2', rooms[1])
     await place(class1English.id, '1-3', rooms[2])
   }
-  if (options.overlapTarget) {
+  if (options.blockedOverlapTarget) {
+    // Direct swap is illegal (teacher B already has class 2 at the source slot),
+    // while the target slot also carries a foreign lesson. Auto-search must still
+    // find the 3-cycle; foreign lessons there are context, not a cross-class target.
+    await place(class2Chinese.id, '1-1', rooms[3])
+    await place(class2English.id, '1-2', rooms[4])
+  } else if (options.overlapTarget) {
     // Keep a foreign lesson on the target slot (real timetables do) but move the
     // other class's Chinese lesson away from the source slot so A/B swap is legal.
     await place(class2Chinese.id, '2-2', rooms[3])
