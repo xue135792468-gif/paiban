@@ -36,6 +36,15 @@
 - 校验：4 容器 healthy；本机 HTTPS 与公网 health 均 200；Flyway 仍 47；前端 bundle 已含“跨班换人”“选择位置”，旧“换课候选”残留仅为空态/错误提示文案。
 - 数据未变；未改课表、未触发排课、未发布草稿。
 
+## 2026-11-03 第二次后续修复：方案搜索目标时间别班课
+
+- 用户反馈：同班英语/数学互拖提示“只能在本班范围内换位”。直换因教师冲突失败后，自动方案搜索把目标时间的别班课误当跨班落点。
+- PR：[#24](https://github.com/xue135792468-gif/paiban/pull/24)，四 job 全绿（backend 16m59s 含真实 PostgreSQL、e2e 16m32s、frontend、deploy-scripts）；合并提交 `f71264e`。
+- 备份：`~/backups/paiban/paiban-pre-20261103T045446Z.sql.gz`（141,062 字节，`gzip -t` 通过）。
+- 部署：服务器与 `origin/main` 一致；只重建 backend 并 `up -d`，frontend/postgres/nginx 未重建。
+- 校验：4 容器 healthy；本机 HTTPS 与公网 health 均 200；Flyway 仍 47；backend 启动日志无 error/exception。
+- 修复逻辑：只有目标时间**没有任何本班课**且存在别班课时才拒绝；同班课 + 别班课并存时继续搜索闭环。
+
 ## 回滚
 
 - 代码：`cd ~/paiban && git reset --hard <上一个已知良好 commit>`，重跑构建与 `up -d`；不要加 `--build` 重建回滚镜像。
