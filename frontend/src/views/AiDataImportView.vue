@@ -9,6 +9,7 @@
       </div>
       <el-tag v-if="!configured" type="warning" effect="plain">未配置 AI 供应商</el-tag>
       <el-tag v-else type="success" effect="plain">AI 已就绪</el-tag>
+      <router-link to="/data/import/manual" data-testid="manual-import-link">手动选列导入</router-link>
     </div>
 
     <el-alert

@@ -22,5 +22,6 @@ const tabs: PageTabItem[] = [
   { label: '行政班', to: '/data/classes', tour: '/data/classes' },
   { label: '授课任务', to: '/data/assignments' },
   { label: '导入', to: '/data/import' },
+  { label: '手动导入', to: '/data/import/manual' },
 ]
 </script>
