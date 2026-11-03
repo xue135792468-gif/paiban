@@ -263,7 +263,8 @@ export interface PeriodOption {
 
 /** The values the form edits, without the card's storage identity. */
 export interface RuleInput {
-  type: RuleType
+  /** Null while the form has not picked a requirement yet. */
+  type: RuleType | null
   classId?: number | null
   teacherId?: number | null
   courseId?: number | null
@@ -382,11 +383,14 @@ function sameNumbers(left: number[], right: number[]): boolean {
 
 type RuleShape = Pick<
   RuleSentence,
-  'type' | 'classId' | 'teacherId' | 'courseId' | 'dayOfWeek' | 'periodNos' | 'amount'
-> & { exceptionClassIds?: number[] }
+  'classId' | 'teacherId' | 'courseId' | 'dayOfWeek' | 'periodNos' | 'amount'
+> & { type: RuleType | null; exceptionClassIds?: number[] }
 
 /** The sentence the card shows: "数学 每天最多 1 节" / "全校 的 课 在 周五第 7 节 不排". */
 export function describeRule(parts: RuleShape, names: RuleNames, periods: PeriodOption[]): string {
+  if (!parts.type) {
+    return '（请选择要求）'
+  }
   const type = parts.type
   const spec = RULE_SPECS[type]
   const teacher = parts.teacherId === null || parts.teacherId === undefined
@@ -463,6 +467,9 @@ export function describeCard(card: RuleCard, names: RuleNames, periods: PeriodOp
 
 /** The slots the requirement still needs before it can be saved. */
 export function missingParts(card: RuleShape): string[] {
+  if (!card.type) {
+    return ['选择要求']
+  }
   const spec = RULE_SPECS[card.type]
   const missing: string[] = []
   if (spec.target === 'CLASS' && !spec.allowSchool && (card.classId ?? null) === null) {
@@ -557,6 +564,9 @@ function cardIdOf(groupKey: string | null): string | null {
 }
 
 function sentenceFromInput(input: RuleInput, groupKey: string | null): RuleSentence {
+  if (!input.type) {
+    throw new Error('规则缺少：选择要求')
+  }
   const rule = RULE_SPECS[input.type]
   const isSchoolUnavailable = input.type === CLASS_UNAVAILABLE && (input.classId ?? null) === null
   return {

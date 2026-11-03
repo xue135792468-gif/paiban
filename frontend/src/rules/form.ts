@@ -1,5 +1,4 @@
 import {
-  CLASS_UNAVAILABLE,
   RULE_SPECS,
   normalizePeriods,
   type RuleInput,
@@ -11,7 +10,8 @@ import {
 /** The mutable sentence shape the rule form edits (no storage identity beyond `key`). */
 export interface FormSentence {
   key: string | null
-  type: RuleType
+  /** Null until the user picks a requirement. */
+  type: RuleType | null
   classId: number | null
   teacherId: number | null
   courseId: number | null
@@ -40,7 +40,7 @@ export function formSentenceFrom(sentence: RuleSentence): FormSentence {
 export function blankFormSentence(): FormSentence {
   return {
     key: null,
-    type: CLASS_UNAVAILABLE,
+    type: null,
     classId: null,
     teacherId: null,
     courseId: null,
@@ -52,8 +52,11 @@ export function blankFormSentence(): FormSentence {
   }
 }
 
-/** Turns one edited sentence back into the pure compiler input. */
-export function formSentenceInput(sentence: FormSentence): RuleInput {
+/** Turns one edited sentence back into the pure compiler input, or null while incomplete. */
+export function formSentenceInput(sentence: FormSentence): RuleInput | null {
+  if (!sentence.type) {
+    return null
+  }
   const rule = RULE_SPECS[sentence.type]
   return {
     type: sentence.type,

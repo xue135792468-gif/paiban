@@ -300,6 +300,9 @@ describe('rule compiler: 17 createable types', () => {
 
   it('refuses missing slots and non-selectable types', () => {
     expect(() =>
+      compileRule({ type: null, dayOfWeek: 5, periodNos: [1], strength: 'HARD' }),
+    ).toThrow('选择要求')
+    expect(() =>
       compileRule({ type: CLASS_UNAVAILABLE, dayOfWeek: 5, periodNos: [], strength: 'HARD' }),
     ).toThrow('至少要选择一个节次')
     expect(() =>
@@ -311,6 +314,10 @@ describe('rule compiler: 17 createable types', () => {
   })
 
   it('reports missing slots for the form', () => {
+    expect(missingParts({
+      type: null, classId: null, teacherId: null, courseId: null,
+      dayOfWeek: null, periodNos: [], amount: null,
+    })).toEqual(['选择要求'])
     expect(missingParts({
       type: TEACHER_DAY_OFF, classId: null, teacherId: 7, courseId: null,
       dayOfWeek: null, periodNos: [], amount: null,

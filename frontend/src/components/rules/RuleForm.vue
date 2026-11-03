@@ -136,10 +136,15 @@ function submit() {
   if (problems.value.length > 0) {
     return
   }
-  emit('submit', sentences.value.map((sentence) => ({
-    key: sentence.key,
-    input: formSentenceInput(sentence),
-  })))
+  const payload: CardSentenceInput[] = []
+  for (const sentence of sentences.value) {
+    const input = formSentenceInput(sentence)
+    if (!input) {
+      return
+    }
+    payload.push({ key: sentence.key, input })
+  }
+  emit('submit', payload)
 }
 </script>
 

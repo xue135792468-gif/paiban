@@ -106,11 +106,13 @@ test.describe('排课规则：完整积木交互', () => {
 
     await page.getByTestId('rule-new').click()
     const editor = form(page)
+    await pickOption(editor, 'rule-type', '全校/班级 的 课 不排')
     await pickOption(editor, 'rule-day', '周一')
     await editor.getByTestId('rule-period-3').click()
 
     await editor.getByTestId('rule-add-sentence').click()
     await expect(editor.getByTestId('rule-sentence-block-1')).toBeVisible()
+    await pickOption(editor, 'rule-type-1', '全校/班级 的 课 不排')
     await pickOption(editor, 'rule-day-1', '周二')
     await editor.getByTestId('rule-period-3-1').click()
     await pickException(page, 'rule-exceptions-1', classB.name)
@@ -172,6 +174,7 @@ test.describe('排课规则：完整积木交互', () => {
     await editor.getByTestId('rule-submit').click()
 
     await page.getByTestId('rule-new').click()
+    await pickOption(form(page), 'rule-type', '全校/班级 的 课 不排')
     await pickOption(form(page), 'rule-day', '周五')
     await form(page).getByTestId('rule-period-7').click()
     await form(page).getByTestId('rule-submit').click()

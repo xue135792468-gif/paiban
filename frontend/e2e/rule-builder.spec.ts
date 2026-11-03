@@ -45,6 +45,7 @@ test.describe('排课规则：句子积木', () => {
   async function addSchoolRule(page: Page) {
     await page.getByTestId('rule-new').click()
     await expect(form(page)).toBeVisible()
+    await pickOption(form(page), 'rule-type', '全校/班级 的 课 不排')
     await chooseDay(page, '周五')
     await form(page).getByTestId('rule-period-7').click()
     await expect(form(page).getByTestId('rule-preview')).toContainText(

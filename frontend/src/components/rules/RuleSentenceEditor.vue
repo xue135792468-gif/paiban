@@ -20,6 +20,8 @@
         <el-select
           v-model="local.type"
           filterable
+          clearable
+          placeholder="选择要求"
           class="type-select"
           :data-testid="tid('rule-type')"
           @change="onTypeChange"
@@ -40,12 +42,12 @@
       </div>
     </div>
 
-    <div v-if="rule.target !== 'NONE'" class="row">
+    <div v-if="rule && rule.target !== 'NONE'" class="row">
       <span class="label">对谁</span>
       <div class="value">
-        <template v-if="rule.target === 'CLASS'">
+        <template v-if="rule?.target === 'CLASS'">
           <el-radio-group
-            v-if="rule.allowSchool"
+            v-if="rule?.allowSchool"
             :model-value="local.classId === null ? 'SCHOOL' : 'CLASS'"
             :data-testid="tid('rule-scope')"
             @change="onClassScope"
@@ -54,7 +56,7 @@
             <el-radio-button value="CLASS">班级</el-radio-button>
           </el-radio-group>
           <el-select
-            v-if="!rule.allowSchool || local.classId !== null"
+            v-if="!rule?.allowSchool || local.classId !== null"
             v-model="local.classId"
             filterable
             clearable
@@ -66,9 +68,9 @@
           </el-select>
         </template>
 
-        <template v-else-if="rule.target === 'TEACHER'">
+        <template v-else-if="rule?.target === 'TEACHER'">
           <el-radio-group
-            v-if="rule.allowAnyTeacher"
+            v-if="rule?.allowAnyTeacher"
             :model-value="local.teacherId === null ? 'ANY' : 'ONE'"
             :data-testid="tid('rule-scope')"
             @change="onTeacherScope"
@@ -77,7 +79,7 @@
             <el-radio-button value="ONE">指定教师</el-radio-button>
           </el-radio-group>
           <el-select
-            v-if="!rule.allowAnyTeacher || local.teacherId !== null"
+            v-if="!rule?.allowAnyTeacher || local.teacherId !== null"
             v-model="local.teacherId"
             filterable
             clearable
@@ -93,26 +95,26 @@
       </div>
     </div>
 
-    <div v-if="rule.course !== 'ALL'" class="row">
+    <div v-if="rule && rule.course !== 'ALL'" class="row">
       <span class="label">哪些课</span>
       <div class="value">
         <el-select
           v-model="local.courseId"
           filterable
-          :clearable="rule.course === 'OPTIONAL'"
-          :placeholder="rule.coursePlaceholder"
+          :clearable="rule?.course === 'OPTIONAL'"
+          :placeholder="rule?.coursePlaceholder"
           class="object-select"
           :data-testid="tid('rule-course')"
         >
           <el-option v-for="item in courses" :key="item.id" :label="item.name" :value="item.id" />
         </el-select>
-        <span v-if="rule.course === 'OPTIONAL'" class="hint">
-          留空表示{{ rule.coursePlaceholder }}
+        <span v-if="rule?.course === 'OPTIONAL'" class="hint">
+          留空表示{{ rule?.coursePlaceholder }}
         </span>
       </div>
     </div>
 
-    <div v-if="rule.day === 'REQUIRED'" class="row">
+    <div v-if="rule && rule.day === 'REQUIRED'" class="row">
       <span class="label">什么时候</span>
       <div class="value column">
         <el-select
@@ -125,7 +127,7 @@
         >
           <el-option v-for="day in days" :key="day" :label="weekdayLabel(day)" :value="day" />
         </el-select>
-        <div v-if="rule.periods === 'REQUIRED' && local.dayOfWeek !== null" class="periods">
+        <div v-if="rule?.periods === 'REQUIRED' && local.dayOfWeek !== null" class="periods">
           <div class="period-actions">
             <el-button
               size="small"
@@ -161,7 +163,7 @@
       </div>
     </div>
 
-    <div v-if="rule.amount" class="row">
+    <div v-if="rule && rule.amount" class="row">
       <span class="label">数量</span>
       <div class="value">
         <span class="word">{{ rule.amount.label }}</span>
@@ -194,7 +196,7 @@
       </div>
     </div>
 
-    <div class="row">
+    <div v-if="rule" class="row">
       <span class="label">强度</span>
       <div class="value">
         <el-radio-group
@@ -258,7 +260,7 @@ watch(local, () => {
   })
 }, { deep: true })
 
-const rule = computed(() => RULE_SPECS[local.type])
+const rule = computed(() => (local.type === null ? null : RULE_SPECS[local.type]))
 
 const names = computed<RuleNames>(() => ({
   teacher: (id: number) => props.teachers.find((item) => item.id === id)?.name ?? `教师${id}`,
@@ -298,6 +300,9 @@ function lastPeriod(): number | null {
 }
 
 function onTypeChange() {
+  if (!local.type) {
+    return
+  }
   const next = RULE_SPECS[local.type]
   if (next.target !== 'CLASS') {
     local.classId = null

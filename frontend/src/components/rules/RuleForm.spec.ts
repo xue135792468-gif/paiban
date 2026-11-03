@@ -59,11 +59,12 @@ async function setPeriods(wrapper: VueWrapper, values: number[]) {
 }
 
 describe('RuleForm: searchable slots, live sentence and exceptions', () => {
-  it('shows the four searchable slots and an empty sentence by default', () => {
+  it('starts with every slot empty and asks for the requirement first', () => {
     const wrapper = mountForm()
     expect(select(wrapper, 'rule-type').props('filterable')).toBe(true)
-    expect(select(wrapper, 'rule-day').props('filterable')).toBe(true)
-    expect(wrapper.find('[data-testid="rule-missing"]').text()).toContain('选择星期')
+    expect(select(wrapper, 'rule-type').props('placeholder')).toBe('选择要求')
+    expect(wrapper.find('[data-testid="rule-day"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="rule-missing"]').text()).toContain('选择要求')
     expect(wrapper.find('[data-testid="rule-submit"]').attributes('disabled')).toBeDefined()
     wrapper.unmount()
   })
@@ -92,6 +93,8 @@ describe('RuleForm: searchable slots, live sentence and exceptions', () => {
 
   it('updates the sentence while the slots are being filled', async () => {
     const wrapper = mountForm()
+    await setSelect(wrapper, 'rule-type', 'CLASS_UNAVAILABLE')
+    expect(select(wrapper, 'rule-day').props('filterable')).toBe(true)
     await setSelect(wrapper, 'rule-day', 1)
     await setPeriods(wrapper, [3])
     expect(wrapper.find('[data-testid="rule-preview"]').text())
@@ -102,6 +105,7 @@ describe('RuleForm: searchable slots, live sentence and exceptions', () => {
 
   it('offers 除了班级 for a school-scope 不排 sentence and previews the exception', async () => {
     const wrapper = mountForm()
+    await setSelect(wrapper, 'rule-type', 'CLASS_UNAVAILABLE')
     await setSelect(wrapper, 'rule-day', 1)
     await setPeriods(wrapper, [3])
     expect(wrapper.find('[data-testid="rule-exceptions"]').exists()).toBe(true)
