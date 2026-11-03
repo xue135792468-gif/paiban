@@ -13,8 +13,9 @@ import com.paiban.foundation.web.FoundationDtos.CourseDto;
 import com.paiban.foundation.web.FoundationDtos.TeacherDto;
 import com.paiban.scheduling.domain.Assignment;
 import com.paiban.scheduling.domain.AssignmentRepository;
-import com.paiban.scheduling.solver.Lesson;
+import com.paiban.scheduling.service.SourceDraftSnapshot.SourceLesson;
 import com.paiban.scheduling.solver.ConstraintSettings;
+import com.paiban.scheduling.solver.Lesson;
 import com.paiban.scheduling.solver.PeriodSlot;
 import com.paiban.scheduling.solver.RoomRequirement;
 import com.paiban.scheduling.solver.RoomSlot;
@@ -54,8 +55,19 @@ public class TimetableProblemBuilder {
         this.foundation = foundation;
     }
 
-    /** The solver problem plus where its warm start came from: BASELINE, DRAFT or NONE. */
+    /** The solver problem plus where its warm start came from: BASELINE, DRAFT, NONE or SOURCE_DRAFT. */
     public record BuiltProblem(TimetableSolution solution, String warmStartSource) {}
+
+    /** The semester-wide facts both builders share, read once per problem. */
+    private record Context(
+            List<PeriodSlot> periodSlots,
+            List<RoomSlot> roomSlots,
+            Map<Long, RoomSlot> roomById,
+            Map<Long, ClassDto> classes,
+            Map<Long, CourseDto> courses,
+            Map<Long, TeacherDto> teachers,
+            Map<Long, RoomSlot> fixedRooms,
+            Map<Long, PeriodSlot> periodById) {}
 
     /**
      * Builds the problem with the solver's own defaults. Kept for the standalone
@@ -70,6 +82,145 @@ public class TimetableProblemBuilder {
 
     @Transactional(readOnly = true)
     public BuiltProblem buildWithWarmStart(Long semesterId, ConstraintSettings settings) {
+        Context context = context(semesterId);
+        List<Assignment> assignments = assignmentRepository.findBySemesterId(semesterId);
+        WarmStartSeedService.WarmStartSeed seed =
+                warmStart.seed(semesterId, context.periodById(), assignments);
+        Map<AssignmentKey, Deque<PeriodSlot>> warmPeriods = seed.periods();
+
+        List<Lesson> lessons = new ArrayList<>();
+        long lessonId = 1;
+        for (Assignment assignment : assignments) {
+            ClassDto adminClass = context.classes().get(assignment.getAdminClassId());
+            CourseDto course = context.courses().get(assignment.getCourseId());
+            TeacherDto teacher = context.teachers().get(assignment.getTeacherId());
+            int studentCount = adminClass == null ? 45 : adminClass.studentCount();
+            String requiredRoomType = course == null ? null : course.requiredRoomType();
+            boolean specialRoom = RoomRequirement.isSpecial(requiredRoomType);
+            RoomSlot fixedRoom = specialRoom
+                    ? null
+                    : context.fixedRooms().get(assignment.getAdminClassId());
+            Deque<PeriodSlot> baselinePeriods = warmPeriods.get(AssignmentKey.of(assignment));
+            for (int index = 0; index < assignment.getWeeklyLessons(); index++) {
+                Lesson lesson = new Lesson(
+                        lessonId++,
+                        assignment.getId(),
+                        assignment.getCourseId(),
+                        course == null ? null : course.name(),
+                        assignment.getTeacherId(),
+                        assignment.getAdminClassId(),
+                        adminClass == null ? null : adminClass.headTeacherId(),
+                        teacher == null ? null : teacher.subject(),
+                        requiredRoomType,
+                        course != null && course.allowConsecutive(),
+                        studentCount,
+                        index);
+                lesson.setFixedRoom(fixedRoom);
+                if (fixedRoom != null) {
+                    lesson.setRoom(fixedRoom);
+                }
+                if (baselinePeriods != null && !baselinePeriods.isEmpty()) {
+                    PeriodSlot proposed = baselinePeriods.poll();
+                    if (!settings.classUnavailable(assignment.getAdminClassId(),
+                            proposed.getDayOfWeek(), proposed.getPeriodNo())) {
+                        lesson.setPeriod(proposed);
+                    }
+                }
+                lessons.add(lesson);
+            }
+        }
+        return new BuiltProblem(
+                new TimetableSolution(lessons, context.periodSlots(), context.roomSlots()),
+                seed.source());
+    }
+
+    /**
+     * Builds the problem from an explicit, frozen source draft instead of the default
+     * warm-start policy. Every assignment's concrete lessons are matched by
+     * {@code (assignmentId, lessonIndex)}; the source draft's current teacher is kept
+     * (manual cross-class exchanges survive), and locked lessons are pinned with a hard
+     * constraint rather than only being used as an initial value.
+     */
+    @Transactional(readOnly = true)
+    public BuiltProblem buildFromSource(
+            Long semesterId, ConstraintSettings settings, SourceDraftSnapshot snapshot) {
+        Context context = context(semesterId);
+        List<Assignment> assignments = assignmentRepository.findBySemesterId(semesterId);
+        Map<String, SourceLesson> rows = new HashMap<>();
+        snapshot.lessons().forEach(row -> rows.put(lessonKey(row.assignmentId(), row.lessonIndex()), row));
+
+        List<Lesson> lessons = new ArrayList<>();
+        long lessonId = 1;
+        for (Assignment assignment : assignments) {
+            ClassDto adminClass = context.classes().get(assignment.getAdminClassId());
+            CourseDto course = context.courses().get(assignment.getCourseId());
+            String requiredRoomType = course == null ? null : course.requiredRoomType();
+            boolean specialRoom = RoomRequirement.isSpecial(requiredRoomType);
+            RoomSlot fixedRoom = specialRoom
+                    ? null
+                    : context.fixedRooms().get(assignment.getAdminClassId());
+            for (int index = 0; index < assignment.getWeeklyLessons(); index++) {
+                SourceLesson row = rows.get(lessonKey(assignment.getId(), index));
+                if (row == null) {
+                    // capture() already checked this; keep a hard stop instead of silently
+                    // dropping a lesson and losing its lock.
+                    throw new IllegalStateException(
+                            "来源草稿缺少授课任务的课节: " + assignment.getId() + "/" + index);
+                }
+                TeacherDto teacher = context.teachers().get(row.teacherId());
+                Lesson lesson = new Lesson(
+                        lessonId++,
+                        assignment.getId(),
+                        assignment.getCourseId(),
+                        course == null ? null : course.name(),
+                        row.teacherId(),
+                        assignment.getAdminClassId(),
+                        adminClass == null ? null : adminClass.headTeacherId(),
+                        teacher == null ? null : teacher.subject(),
+                        requiredRoomType,
+                        course != null && course.allowConsecutive(),
+                        row.studentCount(),
+                        index);
+                lesson.setFixedRoom(fixedRoom);
+                if (fixedRoom != null) {
+                    lesson.setRoom(fixedRoom);
+                } else if (row.roomId() != null) {
+                    RoomSlot sourceRoom = context.roomById().get(row.roomId());
+                    if (sourceRoom != null) {
+                        lesson.setRoom(sourceRoom);
+                    }
+                }
+                PeriodSlot slot = row.periodId() == null
+                        ? null
+                        : context.periodById().get(row.periodId());
+                if (row.locked()) {
+                    if (slot == null) {
+                        throw new IllegalStateException(
+                                "锁定课节引用的作息时段不存在: " + row.periodId());
+                    }
+                    // A lock is unconditional: keep the slot even when a current rule
+                    // marks it unavailable. The validation afterwards reports the
+                    // conflict instead of the solver silently moving the locked lesson.
+                    lesson.setLocked(true);
+                    lesson.setLockedPeriodId(row.periodId());
+                    lesson.setPeriod(slot);
+                } else if (slot != null && !settings.classUnavailable(
+                        assignment.getAdminClassId(), slot.getDayOfWeek(), slot.getPeriodNo())) {
+                    lesson.setPeriod(slot);
+                }
+                lessons.add(lesson);
+            }
+        }
+        return new BuiltProblem(
+                new TimetableSolution(lessons, context.periodSlots(), context.roomSlots()),
+                "SOURCE_DRAFT");
+    }
+
+    private static String lessonKey(Long assignmentId, int lessonIndex) {
+        return assignmentId + "#" + lessonIndex;
+    }
+
+    private Context context(Long semesterId) {
         List<Period> periods = periodRepository.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(semesterId);
         Map<Integer, List<Period>> byDay = new HashMap<>();
         periods.forEach(period -> byDay.computeIfAbsent(period.getDayOfWeek(), key -> new ArrayList<>()).add(period));
@@ -103,6 +254,8 @@ public class TimetableProblemBuilder {
         List<RoomSlot> roomSlots = roomRepository.findAllByOrderByNameAsc().stream()
                 .map(room -> new RoomSlot(room.getId(), room.getName(), room.getType(), room.getCapacity()))
                 .toList();
+        Map<Long, RoomSlot> roomById = new HashMap<>();
+        roomSlots.forEach(room -> roomById.put(room.getId(), room));
 
         Map<Long, ClassDto> classes = foundation.classesById(semesterId);
         Map<Long, CourseDto> courses = foundation.coursesById();
@@ -110,52 +263,8 @@ public class TimetableProblemBuilder {
         Map<Long, RoomSlot> fixedRooms = fixedRooms(semesterId, classes, roomSlots);
         Map<Long, PeriodSlot> periodById = new HashMap<>();
         periodSlots.forEach(slot -> periodById.put(slot.getId(), slot));
-        List<Assignment> assignments = assignmentRepository.findBySemesterId(semesterId);
-        WarmStartSeedService.WarmStartSeed seed =
-                warmStart.seed(semesterId, periodById, assignments);
-        Map<AssignmentKey, Deque<PeriodSlot>> warmPeriods = seed.periods();
-
-        List<Lesson> lessons = new ArrayList<>();
-        long lessonId = 1;
-        for (Assignment assignment : assignments) {
-            ClassDto adminClass = classes.get(assignment.getAdminClassId());
-            CourseDto course = courses.get(assignment.getCourseId());
-            TeacherDto teacher = teachers.get(assignment.getTeacherId());
-            int studentCount = adminClass == null ? 45 : adminClass.studentCount();
-            String requiredRoomType = course == null ? null : course.requiredRoomType();
-            boolean specialRoom = RoomRequirement.isSpecial(requiredRoomType);
-            RoomSlot fixedRoom = specialRoom ? null : fixedRooms.get(assignment.getAdminClassId());
-            Deque<PeriodSlot> baselinePeriods = warmPeriods.get(AssignmentKey.of(assignment));
-            for (int index = 0; index < assignment.getWeeklyLessons(); index++) {
-                Lesson lesson = new Lesson(
-                        lessonId++,
-                        assignment.getId(),
-                        assignment.getCourseId(),
-                        course == null ? null : course.name(),
-                        assignment.getTeacherId(),
-                        assignment.getAdminClassId(),
-                        adminClass == null ? null : adminClass.headTeacherId(),
-                        teacher == null ? null : teacher.subject(),
-                        requiredRoomType,
-                        course != null && course.allowConsecutive(),
-                        studentCount,
-                        index);
-                lesson.setFixedRoom(fixedRoom);
-                if (fixedRoom != null) {
-                    lesson.setRoom(fixedRoom);
-                }
-                if (baselinePeriods != null && !baselinePeriods.isEmpty()) {
-                    PeriodSlot proposed = baselinePeriods.poll();
-                    if (!settings.classUnavailable(assignment.getAdminClassId(),
-                            proposed.getDayOfWeek(), proposed.getPeriodNo())) {
-                        lesson.setPeriod(proposed);
-                    }
-                }
-                lessons.add(lesson);
-            }
-        }
-        return new BuiltProblem(
-                new TimetableSolution(lessons, periodSlots, roomSlots), seed.source());
+        return new Context(periodSlots, roomSlots, roomById, classes, courses, teachers,
+                fixedRooms, periodById);
     }
 
     /**

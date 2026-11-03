@@ -58,6 +58,28 @@ public class SchedulingJob {
     @Column(name = "solve_seconds", nullable = false)
     private int solveSeconds = 60;
 
+    /** The explicit draft this run continues from; null means the legacy default source. */
+    @Column(name = "source_draft_id")
+    private Long sourceDraftId;
+
+    @Column(name = "source_draft_version")
+    private Long sourceDraftVersion;
+
+    /** Frozen snapshot captured at submit time; the run never re-reads the live source. */
+    @Column(name = "source_snapshot_json", columnDefinition = "TEXT")
+    private String sourceSnapshotJson;
+
+    @Column(name = "inherited_lock_count")
+    private Integer inheritedLockCount;
+
+    /** Whether the produced draft would pass the publish readiness check. */
+    @Column(name = "result_publishable")
+    private Boolean resultPublishable;
+
+    /** Newline-separated publish blockers of the produced draft. */
+    @Column(name = "result_blockers", columnDefinition = "TEXT")
+    private String resultBlockers;
+
     @Column(name = "created_by", length = 64)
     private String createdBy;
 

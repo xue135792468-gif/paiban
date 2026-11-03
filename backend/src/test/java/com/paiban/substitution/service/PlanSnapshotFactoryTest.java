@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.paiban.common.policy.ExchangePolicyService;
 import com.paiban.common.settings.SettingsService;
 import com.paiban.foundation.domain.AdminClass;
 import com.paiban.foundation.domain.AdminClassRepository;
@@ -22,7 +23,7 @@ import com.paiban.scheduling.service.ConstraintService;
 import com.paiban.substitution.domain.Substitution;
 import com.paiban.substitution.domain.SubstitutionRepository;
 import com.paiban.substitution.plan.PlanSnapshot;
-import com.paiban.substitution.plan.RankingPreset;
+import com.paiban.common.policy.ExchangeRankingPreset;
 import com.paiban.timetable.domain.TimetableEntry;
 import com.paiban.timetable.domain.TimetableEntryRepository;
 import java.time.Instant;
@@ -72,14 +73,16 @@ class PlanSnapshotFactoryTest {
     void exposesTheConfiguredSwapPolicy() {
         SettingsService settings = mock(SettingsService.class);
         when(settings.substitutionSearchWindowDays()).thenReturn(9);
-        when(settings.substitutionMaxPlanTeachers()).thenReturn(4);
-        when(settings.substitutionRankingPreset()).thenReturn("min-teachers");
+        when(settings.exchangeMaxMovedLessons()).thenReturn(4);
+        when(settings.exchangeRankingPreset()).thenReturn(ExchangeRankingPreset.MIN_TEACHERS);
 
         PlanSnapshotFactory.SwapPlannerOptions options = factory(settings).swapOptions();
 
         assertThat(options.windowDays()).isEqualTo(9);
         assertThat(options.maxTeachers()).isEqualTo(4);
-        assertThat(options.preset()).isEqualTo(RankingPreset.MIN_TEACHERS);
+        assertThat(options.maxMovedLessons()).isEqualTo(4);
+        assertThat(options.preset()).isEqualTo(ExchangeRankingPreset.MIN_TEACHERS);
+        assertThat(options.fingerprint()).hasSize(64);
     }
 
     private PlanSnapshotFactory newFactory() {
@@ -163,7 +166,7 @@ class PlanSnapshotFactoryTest {
                 .thenReturn(com.paiban.scheduling.solver.ConstraintSettings.defaults());
 
         return new PlanSnapshotFactory(semesters, periods, rooms, courses, teachers, adminClasses,
-                entries, substitutions, constraints, settings);
+                entries, substitutions, constraints, settings, new ExchangePolicyService(settings));
     }
 
     private static Period period(long id, int periodNo) {

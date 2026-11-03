@@ -18,6 +18,8 @@ export interface SwapConfirmOutcome {
 export interface SwapFlowOptions {
   adjust: ReturnType<typeof useDraftAdjust>
   notify?: SwapFlowNotify
+  /** Current draft version, read at confirm time so an old preview cannot overwrite others. */
+  getVersion?: () => number | null
 }
 
 /**
@@ -118,7 +120,13 @@ export function useSwapFlow(options: SwapFlowOptions) {
     if (swapping.value) return { saved: false, conflicts: [] }
     swapping.value = true
     try {
-      const outcome = await adjust.swap(lesson, candidate, swapRooms.value)
+      const expectedVersion = options.getVersion?.() ?? null
+      const outcome = await adjust.swap(
+        lesson,
+        candidate,
+        swapRooms.value,
+        expectedVersion ?? undefined,
+      )
       if (outcome.warnings.length > 0) {
         notify.warning(outcome.warnings.join('；'))
       }

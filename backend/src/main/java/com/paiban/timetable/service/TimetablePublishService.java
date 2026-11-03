@@ -54,7 +54,10 @@ public class TimetablePublishService {
 
     @Transactional
     public PublishResultDto publish(Long draftId, String actor) {
-        TimetableDraft draft = drafts.findById(draftId)
+        // Take the same draft row lock every editor writes through. Without it a
+        // manual change could land between validateDraft() and the entry copy, and the
+        // published baseline would not be the table that was checked.
+        TimetableDraft draft = drafts.findWithLockById(draftId)
                 .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
         // Same judgement the page's whole-draft check shows: no second opinion here.
         DraftValidator.ValidationResult validation = validator.validateDraft(draftId);

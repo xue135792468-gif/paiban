@@ -1,5 +1,14 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
-import { API, apiCall, apiLogin, newContext, solveDraft, uiLogin } from './helpers'
+import {
+  API,
+  apiCall,
+  apiLogin,
+  newContext,
+  openDraft,
+  selectClass,
+  solveDraft,
+  waitForDraftReload,
+} from './helpers'
 
 /**
  * Manual swap coverage. The seed is deliberately separate from `seedSchool`:
@@ -168,7 +177,8 @@ async function seedSwapSchool(api: APIRequestContext): Promise<SwapSeed> {
   }
 }
 
-async function draftDetail(api: APIRequestContext, draftId: number): Promise<DraftDetail> {
+/** 草稿详情（含 periods）：只有换课 spec 需要周期维度，故保留本地名字。 */
+async function draftWithPeriods(api: APIRequestContext, draftId: number): Promise<DraftDetail> {
   const token = await apiLogin(api)
   return apiCall(api, token, 'get', `/timetable-drafts/${draftId}`)
 }
@@ -202,23 +212,6 @@ function lessonOf(detail: DraftDetail, classId: number, courseId: number): Draft
   return lesson
 }
 
-async function openDraft(page: Page, draftId: number): Promise<void> {
-  await uiLogin(page, 'admin', 'admin123')
-  await page.goto(`/admin/drafts/${draftId}`)
-  await expect(page.locator('.grid-card .cell').first()).toBeVisible()
-}
-
-async function selectClass(page: Page, className: string): Promise<void> {
-  const select = page.locator('.controls .el-select')
-  await select.click()
-  await page
-    .locator('.el-select-dropdown:visible .el-select-dropdown__item')
-    .filter({ hasText: className })
-    .first()
-    .click()
-  await expect(select).toContainText(className)
-}
-
 async function openSwapPanel(page: Page, layout: GridLayout, lesson: DraftLessonView) {
   const cells = page.locator('.grid-card .cell')
   await cellAt(cells, layout, lesson.dayOfWeek!, lesson.periodNo!).click()
@@ -229,19 +222,11 @@ async function openSwapPanel(page: Page, layout: GridLayout, lesson: DraftLesson
   return panel
 }
 
-function waitForDraftReload(page: Page, draftId: number) {
-  return page.waitForResponse(
-    (response) =>
-      response.request().method() === 'GET' &&
-      response.url().endsWith(`/api/timetable-drafts/${draftId}`),
-  )
-}
-
 test('场景 2a：同班换位交换两节课的节次，撤销后逐格恢复', async ({ page }) => {
   const api = await newContext()
   const seed = await seedSwapSchool(api)
   const draftId = await solveDraft(api, seed.semesterId)
-  const detail = await draftDetail(api, draftId)
+  const detail = await draftWithPeriods(api, draftId)
   const layout = gridLayout(detail)
   const math = lessonOf(detail, seed.classAId, seed.mathAId)
   const chinese = lessonOf(detail, seed.classAId, seed.chineseAId)
@@ -308,7 +293,7 @@ test('场景 2b：跨班换人保持节次与课程，只交换任课教师，�
   const api = await newContext()
   const seed = await seedSwapSchool(api)
   const draftId = await solveDraft(api, seed.semesterId)
-  const detail = await draftDetail(api, draftId)
+  const detail = await draftWithPeriods(api, draftId)
   const layout = gridLayout(detail)
   const mathA = lessonOf(detail, seed.classAId, seed.mathAId)
   const mathB = lessonOf(detail, seed.classBId, seed.mathBId)
@@ -375,7 +360,7 @@ test('场景 2c：不同科目的跨班换课被服务端拒绝且原因可读',
   const api = await newContext()
   const seed = await seedSwapSchool(api)
   const draftId = await solveDraft(api, seed.semesterId)
-  const detail = await draftDetail(api, draftId)
+  const detail = await draftWithPeriods(api, draftId)
   const chinese = lessonOf(detail, seed.classAId, seed.chineseAId)
   const mathB = lessonOf(detail, seed.classBId, seed.mathBId)
 
@@ -395,7 +380,7 @@ test('场景 2c：不同科目的跨班换课被服务端拒绝且原因可读',
   expect(messages).toContain(seed.chineseAName)
   expect(messages).toContain(seed.mathBName)
 
-  const after = await draftDetail(api, draftId)
+  const after = await draftWithPeriods(api, draftId)
   const chineseAfter = after.lessons.find((lesson) => lesson.id === chinese.id)
   const mathBAfter = after.lessons.find((lesson) => lesson.id === mathB.id)
   expect(chineseAfter?.teacherId).toBe(chinese.teacherId)
@@ -408,7 +393,7 @@ test('场景 2d：已发布课表的换课入口不可用', async ({ page }) => 
   const api = await newContext()
   const seed = await seedSwapSchool(api)
   const draftId = await solveDraft(api, seed.semesterId)
-  const detail = await draftDetail(api, draftId)
+  const detail = await draftWithPeriods(api, draftId)
   const layout = gridLayout(detail)
   const math = lessonOf(detail, seed.classAId, seed.mathAId)
 

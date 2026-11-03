@@ -17,6 +17,8 @@ export interface Draft {
   createdBy?: string
   createdAt: string
   lessonCount: number
+  /** Optimistic concurrency token; every write sends it back. */
+  version: number
 }
 
 export interface DraftRoom {
@@ -49,11 +51,14 @@ export interface DraftValidation {
   conflicts: DraftConflict[]
   publishable: boolean
   blockers: DraftPublishBlocker[]
+  rulesFingerprint?: string
 }
 
 export interface DraftLesson {
   id: number
   assignmentId: number
+  /** Ordinal of this lesson inside its assignment; the stable half of its identity. */
+  lessonIndex?: number | null
   courseId: number
   courseName?: string
   teacherId: number
@@ -68,6 +73,8 @@ export interface DraftLesson {
   periodLabel?: string
   roomId?: number | null
   roomName?: string
+  /** Locks pin both the period and the teacher; the server enforces them. */
+  locked: boolean
 }
 
 export interface DraftPeriod {
@@ -130,4 +137,88 @@ export interface SwapResult {
   type: 'INTRA_CLASS' | 'CROSS_CLASS'
   conflicts: DraftConflict[]
   warnings: string[]
+}
+
+/** `GET /timetable-drafts/{id}`; the editor always decides drop targets on this full list. */
+export interface DraftDetail {
+  draft: Draft
+  lessons: DraftLesson[]
+  periods: DraftPeriod[]
+  rooms: DraftRoom[]
+  blockedSlots?: BlockedClassSlot[]
+  rulesFingerprint: string
+}
+
+/** One lesson in an atomic change set (POST /changes). */
+export interface DraftChangeItem {
+  lessonId: number
+  toPeriodId: number | null
+  toTeacherId?: number | null
+  toRoomId?: number | null
+  expectedPeriodId: number | null
+  expectedTeacherId: number
+  expectedRoomId: number | null
+}
+
+/** Result of POST /changes and POST /cycle-plans/apply. */
+export interface DraftChangeResult {
+  saved: boolean
+  valid: boolean
+  version: number
+  hardConflicts: number
+  softPenaltyBefore: number
+  softPenaltyAfter: number
+  softPenaltyDelta: number
+  addedConflicts: DraftViolation[]
+  remainingConflicts: DraftViolation[]
+  conflicts: DraftViolation[]
+  /** Present on the cycle-plan apply response; false means the token was not consumed. */
+  tokenUsed?: boolean
+}
+
+export interface DraftViolation {
+  key: string
+  code: string
+  message: string
+  lessonId: number | null
+  severity: number
+  /** Severity of the fact: one pair conflict is 1, a two-lesson aggregate bucket is 2. */
+  weight?: number
+}
+
+export interface CyclePlanMove {
+  lessonId: number
+  fromPeriodId: number
+  toPeriodId: number
+  teacherId: number
+  courseId: number
+  classId: number
+}
+
+export interface CyclePlan {
+  token: string
+  kind: 'DIRECT' | 'CYCLE'
+  moves: CyclePlanMove[]
+  movedLessons: number
+  affectedTeachers: number
+  affectedDays: number
+  softPenaltyAfter: number
+  softPenaltyDelta: number
+  expiresAt: string
+}
+
+export interface CyclePlanSearch {
+  status: 'FOUND' | 'NONE' | 'BUDGET_EXHAUSTED'
+  message: string
+  version: number
+  fingerprint: string
+  plans: CyclePlan[]
+}
+
+/** `PUT /timetable-drafts/{id}/lessons/locks`; `updated` counts rows that really changed. */
+export interface LockResult {
+  requested: number
+  updated: number
+  locked: boolean
+  version: number
 }

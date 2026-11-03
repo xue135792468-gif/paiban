@@ -1,45 +1,24 @@
 <template>
   <div v-loading="loading" class="draft-page">
-    <div class="toolbar">
-      <div>
-        <el-button link @click="router.push('/admin/scheduling')">
-          <el-icon><ArrowLeft /></el-icon>
-          <span>返回排课</span>
-        </el-button>
-        <h2>
-          {{ detail?.draft.name ?? '课表草稿' }}
-          <el-tag
-            size="small"
-            :type="detail?.draft.status === 'PUBLISHED' ? 'success' : 'info'"
-            effect="light"
-          >
-            {{ detail?.draft.status === 'PUBLISHED' ? '已发布' : '草稿' }}
-          </el-tag>
-        </h2>
-        <p class="subtitle">
-          拖拽课节到其他时段即可调整。拖动时绿色表示可放置，红色表示有冲突，点击红格查看原因。可撤销最近 20
-          次调整。
-        </p>
-      </div>
-      <div class="actions">
-        <el-button :disabled="!canUndo || undoing" @click="undoMove">
-          <el-icon><RefreshLeft /></el-icon>
-          <span>撤销{{ undoCount > 0 ? `（${undoCount}）` : '' }}</span>
-        </el-button>
-        <el-button @click="load">刷新</el-button>
-        <el-button v-if="!isJunior" @click="openCompare">比较草稿</el-button>
-        <el-button v-if="canEdit" @click="rename">重命名</el-button>
-        <el-button
-          v-if="canPublish && detail?.draft.status !== 'PUBLISHED'"
-          type="success"
-          :disabled="!publishable"
-          @click="publishDraft"
-        >
-          发布课表
-        </el-button>
-        <el-button v-if="canEdit" type="danger" plain @click="removeDraft">删除</el-button>
-      </div>
-    </div>
+    <DraftEditorToolbar
+      :draft-name="detail?.draft.name"
+      :status="detail?.draft.status"
+      :undo-count="undoCount"
+      :can-undo="canUndo"
+      :undoing="undoing"
+      :busy="busy"
+      :can-edit="canEdit"
+      :can-publish="canPublish"
+      :publishable="publishable"
+      :is-junior="isJunior"
+      @back="router.push('/admin/scheduling')"
+      @undo="undoMove"
+      @refresh="load"
+      @compare="openCompare"
+      @rename="rename"
+      @publish="publishDraft"
+      @remove="removeDraft"
+    />
     <DraftStats
       :hard-conflicts="hardConflicts"
       :score-label="scoreLabel"
@@ -55,42 +34,43 @@
       @fill-rooms="roomFillVisible = true"
     />
 
+    <DraftOptimizationSection
+      v-if="detail?.draft.status === 'DRAFT'"
+      :draft="detail?.draft ?? null"
+      :source-draft-id="draftId"
+      :semester-id="detail?.draft.semesterId"
+      :can-optimize="canOptimize"
+      :locked-count="lockedCount"
+      :lesson-count="detail?.lessons.length ?? 0"
+    />
+
     <RoomFillDialog v-model="roomFillVisible" :draft-id="draftId" @applied="load" />
 
     <el-card shadow="never" class="control-card">
-      <div class="controls">
-        <el-radio-group v-model="viewMode" @change="resetTarget">
-          <el-radio-button value="class">按行政班</el-radio-button>
-          <el-radio-button value="teacher">按教师</el-radio-button>
-          <el-radio-button value="room">按教室</el-radio-button>
-        </el-radio-group>
-        <el-select v-model="targetId" filterable style="width: 220px" placeholder="选择对象">
-          <el-option
-            v-for="option in targetOptions"
-            :key="option.id"
-            :label="option.name"
-            :value="option.id"
-          />
-        </el-select>
-        <div class="spacer" />
-        <template v-if="selectedLesson">
-          <el-tag type="primary" effect="plain" closable @close="clearSelection">
-            已选：{{ selectedLesson.courseName }} · {{ selectedLesson.teacherName }} ·
-            {{ selectedLesson.periodLabel }}
-          </el-tag>
-          <el-button
-            type="primary"
-            :disabled="!draftEditable || selectedLesson.periodId == null"
-            @click="openForSelected"
-          >
-            换课
-          </el-button>
-        </template>
-        <el-button @click="drawerVisible = !drawerVisible">
-          <el-icon><Tickets /></el-icon>
-          <span>未排课节（{{ unassigned.length }}）</span>
-        </el-button>
-      </div>
+      <DraftEditorControls
+        v-model:view-mode="viewMode"
+        v-model:target-id="targetId"
+        :target-options="targetOptions"
+        :selected-lesson="selectedLesson"
+        :draft-editable="draftEditable"
+        :unassigned-count="unassigned.length"
+        :selection-mode="selectionMode"
+        :selected-count="selectedCount"
+        :selected-lesson-locked="selectedLesson?.locked ?? false"
+        :can-use-class-scope="canUseClassScope"
+        :day-options="dayOptions"
+        :class-scope-count="classScopeCount"
+        @view-change="resetTarget"
+        @swap="openSwapForSelected"
+        @adjust-position="openTargetDialog"
+        @toggle-drawer="drawerVisible = !drawerVisible"
+        @clear-selection="clearSelection"
+        @toggle-selection="toggleSelectionMode"
+        @lock-single="lockSingle"
+        @unlock-single="unlockSingle"
+        @batch-lock="confirmBatch"
+        @clear-multi-selection="clearLockSelection"
+      />
     </el-card>
 
     <div class="layout">
@@ -99,16 +79,21 @@
           :periods="detail?.periods ?? []"
           :lessons="filteredLessons"
           :courses="courses"
-          :draggable="draftEditable"
+          :draggable="draftEditable && !selectionMode"
           :dragged-lesson-id="dragged?.id ?? null"
+          :selection-mode="selectionMode"
+          :selected-lesson-ids="selectedIds"
           :targets="dragTargets"
           :blocked-periods="blockedPeriods"
           :conflict-lesson-ids="validation?.conflicts.map((item) => item.lessonId).filter((id) => id != null) ?? []"
+          :locked-lesson-ids="lockedLessonIds"
           :show-room="false"
           @drag-start="onDragStart"
           @drag-end="onDragEnd"
           @drop-cell="onDropCell"
           @cell-click="onCellClick"
+          @lesson-activate="onLessonActivate"
+          @toggle-select="onToggleSelect"
         />
       </el-card>
 
@@ -148,11 +133,34 @@
       </ul>
     </el-dialog>
 
+    <DraftTargetDialog
+      v-model="targetVisible"
+      :periods="detail?.periods ?? []"
+      :current-period-id="selectedLesson?.periodId ?? null"
+      :locked-period-ids="lockedPeriodIds"
+      :unavailable-period-ids="unavailablePeriodIds"
+      @select="onTargetPick"
+    />
+
+    <CyclePlanPanel
+      v-model="plansVisible"
+      :status="plansStatus"
+      :message="plansMessage"
+      :plans="plans"
+      :lessons="detail?.lessons ?? []"
+      :periods="detail?.periods ?? []"
+      :applying="planApplying"
+      @apply="onApplyPlan"
+      @cancel="closePlans"
+    />
+
     <DraftCompareDialog
       v-if="!isJunior"
       v-model="compareVisible"
       :draft-id="draftId"
       :semester-id="detail?.draft.semesterId"
+      :source-draft-id="compareSourceId"
+      :compare-with-draft-id="draftId"
     />
 
     <el-drawer
@@ -192,37 +200,34 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, RefreshLeft, Tickets } from '@element-plus/icons-vue'
-import { http } from '@/api/http'
-import { serverMessage } from '@/api/errors'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import DraftGrid from '@/components/draft/DraftGrid.vue'
 import DraftCompareDialog from '@/components/draft/DraftCompareDialog.vue'
 import DraftStats from '@/components/draft/DraftStats.vue'
 import DraftPublishBlockers from '@/components/draft/DraftPublishBlockers.vue'
+import DraftOptimizationSection from '@/components/draft/DraftOptimizationSection.vue'
 import RoomFillDialog from '@/components/draft/RoomFillDialog.vue'
 import SwapCandidatePanel from '@/components/draft/SwapCandidatePanel.vue'
 import DualTimetablePreview from '@/components/draft/DualTimetablePreview.vue'
+import DraftEditorToolbar from '@/components/draft/DraftEditorToolbar.vue'
+import DraftEditorControls from '@/components/draft/DraftEditorControls.vue'
+import DraftTargetDialog from '@/components/draft/DraftTargetDialog.vue'
+import CyclePlanPanel from '@/components/draft/CyclePlanPanel.vue'
 import { courseColor } from '@/components/draft/colors'
-import { canPublishNow } from '@/components/draft/publishBlockers'
 import { useDraftAdjust } from '@/composables/useDraftAdjust'
+import { useDraftEditor } from '@/composables/useDraftEditor'
+import { useDraftDrop } from '@/composables/useDraftDrop'
+import { useCyclePlans } from '@/composables/useCyclePlans'
 import { useSwapFlow } from '@/composables/useSwapFlow'
-import { blockedPeriodsForClass } from '@/components/draft/availability'
-import type {
-  Draft,
-  BlockedClassSlot,
-  DraftConflict,
-  DraftCourse,
-  DraftLesson,
-  DraftPeriod,
-  DraftRoom,
-  DraftValidation,
-  MoveTargetState,
-} from '@/components/draft/types'
+import { useDraftLocks } from '@/composables/useDraftLocks'
+import { useUndoShortcut } from '@/composables/useUndoShortcut'
+import { useDraftCompareQuery } from '@/composables/useDraftCompareQuery'
+import { useDraftActions } from '@/composables/useDraftActions'
+import type { CyclePlan, DraftConflict, DraftLesson } from '@/components/draft/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -234,9 +239,24 @@ const canEdit = computed(() => auth.hasPermission('timetable:edit'))
 const canPublish = computed(() => auth.hasPermission('timetable:publish'))
 // Filling rooms needs two permissions; that pair is defined in the auth store.
 const canFillRooms = computed(() => auth.canFillDraftRooms)
+const canOptimize = computed(() => auth.hasPermission('scheduling:run'))
+const lockedCount = computed(
+  () => (detail.value?.lessons ?? []).filter((lesson) => lesson.locked).length,
+)
+const { compareVisible, compareSourceId, openCompare } = useDraftCompareQuery()
 
 const adjust = useDraftAdjust(draftId)
-const { undoCount, canUndo, undoing, move, undo, loadMoveTargets } = adjust
+const { undoCount, canUndo, undoing, busy, undo } = adjust
+const cyclePlans = useCyclePlans({ adjust })
+const {
+  visible: plansVisible,
+  status: plansStatus,
+  message: plansMessage,
+  plans,
+  applying: planApplying,
+  close: closePlans,
+} = cyclePlans
+
 const {
   selectedLesson,
   panelVisible,
@@ -251,94 +271,90 @@ const {
   swapping,
   selectLesson,
   clearSelection,
-  openPanel,
   openForSelected,
   setIncludeUnavailable,
   selectCandidate,
   confirm: confirmSwap,
   closePanel,
   closePreview,
-} = useSwapFlow({ adjust })
+} = useSwapFlow({
+  adjust,
+  // Read at confirm time: an old preview must not overwrite a newer draft version.
+  getVersion: () => detail.value?.draft.version ?? null,
+})
 
-const loading = ref(false)
-type DraftDetail = { draft: Draft; lessons: DraftLesson[]; periods: DraftPeriod[]; rooms: DraftRoom[]; blockedSlots?: BlockedClassSlot[] }
-const detail = ref<DraftDetail | null>(null)
-const draftEditable = computed(() => canEdit.value && detail.value?.draft.status === 'DRAFT')
-const validation = ref<DraftValidation | null>(null)
-const courses = ref<DraftCourse[]>([])
-const viewMode = ref<'class' | 'teacher' | 'room'>('class')
-const targetId = ref<number | null>(null)
-const blockedPeriods = computed(() => viewMode.value === 'class'
-  ? blockedPeriodsForClass(detail.value?.blockedSlots ?? [], targetId.value)
-  : {})
+const {
+  loading,
+  detail,
+  validation,
+  courses,
+  viewMode,
+  targetId,
+  draftEditable,
+  blockedPeriods,
+  filteredLessons,
+  unassigned,
+  hardConflicts,
+  blockers,
+  publishable,
+  scoreLabel,
+  targetOptions,
+  draftVersion,
+  rulesFingerprint,
+  resetTarget,
+  load,
+  lessonAt,
+} = useDraftEditor({ draftId, canEdit, onLoaded: () => clearSelection() })
+
+const locks = useDraftLocks({
+  draftId, detail, draftEditable, viewMode, targetId, reload: load, notify: ElMessage,
+})
+const {
+  selectionMode, selectedIds, selectedCount, dayOptions, classScopeCount, canUseClassScope,
+  lockedLessonIds, toggleSelectionMode, clearSelection: clearLockSelection, confirmBatch,
+} = locks
+const { toggle: toggleLockSelection, lockSingle, unlockSingle } = locks
+
 const drawerVisible = ref(false)
 const dragged = ref<DraftLesson | null>(null)
-const dragTargets = ref<Record<number, MoveTargetState> | null>(null)
+const dragTargets = ref<Record<number, { available: boolean; conflicts: DraftConflict[] }> | null>(null)
 const conflictVisible = ref(false)
 const cellConflicts = ref<DraftConflict[]>([])
-const compareVisible = ref(false)
 const roomFillVisible = ref(false)
+const targetVisible = ref(false)
 
-const filteredLessons = computed(() => {
-  const lessons = detail.value?.lessons ?? []
-  if (targetId.value == null) return lessons
-  return lessons.filter((lesson) => {
-    if (viewMode.value === 'class') return lesson.classId === targetId.value
-    if (viewMode.value === 'teacher') return lesson.teacherId === targetId.value
-    return lesson.roomId === targetId.value
-  })
-})
-
-const unassigned = computed(() => filteredLessons.value.filter((lesson) => !lesson.periodId))
-
-const hardConflicts = computed(() => validation.value?.hardConflicts ?? 0)
-// The server's whole-draft judgement is the only opinion on whether publishing can work.
-const blockers = computed(() => validation.value?.blockers ?? [])
-// The button follows the blockers themselves; an unfinished check keeps it disabled.
-const publishable = computed(() => canPublishNow(validation.value))
-const scoreLabel = computed(
-  () => `${detail.value?.draft.scoreHard ?? 0} hard / ${detail.value?.draft.scoreSoft ?? 0} soft`,
+const lockedPeriodIds = computed(() =>
+  (detail.value?.lessons ?? [])
+    .filter(
+      (lesson) =>
+        lesson.locked &&
+        lesson.periodId != null &&
+        lesson.classId === selectedLesson.value?.classId,
+    )
+    .map((lesson) => lesson.periodId!),
 )
 
-const targetOptions = computed(() => {
-  if (viewMode.value === 'room') {
-    return (detail.value?.rooms ?? []).map((room) => ({ id: room.id, name: room.name }))
-  }
-  const map = new Map<number, string>()
+const unavailablePeriodIds = computed(() => {
+  const ids = new Set<number>()
+  const classId = selectedLesson.value?.classId
   detail.value?.lessons.forEach((lesson) => {
-    if (viewMode.value === 'class') {
-      map.set(lesson.classId, lesson.className ?? `行政班${lesson.classId}`)
-    } else {
-      map.set(lesson.teacherId, lesson.teacherName ?? `教师${lesson.teacherId}`)
+    if (lesson.periodId != null && classId != null && lesson.classId !== classId) {
+      ids.add(lesson.periodId)
     }
   })
-  return [...map.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
+  Object.keys(blockedPeriods.value).forEach((periodId) => ids.add(Number(periodId)))
+  return [...ids]
 })
 
-async function load() {
-  loading.value = true
-  try {
-    const [detailRes, validationRes, courseRes] = await Promise.all([
-      http.get(`/timetable-drafts/${draftId}`),
-      http.get(`/timetable-drafts/${draftId}/validation`),
-      http.get('/courses'),
-    ])
-    detail.value = detailRes.data
-    validation.value = validationRes.data
-    courses.value = courseRes.data
-    if (targetId.value == null) resetTarget()
-    clearSelection()
-  } catch (e: any) {
-    ElMessage.error(serverMessage(e, '加载草稿失败'))
-  } finally {
-    loading.value = false
-  }
-}
-
-function resetTarget() {
-  const options = targetOptions.value
-  targetId.value = options.length > 0 ? options[0].id : null
-}
+const { drop } = useDraftDrop({
+  detail,
+  draftEditable,
+  adjust,
+  cyclePlans,
+  reload: load,
+  notify: ElMessage,
+  showConflicts,
+})
 
 function showConflicts(conflicts: DraftConflict[]) {
   cellConflicts.value = conflicts
@@ -348,7 +364,7 @@ function showConflicts(conflicts: DraftConflict[]) {
 async function onDragStart(lesson: DraftLesson) {
   dragged.value = lesson
   dragTargets.value = null
-  const targets = await loadMoveTargets(lesson.id)
+  const targets = await adjust.loadMoveTargets(lesson.id)
   if (dragged.value?.id === lesson.id) {
     dragTargets.value = targets
   }
@@ -362,43 +378,13 @@ function onDragEnd() {
 async function onDropCell(payload: { day: number; periodNo: number; periodId: number }) {
   const lesson = dragged.value
   if (!lesson) return
-  const state = dragTargets.value?.[payload.periodId]
-  if (!state) return
-  if (!state.available) {
-    const occupied = filteredLessons.value.find(
-      (item) =>
-        item.dayOfWeek === payload.day &&
-        item.periodNo === payload.periodNo &&
-        item.id !== lesson.id,
-    )
-    if (occupied && occupied.classId === lesson.classId && draftEditable.value) {
-      openPanel(lesson, 'INTRA_CLASS')
-      onDragEnd()
-      return
-    }
-    if (occupied && occupied.classId !== lesson.classId) {
-      ElMessage.warning(
-        `该节次属于${occupied.className ?? '其他班级'}的课，跨班只能换老师、不能换节次`,
-      )
-    }
-    showConflicts(state.conflicts)
-    onDragEnd()
-    return
-  }
-  const outcome = await move(lesson, { periodId: payload.periodId, roomId: lesson.roomId ?? null })
-  if (outcome.conflicts.length > 0) {
-    showConflicts(outcome.conflicts)
-  }
-  if (outcome.saved || outcome.conflicts.length > 0) {
-    await load()
-  }
+  await drop(lesson, payload.periodId)
   onDragEnd()
 }
 
 function onCellClick(payload: { day: number; periodNo: number }) {
-  const lesson = filteredLessons.value.find(
-    (item) => item.dayOfWeek === payload.day && item.periodNo === payload.periodNo,
-  )
+  if (selectionMode.value) return
+  const lesson = lessonAt(payload.day, payload.periodNo)
   if (!lesson) return
   selectLesson(lesson)
   const related = (validation.value?.conflicts ?? []).filter((conflict) => conflict.lessonId === lesson.id)
@@ -407,98 +393,97 @@ function onCellClick(payload: { day: number; periodNo: number }) {
   }
 }
 
-async function onConfirmSwap() {
-  const outcome = await confirmSwap()
-  if (outcome.saved) {
-    await load()
-  } else if (outcome.conflicts.length > 0) {
-    showConflicts(outcome.conflicts)
-  }
-}
-
-async function undoMove() {
-  const outcome = await undo()
-  if (!outcome.undone) {
-    if (outcome.conflicts && outcome.conflicts.length > 0) {
-      showConflicts(outcome.conflicts)
-    }
+function onLessonActivate(lesson: DraftLesson) {
+  if (selectionMode.value) {
+    toggleLockSelection(lesson.id)
     return
   }
-  await load()
+  selectLesson(lesson)
 }
 
-function onKeydown(event: KeyboardEvent) {
-  if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z') return
-  const target = event.target as HTMLElement | null
-  const tag = target?.tagName?.toLowerCase()
-  if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) return
-  if (!canUndo.value) return
-  event.preventDefault()
-  void undoMove()
+function onToggleSelect(lesson: DraftLesson) {
+  toggleLockSelection(lesson.id)
 }
 
-async function rename() {
-  if (!detail.value) return
-  try {
-    const { value } = await ElMessageBox.prompt('输入新的草稿名称', '重命名草稿', {
-      inputValue: detail.value.draft.name,
-      inputValidator: (input) => Boolean(input && input.trim()),
-    })
-    await http.put(`/timetable-drafts/${draftId}/name`, { name: value })
-    ElMessage.success('已重命名')
-    await load()
-  } catch {
-    // cancelled
-  }
+function openSwapForSelected() {
+  if (selectedLesson.value?.locked) return ElMessage.warning('该课节已锁定，先解锁后再换课')
+  openForSelected()
 }
 
-async function publishDraft() {
-  if (!detail.value) return
+function openTargetDialog() {
+  if (!selectedLesson.value || selectedLesson.value.periodId == null) return
+  if (selectedLesson.value.locked) return ElMessage.warning('该课节已锁定，先解锁后再调整位置')
+  targetVisible.value = true
+}
+
+async function onTargetPick(periodId: number) {
+  const lesson = selectedLesson.value
+  if (!lesson) return
+  await drop(lesson, periodId)
+}
+
+async function onApplyPlan(plan: CyclePlan) {
   try {
     await ElMessageBox.confirm(
-      '发布后该草稿将成为正式课表基线，后续变更需走调代流程。确定发布？',
-      '发布课表',
+      '应用后整组课节会一起换位，并作为一步撤销。确定应用这个方案？',
+      '应用联动方案',
       { type: 'warning' },
     )
   } catch {
     return
   }
-  try {
-    const { data } = await http.post(`/timetable-drafts/${draftId}/publish`)
-    ElMessage.success(`课表已发布，共 ${data.entryCount} 节课`)
+  const outcome = await cyclePlans.apply(plan, draftVersion.value, detail.value?.lessons ?? [])
+  if (outcome.saved) {
     await load()
-  } catch (e: any) {
-    ElMessage.error(serverMessage(e, '发布失败'))
+  } else if ('conflicts' in outcome && outcome.conflicts.length > 0) {
+    showConflicts(outcome.conflicts)
+    await load()
+  } else {
+    await load()
   }
 }
 
-async function removeDraft() {
-  try {
-    await ElMessageBox.confirm('确定删除该草稿吗？删除后无法恢复。', '删除草稿', { type: 'warning' })
-  } catch {
+async function onConfirmSwap() {
+  const outcome = await confirmSwap()
+  if (outcome.saved) {
+    await load()
     return
   }
-  try {
-    await http.delete(`/timetable-drafts/${draftId}`)
-    ElMessage.success('已删除')
-    router.push('/admin/scheduling')
-  } catch (e: any) {
-    ElMessage.error(serverMessage(e, '删除失败'))
+  if (outcome.conflicts.length > 0) {
+    showConflicts(outcome.conflicts)
+  }
+  // A refusal or a stale version still needs the authoritative grid back.
+  await load()
+}
+
+async function undoMove() {
+  if (busy.value || undoing.value) return
+  const outcome = await undo({
+    expectedVersion: draftVersion.value,
+    rulesFingerprint: rulesFingerprint.value,
+  })
+  if (outcome.undone) {
+    await load()
+    return
+  }
+  if (outcome.conflicts && outcome.conflicts.length > 0) {
+    showConflicts(outcome.conflicts)
+  }
+  if (outcome.error || (outcome.conflicts && outcome.conflicts.length > 0)) {
+    await load()
   }
 }
 
-async function openCompare() {
-  if (isJunior.value) return
-  compareVisible.value = true
-}
+useUndoShortcut({ canUndo, busy, undo: undoMove })
 
-onMounted(() => {
-  window.addEventListener('keydown', onKeydown)
-  void load()
+const { rename, publish: publishDraft, remove: removeDraft } = useDraftActions({
+  draftId,
+  detail,
+  reload: load,
 })
 
-onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onKeydown)
+onMounted(() => {
+  void load()
 })
 </script>
 
@@ -508,37 +493,8 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 14px;
 }
-.toolbar {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-}
-h2 {
-  margin: 4px 0;
-  font-size: 20px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.subtitle {
-  margin: 0;
-  color: var(--paiban-muted);
-  font-size: 13px;
-}
-.actions {
-  display: flex;
-  gap: 8px;
-}
 .control-card {
   border: none;
-}
-.controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.spacer {
-  flex: 1;
 }
 .layout {
   display: flex;

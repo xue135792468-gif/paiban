@@ -10,8 +10,9 @@ public final class SwapDtos {
 
     public record SwapRequest(@NotNull(message = "课节不能为空") Long lessonId,
                               @NotNull(message = "目标课节不能为空") Long targetLessonId,
-                              Boolean swapRooms) {}
+                              Boolean swapRooms, Long expectedVersion) {}
 
     public record SwapResult(boolean saved, boolean valid, int hardConflicts, String type,
-                             List<DraftValidator.Conflict> conflicts, List<String> warnings) {}
+                             List<DraftValidator.Conflict> conflicts, List<String> warnings,
+                             long version) {}
 }

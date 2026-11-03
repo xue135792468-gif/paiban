@@ -18,7 +18,7 @@ import com.paiban.substitution.domain.SubstitutionPlanMoveRepository;
 import com.paiban.substitution.domain.SubstitutionRepository;
 import com.paiban.substitution.domain.SubstitutionRequest;
 import com.paiban.substitution.plan.PlanMove;
-import com.paiban.substitution.plan.RankingPreset;
+import com.paiban.common.policy.ExchangeRankingPreset;
 import com.paiban.substitution.web.SubstitutionDtos.PlanMoveDto;
 import com.paiban.substitution.web.SubstitutionDtos.SubstitutionPlanDto;
 import com.paiban.substitution.web.SubstitutionDtos.SubstitutionRecordDto;
@@ -166,7 +166,7 @@ public class SubstitutionMapper {
         List<PlanMoveDto> moves = planMoves.findByPlanIdOrderByMoveOrderAsc(plan.getId()).stream()
                 .map(this::toPlanMoveDto)
                 .toList();
-        RankingPreset preset = RankingPreset.fromCode(plan.getRankingPreset());
+        ExchangeRankingPreset preset = ExchangeRankingPreset.fromCode(plan.getRankingPreset());
         return new SubstitutionPlanDto(
                 plan.getId(), plan.getRequestId(), plan.getStatus(), plan.getRankingPreset(),
                 preset.label(), plan.getImpactDays(), plan.getImpactTeachers(), plan.getSoftPenalty(),

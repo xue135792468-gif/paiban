@@ -32,6 +32,7 @@ function lesson(overrides: Partial<DraftLesson> & { id: number }): DraftLesson {
     periodLabel: '周一第1节',
     roomId: 20,
     roomName: '101',
+    locked: false,
     ...overrides,
   }
 }

@@ -39,6 +39,7 @@ function lesson(
     dayOfWeek,
     periodNo,
     roomName: '101',
+    locked: false,
     ...overrides,
   }
 }
@@ -144,5 +145,117 @@ describe('DraftGrid', () => {
     })
 
     expect(wrapper.get('.row-time').text()).toBe('08:00-08:45')
+  })
+
+  it('锁定课节带 locked 标记、data-locked、锁字与 aria 说明', () => {
+    const wrapper = mountGrid({
+      lessons: [lesson(1, 1, 1, { locked: true })],
+      lockedLessonIds: [1],
+    })
+
+    const card = wrapper.get('.lesson')
+    expect(card.classes()).toContain('locked')
+    expect(card.attributes('data-locked')).toBe('true')
+    expect(card.attributes('tabindex')).toBe('0')
+    expect(card.text()).toContain('锁')
+    expect(card.attributes('aria-label')).toContain('课程1')
+    expect(card.attributes('aria-label')).toContain('教师1')
+    expect(card.attributes('aria-label')).toContain('已锁定')
+  })
+
+  it('未锁定的课节没有锁定标记但仍可聚焦', () => {
+    const wrapper = mountGrid({ lessons: [lesson(1, 1, 1)], lockedLessonIds: [2] })
+
+    const card = wrapper.get('.lesson')
+    expect(card.classes()).not.toContain('locked')
+    expect(card.attributes('data-locked')).toBeUndefined()
+    expect(card.text()).not.toContain('锁')
+    expect(card.attributes('aria-label')).not.toContain('已锁定')
+  })
+
+  it('Enter 与 Space 都触发 lesson-activate，用于等价键盘入口', async () => {
+    const wrapper = mountGrid({ lessons: [lesson(1, 1, 1)] })
+    const card = wrapper.get('.lesson')
+
+    await card.trigger('keydown', { key: 'Enter' })
+    await card.trigger('keydown', { key: ' ' })
+
+    const events = wrapper.emitted('lesson-activate') ?? []
+    expect(events).toHaveLength(2)
+    expect(events[0][0]).toMatchObject({ id: 1 })
+  })
+
+  it('普通模式点击课节仍然冒泡到单元格，保持原有选中方式', async () => {
+    const wrapper = mountGrid({ lessons: [lesson(1, 1, 1)] })
+
+    await wrapper.get('.lesson').trigger('click')
+
+    expect(wrapper.emitted('toggle-select')).toBeUndefined()
+    expect(wrapper.emitted('cell-click')?.[0]?.[0]).toEqual({ day: 1, periodNo: 1 })
+  })
+
+  it('选择模式点击课节只发 toggle-select，不冒泡也不可拖拽', async () => {
+    const wrapper = mountGrid({
+      lessons: [lesson(1, 1, 1)],
+      selectionMode: true,
+      draggable: true,
+    })
+    const card = wrapper.get('.lesson')
+
+    await card.trigger('click')
+
+    expect(wrapper.emitted('toggle-select')?.[0]?.[0]).toMatchObject({ id: 1 })
+    expect(wrapper.emitted('cell-click')).toBeUndefined()
+    expect(wrapper.emitted('drag-start')).toBeUndefined()
+    expect(card.attributes('draggable')).toBe('false')
+
+    await card.trigger('dragstart')
+    expect(wrapper.emitted('drag-start')).toBeUndefined()
+  })
+
+  it('选择模式下的选中课节有 selected 样式、data-selected 与 aria-pressed', () => {
+    const wrapper = mountGrid({
+      lessons: [lesson(1, 1, 1), lesson(2, 1, 2)],
+      periods: [period(1, 1), period(1, 2)],
+      selectionMode: true,
+      selectedLessonIds: [1],
+    })
+
+    const cards = wrapper.findAll('.lesson')
+    expect(cards[0].classes()).toContain('selected')
+    expect(cards[0].attributes('data-selected')).toBe('true')
+    expect(cards[0].attributes('aria-pressed')).toBe('true')
+    expect(cards[1].classes()).not.toContain('selected')
+    expect(cards[1].attributes('data-selected')).toBeUndefined()
+    expect(cards[1].attributes('aria-pressed')).toBe('false')
+  })
+
+  it('锁定与选中样式可以同时存在，锁定虚线不被选中覆盖', () => {
+    const wrapper = mountGrid({
+      lessons: [lesson(1, 1, 1, { locked: true })],
+      lockedLessonIds: [1],
+      selectionMode: true,
+      selectedLessonIds: [1],
+    })
+
+    const card = wrapper.get('.lesson')
+    expect(card.classes()).toContain('locked')
+    expect(card.classes()).toContain('selected')
+    expect(card.attributes('data-locked')).toBe('true')
+    expect(card.text()).toContain('锁')
+  })
+
+  it('选择模式按下 Enter/Space 发 toggle-select，普通模式仍发 lesson-activate', async () => {
+    const selecting = mountGrid({ lessons: [lesson(1, 1, 1)], selectionMode: true })
+    await selecting.get('.lesson').trigger('keydown', { key: 'Enter' })
+
+    expect(selecting.emitted('toggle-select')?.[0]?.[0]).toMatchObject({ id: 1 })
+    expect(selecting.emitted('lesson-activate')).toBeUndefined()
+
+    const normal = mountGrid({ lessons: [lesson(1, 1, 1)] })
+    await normal.get('.lesson').trigger('keydown', { key: ' ' })
+
+    expect(normal.emitted('lesson-activate')?.[0]?.[0]).toMatchObject({ id: 1 })
+    expect(normal.emitted('toggle-select')).toBeUndefined()
   })
 })

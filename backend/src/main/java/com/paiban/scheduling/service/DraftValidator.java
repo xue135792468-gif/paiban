@@ -19,6 +19,7 @@ import com.paiban.scheduling.solver.ConstraintSettings;
 import com.paiban.scheduling.web.SchedulingDtos.LessonOverride;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -65,7 +66,8 @@ public class DraftValidator {
             int hardConflicts,
             List<Conflict> conflicts,
             boolean publishable,
-            List<DraftPublishReadiness.Blocker> blockers) {}
+            List<DraftPublishReadiness.Blocker> blockers,
+            String rulesFingerprint) {}
 
     private final TimetableDraftRepository drafts;
     private final DraftLessonRepository draftLessons;
@@ -112,14 +114,14 @@ public class DraftValidator {
                 .orElseThrow(() -> ApiException.notFound("课节不存在: " + lessonId));
         moved.periodId = periodId;
         moved.roomId = roomId;
-        return resultOf(checkAffected(snapshot, Set.of(moved.id)));
+        return resultOf(snapshot, checkAffected(snapshot, Set.of(moved.id)));
     }
 
     @Transactional(readOnly = true)
     public ValidationResult validateMoves(Long draftId, List<LessonOverride> overrides) {
         Snapshot snapshot = snapshot(draftId);
         Set<Long> affected = applyOverrides(snapshot, overrides == null ? List.of() : overrides);
-        return resultOf(checkAffected(snapshot, affected));
+        return resultOf(snapshot, checkAffected(snapshot, affected));
     }
 
     /**
@@ -132,7 +134,158 @@ public class DraftValidator {
     @Transactional(readOnly = true)
     public ValidationResult validateChanges(Long draftId, List<LessonChange> changes) {
         Snapshot snapshot = snapshot(draftId);
-        return resultOf(checkAffected(snapshot, applyChanges(snapshot, changes)));
+        return resultOf(snapshot, checkAffected(snapshot, applyChanges(snapshot, changes)));
+    }
+
+    /** The fingerprint of the rules in force for this draft's semester. */
+    @Transactional(readOnly = true)
+    public String rulesFingerprint(Long draftId) {
+        TimetableDraft draft = drafts.findById(draftId)
+                .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
+        return constraints.settings(draft.getSemesterId()).fingerprint();
+    }
+
+    /**
+     * One rule hit with a stable key, a hard/soft severity and the weight of the fact
+     * (one pair conflict is 1; a two-lesson same-course day is 2). The comparison uses
+     * the key for identity and the weight for "did it get worse", so a repair may keep
+     * a key while reducing its weight, but may never raise it.
+     */
+    public record Violation(String key, String code, String message, Long lessonId,
+                            int severity, int weight) {}
+
+    /**
+     * Entire-draft verdict for one atomic change list. {@code allowed} is true only when
+     * the change introduces no new stable key and does not make an existing key appear
+     * more often; pre-existing problems stay in {@code remaining} so the UI can keep
+     * showing them. The comparison is made on whole-draft snapshots after every change
+     * has been applied, never on a partially moved timetable.
+     */
+    public record ChangeAssessment(
+            boolean allowed,
+            List<Violation> before,
+            List<Violation> after,
+            List<Violation> added,
+            List<Violation> remaining,
+            int softPenaltyBefore,
+            int softPenaltyAfter) {}
+
+    /**
+     * A read-only planning view of one lesson. It deliberately carries no JPA entity:
+     * the pure cycle planner and its unit tests only need these values, and copying
+     * them is what keeps the planner free of a persistence context.
+     */
+    public record PlanLesson(Long id, Long assignmentId, int lessonIndex, Long classId,
+                             Long courseId, Long teacherId, Long periodId, Long roomId,
+                             int studentCount, boolean locked) {}
+
+    /**
+     * Everything a plan search needs: the draft row (for version and semester), the
+     * immutable lesson view and the shared rule context. {@code draft} stays an entity
+     * because the search only reads its id, semester and version.
+     */
+    public record PlanningSnapshot(TimetableDraft draft, List<PlanLesson> lessons,
+                                   ConstraintContext context) {}
+
+    /** The load-once view used by the cycle search and by {@link #assess}. */
+    @Transactional(readOnly = true)
+    public PlanningSnapshot planningSnapshot(Long draftId) {
+        Snapshot snapshot = snapshot(draftId);
+        List<PlanLesson> lessons = snapshot.lessons.stream().map(L::toPlanLesson).toList();
+        return new PlanningSnapshot(snapshot.draft, lessons, snapshot.context);
+    }
+
+    /**
+     * Same whole-draft judgement as {@link #assessChanges}, but against an already
+     * loaded planning snapshot so a search evaluates many candidates from one read.
+     */
+    public ChangeAssessment assess(PlanningSnapshot planning, List<LessonChange> changes) {
+        Snapshot snapshot = new Snapshot(
+                planning.draft(),
+                planning.lessons().stream().map(L::of).toList(),
+                planning.context());
+        return assessSnapshot(snapshot, changes);
+    }
+
+    /**
+     * Applies every change to an in-memory copy first, then compares the whole draft
+     * before and after by stable violation key. A move into a slot that another lesson
+     * is leaving in the same request is therefore not reported as a conflict. A
+     * nonexistent, foreign or duplicate row is applied as-is (last value wins) and never
+     * breaks the comparison; the write service rejects those inputs before calling this.
+     */
+    @Transactional(readOnly = true)
+    public ChangeAssessment assessChanges(Long draftId, List<LessonChange> changes) {
+        return assess(planningSnapshot(draftId), changes);
+    }
+
+    private ChangeAssessment assessSnapshot(Snapshot snapshot, List<LessonChange> changes) {
+        List<LessonView> beforeViews = viewsOf(snapshot);
+        List<ConstraintViolation> beforeViolations =
+                ConstraintChecker.check(snapshot.context(), beforeViews, null);
+        int softBefore = ConstraintChecker.softPenalty(snapshot.context(), beforeViews);
+
+        Snapshot after = snapshot.withFreshLessons();
+        applyChangesLenient(after, changes);
+        List<LessonView> afterViews = viewsOf(after);
+        List<ConstraintViolation> afterViolations =
+                ConstraintChecker.check(after.context(), afterViews, null);
+        int softAfter = ConstraintChecker.softPenalty(after.context(), afterViews);
+
+        List<Violation> before = beforeViolations.stream().map(DraftValidator::toViolation).toList();
+        List<Violation> remaining = afterViolations.stream().map(DraftValidator::toViolation).toList();
+        List<Violation> added = excess(beforeViolations, afterViolations);
+        return new ChangeAssessment(
+                added.isEmpty(), before, remaining, added, remaining, softBefore, softAfter);
+    }
+
+    private static List<LessonView> viewsOf(Snapshot snapshot) {
+        return snapshot.lessons.stream().map(L::toView).toList();
+    }
+
+    private static Violation toViolation(ConstraintViolation violation) {
+        return new Violation(
+                violation.key(), violation.code(), violation.message(), violation.lessonId(),
+                violation.hard() ? 1 : 0, violation.weight());
+    }
+
+    /**
+     * The after facts whose stable key is new or whose total weight is higher than
+     * before. Message, teacher or class names and counts never take part in the
+     * identity; a bucket that grows from two lessons to three raises its weight even
+     * though it still produces one violation row.
+     */
+    private static List<Violation> excess(
+            List<ConstraintViolation> before, List<ConstraintViolation> after) {
+        Map<String, Integer> beforeWeights = new HashMap<>();
+        before.forEach(violation -> beforeWeights.merge(violation.key(), violation.weight(), Integer::sum));
+        Map<String, Integer> afterWeights = new LinkedHashMap<>();
+        Map<String, ConstraintViolation> afterByKey = new LinkedHashMap<>();
+        for (ConstraintViolation violation : after) {
+            afterWeights.merge(violation.key(), violation.weight(), Integer::sum);
+            afterByKey.putIfAbsent(violation.key(), violation);
+        }
+        List<Violation> added = new ArrayList<>();
+        afterWeights.forEach((key, weight) -> {
+            if (weight > beforeWeights.getOrDefault(key, 0)) {
+                added.add(toViolation(afterByKey.get(key)));
+            }
+        });
+        return added;
+    }
+
+    private static void applyChangesLenient(Snapshot snapshot, List<LessonChange> changes) {
+        Map<Long, L> byId = new HashMap<>();
+        snapshot.lessons.forEach(lesson -> byId.put(lesson.id, lesson));
+        for (LessonChange change : changes == null ? List.<LessonChange>of() : changes) {
+            L lesson = change.lessonId() == null ? null : byId.get(change.lessonId());
+            if (lesson == null) {
+                continue;
+            }
+            lesson.periodId = change.periodId();
+            lesson.roomId = change.roomId();
+            lesson.teacherId = change.teacherId();
+        }
     }
 
     /**
@@ -215,7 +368,8 @@ public class DraftValidator {
         List<DraftPublishReadiness.Blocker> blockers =
                 DraftPublishReadiness.blockers(factsOf(snapshot, conflicts.size()));
         return new ValidationResult(
-                contentComplete(blockers), conflicts.size(), conflicts, blockers.isEmpty(), blockers);
+                contentComplete(blockers), conflicts.size(), conflicts, blockers.isEmpty(), blockers,
+                snapshot.context().settings().fingerprint());
     }
 
     /**
@@ -270,7 +424,7 @@ public class DraftValidator {
         List<ValidationResult> results = new ArrayList<>(scenarios.size());
         for (List<LessonOverride> scenario : scenarios) {
             Snapshot copy = base.withFreshLessons();
-            results.add(resultOf(checkAffected(copy, applyOverrides(copy, scenario))));
+            results.add(resultOf(copy, checkAffected(copy, applyOverrides(copy, scenario))));
         }
         return results;
     }
@@ -286,7 +440,7 @@ public class DraftValidator {
         List<ValidationResult> results = new ArrayList<>(scenarios.size());
         for (List<LessonChange> scenario : scenarios) {
             Snapshot copy = base.withFreshLessons();
-            results.add(resultOf(checkAffected(copy, applyChanges(copy, scenario))));
+            results.add(resultOf(copy, checkAffected(copy, applyChanges(copy, scenario))));
         }
         return results;
     }
@@ -343,9 +497,10 @@ public class DraftValidator {
     }
 
     /** Local checks report conflicts only; they never gate on the rest of the draft. */
-    private ValidationResult resultOf(List<Conflict> conflicts) {
+    private ValidationResult resultOf(Snapshot snapshot, List<Conflict> conflicts) {
         boolean valid = conflicts.isEmpty();
-        return new ValidationResult(valid, conflicts.size(), conflicts, valid, List.of());
+        return new ValidationResult(valid, conflicts.size(), conflicts, valid, List.of(),
+                snapshot.context().settings().fingerprint());
     }
 
     private Snapshot snapshot(Long draftId) {
@@ -417,24 +572,48 @@ public class DraftValidator {
     private static final class L {
         private Long id;
         private Long assignmentId;
+        private int lessonIndex;
         private Long courseId;
         private Long teacherId;
         private Long classId;
         private Long periodId;
         private Long roomId;
         private int studentCount;
+        private boolean locked;
 
         static L of(DraftLesson lesson) {
             L copy = new L();
             copy.id = lesson.getId();
             copy.assignmentId = lesson.getAssignmentId();
+            copy.lessonIndex = lesson.getLessonIndex();
             copy.courseId = lesson.getCourseId();
             copy.teacherId = lesson.getTeacherId();
             copy.classId = lesson.getAdminClassId();
             copy.periodId = lesson.getPeriodId();
             copy.roomId = lesson.getRoomId();
             copy.studentCount = lesson.getStudentCount();
+            copy.locked = lesson.isLocked();
             return copy;
+        }
+
+        static L of(PlanLesson lesson) {
+            L copy = new L();
+            copy.id = lesson.id();
+            copy.assignmentId = lesson.assignmentId();
+            copy.lessonIndex = lesson.lessonIndex();
+            copy.courseId = lesson.courseId();
+            copy.teacherId = lesson.teacherId();
+            copy.classId = lesson.classId();
+            copy.periodId = lesson.periodId();
+            copy.roomId = lesson.roomId();
+            copy.studentCount = lesson.studentCount();
+            copy.locked = lesson.locked();
+            return copy;
+        }
+
+        PlanLesson toPlanLesson() {
+            return new PlanLesson(id, assignmentId, lessonIndex, classId, courseId, teacherId,
+                    periodId, roomId, studentCount, locked);
         }
 
         LessonView toView() {
@@ -445,12 +624,14 @@ public class DraftValidator {
             L copy = new L();
             copy.id = id;
             copy.assignmentId = assignmentId;
+            copy.lessonIndex = lessonIndex;
             copy.courseId = courseId;
             copy.teacherId = teacherId;
             copy.classId = classId;
             copy.periodId = periodId;
             copy.roomId = roomId;
             copy.studentCount = studentCount;
+            copy.locked = locked;
             return copy;
         }
     }

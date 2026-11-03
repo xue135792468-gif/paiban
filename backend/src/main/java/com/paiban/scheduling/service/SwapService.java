@@ -8,7 +8,6 @@ import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.scheduling.domain.DraftLesson;
 import com.paiban.scheduling.domain.DraftLessonRepository;
 import com.paiban.scheduling.domain.TimetableDraft;
-import com.paiban.scheduling.domain.TimetableDraftRepository;
 import com.paiban.scheduling.service.DraftValidator.Conflict;
 import com.paiban.scheduling.web.SwapDtos.SwapResult;
 import java.util.ArrayList;
@@ -28,35 +27,36 @@ public class SwapService {
     public static final String INTRA_CLASS = "INTRA_CLASS";
     public static final String CROSS_CLASS = "CROSS_CLASS";
 
-    private final TimetableDraftRepository drafts;
     private final DraftLessonRepository draftLessons;
     private final CourseRepository courses;
     private final TeacherRepository teachers;
     private final DraftValidator validator;
+    private final DraftWriteGuard guard;
 
     public SwapService(
-            TimetableDraftRepository drafts,
             DraftLessonRepository draftLessons,
             CourseRepository courses,
             TeacherRepository teachers,
-            DraftValidator validator) {
-        this.drafts = drafts;
+            DraftValidator validator,
+            DraftWriteGuard guard) {
         this.draftLessons = draftLessons;
         this.courses = courses;
         this.teachers = teachers;
         this.validator = validator;
+        this.guard = guard;
     }
 
     @Transactional
-    public SwapResult swap(Long draftId, Long lessonId, Long targetLessonId, boolean swapRooms) {
-        TimetableDraft draft = drafts.findById(draftId)
-                .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
-        requireEditable(draft);
+    public SwapResult swap(
+            Long draftId, Long lessonId, Long targetLessonId, boolean swapRooms, Long expectedVersion) {
+        TimetableDraft draft = guard.lockEditable(draftId, expectedVersion);
         DraftLesson source = requireLesson(draftId, lessonId);
         DraftLesson target = requireLesson(draftId, targetLessonId);
         if (source.getId().equals(target.getId())) {
             throw ApiException.badRequest("不能与同一节课换课");
         }
+        guard.requireUnlocked(source, "换课");
+        guard.requireUnlocked(target, "换课");
         if (source.getPeriodId() == null || target.getPeriodId() == null) {
             throw ApiException.badRequest("未排课的课节不能参与换课");
         }
@@ -97,7 +97,7 @@ public class SwapService {
         DraftValidator.ValidationResult validation = validator.validateChanges(draftId, changes);
         conflicts.addAll(validation.conflicts());
         if (!conflicts.isEmpty()) {
-            return new SwapResult(false, false, conflicts.size(), type, conflicts, warnings);
+            return new SwapResult(false, false, conflicts.size(), type, conflicts, warnings, draft.getVersion());
         }
 
         DraftValidator.LessonChange sourceChange = changes.get(0);
@@ -110,8 +110,8 @@ public class SwapService {
         target.setTeacherId(targetChange.teacherId());
         draftLessons.save(source);
         draftLessons.save(target);
-        draft.setScoreHard(0);
-        return new SwapResult(true, true, 0, type, List.of(), warnings);
+        guard.bump(draft);
+        return new SwapResult(true, true, 0, type, List.of(), warnings, draft.getVersion());
     }
 
     /**
@@ -166,21 +166,6 @@ public class SwapService {
                             + SubjectMatch.display(course.getSubject()) + "」不一致",
                     lessonId));
         }
-    }
-
-    /** Only an editable draft can be changed by hand; published ones go through substitution. */
-    private void requireEditable(TimetableDraft draft) {
-        String status = draft.getStatus();
-        if ("DRAFT".equals(status)) {
-            return;
-        }
-        if ("PUBLISHED".equals(status)) {
-            throw ApiException.badRequest("课表已发布，发布后请走调代流程");
-        }
-        if ("ARCHIVED".equals(status)) {
-            throw ApiException.badRequest("课表已归档，不能再换课");
-        }
-        throw ApiException.badRequest("当前课表状态不允许换课");
     }
 
     private Course requireCourse(Long courseId) {

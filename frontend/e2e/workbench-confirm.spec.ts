@@ -216,7 +216,11 @@ async function toCoverStep3(page: Page, seed: ConfirmSeed, candidateId: number, 
   if (narrow) {
     await page.getByTestId('pick-lesson').first().click()
   } else {
-    await sourceCard(page, seed.lessonDate).click()
+    const card = sourceCard(page, seed.lessonDate)
+    // The workbench opens on a date query; under full-suite load the card may render
+    // one tick after the panel, so wait for the concrete card instead of racing it.
+    await expect(card).toBeVisible({ timeout: 15_000 })
+    await card.click()
   }
   await page.getByTestId('wizard-next-1').click()
   await page.getByTestId('choose-cover').click()
@@ -230,7 +234,9 @@ async function toCoverStep3(page: Page, seed: ConfirmSeed, candidateId: number, 
 /** 走到第③步（调课，指定目标日期；目标节次固定第 1 节）。 */
 async function toSwapStep3(page: Page, seed: ConfirmSeed, targetDate: string): Promise<void> {
   await openConfirmWizard(page, seed)
-  await sourceCard(page, seed.lessonDate).click()
+  const card = sourceCard(page, seed.lessonDate)
+  await expect(card).toBeVisible({ timeout: 15_000 })
+  await card.click()
   await page.getByTestId('wizard-next-1').click()
   await page.getByTestId('choose-swap').click()
   await page.getByTestId(`swap-date-chip-${targetDate}`).click()

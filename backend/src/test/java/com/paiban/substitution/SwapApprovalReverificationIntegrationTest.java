@@ -288,7 +288,8 @@ class SwapApprovalReverificationIntegrationTest extends ApiIntegrationTest {
                        long periodId, long roomId) {
         DraftLesson lesson = new DraftLesson();
         lesson.setDraftId(draftId);
-        lesson.setAssignmentId(0L);
+        // V45: (draft, assignment, lesson index) is unique, so hand-built rows get their own id.
+        lesson.setAssignmentId(draftLessons.countByDraftId(draftId) + 1);
         lesson.setLessonIndex(1);
         lesson.setCourseId(courseId);
         lesson.setTeacherId(teacherId);

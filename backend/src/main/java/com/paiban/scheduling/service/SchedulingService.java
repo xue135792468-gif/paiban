@@ -47,6 +47,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,7 +59,9 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 @Service
@@ -80,6 +83,9 @@ public class SchedulingService {
     private final ClassCapacityService capacity;
     private final TimetableProblemBuilder problemBuilder;
     private final DraftValidator validator;
+    private final DraftWriteGuard guard;
+    private final SourceDraftSnapshotService sourceSnapshots;
+    private final TransactionTemplate transactions;
     private final TaskExecutor executor;
     private final int defaultSolveSeconds;
     private final Map<Long, Solver<TimetableSolution>> runningSolvers = new ConcurrentHashMap<>();
@@ -100,6 +106,9 @@ public class SchedulingService {
             ClassCapacityService capacity,
             TimetableProblemBuilder problemBuilder,
             DraftValidator validator,
+            DraftWriteGuard guard,
+            SourceDraftSnapshotService sourceSnapshots,
+            PlatformTransactionManager transactionManager,
             @Qualifier("schedulingExecutor") TaskExecutor executor,
             @Value("${paiban.scheduling.max-solve-seconds:60}") int defaultSolveSeconds) {
         this.jobs = jobs;
@@ -116,6 +125,9 @@ public class SchedulingService {
         this.capacity = capacity;
         this.problemBuilder = problemBuilder;
         this.validator = validator;
+        this.guard = guard;
+        this.sourceSnapshots = sourceSnapshots;
+        this.transactions = new TransactionTemplate(transactionManager);
         this.executor = executor;
         this.defaultSolveSeconds = defaultSolveSeconds;
     }
@@ -124,6 +136,11 @@ public class SchedulingService {
         Long resolved = semesterId != null
                 ? semesters.require(semesterId).getId()
                 : semesters.requireCurrent().getId();
+        // An explicit source is validated and frozen before any job exists. Its absence
+        // keeps the legacy path (and its default warm-start policy) exactly unchanged.
+        SourceDraftSnapshot snapshot = request != null && request.sourceDraftId() != null
+                ? sourceSnapshots.capture(request.sourceDraftId(), resolved)
+                : null;
         synchronized (startLock) {
             if (jobs.existsBySemesterIdAndStatusIn(
                     resolved, List.of(SchedulingJob.PENDING, SchedulingJob.RUNNING))) {
@@ -149,16 +166,29 @@ public class SchedulingService {
             job.setStatus(SchedulingJob.PENDING);
             job.setCreatedAt(Instant.now());
             job.setCreatedBy(actor);
-            job.setDraftName(request == null || request.draftName() == null || request.draftName().isBlank()
-                    ? "方案 " + DateTimeFormatter.ofPattern("MM-dd HH:mm").format(java.time.LocalDateTime.now())
-                    : request.draftName());
+            job.setDraftName(draftName(request, snapshot));
             job.setSolveSeconds(request == null || request.maxSeconds() == null
                     ? defaultSolveSeconds
                     : request.maxSeconds());
+            if (snapshot != null) {
+                job.setSourceDraftId(snapshot.draftId());
+                job.setSourceDraftVersion(snapshot.draftVersion());
+                job.setSourceSnapshotJson(sourceSnapshots.toJson(snapshot));
+                job.setInheritedLockCount(sourceSnapshots.lockedCount(snapshot));
+            }
             SchedulingJob saved = jobs.save(job);
             executor.execute(() -> run(saved.getId()));
             return toDto(saved);
         }
+    }
+
+    private static String draftName(StartJobRequest request, SourceDraftSnapshot snapshot) {
+        if (request != null && request.draftName() != null && !request.draftName().isBlank()) {
+            return request.draftName();
+        }
+        String stamp = DateTimeFormatter.ofPattern("MM-dd HH:mm")
+                .format(java.time.LocalDateTime.now());
+        return snapshot == null ? "方案 " + stamp : "基于「" + snapshot.draftName() + "」优化 " + stamp;
     }
 
     public void run(Long jobId) {
@@ -181,8 +211,18 @@ public class SchedulingService {
                 throw new IllegalStateException(shortage);
             }
             ConstraintSettingsHolder.set(settings);
-            TimetableProblemBuilder.BuiltProblem built =
-                    problemBuilder.buildWithWarmStart(job.getSemesterId(), settings);
+            // A job with an explicit source works from its frozen snapshot, never from
+            // the default baseline/oldest-draft policy. The fingerprint is re-checked
+            // before solving so an edited assignment fails instead of mixing states.
+            SourceDraftSnapshot snapshot = null;
+            TimetableProblemBuilder.BuiltProblem built;
+            if (job.getSourceDraftId() != null) {
+                snapshot = sourceSnapshots.fromJson(job.getSourceSnapshotJson());
+                sourceSnapshots.requireAssignmentsUnchanged(snapshot, job.getSemesterId());
+                built = problemBuilder.buildFromSource(job.getSemesterId(), settings, snapshot);
+            } else {
+                built = problemBuilder.buildWithWarmStart(job.getSemesterId(), settings);
+            }
             // markRunning is a bulk update that bypasses the entity read above, so that
             // instance is stale; write only the warm-start source with a targeted update
             // instead of saving the entity, which could overwrite a concurrent CANCELLED.
@@ -227,6 +267,11 @@ public class SchedulingService {
             if (solver.isTerminateEarly()) {
                 markFinished(jobId, SchedulingJob.CANCELLED, null, null, elapsed);
             } else {
+                if (snapshot != null) {
+                    // Assignments may have changed while the solver ran; refuse to write
+                    // a draft whose lesson identity no longer matches the snapshot.
+                    sourceSnapshots.requireAssignmentsUnchanged(snapshot, job.getSemesterId());
+                }
                 persistDraft(jobId, solution, elapsed);
             }
         } catch (Exception ex) {
@@ -281,11 +326,33 @@ public class SchedulingService {
         });
     }
 
+    /**
+     * Persists the new draft and the job result as one unit. This method is called from
+     * {@link #run} inside the same bean, so an {@code @Transactional} annotation here
+     * would be ignored (self-invocation); a {@link TransactionTemplate} gives the same
+     * guarantee explicitly. A failed lock check or validation write rolls everything
+     * back, leaving no half draft and the source draft untouched.
+     */
     private void persistDraft(Long jobId, TimetableSolution solution, long elapsed) {
+        transactions.executeWithoutResult(status -> persistDraftInTransaction(jobId, solution, elapsed));
+    }
+
+    private void persistDraftInTransaction(Long jobId, TimetableSolution solution, long elapsed) {
         SchedulingJob job = jobs.findById(jobId)
                 .orElseThrow(() -> ApiException.notFound("排课任务不存在: " + jobId));
         if (SchedulingJob.CANCELLED.equals(job.getStatus())) {
             return;
+        }
+        if (job.getSourceDraftId() != null) {
+            // The hard constraint should make this impossible; the explicit check turns
+            // a solver bug into a clear failure instead of a silently moved locked lesson.
+            for (Lesson lesson : solution.getLessons()) {
+                if (lesson.getLockedPeriodId() != null
+                        && (lesson.getPeriod() == null
+                        || !lesson.getLockedPeriodId().equals(lesson.getPeriod().getId()))) {
+                    throw new IllegalStateException("锁定课节无法在本次求解中保持时间，未生成新草稿");
+                }
+            }
         }
         TimetableDraft draft = new TimetableDraft();
         draft.setSemesterId(job.getSemesterId());
@@ -310,9 +377,19 @@ public class SchedulingService {
             row.setStudentCount(lesson.getStudentCount());
             row.setPeriodId(lesson.getPeriod() == null ? null : lesson.getPeriod().getId());
             row.setRoomId(lesson.getRoom() == null ? null : lesson.getRoom().getId());
+            row.setLocked(lesson.isLocked());
             rows.add(row);
         }
         draftLessons.saveAll(rows);
+
+        // Report the actual publish verdict instead of equating "the solver finished"
+        // with "this draft can be published" (spec §七).
+        DraftValidator.ValidationResult validation = validator.validateDraft(savedDraft.getId());
+        job.setResultPublishable(validation.publishable());
+        List<String> blockerMessages = validation.blockers().stream()
+                .map(DraftPublishReadiness.Blocker::message)
+                .toList();
+        job.setResultBlockers(blockerMessages.isEmpty() ? null : String.join("\n", blockerMessages));
 
         job.setStatus(SchedulingJob.COMPLETED);
         job.setDraftId(savedDraft.getId());
@@ -390,6 +467,7 @@ public class SchedulingService {
                     return new DraftLessonDto(
                             row.getId(),
                             row.getAssignmentId(),
+                            row.getLessonIndex(),
                             row.getCourseId(),
                             course == null ? null : course.getName(),
                             row.getTeacherId(),
@@ -403,7 +481,8 @@ public class SchedulingService {
                             period == null ? null : period.getSection().name(),
                             period == null ? null : "周" + period.getDayOfWeek() + "第" + period.getPeriodNo() + "节",
                             row.getRoomId(),
-                            room == null ? null : room.getName());
+                            room == null ? null : room.getName(),
+                            row.isLocked());
                 })
                 .toList();
 
@@ -434,7 +513,8 @@ public class SchedulingService {
             }
         }
         return new DraftDetailDto(
-                toDto(draft, rows.size()), lessons, periodDtos, roomDtos, blockedSlots);
+                toDto(draft, rows.size()), lessons, periodDtos, roomDtos, blockedSlots,
+                settings.fingerprint());
     }
 
     /**
@@ -480,9 +560,9 @@ public class SchedulingService {
 
     @Transactional
     public void deleteDraft(Long draftId) {
-        TimetableDraft draft = requireDraft(draftId);
-        if ("PUBLISHED".equals(draft.getStatus())) {
-            throw ApiException.conflict("已发布的课表不能删除");
+        TimetableDraft draft = guard.lockEditable(draftId, null);
+        if (draftLessons.countByDraftIdAndLockedTrue(draftId) > 0) {
+            throw ApiException.conflict("草稿含锁定课节，请先解锁后再删除");
         }
         draftLessons.deleteByDraftId(draftId);
         drafts.delete(draft);
@@ -504,43 +584,48 @@ public class SchedulingService {
     }
 
     @Transactional
-    public MoveResult moveLesson(Long draftId, Long lessonId, Long periodId, Long roomId, boolean force) {
-        DraftValidator.ValidationResult result = validator.validateMove(draftId, lessonId, periodId, roomId);
-        boolean unavailable = result.conflicts().stream()
-                .anyMatch(conflict ->
-                        ConstraintType.CLASS_UNAVAILABLE.name().equals(conflict.type()));
-        if (!result.valid() && (!force || unavailable)) {
-            return new MoveResult(false, false, result.hardConflicts(), result.conflicts());
-        }
+    public MoveResult moveLesson(
+            Long draftId, Long lessonId, Long periodId, Long roomId, boolean force, Long expectedVersion) {
+        TimetableDraft draft = guard.lockEditable(draftId, expectedVersion);
         DraftLesson lesson = draftLessons.findById(lessonId)
                 .orElseThrow(() -> ApiException.notFound("课节不存在: " + lessonId));
         if (!lesson.getDraftId().equals(draftId)) {
             throw ApiException.badRequest("课节不属于该草稿");
         }
+        guard.requireUnlocked(lesson, "移动");
         // A forced move bypasses the "period missing" hard conflict, so the reference is
         // checked here instead of relying on the draft_lesson.period_id foreign key.
-        if (periodId != null && !periods.existsById(periodId)) {
-            throw ApiException.badRequest("课节对应的作息时段不存在: " + periodId);
+        if (periodId != null) {
+            Period period = periods.findById(periodId)
+                    .orElseThrow(() -> ApiException.badRequest("课节对应的作息时段不存在: " + periodId));
+            if (!draft.getSemesterId().equals(period.getSemesterId())) {
+                throw ApiException.badRequest("作息时段不属于该学期");
+            }
+        }
+        DraftValidator.ValidationResult result = validator.validateMove(draftId, lessonId, periodId, roomId);
+        boolean unavailable = result.conflicts().stream()
+                .anyMatch(conflict ->
+                        ConstraintType.CLASS_UNAVAILABLE.name().equals(conflict.type()));
+        if (!result.valid() && (!force || unavailable)) {
+            return new MoveResult(false, false, result.hardConflicts(), result.conflicts(), draft.getVersion());
         }
         lesson.setPeriodId(periodId);
         lesson.setRoomId(roomId);
+        guard.bump(draft);
         // The stored score is the solver's last result; a manual move does not rewrite it.
         // The current publish verdict comes from the draft validation endpoint instead.
-        return new MoveResult(true, result.valid(), result.hardConflicts(), result.conflicts());
+        return new MoveResult(true, result.valid(), result.hardConflicts(), result.conflicts(), draft.getVersion());
     }
 
     /**
      * The write path for the explicit "fill fixed rooms" action (ticket 07): assigns a
      * room only to lessons whose {@code roomId} is still empty, so a value a person
      * entered by hand survives. The caller owns the transaction and the all-or-nothing
-     * decision; this method refuses a published draft like every other edit.
+     * decision. Locks fix period and teacher only, so a locked lesson can still get a room.
      */
     @Transactional
     public int fillMissingRooms(Long draftId, Map<Long, Long> roomIdByLesson) {
-        TimetableDraft draft = requireDraft(draftId);
-        if ("PUBLISHED".equals(draft.getStatus())) {
-            throw ApiException.conflict("已发布的课表不能修改");
-        }
+        TimetableDraft draft = guard.lockEditable(draftId, null);
         int assigned = 0;
         for (Map.Entry<Long, Long> entry : roomIdByLesson.entrySet()) {
             DraftLesson lesson = draftLessons.findById(entry.getKey())
@@ -552,6 +637,9 @@ public class SchedulingService {
                 lesson.setRoomId(entry.getValue());
                 assigned++;
             }
+        }
+        if (assigned > 0) {
+            guard.bump(draft);
         }
         return assigned;
     }
@@ -580,7 +668,21 @@ public class SchedulingService {
                 job.getSolveSeconds(),
                 job.getCreatedAt(),
                 job.getStartedAt(),
-                job.getFinishedAt());
+                job.getFinishedAt(),
+                job.getSourceDraftId(),
+                job.getSourceDraftVersion(),
+                job.getInheritedLockCount(),
+                job.getResultPublishable(),
+                blockerList(job.getResultBlockers()));
+    }
+
+    private static List<String> blockerList(String stored) {
+        if (!StringUtils.hasText(stored)) {
+            return List.of();
+        }
+        return Arrays.stream(stored.split("\n"))
+                .filter(StringUtils::hasText)
+                .toList();
     }
 
     private DraftDto toDto(TimetableDraft draft, long lessonCount) {
@@ -593,6 +695,7 @@ public class SchedulingService {
                 draft.getScoreSoft(),
                 draft.getCreatedBy(),
                 draft.getCreatedAt(),
-                lessonCount);
+                lessonCount,
+                draft.getVersion());
     }
 }

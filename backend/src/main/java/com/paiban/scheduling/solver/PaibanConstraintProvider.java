@@ -43,6 +43,7 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         constraints.add(unassignedLesson(factory));
         constraints.add(courseRoomTypeMetadata(factory, s));
         constraints.add(classFixedRoom(factory));
+        constraints.add(lockedLessonPeriod(factory));
         constraints.add(classUnavailable(factory, s));
 
         addSwitch(constraints, s, ConstraintType.TEACHER_CONFLICT, teacherConflict(factory, s));
@@ -275,6 +276,22 @@ public class PaibanConstraintProvider implements ConstraintProvider {
                         || !lesson.getFixedRoom().getId().equals(lesson.getRoom().getId())))
                 .penalize(HardSoftScore.ONE_HARD)
                 .asConstraint("班级固定教室");
+    }
+
+    /**
+     * A lesson locked in the source draft keeps exactly that period. This is a hard
+     * constraint rather than a warm-start hint: ADR-0034 makes locks a persistent
+     * protection that every write path and continuation must enforce. If the locked slot
+     * conflicts with a current rule the solver keeps the lock anyway and the draft is
+     * reported as not publishable; it never silently moves a locked lesson.
+     */
+    private Constraint lockedLessonPeriod(ConstraintFactory f) {
+        return f.forEachIncludingUnassigned(Lesson.class)
+                .filter(lesson -> lesson.getLockedPeriodId() != null)
+                .filter(lesson -> lesson.getPeriod() == null
+                        || !lesson.getLockedPeriodId().equals(lesson.getPeriod().getId()))
+                .penalize(HardSoftScore.ONE_HARD)
+                .asConstraint("锁定课节必须保持时间");
     }
 
     // ---------- entry-backed prohibitions ----------

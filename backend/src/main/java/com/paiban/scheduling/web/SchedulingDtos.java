@@ -14,28 +14,38 @@ public final class SchedulingDtos {
 
     private SchedulingDtos() {}
 
+    /**
+     * {@code sourceDraftId} is optional and appended last so an old client that omits it
+     * keeps the legacy default warm-start policy exactly. When set, the job optimises from
+     * that concrete draft and carries its locks and current arrangement into the new draft.
+     */
     public record StartJobRequest(String draftName,
                                   @Min(value = 1, message = "求解时长至少 1 秒")
-                                  @Max(value = 600, message = "求解时长最多 600 秒") Integer maxSeconds) {}
+                                  @Max(value = 600, message = "求解时长最多 600 秒") Integer maxSeconds,
+                                  Long sourceDraftId) {}
 
     public record JobDto(Long id, Long semesterId, String status, String score, int progress,
                          long elapsedMs, long estimatedRemainingMs, String errorMessage, Long draftId,
                          String draftName, String warmStartSource, int solveSeconds, Instant createdAt,
-                         Instant startedAt, Instant finishedAt) {}
+                         Instant startedAt, Instant finishedAt,
+                         Long sourceDraftId, Long sourceDraftVersion, Integer inheritedLockCount,
+                         Boolean resultPublishable, List<String> resultBlockers) {}
 
     public record DraftDto(Long id, Long semesterId, String name, String status, int scoreHard,
-                           int scoreSoft, String createdBy, Instant createdAt, long lessonCount) {}
+                           int scoreSoft, String createdBy, Instant createdAt, long lessonCount,
+                           long version) {}
 
-    public record DraftLessonDto(Long id, Long assignmentId, Long courseId, String courseName,
-                                 Long teacherId, String teacherName, Long classId, String className,
-                                 int studentCount, Long periodId, Integer dayOfWeek, Integer periodNo,
-                                 String section, String periodLabel, Long roomId, String roomName) {}
+    public record DraftLessonDto(Long id, Long assignmentId, int lessonIndex, Long courseId,
+                                 String courseName, Long teacherId, String teacherName,
+                                 Long classId, String className, int studentCount, Long periodId,
+                                 Integer dayOfWeek, Integer periodNo, String section,
+                                 String periodLabel, Long roomId, String roomName, boolean locked) {}
 
     public record BlockedSlotDto(Long classId, Long periodId, String reason) {}
 
     public record DraftDetailDto(DraftDto draft, List<DraftLessonDto> lessons,
                                  List<PeriodDto> periods, List<RoomDto> rooms,
-                                 List<BlockedSlotDto> blockedSlots) {}
+                                 List<BlockedSlotDto> blockedSlots, String rulesFingerprint) {}
 
     public record ValidateMoveRequest(@NotNull(message = "课节不能为空") Long lessonId,
                                       Long periodId, Long roomId) {}
@@ -51,10 +61,11 @@ public final class SchedulingDtos {
     public record ValidateMovesRequest(@NotNull(message = "覆盖列表不能为空")
                                        @Valid List<LessonOverride> moves) {}
 
-    public record MoveLessonRequest(Long periodId, Long roomId, Boolean force) {}
+    public record MoveLessonRequest(Long periodId, Long roomId, Boolean force, Long expectedVersion) {}
 
     public record RenameDraftRequest(@NotBlank(message = "名称不能为空") String name) {}
 
     public record MoveResult(boolean saved, boolean valid, int hardConflicts,
-                             List<com.paiban.scheduling.service.DraftValidator.Conflict> conflicts) {}
+                             List<com.paiban.scheduling.service.DraftValidator.Conflict> conflicts,
+                             long version) {}
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { useSwapFlow } from './useSwapFlow'
 import type { useDraftAdjust } from './useDraftAdjust'
-import type { SwapCandidate } from '@/components/draft/types'
+import type { DraftLesson, SwapCandidate } from '@/components/draft/types'
 
 function fakeAdjust(): ReturnType<typeof useDraftAdjust> {
   return {
@@ -45,5 +45,26 @@ describe('useSwapFlow', () => {
     flow.selectCandidate(candidate())
 
     expect(flow.swapRooms.value).toBe(false)
+  })
+
+  it('confirm passes the current draft version to the swap request', async () => {
+    const adjust = fakeAdjust()
+    const swap = vi.fn(async () => ({
+      saved: true,
+      type: 'INTRA_CLASS' as const,
+      conflicts: [],
+      warnings: [],
+    }))
+    adjust.swap = swap as unknown as typeof adjust.swap
+    const flow = useSwapFlow({ adjust, notify: fakeNotify(), getVersion: () => 9 })
+    const lesson = { id: 11, periodId: 100 } as DraftLesson
+    const picked = candidate()
+
+    flow.openPanel(lesson)
+    flow.selectCandidate(picked)
+    const outcome = await flow.confirm()
+
+    expect(outcome.saved).toBe(true)
+    expect(swap).toHaveBeenCalledWith(lesson, picked, false, 9)
   })
 })

@@ -47,4 +47,8 @@ public class DraftLesson {
 
     @Column(name = "room_id")
     private Long roomId;
+
+    /** Locks this concrete lesson's period and teacher; rooms stay movable. */
+    @Column(name = "locked", nullable = false)
+    private boolean locked;
 }

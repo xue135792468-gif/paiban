@@ -32,18 +32,31 @@
             :key="lesson.id"
             class="lesson"
             :data-lesson-id="lesson.id"
+            :data-locked="lockedIds.has(lesson.id) ? 'true' : undefined"
+            :data-selected="selectionMode && selectedIds.has(lesson.id) ? 'true' : undefined"
             :class="{
               dragging: draggedLessonId === lesson.id,
               highlight: highlightedIds.has(lesson.id),
               conflict: conflictIds.has(lesson.id) || Boolean(blockedReason(day, row.periodNo)),
               warning: warningIds.has(lesson.id),
+              locked: lockedIds.has(lesson.id),
+              selected: selectionMode && selectedIds.has(lesson.id),
             }"
             :style="{ background: courseColor(courses, lesson.courseId) }"
-            :draggable="draggable"
-            @dragstart="emit('drag-start', lesson)"
+            tabindex="0"
+            :aria-label="lessonAria(lesson, day, row.periodNo)"
+            :aria-pressed="selectionMode ? selectedIds.has(lesson.id) : undefined"
+            :draggable="draggable && !selectionMode"
+            @dragstart="onLessonDragStart(lesson, $event)"
             @dragend="emit('drag-end')"
+            @click="onLessonClick(lesson, $event)"
+            @keydown.enter.prevent="onLessonKey(lesson)"
+            @keydown.space.prevent="onLessonKey(lesson)"
           >
-            <div class="lesson-course">{{ lesson.courseName }}</div>
+            <div class="lesson-course">
+              {{ lesson.courseName }}
+              <span v-if="lockedIds.has(lesson.id)" class="lock-mark">锁</span>
+            </div>
             <div class="lesson-meta">
               {{ lesson.teacherName }}
               <span v-if="showRoom !== false && lesson.roomName"> · {{ lesson.roomName }}</span>
@@ -87,6 +100,11 @@ const props = withDefaults(
     showRoom?: boolean
     /** Supplied only for the selected administrative class, never a teacher/room. */
     blockedPeriods?: Record<number, string>
+    /** Lessons pinned by the server; shown with a marker and excluded from drag writes. */
+    lockedLessonIds?: number[]
+    /** Multi-select mode: clicking a card selects it instead of starting a drag. */
+    selectionMode?: boolean
+    selectedLessonIds?: number[]
   }>(),
   {
     draggedLessonId: null,
@@ -96,6 +114,9 @@ const props = withDefaults(
     warningLessonIds: () => [],
     showRoom: true,
     blockedPeriods: () => ({}),
+    lockedLessonIds: () => [],
+    selectionMode: false,
+    selectedLessonIds: () => [],
   },
 )
 
@@ -104,6 +125,8 @@ const emit = defineEmits<{
   (e: 'drag-end'): void
   (e: 'drop-cell', payload: { day: number; periodNo: number; periodId: number }): void
   (e: 'cell-click', payload: { day: number; periodNo: number }): void
+  (e: 'lesson-activate', lesson: DraftLesson): void
+  (e: 'toggle-select', lesson: DraftLesson): void
 }>()
 
 const days = computed(() => {
@@ -119,6 +142,10 @@ const highlightedIds = computed(() => new Set(props.highlightLessonIds ?? []))
 const conflictIds = computed(() => new Set(props.conflictLessonIds ?? []))
 
 const warningIds = computed(() => new Set(props.warningLessonIds ?? []))
+
+const lockedIds = computed(() => new Set(props.lockedLessonIds ?? []))
+
+const selectedIds = computed(() => new Set(props.selectedLessonIds ?? []))
 
 const periodRows = computed(() => {
   const map = new Map<number, { periodNo: number; time: string; section: string }>()
@@ -159,6 +186,12 @@ function dayName(day: number) {
   return ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'][day] ?? `周${day}`
 }
 
+function lessonAria(lesson: DraftLesson, day: number, periodNo: number) {
+  const when = `${dayName(day)}第${periodNo}节`
+  const locked = lockedIds.value.has(lesson.id) ? '，已锁定' : ''
+  return `${lesson.courseName ?? '课程'}，${lesson.teacherName ?? '教师'}，${when}${locked}`
+}
+
 const sectionLabels: Record<string, string> = { MORNING: '上午', AFTERNOON: '下午', EVENING: '晚自习' }
 
 function sectionLabel(section: string) {
@@ -185,6 +218,27 @@ function cellClass(day: number, periodNo: number) {
   const state = props.targets[periodId]
   if (!state) return 'invalid-target'
   return state.available ? 'valid-target' : 'invalid-target'
+}
+
+function onLessonClick(lesson: DraftLesson, event: MouseEvent) {
+  // Ordinary mode keeps the old behaviour: the click bubbles to the cell and
+  // selects the lesson there. Selection mode owns the click and never drags.
+  if (!props.selectionMode) return
+  event.stopPropagation()
+  emit('toggle-select', lesson)
+}
+
+function onLessonDragStart(lesson: DraftLesson, event: DragEvent) {
+  if (props.selectionMode) {
+    event.preventDefault()
+    return
+  }
+  emit('drag-start', lesson)
+}
+
+function onLessonKey(lesson: DraftLesson) {
+  if (props.selectionMode) emit('toggle-select', lesson)
+  else emit('lesson-activate', lesson)
 }
 
 function onDrop(day: number, periodNo: number) {
@@ -304,6 +358,26 @@ function onDrop(day: number, periodNo: number) {
   outline: 2px solid #e6a23c;
   outline-offset: -2px;
   box-shadow: 0 0 0 2px rgba(230, 162, 60, 0.25);
+}
+.lesson.locked {
+  border: 1px dashed #5c6b8a;
+}
+/* Inset ring keeps the locked dashed border and the conflict outline visible. */
+.lesson.selected {
+  box-shadow: inset 0 0 0 3px #409eff;
+}
+.lesson:focus-visible {
+  outline: 2px solid #409eff;
+  outline-offset: 2px;
+}
+.lock-mark {
+  margin-left: 6px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(92, 107, 138, 0.16);
+  color: #40506e;
+  font-size: 11px;
+  font-weight: 600;
 }
 .lesson-course {
   font-weight: 600;

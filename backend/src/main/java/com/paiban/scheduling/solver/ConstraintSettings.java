@@ -6,6 +6,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paiban.scheduling.domain.ConstraintConfig;
 import com.paiban.scheduling.domain.ConstraintEntry;
 import com.paiban.scheduling.domain.ConstraintType;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -397,6 +400,62 @@ public final class ConstraintSettings {
     public boolean withinLimit(ConstraintType type, Long objectId, int count) {
         Integer limit = limitOrNull(type, objectId);
         return limit == null || count <= limit;
+    }
+
+    /**
+     * A deterministic, order-independent fingerprint of everything that changes a rule
+     * verdict: the enabled types, their hard/soft defaults and the effective controls
+     * and parameters of every requirement. Two settings built from the same rows in a
+     * different order share a fingerprint; any change to hardness, weight or params
+     * changes it, so a stale preview can be refused after someone edits the rules.
+     */
+    public String fingerprint() {
+        StringBuilder text = new StringBuilder();
+        List<ConstraintType> types = new ArrayList<>(rules.keySet());
+        types.sort(Comparator.comparing(ConstraintType::name));
+        for (ConstraintType type : types) {
+            Rule rule = rules.get(type);
+            text.append(type.name()).append('|').append(rule.hard()).append('|')
+                    .append(rule.weight()).append('|');
+            List<String> requirements = new ArrayList<>();
+            for (Requirement requirement : rule.requirements()) {
+                List<String> entries = new ArrayList<>();
+                for (Map<String, Object> entry : requirement.entries()) {
+                    entries.add(paramsText(entry));
+                }
+                entries.sort(Comparator.naturalOrder());
+                requirements.add((requirement.hard() ? "H" : "S") + requirement.weight()
+                        + ":" + String.join(";", entries));
+            }
+            requirements.sort(Comparator.naturalOrder());
+            text.append(String.join("||", requirements)).append('\n');
+        }
+        return sha256(text.toString());
+    }
+
+    /** One entry's params in a stable form: keys sorted, values via {@code String.valueOf}. */
+    private static String paramsText(Map<String, Object> params) {
+        List<String> pairs = new ArrayList<>();
+        for (Map.Entry<String, Object> entry : params.entrySet()) {
+            pairs.add(entry.getKey() + "=" + String.valueOf(entry.getValue()));
+        }
+        pairs.sort(Comparator.naturalOrder());
+        return String.join(",", pairs);
+    }
+
+    private static String sha256(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                hex.append(Character.forDigit((b >> 4) & 0xF, 16))
+                        .append(Character.forDigit(b & 0xF, 16));
+            }
+            return hex.toString();
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 is not available", ex);
+        }
     }
 
     /** Reads an entry's numeric field, tolerating both numbers and numeric text. */

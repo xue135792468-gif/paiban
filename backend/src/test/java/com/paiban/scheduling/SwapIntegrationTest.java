@@ -64,7 +64,9 @@ class SwapIntegrationTest extends ApiIntegrationTest {
         assertThat(afterTarget.getPeriodId()).isEqualTo(base.period1());
         assertThat(afterSource.getRoomId()).isEqualTo(base.roomA());
         assertThat(afterTarget.getRoomId()).isEqualTo(base.roomB());
-        assertThat(drafts.findById(base.draftId()).orElseThrow().getScoreHard()).isZero();
+        // The stored solver score is not touched by a manual swap any more; the current
+        // verdict comes from the validation endpoint (ticket 01, contract section 2).
+        assertThat(drafts.findById(base.draftId()).orElseThrow().getScoreHard()).isEqualTo(3);
 
         as(token).body(Map.of(
                         "lessonId", sourceId,
@@ -448,7 +450,9 @@ class SwapIntegrationTest extends ApiIntegrationTest {
             Base base, long courseId, long teacherId, long classId, long periodId, Long roomId) {
         DraftLesson lesson = new DraftLesson();
         lesson.setDraftId(base.draftId());
-        lesson.setAssignmentId(1L);
+        // Identity is (draft, assignment, lesson index): V45 makes it unique per draft,
+        // so hand-built rows need their own assignment id instead of sharing one.
+        lesson.setAssignmentId(draftLessons.countByDraftId(base.draftId()) + 1);
         lesson.setLessonIndex(1);
         lesson.setCourseId(courseId);
         lesson.setTeacherId(teacherId);
@@ -462,7 +466,7 @@ class SwapIntegrationTest extends ApiIntegrationTest {
     private long unassignedLesson(Base base, long courseId, long teacherId, long classId) {
         DraftLesson lesson = new DraftLesson();
         lesson.setDraftId(base.draftId());
-        lesson.setAssignmentId(1L);
+        lesson.setAssignmentId(draftLessons.countByDraftId(base.draftId()) + 1);
         lesson.setLessonIndex(1);
         lesson.setCourseId(courseId);
         lesson.setTeacherId(teacherId);
