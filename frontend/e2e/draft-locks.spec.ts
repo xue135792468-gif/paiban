@@ -295,11 +295,13 @@ test('含锁定课节的草稿删除要求确认，确认后锁定随草稿一�
   const box = page.locator('.el-message-box:visible')
   await expect(box).toContainText('含 1 节锁定课节')
   await expect(box).toContainText('一并移除')
+  await expect(box).toContainText('无法恢复')
 
   await box.getByRole('button', { name: '取消' }).click()
   await expect(page.locator('.el-message-box:visible')).toHaveCount(0)
   const stillThere = await draftDetail(api, seed.draftId)
   expect(stillThere.draft.id).toBe(seed.draftId)
+  expect(stillThere.lessons.find((lesson) => lesson.id === seed.mathLessonIds[0])?.locked).toBe(true)
 
   await page.getByRole('button', { name: '删除', exact: true }).click()
   const confirmBox = page.locator('.el-message-box:visible')

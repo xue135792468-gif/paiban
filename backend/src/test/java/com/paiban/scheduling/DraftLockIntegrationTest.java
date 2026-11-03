@@ -276,6 +276,34 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void confirmedDeleteRequiresTheExpectedLockedCount() {
+        String token = adminToken();
+        World world = world(token);
+        Seeded seeded = seedMainDraft(world);
+        lockOne(token, seeded);
+
+        as(token).when().delete(DRAFT.formatted(seeded.draftId()) + "?unlockLocked=true")
+                .then().statusCode(400)
+                .body("message", containsString("删除含锁草稿需要确认锁定数量"));
+
+        assertThat(drafts.findById(seeded.draftId())).isPresent();
+        assertThat(draftLessons.findById(seeded.chineseA()).orElseThrow().isLocked()).isTrue();
+    }
+
+    @Test
+    void confirmedDeleteRejectsAStaleCountEvenWhenNothingIsLocked() {
+        String token = adminToken();
+        World world = world(token);
+        Seeded seeded = seedMainDraft(world);
+
+        as(token).when().delete(DRAFT.formatted(seeded.draftId()) + "?unlockLocked=true&expectedLockedCount=1")
+                .then().statusCode(409)
+                .body("message", containsString("锁定状态已变化"));
+
+        assertThat(drafts.findById(seeded.draftId())).isPresent();
+    }
+
+    @Test
     void confirmedDeleteRemovesTheDraftAndItsLockedLessons() {
         String token = adminToken();
         World world = world(token);

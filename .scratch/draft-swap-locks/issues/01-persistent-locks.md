@@ -41,7 +41,7 @@ DraftLesson、相关DTO/Repository；SchedulingService、SwapService及草稿删
 ## Delivery
 
 - 结论：已实现并通过定向测试；全量门禁与真实 PostgreSQL 验证按票面分工留给 09。
-- 含锁草稿删除（本 worktree `codex/delete-locked-draft`）：默认 DELETE 仍拒绝含锁草稿；只有显式 `unlockLocked=true` 且 `expectedLockedCount` 与当前锁数一致时才一并移除锁定并删除，成功写 `DRAFT_DELETE` 审计；`DraftLockIntegrationTest` 新增 4 个用例覆盖直接拒绝、数量过期、确认删除与无锁删除，E2E `draft-locks.spec.ts` 覆盖确认框文案、取消保留与确认后 404。
+- 含锁草稿删除（本 worktree `codex/delete-locked-draft`）：默认 DELETE 仍拒绝含锁草稿；只有显式 `unlockLocked=true` 且必须携带 `expectedLockedCount`、并与当前锁数一致时才一并移除锁定并删除，成功写 `DRAFT_DELETE` 审计；`DraftLockIntegrationTest` 新增 6 个用例覆盖直接拒绝、缺少确认数量、锁数过期（含当前无锁）、确认删除与无锁删除，E2E `draft-locks.spec.ts` 覆盖确认框文案（含「无法恢复」）、取消后草稿与锁定均保留、确认后 404。
 - 分支 / 基点 / 实现提交：`codex/t01-persistent-locks` / `codex/draft-swap-locks`（4353a16）/ `0d253fd`。
 - 迁移编号：V45（实施前已扫本 worktree 与全部 refs/worktree，最高为 44；`scripts/check-migrations.sh` 通过）。
 
@@ -63,7 +63,7 @@ DraftLesson、相关DTO/Repository；SchedulingService、SwapService及草稿删
 - `PATCH /api/timetable-drafts/{id}/lessons/{lessonId}`：请求新增可空 `expectedVersion`；响应新增 `version`。锁课 → 409「该课节已锁定…」；已发布/归档 → 400；跨学期时段 → 400「作息时段不属于该学期」。
 - `POST /api/timetable-drafts/{id}/swap`：请求新增可空 `expectedVersion`；响应新增 `version`；任一侧锁定 → 409；不再清零 `scoreHard`。
 - `GET /api/timetable-drafts/{id}`：`lessons[].locked`、`draft.version`（只增字段）。
-- `DELETE /api/timetable-drafts/{id}`：默认含锁课 → 409「草稿含 N 节锁定课节，请先解锁后再删除」；显式 `unlockLocked=true&expectedLockedCount=N` 且数量与当前一致时一并移除锁定并删除，数量不一致 → 409「锁定状态已变化，请刷新后重试」；PUBLISHED 改由统一守卫返回 400「课表已发布，发布后请走调代流程」。
+- `DELETE /api/timetable-drafts/{id}`：默认含锁课 → 409「草稿含 N 节锁定课节，请先解锁后再删除」；`unlockLocked=true` 时 `expectedLockedCount` 必填，缺失 → 400「删除含锁草稿需要确认锁定数量」；且只要 `unlockLocked=true`，`expectedLockedCount` 与当前锁数（包括当前为 0）不一致 → 409「锁定状态已变化，请刷新后重试」；一致时一并移除锁定并删除。PUBLISHED 改由统一守卫返回 400「课表已发布，发布后请走调代流程」。
 - 补教室 `POST .../room-fill`：语义与响应不变；锁定只固定 period/teacher，仍可补 roomId，实际赋值 >0 时 version+1。
 
 ### 测试命令与退出码（真实执行）

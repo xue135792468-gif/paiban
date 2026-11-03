@@ -80,8 +80,9 @@ export function useDraftActions(options: DraftActionsOptions) {
     } catch (error) {
       ElMessage.error(serverMessage(error, '删除失败'))
       // A 409 means locks changed since the dialog was opened; refresh so the
-      // next attempt shows the current count and can be confirmed again.
-      await options.reload()
+      // next attempt shows the current count and can be confirmed again. The
+      // original error is already surfaced, so a reload failure must not escape.
+      await Promise.resolve(options.reload()).catch(() => undefined)
     }
   }
 

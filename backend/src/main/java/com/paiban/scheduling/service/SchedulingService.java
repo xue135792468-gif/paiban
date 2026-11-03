@@ -573,8 +573,16 @@ public class SchedulingService {
         if (locked > 0 && !unlockLocked) {
             throw ApiException.conflict("草稿含 " + locked + " 节锁定课节，请先解锁后再删除");
         }
-        if (locked > 0 && unlockLocked && expectedLockedCount != null && expectedLockedCount != locked) {
-            throw ApiException.conflict("锁定状态已变化，请刷新后重试");
+        // An explicit unlock-and-delete always has to carry the count the user saw.
+        // Comparing it even when nothing is locked now (locked == 0) closes the race
+        // where someone else unlocked the draft between the dialog and the request.
+        if (unlockLocked) {
+            if (expectedLockedCount == null) {
+                throw ApiException.badRequest("删除含锁草稿需要确认锁定数量");
+            }
+            if (expectedLockedCount != locked) {
+                throw ApiException.conflict("锁定状态已变化，请刷新后重试");
+            }
         }
         draftLessons.deleteByDraftId(draftId);
         drafts.delete(draft);
