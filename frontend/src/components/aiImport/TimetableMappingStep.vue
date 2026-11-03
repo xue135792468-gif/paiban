@@ -234,8 +234,8 @@ const manualGrades = reactive<Record<string, number | undefined>>({})
 
 onMounted(async () => {
   try {
-    const { data } = await http.get<GradeOption[]>('/grades')
-    grades.value = data ?? []
+    const { data } = await http.get<Array<GradeOption & { active?: boolean }>>('/grades')
+    grades.value = (data ?? []).filter((grade) => grade.active !== false)
   } catch {
     grades.value = []
   }

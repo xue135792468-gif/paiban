@@ -93,7 +93,7 @@ onMounted(async () => {
     http.get('/classes'),
   ])
   teachers.value = teacherRes.data
-  classes.value = classRes.data
+  classes.value = classRes.data.filter((item: { active?: boolean }) => item.active !== false)
   await Promise.all([loadMine(), loadPending()])
   const requestId = Number(route.query.requestId)
   if (requestId) {

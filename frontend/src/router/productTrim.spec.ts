@@ -69,7 +69,8 @@ describe('product trim routing', () => {
     ])
 
     const settings = mainChildren[6].children ?? []
-    expect(settings.map((route) => route.path)).toEqual(['general', 'users'])
+    // 票 03 adds the 7-day recycle bin under the settings shell.
+    expect(settings.map((route) => route.path)).toEqual(['general', 'users', 'recycle-bin'])
   })
 
   it('redirects every legacy entry to its new home', async () => {
@@ -94,6 +95,7 @@ describe('product trim routing', () => {
       ['/admin/ai-history', '/ai'],
       ['/admin/settings', '/settings/general'],
       ['/admin/users', '/settings/users'],
+      ['/admin/rooms', '/data/semesters'],
     ]
 
     const router = makeRouter()
@@ -107,7 +109,6 @@ describe('product trim routing', () => {
     const router = makeRouter()
 
     for (const path of [
-      '/admin/rooms',
       '/notifications',
       '/help',
       '/help/foundation',
