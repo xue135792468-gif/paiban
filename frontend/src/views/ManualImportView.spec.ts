@@ -18,7 +18,10 @@ const importsMock = vi.hoisted(() => ({
   listImportRecipes: vi.fn(),
   saveImportRecipe: vi.fn(),
 }))
-vi.mock('@/api/imports', () => importsMock)
+vi.mock('@/api/imports', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/imports')>()
+  return { ...actual, ...importsMock }
+})
 
 const SHEET = {
   name: 'CSV',
@@ -207,7 +210,48 @@ describe('手动导入页', () => {
       teacherCount: 48,
       courseCount: 16,
     })
+    // 样例文件随保存一起上传，服务端会用它重跑。
+    expect(importsMock.saveImportRecipe.mock.calls[0][1]).toBeInstanceOf(File)
     expect(wrapper.text()).toContain('已保存配方')
+  })
+
+  it('保存配方样例测试失败时展示逐项差异', async () => {
+    importsMock.saveImportRecipe.mockRejectedValue({
+      response: {
+        data: {
+          message: '样例测试未通过，数字对不上：空槽数预期 14、实际 80',
+          differences: [{ field: 'emptySlotCount', label: '空槽数', expected: 14, actual: 80 }],
+        },
+      },
+    })
+    const { wrapper } = await mountView()
+    await chooseFile(wrapper)
+    await wrapper.get('[data-testid="manual-preview-button"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="manual-commit"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-testid="open-save-recipe"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="recipe-name"]').setValue('会失败的配方')
+    await wrapper.get('[data-testid="save-recipe-button"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="recipe-save-differences"]').text()).toContain('空槽数')
+    expect(wrapper.get('[data-testid="recipe-save-differences"]').text()).toContain('80')
+  })
+
+  it('预览结果与配方预期差异过大时给出醒目提醒', async () => {
+    const withExpected = {
+      ...exactMatch(),
+      expected: { slotCount: 560, lessonCount: 546, emptySlotCount: 2, teacherCount: 48, courseCount: 16 },
+    }
+    importsMock.matchImportRecipe.mockResolvedValue(withExpected)
+    importsMock.previewManualImport.mockResolvedValue({ ...PREVIEW, recipeMatch: withExpected })
+    const { wrapper } = await mountView()
+    await chooseFile(wrapper)
+
+    expect(wrapper.get('[data-testid="recipe-count-warning"]').text()).toContain('空槽数与配方预期差异过大')
   })
 
   it('入库报错时展示行级原因且不显示保存配方入口', async () => {

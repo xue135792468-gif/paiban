@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.util.StringUtils;
 import org.springframework.web.ErrorResponseException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -79,6 +80,15 @@ public class GlobalExceptionHandler {
         String detail = ex.getBody() == null ? null : ex.getBody().getDetail();
         return body(status, StringUtils.hasText(detail)
                 ? detail : status.getReasonPhrase());
+    }
+
+    /**
+     * A static resource miss is a 404. Recipe samples deliberately resolve to "missing"
+     * so they are never served from {@code /uploads}; that must not become a 500.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNoResource(NoResourceFoundException ex) {
+        return body(HttpStatus.NOT_FOUND, "资源不存在");
     }
 
     @ExceptionHandler(IllegalStateException.class)

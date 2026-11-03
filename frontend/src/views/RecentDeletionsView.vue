@@ -72,7 +72,7 @@ import {
   groupRecentDeletions,
   listRecentDeletions,
   restoreDeletion,
-  type LifecycleEntityType,
+  type LifecycleLabelType,
   type RecentDeletionBatch,
 } from '@/api/lifecycle'
 
@@ -82,7 +82,7 @@ const restoring = ref('')
 const batches = ref<RecentDeletionBatch[]>([])
 
 function typeLabel(entityType: string): string {
-  const key = entityType.toLowerCase() as LifecycleEntityType
+  const key = entityType.toLowerCase() as LifecycleLabelType
   return LIFECYCLE_ENTITY_LABEL[key] ?? entityType
 }
 

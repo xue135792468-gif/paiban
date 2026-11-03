@@ -109,16 +109,44 @@
         class="result"
         data-testid="recipe-saved"
       >
-        已保存配方「{{ savedRecipe.name }}」，下次上传同格式文件会自动套用。
+        已保存配方「{{ savedRecipe.name }}」，样例测试通过，下次上传同格式文件会自动套用。
       </el-alert>
 
-      <el-dialog v-model="recipeDialog" title="保存为配方" width="420px">
+      <el-dialog v-model="recipeDialog" title="保存为配方" width="480px">
         <el-input
           v-model="recipeName"
           data-testid="recipe-name"
           placeholder="例如：八年级长表"
           maxlength="60"
         />
+        <div class="sample-pick">
+          <span class="sample-label">样例文件</span>
+          <input
+            type="file"
+            accept=".xlsx,.csv"
+            data-testid="recipe-sample-file"
+            @change="onRecipeSampleChange"
+          >
+          <span class="file-name">{{ sampleFileName }}</span>
+        </div>
+        <p class="hint">
+          保存时服务端会用样例文件重跑一遍；数字与下方预览不一致时不会保存。
+        </p>
+        <el-alert
+          v-if="recipeSaveDifferences.length"
+          type="error"
+          :closable="false"
+          show-icon
+          class="result"
+          data-testid="recipe-save-differences"
+        >
+          <p>样例测试未通过，配方没有保存：</p>
+          <ul>
+            <li v-for="difference in recipeSaveDifferences" :key="difference.field">
+              {{ difference.label }}：预期 {{ difference.expected }}，实际 {{ difference.actual }}
+            </li>
+          </ul>
+        </el-alert>
         <template #footer>
           <el-button data-testid="cancel-save-recipe" @click="recipeDialog = false">取消</el-button>
           <el-button
@@ -139,7 +167,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { http } from '@/api/http'
-import { serverMessage } from '@/api/errors'
+import { serverDetails, serverMessage } from '@/api/errors'
 import {
   commitManualImport,
   inspectManualImport,
@@ -151,6 +179,7 @@ import {
   type ManualInspect,
   type ManualMapping,
   type ManualPreview,
+  type RecipeCountDifference,
 } from '@/api/imports'
 import ManualImportMapper from '@/components/manualImport/ManualImportMapper.vue'
 import ManualImportPreview from '@/components/manualImport/ManualImportPreview.vue'
@@ -180,6 +209,8 @@ const savingRecipe = ref(false)
 const recipeDialog = ref(false)
 const savedRecipe = ref<ImportRecipe | null>(null)
 const recipeName = ref('')
+const recipeSampleFile = ref<File | null>(null)
+const recipeSaveDifferences = ref<RecipeCountDifference[]>([])
 const semesters = ref<SemesterOption[]>([])
 const teachers = ref<TeacherOption[]>([])
 const semesterId = ref<number | null>(null)
@@ -190,6 +221,16 @@ const teacherMappings = ref<Record<string, string>>({})
 const canSaveRecipe = computed(
   () => !!commitResult.value?.draftId && !commitResult.value.appliedRecipeId && !savedRecipe.value,
 )
+
+/** Default to the file being imported; the dialog can pick a separate sample. */
+const sampleFileName = computed(
+  () => recipeSampleFile.value?.name ?? file.value?.name ?? '未选择',
+)
+
+function onRecipeSampleChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  recipeSampleFile.value = input.files?.[0] ?? null
+}
 
 onMounted(async () => {
   await Promise.all([loadSemesters(), loadTeachers()])
@@ -246,6 +287,8 @@ function resetWorkflow() {
   commitResult.value = null
   savedRecipe.value = null
   recipeName.value = ''
+  recipeSampleFile.value = null
+  recipeSaveDifferences.value = []
   recipeDialog.value = false
   teacherMappings.value = {}
   applyRule.value = true
@@ -301,32 +344,39 @@ async function saveRecipe() {
     return
   }
   savingRecipe.value = true
+  recipeSaveDifferences.value = []
   try {
-    savedRecipe.value = await saveImportRecipe({
-      name: recipeName.value.trim(),
-      layout: preview.value.layout,
-      fingerprint: preview.value.fingerprint,
-      columns: {
-        ...mapping.value,
-        delimiter: mapping.value.delimiter || '|',
-        ignoreBlankRows: mapping.value.ignoreBlankRows !== false,
+    savedRecipe.value = await saveImportRecipe(
+      {
+        name: recipeName.value.trim(),
+        layout: preview.value.layout,
+        fingerprint: preview.value.fingerprint,
+        columns: {
+          ...mapping.value,
+          delimiter: mapping.value.delimiter || '|',
+          ignoreBlankRows: mapping.value.ignoreBlankRows !== false,
+        },
+        options: {
+          delimiter: mapping.value.delimiter || '|',
+          ignoreBlankRows: mapping.value.ignoreBlankRows !== false,
+        },
+        expected: {
+          slotCount: preview.value.slotCount,
+          lessonCount: preview.value.lessonCount,
+          emptySlotCount: preview.value.emptySlotCount,
+          teacherCount: preview.value.teacherCount,
+          courseCount: preview.value.courseCount,
+        },
       },
-      options: {
-        delimiter: mapping.value.delimiter || '|',
-        ignoreBlankRows: mapping.value.ignoreBlankRows !== false,
-      },
-      expected: {
-        slotCount: preview.value.slotCount,
-        lessonCount: preview.value.lessonCount,
-        emptySlotCount: preview.value.emptySlotCount,
-        teacherCount: preview.value.teacherCount,
-        courseCount: preview.value.courseCount,
-      },
-      sample: preview.value.rows,
-    })
+      recipeSampleFile.value ?? file.value,
+    )
     recipeDialog.value = false
-    ElMessage.success('配方已保存，下次同格式会自动套用')
+    ElMessage.success('配方已保存，样例测试通过')
   } catch (error) {
+    const details = serverDetails(error)
+    recipeSaveDifferences.value = Array.isArray(details.differences)
+      ? (details.differences as RecipeCountDifference[])
+      : []
     ElMessage.error(serverMessage(error, '保存配方失败'))
   } finally {
     savingRecipe.value = false
@@ -408,5 +458,19 @@ async function saveRecipe() {
   font-size: 13px;
   color: var(--paiban-muted);
   min-width: 240px;
+}
+.sample-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+.sample-label {
+  color: var(--paiban-muted);
+}
+.file-name {
+  font-size: 13px;
+  color: var(--paiban-ink);
 }
 </style>

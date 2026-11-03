@@ -42,6 +42,21 @@
       未找到配方。确认列映射并成功入库后，可以把它保存为配方，下次同格式自动套用。
     </el-alert>
 
+    <el-alert
+      v-if="drifts.length"
+      type="warning"
+      show-icon
+      :closable="false"
+      data-testid="recipe-count-warning"
+      class="recipe"
+    >
+      <template #title>这次文件的结果和配方保存时差异过大，请先核对：</template>
+      <ul class="differences">
+        <li v-for="drift in drifts" :key="drift.field">{{ drift.message }}</li>
+      </ul>
+      <p class="hint">仍可继续入库，但请确认文件和列映射没有选错。</p>
+    </el-alert>
+
     <div class="stats">
       <div class="stat" data-testid="stat-slots"><span>槽数</span><strong>{{ preview.slotCount }}</strong></div>
       <div class="stat" data-testid="stat-lessons"><span>有课</span><strong>{{ preview.lessonCount }}</strong></div>
@@ -102,13 +117,16 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ManualPreview, RecipeDifferenceKind } from '@/api/imports'
+import { recipeCountDrift, type ManualPreview, type RecipeDifferenceKind } from '@/api/imports'
 
 const props = defineProps<{ preview: ManualPreview }>()
 
 const DAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 const warningNames = computed(
   () => new Set(props.preview.teacherWarnings.map((warning) => warning.value)),
+)
+const drifts = computed(() =>
+  recipeCountDrift(props.preview, props.preview.recipeMatch.expected),
 )
 
 function dayLabel(day: number): string {

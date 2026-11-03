@@ -23,5 +23,6 @@ const tabs: PageTabItem[] = [
   { label: '授课任务', to: '/data/assignments' },
   { label: '导入', to: '/data/import' },
   { label: '手动导入', to: '/data/import/manual' },
+  { label: '导入配方', to: '/data/recipes' },
 ]
 </script>

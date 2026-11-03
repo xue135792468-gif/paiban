@@ -171,6 +171,12 @@ export const routes: RouteRecordRaw[] = [
             component: () => import('@/views/ManualImportView.vue'),
             meta: { title: '手动导入', permission: 'foundation:manage' },
           },
+          {
+            path: 'recipes',
+            name: 'import-recipes',
+            component: () => import('@/views/ImportRecipesView.vue'),
+            meta: { title: '导入配方', permission: 'foundation:manage' },
+          },
         ],
       },
 

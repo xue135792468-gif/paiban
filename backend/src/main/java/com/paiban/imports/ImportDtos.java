@@ -88,16 +88,19 @@ public final class ImportDtos {
      * EXACT re-applies silently, SIMILAR re-applies with the differences listed, NONE
      * asks the user to map columns again. {@code mapping} is the recipe's own mapping,
      * so the page can prefill the editor and preview without another round trip.
+     * {@code expected} lets the preview flag counts that drifted too far from what the
+     * recipe promised (ticket 06) without a second request.
      */
     public record RecipeMatchDto(
             String kind,
             Long recipeId,
             String recipeName,
             List<RecipeDifferenceDto> differences,
+            Map<String, Object> expected,
             ManualMapping mapping) {
 
         public static RecipeMatchDto none() {
-            return new RecipeMatchDto("NONE", null, null, List.of(), null);
+            return new RecipeMatchDto("NONE", null, null, List.of(), Map.of(), null);
         }
     }
 
@@ -167,4 +170,48 @@ public final class ImportDtos {
             Map<String, Object> options,
             Map<String, Object> expected,
             Object sample) {}
+
+    /** The five numbers a recipe promises; the save/test comparison uses exactly these. */
+    public record RecipeCounts(
+            int slotCount,
+            int lessonCount,
+            int emptySlotCount,
+            int teacherCount,
+            int courseCount) {}
+
+    /** One count that did not survive the sample re-run. */
+    public record RecipeCountDifferenceDto(
+            String field,
+            String label,
+            Integer expected,
+            Integer actual) {}
+
+    /**
+     * Result of re-running a recipe's stored sample with its current mapping. Save
+     * refuses with 409 and these differences when {@code pass} is false.
+     */
+    public record RecipeTestDto(
+            boolean pass,
+            RecipeCounts actual,
+            Map<String, Integer> expected,
+            List<RecipeCountDifferenceDto> differences) {}
+
+    /** One historical snapshot as the version dialog lists it. */
+    public record RecipeVersionDto(
+            int version,
+            java.time.Instant createdAt,
+            String createdBy,
+            String summary) {}
+
+    /**
+     * Edits a saved recipe. Any mapping/option/expected change is re-tested against the
+     * stored sample (or the newly uploaded one) before it is written.
+     */
+    public record RecipePatchRequest(
+            String name,
+            Boolean enabled,
+            String layout,
+            Map<String, Object> columns,
+            Map<String, Object> options,
+            Map<String, Object> expected) {}
 }

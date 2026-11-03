@@ -3,6 +3,7 @@ package com.paiban.imports.manual;
 import com.paiban.ai.imports.CsvTableReader;
 import com.paiban.common.excel.ExcelTableReader;
 import com.paiban.common.web.ApiException;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.List;
 import java.util.Locale;
@@ -52,10 +53,30 @@ public final class SourceSheets {
         }
         String name = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
         try {
-            if (isCsv(name, file.getContentType())) {
-                return List.of(new Sheet(CSV_SHEET, CsvTableReader.readGrid(file.getBytes())));
+            return read(file.getBytes(), name, file.getContentType());
+        } catch (IOException ex) {
+            throw ApiException.badRequest("读取文件失败：" + ex.getMessage());
+        }
+    }
+
+    /**
+     * Same parsing from bytes, so a recipe's stored sample can be re-tested without a
+     * multipart upload. CSV detection uses the stored file name; xlsx always opens
+     * by content.
+     */
+    public static List<Sheet> read(byte[] bytes, String fileName) {
+        if (bytes == null || bytes.length == 0) {
+            throw ApiException.badRequest("请选择要导入的 Excel 或 CSV 文件");
+        }
+        return read(bytes, fileName == null ? "" : fileName, null);
+    }
+
+    private static List<Sheet> read(byte[] bytes, String name, String contentType) {
+        try {
+            if (isCsv(name, contentType)) {
+                return List.of(new Sheet(CSV_SHEET, CsvTableReader.readGrid(bytes)));
             }
-            return ExcelTableReader.readAllGrids(file.getInputStream()).stream()
+            return ExcelTableReader.readAllGrids(new ByteArrayInputStream(bytes)).stream()
                     .map(grid -> new Sheet(grid.sheetName(),
                             grid.rows() == null ? List.of() : grid.rows()))
                     .toList();
