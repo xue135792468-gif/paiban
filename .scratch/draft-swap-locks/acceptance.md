@@ -78,7 +78,7 @@ Fresh Review 发现连续撤销两次旧 move/swap 时第二次仍使用第一�
 - 去重：同班交换只保留拖拽；“换课”按钮改为“跨班换人”，候选抽屉只列跨班教师交换；“选择位置”保留为键盘/点击等价入口。
 - 证据：新增 E2E `同班交换不受同一时间其他班课程影响（真实课表常见）`（修复前无 `/changes` 请求、修复后 200 并完成交换），`draft-drag` 9/9、`swap` 4/4、`draft-locks` 8/8；前端全量 71 文件 / 553 单测通过。
 - 截图：[拖拽重叠场景](acceptance/draft-drag-overlap.png)、[跨班换人入口](acceptance/draft-cross-class-entry.png)。
-- 状态：已在本地修复分支验证；截至本记录**尚未合并 main、未部署生产**。
+- 状态：已通过 PR #23 合并 main（`eb4d5ba`）并部署生产；服务器只重建 frontend，四容器 healthy、两处 health 200、Flyway 仍 47。
 
 ### 仓库级检查
 

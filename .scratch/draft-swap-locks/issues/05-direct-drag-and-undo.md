@@ -122,6 +122,6 @@ bash scripts/e2e.sh e2e/swap.spec.ts e2e/draft-drag.spec.ts
 - 方案搜索的预算耗尽/部分结果分支由单测覆盖；E2E 场景命中 `FOUND`，未人为把搜索预算压到耗尽。
 - 09 复审补充：旧 move/swap 撤销现在也携带写入产生的 `expectedVersion`，他人后续修改会使撤销 409，不会把过期状态重放回去。
 - 2026-11-03 生产反馈修复：旧落点判断把“同一时间存在别班课”误当跨班落点，导致真实课表里同班拖拽也失效。现由网格传入目标格**可见**课节，只有可见同班课才交换、没有可见课则普通移动，只有可见别班课才提示走显式入口；同时把“换课”改为“跨班换人”并只列跨班候选，同班交换只保留拖拽。E2E `draft-drag` 9/9、`swap` 4/4、`draft-locks` 8/8，前端 553 单测通过；证据截图见 [acceptance](../acceptance.md#2026-11-03-生产反馈修复同班拖拽被别班课程误拦)。
-- 全量门禁、真实 PostgreSQL 与合并发布由 09 统一执行。
+- 2026-11-03 后续修复已通过 PR #23 合并 main 并部署生产（只重建 frontend，Flyway 仍 47）；部署回执见 [deployment](../deployment.md)。
 
 ## Comments
