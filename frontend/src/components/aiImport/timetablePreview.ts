@@ -409,12 +409,15 @@ export interface MappingGroup {
   gradeCandidates: string[]
 }
 
+/** Fields the product no longer asks the user to resolve. */
+const HIDDEN_MAPPING_FIELDS = new Set(['roomName'])
+
 /** Collapses issues so the same unmatched value is resolved once, not once per row. */
 export function mappingGroups(issues: PreviewIssue[]): MappingGroup[] {
   const groups = new Map<string, MappingGroup>()
   for (const issue of issues) {
     // Row 0 is a page-level blocker (e.g. no current semester), not a name to map.
-    if (issue.row === 0) continue
+    if (issue.row === 0 || HIDDEN_MAPPING_FIELDS.has(issue.field)) continue
     const key = `${issue.field}\u0000${issue.value}`
     let group = groups.get(key)
     if (!group) {

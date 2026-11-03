@@ -31,10 +31,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * The explicit action behind the {@code MISSING_ROOMS} blocker (ticket 07): give every
- * admin class with lessons that have no room one fixed ordinary room, after the user
- * confirmed a preview. Importing still never creates rooms (ADR-0026/0027); this is a
- * deliberate, visible action instead of the old per-lesson workaround.
+ * Gives every admin class with lessons that have no room one fixed ordinary room, after
+ * the user confirmed a preview. Rooms no longer gate publishing, but the action and its
+ * API stay available until the room model is physically removed. Importing still never
+ * creates rooms (ADR-0026/0027); this is a deliberate, visible action instead of the old
+ * per-lesson workaround.
  *
  * <p>Only empty {@code room_id} values are filled. The whole action is one transaction
  * and all-or-nothing: nothing is created or assigned when any class cannot be handled

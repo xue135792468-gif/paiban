@@ -123,12 +123,13 @@ describe('DraftGrid', () => {
     expect(lessons[1].classes()).not.toContain('conflict')
   })
 
-  it('课表页面不显示教室，导入预览仍保留教室', () => {
-    const hidden = mountGrid({ lessons: [lesson(1, 1, 1)], showRoom: false })
-    expect(hidden.get('.lesson').text()).not.toContain('101')
+  it('卡片只显示课程与教师，旧数据的教室字段不渲染', () => {
+    const wrapper = mountGrid({ lessons: [lesson(1, 1, 1)] })
 
-    const shown = mountGrid({ lessons: [lesson(1, 1, 1)] })
-    expect(shown.get('.lesson').text()).toContain('101')
+    const text = wrapper.get('.lesson').text()
+    expect(text).toContain('课程1')
+    expect(text).toContain('教师1')
+    expect(text).not.toContain('101')
   })
 
   it('作息没有起止时间时不显示时间占位', () => {

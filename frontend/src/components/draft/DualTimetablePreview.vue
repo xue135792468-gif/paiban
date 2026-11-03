@@ -55,7 +55,6 @@
             :courses="courses"
             :draggable="false"
             :highlight-lesson-ids="highlightIds"
-            :show-room="false"
             compact
           />
         </div>
@@ -72,7 +71,6 @@
             :courses="courses"
             :draggable="false"
             :highlight-lesson-ids="highlightIds"
-            :show-room="false"
             compact
           />
         </div>

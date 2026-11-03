@@ -107,7 +107,7 @@ test('目标卡片写清能处理、输出与限制，未支持目标为禁用�
   await uiLogin(page, 'admin', 'admin123')
   await page.goto('/data/import')
 
-  await expect(page.getByTestId('target-card')).toHaveCount(7)
+  await expect(page.getByTestId('target-card')).toHaveCount(6)
 
   const workbook = page.locator('[data-testid=target-card][data-target=workbook]')
   await expect(workbook).toContainText('整本工作簿')
@@ -130,7 +130,7 @@ test('目标卡片写清能处理、输出与限制，未支持目标为禁用�
   await expect(timetable).toContainText('课表草稿')
   await expect(timetable).toContainText('只生成草稿')
 
-  for (const code of ['admin-class', 'course', 'room', 'assignment']) {
+  for (const code of ['admin-class', 'course', 'assignment']) {
     const card = page.locator(`[data-testid=target-card][data-target=${code}]`)
     await expect(card).toHaveAttribute('aria-disabled', 'true')
     await expect(card).toContainText('即将支持')
@@ -555,7 +555,7 @@ test('放弃导入：不生成草稿，?session= 恢复入口不再继续该会�
     await expect(page.locator('.el-message--info')).toContainText('已放弃本次导入，未写入任何数据')
 
     // Back to an empty import page: no preview, no session in the URL, nothing to continue.
-    await expect(page.getByTestId('target-card')).toHaveCount(7)
+    await expect(page.getByTestId('target-card')).toHaveCount(6)
     await expect(page.getByTestId('timetable-summary')).toHaveCount(0)
     await expect(page).not.toHaveURL(/session=/)
     await expect(page.getByTestId('last-session-card')).toHaveCount(0)
@@ -570,7 +570,7 @@ test('放弃导入：不生成草稿，?session= 恢复入口不再继续该会�
     // A bookmarked `?session=` must not resurrect it either.
     await page.goto(`/data/import?session=${sessionId}`)
     await expect(page.locator('.el-message--error')).toContainText('该导入会话已不可用')
-    await expect(page.getByTestId('target-card')).toHaveCount(7)
+    await expect(page.getByTestId('target-card')).toHaveCount(6)
     await expect(page).not.toHaveURL(/session=/)
   })
 })

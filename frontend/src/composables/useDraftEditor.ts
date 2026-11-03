@@ -11,7 +11,7 @@ import type {
   DraftValidation,
 } from '@/components/draft/types'
 
-export type DraftViewMode = 'class' | 'teacher' | 'room'
+export type DraftViewMode = 'class' | 'teacher'
 
 export interface DraftEditorOptions {
   draftId: number
@@ -46,11 +46,11 @@ export function useDraftEditor(options: DraftEditorOptions) {
   const filteredLessons = computed(() => {
     const lessons = detail.value?.lessons ?? []
     if (targetId.value == null) return lessons
-    return lessons.filter((lesson) => {
-      if (viewMode.value === 'class') return lesson.classId === targetId.value
-      if (viewMode.value === 'teacher') return lesson.teacherId === targetId.value
-      return lesson.roomId === targetId.value
-    })
+    return lessons.filter((lesson) =>
+      viewMode.value === 'class'
+        ? lesson.classId === targetId.value
+        : lesson.teacherId === targetId.value,
+    )
   })
 
   const unassigned = computed(() => filteredLessons.value.filter((lesson) => !lesson.periodId))
@@ -65,9 +65,6 @@ export function useDraftEditor(options: DraftEditorOptions) {
   )
 
   const targetOptions = computed(() => {
-    if (viewMode.value === 'room') {
-      return (detail.value?.rooms ?? []).map((room) => ({ id: room.id, name: room.name }))
-    }
     const map = new Map<number, string>()
     detail.value?.lessons.forEach((lesson) => {
       if (viewMode.value === 'class') {

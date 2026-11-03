@@ -32,7 +32,6 @@
             <el-select v-model="row.section" size="small">
               <el-option label="上午" value="MORNING" />
               <el-option label="下午" value="AFTERNOON" />
-              <el-option label="晚自习" value="EVENING" />
             </el-select>
           </template>
         </el-table-column>
@@ -144,7 +143,9 @@ function toRows(periods: Period[]): SlotRow[] {
       row = {
         periodNo: period.periodNo,
         label: period.label,
-        section: period.section,
+        // Legacy EVENING rows still load; the product no longer exposes a study-hall
+        // section, so they show as afternoon instead of an unknown option.
+        section: period.section === 'EVENING' ? 'AFTERNOON' : period.section,
         startTime: normalizeTime(period.startTime),
         endTime: normalizeTime(period.endTime),
         days: [],
@@ -189,7 +190,7 @@ function addRow() {
 
 async function generateDefault() {
   try {
-    await ElMessageBox.confirm('将用默认作息（上午 4 节、下午 4 节、晚自习 2 节，周一至周五）覆盖当前配置，继续？', '生成默认作息', {
+    await ElMessageBox.confirm('将用默认作息（上午 4 节、下午 4 节，周一至周五）覆盖当前配置，继续？', '生成默认作息', {
       type: 'warning',
     })
   } catch {
@@ -200,7 +201,7 @@ async function generateDefault() {
     await http.post(`/semesters/${semesterId}/periods/default`, {
       morningCount: 4,
       afternoonCount: 4,
-      eveningCount: 2,
+      eveningCount: 0,
       days: [1, 2, 3, 4, 5],
     })
     ElMessage.success('已生成默认作息')

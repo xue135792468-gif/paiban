@@ -9,17 +9,17 @@ vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
 
 function blocker(overrides: Partial<DraftPublishBlocker> = {}): DraftPublishBlocker {
   return {
-    code: 'MISSING_ROOMS',
-    message: '有 546 节课还没有分配教室',
+    code: 'UNSCHEDULED_LESSONS',
+    message: '还有 546 节课未排课',
     count: 546,
-    action: 'ASSIGN_ROOMS',
+    action: 'EDIT_LESSONS',
     ...overrides,
   }
 }
 
-function mountBlockers(blockers: DraftPublishBlocker[], roomFill?: boolean) {
+function mountBlockers(blockers: DraftPublishBlocker[]) {
   return mount(DraftPublishBlockers, {
-    props: roomFill === undefined ? { blockers } : { blockers, roomFill },
+    props: { blockers },
     global: { plugins: [ElementPlus] },
   })
 }
@@ -39,36 +39,26 @@ describe('DraftPublishBlockers', () => {
     const wrapper = mountBlockers([
       blocker(),
       blocker({
-        code: 'UNSCHEDULED_LESSONS',
-        message: '还有 2 节课未排课',
+        code: 'INVALID_PERIODS',
+        message: '有 2 节课引用的作息时段不属于当前学期',
         count: 2,
-        action: 'EDIT_LESSONS',
+        action: 'EDIT_PERIODS',
       }),
     ])
 
     const rows = wrapper.findAll('[data-testid=publish-blocker]')
     expect(rows).toHaveLength(2)
-    expect(rows[0].attributes('data-code')).toBe('MISSING_ROOMS')
-    expect(rows[0].text()).toContain('有 546 节课还没有分配教室')
-    expect(rows[1].text()).toContain('还有 2 节课未排课')
+    expect(rows[0].attributes('data-code')).toBe('UNSCHEDULED_LESSONS')
+    expect(rows[0].text()).toContain('还有 546 节课未排课')
+    expect(rows[1].text()).toContain('有 2 节课引用的作息时段不属于当前学期')
   })
 
-  it('缺教室给出按行政班补固定教室的入口，不跳走', async () => {
-    const wrapper = mountBlockers([blocker()])
+  it('补教室动作不再出现在页面上', () => {
+    const wrapper = mountBlockers([
+      blocker({ code: 'ASSIGN_ROOMS', message: '旧服务端仍返回补教室动作', action: 'ASSIGN_ROOMS' }),
+    ])
 
-    await wrapper.get('[data-testid=blocker-action-MISSING_ROOMS]').trigger('click')
-
-    expect(wrapper.emitted('fill-rooms')).toHaveLength(1)
-    expect(push).not.toHaveBeenCalled()
-  })
-
-  it('没有补教室权限时仍指向教室管理', async () => {
-    const wrapper = mountBlockers([blocker()], false)
-
-    await wrapper.get('[data-testid=blocker-action-MISSING_ROOMS]').trigger('click')
-
-    expect(push).toHaveBeenCalledWith('/admin/rooms')
-    expect(wrapper.emitted('fill-rooms')).toBeUndefined()
+    expect(wrapper.find('[data-testid=blocker-action-ASSIGN_ROOMS]').exists()).toBe(false)
   })
 
   it('未排课打开本页的未排课抽屉而不是跳转', async () => {

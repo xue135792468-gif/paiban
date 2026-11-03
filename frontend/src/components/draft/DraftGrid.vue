@@ -57,10 +57,7 @@
               {{ lesson.courseName }}
               <span v-if="lockedIds.has(lesson.id)" class="lock-mark">锁</span>
             </div>
-            <div class="lesson-meta">
-              {{ lesson.teacherName }}
-              <span v-if="showRoom !== false && lesson.roomName"> · {{ lesson.roomName }}</span>
-            </div>
+            <div class="lesson-meta">{{ lesson.teacherName }}</div>
           </div>
         </template>
         <div v-else-if="blockedReason(day, row.periodNo)" class="no-class">不上课</div>
@@ -96,9 +93,7 @@ const props = withDefaults(
     warningLessonIds?: number[]
     /** Narrower columns for the side-by-side preview. */
     compact?: boolean
-    /** The timetable pages hide rooms; the import preview keeps them for row checks. */
-    showRoom?: boolean
-    /** Supplied only for the selected administrative class, never a teacher/room. */
+    /** Supplied only for the selected administrative class, never a teacher view. */
     blockedPeriods?: Record<number, string>
     /** Lessons pinned by the server; shown with a marker and excluded from drag writes. */
     lockedLessonIds?: number[]
@@ -112,7 +107,6 @@ const props = withDefaults(
     highlightLessonIds: () => [],
     conflictLessonIds: () => [],
     warningLessonIds: () => [],
-    showRoom: true,
     blockedPeriods: () => ({}),
     lockedLessonIds: () => [],
     selectionMode: false,
@@ -198,7 +192,7 @@ function lessonAria(lesson: DraftLesson, day: number, periodNo: number) {
   return `${lesson.courseName ?? '课程'}，${lesson.teacherName ?? '教师'}，${when}${locked}`
 }
 
-const sectionLabels: Record<string, string> = { MORNING: '上午', AFTERNOON: '下午', EVENING: '晚自习' }
+const sectionLabels: Record<string, string> = { MORNING: '上午', AFTERNOON: '下午' }
 
 function sectionLabel(section: string) {
   return sectionLabels[section] ?? ''

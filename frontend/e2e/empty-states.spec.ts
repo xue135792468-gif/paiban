@@ -96,16 +96,6 @@ test('基础数据与授课任务列表为空时显示引导', async ({ page }) 
   await expect(page.locator('.el-dialog:visible')).toContainText('新建教师')
   await page.keyboard.press('Escape')
 
-  await page.goto('/admin/rooms')
-  root = await expectGuide(page, {
-    title: '还没有教室数据',
-    button: '新建教室',
-    href: '/help/foundation#rooms',
-  })
-  await root.getByRole('button', { name: '新建教室' }).click()
-  await expect(page.locator('.el-dialog:visible')).toContainText('新建教室')
-  await page.keyboard.press('Escape')
-
   await page.goto('/data/courses')
   root = await expectGuide(page, {
     title: '还没有课程数据',
