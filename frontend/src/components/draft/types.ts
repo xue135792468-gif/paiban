@@ -19,6 +19,8 @@ export interface Draft {
   lessonCount: number
   /** Optimistic concurrency token; every write sends it back. */
   version: number
+  /** Locked lessons in this draft; the delete confirmation names the count. */
+  lockedCount?: number | null
 }
 
 export interface DraftRoom {

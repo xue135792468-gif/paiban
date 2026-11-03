@@ -42,6 +42,7 @@ DraftLesson、相关DTO/Repository；SchedulingService、SwapService及草稿删
 
 - 结论：已实现并通过定向测试；全量门禁与真实 PostgreSQL 验证按票面分工留给 09。
 - 含锁草稿删除（本 worktree `codex/delete-locked-draft`）：默认 DELETE 仍拒绝含锁草稿；只有显式 `unlockLocked=true` 且必须携带 `expectedLockedCount`、并与当前锁数一致时才一并移除锁定并删除，成功写 `DRAFT_DELETE` 审计；`DraftLockIntegrationTest` 新增 6 个用例覆盖直接拒绝、缺少确认数量、锁数过期（含当前无锁）、确认删除与无锁删除，E2E `draft-locks.spec.ts` 覆盖确认框文案（含「无法恢复」）、取消后草稿与锁定均保留、确认后 404。
+- 列表页删除（本 worktree `codex/list-locked-delete`，分支 `codex/list-locked-delete`，基点 `main` 4444477）：删除确认抽成共享 `useDraftDeletion`，草稿编辑器与排课列表共用同一文案与请求参数；`DraftDto` 新增 `lockedCount`，列表与详情同步返回，列表行不再直接 DELETE，含锁草稿同样弹出「解锁并删除」并携带 `expectedLockedCount`，取消不发请求，失败刷新列表以更新锁定数。测试：`DraftLockIntegrationTest` 新增列表/详情锁数（锁定 1 节与解锁后为 0），`useDraftDeletion.spec.ts` 覆盖锁定、无锁、取消、失败四种结果，`draft-locks.spec.ts` 新增列表页取消保留与确认后 API 404。
 - 分支 / 基点 / 实现提交：`codex/t01-persistent-locks` / `codex/draft-swap-locks`（4353a16）/ `0d253fd`。
 - 迁移编号：V45（实施前已扫本 worktree 与全部 refs/worktree，最高为 44；`scripts/check-migrations.sh` 通过）。
 

@@ -14,6 +14,7 @@ import {
   seedDraftLockScenario,
   selectClass,
   selectTeacher,
+  uiLogin,
   waitForDraftReload,
   waitForLocks,
 } from './helpers'
@@ -305,8 +306,43 @@ test('含锁定课节的草稿删除要求确认，确认后锁定随草稿一�
 
   await page.getByRole('button', { name: '删除', exact: true }).click()
   const confirmBox = page.locator('.el-message-box:visible')
-  await confirmBox.getByRole('button', { name: '确定' }).click()
+  await confirmBox.getByRole('button', { name: '解锁并删除' }).click()
   await expect(page).toHaveURL(/\/admin\/scheduling/)
+
+  const token = await apiLogin(api)
+  const gone = await api.get(`${API}/timetable-drafts/${seed.draftId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  expect(gone.status()).toBe(404)
+})
+
+test('排课列表页删除含锁草稿也走确认，取消保留、确认后一并移除', async ({ page }) => {
+  const api = await newContext()
+  const seed = await seedDraftLockScenario(api)
+  await lockLessons(api, seed, [seed.mathLessonIds[0]], true)
+  const draftName = (await draftDetail(api, seed.draftId)).draft.name ?? ''
+  expect(draftName).not.toBe('')
+
+  await uiLogin(page, 'admin', 'admin123')
+  await page.goto('/admin/scheduling')
+  const row = page
+    .locator('.el-table__row')
+    .filter({ hasText: draftName })
+    .filter({ has: page.getByRole('button', { name: '删除', exact: true }) })
+  await expect(row).toBeVisible()
+
+  await row.getByRole('button', { name: '删除', exact: true }).click()
+  const box = page.locator('.el-message-box:visible')
+  await expect(box).toContainText('含 1 节锁定课节')
+  await expect(box).toContainText('一并移除')
+  await box.getByRole('button', { name: '取消' }).click()
+  await expect(page.locator('.el-message-box:visible')).toHaveCount(0)
+  await expect(row).toBeVisible()
+
+  await row.getByRole('button', { name: '删除', exact: true }).click()
+  const confirmBox = page.locator('.el-message-box:visible')
+  await confirmBox.getByRole('button', { name: '解锁并删除' }).click()
+  await expect(row).toHaveCount(0)
 
   const token = await apiLogin(api)
   const gone = await api.get(`${API}/timetable-drafts/${seed.draftId}`, {

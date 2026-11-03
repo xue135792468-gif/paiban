@@ -293,6 +293,7 @@ import SchedulingJobMetrics from '@/components/scheduling/SchedulingJobMetrics.v
 import { useAuthStore } from '@/stores/auth'
 import { serverMessage } from '@/api/errors'
 import { formatDateTime } from '@/utils/datetime'
+import { deleteDraftWithConfirmation } from '@/composables/useDraftDeletion'
 
 interface Semester {
   id: number
@@ -330,6 +331,7 @@ interface DraftItem {
   createdBy?: string | null
   createdAt: string
   lessonCount: number
+  lockedCount?: number
 }
 
 const auth = useAuthStore()
@@ -631,27 +633,17 @@ async function handleDeleteDraft(row: DraftItem) {
     ElMessage.warning('已发布的课表草稿不可删除')
     return
   }
-  try {
-    await ElMessageBox.confirm(
-      `确定要删除草稿「${row.name}」吗？此操作不可撤销！`,
-      '删除确认',
-      {
-        confirmButtonText: '确定删除',
-        cancelButtonText: '取消',
-        type: 'warning',
-      },
-    )
-    await http.delete(`/timetable-drafts/${row.id}`)
-    ElMessage.success('草稿删除成功')
-    if (activeJob.value?.draftId === row.id) {
-      activeJob.value = null
-    }
-    await loadDrafts()
-  } catch (e: any) {
-    if (e !== 'cancel' && e !== 'close') {
-      ElMessage.error(serverMessage(e, '删除失败'))
-    }
+  const outcome = await deleteDraftWithConfirmation({
+    id: row.id,
+    name: row.name,
+    lockedCount: row.lockedCount,
+  })
+  if (outcome === 'cancelled') return
+  if (outcome === 'deleted' && activeJob.value?.draftId === row.id) {
+    activeJob.value = null
   }
+  // A failed delete may be a stale lock count; reloading shows the current one.
+  await loadDrafts()
 }
 
 function openDraftEditor(draftId: number) {

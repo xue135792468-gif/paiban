@@ -441,7 +441,9 @@ public class SchedulingService {
     public List<DraftDto> listDrafts(Long semesterId) {
         Long resolved = semesterId != null ? semesterId : semesters.requireCurrent().getId();
         return drafts.findBySemesterIdOrderByCreatedAtDesc(resolved).stream()
-                .map(draft -> toDto(draft, draftLessons.countByDraftId(draft.getId())))
+                .map(draft -> toDto(draft,
+                        draftLessons.countByDraftId(draft.getId()),
+                        draftLessons.countByDraftIdAndLockedTrue(draft.getId())))
                 .toList();
     }
 
@@ -517,8 +519,9 @@ public class SchedulingService {
                 }
             }
         }
+        long lockedCount = rows.stream().filter(DraftLesson::isLocked).count();
         return new DraftDetailDto(
-                toDto(draft, rows.size()), lessons, periodDtos, roomDtos, blockedSlots,
+                toDto(draft, rows.size(), lockedCount), lessons, periodDtos, roomDtos, blockedSlots,
                 settings.fingerprint());
     }
 
@@ -560,7 +563,8 @@ public class SchedulingService {
     public DraftDto renameDraft(Long draftId, String name) {
         TimetableDraft draft = requireDraft(draftId);
         draft.setName(name);
-        return toDto(draft, draftLessons.countByDraftId(draftId));
+        return toDto(draft, draftLessons.countByDraftId(draftId),
+                draftLessons.countByDraftIdAndLockedTrue(draftId));
     }
 
     @Transactional
@@ -712,7 +716,7 @@ public class SchedulingService {
                 .toList();
     }
 
-    private DraftDto toDto(TimetableDraft draft, long lessonCount) {
+    private DraftDto toDto(TimetableDraft draft, long lessonCount, long lockedCount) {
         return new DraftDto(
                 draft.getId(),
                 draft.getSemesterId(),
@@ -723,6 +727,7 @@ public class SchedulingService {
                 draft.getCreatedBy(),
                 draft.getCreatedAt(),
                 lessonCount,
-                draft.getVersion());
+                draft.getVersion(),
+                lockedCount);
     }
 }
