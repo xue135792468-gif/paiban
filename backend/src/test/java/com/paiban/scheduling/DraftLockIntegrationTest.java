@@ -336,6 +336,40 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
         assertThat(drafts.findById(seeded.draftId())).isEmpty();
     }
 
+    @Test
+    void listAndDetailExposeTheLockedCountForTheDeleteConfirmation() {
+        String token = adminToken();
+        World world = world(token);
+        Seeded seeded = seedMainDraft(world);
+        lockOne(token, seeded);
+
+        assertThat(listedLockedCount(token, world.semesterId(), seeded.draftId())).isEqualTo(1);
+        assertThat(detailLockedCount(token, seeded.draftId())).isEqualTo(1);
+
+        as(token).body(Map.of("lessonIds", List.of(seeded.chineseA()), "locked", false, "expectedVersion", 1))
+                .when().put(LOCKS.formatted(seeded.draftId()))
+                .then().statusCode(200);
+
+        assertThat(listedLockedCount(token, world.semesterId(), seeded.draftId())).isZero();
+        assertThat(detailLockedCount(token, seeded.draftId())).isZero();
+    }
+
+    private long listedLockedCount(String token, long semesterId, long draftId) {
+        List<Map<String, Object>> rows = as(token)
+                .when().get("/api/timetable-drafts?semesterId=" + semesterId)
+                .then().statusCode(200).extract().jsonPath().getList("$");
+        Map<String, Object> row = rows.stream()
+                .filter(item -> ((Number) item.get("id")).longValue() == draftId)
+                .findFirst()
+                .orElseThrow();
+        return ((Number) row.get("lockedCount")).longValue();
+    }
+
+    private long detailLockedCount(String token, long draftId) {
+        return as(token).when().get(DRAFT.formatted(draftId))
+                .then().statusCode(200).extract().jsonPath().getLong("draft.lockedCount");
+    }
+
     private void lockOne(String token, Seeded seeded) {
         as(token).body(Map.of("lessonIds", List.of(seeded.chineseA()), "locked", true, "expectedVersion", 0))
                 .when().put(LOCKS.formatted(seeded.draftId()))

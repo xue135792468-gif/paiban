@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
 import type { DraftDetail } from '@/components/draft/types'
+import { deleteDraftWithConfirmation } from '@/composables/useDraftDeletion'
 
 export interface DraftActionsOptions {
   draftId: number
@@ -61,24 +62,15 @@ export function useDraftActions(options: DraftActionsOptions) {
   }
 
   async function remove() {
-    const lockedCount = (options.detail.value?.lessons ?? []).filter((lesson) => lesson.locked).length
-    const message =
-      lockedCount > 0
-        ? `该草稿含 ${lockedCount} 节锁定课节，删除会一并移除这些锁定，且无法恢复。确定解锁并删除？`
-        : '确定删除该草稿吗？删除后无法恢复。'
-    try {
-      await ElMessageBox.confirm(message, '删除草稿', { type: 'warning' })
-    } catch {
-      return
-    }
-    try {
-      await http.delete(`/timetable-drafts/${options.draftId}`, {
-        params: { unlockLocked: lockedCount > 0, expectedLockedCount: lockedCount },
-      })
-      ElMessage.success('已删除')
+    const draft = options.detail.value?.draft
+    const outcome = await deleteDraftWithConfirmation({
+      id: options.draftId,
+      name: draft?.name ?? '当前草稿',
+      lockedCount: draft?.lockedCount ?? 0,
+    })
+    if (outcome === 'deleted') {
       router.push('/admin/scheduling')
-    } catch (error) {
-      ElMessage.error(serverMessage(error, '删除失败'))
+    } else if (outcome === 'failed') {
       // A 409 means locks changed since the dialog was opened; refresh so the
       // next attempt shows the current count and can be confirmed again. The
       // original error is already surfaced, so a reload failure must not escape.

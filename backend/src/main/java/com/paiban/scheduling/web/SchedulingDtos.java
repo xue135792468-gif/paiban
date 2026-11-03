@@ -33,7 +33,7 @@ public final class SchedulingDtos {
 
     public record DraftDto(Long id, Long semesterId, String name, String status, int scoreHard,
                            int scoreSoft, String createdBy, Instant createdAt, long lessonCount,
-                           long version) {}
+                           long version, long lockedCount) {}
 
     public record DraftLessonDto(Long id, Long assignmentId, int lessonIndex, Long courseId,
                                  String courseName, Long teacherId, String teacherName,
