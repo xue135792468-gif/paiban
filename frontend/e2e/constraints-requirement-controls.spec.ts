@@ -37,7 +37,7 @@ test.describe.serial('约束配置：阈值例外的逐项控制与放宽确认'
   }
 
   async function openThreshold(page: Page) {
-    await page.goto('/admin/constraints')
+    await page.goto('/rules')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
     await page.locator(TEACHER_MAX).click()
     await expect(page.getByTestId('constraint-threshold-panel')).toBeVisible()

@@ -68,7 +68,7 @@ test('查看当前代课人 B 后改为 C：待批期间 B 生效，批准后 C 
   const token = await apiLogin(api)
 
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/substitutions/workbench')
+  await page.goto('/substitution')
   await openLessonOfCurrentSubstitute(page, seed)
 
   // 候选排除当前教师 B；精确选第三位教师 C 发起修订。
@@ -91,7 +91,7 @@ test('查看当前代课人 B 后改为 C：待批期间 B 生效，批准后 C 
 
   // 待批期间旧安排（B）继续生效：跳到种子周后 B 的课表仍有这节课，
   // 接口确认当前教师仍为 B。
-  await page.goto('/substitutions/workbench')
+  await page.goto('/substitution')
   await pickOption(page.locator('.picker-card'), 'teacher-select', seed.substituteTeacherName)
   const dateInput = page.getByTestId('lesson-date').locator('input')
   await dateInput.fill(seed.lessonDate)
@@ -104,7 +104,7 @@ test('查看当前代课人 B 后改为 C：待批期间 B 生效，批准后 C 
   expect(lessons).toHaveLength(1)
 
   // 审批状态：待审批队列里可以按原因定位到这一单。
-  await page.goto('/substitutions')
+  await page.goto('/substitution/requests')
   await page.getByRole('tab', { name: '待审批' }).click()
   await expect(page.getByText('课前再次调整：换人').first()).toBeVisible()
 })
@@ -116,7 +116,7 @@ test('从 B 的课表恢复基线教师 A：确认后 A 回归、B 释放，历�
   const token = await apiLogin(api)
 
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/substitutions/workbench')
+  await page.goto('/substitution')
   await openLessonOfCurrentSubstitute(page, seed)
 
   // 恢复基线入口（第②步候选面板）：直接对基线原教师发起一次经预览、校验的再次调整。

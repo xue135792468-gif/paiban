@@ -60,7 +60,7 @@ test('仅键盘完成一次代课确认：选课 → 动作卡 → 候选 → �
   const api = await newContext()
   const seed = await seedWorkbenchScenario(api)
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/substitutions/workbench')
+  await page.goto('/substitution')
   await expect(page.getByTestId('teacher-select')).toBeVisible()
 
   // 步骤 1：键盘选教师 + 填日期 + Enter 点课卡。
@@ -130,7 +130,7 @@ test('320×700：导航隐藏、步骤 1 按天列表、无横向滚动', async 
   const api = await newContext()
   const seed = await seedWorkbenchScenario(api)
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/substitutions/workbench')
+  await page.goto('/substitution')
   await expect(page.getByTestId('teacher-select')).toBeVisible()
 
   // 导航隐藏（≤900px 隐藏左侧导航）。

@@ -40,7 +40,7 @@ test.describe.serial('约束配置：目标型约束多条目', () => {
   }
 
   async function openType(page: Page, selector: string, title: string) {
-    await page.goto('/admin/constraints')
+    await page.goto('/rules')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
     await page.locator(selector).click()
     await expect(page.getByTestId('constraint-panel-title')).toContainText(title)
@@ -272,7 +272,7 @@ test.describe.serial('约束配置：目标型约束多条目', () => {
       ['PE_LAST_PERIOD_AVOID', '体育不在最后一节'],
     ]
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/admin/constraints')
+    await page.goto('/rules')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
     for (const [code, title] of types) {
       const navItem = page.locator(`[data-type="${code}"]`)

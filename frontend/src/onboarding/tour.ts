@@ -23,48 +23,63 @@ const BASIC_STEPS: TourStepDefinition[] = [
     description: '这个引导会带你认识几个核心入口，大约需要一分钟。随时可以点「跳过教程」。',
   },
   {
-    target: '/admin/classes',
+    target: '/data/classes',
     title: '基础数据',
-    description: '年级、行政班、教师、教室、课程都在「教务」分组里维护，也支持 Excel 导入。',
+    description: '年级、行政班、教师、课程都在「数据管理」里维护，也支持 Excel 导入。',
   },
   {
-    target: '/admin/scheduling',
+    target: '/workbench',
     title: '自动排课',
-    description: '配置好约束后，在这里提交排课并查看生成的课表草稿。',
+    description: '配置好规则后，在这里提交排课并查看生成的课表草稿。',
   },
   {
-    target: '/substitutions',
+    target: '/substitution',
     title: '调代课',
     description: '教师请假与代课申请在这里提交和审批，结果会叠加到课表上。',
   },
   {
-    target: '/timetable',
+    target: '/workbench/timetable',
     title: '课表查看',
-    description: '按行政班、教师、教室、全校四种视角查看课表，并导出 Excel 或打印。',
+    description: '按行政班、教师、全校三种视角查看课表，并导出 Excel 或打印。',
   },
   {
     title: '开始使用',
-    description: '教程随时可以在「设置中心 → 新手教程」重新打开。',
+    description: '教程随时可以在「设置 → 新手教程」重新打开。',
   },
 ]
 
 const ADVANCED_STEPS: TourStepDefinition[] = [
   {
-    target: '/admin/constraints',
-    title: '约束权重',
-    description: '约束权重 0-100 表示优先级，越高越优先满足；硬约束不满足时排课会失败。',
+    target: '/rules',
+    title: '规则权重',
+    description: '规则权重 0-100 表示优先级，越高越优先满足；必须规则不满足时排课会失败。',
   },
   {
-    target: '/admin/scheduling',
+    target: '/workbench',
     title: '提交排课',
     description: '点击「开始排课」提交求解，完成后可以打开草稿手工微调。',
   },
   {
-    target: '/timetable',
+    target: '/workbench/timetable',
     title: '课表导出',
-    description: '课表查看页可以按当前视角导出 Excel，发布后的课表支持打印为 PDF。',
+    description: '课表页可以按当前视角导出 Excel，发布后的课表支持打印为 PDF。',
   },
 ]
+
+/**
+ * Steps address top-level sidebar entries through `data-tour`. A couple of steps
+ * point at a sub page (e.g. the class list inside 数据管理); the sidebar has no
+ * own entry for those, so highlight the owning top-level page instead of
+ * dropping the step.
+ */
+const MENU_TARGET_ALIASES: Record<string, string> = {
+  '/data/classes': '/data',
+  '/workbench/timetable': '/workbench',
+}
+
+function targetSelector(target: string): string {
+  return `[data-tour="${MENU_TARGET_ALIASES[target] ?? target}"]`
+}
 
 function storageKey(stage: TourStage): string {
   return stage === 'advanced' ? TOUR_ADVANCED_KEY : TOUR_SEEN_KEY
@@ -98,7 +113,7 @@ export function resetTour(): void {
 }
 
 function isRendered(target: string): boolean {
-  return document.querySelector(`[data-tour="${target}"]`) !== null
+  return document.querySelector(targetSelector(target)) !== null
 }
 
 /** Only one tour overlay may exist at a time; a new one replaces whatever is running. */
@@ -146,7 +161,7 @@ function buildSteps(stage: TourStage): DriveStep[] {
   return definitions
     .filter((definition) => !definition.target || isRendered(definition.target))
     .map((definition) => ({
-      element: definition.target ? `[data-tour="${definition.target}"]` : undefined,
+      element: definition.target ? targetSelector(definition.target) : undefined,
       popover: { title: definition.title, description: definition.description },
     }))
 }

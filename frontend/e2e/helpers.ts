@@ -958,7 +958,7 @@ export function lessonCard(page: Page, lessonId: number): Locator {
 /** 管理员登录 → 打开草稿详情 → 等网格首格渲染。 */
 export async function openDraft(page: Page, draftId: number): Promise<void> {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto(`/admin/drafts/${draftId}`)
+  await page.goto(`/workbench/drafts/${draftId}`)
   await expect(page.locator('.grid-card .cell').first()).toBeVisible()
 }
 

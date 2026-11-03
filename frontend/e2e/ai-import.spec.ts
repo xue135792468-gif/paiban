@@ -105,7 +105,7 @@ test.afterAll(async () => {
 
 test('目标卡片写清能处理、输出与限制，未支持目标为禁用态', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/admin/ai-import')
+  await page.goto('/data/import')
 
   await expect(page.getByTestId('target-card')).toHaveCount(7)
 
@@ -139,16 +139,16 @@ test('目标卡片写清能处理、输出与限制，未支持目标为禁用�
 
 test('排课页的「导入课表」入口默认整本工作簿目标', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/admin/scheduling')
+  await page.goto('/workbench')
   await page.getByRole('button', { name: '导入课表' }).click()
 
-  await expect(page).toHaveURL(/\/admin\/ai-import$/)
+  await expect(page).toHaveURL(/\/data\/import$/)
   await expect(page.locator('[data-target=workbook]')).toContainText('已选择')
 })
 
 test('课表导入：网格预览、班级切换、未匹配映射、生成草稿', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/admin/ai-import')
+  await page.goto('/data/import')
   await expect(page.getByText('AI 已就绪')).toBeVisible()
 
   await page.locator('[data-target=timetable]').click()
@@ -199,7 +199,7 @@ test('课表导入：网格预览、班级切换、未匹配映射、生成草�
   await expect(commit).toBeEnabled()
 
   await commit.click()
-  await page.waitForURL(/\/admin\/drafts\/\d+/)
+  await page.waitForURL(/\/workbench\/drafts\/\d+/)
   await expect(page.locator('.lesson').first()).toBeVisible()
   await expect(page.locator('.lesson').first()).toContainText(seed.courseOne)
 
@@ -214,7 +214,7 @@ test('课表导入：网格预览、班级切换、未匹配映射、生成草�
 
 test('教师导入回归：上传、预览行、入库', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/admin/ai-import')
+  await page.goto('/data/import')
   await expect(page.getByText('AI 已就绪')).toBeVisible()
   // Picking a card opts back into the single-target parse this regression covers.
   await page.locator('[data-target=teacher]').click()
@@ -240,7 +240,7 @@ test('教师导入回归：上传、预览行、入库', async ({ page }) => {
 
 test('多工作表工作簿：一次识别四类数据、跳过说明表并生成草稿', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/admin/ai-import')
+  await page.goto('/data/import')
   const suffix = seedSuffix(seed)
   const workbook = buildWorkbookXlsx([
     {
@@ -285,13 +285,13 @@ test('多工作表工作簿：一次识别四类数据、跳过说明表并生�
   await expect(page.getByTestId('commit-categories')).toContainText('教师名单')
 
   await page.getByRole('button', { name: '查看草稿' }).click()
-  await expect(page).toHaveURL(/\/admin\/drafts\/\d+/)
+  await expect(page).toHaveURL(/\/workbench\/drafts\/\d+/)
 })
 
 test('整本工作簿在后台分批解析，刷新后仍能看到进度并走到预览', async ({ page }) => {
   workbookControl = { latencyMs: 2500 }
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/admin/ai-import')
+  await page.goto('/data/import')
   await expect(page.getByText('AI 已就绪')).toBeVisible()
 
   const suffix = seedSuffix(seed)
@@ -331,7 +331,7 @@ test('整本工作簿在后台分批解析，刷新后仍能看到进度并走�
 
 test('解析失败给出可操作提示，而不是通用「操作失败」', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/admin/ai-import')
+  await page.goto('/data/import')
   await expect(page.getByText('AI 已就绪')).toBeVisible()
 
   await uploadExcel(page, 'broken.xlsx', Buffer.from('this is not a spreadsheet', 'utf8'))
@@ -351,8 +351,8 @@ test('课表解析后切页再回来，预览仍在', async ({ page }) => {
 
   // In-app navigation (SPA pushState) followed by browser back (popstate): no reload,
   // so the preview has to come back from the session in the URL.
-  await page.getByRole('menuitem', { name: '自动排课' }).click()
-  await expect(page).toHaveURL(/\/admin\/scheduling/)
+  await page.getByRole('menuitem', { name: '课表工作台' }).click()
+  await expect(page).toHaveURL(/\/workbench$/)
   await page.goBack()
 
   await expect(summary).toBeVisible()
@@ -379,7 +379,7 @@ test('空页面显示上次导入入口并可继续', async ({ page }) => {
   await startTimetableImport(page, timetableSheet(seed), { merges: ['A1:F1'] })
 
   // A full page load without the session query: only localStorage knows the session.
-  await page.goto('/admin/ai-import')
+  await page.goto('/data/import')
 
   const card = page.getByTestId('last-session-card')
   await expect(card).toBeVisible()
@@ -424,7 +424,7 @@ test('八（1）推断为八年级并随班级创建', async ({ page }) => {
 
     await expect(page.getByTestId('mapping-clear')).toBeVisible()
     await page.locator('.footer-actions').getByRole('button', { name: /确认入库/ }).click()
-    await page.waitForURL(/\/admin\/drafts\/\d+/)
+    await page.waitForURL(/\/workbench\/drafts\/\d+/)
   })
 
   const token = await apiLogin(api)
@@ -487,7 +487,7 @@ test('解析中停止：已完成批次保留，可以直接继续入库', async
     const commit = page.locator('.footer-actions').getByRole('button', { name: /确认入库/ })
     await expect(commit).toBeEnabled()
     await commit.click()
-    await page.waitForURL(/\/admin\/drafts\/\d+/)
+    await page.waitForURL(/\/workbench\/drafts\/\d+/)
 
     const draftId = Number(page.url().match(/\/admin\/drafts\/(\d+)/)?.[1])
     const detail = await apiCall(api, await apiLogin(api), 'get', `/timetable-drafts/${draftId}`)
@@ -528,7 +528,7 @@ test('单批失败进入部分结果，重试后得到完整预览并入库', as
     await expect(page.getByTestId('partial-result-panel')).toHaveCount(0)
 
     await page.locator('.footer-actions').getByRole('button', { name: /确认入库/ }).click()
-    await page.waitForURL(/\/admin\/drafts\/\d+/)
+    await page.waitForURL(/\/workbench\/drafts\/\d+/)
 
     const draftId = Number(page.url().match(/\/admin\/drafts\/(\d+)/)?.[1])
     const detail = await apiCall(api, await apiLogin(api), 'get', `/timetable-drafts/${draftId}`)
@@ -568,7 +568,7 @@ test('放弃导入：不生成草稿，?session= 恢复入口不再继续该会�
     expect(draftsAfter.length).toBe(draftsBefore)
 
     // A bookmarked `?session=` must not resurrect it either.
-    await page.goto(`/admin/ai-import?session=${sessionId}`)
+    await page.goto(`/data/import?session=${sessionId}`)
     await expect(page.locator('.el-message--error')).toContainText('该导入会话已不可用')
     await expect(page.getByTestId('target-card')).toHaveCount(7)
     await expect(page).not.toHaveURL(/session=/)
@@ -624,7 +624,7 @@ test('可疑教师值：标黄列在预览里，正常姓名不受影响，仍�
   await expect(page.getByTestId('commit-result')).toBeVisible()
   await expect(page.getByTestId('commit-categories')).toContainText('课表')
   await page.getByRole('button', { name: '查看草稿' }).click()
-  await page.waitForURL(/\/admin\/drafts\/\d+/)
+  await page.waitForURL(/\/workbench\/drafts\/\d+/)
   await expect(page.locator('.lesson').first()).toBeVisible()
 
   const draftId = Number(page.url().match(/\/admin\/drafts\/(\d+)/)?.[1])
@@ -696,7 +696,7 @@ test('作息缺节：可推算项确认补进作息后清单消失并成功入�
   await expect(page.getByTestId('commit-result')).toBeVisible()
   await expect(page.getByTestId('commit-categories')).toContainText('课表')
   await page.getByRole('button', { name: '查看草稿' }).click()
-  await page.waitForURL(/\/admin\/drafts\/\d+/)
+  await page.waitForURL(/\/workbench\/drafts\/\d+/)
 
   const draftId = Number(page.url().match(/\/admin\/drafts\/(\d+)/)?.[1])
   const detail = await apiCall(api, token, 'get', `/timetable-drafts/${draftId}`)
@@ -745,7 +745,7 @@ test('作息缺节：不可推算的项标注需人工，不提供写入入口',
 /** Uploads a whole workbook, parses it and waits for the merged preview. */
 async function startWorkbookImport(page: Page, name: string, workbook: Buffer): Promise<void> {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/admin/ai-import')
+  await page.goto('/data/import')
   await expect(page.getByText('AI 已就绪')).toBeVisible()
   await uploadExcel(page, name, workbook)
   await page.getByRole('button', { name: '开始解析' }).click()
@@ -756,7 +756,7 @@ async function startWorkbookImport(page: Page, name: string, workbook: Buffer): 
 /** Logs in, opens the import page and selects the timetable target. */
 async function openTimetableImport(page: Page): Promise<void> {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/admin/ai-import')
+  await page.goto('/data/import')
   await expect(page.getByText('AI 已就绪')).toBeVisible()
   await page.locator('[data-target=timetable]').click()
   await expect(page.locator('[data-target=timetable]')).toContainText('已选择')
@@ -1213,7 +1213,7 @@ async function configureImportProvider(context: APIRequestContext, baseUrl: stri
  */
 test('入库中的会话恢复后显示禁用按钮，并自动刷新到已入库', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/admin/ai-import')
+  await page.goto('/data/import')
   const suffix = seedSuffix(seed)
   const workbook = buildWorkbookXlsx([
     {
@@ -1243,7 +1243,7 @@ test('入库中的会话恢复后显示禁用按钮，并自动刷新到已入�
     })
   })
 
-  await page.goto(`/admin/ai-import?session=${sessionId}&target=workbook`)
+  await page.goto(`/data/import?session=${sessionId}&target=workbook`)
 
   await expect(page.getByTestId('import-status')).toHaveText('入库中')
   await expect(

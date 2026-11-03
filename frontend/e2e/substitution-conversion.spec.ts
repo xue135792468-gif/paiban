@@ -53,7 +53,7 @@ test('历史转换：未确认时无切换，确认后课表按实际授课日�
 
   // 未确认：授课日出现「代」，下周同一槽位仍被旧格式行持续覆盖（旧语义照旧）。
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/timetable')
+  await page.goto('/workbench/timetable')
   await page.getByPlaceholder('选择日期').fill(effectiveDate)
   await page.getByPlaceholder('选择日期').press('Enter')
   await expect(page.locator('.lesson .el-tag', { hasText: '代' })).toHaveCount(1)
@@ -62,7 +62,7 @@ test('历史转换：未确认时无切换，确认后课表按实际授课日�
   await expect(page.locator('.lesson .el-tag', { hasText: '代' })).toHaveCount(1)
 
   // 预检：一条可转换记录，阻塞为 0；确认门放行。
-  await page.goto('/substitutions')
+  await page.goto('/substitution/requests')
   await page.getByRole('tab', { name: '历史转换' }).click()
   await expect(page.getByText('未通过数据确认门前不会切换历史解释')).toBeVisible()
   await page.getByRole('button', { name: '生成预检报告' }).click()
@@ -80,7 +80,7 @@ test('历史转换：未确认时无切换，确认后课表按实际授课日�
   await expect(page.getByText('已转换')).toBeVisible()
 
   // 确认后：授课日仍是「代」，下周恢复常规安排（新日期结果）。
-  await page.goto('/timetable')
+  await page.goto('/workbench/timetable')
   await page.getByPlaceholder('选择日期').fill(effectiveDate)
   await page.getByPlaceholder('选择日期').press('Enter')
   await expect(page.locator('.lesson .el-tag', { hasText: '代' })).toHaveCount(1)

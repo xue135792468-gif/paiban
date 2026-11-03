@@ -10,7 +10,7 @@ import { uiLogin } from './helpers'
 
 test('悬停「学校类型」旁的问号显示字段说明', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/admin/settings')
+  await page.goto('/settings/general')
 
   const icon = page
     .locator('.el-form-item')

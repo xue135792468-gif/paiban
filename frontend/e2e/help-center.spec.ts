@@ -71,6 +71,6 @@ test('文档内站内链接跳到真实路由', async ({ page }) => {
   await page.goto('/help/foundation')
 
   await page.getByTestId('help-content').getByRole('link', { name: '创建班级' }).click()
-  await expect(page).toHaveURL(/\/admin\/classes$/)
+  await expect(page).toHaveURL(/\/data\/classes$/)
   await expect(page.getByRole('heading', { name: '行政班管理' })).toBeVisible()
 })

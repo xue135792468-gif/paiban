@@ -98,7 +98,7 @@ test('设置页可以重新进入初始化向导', async ({ page, request }) => 
   await uiLogin(page, 'admin', 'admin123')
   await expect(page).toHaveURL(/\/onboarding/)
 
-  await page.goto('/admin/settings')
+  await page.goto('/settings/general')
   const card = page.locator('#wizard-reenter')
   await expect(card).toBeVisible()
   await expect(card).toContainText('初始化向导')

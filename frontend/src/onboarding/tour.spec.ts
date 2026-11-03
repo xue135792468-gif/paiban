@@ -82,7 +82,7 @@ describe('startTour', () => {
   })
 
   it('walks the six basic steps through the sidebar entries', () => {
-    addTourTargets(['/admin/classes', '/admin/scheduling', '/substitutions', '/timetable'])
+    addTourTargets(['/data', '/workbench', '/substitution'])
 
     startTour('basic')
 
@@ -91,24 +91,24 @@ describe('startTour', () => {
     expect(steps).toHaveLength(6)
     expect(steps[0].element).toBeUndefined()
     expect(steps[0].popover?.title).toBe('欢迎使用排课系统')
-    expect(steps[1].element).toBe('[data-tour="/admin/classes"]')
-    expect(steps[2].element).toBe('[data-tour="/admin/scheduling"]')
-    expect(steps[3].element).toBe('[data-tour="/substitutions"]')
-    expect(steps[4].element).toBe('[data-tour="/timetable"]')
+    expect(steps[1].element).toBe('[data-tour="/data"]')
+    expect(steps[2].element).toBe('[data-tour="/workbench"]')
+    expect(steps[3].element).toBe('[data-tour="/substitution"]')
+    expect(steps[4].element).toBe('[data-tour="/workbench"]')
     expect(steps[5].element).toBeUndefined()
     expect(driverMock.drive).toHaveBeenCalledTimes(1)
   })
 
   it('drops steps whose target is not rendered instead of letting driver.js fail', () => {
-    addTourTargets(['/admin/classes', '/timetable'])
+    addTourTargets(['/data', '/substitution'])
 
     startTour('basic')
 
     const steps = lastConfig().steps as Array<{ element?: string }>
     expect(steps.map((step) => step.element)).toEqual([
       undefined,
-      '[data-tour="/admin/classes"]',
-      '[data-tour="/timetable"]',
+      '[data-tour="/data"]',
+      '[data-tour="/substitution"]',
       undefined,
     ])
   })
@@ -174,7 +174,7 @@ describe('startTour', () => {
   })
 
   it('marks the advanced tour as seen once it is destroyed', () => {
-    addTourTargets(['/admin/constraints', '/admin/scheduling', '/timetable'])
+    addTourTargets(['/rules', '/workbench'])
 
     startTour('advanced')
 
@@ -184,16 +184,16 @@ describe('startTour', () => {
     expect(hasSeenTour('advanced')).toBe(true)
   })
 
-  it('builds the three advanced steps for constraints, scheduling and export', () => {
-    addTourTargets(['/admin/constraints', '/admin/scheduling', '/timetable'])
+  it('builds the three advanced steps for rules, scheduling and export', () => {
+    addTourTargets(['/rules', '/workbench'])
 
     startTour('advanced')
 
     const steps = lastConfig().steps as Array<{ element?: string }>
     expect(steps.map((step) => step.element)).toEqual([
-      '[data-tour="/admin/constraints"]',
-      '[data-tour="/admin/scheduling"]',
-      '[data-tour="/timetable"]',
+      '[data-tour="/rules"]',
+      '[data-tour="/workbench"]',
+      '[data-tour="/workbench"]',
     ])
   })
 
