@@ -42,7 +42,7 @@ public class AssignmentService {
     @Transactional(readOnly = true)
     public List<AssignmentDto> list(Long semesterId, Long classId, Long teacherId, Long courseId) {
         Long resolved = foundation.resolveSemester(semesterId);
-        List<Assignment> result = assignments.findBySemesterId(resolved);
+        List<Assignment> result = assignments.findBySemesterIdForList(resolved);
         if (classId != null) {
             result = result.stream().filter(a -> a.getAdminClassId().equals(classId)).toList();
         }
@@ -157,13 +157,6 @@ public class AssignmentService {
         return toDtos(List.of(assignment), assignment.getSemesterId()).get(0);
     }
 
-    @Transactional
-    public void delete(Long id) {
-        Assignment assignment = assignments.findById(id)
-                .orElseThrow(() -> ApiException.notFound("授课任务不存在: " + id));
-        assignments.delete(assignment);
-    }
-
     public List<AssignmentDto> toDtos(List<Assignment> list, Long semesterId) {
         Map<Long, ClassDto> classMap = foundation.classesById(semesterId);
         Map<Long, CourseDto> courseMap = foundation.coursesById();
@@ -184,7 +177,8 @@ public class AssignmentService {
                             assignment.getTeacherId(),
                             teacher == null ? null : teacher.name(),
                             assignment.getWeeklyLessons(),
-                            assignment.getTeachingClassId());
+                            assignment.getTeachingClassId(),
+                            assignment.isActive());
                 })
                 .toList();
     }

@@ -17,6 +17,7 @@
           <template #default="{ row }">
             <span class="semester-name">{{ row.name }}</span>
             <el-tag v-if="row.current" size="small" type="success" effect="light" class="current-tag">当前</el-tag>
+            <el-tag v-if="row.active === false" size="small" type="info" class="current-tag">已停用</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="startDate" label="开始日期" width="130" />
@@ -26,7 +27,7 @@
             <span>{{ periodCounts[row.id] ?? '—' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="380" fixed="right">
+        <el-table-column label="操作" width="460" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="router.push(`/admin/semesters/${row.id}/schedule`)">
               作息表
@@ -36,7 +37,12 @@
               复制结构
             </el-button>
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="danger" :disabled="row.current" @click="remove(row)">删除</el-button>
+            <LifecycleCell
+              entity-type="semester"
+              :row="row"
+              :disabled="row.current"
+              @updated="load"
+            />
           </template>
         </el-table-column>
       </el-table>
@@ -96,10 +102,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
+import LifecycleCell from '@/components/lifecycle/LifecycleCell.vue'
 
 interface Semester {
   id: number
@@ -107,6 +114,7 @@ interface Semester {
   startDate: string
   endDate: string
   current: boolean
+  active?: boolean
 }
 
 const router = useRouter()
@@ -124,7 +132,9 @@ const copyTarget = ref<Semester | null>(null)
 const copySourceId = ref<number | null>(null)
 
 const copyCandidates = computed(() =>
-  semesters.value.filter((semester) => semester.id !== copyTarget.value?.id),
+  semesters.value.filter(
+    (semester) => semester.id !== copyTarget.value?.id && semester.active !== false,
+  ),
 )
 
 function openCopy(row: Semester) {
@@ -217,20 +227,6 @@ async function setCurrent(row: Semester) {
   }
 }
 
-async function remove(row: Semester) {
-  try {
-    await ElMessageBox.confirm(`确定删除学期「${row.name}」及其作息表吗？`, '删除学期', { type: 'warning' })
-  } catch {
-    return
-  }
-  try {
-    await http.delete(`/semesters/${row.id}`)
-    ElMessage.success('已删除')
-    await load()
-  } catch (e: any) {
-    ElMessage.error(serverMessage(e, '删除失败'))
-  }
-}
 
 onMounted(load)
 </script>

@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.Instant;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -35,4 +36,10 @@ public class AdminClass {
 
     @Column(name = "student_count", nullable = false)
     private int studentCount = 45;
+
+    @Column(nullable = false)
+    private boolean active = true;
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
 }

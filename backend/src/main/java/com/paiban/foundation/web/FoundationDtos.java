@@ -34,7 +34,8 @@ public final class FoundationDtos {
                                   @Size(max = 100) String building) {}
 
     public record CourseDto(Long id, String name, String subject, boolean allowConsecutive,
-                            boolean requireOutdoor, String requiredRoomType, String color) {}
+                            boolean requireOutdoor, String requiredRoomType, String color,
+                            boolean active) {}
 
     public record SaveCourseRequest(@NotBlank(message = "课程名称不能为空") @Size(max = 100) String name,
                                     @Size(max = 100) String subject,
@@ -43,13 +44,14 @@ public final class FoundationDtos {
                                     String requiredRoomType,
                                     @Size(max = 20) String color) {}
 
-    public record GradeDto(Long id, String name, int sortOrder) {}
+    public record GradeDto(Long id, String name, int sortOrder, boolean active) {}
 
     public record SaveGradeRequest(@NotBlank(message = "年级名称不能为空") @Size(max = 100) String name,
                                    Integer sortOrder) {}
 
     public record ClassDto(Long id, String name, Long gradeId, String gradeName, Long headTeacherId,
-                           String headTeacherName, int studentCount, Long teachingClassId) {}
+                           String headTeacherName, int studentCount, Long teachingClassId,
+                           boolean active) {}
 
     public record SaveClassRequest(@NotNull(message = "年级不能为空") Long gradeId,
                                    @NotBlank(message = "班级名称不能为空") @Size(max = 100) String name,

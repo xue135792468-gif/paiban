@@ -45,8 +45,6 @@ public class FoundationService {
     private final TeachingClassRepository teachingClasses;
     private final AuditLogRepository auditLogs;
     private final SemesterService semesters;
-    private final com.paiban.scheduling.domain.AssignmentRepository assignments;
-    private final com.paiban.scheduling.domain.DraftLessonRepository draftLessons;
 
     public FoundationService(
             TeacherRepository teachers,
@@ -56,9 +54,7 @@ public class FoundationService {
             AdminClassRepository classes,
             TeachingClassRepository teachingClasses,
             AuditLogRepository auditLogs,
-            SemesterService semesters,
-            com.paiban.scheduling.domain.AssignmentRepository assignments,
-            com.paiban.scheduling.domain.DraftLessonRepository draftLessons) {
+            SemesterService semesters) {
         this.teachers = teachers;
         this.rooms = rooms;
         this.courses = courses;
@@ -67,15 +63,21 @@ public class FoundationService {
         this.teachingClasses = teachingClasses;
         this.auditLogs = auditLogs;
         this.semesters = semesters;
-        this.assignments = assignments;
-        this.draftLessons = draftLessons;
     }
 
     // ---------- teachers ----------
 
     @Transactional(readOnly = true)
     public List<TeacherDto> listTeachers() {
-        return teachers.findAllByOrderByNameAsc().stream().map(this::toDto).toList();
+        return teachers.findAllByDeletedAtIsNullOrderByNameAsc().stream().map(this::toDto).toList();
+    }
+
+    /** Dropdown options: deleted and disabled teachers are both hidden. */
+    @Transactional(readOnly = true)
+    public List<TeacherDto> listTeacherOptions() {
+        return teachers.findAllByDeletedAtIsNullAndActiveTrueOrderByNameAsc().stream()
+                .map(this::toDto)
+                .toList();
     }
 
     @Transactional
@@ -91,18 +93,6 @@ public class FoundationService {
         Teacher teacher = teachers.findById(id).orElseThrow(() -> ApiException.notFound("教师不存在: " + id));
         apply(teacher, request);
         return toDto(teacher);
-    }
-
-    @Transactional
-    public void deleteTeacher(Long id) {
-        Teacher teacher = teachers.findById(id).orElseThrow(() -> ApiException.notFound("教师不存在: " + id));
-        if (assignments.countByTeacherId(id) > 0) {
-            throw ApiException.conflict("该教师仍有授课任务，请先删除或调整授课任务");
-        }
-        classes.findAll().stream()
-                .filter(adminClass -> id.equals(adminClass.getHeadTeacherId()))
-                .forEach(adminClass -> adminClass.setHeadTeacherId(null));
-        teachers.delete(teacher);
     }
 
     private void apply(Teacher teacher, SaveTeacherRequest request) {
@@ -198,7 +188,7 @@ public class FoundationService {
 
     @Transactional(readOnly = true)
     public List<CourseDto> listCourses() {
-        return courses.findAllByOrderByNameAsc().stream().map(this::toDto).toList();
+        return courses.findAllByDeletedAtIsNullOrderByNameAsc().stream().map(this::toDto).toList();
     }
 
     @Transactional
@@ -224,11 +214,6 @@ public class FoundationService {
         return toDto(course);
     }
 
-    @Transactional
-    public void deleteCourse(Long id) {
-        courses.delete(courses.findById(id).orElseThrow(() -> ApiException.notFound("课程不存在: " + id)));
-    }
-
     private void apply(Course course, SaveCourseRequest request) {
         course.setName(request.name());
         course.setSubject(blankToNull(request.subject()));
@@ -247,7 +232,9 @@ public class FoundationService {
     @Transactional(readOnly = true)
     public List<GradeDto> listGrades(Long semesterId) {
         Long resolved = resolveSemester(semesterId);
-        return grades.findBySemesterIdOrderBySortOrderAscNameAsc(resolved).stream().map(this::toDto).toList();
+        return grades.findBySemesterIdAndDeletedAtIsNullOrderBySortOrderAscNameAsc(resolved).stream()
+                .map(this::toDto)
+                .toList();
     }
 
     @Transactional
@@ -278,29 +265,19 @@ public class FoundationService {
         return toDto(grade);
     }
 
-    @Transactional
-    public void deleteGrade(Long id) {
-        Grade grade = grades.findById(id).orElseThrow(() -> ApiException.notFound("年级不存在: " + id));
-        List<AdminClass> affected = classes.findBySemesterIdOrderByGradeIdAscNameAsc(grade.getSemesterId()).stream()
-                .filter(adminClass -> grade.getId().equals(adminClass.getGradeId()))
-                .toList();
-        affected.forEach(adminClass -> teachingClasses.deleteByAdminClassId(adminClass.getId()));
-        classes.deleteAll(affected);
-        grades.delete(grade);
-    }
-
     // ---------- classes ----------
 
     @Transactional(readOnly = true)
     public List<ClassDto> listClasses(Long semesterId) {
         Long resolved = resolveSemester(semesterId);
-        Map<Long, String> gradeNames = grades.findBySemesterIdOrderBySortOrderAscNameAsc(resolved).stream()
+        Map<Long, String> gradeNames = grades.findBySemesterIdAndDeletedAtIsNullOrderBySortOrderAscNameAsc(resolved)
+                .stream()
                 .collect(Collectors.toMap(Grade::getId, Grade::getName));
         Map<Long, String> teacherNames = teachers.findAll().stream()
                 .collect(Collectors.toMap(Teacher::getId, Teacher::getName));
         Map<Long, Long> teachingIds = teachingClasses.findBySemesterId(resolved).stream()
                 .collect(Collectors.toMap(TeachingClass::getAdminClassId, TeachingClass::getId));
-        return classes.findBySemesterIdOrderByGradeIdAscNameAsc(resolved).stream()
+        return classes.findBySemesterIdAndDeletedAtIsNullOrderByGradeIdAscNameAsc(resolved).stream()
                 .map(adminClass -> toDto(
                         adminClass,
                         gradeNames.get(adminClass.getGradeId()),
@@ -363,16 +340,6 @@ public class FoundationService {
         return toDto(adminClass, grade.getName(), headTeacherName(adminClass.getHeadTeacherId()), teachingId);
     }
 
-    @Transactional
-    public void deleteClass(Long id) {
-        AdminClass adminClass = classes.findById(id).orElseThrow(() -> ApiException.notFound("班级不存在: " + id));
-        if (draftLessons.countByAdminClassId(id) > 0) {
-            throw ApiException.conflict("该班级存在课表草稿数据，请先删除相关草稿");
-        }
-        teachingClasses.deleteByAdminClassId(id);
-        classes.delete(adminClass);
-    }
-
     @Transactional(readOnly = true)
     public List<AuditLogDto> auditLogs() {
         return auditLogs.findTop100ByOrderByCreatedAtDesc().stream()
@@ -393,22 +360,30 @@ public class FoundationService {
     }
 
     public Teacher requireTeacher(Long id) {
-        return teachers.findById(id).orElseThrow(() -> ApiException.notFound("教师不存在: " + id));
+        return teachers.findById(id)
+                .filter(teacher -> teacher.getDeletedAt() == null)
+                .orElseThrow(() -> ApiException.notFound("教师不存在: " + id));
     }
 
     @Transactional(readOnly = true)
     public AdminClass requireAdminClass(Long id) {
-        return classes.findById(id).orElseThrow(() -> ApiException.notFound("班级不存在: " + id));
+        return classes.findById(id)
+                .filter(adminClass -> adminClass.getDeletedAt() == null)
+                .orElseThrow(() -> ApiException.notFound("班级不存在: " + id));
     }
 
     @Transactional(readOnly = true)
     public Course requireCourse(Long id) {
-        return courses.findById(id).orElseThrow(() -> ApiException.notFound("课程不存在: " + id));
+        return courses.findById(id)
+                .filter(course -> course.getDeletedAt() == null)
+                .orElseThrow(() -> ApiException.notFound("课程不存在: " + id));
     }
 
     @Transactional(readOnly = true)
     public Grade requireGradeById(Long id) {
-        return grades.findById(id).orElseThrow(() -> ApiException.notFound("年级不存在: " + id));
+        return grades.findById(id)
+                .filter(grade -> grade.getDeletedAt() == null)
+                .orElseThrow(() -> ApiException.notFound("年级不存在: " + id));
     }
 
     @Transactional(readOnly = true)
@@ -443,7 +418,9 @@ public class FoundationService {
     }
 
     private void validateHeadTeacher(Long headTeacherId) {
-        if (headTeacherId != null && !teachers.existsById(headTeacherId)) {
+        if (headTeacherId != null && teachers.findById(headTeacherId)
+                .filter(teacher -> teacher.getDeletedAt() == null)
+                .isEmpty()) {
             throw ApiException.notFound("班主任不存在: " + headTeacherId);
         }
     }
@@ -480,17 +457,19 @@ public class FoundationService {
     private CourseDto toDto(Course course) {
         return new CourseDto(
                 course.getId(), course.getName(), course.getSubject(), course.isAllowConsecutive(),
-                course.isRequireOutdoor(), course.getRequiredRoomType(), course.getColor());
+                course.isRequireOutdoor(), course.getRequiredRoomType(), course.getColor(),
+                course.isActive());
     }
 
     private GradeDto toDto(Grade grade) {
-        return new GradeDto(grade.getId(), grade.getName(), grade.getSortOrder());
+        return new GradeDto(grade.getId(), grade.getName(), grade.getSortOrder(), grade.isActive());
     }
 
     private ClassDto toDto(AdminClass adminClass, String gradeName, String headTeacherName, Long teachingClassId) {
         return new ClassDto(
                 adminClass.getId(), adminClass.getName(), adminClass.getGradeId(), gradeName,
-                adminClass.getHeadTeacherId(), headTeacherName, adminClass.getStudentCount(), teachingClassId);
+                adminClass.getHeadTeacherId(), headTeacherName, adminClass.getStudentCount(),
+                teachingClassId, adminClass.isActive());
     }
 
     public Map<Long, String> teacherNames() {

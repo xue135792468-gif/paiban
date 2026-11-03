@@ -40,6 +40,12 @@ public class Course {
     @Column(length = 20)
     private String color;
 
+    @Column(nullable = false)
+    private boolean active = true;
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 }

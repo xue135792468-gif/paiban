@@ -13,7 +13,8 @@ public final class SemesterDtos {
 
     private SemesterDtos() {}
 
-    public record SemesterDto(Long id, String name, LocalDate startDate, LocalDate endDate, boolean current) {}
+    public record SemesterDto(Long id, String name, LocalDate startDate, LocalDate endDate,
+                              boolean current, boolean active) {}
 
     public record SaveSemesterRequest(@NotBlank(message = "学期名称不能为空") String name,
                                       @NotNull(message = "开始日期不能为空") LocalDate startDate,

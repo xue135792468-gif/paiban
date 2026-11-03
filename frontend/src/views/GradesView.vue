@@ -3,7 +3,7 @@
     <div class="toolbar">
       <div>
         <h2>年级设置</h2>
-        <p class="subtitle">维护学期年级划分与排序。删除年级将级联删除其关联的所有行政班与排课数据。</p>
+        <p class="subtitle">维护学期年级划分与排序。删除年级会一起删除其行政班与授课任务，可在 7 天内恢复。</p>
       </div>
       <div class="actions">
         <el-select
@@ -76,15 +76,22 @@
       >
         <el-table-column prop="name" label="年级名称" min-width="180" />
         <el-table-column prop="sortOrder" label="排序" min-width="120" />
+        <el-table-column label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.active === false ? 'info' : 'success'">
+              {{ row.active === false ? '已停用' : '正常' }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column
           v-if="auth.hasPermission('foundation:manage')"
           label="操作"
-          width="160"
+          width="220"
           fixed="right"
         >
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            <LifecycleCell entity-type="grade" :row="row" @updated="loadGrades" />
           </template>
         </el-table-column>
       </el-table>
@@ -133,11 +140,12 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Download, Plus, Upload } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ImportDialog from '@/components/ImportDialog.vue'
+import LifecycleCell from '@/components/lifecycle/LifecycleCell.vue'
 import { useAuthStore } from '@/stores/auth'
 import { serverMessage } from '@/api/errors'
 
@@ -153,6 +161,7 @@ interface GradeItem {
   id: number
   name: string
   sortOrder: number
+  active?: boolean
 }
 
 const auth = useAuthStore()
@@ -282,26 +291,6 @@ async function submitForm() {
   }
 }
 
-async function handleDelete(row: GradeItem) {
-  try {
-    await ElMessageBox.confirm(
-      `确定要删除年级「${row.name}」吗？删除年级将同时级联删除该年级下的所有行政班及关联数据，此操作不可撤销！`,
-      '删除确认',
-      {
-        confirmButtonText: '确定删除',
-        cancelButtonText: '取消',
-        type: 'warning',
-      },
-    )
-    await http.delete(`/grades/${row.id}`)
-    ElMessage.success('删除成功')
-    await loadGrades()
-  } catch (e: any) {
-    if (e !== 'cancel' && e !== 'close') {
-      ElMessage.error(serverMessage(e, '删除失败'))
-    }
-  }
-}
 
 async function handleExport() {
   if (!semesterId.value) return

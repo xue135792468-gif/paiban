@@ -194,6 +194,12 @@ export const routes: RouteRecordRaw[] = [
             component: () => import('@/views/UserAdminView.vue'),
             meta: { title: '账号', permission: 'user:manage' },
           },
+          {
+            path: 'recycle-bin',
+            name: 'recycle-bin',
+            component: () => import('@/views/RecentDeletionsView.vue'),
+            meta: { title: '最近删除', permission: 'foundation:manage' },
+          },
         ],
       },
 
