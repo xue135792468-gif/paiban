@@ -1,11 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import ManualImportView from './ManualImportView.vue'
 import { useAuthStore } from '@/stores/auth'
-import type { ManualInspect, ManualPreview, RecipeMatch } from '@/api/imports'
+import type {
+  AiRecipeSuggestionResult,
+  ManualInspect,
+  ManualPreview,
+  RecipeMatch,
+} from '@/api/imports'
 
 const httpMock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() }))
 vi.mock('@/api/http', () => ({ http: httpMock }))
@@ -17,6 +22,7 @@ const importsMock = vi.hoisted(() => ({
   matchImportRecipe: vi.fn(),
   listImportRecipes: vi.fn(),
   saveImportRecipe: vi.fn(),
+  suggestImportColumns: vi.fn(),
 }))
 vi.mock('@/api/imports', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/imports')>()
@@ -83,6 +89,52 @@ function exactMatch(): RecipeMatch {
   }
 }
 
+const AI_SUGGESTION: AiRecipeSuggestionResult = {
+  available: true,
+  success: true,
+  suggestion: {
+    layout: 'LONG',
+    sheetName: 'CSV',
+    headerRow: 0,
+    delimiter: '|',
+    compositeColumn: 0,
+    courseColumn: 1,
+    teacherColumn: 2,
+    ignoreColumns: [],
+    reasoning: '班级、星期、节次在复合列里，所以按复合键映射。',
+  },
+  previewSummary: {
+    slotCount: 560,
+    lessonCount: 546,
+    emptySlotCount: 14,
+    teacherCount: 48,
+    courseCount: 16,
+  },
+  raw: '{"compositeColumn":0,"courseColumn":1,"teacherColumn":2}',
+  modelName: 'stub-model',
+}
+
+/** The page reads `/ai/status` on mount; only `data_import` matters here. */
+function httpGet(aiConfigured: boolean) {
+  httpMock.get.mockImplementation((url: string) => {
+    if (url === '/ai/status') {
+      return Promise.resolve({
+        data: {
+          configured: aiConfigured,
+          tasks: { data_import: { configured: aiConfigured } },
+        },
+      })
+    }
+    if (url === '/semesters') {
+      return Promise.resolve({ data: [{ id: 7, name: '2025 秋季学期', current: true }] })
+    }
+    if (url === '/teachers') {
+      return Promise.resolve({ data: [{ id: 3, name: '张三' }, { id: 4, name: '李四' }] })
+    }
+    return Promise.resolve({ data: [] })
+  })
+}
+
 async function mountView(): Promise<{ wrapper: VueWrapper; router: Router }> {
   const pinia = createPinia()
   setActivePinia(pinia)
@@ -123,15 +175,7 @@ async function chooseFile(wrapper: VueWrapper) {
 describe('手动导入页', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    httpMock.get.mockImplementation((url: string) => {
-      if (url === '/semesters') {
-        return Promise.resolve({ data: [{ id: 7, name: '2025 秋季学期', current: true }] })
-      }
-      if (url === '/teachers') {
-        return Promise.resolve({ data: [{ id: 3, name: '张三' }, { id: 4, name: '李四' }] })
-      }
-      return Promise.resolve({ data: [] })
-    })
+    httpGet(false)
     importsMock.inspectManualImport.mockResolvedValue(INSPECT)
     importsMock.matchImportRecipe.mockResolvedValue({ kind: 'NONE', differences: [] })
     importsMock.previewManualImport.mockResolvedValue(PREVIEW)
@@ -145,6 +189,7 @@ describe('手动导入页', () => {
       appliedRule: PREVIEW.suggestedRule,
     })
     importsMock.saveImportRecipe.mockResolvedValue({ id: 11, name: '八年级长表' })
+    importsMock.suggestImportColumns.mockResolvedValue(AI_SUGGESTION)
   })
 
   it('识别文件后给出列映射，预览展示空槽与占位教师统计', async () => {
@@ -273,5 +318,90 @@ describe('手动导入页', () => {
 
     expect(wrapper.get('[data-testid="manual-commit-errors"]').text()).toContain('八（99）')
     expect(wrapper.find('[data-testid="manual-save-recipe"]').exists()).toBe(false)
+  })
+
+  it('AI 可用且没有配方时给出建议，采用后填入现有列映射', async () => {
+    httpGet(true)
+    const { wrapper } = await mountView()
+    await chooseFile(wrapper)
+
+    expect(wrapper.find('[data-testid="ai-suggest-button"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="ai-suggest-button"]').trigger('click')
+    await flushPromises()
+
+    expect(importsMock.suggestImportColumns).toHaveBeenCalledWith(expect.any(File), 'CSV', 0)
+    expect(wrapper.get('[data-testid="ai-mapping-summary"]').text()).toContain('复合键')
+    expect(wrapper.get('[data-testid="ai-reasoning"]').text()).toContain('复合键映射')
+    expect(wrapper.get('[data-testid="ai-preview-summary"]').text()).toContain('560')
+
+    await wrapper.get('[data-testid="adopt-ai-suggestion"]').trigger('click')
+    await flushPromises()
+
+    // 采用后只是填表；用户仍要自己点“预览”，走的还是 05 的流程。
+    await wrapper.get('[data-testid="manual-preview-button"]').trigger('click')
+    await flushPromises()
+    expect(importsMock.previewManualImport).toHaveBeenCalledWith(
+      expect.any(File),
+      expect.objectContaining({ keyColumn: 0, courseColumn: 1, teacherColumn: 2 }),
+      7,
+    )
+  })
+
+  it('AI 建议失败时只提示一句，手动表单保持不变', async () => {
+    httpGet(true)
+    importsMock.suggestImportColumns.mockResolvedValue({
+      available: true,
+      success: false,
+      error: 'AI 建议的列映射没有解析出任何数据行',
+      raw: 'not-json',
+    })
+    const warning = vi.spyOn(ElMessage, 'warning')
+    const { wrapper } = await mountView()
+    await chooseFile(wrapper)
+
+    await wrapper.get('[data-testid="ai-suggest-button"]').trigger('click')
+    await flushPromises()
+
+    expect(warning).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-testid="ai-suggestion"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="manual-mapper"]').exists()).toBe(true)
+    expect(importsMock.previewManualImport).not.toHaveBeenCalled()
+  })
+
+  it('AI 未配置时隐藏入口并提示可手动选列', async () => {
+    const { wrapper } = await mountView()
+    await chooseFile(wrapper)
+
+    expect(wrapper.find('[data-testid="ai-suggest-button"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="ai-unavailable-hint"]').text()).toContain('AI 未配置')
+  })
+
+  it('采用 AI 建议后保存配方，快照带上原始输出与建议映射', async () => {
+    httpGet(true)
+    const { wrapper } = await mountView()
+    await chooseFile(wrapper)
+    await wrapper.get('[data-testid="ai-suggest-button"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="adopt-ai-suggestion"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="manual-preview-button"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="manual-commit"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-testid="open-save-recipe"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="recipe-name"]').setValue('AI 配方')
+    await wrapper.get('[data-testid="save-recipe-button"]').trigger('click')
+    await flushPromises()
+
+    const payload = importsMock.saveImportRecipe.mock.calls[0][0]
+    expect(payload.aiSuggested).toBe(true)
+    expect(payload.aiRawResponse).toContain('compositeColumn')
+    expect(payload.aiSuggestedMapping).toEqual(
+      expect.objectContaining({ keyColumn: 0, courseColumn: 1, teacherColumn: 2 }),
+    )
+    // 用户最终确认的 mapping 仍是单独的一份。
+    expect(payload.columns).toEqual(expect.objectContaining({ keyColumn: 0, courseColumn: 1 }))
   })
 })

@@ -118,6 +118,18 @@ public class ManualImportService {
         Sheet sheet = SourceSheets.select(sheets, requested.sheetName());
         RecipeMatchDto match = recipes.match(sheet, requested);
         ManualMapping applied = appliedMapping(requested, match, sheet);
+        return previewWithMapping(sheet, applied, match, semesterId);
+    }
+
+    /**
+     * Runs one already-resolved mapping through the same parse/report pipeline as a
+     * manual preview. Ticket 07's AI suggestion calls it to prove a proposal really
+     * produces rows before offering it; it never consults or marks recipes, so a
+     * suggestion cannot silently become a saved recipe.
+     */
+    @Transactional(readOnly = true)
+    public ManualPreviewDto previewWithMapping(
+            Sheet sheet, ManualMapping applied, RecipeMatchDto match, Long semesterId) {
         Parsed parsed = parser.parse(sheet, applied, knownClassNames(resolveSemester(semesterId)));
         List<PreviewRowDto> rows = previewRows(parsed.validRows());
         return new ManualPreviewDto(
@@ -130,7 +142,7 @@ public class ManualImportService {
                 parsed.validRows().size() > PREVIEW_ROWS,
                 teacherWarnings(parsed),
                 suggestedRule(parsed.emptyRows()),
-                match,
+                match == null ? RecipeMatchDto.none() : match,
                 List.copyOf(parsed.warnings()),
                 ImportFingerprint.of(sheet, applied).toMap(),
                 applied.keyColumn() != null
