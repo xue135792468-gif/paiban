@@ -191,14 +191,21 @@ class WeeklyNoClassSchoolScopeIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void otherSlotGroupedTypesKeepTheirPreTicketDeduplication() {
+    void copiedCardsMayRepeatARequirementButOneGroupMayNot() {
         String token = adminToken();
         long semester = semesterWithPeriods(token, 2, List.of(1, 2));
         long teacher = TestData.teacher(token, "旧去重" + TestData.suffix());
 
-        Response rejected = save(token, semester, List.of(
+        // 票10：复制一张卡会产生同参数、不同 groupKey 的第二条要求；评估按 groupKey
+        // 归并，所以允许并存。
+        Response accepted = save(token, semester, List.of(
                 teacherUnavailable(teacher, 1, 1, "left", "right")));
+        accepted.then().statusCode(200)
+                .body("find { it.type == 'TEACHER_UNAVAILABLE' }.entries", hasSize(2));
 
+        // 同一条要求内部出现完全相同的课节仍然拒绝。
+        Response rejected = save(token, semester, List.of(
+                teacherUnavailable(teacher, 1, 1, "same", "same")));
         rejected.then().statusCode(400);
         assertThat(rejected.asString()).contains("TEACHER_UNAVAILABLE").contains("重复");
     }

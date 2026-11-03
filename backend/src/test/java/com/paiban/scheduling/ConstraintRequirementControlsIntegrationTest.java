@@ -104,9 +104,11 @@ class ConstraintRequirementControlsIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(200)
                 .body("find { it.type == 'COURSE_UNAVAILABLE' }.entries", hasSize(2));
 
+        // 票10：不同卡（不同 groupKey）可以复制出同样的要求；同一条要求内部
+        // 出现完全相同的课节仍然拒绝。
         Response duplicate = save(token, semesterId, List.of(courseUnavailable(true, List.of(
                 slot("a", true, null, course, 1, 1),
-                slot("b", true, null, course, 1, 1)))));
+                slot("a", true, null, course, 1, 1)))));
         duplicate.then().statusCode(400);
         assertThat(duplicate.asString()).contains("完全相同");
     }

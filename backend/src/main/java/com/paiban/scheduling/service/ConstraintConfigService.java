@@ -184,6 +184,68 @@ public class ConstraintConfigService {
     }
 
     /**
+     * A dry run of rules on top of the saved configuration, for the rule page's
+     * impact preview. The request's requirements replace the saved ones that share a
+     * group key (or entry id) and leave every other stored rule in place, so a single
+     * unsaved card is judged against the semester as it actually is. Nothing is
+     * written and the version does not advance.
+     */
+    public record PreviewSnapshot(ConstraintPreviewDto preview, ConstraintSettings settings) {}
+
+    @Transactional(readOnly = true)
+    public PreviewSnapshot previewSnapshot(
+            Long semesterId, List<ConstraintConfigRequest> requests) {
+        Long resolved = resolveSemester(semesterId);
+        List<ConstraintConfigRequest> merged = mergedForPreview(resolved, requests);
+        Planning planning = plan(resolved, merged, existingEntries(resolved));
+        return new PreviewSnapshot(
+                new ConstraintPreviewDto(
+                        planning.errors(), planning.references(), warningsOf(resolved, planning)),
+                settingsOf(planning));
+    }
+
+    /** Saved configuration with the request's requirement groups replaced in place. */
+    private List<ConstraintConfigRequest> mergedForPreview(
+            Long semesterId, List<ConstraintConfigRequest> requests) {
+        Map<String, ConstraintConfigRequest> byType = new LinkedHashMap<>();
+        snapshotOf(semesterId).forEach(config -> byType.put(config.type(), config));
+        for (ConstraintConfigRequest request : requests) {
+            ConstraintConfigRequest existing = byType.get(request.type());
+            if (existing == null) {
+                byType.put(request.type(), request);
+                continue;
+            }
+            List<ConstraintEntryRequest> overrides =
+                    request.entries() == null ? List.of() : request.entries();
+            Set<String> replacedGroups = new HashSet<>();
+            Set<Long> replacedIds = new HashSet<>();
+            for (ConstraintEntryRequest entry : overrides) {
+                if (StringUtils.hasText(entry.groupKey())) {
+                    replacedGroups.add(entry.groupKey());
+                }
+                if (entry.id() != null) {
+                    replacedIds.add(entry.id());
+                }
+            }
+            List<ConstraintEntryRequest> kept = new ArrayList<>();
+            for (ConstraintEntryRequest entry : existing.entries() == null
+                    ? List.<ConstraintEntryRequest>of() : existing.entries()) {
+                boolean replaced = (StringUtils.hasText(entry.groupKey())
+                        && replacedGroups.contains(entry.groupKey()))
+                        || (entry.id() != null && replacedIds.contains(entry.id()));
+                if (!replaced) {
+                    kept.add(entry);
+                }
+            }
+            kept.addAll(overrides);
+            byType.put(request.type(), new ConstraintConfigRequest(
+                    request.type(), request.params(), request.weight(), request.hard(),
+                    request.enabled(), kept));
+        }
+        return new ArrayList<>(byType.values());
+    }
+
+    /**
      * The capacity warnings of a <em>valid</em> plan: the unsaved rules are turned into
      * the same immutable {@link ConstraintSettings} snapshot the solver reads, then the
      * pure capacity check explains any class whose weekly lessons no longer fit. An
@@ -949,7 +1011,7 @@ public class ConstraintConfigService {
         }
         EntrySignature signature = new EntrySignature(params, entry.enabled(),
                 effectiveHard(entry, defaultHard), effectiveWeight(entry, defaultWeight),
-                type == ConstraintType.CLASS_UNAVAILABLE ? entry.groupKey() : null);
+                entry.groupKey());
         Integer first = seen.putIfAbsent(signature, entry.position());
         if (first != null) {
             errors.add(location(type, entry.position()) + ": 与第" + first + " 条完全相同，重复条目已拒绝");
