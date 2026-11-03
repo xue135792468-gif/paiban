@@ -1,6 +1,7 @@
 package com.paiban.foundation.service;
 
 import com.paiban.common.deletion.DeleteMode;
+import com.paiban.common.deletion.DeletionRestoreHandler;
 import com.paiban.common.deletion.EntityType;
 import com.paiban.common.deletion.RecentDeletion;
 import com.paiban.common.deletion.RecentDeletionRepository;
@@ -65,6 +66,7 @@ public class LifecycleService {
     private final AuditLogRepository auditLogs;
     private final JdbcTemplate jdbc;
     private final Clock clock;
+    private final List<DeletionRestoreHandler> restoreHandlers;
 
     public LifecycleService(
             TeacherRepository teachers,
@@ -76,7 +78,8 @@ public class LifecycleService {
             RecentDeletionRepository recentDeletions,
             AuditLogRepository auditLogs,
             JdbcTemplate jdbc,
-            Clock clock) {
+            Clock clock,
+            List<DeletionRestoreHandler> restoreHandlers) {
         this.teachers = teachers;
         this.courses = courses;
         this.grades = grades;
@@ -87,6 +90,7 @@ public class LifecycleService {
         this.auditLogs = auditLogs;
         this.jdbc = jdbc;
         this.clock = clock;
+        this.restoreHandlers = restoreHandlers == null ? List.of() : List.copyOf(restoreHandlers);
     }
 
     // ---------- impact ----------
@@ -209,7 +213,9 @@ public class LifecycleService {
             throw new ApiException(HttpStatus.GONE, "该批次已恢复或已超过 7 天，无法撤销");
         }
         for (RecentDeletion row : rows) {
-            restoreOne(EntityType.fromStored(row.getEntityType()), row.getEntityId());
+            if (!restoreWithHandler(row.getEntityType(), row.getEntityId())) {
+                restoreOne(EntityType.fromStored(row.getEntityType()), row.getEntityId());
+            }
             row.setRestoredAt(now);
             row.setRestoredBy(StringUtils.hasText(actor) ? actor : actor());
         }
@@ -440,6 +446,21 @@ public class LifecycleService {
         }
     }
 
+    /**
+     * Modules outside {@link EntityType} (for example import recipes) restore through
+     * their own handler. The first supporting handler wins; no handler falls back to
+     * the original six-family switch.
+     */
+    private boolean restoreWithHandler(String entityType, Long id) {
+        for (DeletionRestoreHandler handler : restoreHandlers) {
+            if (handler.supports(entityType)) {
+                handler.restore(id);
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void restoreOne(EntityType type, Long id) {
         switch (type) {
             case TEACHER -> teachers.findById(id).ifPresent(row -> {
@@ -495,6 +516,9 @@ public class LifecycleService {
     }
 
     private String labelOf(String entityType) {
+        if ("IMPORT_RECIPE".equalsIgnoreCase(entityType)) {
+            return "导入配方";
+        }
         try {
             return EntityType.fromStored(entityType).label();
         } catch (ApiException ex) {

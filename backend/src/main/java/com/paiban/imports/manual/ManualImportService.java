@@ -25,6 +25,8 @@ import com.paiban.imports.ImportDtos.SheetInfoDto;
 import com.paiban.imports.ImportDtos.SuggestedRuleDto;
 import com.paiban.imports.recipe.ImportFingerprint;
 import com.paiban.imports.recipe.ImportRecipeService;
+import com.paiban.imports.manual.ManualSheetParser.NormalizedRow;
+import com.paiban.imports.manual.ManualSheetParser.Parsed;
 import com.paiban.imports.manual.SourceSheets.Sheet;
 import com.paiban.scheduling.domain.TimetableDraft;
 import com.paiban.scheduling.domain.TimetableDraftRepository;
@@ -58,7 +60,6 @@ public class ManualImportService {
     private static final String[] DAY_LABELS =
             {"周一", "周二", "周三", "周四", "周五", "周六", "周日"};
     private static final int PREVIEW_ROWS = 50;
-    private static final int MAX_WARNINGS = 100;
     private static final Pattern NUMERIC = Pattern.compile("\\d+");
     private static final String CLASS_UNAVAILABLE = "CLASS_UNAVAILABLE";
 
@@ -69,6 +70,7 @@ public class ManualImportService {
     private final TimetableImportService timetableImports;
     private final ConstraintConfigService constraintConfigs;
     private final ImportRecipeService recipes;
+    private final ManualSheetParser parser;
     private final ObjectMapper objectMapper;
 
     public ManualImportService(
@@ -79,6 +81,7 @@ public class ManualImportService {
             TimetableImportService timetableImports,
             ConstraintConfigService constraintConfigs,
             ImportRecipeService recipes,
+            ManualSheetParser parser,
             ObjectMapper objectMapper) {
         this.semesterService = semesterService;
         this.adminClasses = adminClasses;
@@ -87,6 +90,7 @@ public class ManualImportService {
         this.timetableImports = timetableImports;
         this.constraintConfigs = constraintConfigs;
         this.recipes = recipes;
+        this.parser = parser;
         this.objectMapper = objectMapper;
     }
 
@@ -114,7 +118,7 @@ public class ManualImportService {
         Sheet sheet = SourceSheets.select(sheets, requested.sheetName());
         RecipeMatchDto match = recipes.match(sheet, requested);
         ManualMapping applied = appliedMapping(requested, match, sheet);
-        Parsed parsed = parse(sheet, applied, resolveSemester(semesterId));
+        Parsed parsed = parser.parse(sheet, applied, knownClassNames(resolveSemester(semesterId)));
         List<PreviewRowDto> rows = previewRows(parsed.validRows());
         return new ManualPreviewDto(
                 parsed.slotCount(),
@@ -151,7 +155,7 @@ public class ManualImportService {
         Sheet sheet = SourceSheets.select(sheets, requested.sheetName());
         RecipeMatchDto match = recipes.match(sheet, requested);
         ManualMapping applied = appliedMapping(requested, match, sheet);
-        Parsed parsed = parse(sheet, applied, semesterId);
+        Parsed parsed = parser.parse(sheet, applied, knownClassNames(semesterId));
 
         List<String> warnings = new ArrayList<>(parsed.warnings());
         Map<String, String> teacherMappings = options.teacherNameMappings() == null
@@ -160,7 +164,7 @@ public class ManualImportService {
         TimetableImportService.Result result =
                 timetableImports.importRows(rows, semesterId, username);
         Long appliedRecipeId = "NONE".equals(match.kind()) ? null : match.recipeId();
-        SuggestedRuleDto rule = parsed.suggestedRule();
+        SuggestedRuleDto rule = suggestedRule(parsed.emptyRows());
 
         if (!result.errors().isEmpty()) {
             return new CommitResultDto(
@@ -184,149 +188,6 @@ public class ManualImportService {
     }
 
     // ---------------------------------------------------------------- parsing
-
-    private record NormalizedRow(
-            int rowNumber,
-            String className,
-            String dayText,
-            String periodText,
-            Integer dayOfWeek,
-            Integer periodNo,
-            String courseName,
-            String teacherName,
-            boolean empty) {}
-
-    private record Parsed(
-            List<NormalizedRow> validRows,
-            int slotCount,
-            int lessonCount,
-            int emptySlotCount,
-            List<NormalizedRow> emptyRows,
-            Set<String> teacherNames,
-            Set<String> courseNames,
-            List<String> warnings) {
-
-        SuggestedRuleDto suggestedRule() {
-            return ManualImportService.suggestedRule(emptyRows);
-        }
-    }
-
-    private Parsed parse(Sheet sheet, ManualMapping mapping, Long semesterId) {
-        List<NormalizedRow> valid = new ArrayList<>();
-        List<NormalizedRow> emptyRows = new ArrayList<>();
-        Set<String> teacherNames = new LinkedHashSet<>();
-        Set<String> courseNames = new LinkedHashSet<>();
-        Set<String> warnings = new LinkedHashSet<>();
-        int slotCount = 0;
-        int lessonCount = 0;
-
-        Set<String> knownClasses = knownClassNames(semesterId);
-        List<String> keyParts = mapping.resolvedKeyParts();
-        int dataStart = Math.max(mapping.resolvedHeaderRow() + 1, 0);
-        for (int index = dataStart; index < sheet.rows().size(); index++) {
-            List<String> row = sheet.row(index);
-            int rowNumber = index + 1;
-            String keyRaw = cell(row, mapping.keyColumn());
-            String className = "";
-            String dayText = "";
-            String periodText = "";
-            if (mapping.keyColumn() != null) {
-                String[] parts = keyRaw.isEmpty()
-                        ? new String[0]
-                        : keyRaw.split(Pattern.quote(mapping.resolvedDelimiter()), -1);
-                for (int part = 0; part < keyParts.size() && part < parts.length; part++) {
-                    String value = parts[part] == null ? "" : parts[part].trim();
-                    switch (keyParts.get(part)) {
-                        case "className" -> className = value;
-                        case "dayOfWeek" -> dayText = value;
-                        case "periodNo" -> periodText = value;
-                        default -> {
-                            // Unknown key part: a forward-compatible recipe may add fields.
-                        }
-                    }
-                }
-            } else {
-                className = cell(row, mapping.classNameColumn());
-                dayText = cell(row, mapping.dayOfWeekColumn());
-                periodText = cell(row, mapping.periodNoColumn());
-            }
-            String course = cell(row, mapping.courseColumn());
-            String teacher = cell(row, mapping.teacherColumn());
-
-            if (allBlank(row, mapping)) {
-                continue;
-            }
-            if (!StringUtils.hasText(className)
-                    && !StringUtils.hasText(dayText) && !StringUtils.hasText(periodText)) {
-                warn(warnings, "第 " + rowNumber + " 行：班级/星期/节次为空，已跳过");
-                continue;
-            }
-            Integer day = SlotText.day(dayText).orElse(null);
-            Integer period = SlotText.periodNo(periodText).orElse(null);
-            if (!StringUtils.hasText(className)) {
-                warn(warnings, "第 " + rowNumber + " 行：缺少班级，已跳过");
-                continue;
-            }
-            if (day == null) {
-                warn(warnings, "第 " + rowNumber + " 行：无法识别星期「" + dayText + "」，已跳过");
-                continue;
-            }
-            if (period == null) {
-                warn(warnings, "第 " + rowNumber + " 行：无法识别节次「" + periodText + "」，已跳过");
-                continue;
-            }
-            if (!knownClasses.isEmpty()
-                    && !knownClasses.contains(SlotText.normalizeName(className))) {
-                warn(warnings, "第 " + rowNumber + " 行：系统中找不到班级「" + className + "」");
-            }
-            slotCount++;
-            boolean empty = !StringUtils.hasText(course);
-            NormalizedRow normalized = new NormalizedRow(
-                    rowNumber, className, dayText, periodText, day, period, course, teacher, empty);
-            valid.add(normalized);
-            if (empty) {
-                emptyRows.add(normalized);
-            } else {
-                lessonCount++;
-                courseNames.add(course);
-                if (StringUtils.hasText(teacher)) {
-                    teacherNames.add(teacher);
-                }
-            }
-        }
-        return new Parsed(
-                List.copyOf(valid), slotCount, lessonCount, emptyRows.size(),
-                List.copyOf(emptyRows), teacherNames, courseNames, List.copyOf(warnings));
-    }
-
-    private boolean allBlank(List<String> row, ManualMapping mapping) {
-        List<Integer> columns = new ArrayList<>();
-        columns.add(mapping.keyColumn());
-        columns.add(mapping.classNameColumn());
-        columns.add(mapping.dayOfWeekColumn());
-        columns.add(mapping.periodNoColumn());
-        columns.add(mapping.courseColumn());
-        columns.add(mapping.teacherColumn());
-        for (Integer column : columns) {
-            if (column != null && StringUtils.hasText(cell(row, column))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static String cell(List<String> row, Integer column) {
-        if (column == null || column < 0 || column >= row.size() || row.get(column) == null) {
-            return "";
-        }
-        return row.get(column).trim();
-    }
-
-    private static void warn(Set<String> warnings, String message) {
-        if (warnings.size() < MAX_WARNINGS) {
-            warnings.add(message);
-        }
-    }
 
     private Set<String> knownClassNames(Long semesterId) {
         if (semesterId == null) {

@@ -3,6 +3,9 @@ import { http } from './http'
 /** Core entities ticket 03 makes deletable/disableable. Path words match the API. */
 export type LifecycleEntityType = 'teacher' | 'class' | 'course' | 'grade' | 'semester' | 'assignment'
 
+/** Entity types that only need a display label in the recycle bin (ticket 06 adds recipes). */
+export type LifecycleLabelType = LifecycleEntityType | 'import_recipe'
+
 export type DeleteMode = 'DELETE' | 'CASCADE'
 
 export interface DeleteImpact {
@@ -57,13 +60,14 @@ const BASE_PATH: Record<LifecycleEntityType, string> = {
   assignment: '/assignments',
 }
 
-export const LIFECYCLE_ENTITY_LABEL: Record<LifecycleEntityType, string> = {
+export const LIFECYCLE_ENTITY_LABEL: Record<LifecycleLabelType, string> = {
   teacher: '教师',
   class: '行政班',
   course: '课程',
   grade: '年级',
   semester: '学期',
   assignment: '授课任务',
+  import_recipe: '导入配方',
 }
 
 export async function getDeleteImpact(

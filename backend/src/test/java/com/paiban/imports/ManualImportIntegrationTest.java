@@ -95,8 +95,8 @@ class ManualImportIntegrationTest extends ApiIntegrationTest {
         assertThat(constraintEntries.findBySemesterIdAndTypeOrderByIdAsc(semesterId, "CLASS_UNAVAILABLE"))
                 .hasSize(1);
 
-        // 保存配方（指纹来自预览），第二次上传同格式文件自动 EXACT。
-        Response saved = as(admin).body(recipeBody(preview, "真实长表配方")).when().post("/api/import-recipes");
+        // 保存配方（指纹来自预览 + 样例文件），第二次上传同格式文件自动 EXACT。
+        Response saved = saveRecipe(admin, recipeBody(preview, "真实长表配方"), csv);
         saved.then().statusCode(200).body("name", equalTo("真实长表配方")).body("version", equalTo(1));
         long recipeId = saved.jsonPath().getLong("id");
 
@@ -260,6 +260,17 @@ class ManualImportIntegrationTest extends ApiIntegrationTest {
 
     private String toJson(Object value) throws Exception {
         return mapper.writeValueAsString(value);
+    }
+
+    /** 06 changed recipe save to multipart: the server re-runs the attached sample. */
+    private Response saveRecipe(String token, Map<String, Object> body, byte[] sample) throws Exception {
+        return RestAssured.given()
+                .header("Authorization", "Bearer " + token)
+                .multiPart(new io.restassured.builder.MultiPartSpecBuilder(toJson(body))
+                        .controlName("request").mimeType("text/plain")
+                        .charset(StandardCharsets.UTF_8).build())
+                .multiPart("sampleFile", "课表样例.csv", sample, CSV)
+                .when().post("/api/import-recipes");
     }
 
     private Map<String, Object> recipeBody(JsonNode preview, String name) {

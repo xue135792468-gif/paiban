@@ -8,6 +8,16 @@ export function serverMessage(error: unknown, fallback: string): string {
 }
 
 /**
+ * Extra fields the API returned next to `message` (for example the per-count
+ * `differences` of a failed recipe sample test). Returns an empty object when the
+ * body is missing or not an object.
+ */
+export function serverDetails(error: unknown): Record<string, unknown> {
+  const data = (error as { response?: { data?: unknown } })?.response?.data
+  return data && typeof data === 'object' ? (data as Record<string, unknown>) : {}
+}
+
+/**
  * AI parsing can run for minutes. A timeout or a dropped connection is not a
  * generic failure: tell the user the parse timed out and what to do about it.
  * Server-provided messages win, so the backend's specific reason is never hidden.
