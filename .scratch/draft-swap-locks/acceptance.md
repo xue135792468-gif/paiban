@@ -81,6 +81,13 @@ Fresh Review 发现连续撤销两次旧 move/swap 时第二次仍使用第一�
 - 状态：已通过 PR #23 合并 main（`eb4d5ba`）并部署生产；服务器只重建 frontend，四容器 healthy、两处 health 200、Flyway 仍 47。
 - 后续补充（同一误判的另一处）：自动方案搜索也把“目标时间存在别班课”当成跨班，直换失败后本应搜索却报“只能在本班范围内换位”。已改为“只有目标时间没有本班课才拒绝”；`DraftCyclePlanIntegrationTest` 11/11、`draft-drag` + `swap` E2E 13/13 通过。该补丁已通过 PR #24 合并（`f71264e`）并部署；只重建 backend，Flyway 仍 47。
 
+### 2026-11-03 含锁草稿确认删除
+
+- 用户反馈：删除含锁草稿要先逐节解锁，太绕。
+- 行为：默认 DELETE 仍 409；草稿编辑器删除时，确认框写明“含 N 节锁定、会一并移除、无法恢复”，确认后带 `unlockLocked=true&expectedLockedCount=N`；服务端在行锁内复核数量，缺数量 400、数量变化 409，一致才删除并写 `DRAFT_DELETE` 审计。
+- 证据：`DraftLockIntegrationTest` 15/15（默认拒绝、缺数量、数量过期、确认删除+审计、无锁删除）；E2E `draft-locks` 8/8（取消后草稿和锁定仍在、确认后跳转且 404）；`verify.sh --quick` 通过。
+- 状态：已通过 PR #25 合并（`e58de7c`）并部署；重建 backend + frontend，Flyway 仍 47。
+
 ### 仓库级检查
 
 `check-module-boundaries.sh`、`check-migrations.sh`、`check-sfc-size.sh`、`check-e2e-helpers.sh`、`check-blank-checks.sh`、`check-ticket-status.sh` 在门禁中通过。

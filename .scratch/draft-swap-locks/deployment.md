@@ -45,6 +45,15 @@
 - 校验：4 容器 healthy；本机 HTTPS 与公网 health 均 200；Flyway 仍 47；backend 启动日志无 error/exception。
 - 修复逻辑：只有目标时间**没有任何本班课**且存在别班课时才拒绝；同班课 + 别班课并存时继续搜索闭环。
 
+## 2026-11-03 第三次后续更新：含锁草稿确认后解锁删除
+
+- 用户反馈：删除含锁草稿必须先手动逐节解锁，太绕；希望确认一次即可移除锁定并删除。
+- PR：[#25](https://github.com/xue135792468-gif/paiban/pull/25)，四 job 全绿（backend 16m25s 含真实 PostgreSQL、e2e 18m38s、frontend、deploy-scripts）；合并提交 `e58de7c`。
+- 行为：默认 DELETE 仍 409；`?unlockLocked=true&expectedLockedCount=N` 且数量一致时才删除，缺数量 400、数量变化 409；成功写 `DRAFT_DELETE` 审计。
+- 备份：`~/backups/paiban/paiban-pre-20261103T061737Z.sql.gz`（141,594 字节，`gzip -t` 通过）。
+- 部署：服务器与 `origin/main` 一致；重建 backend + frontend 并 `up -d`。
+- 校验：4 容器 healthy；本机 HTTPS 与公网 health 均 200；Flyway 仍 47；前端 bundle 含“一并移除这些锁定”；backend 日志无 error/exception。无数据库迁移。
+
 ## 回滚
 
 - 代码：`cd ~/paiban && git reset --hard <上一个已知良好 commit>`，重跑构建与 `up -d`；不要加 `--build` 重建回滚镜像。

@@ -1,5 +1,7 @@
 # 接手说明（2026-10-25 会话交接）
 
+> **2026-11-03 第三次后续更新：含锁草稿确认后解锁删除，已合并部署**：PR [#25](https://github.com/xue135792468-gif/paiban/pull/25) 四 job 全绿，合并提交 `e58de7c`。默认 DELETE 含锁草稿仍 409；草稿编辑器确认框写明“含 N 节锁定、会一并移除、无法恢复”，确认后带 `unlockLocked=true&expectedLockedCount=N`；服务端行锁内复核数量，缺数量 400、数量变化 409，一致才删除并写 `DRAFT_DELETE` 审计。后端 15/15、`draft-locks` E2E 8/8；备份 `paiban-pre-20261103T061737Z.sql.gz`（141,594 字节，gzip 通过）；重建 backend + frontend，四容器 healthy、两处 health 200、Flyway 仍 47。排课列表页删除入口未改，含锁草稿仍会 409。
+
 > **2026-11-03 第二次后续修复：同班换位搜索被目标时间别班课误拦，已合并部署**：PR [#24](https://github.com/xue135792468-gif/paiban/pull/24) 四 job 全绿，合并提交 `f71264e`。直换因教师冲突失败后，自动方案搜索原先把目标时间的任何别班课都当跨班落点；现改为只有目标时间**没有本班课**且存在别班课时才拒绝，同班课 + 别班课并存继续搜索闭环。后端 `DraftCyclePlanIntegrationTest` 11/11、拖拽/换课 E2E 13/13；备份 `paiban-pre-20261103T045446Z.sql.gz`（141,062 字节，gzip 通过）；只重建 backend，四容器 healthy、两处 health 200、Flyway 仍 47。部署回执见 [deployment](draft-swap-locks/deployment.md)。
 
 > **2026-11-03 后续修复：同班拖拽被别班课程误拦，已合并部署**：PR [#23](https://github.com/xue135792468-gif/paiban/pull/23) 四 job 全绿，合并提交 `eb4d5ba`。修复后网格只把**当前视图可见**的落点课传给落点判断：可见同班课才直接交换，没有可见课则普通移动（别班同时间有课是正常的），只有可见别班课才提示走显式入口。同时收敛重复入口：同班交换只保留拖拽；原“换课”改为“跨班换人”且只列跨班候选；原“调整位置”改为“选择位置”，保留为键盘/点击等价入口。备份 `paiban-pre-20261103T040211Z.sql.gz`（140,970 字节，gzip 通过）；只重建 frontend，四容器 healthy、两处 health 200、Flyway 仍 47；bundle 已含新文案。证据与截图见 [统一验收](draft-swap-locks/acceptance.md#2026-11-03-生产反馈修复同班拖拽被别班课程误拦) 与 [部署回执](draft-swap-locks/deployment.md)。
