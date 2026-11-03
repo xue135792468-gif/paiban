@@ -50,7 +50,7 @@ test.describe('初中模式', () => {
 
     // 约束配置：无类型级权重滑块、无模板区，改为必须/尽量两档；教研活动禁排
     // 在本轮修订后保留入口（ADR-0018），逐项重要程度仍按需在条目上展开。
-    await page.goto('/rules')
+    await page.goto('/rules/advanced')
     await expect(page.locator('.constraint-card').first()).toBeVisible()
     // 留空规则始终为硬约束；不要假定默认选中的类型支持“尽量”。
     await page.locator('[data-type="CLASS_UNAVAILABLE"]').click()

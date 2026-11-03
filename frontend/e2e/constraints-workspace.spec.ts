@@ -108,7 +108,7 @@ test.describe.serial('约束配置：跨设备未保存工作', () => {
     const context = await browser.newContext()
     const page = await context.newPage()
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/rules')
+    await page.goto('/rules/advanced')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
     return page
   }
