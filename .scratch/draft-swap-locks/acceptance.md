@@ -1,8 +1,8 @@
 # 草稿拖拽换位、联动方案与批量锁定：统一验收
 
-日期：2026-11-02
-分支：`codex/draft-swap-locks`（集成分支，基点 `main` `4353a16`）
-状态：九票已实现、两轴复审与修复完成；**未合并 main、未部署生产**。
+日期：2026-11-02（2026-11-03 合并部署）
+分支：`codex/draft-swap-locks`（集成分支，基点 `main` `4353a16`；已通过 PR #22 合并 main）
+状态：九票已实现、两轴复审、分阶段全量验收；**已合并 main 并部署生产（Flyway 47）**，部署回执见 [deployment.md](deployment.md)。
 
 ## 1. 交付范围
 
@@ -37,7 +37,7 @@ cd backend && ./mvnw -B verify
 ```
 
 结果：`Tests run: 1195, Failures: 0, Errors: 0, Skipped: 8`，`BUILD SUCCESS`。
-8 个跳过项为 4 个 `PostgresContainerIT`（本机无 Docker）、2 个 `DeepSeekManualIT`、2 个 `PerformanceBenchmarkIT`；真实 PostgreSQL 需 CI 或 `--deploy`。
+8 个跳过项为 4 个 `PostgresContainerIT`（本机无 Docker）、2 个 `DeepSeekManualIT`、2 个 `PerformanceBenchmarkIT`；真实 PostgreSQL 已由 PR #22 的 backend CI job 实跑通过。
 
 新增/重点覆盖：
 - `DraftLockIntegrationTest`：双线程持有草稿行锁时，锁定写请求确实等待；版本过期/混合批次零写入。
@@ -96,9 +96,9 @@ Fresh Review 发现连续撤销两次旧 move/swap 时第二次仍使用第一�
 
 ## 5. 未验证 / 已知限制
 
-- **真实 PostgreSQL**：本机无 Docker，`PostgresContainerIT` 跳过；V45/V46/V47 的真实迁移与 `SELECT FOR UPDATE` 需由同提交 CI 或 `--deploy` 验证。
+- **真实 PostgreSQL**：本机无 Docker；PR #22 backend CI 已真实跑 `PostgresContainerIT` 通过，生产部署后 Flyway 44→47、schema 与四容器健康均已复核。
 - **全量 E2E 偶发**：全量 `verify.sh --full` 出现过一次无关 `admin-reschedule` 导航超时；单独整套 E2E 在同提交 161/161 通过。未把该偶发记为产品缺陷。
-- **发布未执行**：未合并 main、未部署生产；合并/部署需用户后续明确授权。
+- **发布已执行**：PR #22 已合并 main，生产已部署（Flyway 47）；未改生产课表、未触发排课、未发布新草稿。
 - **旧客户端**：`DELETE` 已发布草稿状态码由 409 变 400；新增字段均为追加。
 
 ## 6. 提交与分支

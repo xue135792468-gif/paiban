@@ -42,7 +42,7 @@ Owner: ZCode Agent
 
 ## Delivery
 
-已实现并完成复审、集成修复与分阶段全量验收；未合并 main、未部署生产。
+已实现、复审、分阶段全量验收，并通过 PR #22 合并 main、部署生产（Flyway 47）。
 
 - 分支：`codex/draft-swap-locks`（基点 `4353a16`），集成 worktree `E:/paiban-wt/draft-swap-locks`。
 - 完整验收记录：[acceptance.md](../acceptance.md)。
@@ -51,6 +51,6 @@ Owner: ZCode Agent
 - E2E：同一提交 `bash scripts/e2e.sh` → `161 passed (16.4m)`，exit 0。`verify.sh --full` 的 E2E 阶段曾出现一次无关 `admin-reschedule` 导航超时（160 passed / 1 failed），单独整套复跑全绿。
 - 两轴复审修复：违规加权/配对冲突身份、旧撤销版本、来源快照行锁、搜索预算上限、发布行锁、变更审计、详情 `lessonIndex`、E2E helper 收敛与重试、旧 `scheduling.spec.ts` 更新、教学班外键夹具修复。
 - Fresh Review 最终修复：连续撤销改用当前版本（避免第二次旧撤销固定 409），方案应用审计记录真实 Principal；定向 `useDraftAdjust` 26 项、`DraftChangeIntegrationTest` + `DraftCyclePlanIntegrationTest` 18 项、`draft-drag` E2E 8/8 通过。
-- 剩余：真实 PostgreSQL 迁移/行锁需同提交 CI 或 `--deploy` 验证；合并/部署需用户明确授权；`DELETE` 已发布草稿状态码由 409 变 400（新增字段均为追加）。
+- 剩余：生产已部署，真实 PostgreSQL 已由 PR #22 backend CI 实跑通过；`DELETE` 已发布草稿状态码由 409 变 400（新增字段均为追加）。部署回执见 [deployment.md](../deployment.md)。
 
 ## Comments
