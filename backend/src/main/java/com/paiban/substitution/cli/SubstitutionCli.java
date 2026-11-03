@@ -257,6 +257,11 @@ public final class SubstitutionCli {
             List<ConstraintEntry> entries = new ArrayList<>();
             long order = 0;
             for (ConstraintJson constraint : json.constraints) {
+                // Retired catalogue types are kept in old snapshot files so they stay
+                // readable, but the read-only CLI must not evaluate them (ticket 09).
+                if (isRetired(constraint.type)) {
+                    continue;
+                }
                 ConstraintConfig config = new ConstraintConfig();
                 config.setType(constraint.type);
                 config.setEnabled(constraint.enabled == null || constraint.enabled);
@@ -307,6 +312,15 @@ public final class SubstitutionCli {
     private static boolean isEntryBacked(String typeCode) {
         try {
             return com.paiban.scheduling.domain.ConstraintType.valueOf(typeCode).isEntryBacked();
+        } catch (RuntimeException ex) {
+            return false;
+        }
+    }
+
+    /** True for catalogue types the product retired; old snapshot files still mention them. */
+    private static boolean isRetired(String typeCode) {
+        try {
+            return com.paiban.scheduling.domain.ConstraintType.valueOf(typeCode).isRetired();
         } catch (RuntimeException ex) {
             return false;
         }

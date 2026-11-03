@@ -127,10 +127,9 @@ describe('类型形态由目录参数推断', () => {
     expect(isEntryType(row({ code: 'ROOM_CONFLICT' }))).toBe(false)
   })
 
-  it('四种时段型把一条卡片展开成多个后端条目', () => {
+  it('三种时段型把一条卡片展开成多个后端条目', () => {
     expect(isSlotSetType(row({ code: 'TEACHER_PREFERRED_SLOT', params: SLOT_PARAMS }))).toBe(true)
     expect(isSlotSetType(row({ code: 'TEACHER_UNAVAILABLE', params: SLOT_PARAMS }))).toBe(true)
-    expect(isSlotSetType(row({ code: 'TEACHER_MEETING_BLOCKED', params: MEETING_PARAMS }))).toBe(true)
     expect(isSlotSetType(row({ code: 'COURSE_UNAVAILABLE', params: SLOT_PARAMS }))).toBe(true)
     expect(isSlotSetType(row({ code: 'COURSE_NOT_IN_EVENING', params: SAME_COURSE_PARAMS }))).toBe(false)
   })

@@ -279,8 +279,7 @@ public class ConstraintConfigService {
         List<ConstraintConfig> defaults = new ArrayList<>();
         for (ConstraintType type : List.of(
                 ConstraintType.TEACHER_CONFLICT,
-                ConstraintType.CLASS_CONFLICT,
-                ConstraintType.ROOM_CONFLICT)) {
+                ConstraintType.CLASS_CONFLICT)) {
             ConstraintConfig config = new ConstraintConfig();
             config.setSemesterId(event.semesterId());
             config.setType(type.name());

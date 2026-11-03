@@ -310,52 +310,6 @@ describe('useConstraintDraft', () => {
     expect(draft.conflictsOf().messages).toEqual([])
   })
 
-  it('初中模式同样显示教研活动禁排，并在提交范围内', () => {
-    const draft = useConstraintDraft()
-    draft.hydrate(
-      CATALOG,
-      [
-        {
-          type: 'TEACHER_MEETING_BLOCKED',
-          params: { dayOfWeek: 3, periodNo: 2 },
-          weight: 100,
-          hard: true,
-          enabled: true,
-          entries: [{ id: 5, params: { dayOfWeek: 3, periodNo: 2 } }],
-        },
-      ],
-      { isJunior: true },
-    )
-    expect(draft.visibleRows.value.map((row) => row.code)).toContain('TEACHER_MEETING_BLOCKED')
-    expect(draft.groups.value.flatMap((group) => group.rows.map((row) => row.code))).toContain(
-      'TEACHER_MEETING_BLOCKED',
-    )
-    const payload = draft.payload()
-    expect(payload.find((config) => config.type === 'TEACHER_MEETING_BLOCKED')).toEqual({
-      type: 'TEACHER_MEETING_BLOCKED',
-      entries: [
-        {
-          id: 5,
-          params: { dayOfWeek: 3, periodNo: 2 },
-          enabled: true,
-          hard: null,
-          weight: null,
-          groupKey: expect.any(String),
-        },
-      ],
-      weight: 100,
-      hard: true,
-      enabled: true,
-    })
-    // 顶部口径仍按全部类型算，被隐藏的那一类不能被排除在外。
-    expect(draft.counts.value).toEqual({
-      enabledTypes: 1,
-      totalTypes: CATALOG.length,
-      hardTypes: 1,
-      entries: 1,
-    })
-  })
-
   it('阈值：全局默认与对象例外分别还原，并各自带稳定 id', () => {
     const draft = hydrated([
       {

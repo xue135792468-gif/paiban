@@ -81,9 +81,7 @@ public final class ConstraintSettings {
         Map<ConstraintType, Rule> rules = new EnumMap<>(ConstraintType.class);
         for (ConstraintType type : List.of(
                 ConstraintType.TEACHER_CONFLICT,
-                ConstraintType.CLASS_CONFLICT,
-                ConstraintType.ROOM_CONFLICT,
-                ConstraintType.ROOM_CAPACITY_FIT)) {
+                ConstraintType.CLASS_CONFLICT)) {
             rules.put(type, new Rule(true, 100, List.of()));
         }
         return new ConstraintSettings(rules);
@@ -113,6 +111,11 @@ public final class ConstraintSettings {
             try {
                 type = ConstraintType.valueOf(config.getType());
             } catch (IllegalArgumentException ex) {
+                continue;
+            }
+            // A retired type stays in the database so old data remains readable, but it
+            // must never influence evaluation or the fingerprint (ticket 09).
+            if (type.isRetired()) {
                 continue;
             }
             List<EntryRule> active = activeEntries(type, config, entriesByType, mapper);

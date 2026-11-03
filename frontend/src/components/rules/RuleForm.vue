@@ -3,33 +3,99 @@
     <h3 class="form-title">{{ initial ? '编辑规则' : '新建规则' }}</h3>
 
     <div class="row">
-      <span class="label">对谁</span>
+      <span class="label">要求</span>
       <div class="value">
-        <el-radio-group v-model="scopeValue" data-testid="rule-scope">
-          <el-radio-button value="SCHOOL">全校</el-radio-button>
-          <el-radio-button value="TEACHER">教师</el-radio-button>
-        </el-radio-group>
         <el-select
-          v-if="scopeValue === 'TEACHER'"
-          v-model="teacherId"
+          v-model="type"
           filterable
-          clearable
-          placeholder="选择教师"
-          class="teacher-select"
-          data-testid="rule-teacher"
+          class="type-select"
+          data-testid="rule-type"
         >
-          <el-option v-for="teacher in teachers" :key="teacher.id" :label="teacher.name" :value="teacher.id" />
+          <el-option-group
+            v-for="group in RULE_GROUPS"
+            :key="group.group"
+            :label="group.label"
+          >
+            <el-option
+              v-for="code in group.types"
+              :key="code"
+              :label="RULE_SPECS[code].label"
+              :value="code"
+            />
+          </el-option-group>
         </el-select>
-        <span class="word">的 课</span>
       </div>
     </div>
 
-    <div class="row">
-      <span class="label">哪些课</span>
-      <span class="value fixed">全部课程</span>
+    <div v-if="spec.target !== 'NONE'" class="row">
+      <span class="label">对谁</span>
+      <div class="value">
+        <template v-if="spec.target === 'CLASS'">
+          <el-radio-group
+            v-if="spec.allowSchool"
+            v-model="classScope"
+            data-testid="rule-scope"
+          >
+            <el-radio-button value="SCHOOL">全校</el-radio-button>
+            <el-radio-button value="CLASS">班级</el-radio-button>
+          </el-radio-group>
+          <el-select
+            v-if="!spec.allowSchool || classScope === 'CLASS'"
+            v-model="classId"
+            filterable
+            clearable
+            placeholder="选择班级"
+            class="object-select"
+            data-testid="rule-class"
+          >
+            <el-option v-for="item in classes" :key="item.id" :label="item.name" :value="item.id" />
+          </el-select>
+        </template>
+
+        <template v-else-if="spec.target === 'TEACHER'">
+          <el-radio-group
+            v-if="spec.allowAnyTeacher"
+            v-model="teacherScope"
+            data-testid="rule-scope"
+          >
+            <el-radio-button value="ANY">所有教师</el-radio-button>
+            <el-radio-button value="ONE">指定教师</el-radio-button>
+          </el-radio-group>
+          <el-select
+            v-if="!spec.allowAnyTeacher || teacherScope === 'ONE'"
+            v-model="teacherId"
+            filterable
+            clearable
+            placeholder="选择教师"
+            class="object-select"
+            data-testid="rule-teacher"
+          >
+            <el-option v-for="item in teachers" :key="item.id" :label="item.name" :value="item.id" />
+          </el-select>
+        </template>
+
+        <span v-else class="word">所有班级</span>
+      </div>
     </div>
 
-    <div class="row">
+    <div v-if="spec.course !== 'ALL'" class="row">
+      <span class="label">哪些课</span>
+      <div class="value">
+        <el-select
+          v-model="courseId"
+          filterable
+          :clearable="spec.course === 'OPTIONAL'"
+          :placeholder="spec.coursePlaceholder"
+          class="object-select"
+          data-testid="rule-course"
+        >
+          <el-option v-for="item in courses" :key="item.id" :label="item.name" :value="item.id" />
+        </el-select>
+        <span v-if="spec.course === 'OPTIONAL'" class="hint">留空表示{{ spec.coursePlaceholder }}</span>
+      </div>
+    </div>
+
+    <div v-if="spec.day === 'REQUIRED'" class="row">
       <span class="label">什么时候</span>
       <div class="value column">
         <el-select
@@ -40,7 +106,7 @@
         >
           <el-option v-for="day in days" :key="day" :label="weekdayLabel(day)" :value="day" />
         </el-select>
-        <div v-if="dayOfWeek !== null" class="periods">
+        <div v-if="spec.periods === 'REQUIRED' && dayOfWeek !== null" class="periods">
           <div class="period-actions">
             <el-button size="small" :disabled="!hasAfternoon" data-testid="rule-afternoon" @click="selectAfternoon">
               下午
@@ -63,15 +129,29 @@
       </div>
     </div>
 
-    <div class="row">
-      <span class="label">要求</span>
+    <div v-if="spec.amount" class="row">
+      <span class="label">数量</span>
       <div class="value">
-        <span class="word">不排</span>
-        <el-radio-group v-model="strength" :disabled="scopeValue === 'SCHOOL'" data-testid="rule-strength">
+        <span class="word">{{ spec.amount.label }}</span>
+        <el-input-number
+          v-model="amount"
+          :min="spec.amount.min"
+          :max="spec.amount.max"
+          :step="1"
+          step-strictly
+          data-testid="rule-amount"
+        />
+      </div>
+    </div>
+
+    <div class="row">
+      <span class="label">强度</span>
+      <div class="value">
+        <el-radio-group v-model="strength" :disabled="spec.hardOnly" data-testid="rule-strength">
           <el-radio-button value="HARD">必须</el-radio-button>
           <el-radio-button value="SOFT">尽量</el-radio-button>
         </el-radio-group>
-        <span v-if="scopeValue === 'SCHOOL'" class="hint">全校不上课只能设为必须</span>
+        <span v-if="spec.hardOnly" class="hint">这条规则只能设为必须</span>
       </div>
     </div>
 
@@ -92,20 +172,26 @@ import { computed, ref, watch } from 'vue'
 import type { OptionItem } from '@/components/constraints/types'
 import {
   CLASS_UNAVAILABLE,
-  TEACHER_UNAVAILABLE,
+  RULE_GROUPS,
+  RULE_SPECS,
   afternoonPeriods,
   describeRule,
+  missingParts,
   normalizePeriods,
   weekdayLabel,
   type PeriodOption,
   type RuleCard,
   type RuleInput,
+  type RuleNames,
   type RuleStrength,
+  type RuleType,
 } from '@/rules/compiler'
 
 const props = defineProps<{
   initial: RuleCard | null
   teachers: OptionItem[]
+  classes: OptionItem[]
+  courses: OptionItem[]
   days: number[]
   periods: PeriodOption[]
 }>()
@@ -115,17 +201,43 @@ const emit = defineEmits<{
   cancel: []
 }>()
 
-const scopeValue = ref<'SCHOOL' | 'TEACHER'>(
-  props.initial?.type === 'TEACHER_UNAVAILABLE' ? 'TEACHER' : 'SCHOOL',
-)
+const type = ref<RuleType>(props.initial?.type ?? CLASS_UNAVAILABLE)
+const classId = ref<number | null>(props.initial?.classId ?? null)
 const teacherId = ref<number | null>(props.initial?.teacherId ?? null)
+const courseId = ref<number | null>(props.initial?.courseId ?? null)
 const dayOfWeek = ref<number | null>(props.initial?.dayOfWeek ?? null)
 const periodNos = ref<number[]>([...(props.initial?.periodNos ?? [])])
+const amount = ref<number | null>(props.initial?.amount ?? null)
 const strength = ref<RuleStrength>(props.initial?.strength ?? 'HARD')
 
-const teacherNames = computed(
-  () => new Map(props.teachers.map((teacher) => [teacher.id, teacher.name])),
-)
+const spec = computed(() => RULE_SPECS[type.value])
+
+const classScope = computed<'SCHOOL' | 'CLASS'>({
+  get: () => (classId.value === null ? 'SCHOOL' : 'CLASS'),
+  set: (value) => {
+    if (value === 'SCHOOL') {
+      classId.value = null
+    }
+  },
+})
+
+const teacherScope = computed<'ANY' | 'ONE'>({
+  get: () => (teacherId.value === null ? 'ANY' : 'ONE'),
+  set: (value) => {
+    if (value === 'ANY') {
+      teacherId.value = null
+    }
+  },
+})
+
+const names = computed<RuleNames>(() => ({
+  teacher: (id: number) =>
+    props.teachers.find((item) => item.id === id)?.name ?? `教师${id}`,
+  course: (id: number) =>
+    props.courses.find((item) => item.id === id)?.name ?? `课程${id}`,
+  klass: (id: number) =>
+    props.classes.find((item) => item.id === id)?.name ?? `班级${id}`,
+}))
 
 /** Only the periods the chosen weekday actually has, so no "不存在的第 9 节". */
 const periodOptions = computed(() => {
@@ -143,46 +255,45 @@ const hasAfternoon = computed(
   () => dayOfWeek.value !== null && afternoonPeriods(props.periods, dayOfWeek.value).length > 0,
 )
 
-const preview = computed(() => {
-  const type = scopeValue.value === 'SCHOOL' ? CLASS_UNAVAILABLE : TEACHER_UNAVAILABLE
-  if (dayOfWeek.value === null) {
-    const scope =
-      scopeValue.value === 'SCHOOL'
-        ? '全校'
-        : teacherId.value === null
-          ? '教师'
-          : (teacherNames.value.get(teacherId.value) ?? `教师${teacherId.value}`)
-    return `${scope} 的 课 在 （请选择星期） 不排`
-  }
-  return describeRule(
-    {
-      type,
-      teacherId: teacherId.value,
-      dayOfWeek: dayOfWeek.value,
-      periodNos: periodNos.value,
-    },
-    (id) => teacherNames.value.get(id) ?? `教师${id}`,
-    props.periods,
-  )
-})
+const previewShape = computed(() => ({
+  type: type.value,
+  classId: classId.value,
+  teacherId: teacherId.value,
+  courseId: courseId.value,
+  dayOfWeek: dayOfWeek.value,
+  periodNos: periodNos.value,
+  amount: amount.value,
+}))
 
-const missing = computed(() => {
-  const parts: string[] = []
-  if (scopeValue.value === 'TEACHER' && teacherId.value === null) {
-    parts.push('选择教师')
-  }
-  if (dayOfWeek.value === null) {
-    parts.push('选择星期')
-  }
-  if (periodNos.value.length === 0) {
-    parts.push('选择第几节')
-  }
-  return parts.join('、')
-})
+const preview = computed(() => describeRule(previewShape.value, names.value, props.periods))
 
-watch(scopeValue, (value) => {
-  if (value === 'SCHOOL') {
+const missing = computed(() => missingParts(previewShape.value).join('、'))
+
+watch(type, (next, previous) => {
+  const nextSpec = RULE_SPECS[next]
+  const previousSpec = RULE_SPECS[previous]
+  if (nextSpec.target !== 'CLASS') {
+    classId.value = null
+  }
+  if (nextSpec.target !== 'TEACHER') {
     teacherId.value = null
+  }
+  if (nextSpec.course === 'ALL') {
+    courseId.value = null
+  }
+  if (nextSpec.day !== 'REQUIRED') {
+    dayOfWeek.value = null
+  }
+  if (nextSpec.periods !== 'REQUIRED') {
+    periodNos.value = []
+  }
+  if (nextSpec.amount && previousSpec.amount?.field !== nextSpec.amount.field) {
+    amount.value = nextSpec.amount.defaultValue
+  }
+  if (!nextSpec.amount) {
+    amount.value = null
+  }
+  if (nextSpec.hardOnly) {
     strength.value = 'HARD'
   }
 })
@@ -204,18 +315,19 @@ function clearPeriods() {
 }
 
 function submit() {
-  if (missing.value !== '' || dayOfWeek.value === null) {
+  if (missing.value !== '') {
     return
   }
-  const type = scopeValue.value === 'SCHOOL' ? CLASS_UNAVAILABLE : TEACHER_UNAVAILABLE
-  const input: RuleInput = {
-    type,
-    teacherId: scopeValue.value === 'TEACHER' ? teacherId.value : null,
+  emit('submit', {
+    type: type.value,
+    classId: classId.value,
+    teacherId: teacherId.value,
+    courseId: courseId.value,
     dayOfWeek: dayOfWeek.value,
     periodNos: normalizePeriods(periodNos.value),
-    strength: type === CLASS_UNAVAILABLE ? 'HARD' : strength.value,
-  }
-  emit('submit', input)
+    amount: amount.value,
+    strength: spec.value.hardOnly ? 'HARD' : strength.value,
+  })
 }
 </script>
 
@@ -263,17 +375,13 @@ function submit() {
   align-items: flex-start;
 }
 
-.fixed {
-  color: var(--paiban-ink, #1f2937);
-}
-
 .word {
   color: var(--paiban-ink, #1f2937);
 }
 
-.teacher-select,
-.day-select {
-  width: 200px;
+.type-select,
+.object-select {
+  width: 240px;
 }
 
 .day-select {

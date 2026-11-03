@@ -68,7 +68,7 @@ export const WIZARD_STEPS: WizardStep[] = [
   {
     key: 'constraints',
     title: '约束规则',
-    description: '勾选启用的排课约束并调整权重，默认已启用教师/行政班/教室不冲突。',
+    description: '勾选启用的排课约束并调整权重，默认已启用教师/行政班不冲突。',
     route: '/admin/constraints',
     helpAnchor: 'constraints',
   },

@@ -22,7 +22,6 @@ import com.paiban.support.TestData;
 import io.restassured.response.Response;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +37,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
- * Ticket 10/06, part A: the whole 24-type catalogue proven to <em>take effect</em>.
+ * Ticket 10/06, part A: the whole active 19-type catalogue proven to <em>take effect</em>.
  *
  * <p>For every type this test saves a representative configuration through the public
  * REST API, builds a minimal draft that breaks exactly that rule, and asserts the
@@ -99,13 +98,6 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
                         List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL),
                                 lesson(1, 1, Course.MATH, Teacher.OTHER, Class.A, Room.LAB)),
                         "CLASS_CONFLICT", false)),
-                Arguments.of(new Case("教室不冲突", "ROOM_CONFLICT", true, true, 100, null,
-                        List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL),
-                                lesson(1, 1, Course.MATH, Teacher.OTHER, Class.B, Room.NORMAL)),
-                        "ROOM_CONFLICT", false)),
-                Arguments.of(new Case("教室容量", "ROOM_CAPACITY_FIT", true, true, 100, null,
-                        List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A, Room.SMALL)),
-                        "ROOM_CAPACITY", false)),
                 Arguments.of(new Case("班级空堂", "CLASS_GAP_MINIMIZED", true, true, 30, null,
                         List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL),
                                 lesson(1, 3, Course.MATH, Teacher.OTHER, Class.A, Room.NORMAL)),
@@ -114,25 +106,10 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
                         List.of(params("classId", Class.A, "dayOfWeek", 1, "periodNo", 1)),
                         List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL)),
                         "CLASS_UNAVAILABLE", false)),
-                Arguments.of(new Case("班主任第一节", "HEAD_TEACHER_FIRST_PERIOD", true, true, 20, null,
-                        List.of(lesson(1, 2, Course.CHINESE, Teacher.HEAD, Class.A, Room.NORMAL)),
-                        "HEAD_TEACHER_FIRST_PERIOD", true)),
                 Arguments.of(new Case("教师禁排", "TEACHER_UNAVAILABLE", false, true, 100,
                         List.of(params("teacherId", Teacher.MATH, "dayOfWeek", 1, "periodNo", 2)),
                         List.of(lesson(1, 2, Course.MATH, Teacher.MATH, Class.A, Room.NORMAL)),
                         "TEACHER_UNAVAILABLE", false)),
-                Arguments.of(new Case("教研禁排", "TEACHER_MEETING_BLOCKED", false, true, 100,
-                        List.of(params("subject", "数学", "dayOfWeek", 1, "periodNo", 2)),
-                        List.of(lesson(1, 2, Course.MATH, Teacher.MATH, Class.A, Room.NORMAL)),
-                        "TEACHER_MEETING", false)),
-                Arguments.of(new Case("课程教室类型", "COURSE_REQUIRED_ROOM_TYPE", false, true, 100,
-                        List.of(params("courseId", Course.CHINESE, "roomType", "LAB")),
-                        List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL)),
-                        "ROOM_TYPE", false)),
-                Arguments.of(new Case("课程不排晚自习", "COURSE_NOT_IN_EVENING", false, true, 100,
-                        List.of(params("courseId", Course.CHINESE)),
-                        List.of(lesson(1, 9, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL)),
-                        "COURSE_NOT_IN_EVENING", false)),
                 Arguments.of(new Case("课程禁排时段", "COURSE_UNAVAILABLE", false, true, 100,
                         List.of(params("courseId", Course.CHINESE, "dayOfWeek", 1, "periodNo", 2)),
                         List.of(lesson(1, 2, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL)),
@@ -191,10 +168,6 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
                         List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL),
                                 lesson(1, 2, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL)),
                         "COURSE_MAX_PER_DAY", true)),
-                Arguments.of(new Case("晚自习上限", "EVENING_MAX", false, true, 40,
-                        List.of(params("maxPerDay", 2), params("classId", Class.A, "maxPerDay", 0)),
-                        List.of(lesson(1, 9, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL)),
-                        "EVENING_MAX", true)),
                 Arguments.of(new Case("教师连续上课上限", "TEACHER_MAX_CONSECUTIVE", false, true, 45,
                         List.of(params("maxConsecutive", 3),
                                 params("teacherId", Teacher.MATH, "maxConsecutive", 2)),
@@ -309,9 +282,9 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
         Set<String> covered = catalogue()
                 .map(arguments -> ((Case) arguments.get()[0]).type())
                 .collect(Collectors.toSet());
-        assertThat(covered).hasSize(26);
+        assertThat(covered).hasSize(19);
         assertThat(covered).containsExactlyInAnyOrderElementsOf(
-                Arrays.stream(ConstraintType.values()).map(Enum::name).toList());
+                ConstraintType.activeValues().stream().map(Enum::name).toList());
     }
 
     // ------------------------------------------------------------------ fixture

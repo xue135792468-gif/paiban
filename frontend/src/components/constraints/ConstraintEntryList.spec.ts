@@ -15,6 +15,11 @@ const ROOM_TYPE_PARAMS: ParamDef[] = [
   { name: 'roomType', label: '教室类型', type: 'ROOM_TYPE', required: true },
 ]
 
+const CONSECUTIVE_PARAMS: ParamDef[] = [
+  { name: 'courseId', label: '课程', type: 'ID', required: true },
+  { name: 'minConsecutive', label: '连排节数', type: 'INT', required: true, min: 2, max: 4 },
+]
+
 const SLOT_PARAMS: ParamDef[] = [
   { name: 'teacherId', label: '教师', type: 'ID', required: true },
   { name: 'dayOfWeek', label: '星期', type: 'DAY', required: true },
@@ -162,15 +167,15 @@ describe('ConstraintEntryList', () => {
     )
   })
 
-  it('同一课程两个教室类型：互斥提示直接落在两张卡片上', () => {
+  it('同一课程两个连排节数：互斥提示直接落在两张卡片上', () => {
     const wrapper = mountList(
       row({
-        code: 'COURSE_REQUIRED_ROOM_TYPE',
-        name: '课程指定教室类型',
-        params: ROOM_TYPE_PARAMS,
+        code: 'CONSECUTIVE_LESSONS',
+        name: '连堂课连排',
+        params: CONSECUTIVE_PARAMS,
         entries: [
-          entry('e1', { courseId: 9, roomType: 'NORMAL' }),
-          entry('e2', { courseId: 9, roomType: 'LAB' }),
+          entry('e1', { courseId: 9, minConsecutive: 2 }),
+          entry('e2', { courseId: 9, minConsecutive: 4 }),
         ],
       }),
     )

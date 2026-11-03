@@ -45,11 +45,10 @@ export function isEntryType(row: { params: ParamDef[] }): boolean {
 /**
  * Types whose one card owns several weekday/period rows. The catalogue flag arrives
  * from the server; the fallback keeps an older server (that does not send it) working
- * for the four types this release knows about.
+ * for the three types this release knows about.
  */
 export const SLOT_SET_TYPES = [
   'TEACHER_UNAVAILABLE',
-  'TEACHER_MEETING_BLOCKED',
   'TEACHER_PREFERRED_SLOT',
   'COURSE_UNAVAILABLE',
 ]
