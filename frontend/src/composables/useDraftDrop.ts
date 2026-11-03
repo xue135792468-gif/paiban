@@ -19,18 +19,18 @@ export interface DraftDropOptions {
 }
 
 /**
- * The one place that decides what a drop means. Order matters:
- * editable → same cell → source lock → foreign cell → ambiguous cell →
- * empty move / occupied swap → automatic plan search when the swap adds a conflict.
- *
- * Drop targets are always read from the full `detail.lessons`, never from the
- * currently filtered class/teacher list: a teacher view only renders that
- * teacher's lessons, but the cell's real occupant (and its class) must still win.
+ * The one place that decides what a drop means. The grid passes the ids of the
+ * lessons the user can actually see in the target cell, so:
+ * - one visible same-class lesson → swap with it;
+ * - no visible lesson → move (other classes sharing that time are normal and hidden
+ *   in class view);
+ * - only visible foreign lessons → the user is targeting another class's lesson,
+ *   which only the explicit cross-class entry may change.
  */
 export function useDraftDrop(options: DraftDropOptions) {
   const { detail, draftEditable, adjust, cyclePlans, reload, notify, showConflicts } = options
 
-  async function drop(source: DraftLesson, targetPeriodId: number) {
+  async function drop(source: DraftLesson, targetPeriodId: number, visibleLessonIds: number[] = []) {
     const snapshot = unref(detail)
     if (!snapshot || !draftEditable.value) return
 
@@ -42,14 +42,9 @@ export function useDraftDrop(options: DraftDropOptions) {
       return
     }
 
-    const cellLessons = snapshot.lessons.filter((lesson) => lesson.periodId === targetPeriodId)
-    const foreign = cellLessons.find((lesson) => lesson.classId !== source.classId)
-    if (foreign) {
-      notify.warning('跨班落点只能通过换课入口调整教师')
-      return
-    }
-
-    const sameClass = cellLessons.filter((lesson) => lesson.classId === source.classId)
+    const visibleIds = new Set(visibleLessonIds)
+    const visibleCell = snapshot.lessons.filter((lesson) => visibleIds.has(lesson.id))
+    const sameClass = visibleCell.filter((lesson) => lesson.classId === source.classId)
     if (sameClass.length > 1) {
       notify.warning('该格有多节课，请先修复后再拖拽')
       return
@@ -59,6 +54,14 @@ export function useDraftDrop(options: DraftDropOptions) {
     const fingerprint = snapshot.rulesFingerprint
 
     if (sameClass.length === 0) {
+      // A visible foreign lesson means the user dropped onto another class's card;
+      // that is a teacher exchange, which only the explicit entry may change.
+      if (visibleCell.length > 0) {
+        notify.warning('跨班落点只能通过换课入口调整教师')
+        return
+      }
+      // Otherwise the cell is visually empty. Other classes sharing this time are
+      // hidden in class view and normal; the server still checks teacher/room.
       const outcome = await adjust.moveTo(source, targetPeriodId, version, fingerprint)
       if (!outcome.saved && outcome.conflicts.length > 0) {
         showConflicts(outcome.conflicts)

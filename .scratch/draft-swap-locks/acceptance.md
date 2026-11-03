@@ -70,6 +70,16 @@ cd /e/paiban-wt/draft-swap-locks && bash scripts/e2e.sh
 
 Fresh Review 发现连续撤销两次旧 move/swap 时第二次仍使用第一次写入的版本号，已改为使用当前版本（`context.expectedVersion ?? lastVersion ?? entry.version`），并补“连续两次 swap 后连续撤销”单测；方案应用的审计改为记录真实 Principal。最终修复后定向复核：`useDraftAdjust.spec.ts` 26 项通过、`DraftChangeIntegrationTest` + `DraftCyclePlanIntegrationTest` 18 项通过、`draft-drag.spec.ts` E2E 8/8 通过；完整套件未再重复 40 分钟全量，生产差异仅这两处。
 
+### 2026-11-03 生产反馈修复：同班拖拽被别班课程误拦
+
+- 现象：真实课表里目标时间常有其他班的课，旧逻辑把“同一时间存在任何别班课”当成跨班落点，导致同班 A→B 拖拽直接交换也被拦，只能绕到“换课”按钮。
+- 根因：`useDraftDrop` 用全量 `detail.lessons` 判断落点，未区分“用户在当前视图里实际看到的课”。
+- 修复：网格 drop 时携带目标格可见的 `lessonIds`；落点判断只认可见课——有 1 节同班课则直接交换，没有任何可见课则普通移动（别班同时间有课是正常的），只有可见的别班课才提示走显式入口。
+- 去重：同班交换只保留拖拽；“换课”按钮改为“跨班换人”，候选抽屉只列跨班教师交换；“选择位置”保留为键盘/点击等价入口。
+- 证据：新增 E2E `同班交换不受同一时间其他班课程影响（真实课表常见）`（修复前无 `/changes` 请求、修复后 200 并完成交换），`draft-drag` 9/9、`swap` 4/4、`draft-locks` 8/8；前端全量 71 文件 / 553 单测通过。
+- 截图：[拖拽重叠场景](acceptance/draft-drag-overlap.png)、[跨班换人入口](acceptance/draft-cross-class-entry.png)。
+- 状态：已在本地修复分支验证；截至本记录**尚未合并 main、未部署生产**。
+
 ### 仓库级检查
 
 `check-module-boundaries.sh`、`check-migrations.sh`、`check-sfc-size.sh`、`check-e2e-helpers.sh`、`check-blank-checks.sh`、`check-ticket-status.sh` 在门禁中通过。

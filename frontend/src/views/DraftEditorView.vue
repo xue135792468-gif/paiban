@@ -165,7 +165,7 @@
 
     <el-drawer
       v-model="panelVisible"
-      title="换课候选"
+      title="跨班换人"
       size="620px"
       destroy-on-close
       @closed="closePanel"
@@ -176,6 +176,7 @@
         :loading="candidatesLoading"
         :include-unavailable="includeUnavailable"
         :initial-group="initialGroup"
+        :single-group="swapSingleGroup"
         @update:include-unavailable="setIncludeUnavailable"
         @select="selectCandidate"
       />
@@ -271,7 +272,8 @@ const {
   swapping,
   selectLesson,
   clearSelection,
-  openForSelected,
+  openCrossClassForSelected,
+  singleGroup: swapSingleGroup,
   setIncludeUnavailable,
   selectCandidate,
   confirm: confirmSwap,
@@ -375,10 +377,15 @@ function onDragEnd() {
   dragTargets.value = null
 }
 
-async function onDropCell(payload: { day: number; periodNo: number; periodId: number }) {
+async function onDropCell(payload: {
+  day: number
+  periodNo: number
+  periodId: number
+  lessonIds: number[]
+}) {
   const lesson = dragged.value
   if (!lesson) return
-  await drop(lesson, payload.periodId)
+  await drop(lesson, payload.periodId, payload.lessonIds)
   onDragEnd()
 }
 
@@ -407,19 +414,22 @@ function onToggleSelect(lesson: DraftLesson) {
 
 function openSwapForSelected() {
   if (selectedLesson.value?.locked) return ElMessage.warning('该课节已锁定，先解锁后再换课')
-  openForSelected()
+  openCrossClassForSelected()
 }
 
 function openTargetDialog() {
   if (!selectedLesson.value || selectedLesson.value.periodId == null) return
-  if (selectedLesson.value.locked) return ElMessage.warning('该课节已锁定，先解锁后再调整位置')
+  if (selectedLesson.value.locked) return ElMessage.warning('该课节已锁定，先解锁后再选择位置')
   targetVisible.value = true
 }
 
 async function onTargetPick(periodId: number) {
   const lesson = selectedLesson.value
   if (!lesson) return
-  await drop(lesson, periodId)
+  const visibleIds = filteredLessons.value
+    .filter((item) => item.periodId === periodId)
+    .map((item) => item.id)
+  await drop(lesson, periodId, visibleIds)
 }
 
 async function onApplyPlan(plan: CyclePlan) {

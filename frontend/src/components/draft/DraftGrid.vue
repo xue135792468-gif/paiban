@@ -123,7 +123,13 @@ const props = withDefaults(
 const emit = defineEmits<{
   (e: 'drag-start', lesson: DraftLesson): void
   (e: 'drag-end'): void
-  (e: 'drop-cell', payload: { day: number; periodNo: number; periodId: number }): void
+  (e: 'drop-cell', payload: {
+    day: number
+    periodNo: number
+    periodId: number
+    /** Lessons this grid actually renders in the target cell (the user-visible target). */
+    lessonIds: number[]
+  }): void
   (e: 'cell-click', payload: { day: number; periodNo: number }): void
   (e: 'lesson-activate', lesson: DraftLesson): void
   (e: 'toggle-select', lesson: DraftLesson): void
@@ -245,7 +251,12 @@ function onDrop(day: number, periodNo: number) {
   if (blockedReason(day, periodNo)) return
   const periodId = periodIdByCell.value[`${day}-${periodNo}`]
   if (!periodId) return
-  emit('drop-cell', { day, periodNo, periodId })
+  emit('drop-cell', {
+    day,
+    periodNo,
+    periodId,
+    lessonIds: lessonsAt(day, periodNo).map((lesson) => lesson.id),
+  })
 }
 </script>
 

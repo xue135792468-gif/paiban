@@ -1,8 +1,12 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+import { capture } from './screenshots'
 import {
   API,
   apiCall,
   apiLogin,
+  dragCardToCell,
+  gridCell,
+  lessonCard,
   newContext,
   openDraft,
   selectClass,
@@ -216,7 +220,7 @@ async function openSwapPanel(page: Page, layout: GridLayout, lesson: DraftLesson
   const cells = page.locator('.grid-card .cell')
   await cellAt(cells, layout, lesson.dayOfWeek!, lesson.periodNo!).click()
   await expect(page.locator('.controls .el-tag')).toContainText(lesson.courseName)
-  await page.getByRole('button', { name: '换课', exact: true }).click()
+  await page.getByRole('button', { name: '跨班换人', exact: true }).click()
   const panel = page.getByTestId('swap-candidate-panel')
   await expect(panel).toBeVisible()
   return panel
@@ -243,27 +247,8 @@ test('场景 2a：同班换位交换两节课的节次，撤销后逐格恢复',
     seed.chineseAName,
   )
 
-  const panel = await openSwapPanel(page, layout, math)
-  const candidate = panel.locator('.candidate').filter({ hasText: seed.chineseAName })
-  await expect(candidate).toHaveCount(1)
-  await candidate.click()
-
-  const preview = page.getByTestId('dual-timetable-preview')
-  await expect(preview).toBeVisible()
-  await expect(preview.getByText('同班换位', { exact: true })).toBeVisible()
-  await preview.getByText('调整后', { exact: true }).click()
-
-  const leftPane = preview.locator('.pane').nth(0)
-  const rightPane = preview.locator('.pane').nth(1)
-  await expect(
-    cellAt(leftPane.locator('.cell'), layout, chinese.dayOfWeek!, chinese.periodNo!),
-  ).toContainText(seed.mathAName)
-  await expect(
-    cellAt(rightPane.locator('.cell'), layout, math.dayOfWeek!, math.periodNo!),
-  ).toContainText(seed.chineseAName)
-
   const reload = waitForDraftReload(page, draftId)
-  await page.getByRole('button', { name: '确认换课' }).click()
+  await dragCardToCell(page, lessonCard(page, math.id), gridCell(page, chinese.periodId!))
   await reload
 
   await expect(cellAt(cells, layout, chinese.dayOfWeek!, chinese.periodNo!)).toContainText(
@@ -308,6 +293,7 @@ test('场景 2b：跨班换人保持节次与课程，只交换任课教师，�
   await selectClass(page, seed.classAName)
 
   const panel = await openSwapPanel(page, layout, mathA)
+  await capture(page, 'draft-cross-class-entry')
   const candidate = panel.locator('.candidate').filter({ hasText: seed.mathBName })
   await expect(candidate).toHaveCount(1)
   await candidate.click()
@@ -407,7 +393,7 @@ test('场景 2d：已发布课表的换课入口不可用', async ({ page }) => 
   const cells = page.locator('.grid-card .cell')
   await cellAt(cells, layout, math.dayOfWeek!, math.periodNo!).click()
   await expect(page.locator('.controls .el-tag')).toContainText(math.courseName)
-  await expect(page.getByRole('button', { name: '换课', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '跨班换人', exact: true })).toBeDisabled()
 
   const chinese = lessonOf(detail, seed.classAId, seed.chineseAId)
   const swapResponse = await api.post(`${API}/timetable-drafts/${draftId}/swap`, {

@@ -69,6 +69,9 @@ function setup(options: {
   source: DraftLesson
   target: number
   cell: DraftLesson[]
+  /** Lessons the current view actually shows in the target cell; defaults to `cell`. */
+  visible?: number[]
+  viewMode?: 'class' | 'teacher' | 'room'
   moveTo?: ReturnType<typeof vi.fn>
   swapLessons?: ReturnType<typeof vi.fn>
   search?: ReturnType<typeof vi.fn>
@@ -83,6 +86,7 @@ function setup(options: {
   const showConflicts = vi.fn()
   const detailRef = ref(detail([options.source, ...options.cell]))
   const draftEditable = ref(true)
+  const visibleIds = options.visible ?? options.cell.map((item) => item.id)
   const { drop } = useDraftDrop({
     detail: detailRef,
     draftEditable,
@@ -92,7 +96,8 @@ function setup(options: {
     notify,
     showConflicts,
   })
-  return { drop, adjust, cyclePlans, reload, notify, showConflicts }
+  const dropVisible = (source: DraftLesson, periodId: number) => drop(source, periodId, visibleIds)
+  return { drop: dropVisible, adjust, cyclePlans, reload, notify, showConflicts }
 }
 
 describe('useDraftDrop', () => {
@@ -136,10 +141,44 @@ describe('useDraftDrop', () => {
     expect(reload).not.toHaveBeenCalled()
   })
 
-  it('跨班落点提示走换课入口，不做任何写入', async () => {
+  it('班级视角下，目标时间有其他班课程但当前视图看不到时按普通移动处理', async () => {
     const source = lesson(1, 100)
     const foreign = lesson(2, 200, { classId: 2, className: '高一2班' })
-    const { drop, adjust, notify } = setup({ source, target: 200, cell: [foreign] })
+    const { drop, adjust, notify } = setup({
+      source,
+      target: 200,
+      cell: [foreign],
+      visible: [],
+    })
+
+    await drop(source, 200)
+
+    expect(adjust.moveTo).toHaveBeenCalledWith(source, 200, 4, 'fp-1')
+    expect(notify.warning).not.toHaveBeenCalled()
+  })
+
+  it('同班目标与其他班课程同一时间时，仍然直接交换', async () => {
+    const source = lesson(1, 100)
+    const target = lesson(2, 200)
+    const foreign = lesson(3, 200, { classId: 2, className: '高一2班' })
+    const { drop, adjust, notify } = setup({ source, target: 200, cell: [target, foreign] })
+
+    await drop(source, 200)
+
+    expect(adjust.swapLessons).toHaveBeenCalledWith(source, target, 4, 'fp-1')
+    expect(adjust.moveTo).not.toHaveBeenCalled()
+    expect(notify.warning).not.toHaveBeenCalled()
+  })
+
+  it('教师视角下，落点是别班课程时提示走换课入口', async () => {
+    const source = lesson(1, 100)
+    const foreign = lesson(2, 200, { classId: 2, className: '高一2班' })
+    const { drop, adjust, notify } = setup({
+      source,
+      target: 200,
+      cell: [foreign],
+      viewMode: 'teacher',
+    })
 
     await drop(source, 200)
 

@@ -31,15 +31,17 @@
       <el-button
         type="primary"
         :disabled="!draftEditable || selectedLesson.periodId == null"
+        title="跨班换人：只交换任课教师，节次和课程不变"
         @click="emit('swap')"
       >
-        换课
+        跨班换人
       </el-button>
       <el-button
         :disabled="!draftEditable || selectedLesson.periodId == null"
+        title="不拖拽，点选目标节次（键盘也可用）"
         @click="emit('adjust-position')"
       >
-        调整位置
+        选择位置
       </el-button>
       <el-button
         :data-testid="selectedLessonLocked ? 'unlock-single' : 'lock-single'"
