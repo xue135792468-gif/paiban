@@ -106,7 +106,7 @@ public class SemesterCopyService {
 
     private Map<Long, Long> copyGrades(Long sourceId, Long targetId) {
         Map<Long, Long> mapping = new HashMap<>();
-        for (Grade grade : grades.findBySemesterIdOrderBySortOrderAscNameAsc(sourceId)) {
+        for (Grade grade : grades.findBySemesterIdAndDeletedAtIsNullOrderBySortOrderAscNameAsc(sourceId)) {
             GradeDto created = foundation.createGrade(
                     targetId, new SaveGradeRequest(grade.getName(), grade.getSortOrder()));
             mapping.put(grade.getId(), created.id());
@@ -116,7 +116,8 @@ public class SemesterCopyService {
 
     private Map<Long, Long> copyClasses(Long sourceId, Long targetId, Map<Long, Long> gradeMapping) {
         Map<Long, Long> mapping = new HashMap<>();
-        for (AdminClass adminClass : adminClasses.findBySemesterIdOrderByGradeIdAscNameAsc(sourceId)) {
+        for (AdminClass adminClass :
+                adminClasses.findBySemesterIdAndDeletedAtIsNullOrderByGradeIdAscNameAsc(sourceId)) {
             Long gradeId = gradeMapping.get(adminClass.getGradeId());
             if (gradeId == null) {
                 continue;
