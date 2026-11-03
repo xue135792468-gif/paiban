@@ -19,7 +19,7 @@ test('修改最多变动几节课后刷新仍保持，并通过 API 持久化', 
 
   try {
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/admin/settings')
+    await page.goto('/settings/general')
 
     const item = page.locator('.el-form-item').filter({ hasText: '最多变动几节课' })
     await expect(item).toBeVisible()

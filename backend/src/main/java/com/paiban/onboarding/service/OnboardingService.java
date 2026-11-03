@@ -105,33 +105,33 @@ public class OnboardingService {
     public List<HintDto> hints() {
         List<HintDto> hints = new ArrayList<>();
         boolean hasSemester = !semesters.list().isEmpty();
-        hints.add(hint("semester", "创建学期", "还没有学期，请先创建本学期", "/admin/semesters", hasSemester));
+        hints.add(hint("semester", "创建学期", "还没有学期，请先创建本学期", "/data/semesters", hasSemester));
 
         Long semesterId = semesters.current().map(dto -> dto.id()).orElse(null);
         boolean hasPeriods = semesterId != null && !semesters.listPeriods(semesterId).isEmpty();
-        hints.add(hint("periods", "配置作息表", "还未配置作息表，排课前必须完成", "/admin/semesters", hasPeriods));
+        hints.add(hint("periods", "配置作息表", "还未配置作息表，排课前必须完成", "/data/semesters", hasPeriods));
 
         boolean hasGrades = semesterId != null && !foundation.listGrades(semesterId).isEmpty();
-        hints.add(hint("grades", "录入年级", "还没有年级数据", "/admin/grades", hasGrades));
+        hints.add(hint("grades", "录入年级", "还没有年级数据", "/data/grades", hasGrades));
 
         boolean hasClasses = semesterId != null && !foundation.listClasses(semesterId).isEmpty();
-        hints.add(hint("classes", "录入行政班", "还没有班级数据", "/admin/classes", hasClasses));
+        hints.add(hint("classes", "录入行政班", "还没有班级数据", "/data/classes", hasClasses));
 
         boolean hasTeachers = !foundation.listTeachers().isEmpty();
-        hints.add(hint("teachers", "录入教师", "还没有教师数据", "/admin/teachers", hasTeachers));
+        hints.add(hint("teachers", "录入教师", "还没有教师数据", "/data/teachers", hasTeachers));
 
         boolean hasRooms = !foundation.listRooms().isEmpty();
         hints.add(hint("rooms", "录入教室", "还没有教室数据", "/admin/rooms", hasRooms));
 
         boolean hasCourses = !foundation.listCourses().isEmpty();
-        hints.add(hint("courses", "录入课程", "还没有课程数据", "/admin/courses", hasCourses));
+        hints.add(hint("courses", "录入课程", "还没有课程数据", "/data/courses", hasCourses));
 
         boolean hasAssignments = semesterId != null && assignments.countBySemesterId(semesterId) > 0;
-        hints.add(hint("assignments", "录入授课任务", "还没有授课任务", "/admin/assignments", hasAssignments));
+        hints.add(hint("assignments", "录入授课任务", "还没有授课任务", "/data/assignments", hasAssignments));
 
         boolean published = semesterId != null && publishes.findFirstBySemesterIdOrderByPublishedAtDesc(semesterId)
                 .isPresent();
-        hints.add(hint("published", "发布课表", "还没有发布过课表", "/admin/scheduling", published));
+        hints.add(hint("published", "发布课表", "还没有发布过课表", "/workbench", published));
         return hints;
     }
 

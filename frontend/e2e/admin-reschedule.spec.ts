@@ -241,7 +241,7 @@ async function openMovedLesson(
   lessonDate: string,
 ) {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/substitutions/workbench')
+  await page.goto('/substitution')
   await expect(page.getByTestId('teacher-select')).toBeVisible()
   await page.getByTestId('teacher-select').click()
   await page.getByTestId('teacher-select').locator('input').fill(seed.teacherChineseName)
@@ -417,7 +417,7 @@ test('已开课的实例不可再操作：批准与预览都被截止拒绝且�
   // 新界面语义（过去日期拦截上线后）：工作台不再允许选中过去日期/课卡，
   // 用户在界面上就无法发起已开课的调整；服务端截止仍由上面的 API 断言兜底。
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/substitutions/workbench')
+  await page.goto('/substitution')
   await expect(page.getByTestId('teacher-select')).toBeVisible()
   await page.getByTestId('teacher-select').click()
   await page.getByTestId('teacher-select').locator('input').fill(seed.teacherChineseName)

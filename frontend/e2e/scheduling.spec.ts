@@ -74,7 +74,7 @@ test('场景 2：整草稿检查指出缺教室，一键补教室后即可发布
   const { draftId, token, className, lessonCount } = await seedDraftWithoutRooms(api)
 
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto(`/admin/drafts/${draftId}`)
+  await page.goto(`/workbench/drafts/${draftId}`)
   await expect(page.locator('.lesson').first()).toBeVisible()
 
   // The whole-draft check reports the gap the publisher would refuse (ticket 13), so
@@ -159,7 +159,7 @@ test('场景 2b：重复执行补教室不会重复建室', async ({ page }) => 
 
   // Nothing user-visible changed on the page either: no blocker, publishing allowed.
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto(`/admin/drafts/${draftId}`)
+  await page.goto(`/workbench/drafts/${draftId}`)
   await expect(page.locator('.lesson').first()).toBeVisible()
   await expect(page.getByTestId('publish-blockers')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '发布课表' })).toBeEnabled()
@@ -171,7 +171,7 @@ test('场景 1b：草稿拖拽冲突高亮与移动', async ({ page }) => {
   const draftId = await solveDraft(api, seed.semesterId)
 
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto(`/admin/drafts/${draftId}`)
+  await page.goto(`/workbench/drafts/${draftId}`)
   await expect(page.locator('.lesson').first()).toBeVisible()
 
   const source = await page.locator('.cell:has(.lesson)').first().locator('.lesson').elementHandle()
@@ -235,12 +235,12 @@ test('场景 1：录入数据 → 自动排课 → 发布 → 查看课表', asy
 
   await uiLogin(page, 'admin', 'admin123')
 
-  await page.goto('/admin/scheduling')
+  await page.goto('/workbench')
   await page.getByRole('button', { name: '开始排课' }).click()
   await expect(page.getByText('已完成').first()).toBeVisible({ timeout: 150_000 })
 
   await page.getByRole('button', { name: '打开草稿' }).first().click()
-  await expect(page).toHaveURL(/\/admin\/drafts\/\d+/)
+  await expect(page).toHaveURL(/\/workbench\/drafts\/\d+/)
   await expect(page.locator('.lesson').first()).toBeVisible()
   // ADR-0031: the class timetable never shows the room, so the meta line has no "· room" tail.
   await expect(page.locator('.grid .lesson .lesson-meta').first()).not.toContainText('·')
@@ -249,7 +249,7 @@ test('场景 1：录入数据 → 自动排课 → 发布 → 查看课表', asy
   await page.getByRole('button', { name: '确定' }).click()
   await expect(toast(page, TOAST_PUBLISHED).first()).toBeVisible({ timeout: 30_000 })
 
-  await page.goto('/timetable')
+  await page.goto('/workbench/timetable')
   await expect(page.locator('.lesson').first()).toBeVisible()
   await expect(page.locator('.grid .lesson .lesson-meta').first()).not.toContainText('·')
 })
@@ -263,12 +263,12 @@ test('场景 3：未启用钉钉时系统完整可用', async ({ page }) => {
   await seedSchool(api)
   await uiLogin(page, 'admin', 'admin123')
 
-  await page.goto('/timetable')
+  await page.goto('/workbench/timetable')
   await expect(page.getByRole('heading', { name: '课表', exact: true })).toBeVisible()
 
   await page.goto('/notifications')
   await expect(page.getByRole('heading', { name: '通知中心' })).toBeVisible()
 
-  await page.goto('/admin/settings')
+  await page.goto('/settings/general')
   await expect(page.getByText('钉钉集成')).toBeVisible()
 })

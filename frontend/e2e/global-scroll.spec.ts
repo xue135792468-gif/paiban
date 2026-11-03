@@ -5,8 +5,8 @@ import { apiCall, apiLogin, pickOption, seedSchool, seedWorkbenchScenario, solve
  * 票 08 验收：应用外壳固定为视口高度，左侧导航与右侧内容各自独立滚动。
  *
  * 断言只看可观察的滚动结果（scrollTop、元素是否在视口内），不断言组件内部状态。
- * 统一用 620px 高的视口：真实菜单（约 20 项）和 40 行表格都会溢出，
- * 这样无需特殊构造就能验证「长菜单 + 长内容」两个滚动区。
+ * 统一用 620px 高的视口：40 行表格会溢出，这样无需特殊构造就能验证内容区滚动；
+ * 7 项一级导航在常规视口不再溢出，菜单滚动另用 260px 的矮视口覆盖。
  */
 test.use({ viewport: { width: 1280, height: 620 } })
 
@@ -86,33 +86,13 @@ async function seedManyTeachers(
   return lastName
 }
 
-/** 通过公开 API 造一批教室，把教室页撑成长内容。返回最后一个名字。 */
-async function seedManyRooms(
-  request: Parameters<typeof apiLogin>[0],
-  count = 40,
-): Promise<string> {
-  const token = await apiLogin(request)
-  const suffix = Math.random().toString(36).slice(2, 8)
-  let lastName = ''
-  for (let index = 1; index <= count; index++) {
-    const name = `滚动教室${suffix}${String(index).padStart(2, '0')}`
-    await apiCall(request, token, 'post', '/rooms', {
-      name,
-      capacity: 40,
-      type: 'NORMAL',
-    })
-    lastName = name
-  }
-  return lastName
-}
-
 test('长内容页面不出整页滚动条，顶部栏与导航标识保持可见，底部可到达', async ({
   page,
   request,
 }) => {
   const lastName = await seedManyTeachers(request)
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/admin/teachers')
+  await page.goto('/data/teachers')
   // e2e 库跨测试累积，用本批唯一名字确认表格已渲染，不锁精确行数。
   await expect(page.getByText(lastName).first()).toBeAttached()
 
@@ -150,7 +130,7 @@ test.describe('内容短于视口', () => {
 
   test('内容短于视口时同样不出整页滚动条', async ({ page }) => {
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/admin/ai-providers')
+    await page.goto('/ai')
 
     const state = await readScroll(page)
     expect(state.windowScrollable).toBe(false)
@@ -161,88 +141,92 @@ test.describe('内容短于视口', () => {
   })
 })
 
-test('导航区与内容区分别滚动，互不带动', async ({ page, request }) => {
-  const lastName = await seedManyTeachers(request)
-  await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/admin/teachers')
-  await expect(page.getByText(lastName).first()).toBeAttached()
+test.describe('矮视口下的导航滚动', () => {
+  // 7 个一级菜单在常规视口里不再溢出；用 260px 视口才能继续守住
+  // 「菜单与内容各自滚动」这条外壳约定。
+  test.use({ viewport: { width: 1280, height: 260 } })
 
-  // 只滚内容：菜单与窗口不动
-  await wheelOn(page, page.getByTestId('layout-main'), 1200)
-  await waitForScroll(page, 'main', 1)
-  const afterMain = await readScroll(page)
-  expect(afterMain.mainTop).toBeGreaterThan(0)
-  expect(afterMain.menuTop).toBe(0)
-  expect(afterMain.windowY).toBe(0)
+  test('导航区与内容区分别滚动，互不带动', async ({ page, request }) => {
+    const lastName = await seedManyTeachers(request)
+    await uiLogin(page, 'admin', 'admin123')
+    await page.goto('/data/teachers')
+    await expect(page.getByText(lastName).first()).toBeAttached()
 
-  // 只滚菜单：内容与窗口不动
-  await wheelOn(page, page.getByTestId('layout-aside'), 1200)
-  await waitForScroll(page, 'menu', 1)
-  const afterMenu = await readScroll(page)
-  expect(afterMenu.menuTop).toBeGreaterThan(0)
-  expect(afterMenu.mainTop).toBe(afterMain.mainTop)
-  expect(afterMenu.windowY).toBe(0)
+    // 只滚内容：菜单与窗口不动
+    await wheelOn(page, page.getByTestId('layout-main'), 1200)
+    await waitForScroll(page, 'main', 1)
+    const afterMain = await readScroll(page)
+    expect(afterMain.mainTop).toBeGreaterThan(0)
+    expect(afterMain.menuTop).toBe(0)
+    expect(afterMain.windowY).toBe(0)
 
-  // 再滚内容：菜单仍然不动
-  await wheelOn(page, page.getByTestId('layout-main'), 600)
-  await waitForScroll(page, 'main', afterMain.mainTop + 1)
-  const final = await readScroll(page)
-  expect(final.mainTop).toBeGreaterThan(afterMain.mainTop)
-  expect(final.menuTop).toBe(afterMenu.menuTop)
-})
+    // 只滚菜单：内容与窗口不动
+    await wheelOn(page, page.getByTestId('layout-aside'), 1200)
+    await waitForScroll(page, 'menu', 1)
+    const afterMenu = await readScroll(page)
+    expect(afterMenu.menuTop).toBeGreaterThan(0)
+    expect(afterMenu.mainTop).toBe(afterMain.mainTop)
+    expect(afterMenu.windowY).toBe(0)
 
-test('切换菜单页后内容回到顶部，左侧菜单滚动位置保持', async ({ page, request }) => {
-  const lastTeacher = await seedManyTeachers(request)
-  const lastRoom = await seedManyRooms(request)
-  await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/admin/teachers')
-  await expect(page.getByText(lastTeacher).first()).toBeAttached()
+    // 再滚内容：菜单仍然不动
+    await wheelOn(page, page.getByTestId('layout-main'), 600)
+    await waitForScroll(page, 'main', afterMain.mainTop + 1)
+    const final = await readScroll(page)
+    expect(final.mainTop).toBeGreaterThan(afterMain.mainTop)
+    expect(final.menuTop).toBe(afterMenu.menuTop)
+  })
 
-  // 菜单滚到中段（150px，保证「教室」项完整可见，点击不会触发自动滚动）
-  await wheelOn(page, page.getByTestId('layout-aside'), 150)
-  await waitForScroll(page, 'menu', 1)
-  const menuState = await readScroll(page)
-  expect(menuState.menuTop).toBeGreaterThan(0)
-  const roomsItem = page.getByRole('menuitem', { name: '教室' })
-  await expect(roomsItem).toBeInViewport()
+  test('切换菜单页后内容回到顶部，左侧菜单滚动位置保持', async ({ page, request }) => {
+    const lastTeacher = await seedManyTeachers(request)
+    await uiLogin(page, 'admin', 'admin123')
+    await page.goto('/data/teachers')
+    await expect(page.getByText(lastTeacher).first()).toBeAttached()
 
-  // 内容滚到底部
-  await wheelOn(page, page.getByTestId('layout-main'), 5000)
-  await waitForScroll(page, 'main', 1)
-  expect((await readScroll(page)).mainTop).toBeGreaterThan(0)
+    // 菜单滚到中段，保证「排课规则」项完整可见，点击不会触发自动滚动
+    await wheelOn(page, page.getByTestId('layout-aside'), 150)
+    await waitForScroll(page, 'menu', 1)
+    const menuState = await readScroll(page)
+    expect(menuState.menuTop).toBeGreaterThan(0)
+    const rulesItem = page.getByRole('menuitem', { name: '排课规则' })
+    await expect(rulesItem).toBeInViewport()
 
-  await roomsItem.click()
-  await page.waitForURL(/\/admin\/rooms$/)
-  await expect(page.getByText(lastRoom).first()).toBeAttached()
+    // 内容滚到底部
+    await wheelOn(page, page.getByTestId('layout-main'), 5000)
+    await waitForScroll(page, 'main', 1)
+    expect((await readScroll(page)).mainTop).toBeGreaterThan(0)
 
-  const afterNav = await readScroll(page)
-  expect(afterNav.mainTop).toBe(0)
-  expect(afterNav.menuTop).toBe(menuState.menuTop)
-})
+    await rulesItem.click()
+    await page.waitForURL(/\/rules$/)
+    await expect(page.getByRole('heading', { name: '约束配置' })).toBeVisible()
 
-test('长菜单的首尾菜单项均可到达', async ({ page }) => {
-  await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/admin/teachers')
+    const afterNav = await readScroll(page)
+    expect(afterNav.mainTop).toBe(0)
+    expect(afterNav.menuTop).toBe(menuState.menuTop)
+  })
 
-  const aside = page.getByTestId('layout-aside')
-  // name 默认按子串匹配；「调代工作台」会让非精确的「工作台」命中两项。
-  const first = page.getByRole('menuitem', { name: '工作台', exact: true })
-  const last = page.getByRole('menuitem', { name: '帮助中心', exact: true })
+  test('七个一级导航的首尾菜单项均可到达', async ({ page }) => {
+    await uiLogin(page, 'admin', 'admin123')
+    await page.goto('/data/teachers')
 
-  // 菜单项是异步渲染的：先等首尾都出现，再量滚动高度，否则早量会误判不可滚。
-  await expect(first).toBeVisible()
-  await expect(last).toBeAttached()
-  await expect
-    .poll(() => readScroll(page).then((state) => state.menuScrollable))
-    .toBe(true)
-  await expect(first).toBeInViewport()
+    const aside = page.getByTestId('layout-aside')
+    const first = page.getByRole('menuitem', { name: '总览', exact: true })
+    const last = page.getByRole('menuitem', { name: '设置', exact: true })
 
-  await wheelOn(page, aside, 5000)
-  await expect(last).toBeInViewport()
-  await expect(first).not.toBeInViewport()
+    // 菜单项是异步渲染的：先等首尾都出现，再量滚动高度，否则早量会误判不可滚。
+    await expect(first).toBeVisible()
+    await expect(last).toBeAttached()
+    await expect
+      .poll(() => readScroll(page).then((state) => state.menuScrollable))
+      .toBe(true)
+    await expect(first).toBeInViewport()
 
-  await wheelOn(page, aside, -5000)
-  await expect(first).toBeInViewport()
+    await wheelOn(page, aside, 5000)
+    await expect(last).toBeInViewport()
+    await expect(first).not.toBeInViewport()
+
+    await wheelOn(page, aside, -5000)
+    await expect(first).toBeInViewport()
+  })
 })
 
 test('帮助页锚点定位到目标内容且保持可见', async ({ page }) => {
@@ -265,7 +249,7 @@ test.describe('弹窗独立滚动', () => {
   test('弹窗长内容独立滚动，不带动导航与主内容', async ({ page, request }) => {
     const lastName = await seedManyTeachers(request)
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/admin/teachers')
+    await page.goto('/data/teachers')
     await expect(page.getByText(lastName).first()).toBeAttached()
 
     await page.getByRole('button', { name: '新建教师' }).click()
@@ -290,7 +274,7 @@ test.describe('同页筛选不回顶', () => {
     const seed = await seedSchool(request)
     await solveAndPublish(request, seed)
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/timetable')
+    await page.goto('/workbench/timetable')
     // 行政班/教师/教室视角是普通网格（只有全校视角才用虚拟表格），等格子渲染即可。
     await expect(page.locator('.grid').first()).toBeVisible()
 
@@ -339,7 +323,7 @@ test.describe('工作台独立滚动', () => {
   test('工作台内容在内部容器滚动，主内容与导航不动', async ({ page, request }) => {
     const seed = await seedWorkbenchScenario(request)
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/substitutions/workbench')
+    await page.goto('/substitution')
     await expect(page.getByTestId('teacher-select')).toBeVisible()
     await pickOption(page.locator('.picker-card'), 'teacher-select', seed.teacherName)
     const dateInput = page.getByTestId('lesson-date').locator('input')

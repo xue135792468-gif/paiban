@@ -188,7 +188,7 @@ test.describe.serial('约束配置：模板完整套用与跨学期引用', () =
 
   test('保存含多条条目的模板，改动后套用即恢复条目与计数', async ({ page }) => {
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/admin/constraints')
+    await page.goto('/rules')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
     await expect(summaryEntries(page)).toContainText('具体条目 5 条')
 
@@ -293,7 +293,7 @@ test.describe.serial('约束配置：模板完整套用与跨学期引用', () =
     )
 
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/admin/constraints')
+    await page.goto('/rules')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
     await pickTemplate(page, controlsTemplate, '（1 类 · 2 条）')
     await page.getByTestId('constraint-template-apply').click()
@@ -323,7 +323,7 @@ test.describe.serial('约束配置：模板完整套用与跨学期引用', () =
     await apiCall(api, token, 'post', `/semesters/${target.semesterId}/set-current`)
 
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/admin/constraints')
+    await page.goto('/rules')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
     await pickTemplate(page, crossTemplateName)
     await page.getByTestId('constraint-template-apply').click()

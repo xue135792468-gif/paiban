@@ -112,7 +112,7 @@ test('钉钉切换到飞书并保留数据', async ({ page }) => {
   // 管理员从设置页一键切换到飞书。
   await uiLogin(page, 'admin', 'admin123')
 
-  await page.goto('/admin/settings')
+  await page.goto('/settings/general')
   const card = page.getByTestId('im-platform-card')
   await expect(card).toBeVisible()
   await expect(card.getByText('当前：钉钉')).toBeVisible()

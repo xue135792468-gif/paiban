@@ -307,7 +307,7 @@ test('含锁定课节的草稿删除要求确认，确认后锁定随草稿一�
   await page.getByRole('button', { name: '删除', exact: true }).click()
   const confirmBox = page.locator('.el-message-box:visible')
   await confirmBox.getByRole('button', { name: '解锁并删除' }).click()
-  await expect(page).toHaveURL(/\/admin\/scheduling/)
+  await expect(page).toHaveURL(/\/workbench$/)
 
   const token = await apiLogin(api)
   const gone = await api.get(`${API}/timetable-drafts/${seed.draftId}`, {
@@ -324,7 +324,7 @@ test('排课列表页删除含锁草稿也走确认，取消保留、确认后�
   expect(draftName).not.toBe('')
 
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/admin/scheduling')
+  await page.goto('/workbench')
   const row = page
     .locator('.el-table__row')
     .filter({ hasText: draftName })

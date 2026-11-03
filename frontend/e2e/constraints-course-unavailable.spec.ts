@@ -34,7 +34,7 @@ test.describe.serial('约束配置：课程禁排时段与逐项控制', () => {
   }
 
   async function openCourseUnavailable(page: Page) {
-    await page.goto('/admin/constraints')
+    await page.goto('/rules')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
     await page.locator(COURSE_UNAVAILABLE).click()
     await expect(page.getByTestId('constraint-panel-title')).toContainText('课程禁排时段')

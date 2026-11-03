@@ -34,7 +34,7 @@ test.describe.serial('约束配置：教师禁排多条条目', () => {
   }
 
   async function openTeacherUnavailable(page: Page) {
-    await page.goto('/admin/constraints')
+    await page.goto('/rules')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
     await page.locator(TEACHER_UNAVAILABLE).click()
     await expect(page.getByTestId('constraint-panel-title')).toContainText('教师禁排时段')
@@ -152,7 +152,7 @@ test.describe.serial('约束配置：教师禁排多条条目', () => {
 
   test('顶部「具体条目」与左侧「条目数」始终一致，开关型不计数', async ({ page }) => {
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/admin/constraints')
+    await page.goto('/rules')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
 
     // 已启用的开关型（教师/班级/教室不冲突）算类型、不算条目。首帧可能还没 hydrate

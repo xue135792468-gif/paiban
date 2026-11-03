@@ -45,7 +45,7 @@ test('管理员亲自确认：选教师 → 指定代课 → 对照清单 → �
   const seed = await seedWorkbenchScenario(api)
 
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/substitutions/workbench')
+  await page.goto('/substitution')
   await expect(page.getByTestId('teacher-select')).toBeVisible()
   await pickTeacher(page, seed)
   await fillLessonDate(page, seed)
@@ -87,7 +87,7 @@ test('管理员提交审批：进入待批队列，旧安排继续生效', async
   const seed = await seedWorkbenchScenario(api)
 
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/substitutions/workbench')
+  await page.goto('/substitution')
   await expect(page.getByTestId('teacher-select')).toBeVisible()
   await pickTeacher(page, seed)
   await fillLessonDate(page, seed)
@@ -108,7 +108,7 @@ test('管理员提交审批：进入待批队列，旧安排继续生效', async
   await expect(sourceCard(page, seed.lessonDate)).toContainText(seed.teacherName)
 
   // 申请进了待审批队列，原因可定位到这一单。
-  await page.goto('/substitutions')
+  await page.goto('/substitution/requests')
   await page.getByRole('tab', { name: '待审批' }).click()
   await expect(page.getByText('先走审批流').first()).toBeVisible()
 })
@@ -117,7 +117,7 @@ test('教师账号打开工作台被引导回自助入口', async ({ page }) => 
   const api = await newContext()
   const seed = await seedWorkbenchScenario(api)
   await uiLogin(page, seed.username, seed.password)
-  await page.goto('/substitutions/workbench')
+  await page.goto('/substitution')
   // 缺全校课表查看与审批权限：页面按权限把关；「调代课」自助入口照常可用。
   await expect(page.getByTestId('workbench-forbidden')).toBeVisible()
 })

@@ -656,7 +656,7 @@ test('过去日期与课卡不可选：第①步默认今天，昨天置灰', as
   const seed = await seedPastWeekScenario(api)
 
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/substitutions/workbench')
+  await page.goto('/substitution')
   await expect(page.getByTestId('teacher-select')).toBeVisible()
 
   // 默认日期 = 测试进程按本地时区算出的今天（不是 UTC 的昨天）。

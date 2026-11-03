@@ -60,7 +60,7 @@ test('跳过教程后不再自动弹出，设置页可以重新打开', async ({
   await expect(page.locator('.driver-popover')).toBeHidden()
 
   // 设置中心可以重开。
-  await page.goto('/admin/settings')
+  await page.goto('/settings/general')
   await page.getByRole('button', { name: '重新查看新手教程' }).click()
   await expect(popoverTitle(page)).toHaveText('欢迎使用排课系统')
 
