@@ -17,12 +17,16 @@ import com.paiban.ai.web.AiDtos.PresetDto;
 import com.paiban.ai.web.AiDtos.ProviderDto;
 import com.paiban.ai.web.AiDtos.SaveModelRequest;
 import com.paiban.ai.web.AiDtos.SaveProviderRequest;
+import com.paiban.common.deletion.RecentDeletionWriter;
 import com.paiban.common.web.ApiException;
 import java.net.URI;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,6 +57,7 @@ public class AiProviderService {
     private final AiConnectionTester connectionTester;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher events;
+    private final RecentDeletionWriter deletions;
 
     public AiProviderService(
             AiProviderRepository providers,
@@ -61,7 +66,8 @@ public class AiProviderService {
             ApiKeyCipher cipher,
             AiConnectionTester connectionTester,
             ObjectMapper objectMapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            RecentDeletionWriter deletions) {
         this.providers = providers;
         this.models = models;
         this.taskConfigs = taskConfigs;
@@ -69,6 +75,7 @@ public class AiProviderService {
         this.connectionTester = connectionTester;
         this.objectMapper = objectMapper;
         this.events = events;
+        this.deletions = deletions;
     }
 
     @Transactional(readOnly = true)
@@ -79,8 +86,11 @@ public class AiProviderService {
     @Transactional(readOnly = true)
     public List<ProviderDto> list() {
         Map<Long, List<AiModel>> modelsByProvider = models.findAll().stream()
+                // A recycled model is not part of its provider's live configuration.
+                .filter(model -> model.getDeletedAt() == null)
                 .collect(Collectors.groupingBy(AiModel::getProviderId));
         return providers.findAllByOrderByIdAsc().stream()
+                .filter(provider -> provider.getDeletedAt() == null)
                 .map(provider -> toDto(provider, modelsByProvider.getOrDefault(provider.getId(), List.of())))
                 .toList();
     }
@@ -88,13 +98,16 @@ public class AiProviderService {
     @Transactional(readOnly = true)
     public ProviderDto get(Long id) {
         AiProvider provider = requireProvider(id);
-        return toDto(provider, models.findByProviderIdOrderByIdAsc(id));
+        return toDto(provider, liveModels(id));
     }
 
     @Transactional
     public ProviderDto create(SaveProviderRequest request) {
         String name = request.name().trim();
         providers.findByName(name).ifPresent(existing -> {
+            if (existing.getDeletedAt() != null) {
+                throw ApiException.conflict("供应商「" + name + "」已删除，请先在“最近删除”中恢复");
+            }
             throw ApiException.conflict("供应商名称已存在: " + name);
         });
         AiProvider provider = new AiProvider();
@@ -127,6 +140,9 @@ public class AiProviderService {
         providers.findByName(name)
                 .filter(existing -> !existing.getId().equals(id))
                 .ifPresent(existing -> {
+                    if (existing.getDeletedAt() != null) {
+                        throw ApiException.conflict("供应商「" + name + "」已删除，请先在“最近删除”中恢复");
+                    }
                     throw ApiException.conflict("供应商名称已存在: " + name);
                 });
         provider.setName(name);
@@ -146,15 +162,42 @@ public class AiProviderService {
         }
         provider.setUpdatedAt(Instant.now());
         configChanged("provider-updated");
-        return toDto(provider, models.findByProviderIdOrderByIdAsc(id));
+        return toDto(provider, liveModels(id));
     }
 
+    /**
+     * Soft delete into the 7-day recycle bin (ticket 04). The provider and its models
+     * keep their rows so a restore can bring the whole configuration back; only the
+     * task bindings are paused, because choosing a provider again is the user's call.
+     */
     @Transactional
     public void delete(Long id) {
         AiProvider provider = requireProvider(id);
-        taskConfigs.deleteByProviderId(id);
-        models.deleteAll(models.findByProviderIdOrderByIdAsc(id));
-        providers.delete(provider);
+        Instant now = Instant.now();
+        List<AiModel> providerModels = models.findByProviderIdOrderByIdAsc(id).stream()
+                .filter(model -> model.getDeletedAt() == null)
+                .toList();
+        List<Long> modelIds = new ArrayList<>();
+        for (AiModel model : providerModels) {
+            model.setDeletedAt(now);
+            models.save(model);
+            modelIds.add(model.getId());
+        }
+        List<Long> taskConfigIds = new ArrayList<>();
+        for (AiTaskConfig config : taskConfigs.findAll()) {
+            if (id.equals(config.getProviderId())) {
+                config.setEnabled(false);
+                config.setUpdatedAt(now);
+                taskConfigs.save(config);
+                taskConfigIds.add(config.getId());
+            }
+        }
+        provider.setDeletedAt(now);
+        providers.save(provider);
+        deletions.record(
+                AiProviderLifecycleService.PROVIDER_TYPE, provider.getId(),
+                provider.getName(), "AI 供应商",
+                snapshot(Map.of("modelIds", modelIds, "taskConfigIds", taskConfigIds)));
         configChanged("provider-deleted");
     }
 
@@ -163,6 +206,9 @@ public class AiProviderService {
         AiProvider provider = requireProvider(providerId);
         String modelName = request.modelName().trim();
         models.findByProviderIdAndModelName(providerId, modelName).ifPresent(existing -> {
+            if (existing.getDeletedAt() != null) {
+                throw ApiException.conflict("模型「" + modelName + "」已删除，请先在“最近删除”中恢复");
+            }
             throw ApiException.conflict("模型已存在: " + modelName);
         });
         AiModel model = new AiModel();
@@ -183,6 +229,7 @@ public class AiProviderService {
     public ModelDto updateModel(Long providerId, Long modelId, SaveModelRequest request) {
         requireProvider(providerId);
         AiModel model = models.findByIdAndProviderId(modelId, providerId)
+                .filter(row -> row.getDeletedAt() == null)
                 .orElseThrow(() -> ApiException.notFound("模型不存在: " + modelId));
         String modelName = request.modelName().trim();
         models.findByProviderIdAndModelName(providerId, modelName)
@@ -206,14 +253,44 @@ public class AiProviderService {
         return toDto(model);
     }
 
+    /** Soft delete one model and pause the bindings that used it (ticket 04). */
     @Transactional
     public void deleteModel(Long providerId, Long modelId) {
         requireProvider(providerId);
         AiModel model = models.findByIdAndProviderId(modelId, providerId)
+                .filter(row -> row.getDeletedAt() == null)
                 .orElseThrow(() -> ApiException.notFound("模型不存在: " + modelId));
-        taskConfigs.deleteByModelId(modelId);
-        models.delete(model);
+        Instant now = Instant.now();
+        model.setDeletedAt(now);
+        models.save(model);
+        for (AiTaskConfig config : taskConfigs.findAll()) {
+            if (modelId.equals(config.getModelId())) {
+                config.setEnabled(false);
+                config.setUpdatedAt(now);
+                taskConfigs.save(config);
+            }
+        }
+        deletions.record(
+                AiProviderLifecycleService.MODEL_TYPE, model.getId(),
+                model.getDisplayName() == null ? model.getModelName() : model.getDisplayName(),
+                "AI 模型",
+                snapshot(Map.of("providerId", providerId)));
         configChanged("model-deleted");
+    }
+
+    /** Live (not recycled) models of one provider, in stable order. */
+    private List<AiModel> liveModels(Long providerId) {
+        return models.findByProviderIdOrderByIdAsc(providerId).stream()
+                .filter(model -> model.getDeletedAt() == null)
+                .toList();
+    }
+
+    private String snapshot(Map<String, Object> value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("AI 配置快照无法序列化", ex);
+        }
     }
 
     public ConnectionTestDto testConnection(Long id) {
@@ -252,7 +329,9 @@ public class AiProviderService {
     }
 
     private AiProvider requireProvider(Long id) {
-        return providers.findById(id).orElseThrow(() -> ApiException.notFound("AI 供应商不存在: " + id));
+        return providers.findById(id)
+                .filter(provider -> provider.getDeletedAt() == null)
+                .orElseThrow(() -> ApiException.notFound("AI 供应商不存在: " + id));
     }
 
     /** Routing may have changed, so the gateway's cached configuration must be dropped. */

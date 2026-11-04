@@ -1,6 +1,8 @@
 package com.paiban.identity.service;
 
 import com.paiban.common.web.ApiException;
+import com.paiban.foundation.domain.AuditLog;
+import com.paiban.foundation.domain.AuditLogRepository;
 import com.paiban.identity.domain.AppUser;
 import com.paiban.identity.domain.AppUserRepository;
 import com.paiban.identity.domain.Role;
@@ -26,11 +28,17 @@ public class UserService {
     private final AppUserRepository users;
     private final RoleRepository roles;
     private final PasswordEncoder passwordEncoder;
+    private final AuditLogRepository auditLogs;
 
-    public UserService(AppUserRepository users, RoleRepository roles, PasswordEncoder passwordEncoder) {
+    public UserService(
+            AppUserRepository users,
+            RoleRepository roles,
+            PasswordEncoder passwordEncoder,
+            AuditLogRepository auditLogs) {
         this.users = users;
         this.roles = roles;
         this.passwordEncoder = passwordEncoder;
+        this.auditLogs = auditLogs;
     }
 
     @Transactional(readOnly = true)
@@ -78,6 +86,64 @@ public class UserService {
     public void resetPassword(Long id, String newPassword) {
         AppUser user = get(id);
         user.setPasswordHash(passwordEncoder.encode(newPassword));
+    }
+
+    /**
+     * Ticket 04: accounts are never deleted, only paused — a disabled user keeps its
+     * history, roles and teacher link, while login and new requests are refused.
+     *
+     * <p>Two situations are refused instead of silently locking the school out: you
+     * cannot pause the account you are signed in with, and the last enabled
+     * administrator cannot be paused.
+     */
+    @Transactional
+    public void disable(Long id) {
+        AppUser user = get(id);
+        AppUser current = currentOrNull();
+        if (current != null && current.getId().equals(id)) {
+            throw ApiException.conflict("不能停用当前登录的账号");
+        }
+        if (!user.isEnabled()) {
+            return;
+        }
+        if (isLastEnabledAdmin(user)) {
+            throw ApiException.conflict("不能停用最后一个启用的管理员，请先启用其他管理员");
+        }
+        user.setEnabled(false);
+        audit("DISABLE_USER", "停用用户「" + user.getDisplayName() + "」(" + user.getUsername() + ")");
+    }
+
+    @Transactional
+    public void enable(Long id) {
+        AppUser user = get(id);
+        if (user.isEnabled()) {
+            return;
+        }
+        user.setEnabled(true);
+        audit("ENABLE_USER", "启用用户「" + user.getDisplayName() + "」(" + user.getUsername() + ")");
+    }
+
+    private boolean isLastEnabledAdmin(AppUser target) {
+        if (target.getRoles().stream().noneMatch(role -> "admin".equals(role.getCode()))) {
+            return false;
+        }
+        return users.findAllByRolesCode("admin").stream()
+                .noneMatch(other -> !other.getId().equals(target.getId()) && other.isEnabled());
+    }
+
+    /** The caller, or null when there is no usable principal (startup, CLI, tests). */
+    private AppUser currentOrNull() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()
+                || "anonymousUser".equals(authentication.getName())) {
+            return null;
+        }
+        return users.findByUsername(authentication.getName()).orElse(null);
+    }
+
+    private void audit(String action, String detail) {
+        String actor = currentOrNull() == null ? "system" : currentOrNull().getUsername();
+        auditLogs.save(new AuditLog(actor, action, "APP_USER", detail, 1, 0));
     }
 
     @Transactional(readOnly = true)

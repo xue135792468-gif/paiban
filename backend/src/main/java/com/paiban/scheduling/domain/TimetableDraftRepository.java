@@ -10,9 +10,18 @@ import org.springframework.data.repository.query.Param;
 
 public interface TimetableDraftRepository extends JpaRepository<TimetableDraft, Long> {
 
-    List<TimetableDraft> findBySemesterIdOrderByCreatedAtDesc(Long semesterId);
+    /**
+     * Live drafts only: a draft in the 7-day recycle bin must disappear from every
+     * list, warm-start seed, room-fill plan and publish side effect (ticket 04).
+     */
+    @Query("select d from TimetableDraft d where d.semesterId = :semesterId "
+            + "and d.deletedAt is null order by d.createdAt desc")
+    List<TimetableDraft> findBySemesterIdOrderByCreatedAtDesc(@Param("semesterId") Long semesterId);
 
-    Optional<TimetableDraft> findBySemesterIdAndStatus(Long semesterId, String status);
+    @Query("select d from TimetableDraft d where d.semesterId = :semesterId "
+            + "and d.deletedAt is null and d.status = :status")
+    Optional<TimetableDraft> findBySemesterIdAndStatus(
+            @Param("semesterId") Long semesterId, @Param("status") String status);
 
     /**
      * Serialises every write to one draft: the row lock is held until the surrounding

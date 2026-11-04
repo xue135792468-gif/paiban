@@ -114,11 +114,13 @@ public class AiTaskConfigService {
 
     private void validateAssignment(Long providerId, Long modelId) {
         AiProvider provider = providers.findById(providerId)
+                .filter(row -> row.getDeletedAt() == null)
                 .orElseThrow(() -> ApiException.badRequest("供应商不存在: " + providerId));
         if (!provider.isEnabled()) {
             throw ApiException.badRequest("供应商已停用: " + provider.getName());
         }
         AiModel model = models.findById(modelId)
+                .filter(row -> row.getDeletedAt() == null)
                 .orElseThrow(() -> ApiException.badRequest("模型不存在: " + modelId));
         if (!Objects.equals(model.getProviderId(), providerId)) {
             throw ApiException.badRequest("模型不属于该供应商: " + model.getModelName());
@@ -134,20 +136,26 @@ public class AiTaskConfigService {
         config.setMode(mode);
         config.setProviderId(providerId);
         config.setModelId(modelId);
+        // Saving an assignment is the explicit "use this routing" answer, so it also
+        // re-enables a binding that a provider/model deletion had paused (ticket 04).
+        config.setEnabled(true);
         config.setUpdatedAt(Instant.now());
         taskConfigs.save(config);
     }
 
     private TaskConfigDto toDto(AiTaskType taskType, AiTaskConfig config) {
-        if (config == null || config.getProviderId() == null || config.getModelId() == null) {
+        if (config == null || !config.isEnabled()
+                || config.getProviderId() == null || config.getModelId() == null) {
             return new TaskConfigDto(taskType.value(), false, null, null, null, null, false);
         }
         AiProvider provider = providers.findById(config.getProviderId()).orElse(null);
         AiModel model = models.findById(config.getModelId()).orElse(null);
         boolean configured = provider != null
                 && provider.isEnabled()
+                && provider.getDeletedAt() == null
                 && model != null
                 && model.isEnabled()
+                && model.getDeletedAt() == null
                 && Objects.equals(model.getProviderId(), provider.getId());
         return new TaskConfigDto(
                 taskType.value(),

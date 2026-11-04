@@ -109,6 +109,7 @@ public class ConstraintConfigService {
         Long resolved = resolveSemester(semesterId);
         Map<String, List<ConstraintEntry>> byType = entriesByType(entries.findBySemesterId(resolved));
         return configs.findBySemesterId(resolved).stream()
+                .filter(config -> config.getDeletedAt() == null)
                 .map(config -> toDto(config, byType.get(config.getType())))
                 .toList();
     }
@@ -116,13 +117,15 @@ public class ConstraintConfigService {
     /**
      * What the editor may show. Retired and unknown-type rows are kept in the database
      * for the migration report and for "old data stays queryable" (ticket 11), but they
-     * are not part of the editable configuration any more.
+     * are not part of the editable configuration any more. Deleted rows live in the
+     * 7-day recycle bin (ticket 04) and are hidden the same way.
      */
     @Transactional(readOnly = true)
     public List<ConstraintConfigDto> visibleList(Long semesterId) {
         Long resolved = resolveSemester(semesterId);
         Map<String, List<ConstraintEntry>> byType = entriesByType(entries.findBySemesterId(resolved));
         return configs.findBySemesterId(resolved).stream()
+                .filter(config -> config.getDeletedAt() == null)
                 .filter(config -> !isPreservedType(config.getType()))
                 .map(config -> toDto(config, byType.get(config.getType())))
                 .toList();
@@ -619,6 +622,9 @@ public class ConstraintConfigService {
             config.setWeight(plan.weight());
             config.setHard(plan.hard());
             config.setEnabled(plan.enabled());
+            // A type that was fully deleted keeps its row so old ids still resolve; a
+            // save that writes the type again brings the row back in one place.
+            config.setDeletedAt(null);
             ConstraintConfig savedConfig = configs.save(config);
 
             Map<Long, ConstraintEntry> current = existingEntries.getOrDefault(type, Map.of());
@@ -647,10 +653,12 @@ public class ConstraintConfigService {
                 PlannedEntry plannedEntry = plan.entries().get(index);
                 entryDtos.add(new ConstraintEntryDto(
                         savedRows.get(index).getId(), plannedEntry.params(), plannedEntry.enabled(),
-                        plannedEntry.hard(), plannedEntry.weight(), plannedEntry.groupKey()));
+                        plannedEntry.hard(), plannedEntry.weight(), plannedEntry.groupKey(),
+                        invalidReferencesOf(plannedEntry.params())));
             }
             current.values().stream()
                     .filter(row -> !kept.contains(row.getId()))
+                    .filter(row -> row.getDeletedAt() == null)
                     .forEach(entries::delete);
             result.add(toDtoWithEntries(savedConfig, entryDtos));
         }
@@ -661,11 +669,15 @@ public class ConstraintConfigService {
                 // 7 types (and their pausable entries) in place — and, since ticket 11's
                 // review, rows whose type code is unknown to the catalogue too.
                 .filter(config -> !isPreservedType(config.getType()))
+                // Deleted rows belong to the recycle bin: a full save must not remove
+                // them, otherwise "最近删除" could never restore the rule.
+                .filter(config -> config.getDeletedAt() == null)
                 .forEach(configs::delete);
         existingEntries.entrySet().stream()
                 .filter(byType -> !plannedTypes.contains(byType.getKey()))
                 .filter(byType -> !isPreservedType(byType.getKey()))
                 .flatMap(byType -> byType.getValue().values().stream())
+                .filter(row -> row.getDeletedAt() == null)
                 .forEach(entries::delete);
         return result;
     }
@@ -1448,6 +1460,12 @@ public class ConstraintConfigService {
         Map<String, Object> legacyParams = entryDtos.isEmpty()
                 ? (isEntryBacked(config.getType()) ? Map.of() : paramsFromJson(config.getParamsJson()))
                 : entryDtos.get(0).params();
+        List<String> invalidReferences = entryDtos.stream()
+                .flatMap(entry -> entry.invalidReferences() == null
+                        ? java.util.stream.Stream.empty()
+                        : entry.invalidReferences().stream())
+                .distinct()
+                .toList();
         return new ConstraintConfigDto(
                 config.getId(),
                 config.getType(),
@@ -1459,7 +1477,8 @@ public class ConstraintConfigService {
                 config.getWeight(),
                 config.isHard(),
                 config.isEnabled(),
-                entryDtos);
+                entryDtos,
+                invalidReferences);
     }
 
     /**
@@ -1476,22 +1495,64 @@ public class ConstraintConfigService {
             entryRows.stream()
                     .sorted(Comparator.comparing(ConstraintEntry::getId,
                             Comparator.nullsLast(Comparator.naturalOrder())))
-                    .map(entry -> new ConstraintEntryDto(
-                            entry.getId(),
-                            paramsFromJson(entry.getParamsJson()),
-                            entry.isEnabled(),
-                            entry.getHard(),
-                            entry.getWeight(),
-                            entry.getGroupKey()))
+                    .map(entry -> {
+                        Map<String, Object> params = paramsFromJson(entry.getParamsJson());
+                        return new ConstraintEntryDto(
+                                entry.getId(),
+                                params,
+                                entry.isEnabled(),
+                                entry.getHard(),
+                                entry.getWeight(),
+                                entry.getGroupKey(),
+                                invalidReferencesOf(params));
+                    })
                     .forEach(dtos::add);
         }
         if (dtos.isEmpty() && !isEntryBacked(config.getType())) {
             Map<String, Object> legacy = paramsFromJson(config.getParamsJson());
             if (!legacy.isEmpty()) {
-                dtos.add(new ConstraintEntryDto(null, legacy, true, null, null, null));
+                dtos.add(new ConstraintEntryDto(
+                        null, legacy, true, null, null, null, invalidReferencesOf(legacy)));
             }
         }
         return dtos;
+    }
+
+    /**
+     * Objects a rule row points at that can no longer be used. Rule parameters are
+     * plain JSON ids (no foreign key), so a paused teacher/class/course would otherwise
+     * make the rule silently stop applying; the page shows these sentences instead.
+     */
+    private List<String> invalidReferencesOf(Map<String, Object> params) {
+        if (params == null || params.isEmpty()) {
+            return List.of();
+        }
+        List<String> reasons = new ArrayList<>();
+        Long teacherId = ConstraintSettings.longValue(params.get("teacherId"));
+        if (teacherId != null) {
+            teachers.findById(teacherId).ifPresentOrElse(teacher -> {
+                if (!teacher.isActive() || teacher.getDeletedAt() != null) {
+                    reasons.add("教师已停用：" + teacher.getName());
+                }
+            }, () -> reasons.add("教师已删除：#" + teacherId));
+        }
+        Long classId = ConstraintSettings.longValue(params.get("classId"));
+        if (classId != null) {
+            adminClasses.findById(classId).ifPresentOrElse(item -> {
+                if (!item.isActive() || item.getDeletedAt() != null) {
+                    reasons.add("行政班已停用：" + item.getName());
+                }
+            }, () -> reasons.add("行政班已删除：#" + classId));
+        }
+        Long courseId = ConstraintSettings.longValue(params.get("courseId"));
+        if (courseId != null) {
+            courses.findById(courseId).ifPresentOrElse(item -> {
+                if (!item.isActive() || item.getDeletedAt() != null) {
+                    reasons.add("课程已停用：" + item.getName());
+                }
+            }, () -> reasons.add("课程已删除：#" + courseId));
+        }
+        return reasons;
     }
 
     private boolean isEntryBacked(String typeCode) {
@@ -1559,6 +1620,9 @@ public class ConstraintConfigService {
     private Map<String, List<ConstraintEntry>> entriesByType(List<ConstraintEntry> rows) {
         Map<String, List<ConstraintEntry>> byType = new LinkedHashMap<>();
         rows.stream()
+                // Deleted rows are recycle-bin content: they must never reach a DTO, a
+                // preview or a save decision (ticket 04).
+                .filter(entry -> entry.getDeletedAt() == null)
                 .sorted(Comparator.comparing(ConstraintEntry::getId,
                         Comparator.nullsLast(Comparator.naturalOrder())))
                 .forEach(entry -> byType.computeIfAbsent(entry.getType(), key -> new ArrayList<>())

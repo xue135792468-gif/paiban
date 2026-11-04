@@ -31,14 +31,25 @@ public final class ConstraintDtos {
      * pauses the requirement while keeping it; {@code hard}/{@code weight} null mean
      * "inherit the type default", which is how an upgraded configuration keeps its
      * original meaning. {@code groupKey} joins several rows into one requirement.
+     *
+     * <p>{@code invalidReferences} (ticket 04) names the objects this row points at
+     * that were paused or removed, in plain Chinese, so the page can mark the card
+     * "已失效" instead of evaluating a rule the user can no longer see the target of.
+     * It is a read-only diagnostic: saving never sends it back.
      */
     public record ConstraintEntryDto(Long id, Map<String, Object> params, boolean enabled,
-                                     Boolean hard, Integer weight, String groupKey) {}
+                                     Boolean hard, Integer weight, String groupKey,
+                                     List<String> invalidReferences) {}
 
+    /**
+     * {@code invalidReferences} is the union of the row-level reasons, so a card that
+     * is one switch (no entries) still reports its broken target.
+     */
     public record ConstraintConfigDto(Long id, String type, String name, String category,
                                       String categoryLabel, String description,
                                       Map<String, Object> params, int weight, boolean hard,
-                                      boolean enabled, List<ConstraintEntryDto> entries) {}
+                                      boolean enabled, List<ConstraintEntryDto> entries,
+                                      List<String> invalidReferences) {}
 
     /**
      * {@code params} is the legacy single-entry form: when {@code entries} is null

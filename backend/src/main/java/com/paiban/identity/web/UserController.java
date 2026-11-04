@@ -63,6 +63,19 @@ public class UserController {
         userService.resetPassword(id, request.newPassword());
     }
 
+    /** Ticket 04: pause an account. Accounts are never physically deleted. */
+    @PostMapping("/users/{id}/disable")
+    @PreAuthorize("hasAuthority('" + Permissions.USER_MANAGE + "')")
+    public void disable(@PathVariable Long id) {
+        userService.disable(id);
+    }
+
+    @PostMapping("/users/{id}/enable")
+    @PreAuthorize("hasAuthority('" + Permissions.USER_MANAGE + "')")
+    public void enable(@PathVariable Long id) {
+        userService.enable(id);
+    }
+
     @GetMapping("/roles")
     @PreAuthorize("hasAuthority('" + Permissions.USER_MANAGE + "')")
     public List<RoleDto> roles() {

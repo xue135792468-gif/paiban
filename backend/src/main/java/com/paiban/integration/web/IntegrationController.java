@@ -19,6 +19,7 @@ import com.paiban.integration.web.DingTalkSyncDtos.SuspectedDecisionDto;
 import com.paiban.integration.web.IntegrationDtos.DingTalkConfigDto;
 import com.paiban.integration.web.IntegrationDtos.DingTalkEventRequest;
 import com.paiban.integration.web.IntegrationDtos.DingTalkLoginRequest;
+import com.paiban.integration.service.DingtalkConfigLifecycleService;
 import com.paiban.integration.web.IntegrationDtos.UpdateDingTalkConfigRequest;
 import jakarta.validation.Valid;
 import java.util.ArrayList;
@@ -26,6 +27,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -42,18 +44,31 @@ public class IntegrationController {
     private final DingTalkOrgDataProvider orgProvider;
     private final AuthService authService;
     private final FoundationService foundation;
+    private final DingtalkConfigLifecycleService dingtalkLifecycle;
 
     public IntegrationController(
             SettingsService settings,
             DingTalkAuthProvider authProvider,
             DingTalkOrgDataProvider orgProvider,
             AuthService authService,
-            FoundationService foundation) {
+            FoundationService foundation,
+            DingtalkConfigLifecycleService dingtalkLifecycle) {
         this.settings = settings;
         this.authProvider = authProvider;
         this.orgProvider = orgProvider;
         this.authService = authService;
         this.foundation = foundation;
+        this.dingtalkLifecycle = dingtalkLifecycle;
+    }
+
+    /**
+     * Ticket 04: clears the DingTalk keys into the 7-day recycle bin. The snapshot
+     * (including the secret) lives in {@code recent_deletion}, never in the audit row.
+     */
+    @DeleteMapping("/integration/dingtalk")
+    @PreAuthorize("hasAuthority('" + Permissions.INTEGRATION_MANAGE + "')")
+    public Map<String, Object> clear() {
+        return dingtalkLifecycle.delete();
     }
 
     @GetMapping("/integrations/dingtalk/config")

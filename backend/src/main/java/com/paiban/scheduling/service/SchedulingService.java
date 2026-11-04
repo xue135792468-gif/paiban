@@ -10,6 +10,7 @@ import ai.timefold.solver.core.config.solver.SolverConfig;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paiban.common.web.ApiException;
+import com.paiban.common.deletion.RecentDeletionWriter;
 import com.paiban.foundation.domain.AdminClass;
 import com.paiban.foundation.domain.AdminClassRepository;
 import com.paiban.foundation.domain.AuditLog;
@@ -95,6 +96,7 @@ public class SchedulingService {
     private final DraftValidator validator;
     private final DraftWriteGuard guard;
     private final AuditLogRepository auditLogs;
+    private final RecentDeletionWriter deletions;
     private final SourceDraftSnapshotService sourceSnapshots;
     private final TransactionTemplate transactions;
     private final TaskExecutor executor;
@@ -121,6 +123,7 @@ public class SchedulingService {
             DraftValidator validator,
             DraftWriteGuard guard,
             AuditLogRepository auditLogs,
+            RecentDeletionWriter deletions,
             SourceDraftSnapshotService sourceSnapshots,
             PlatformTransactionManager transactionManager,
             ObjectMapper objectMapper,
@@ -143,6 +146,7 @@ public class SchedulingService {
         this.validator = validator;
         this.guard = guard;
         this.auditLogs = auditLogs;
+        this.deletions = deletions;
         this.sourceSnapshots = sourceSnapshots;
         this.transactions = new TransactionTemplate(transactionManager);
         this.objectMapper = objectMapper;
@@ -665,8 +669,22 @@ public class SchedulingService {
                 draftLessons.countByDraftIdAndLockedTrue(draftId));
     }
 
+    /**
+     * Deletes a draft into the 7-day recycle bin (ticket 04). Only a DRAFT can be
+     * deleted: a published timetable must be withdrawn first and an archived one is
+     * history. The lessons are kept on purpose, so a restore brings back exactly the
+     * same timetable — including the locks the user confirmed dropping.
+     */
     @Transactional
     public void deleteDraft(Long draftId, boolean unlockLocked, Integer expectedLockedCount, String actor) {
+        TimetableDraft existing = drafts.findById(draftId)
+                .filter(draft -> draft.getDeletedAt() == null)
+                .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
+        if (!"DRAFT".equals(existing.getStatus())) {
+            throw ApiException.conflict("PUBLISHED".equals(existing.getStatus())
+                    ? "课表已发布，请先撤回再删除"
+                    : "课表已归档，不能删除");
+        }
         TimetableDraft draft = guard.lockEditable(draftId, null);
         int locked = (int) draftLessons.countByDraftIdAndLockedTrue(draftId);
         // The default stays conservative: a plain DELETE never touches a locked lesson.
@@ -686,15 +704,24 @@ public class SchedulingService {
                 throw ApiException.conflict("锁定状态已变化，请刷新后重试");
             }
         }
-        draftLessons.deleteByDraftId(draftId);
-        drafts.delete(draft);
-        auditLogs.save(new AuditLog(
-                actor == null ? "system" : actor,
-                "DRAFT_DELETE",
-                "TIMETABLE_DRAFT",
-                "draftId=" + draftId + ", locked=" + locked,
-                1,
-                0));
+        int lessonCount = (int) draftLessons.countByDraftId(draftId);
+        draft.setDeletedAt(java.time.Instant.now());
+        drafts.save(draft);
+        String snapshot = writeSnapshot(Map.of(
+                "status", "DRAFT",
+                "lessonCount", lessonCount,
+                "lockedCount", locked));
+        deletions.record(
+                DraftLifecycleService.ENTITY_TYPE, draft.getId(), draft.getName(), "课表草稿", snapshot);
+    }
+
+    /** Recycle-bin snapshot; the restore only clears {@code deleted_at}. */
+    private String writeSnapshot(Map<String, Object> snapshot) {
+        try {
+            return objectMapper.writeValueAsString(snapshot);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+            throw new IllegalStateException("草稿快照无法序列化", ex);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -775,6 +802,9 @@ public class SchedulingService {
 
     private TimetableDraft requireDraft(Long draftId) {
         return drafts.findById(draftId)
+                // A deleted draft is in the recycle bin and must behave as "not found":
+                // opening it would let the editor write into a recycling timetable.
+                .filter(draft -> draft.getDeletedAt() == null)
                 .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
     }
 
