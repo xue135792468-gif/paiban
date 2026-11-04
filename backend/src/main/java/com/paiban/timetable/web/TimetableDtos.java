@@ -36,8 +36,32 @@ public final class TimetableDtos {
 
     public record PublishResultDto(Long draftId, int entryCount, Instant publishedAt, Long publishId) {}
 
-    public record PublishInfoDto(Long semesterId, Long draftId, String draftName, String publishedBy,
-                                 Instant publishedAt) {}
+    /**
+     * {@code published} is the product answer ("is there a live baseline?"); the
+     * timestamps and status let the UI show the last withdrawn publish as history.
+     */
+    public record PublishInfoDto(boolean published,
+                                 Long semesterId,
+                                 Long publishId,
+                                 Long draftId,
+                                 String draftName,
+                                 String publishedBy,
+                                 Instant publishedAt,
+                                 Instant withdrawnAt,
+                                 String status) {}
+
+    /** What withdrawing would change, shown before the admin confirms. */
+    public record WithdrawPreviewDto(boolean published,
+                                     Long draftId,
+                                     Long publishId,
+                                     int futureSubstitutions,
+                                     long totalSubstitutions) {}
+
+    public record WithdrawResultDto(Long draftId,
+                                    Long publishId,
+                                    Instant withdrawnAt,
+                                    int cancelledSubstitutions,
+                                    int removedEntries) {}
 
     public record SchoolTimetableDto(List<Long> classIds, List<TimetableEntryDto> entries) {}
 }

@@ -225,17 +225,20 @@ public class SubstitutionEffects {
                 ? request.getPreviousTeacherId() : request.getOriginalTeacherId();
         variables.put("previousTeacher", teachers.findById(previousTeacherId)
                 .map(Teacher::getName).orElse(""));
-        Long substituteId = substitutions.findFirstByEntryIdAndEffectiveDateAndStatus(
-                        request.getEntryId(), request.getEffectiveDate(), Substitution.EFFECTIVE)
-                .map(Substitution::getSubstituteTeacherId)
-                .orElse(request.getExpectedSubstituteTeacherId());
+        Long substituteId = request.getEntryId() == null
+                ? request.getExpectedSubstituteTeacherId()
+                : substitutions.findFirstByEntryIdAndEffectiveDateAndStatus(
+                                request.getEntryId(), request.getEffectiveDate(), Substitution.EFFECTIVE)
+                        .map(Substitution::getSubstituteTeacherId)
+                        .orElse(request.getExpectedSubstituteTeacherId());
         variables.put("substituteTeacher", substituteId == null ? "" : teachers.findById(substituteId)
                 .map(Teacher::getName).orElse(""));
-        variables.put("roomName", entries.findById(request.getEntryId())
-                .map(TimetableEntry::getRoomId)
-                .flatMap(rooms::findById)
-                .map(Room::getName)
-                .orElse("原教室"));
+        variables.put("roomName", request.getEntryId() == null ? "原教室"
+                : entries.findById(request.getEntryId())
+                        .map(TimetableEntry::getRoomId)
+                        .flatMap(rooms::findById)
+                        .map(Room::getName)
+                        .orElse("原教室"));
         variables.put("reason", request.getReason() == null ? "" : request.getReason());
         return variables;
     }

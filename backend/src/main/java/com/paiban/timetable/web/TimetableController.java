@@ -8,6 +8,8 @@ import com.paiban.timetable.web.TimetableDtos.PublishInfoDto;
 import com.paiban.timetable.web.TimetableDtos.PublishResultDto;
 import com.paiban.timetable.web.TimetableDtos.SchoolTimetableDto;
 import com.paiban.timetable.web.TimetableDtos.TimetableEntryDto;
+import com.paiban.timetable.web.TimetableDtos.WithdrawPreviewDto;
+import com.paiban.timetable.web.TimetableDtos.WithdrawResultDto;
 import java.security.Principal;
 import java.time.LocalDate;
 import java.util.List;
@@ -34,14 +36,17 @@ public class TimetableController {
 
     private final TimetableViewService views;
     private final TimetablePublishService publishService;
+    private final com.paiban.timetable.service.TimetableWithdrawService withdrawService;
     private final com.paiban.timetable.service.TimetableExportService exports;
 
     public TimetableController(
             TimetableViewService views,
             TimetablePublishService publishService,
+            com.paiban.timetable.service.TimetableWithdrawService withdrawService,
             com.paiban.timetable.service.TimetableExportService exports) {
         this.views = views;
         this.publishService = publishService;
+        this.withdrawService = withdrawService;
         this.exports = exports;
     }
 
@@ -180,6 +185,20 @@ public class TimetableController {
     @PreAuthorize("hasAuthority('" + Permissions.TIMETABLE_PUBLISH + "')")
     public PublishResultDto publish(@PathVariable Long id, Principal principal) {
         return publishService.publish(id, principal == null ? "system" : principal.getName());
+    }
+
+    /** Counts the future substitutions the confirmation dialog must name. */
+    @GetMapping("/timetable/withdraw-preview")
+    @PreAuthorize("hasAuthority('" + Permissions.TIMETABLE_PUBLISH + "')")
+    public WithdrawPreviewDto withdrawPreview(@RequestParam(required = false) Long semesterId) {
+        return withdrawService.preview(semesterId == null ? views.semesterId() : semesterId);
+    }
+
+    /** Withdraws the semester's published baseline back to this draft (whole school, once). */
+    @PostMapping("/timetable-drafts/{id}/withdraw")
+    @PreAuthorize("hasAuthority('" + Permissions.TIMETABLE_PUBLISH + "')")
+    public WithdrawResultDto withdraw(@PathVariable Long id, Principal principal) {
+        return withdrawService.withdraw(id, principal == null ? "system" : principal.getName());
     }
 
     private boolean has(Authentication authentication, String authority) {

@@ -36,7 +36,11 @@ public class SubstitutionRequest {
     @Column(name = "semester_id", nullable = false)
     private Long semesterId;
 
-    @Column(name = "entry_id", nullable = false)
+    /**
+     * 基线条目引用。发布撤回删除 timetable_entry 后由外键置空；申请自身保留为历史，
+     * 班级/课程/节次等快照字段仍可展示。
+     */
+    @Column(name = "entry_id")
     private Long entryId;
 
     @Column(name = "admin_class_id", nullable = false)

@@ -41,7 +41,11 @@ public class Substitution {
     @Column(name = "request_id", nullable = false)
     private Long requestId;
 
-    @Column(name = "entry_id", nullable = false)
+    /**
+     * 基线条目引用。发布撤回会删除 timetable_entry，外键 ON DELETE SET NULL 让本行
+     * 作为历史保留下来，此时 entryId 为空；展示层从关联申请的快照字段取班级/课程。
+     */
+    @Column(name = "entry_id")
     private Long entryId;
 
     @Column(name = "effective_date", nullable = false)

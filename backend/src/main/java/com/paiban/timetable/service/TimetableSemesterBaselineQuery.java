@@ -3,6 +3,7 @@ package com.paiban.timetable.service;
 import com.paiban.scheduling.service.SemesterBaselineQuery;
 import com.paiban.timetable.domain.TimetableEntry;
 import com.paiban.timetable.domain.TimetableEntryRepository;
+import com.paiban.timetable.domain.TimetablePublish;
 import com.paiban.timetable.domain.TimetablePublishRepository;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -26,11 +27,16 @@ public class TimetableSemesterBaselineQuery implements SemesterBaselineQuery {
 
     @Override
     public boolean hasPublishedBaseline(Long semesterId) {
-        return publishes.findFirstBySemesterIdOrderByPublishedAtDesc(semesterId).isPresent();
+        // A withdrawn publish row is history, not a live baseline.
+        return publishes.findFirstBySemesterIdAndStatusOrderByPublishedAtDesc(
+                semesterId, TimetablePublish.ACTIVE).isPresent();
     }
 
     @Override
     public List<PublishedLesson> publishedLessons(Long semesterId) {
+        if (!hasPublishedBaseline(semesterId)) {
+            return List.of();
+        }
         return List.copyOf(entries.findBySemesterId(semesterId).stream()
                 .filter(entry -> entry.getAdminClassId() != null
                         && entry.getCourseId() != null
@@ -46,6 +52,9 @@ public class TimetableSemesterBaselineQuery implements SemesterBaselineQuery {
 
     @Override
     public Map<Long, Set<Long>> publishedRoomOccupants(Long semesterId) {
+        if (!hasPublishedBaseline(semesterId)) {
+            return Map.of();
+        }
         Map<Long, Set<Long>> occupants = new HashMap<>();
         for (TimetableEntry entry : entries.findBySemesterId(semesterId)) {
             if (entry.getRoomId() != null && entry.getAdminClassId() != null) {

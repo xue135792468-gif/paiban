@@ -206,7 +206,7 @@ test('调代待审批与调代记录为空时显示引导', async ({ page }) => 
   })
 })
 
-test('课表无发布数据时引导去自动排课', async ({ page }) => {
+test('课表无发布数据时引导去课表工作台', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
   await stubNoSemester(page)
   await stubEmptyFoundation(page)
@@ -214,9 +214,9 @@ test('课表无发布数据时引导去自动排课', async ({ page }) => {
   await page.goto('/workbench/timetable')
   const root = await expectGuide(page, {
     title: '暂无课表数据',
-    button: '去自动排课',
+    button: '去课表工作台',
     href: '/help/timetable#views',
   })
-  await root.getByRole('button', { name: '去自动排课' }).click()
+  await root.getByRole('button', { name: '去课表工作台' }).click()
   await expect(page).toHaveURL(/\/workbench$/)
 })

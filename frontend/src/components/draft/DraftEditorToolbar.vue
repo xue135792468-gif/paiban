@@ -31,6 +31,16 @@
       >
         发布课表
       </el-button>
+      <el-button
+        v-if="canPublish && published"
+        data-testid="withdraw-draft"
+        type="warning"
+        plain
+        :disabled="busy"
+        @click="emit('withdraw')"
+      >
+        撤回为草稿
+      </el-button>
       <el-button v-if="canEdit" type="danger" plain @click="emit('remove')">删除</el-button>
     </div>
   </div>
@@ -60,6 +70,7 @@ const emit = defineEmits<{
   (e: 'compare'): void
   (e: 'rename'): void
   (e: 'publish'): void
+  (e: 'withdraw'): void
   (e: 'remove'): void
 }>()
 
