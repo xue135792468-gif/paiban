@@ -52,6 +52,9 @@
           </div>
         </template>
         <el-form :inline="true" :model="submitForm" class="submit-form">
+          <el-form-item label="排课年级">
+            <GradeScopePicker v-model="selectedGradeIds" :grades="grades" />
+          </el-form-item>
           <el-form-item label="草稿名称">
             <el-input
               v-model="submitForm.draftName"
@@ -150,6 +153,12 @@
             show-icon
             :title="activeJob.errorMessage || '排课任务求解失败，请检查排课约束与授课数据'"
             class="job-error-alert"
+          />
+
+          <JobDiagnostics
+            v-if="activeJob.diagnostics?.length"
+            :diagnostics="activeJob.diagnostics"
+            @rerun="handleRerunDiagnosedGrades"
           />
         </div>
       </el-card>
@@ -290,55 +299,22 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import SchedulingJobMetrics from '@/components/scheduling/SchedulingJobMetrics.vue'
+import GradeScopePicker from '@/components/scheduling/GradeScopePicker.vue'
+import JobDiagnostics from '@/components/scheduling/JobDiagnostics.vue'
+import { getJobStatusTag, isRunning, isTerminal } from '@/components/scheduling/jobStatus'
+import type { DraftItem, GradeOption, JobItem, Semester } from '@/components/scheduling/types'
 import { useAuthStore } from '@/stores/auth'
 import { serverMessage } from '@/api/errors'
 import { formatDateTime } from '@/utils/datetime'
 import { deleteDraftWithConfirmation } from '@/composables/useDraftDeletion'
-
-interface Semester {
-  id: number
-  name: string
-  startDate?: string
-  endDate?: string
-  current: boolean
-}
-
-interface JobItem {
-  id: number
-  semesterId: number
-  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | string
-  score?: string | null
-  progress: number
-  elapsedMs: number
-  estimatedRemainingMs?: number
-  errorMessage?: string | null
-  draftId?: number | null
-  draftName?: string | null
-  warmStartSource?: 'BASELINE' | 'DRAFT' | 'NONE' | string | null
-  solveSeconds: number
-  createdAt: string
-  startedAt?: string | null
-  finishedAt?: string | null
-}
-
-interface DraftItem {
-  id: number
-  semesterId: number
-  name: string
-  status: 'DRAFT' | 'PUBLISHED' | string
-  scoreHard: number
-  scoreSoft: number
-  createdBy?: string | null
-  createdAt: string
-  lessonCount: number
-  lockedCount?: number
-}
 
 const auth = useAuthStore()
 const router = useRouter()
 
 const semesters = ref<Semester[]>([])
 const semesterId = ref<number | null>(null)
+const grades = ref<GradeOption[]>([])
+const selectedGradeIds = ref<number[]>([])
 const drafts = ref<DraftItem[]>([])
 const jobs = ref<JobItem[]>([])
 const assignmentCount = ref<number | null>(null)
@@ -369,34 +345,6 @@ const showPrerequisiteHint = computed(() => {
   if (!semesterId.value) return false
   return drafts.value.length === 0 || assignmentCount.value === 0
 })
-
-function isRunning(status?: string | null) {
-  return status === 'PENDING' || status === 'RUNNING'
-}
-
-function isTerminal(status?: string | null) {
-  return status === 'COMPLETED' || status === 'FAILED' || status === 'CANCELLED'
-}
-
-function getJobStatusTag(status?: string | null): {
-  type: 'warning' | 'primary' | 'success' | 'danger' | 'info'
-  label: string
-} {
-  switch (status) {
-    case 'PENDING':
-      return { type: 'warning', label: '排队中' }
-    case 'RUNNING':
-      return { type: 'primary', label: '求解中' }
-    case 'COMPLETED':
-      return { type: 'success', label: '已完成' }
-    case 'FAILED':
-      return { type: 'danger', label: '失败' }
-    case 'CANCELLED':
-      return { type: 'info', label: '已取消' }
-    default:
-      return { type: 'info', label: status || '未知' }
-  }
-}
 
 function stopPolling() {
   if (pollTimer) {
@@ -460,6 +408,25 @@ async function loadSemesters() {
   }
 }
 
+async function loadGrades() {
+  if (!semesterId.value) {
+    grades.value = []
+    selectedGradeIds.value = []
+    return
+  }
+  try {
+    const { data } = await http.get<GradeOption[]>('/grades', {
+      params: { semesterId: semesterId.value },
+    })
+    grades.value = data ?? []
+    // The default scope is the whole school; the user narrows it for a batched solve.
+    selectedGradeIds.value = grades.value.map((grade) => grade.id)
+  } catch {
+    grades.value = []
+    selectedGradeIds.value = []
+  }
+}
+
 async function loadDrafts() {
   if (!semesterId.value) {
     drafts.value = []
@@ -517,13 +484,19 @@ async function refreshSemesterData() {
     jobs.value = []
     assignmentCount.value = null
     activeJob.value = null
+    grades.value = []
+    selectedGradeIds.value = []
     return
   }
-  await Promise.all([loadDrafts(), loadHistory(), checkAssignments()])
+  await Promise.all([loadDrafts(), loadHistory(), checkAssignments(), loadGrades()])
   const running = jobs.value.find((j) => isRunning(j.status))
   if (running) {
     activeJob.value = running
     startPolling(running.id)
+  } else {
+    // A finished job with teacher diagnostics stays visible after a reload, so the
+    // "连带重排" entry point is not lost the moment polling stops.
+    activeJob.value = jobs.value.find((job) => job.diagnostics?.length) ?? null
   }
 }
 
@@ -550,15 +523,16 @@ async function handleManualRefresh() {
   }
 }
 
-async function handleStartJob() {
+async function submitJob(gradeIds: number[], draftName?: string) {
   if (!semesterId.value) return
   submitting.value = true
   try {
     const { data } = await http.post<JobItem>(
       '/scheduling-jobs',
       {
-        draftName: submitForm.draftName.trim() || undefined,
+        draftName: draftName?.trim() || undefined,
         maxSeconds: submitForm.maxSeconds,
+        gradeIds,
       },
       {
         params: { semesterId: semesterId.value },
@@ -576,6 +550,24 @@ async function handleStartJob() {
   } finally {
     submitting.value = false
   }
+}
+
+function handleStartJob() {
+  return submitJob(selectedGradeIds.value, submitForm.draftName)
+}
+
+/**
+ * The diagnosed teachers' grades plus whatever the form already had selected. The union
+ * is a new job with the same semester and duration; the backend needs no extra concept.
+ */
+async function handleRerunDiagnosedGrades() {
+  const merged = new Set<number>(selectedGradeIds.value)
+  for (const diagnostic of activeJob.value?.diagnostics ?? []) {
+    for (const gradeId of diagnostic.gradeIds ?? []) merged.add(gradeId)
+  }
+  const ordered = grades.value.map((grade) => grade.id).filter((id) => merged.has(id))
+  selectedGradeIds.value = ordered
+  await submitJob(ordered)
 }
 
 async function handleCancelJob(jobId: number) {

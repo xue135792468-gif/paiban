@@ -86,7 +86,7 @@ class TimetableProblemBuilderTest {
 
         TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
-                warmStart, foundation)
+                warmStart, foundation, emptyBaselines())
                 .buildWithWarmStart(1L, ConstraintSettings.defaults());
         TimetableSolution solution = built.solution();
 
@@ -148,7 +148,7 @@ class TimetableProblemBuilderTest {
 
         TimetableSolution solution = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
-                warmStart, foundation)
+                warmStart, foundation, emptyBaselines())
                 .build(1L);
 
         assertThat(solution.getLessons()).hasSize(1);
@@ -206,7 +206,7 @@ class TimetableProblemBuilderTest {
 
         TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
-                warmStart, foundation)
+                warmStart, foundation, emptyBaselines())
                 .buildWithWarmStart(1L, ConstraintSettings.defaults());
         TimetableSolution solution = built.solution();
 
@@ -250,7 +250,7 @@ class TimetableProblemBuilderTest {
 
         TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
-                warmStart, foundation)
+                warmStart, foundation, emptyBaselines())
                 .buildWithWarmStart(1L, ConstraintSettings.defaults());
 
         assertThat(built.warmStartSource()).isEqualTo("NONE");
@@ -299,7 +299,7 @@ class TimetableProblemBuilderTest {
 
         TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
-                warmStart, foundation)
+                warmStart, foundation, emptyBaselines())
                 .buildFromSource(1L, ConstraintSettings.defaults(), snapshot);
 
         assertThat(built.warmStartSource()).isEqualTo("SOURCE_DRAFT");
@@ -352,7 +352,7 @@ class TimetableProblemBuilderTest {
 
         TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
-                warmStart, foundation)
+                warmStart, foundation, emptyBaselines())
                 .buildFromSource(1L, settings, snapshot);
 
         assertThat(built.solution().getLessons().get(0).getPeriod()).isNull();
@@ -381,6 +381,13 @@ class TimetableProblemBuilderTest {
             entries.add(entry);
         }
         return ConstraintSettings.from(List.of(config), entries, new ObjectMapper());
+    }
+
+    private static SemesterBaselineQuery emptyBaselines() {
+        SemesterBaselineQuery baselines = mock(SemesterBaselineQuery.class);
+        when(baselines.publishedLessons(org.mockito.ArgumentMatchers.anyLong()))
+                .thenReturn(List.of());
+        return baselines;
     }
 
     private static Assignment assignment(
