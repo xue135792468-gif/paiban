@@ -8,7 +8,7 @@
       <el-menu :default-active="activeMenu" router class="menu" data-testid="layout-menu">
         <template v-for="group in visibleGroups" :key="group.title">
           <div class="group-title">{{ group.title }}</div>
-          <el-menu-item v-for="item in group.items" :key="item.path" :index="item.path" :data-tour="item.path">
+          <el-menu-item v-for="item in group.items" :key="item.path" :index="item.target" :data-tour="item.path">
             <el-icon><component :is="item.icon" /></el-icon>
             <span>{{ item.label }}</span>
           </el-menu-item>
@@ -91,37 +91,14 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-  Bell,
-  Calendar,
-  ChatDotRound,
-  DataLine,
-  Document,
-  List,
-  MagicStick,
-  QuestionFilled,
-  Setting,
-} from '@element-plus/icons-vue'
+import { Bell, QuestionFilled } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import { HELP_GROUPS } from '@/help/docs'
 import { helpLink, type HelpSlug } from '@/help/links'
+import { MENU_GROUPS, visibleMenuGroups } from '@/layouts/navigation'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import { hasSeenTour, startTour, type TourStage } from '@/onboarding/tour'
-
-interface MenuItem {
-  label: string
-  path: string
-  icon: unknown
-  permission?: string
-  permissions?: string[]
-  allPermissions?: string[]
-}
-
-interface MenuGroup {
-  title: string
-  items: MenuItem[]
-}
 
 interface NotificationItem {
   id: number
@@ -137,75 +114,28 @@ const settings = useSettingsStore()
 const route = useRoute()
 const router = useRouter()
 
-const groups: MenuGroup[] = [
-  {
-    title: '导航',
-    items: [
-      { label: '总览', path: '/', icon: DataLine },
-      {
-        label: '课表工作台',
-        path: '/workbench',
-        icon: Calendar,
-        permissions: [
-          'scheduling:run',
-          'scheduling:view',
-          'timetable:edit',
-          'timetable:view',
-          'timetable:view:own',
-          'timetable:view:class',
-        ],
-      },
-      {
-        label: '调代课',
-        path: '/substitution',
-        icon: ChatDotRound,
-        permissions: ['substitution:submit', 'substitution:approve', 'substitution:view'],
-      },
-      { label: '排课规则', path: '/rules', icon: Document, permission: 'constraint:manage' },
-      {
-        label: '数据管理',
-        path: '/data',
-        icon: List,
-        permissions: [
-          'semester:manage',
-          'foundation:manage',
-          'assignment:manage',
-          'assignment:view:own',
-        ],
-      },
-      { label: 'AI 助手', path: '/ai', icon: MagicStick, permission: 'settings:manage' },
-      {
-        label: '设置',
-        path: '/settings',
-        icon: Setting,
-        permissions: ['settings:manage', 'user:manage'],
-      },
-    ],
-  },
-]
+const groups = MENU_GROUPS
 
 const visibleGroups = computed(() =>
-  groups
-    .map((group) => ({
-      ...group,
-      items: group.items.filter(
-        (item) =>
-          (!item.permission || auth.hasPermission(item.permission)) &&
-          (!item.permissions || auth.hasAnyPermission(item.permissions)) &&
-          (!item.allPermissions || auth.hasAllPermissions(item.allPermissions)),
-      ),
-    }))
-    .filter((group) => group.items.length > 0),
+  visibleMenuGroups({
+    has: (permission: string) => auth.hasPermission(permission),
+    hasAny: (permissions: string[]) => auth.hasAnyPermission(permissions),
+    hasAll: (permissions: string[]) => auth.hasAllPermissions(permissions),
+  }, groups),
 )
 
-/** Highlight the owning top-level entry for nested pages (drafts, schedule editor, ...). */
+/**
+ * Highlight the owning top-level entry for nested pages (drafts, schedule editor, ...).
+ * Matched on the stable entry path, but returned as the item's resolved target so
+ * `el-menu` can find the index it actually rendered.
+ */
 const activeMenu = computed(() => {
   const path = route.path
   if (path === '/') return '/'
-  for (const group of groups) {
+  for (const group of visibleGroups.value) {
     for (const item of group.items) {
       if (item.path !== '/' && (path === item.path || path.startsWith(`${item.path}/`))) {
-        return item.path
+        return item.target
       }
     }
   }

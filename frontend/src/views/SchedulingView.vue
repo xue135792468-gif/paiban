@@ -30,7 +30,7 @@
       title="还没有学期"
       description="排课任务按学期提交。请先在「学期与作息」中创建学期，再回来发起排课。"
       button-text="去创建学期"
-      button-to="/admin/semesters"
+      button-to="/data/semesters"
       help-slug="scheduling"
       help-anchor="run"
     />
@@ -38,7 +38,7 @@
     <div v-else class="content-body">
       <el-alert
         v-if="showPrerequisiteHint"
-        title="排课前请先录入授课任务、配置作息表和教室"
+        title="排课前请先录入授课任务并配置作息表"
         type="warning"
         :closable="false"
         show-icon

@@ -6,7 +6,7 @@
           <h1>{{ greeting }}，{{ auth.displayName }}</h1>
           <p class="subtitle">{{ today }} · {{ roleLabel }}</p>
         </div>
-        <el-button v-if="auth.hasPermission('scheduling:run')" type="primary" @click="router.push('/admin/scheduling')">
+        <el-button v-if="auth.hasPermission('scheduling:run')" type="primary" @click="router.push('/workbench')">
           去排课
         </el-button>
       </div>
@@ -100,14 +100,15 @@ const roleLabel = computed(() => {
 const quickLinks = computed(() => {
   const links = []
   if (auth.hasPermission('scheduling:run')) {
-    links.push({ title: '自动排课', desc: '提交求解并微调草稿', path: '/admin/scheduling', icon: Timer })
+    links.push({ title: '自动排课', desc: '提交求解并微调草稿', path: '/workbench', icon: Timer })
   }
-  links.push({ title: '课表查看', desc: '行政班 / 教师 / 教室 / 全校', path: '/timetable', icon: Calendar })
+  const timetablePath = '/workbench/timetable'
+  links.push({ title: '课表查看', desc: '行政班 / 教师 / 全校', path: timetablePath, icon: Calendar })
   if (auth.hasPermission('substitution:submit')) {
-    links.push({ title: '调代课', desc: '提交申请与审批', path: '/substitutions', icon: ChatDotRound })
+    links.push({ title: '调代课', desc: '代课与同班调课，直接生效', path: '/substitution', icon: ChatDotRound })
   }
   if (auth.hasAnyPermission(['assignment:manage', 'assignment:view:own'])) {
-    links.push({ title: '授课任务', desc: '录入行政班课程与教师', path: '/admin/assignments', icon: List })
+    links.push({ title: '授课任务', desc: '录入行政班课程与教师', path: '/data/assignments', icon: List })
   }
   return links
 })

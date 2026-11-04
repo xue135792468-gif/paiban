@@ -83,8 +83,7 @@
                   <span v-if="cellAt(day.index, row)!.substituted" class="tag">已调整</span>
                 </span>
                 <span class="m">
-                  {{ cellAt(day.index, row)!.className }} ·
-                  {{ cellAt(day.index, row)!.roomName || '未排教室' }}
+                  {{ cellAt(day.index, row)!.className }}
                 </span>
               </button>
             </div>
@@ -115,7 +114,7 @@
               {{ item.entry.courseName }} · {{ item.entry.teacherName }}
               <span v-if="item.entry.substituted" class="tag">已调整</span>
             </span>
-            <span class="m">{{ item.entry.className }} · {{ item.entry.roomName || '未排教室' }}</span>
+            <span class="m">{{ item.entry.className }}</span>
           </button>
         </div>
       </template>

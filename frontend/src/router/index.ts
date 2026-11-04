@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { dataLandingPath } from '@/layouts/navigation'
 import { useAuthStore } from '@/stores/auth'
 
 /**
@@ -111,11 +112,11 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '排课规则', permission: 'constraint:manage' },
       },
 
-      // 4. 数据管理。
+      // 4. 数据管理。落地页按权限解析：学期 → 教师 → 授课任务，与侧边导航同一份规则。
       {
         path: 'data',
         component: () => import('@/layouts/DataLayout.vue'),
-        redirect: '/data/semesters',
+        redirect: () => dataLandingPath((permission) => useAuthStore().hasPermission(permission)),
         children: [
           {
             path: 'semesters',
@@ -224,6 +225,15 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '排课规则（按类型）', permission: 'constraint:manage' },
       },
 
+      // AI 记录：票 07 要求 AI 的原始输出可追溯，票 01 只把它从一级导航移走。
+      // 同 rules/advanced，排在七项之后，让一级导航保持七项。
+      {
+        path: 'ai/history',
+        name: 'ai-history',
+        component: () => import('@/views/AiHistoryView.vue'),
+        meta: { title: 'AI 记录', permission: 'settings:manage' },
+      },
+
       // 系统页：保留路由，但不再出现在一级导航。
       {
         path: 'notifications',
@@ -278,7 +288,7 @@ export const routes: RouteRecordRaw[] = [
       { path: 'substitutions/workbench', redirect: '/substitution' },
       { path: 'admin/constraints', redirect: '/rules/advanced' },
       { path: 'admin/ai-providers', redirect: '/ai' },
-      { path: 'admin/ai-history', redirect: '/ai' },
+      { path: 'admin/ai-history', redirect: '/ai/history' },
       { path: 'admin/settings', redirect: '/settings/general' },
       { path: 'admin/users', redirect: '/settings/users' },
     ],
