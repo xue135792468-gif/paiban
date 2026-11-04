@@ -181,8 +181,8 @@
           <el-table-column prop="name" label="名称" min-width="180" />
           <el-table-column label="状态" width="110">
             <template #default="{ row }">
-              <el-tag :type="row.status === 'PUBLISHED' ? 'success' : 'info'" effect="light">
-                {{ row.status === 'PUBLISHED' ? '已发布' : '草稿' }}
+              <el-tag :type="draftStatusTag(row.status)" effect="light">
+                {{ draftStatusLabel(row.status) }}
               </el-tag>
             </template>
           </el-table-column>
@@ -214,7 +214,9 @@
                 v-if="canEditDraft"
                 link
                 type="danger"
-                :disabled="row.status === 'PUBLISHED'"
+                data-testid="draft-delete"
+                :disabled="row.status !== 'DRAFT'"
+                :title="row.status === 'DRAFT' ? '删除后可在「最近删除」中恢复' : '已发布或已归档的课表不能直接删除'"
                 @click="handleDeleteDraft(row)"
               >
                 删除
@@ -620,9 +622,23 @@ async function handleRenameDraft(row: DraftItem) {
   }
 }
 
+function draftStatusLabel(status: string): string {
+  if (status === 'PUBLISHED') return '已发布'
+  if (status === 'ARCHIVED') return '已归档'
+  return '草稿'
+}
+
+function draftStatusTag(status: string): 'success' | 'warning' | 'info' {
+  if (status === 'PUBLISHED') return 'success'
+  if (status === 'ARCHIVED') return 'warning'
+  return 'info'
+}
+
 async function handleDeleteDraft(row: DraftItem) {
-  if (row.status === 'PUBLISHED') {
-    ElMessage.warning('已发布的课表草稿不可删除')
+  if (row.status !== 'DRAFT') {
+    ElMessage.warning(row.status === 'PUBLISHED'
+      ? '已发布的课表请先撤回再删除'
+      : '已归档的课表不能删除')
     return
   }
   const outcome = await deleteDraftWithConfirmation({

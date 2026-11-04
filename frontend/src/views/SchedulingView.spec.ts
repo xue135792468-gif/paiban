@@ -235,3 +235,40 @@ describe('空白学期的 warm start 提示', () => {
     wrapper.unmount()
   })
 })
+
+describe('草稿删除入口', () => {
+  const draftRow = (status: string, name: string) => ({
+    id: 11,
+    name,
+    status,
+    scoreHard: 0,
+    scoreSoft: 0,
+    lessonCount: 6,
+    lockedCount: 0,
+    createdAt: '2026-01-01T00:00:00Z',
+  })
+
+  it('只有 DRAFT 草稿的删除按钮可用，已发布/已归档改为提示先撤回', async () => {
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/semesters') return Promise.resolve({ data: [SEMESTER] })
+      if (url === '/semesters/current') return Promise.resolve({ status: 200, data: SEMESTER })
+      if (url === '/timetable-drafts') {
+        return Promise.resolve({
+          data: [
+            draftRow('DRAFT', '可删草稿'),
+            draftRow('PUBLISHED', '已发布草稿'),
+            draftRow('ARCHIVED', '已归档草稿'),
+          ],
+        })
+      }
+      return Promise.resolve({ data: [] })
+    })
+
+    const { wrapper } = await mountScheduling(['scheduling:run', 'timetable:edit'])
+    const buttons = wrapper.findAll('[data-testid="draft-delete"]')
+    expect(buttons).toHaveLength(3)
+    const disabled = buttons.map((button) => button.attributes('disabled') !== undefined)
+    expect(disabled).toEqual([false, true, true])
+    wrapper.unmount()
+  })
+})

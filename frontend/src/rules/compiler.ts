@@ -292,6 +292,11 @@ export interface RuleSentence {
   enabled: boolean
   entryIds: Record<string, number>
   exceptionClassIds: number[]
+  /**
+   * Ticket 04: server-side reasons the stored target can no longer be used
+   * (`教师已停用：王老师`). Absent means every reference still resolves.
+   */
+  invalidReferences?: string[]
 }
 
 /** One editable rule card: one to three sentences sharing a switch and a delete. */
@@ -1044,7 +1049,17 @@ function slotSentence(
     enabled: group.entries.every((entry) => entry.enabled !== false) && config.enabled !== false,
     entryIds,
     exceptionClassIds,
+    ...invalidField(group.entries),
   }
+}
+
+/**
+ * The reasons of a stored group, or nothing when every reference resolves. The field
+ * is only present when broken, so existing card comparisons stay unchanged.
+ */
+function invalidField(entries: ConstraintEntryDto[]): { invalidReferences?: string[] } {
+  const reasons = [...new Set(entries.flatMap((entry) => entry.invalidReferences ?? []))]
+  return reasons.length > 0 ? { invalidReferences: reasons } : {}
 }
 
 function firstObject(objects: Set<number | null>): number | null {
@@ -1126,6 +1141,7 @@ function singleSentence(
     enabled: entry.enabled !== false && config.enabled !== false,
     entryIds: entry.id === null ? {} : { [SINGLE_ENTRY_KEY]: entry.id },
     exceptionClassIds: [],
+    ...invalidField([entry]),
   }
 }
 
@@ -1217,6 +1233,9 @@ export function cardsFromState(
         enabled: config.enabled !== false,
         entryIds: {},
         exceptionClassIds: [],
+        ...(config.invalidReferences?.length
+          ? { invalidReferences: [...config.invalidReferences] }
+          : {}),
       }, cardId)
       continue
     }

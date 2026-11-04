@@ -48,10 +48,28 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="240" fixed="right">
+        <el-table-column label="操作" width="320" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
             <el-button link type="primary" @click="openReset(row)">重置密码</el-button>
+            <el-button
+              v-if="row.enabled"
+              link
+              type="warning"
+              data-testid="user-disable"
+              @click="disable(row)"
+            >
+              停用
+            </el-button>
+            <el-button
+              v-else
+              link
+              type="success"
+              data-testid="user-enable"
+              @click="enable(row)"
+            >
+              启用
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -129,7 +147,7 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import ImportDialog from '@/components/ImportDialog.vue'
 import { http } from '@/api/http'
@@ -270,6 +288,39 @@ async function submitEdit() {
     ElMessage.error(serverMessage(e, '保存失败'))
   } finally {
     saving.value = false
+  }
+}
+
+/**
+ * Ticket 04: accounts are paused, never deleted. A disabled account keeps its roles
+ * and history but cannot sign in; the server refuses pausing yourself or the last admin.
+ */
+async function disable(row: UserRow) {
+  try {
+    await ElMessageBox.confirm(
+      `停用「${row.displayName || row.username}」后该账号不能登录，可以随时再启用。确定停用？`,
+      '停用用户',
+      { confirmButtonText: '停用', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  try {
+    await http.post(`/users/${row.id}/disable`)
+    ElMessage.success('用户已停用')
+    await load()
+  } catch (e: unknown) {
+    ElMessage.error(serverMessage(e, '停用失败'))
+  }
+}
+
+async function enable(row: UserRow) {
+  try {
+    await http.post(`/users/${row.id}/enable`)
+    ElMessage.success('用户已启用')
+    await load()
+  } catch (e: unknown) {
+    ElMessage.error(serverMessage(e, '启用失败'))
   }
 }
 

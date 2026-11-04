@@ -47,7 +47,7 @@
             拉取模型
           </el-button>
           <el-button @click="openProviderDialog(provider)">编辑</el-button>
-          <el-button type="danger" plain @click="removeProvider(provider)">删除</el-button>
+          <el-button type="danger" plain data-testid="ai-provider-delete" @click="removeProvider(provider)">删除</el-button>
         </div>
       </div>
 
@@ -92,7 +92,7 @@
                 />
                 <el-button link type="primary" @click="toggleParams(model)">高级参数</el-button>
                 <el-button link type="primary" @click="openModelDialog(provider, model)">编辑</el-button>
-                <el-button link type="danger" @click="removeModel(provider, model)">删除</el-button>
+                <el-button link type="danger" data-testid="ai-model-delete" @click="removeModel(provider, model)">删除</el-button>
               </div>
             </div>
 
@@ -298,10 +298,11 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
+import { confirmRemoval } from '@/utils/confirmDelete'
 
 interface AiModel {
   id: number
@@ -623,11 +624,11 @@ async function toggleProvider(provider: AiProvider) {
 }
 
 async function removeProvider(provider: AiProvider) {
-  try {
-    await ElMessageBox.confirm(`确定删除供应商「${provider.name}」及其全部模型吗？`, '删除供应商', {
-      type: 'warning',
-    })
-  } catch {
+  if (!await confirmRemoval(
+    `确定删除供应商「${provider.name}」及其全部模型吗？`
+      + '删除后可在「最近删除」中恢复（7 天内），任务分配会暂时停用。',
+    '删除供应商',
+  )) {
     return
   }
   try {
@@ -766,9 +767,10 @@ async function toggleModel(provider: AiProvider, model: AiModel) {
 }
 
 async function removeModel(provider: AiProvider, model: AiModel) {
-  try {
-    await ElMessageBox.confirm(`确定删除模型「${model.modelName}」吗？`, '删除模型', { type: 'warning' })
-  } catch {
+  if (!await confirmRemoval(
+    `确定删除模型「${model.modelName}」吗？删除后可在「最近删除」中恢复（7 天内）。`,
+    '删除模型',
+  )) {
     return
   }
   try {
