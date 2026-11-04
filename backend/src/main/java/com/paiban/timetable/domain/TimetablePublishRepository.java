@@ -14,5 +14,8 @@ public interface TimetablePublishRepository extends JpaRepository<TimetablePubli
     Optional<TimetablePublish> findFirstBySemesterIdAndDraftIdAndStatusOrderByPublishedAtDesc(
             Long semesterId, Long draftId, String status);
 
+    /** Every row currently claiming to be the semester's baseline (should be at most one). */
+    List<TimetablePublish> findBySemesterIdAndStatus(Long semesterId, String status);
+
     List<TimetablePublish> findBySemesterIdOrderByPublishedAtDesc(Long semesterId);
 }

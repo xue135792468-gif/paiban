@@ -1,4 +1,4 @@
-import type { Ref } from 'vue'
+import { ref, type Ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
@@ -20,6 +20,17 @@ export interface DraftActionsOptions {
  */
 export function useDraftActions(options: DraftActionsOptions) {
   const router = useRouter()
+
+  /**
+   * How many substitutions a withdrawal cancelled that still cover future dates and
+   * that nobody has re-done yet (the server recounts them on every publish). Non-zero
+   * means the page has to point the admin back at the substitution records.
+   */
+  const cancelledSubstitutions = ref(0)
+
+  function dismissCancelledSubstitutions() {
+    cancelledSubstitutions.value = 0
+  }
 
   async function rename() {
     if (!options.detail.value) return
@@ -55,6 +66,7 @@ export function useDraftActions(options: DraftActionsOptions) {
     }
     try {
       const { data } = await http.post(`/timetable-drafts/${options.draftId}/publish`)
+      cancelledSubstitutions.value = Math.max(0, Number(data.cancelledSubstitutions) || 0)
       ElMessage.success(`课表已发布，共 ${data.entryCount} 节课`)
       await options.reload()
     } catch (error) {
@@ -91,5 +103,12 @@ export function useDraftActions(options: DraftActionsOptions) {
     }
   }
 
-  return { rename, publish, remove, withdraw }
+  return {
+    rename,
+    publish,
+    remove,
+    withdraw,
+    cancelledSubstitutions,
+    dismissCancelledSubstitutions,
+  }
 }

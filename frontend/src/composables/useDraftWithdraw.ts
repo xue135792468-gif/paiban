@@ -11,8 +11,10 @@ export interface WithdrawPreview {
   published: boolean
   draftId?: number | null
   publishId?: number | null
+  /** Future overlay rows the withdrawal would cancel. */
   futureSubstitutions: number
-  totalSubstitutions: number
+  /** Every substitution row the semester has, kept as history. */
+  allSubstitutions: number
 }
 
 export interface WithdrawResult {

@@ -4,7 +4,7 @@ import { withdrawDraftWithConfirmation } from './useDraftWithdraw'
 function setup(preview: Record<string, unknown> | Error = {
   published: true,
   futureSubstitutions: 2,
-  totalSubstitutions: 3,
+  allSubstitutions: 3,
 }) {
   const get = vi.fn()
   if (preview instanceof Error) {
@@ -47,7 +47,7 @@ describe('withdrawDraftWithConfirmation', () => {
     const { client, confirm, notify, post } = setup({
       published: true,
       futureSubstitutions: 0,
-      totalSubstitutions: 0,
+      allSubstitutions: 0,
     })
 
     const outcome = await withdrawDraftWithConfirmation(
@@ -77,7 +77,7 @@ describe('withdrawDraftWithConfirmation', () => {
     const { client, confirm, notify, post } = setup({
       published: false,
       futureSubstitutions: 0,
-      totalSubstitutions: 4,
+      allSubstitutions: 4,
     })
 
     const outcome = await withdrawDraftWithConfirmation(

@@ -69,6 +69,10 @@ test('发布 → 撤回（提示未来调代）→ 编辑 → 重新发布，历
   await expect(page.locator('.el-message').filter({ hasText: /课表已发布/ }).first())
     .toBeVisible({ timeout: 30_000 })
 
+  // 重新发布后必须给出可执行的「重新处理调代」入口，而不只是一句提示。
+  await expect(page.getByTestId('reprocess-substitutions'))
+    .toContainText('有 1 条撤回时取消的调代需要重新处理')
+
   const info = await apiCall(api, token, 'get', '/timetable/publish-info')
   expect(info.published).toBe(true)
   expect(info.status).toBe('ACTIVE')

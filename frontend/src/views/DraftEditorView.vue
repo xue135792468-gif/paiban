@@ -9,9 +9,11 @@
       :busy="busy"
       :can-edit="canEdit"
       :can-publish="canPublish"
+      :cancelled-substitutions="cancelledSubstitutions"
       :publishable="publishable"
       :is-junior="isJunior"
       @back="router.push('/admin/scheduling')"
+      @dismiss-reprocess="dismissCancelledSubstitutions"
       @undo="undoMove"
       @refresh="load"
       @compare="openCompare"
@@ -515,8 +517,9 @@ async function undoMove() {
 
 useUndoShortcut({ canUndo, busy, undo: undoMove })
 
-const { rename, publish: publishDraft, remove: removeDraft, withdraw: withdrawDraft } =
-  useDraftActions({ draftId, detail, reload: load })
+const draftActions = useDraftActions({ draftId, detail, reload: load })
+const { rename, publish: publishDraft, remove: removeDraft, withdraw: withdrawDraft } = draftActions
+const { cancelledSubstitutions, dismissCancelledSubstitutions } = draftActions
 
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape' && teacherSwap.active.value) teacherSwap.exit()
