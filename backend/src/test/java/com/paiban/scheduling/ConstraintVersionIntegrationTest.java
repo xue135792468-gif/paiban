@@ -100,8 +100,10 @@ class ConstraintVersionIntegrationTest extends ApiIntegrationTest {
         try {
             Callable<Integer> first = concurrentSave(
                     token, semesterId, base, barrier, "CLASS_CONFLICT");
+            // Both branches must be catalogue types that the editor still shows:
+            // ROOM_CONFLICT is retired (ticket 09) and would leave zero visible configs.
             Callable<Integer> second = concurrentSave(
-                    token, semesterId, base, barrier, "ROOM_CONFLICT");
+                    token, semesterId, base, barrier, "TEACHER_CONFLICT");
             Future<Integer> a = pool.submit(first);
             Future<Integer> b = pool.submit(second);
             List<Integer> statuses = List.of(
@@ -114,7 +116,7 @@ class ConstraintVersionIntegrationTest extends ApiIntegrationTest {
                     .then().statusCode(200).extract().jsonPath().getList("configs.type", String.class);
             // Exactly one configuration survived; the loser wrote nothing.
             assertThat(types).hasSize(1);
-            assertThat(types.get(0)).isIn("CLASS_CONFLICT", "ROOM_CONFLICT");
+            assertThat(types.get(0)).isIn("CLASS_CONFLICT", "TEACHER_CONFLICT");
         } finally {
             pool.shutdownNow();
         }
