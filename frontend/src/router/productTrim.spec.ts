@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter, type RouteRecordRaw } from 'vue-router'
 import { routes } from '@/router'
+import { useAuthStore } from '@/stores/auth'
 
 /**
  * Route-level contract for the seven-page shell. A memory-history router is
@@ -9,6 +11,21 @@ import { routes } from '@/router'
  */
 function makeRouter() {
   return createRouter({ history: createMemoryHistory(), routes })
+}
+
+/** The auth store backs the permission-aware `/data` redirect. */
+function signIn(permissions: string[]) {
+  setActivePinia(createPinia())
+  const auth = useAuthStore()
+  auth.user = {
+    id: 1,
+    username: 'tester',
+    displayName: '测试账号',
+    enabled: true,
+    roles: ['admin'],
+    permissions,
+  }
+  return auth
 }
 
 const mainChildren = (routes.find((route) => route.path === '/')?.children ??
@@ -99,7 +116,7 @@ describe('product trim routing', () => {
       ['/substitutions/workbench', '/substitution'],
       ['/admin/constraints', '/rules/advanced'],
       ['/admin/ai-providers', '/ai'],
-      ['/admin/ai-history', '/ai'],
+      ['/admin/ai-history', '/ai/history'],
       ['/admin/settings', '/settings/general'],
       ['/admin/users', '/settings/users'],
       ['/admin/rooms', '/data/semesters'],
@@ -132,6 +149,7 @@ describe('product trim routing', () => {
   }, 30_000)
 
   it('redirects the bare layout paths to their first section', async () => {
+    signIn(['semester:manage', 'foundation:manage'])
     const router = makeRouter()
 
     await router.push('/data')
@@ -140,4 +158,23 @@ describe('product trim routing', () => {
     await router.push('/settings')
     expect(router.currentRoute.value.fullPath).toBe('/settings/general')
   }, 30_000)
+
+  it('sends /data to the first list the caller may open', async () => {
+    const cases: Array<[string[], string]> = [
+      [['semester:manage'], '/data/semesters'],
+      [['foundation:manage'], '/data/teachers'],
+      [['assignment:manage'], '/data/assignments'],
+      [['assignment:view:own'], '/data/assignments'],
+      [[], '/403'],
+    ]
+
+    for (const [permissions, expected] of cases) {
+      signIn(permissions)
+      const router = makeRouter()
+      await router.push('/data')
+      expect(router.currentRoute.value.fullPath, permissions.join(',') || 'no permissions').toBe(
+        expected,
+      )
+    }
+  }, 60_000)
 })

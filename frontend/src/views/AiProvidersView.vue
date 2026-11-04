@@ -3,7 +3,7 @@
     <div class="toolbar">
       <div>
         <h2>AI 供应商</h2>
-        <p class="subtitle">配置 AI 供应商与模型，并决定数据导入、调代推荐分别使用哪个模型。</p>
+        <p class="subtitle">配置 AI 供应商与模型，并决定数据导入、调代推荐分别使用哪个模型。 <router-link to="/ai/history" data-testid="open-ai-history">查看 AI 记录</router-link></p>
       </div>
       <el-button type="primary" @click="openProviderDialog()">
         <el-icon><Plus /></el-icon>

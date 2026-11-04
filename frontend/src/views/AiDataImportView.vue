@@ -12,9 +12,11 @@
       <router-link to="/data/import/manual" data-testid="manual-import-link">手动选列导入</router-link>
     </div>
 
+    <ImportRouteHint />
+
     <el-alert
       v-if="!configured"
-      title="请先在「设置中心 → AI 供应商」中配置供应商与模型，然后回到本页导入。"
+      title="请先在「AI 助手」中配置供应商与模型，然后回到本页导入。"
       type="warning"
       show-icon
       :closable="false"
@@ -257,6 +259,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type UploadFile } from 'element-plus'
 import { AI_IMPORT_TIMEOUT_MS, http } from '@/api/http'
 import { aiParseErrorMessage } from '@/api/errors'
+import ImportRouteHint from '@/components/imports/ImportRouteHint.vue'
 import ImportSourcePanel from '@/components/aiImport/ImportSourcePanel.vue'
 import ImportProgressPanel from '@/components/aiImport/ImportProgressPanel.vue'
 import LastImportCard from '@/components/aiImport/LastImportCard.vue'

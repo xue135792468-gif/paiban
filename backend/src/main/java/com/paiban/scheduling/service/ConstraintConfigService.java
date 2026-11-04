@@ -188,6 +188,87 @@ public class ConstraintConfigService {
     }
 
     /**
+     * Adds one whole-school “this slot is free” requirement — a {@code CLASS_UNAVAILABLE}
+     * entry without a {@code classId} — unless that weekday+period is already configured.
+     *
+     * <p>The import pipeline proposes exactly one such rule after a manual mapping. It
+     * calls this method instead of assembling the request DTOs on its own, so version
+     * checks, planning and persistence stay in one place and imports never have to
+     * speak the web layer's types.
+     *
+     * @return {@code true} when a row was added, {@code false} when the slot already existed
+     */
+    @Transactional
+    public boolean addWeeklyNoClassRule(Long semesterId, int dayOfWeek, int periodNo) {
+        String type = ConstraintType.CLASS_UNAVAILABLE.name();
+        ConstraintStateDto state = state(semesterId);
+        List<ConstraintConfigRequest> requests = new ArrayList<>();
+        for (ConstraintConfigDto config : state.configs()) {
+            requests.add(toRequest(config));
+            if (type.equals(config.type()) && hasWholeSchoolSlot(config, dayOfWeek, periodNo)) {
+                return false;
+            }
+        }
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("dayOfWeek", dayOfWeek);
+        params.put("periodNo", periodNo);
+        ConstraintEntryRequest entry =
+                new ConstraintEntryRequest(null, params, true, null, null, null);
+        int index = indexOfType(requests, type);
+        if (index < 0) {
+            requests.add(new ConstraintConfigRequest(type, null, null, true, true, List.of(entry)));
+        } else {
+            ConstraintConfigRequest existing = requests.get(index);
+            List<ConstraintEntryRequest> entries = new ArrayList<>(
+                    existing.entries() == null ? List.of() : existing.entries());
+            entries.add(entry);
+            requests.set(index, new ConstraintConfigRequest(
+                    type, null, existing.weight(), existing.hard(), existing.enabled(), entries));
+        }
+        save(semesterId, requests, state.version());
+        return true;
+    }
+
+    private boolean hasWholeSchoolSlot(ConstraintConfigDto config, int dayOfWeek, int periodNo) {
+        for (ConstraintEntryDto entry : config.entries()) {
+            Map<String, Object> params = entry.params();
+            if (params.get("classId") == null
+                    && Integer.valueOf(dayOfWeek).equals(asInt(params.get("dayOfWeek")))
+                    && Integer.valueOf(periodNo).equals(asInt(params.get("periodNo")))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private ConstraintConfigRequest toRequest(ConstraintConfigDto config) {
+        boolean entryBacked = isEntryBacked(config.type());
+        List<ConstraintEntryRequest> entries = entryBacked || !config.entries().isEmpty()
+                ? config.entries().stream()
+                        .map(entry -> new ConstraintEntryRequest(
+                                entry.id(), entry.params(), entry.enabled(),
+                                entry.hard(), entry.weight(), entry.groupKey()))
+                        .toList()
+                : null;
+        return new ConstraintConfigRequest(
+                config.type(), entries == null ? config.params() : null,
+                config.weight(), config.hard(), config.enabled(), entries);
+    }
+
+    private int indexOfType(List<ConstraintConfigRequest> requests, String type) {
+        for (int index = 0; index < requests.size(); index++) {
+            if (type.equals(requests.get(index).type())) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    private static Integer asInt(Object value) {
+        return value instanceof Number number ? number.intValue() : null;
+    }
+
+    /**
      * Dry run for "添加到约束表": the exact refusals a save would produce, with no
      * writes and no version advance. The page can therefore reject an invalid merge
      * before it touches the borrowed draft.

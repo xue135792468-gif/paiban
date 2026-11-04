@@ -41,7 +41,12 @@ beforeEach(() => {
 describe('AiProvidersView: delete enters the recycle bin', () => {
   it('confirms with the restore promise and calls the soft-delete endpoint', async () => {
     const confirm = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never)
-    const wrapper = mount(AiProvidersView, { global: { plugins: [ElementPlus] } })
+    const wrapper = mount(AiProvidersView, {
+      global: {
+        plugins: [ElementPlus],
+        stubs: { RouterLink: { template: '<a><slot /></a>' } },
+      },
+    })
     await flushPromises()
 
     await wrapper.find('[data-testid="ai-provider-delete"]').trigger('click')

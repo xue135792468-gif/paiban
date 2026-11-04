@@ -57,7 +57,7 @@ describe('OnboardingView progress and help', () => {
   it('shows the current step number against the real step count', async () => {
     const { wrapper } = await mountWizard()
 
-    expect(wrapper.get('[data-testid="wizard-progress"]').text()).toBe('第 1/8 步：学校信息')
+    expect(wrapper.get('[data-testid="wizard-progress"]').text()).toBe('第 1/7 步：学校信息')
   })
 
   it('links the current step to its help section', async () => {
@@ -70,7 +70,7 @@ describe('OnboardingView progress and help', () => {
     await button(wrapper, '标记完成并继续').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="wizard-progress"]').text()).toBe('第 2/8 步：学期与作息表')
+    expect(wrapper.get('[data-testid="wizard-progress"]').text()).toBe('第 2/7 步：学期与作息表')
     expect(wrapper.get('a.help-link').attributes('href')).toBe(
       '/help/flow-term-start#periods',
     )
@@ -139,7 +139,7 @@ describe('OnboardingView completion', () => {
   it('celebrates on the same page, then starts on demand', async () => {
     const { wrapper, router } = await mountWizard()
 
-    for (let step = 0; step < 7; step += 1) {
+    for (let step = 0; step < 6; step += 1) {
       await button(wrapper, '标记完成并继续').trigger('click')
       await flushPromises()
     }
@@ -150,7 +150,7 @@ describe('OnboardingView completion', () => {
     expect(router.currentRoute.value.path).toBe('/onboarding')
     expect(httpMock.put).toHaveBeenLastCalledWith(
       '/onboarding',
-      expect.objectContaining({ currentStep: 8, skipped: true }),
+      expect.objectContaining({ currentStep: 7, skipped: true }),
     )
 
     await button(wrapper, '开始使用').trigger('click')

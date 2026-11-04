@@ -70,7 +70,6 @@
       <el-table-column label="代课教师" width="100">
         <template #default="{ row }">{{ row.type === 'COVER' ? row.substituteTeacherName : '—' }}</template>
       </el-table-column>
-      <el-table-column prop="roomName" label="教室" width="100" />
       <el-table-column label="状态" width="90">
         <template #default="{ row }">
           <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
@@ -80,7 +79,7 @@
     <EmptyStateGuide
       v-else
       title="还没有调代记录"
-      description="调课方案或代课审批通过并生效后，会在这里留下记录，方便期末统计与追溯。"
+      description="调课方案或代课生效后，会在这里留下记录，方便期末统计与追溯。"
       help-slug="substitution"
       help-anchor="records"
     />
