@@ -31,11 +31,6 @@ import com.paiban.imports.manual.SourceSheets.Sheet;
 import com.paiban.scheduling.domain.TimetableDraft;
 import com.paiban.scheduling.domain.TimetableDraftRepository;
 import com.paiban.scheduling.service.ConstraintConfigService;
-import com.paiban.scheduling.web.ConstraintDtos.ConstraintConfigDto;
-import com.paiban.scheduling.web.ConstraintDtos.ConstraintConfigRequest;
-import com.paiban.scheduling.web.ConstraintDtos.ConstraintEntryDto;
-import com.paiban.scheduling.web.ConstraintDtos.ConstraintEntryRequest;
-import com.paiban.scheduling.web.ConstraintDtos.ConstraintStateDto;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -456,94 +451,11 @@ public class ManualImportService {
 
     /**
      * Adds one whole-school {@code CLASS_UNAVAILABLE} entry for the suggested slot.
-     * Re-committing the same file must not duplicate it, so an existing whole-school
-     * entry for that weekday+period is treated as already applied.
+     * The rule itself lives in scheduling ({@code ConstraintConfigService}); re-committing
+     * the same file must not duplicate the entry, which that method already guarantees.
      */
     private void applyWeeklyRule(Long semesterId, SuggestedRuleDto rule) {
-        ConstraintStateDto state = constraintConfigs.state(semesterId);
-        List<ConstraintConfigRequest> requests = new ArrayList<>();
-        for (ConstraintConfigDto config : state.configs()) {
-            requests.add(toRequest(config));
-            if (CLASS_UNAVAILABLE.equals(config.type()) && containsSlot(config, rule)) {
-                return;
-            }
-        }
-        Map<String, Object> params = new LinkedHashMap<>();
-        params.put("dayOfWeek", rule.dayOfWeek());
-        params.put("periodNo", rule.periodNo());
-        ConstraintEntryRequest entry =
-                new ConstraintEntryRequest(null, params, true, null, null, null);
-        int index = indexOfType(requests, CLASS_UNAVAILABLE);
-        if (index < 0) {
-            requests.add(new ConstraintConfigRequest(
-                    CLASS_UNAVAILABLE, null, null, true, true, List.of(entry)));
-        } else {
-            ConstraintConfigRequest existing = requests.get(index);
-            List<ConstraintEntryRequest> entries = new ArrayList<>(
-                    existing.entries() == null ? List.of() : existing.entries());
-            entries.add(entry);
-            requests.set(index, new ConstraintConfigRequest(
-                    CLASS_UNAVAILABLE, null, existing.weight(), existing.hard(),
-                    existing.enabled(), entries));
-        }
-        constraintConfigs.save(semesterId, requests, state.version());
-    }
-
-    private boolean containsSlot(ConstraintConfigDto config, SuggestedRuleDto rule) {
-        for (ConstraintEntryDto entry : config.entries()) {
-            Map<String, Object> params = entry.params();
-            if (params.get("classId") == null
-                    && Objects.equals(intValue(params.get("dayOfWeek")), rule.dayOfWeek())
-                    && Objects.equals(intValue(params.get("periodNo")), rule.periodNo())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private ConstraintConfigRequest toRequest(ConstraintConfigDto config) {
-        boolean entryBacked = isEntryBacked(config.type());
-        List<ConstraintEntryRequest> entries = entryBacked || !config.entries().isEmpty()
-                ? config.entries().stream()
-                        .map(entry -> new ConstraintEntryRequest(
-                                entry.id(), entry.params(), entry.enabled(),
-                                entry.hard(), entry.weight(), entry.groupKey()))
-                        .toList()
-                : null;
-        return new ConstraintConfigRequest(
-                config.type(), entries == null ? config.params() : null,
-                config.weight(), config.hard(), config.enabled(), entries);
-    }
-
-    private boolean isEntryBacked(String type) {
-        try {
-            return com.paiban.scheduling.domain.ConstraintType.valueOf(type).isEntryBacked();
-        } catch (IllegalArgumentException ex) {
-            return false;
-        }
-    }
-
-    private int indexOfType(List<ConstraintConfigRequest> requests, String type) {
-        for (int index = 0; index < requests.size(); index++) {
-            if (type.equals(requests.get(index).type())) {
-                return index;
-            }
-        }
-        return -1;
-    }
-
-    private static Integer intValue(Object value) {
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        if (value == null) {
-            return null;
-        }
-        try {
-            return Integer.valueOf(value.toString());
-        } catch (NumberFormatException ex) {
-            return null;
-        }
+        constraintConfigs.addWeeklyNoClassRule(semesterId, rule.dayOfWeek(), rule.periodNo());
     }
 
     // ---------------------------------------------------------------- json helpers

@@ -9,6 +9,11 @@ import java.util.Optional;
  * How a timetable sheet writes a weekday and a period number. Shared by the slot merge
  * (which keys rows by them) and the timetable importer (which resolves them to periods),
  * so a slot both sides call "星期一第1节" is the same slot.
+ *
+ * <p>It lives under {@code ai.imports} for historical reasons: the class is pure text
+ * handling with no AI dependency, and {@code imports.manual} (which never calls a model)
+ * reuses it for exactly that reason. It is a candidate for {@code common} if another
+ * module ever needs it; the import packages share it here today.
  */
 public final class SlotText {
 

@@ -120,9 +120,6 @@ public class OnboardingService {
         boolean hasTeachers = !foundation.listTeachers().isEmpty();
         hints.add(hint("teachers", "录入教师", "还没有教师数据", "/data/teachers", hasTeachers));
 
-        boolean hasRooms = !foundation.listRooms().isEmpty();
-        hints.add(hint("rooms", "录入教室", "还没有教室数据", "/admin/rooms", hasRooms));
-
         boolean hasCourses = !foundation.listCourses().isEmpty();
         hints.add(hint("courses", "录入课程", "还没有课程数据", "/data/courses", hasCourses));
 

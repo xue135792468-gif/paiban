@@ -12,6 +12,8 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -27,6 +29,8 @@ import org.springframework.web.multipart.MultipartFile;
  */
 @Component
 public class RecipeSampleStorage {
+
+    private static final Logger log = LoggerFactory.getLogger(RecipeSampleStorage.class);
 
     private static final long MAX_SIZE = 5L * 1024 * 1024;
 
@@ -54,7 +58,9 @@ public class RecipeSampleStorage {
                     : "sample-" + UUID.randomUUID() + "." + extension;
             return new PendingSample(bytes, name, extension, sha256(bytes));
         } catch (IOException ex) {
-            throw ApiException.badRequest("读取配方样例失败: " + ex.getMessage());
+            // The exception message carries the server's absolute path; log it, never return it.
+            log.warn("读取配方样例失败: file={}", original, ex);
+            throw ApiException.badRequest("样例文件无法读取，请重新上传");
         }
     }
 
@@ -72,7 +78,8 @@ public class RecipeSampleStorage {
             metadata.put("sha256", sample.sha256());
             return metadata;
         } catch (IOException ex) {
-            throw ApiException.badRequest("保存配方样例失败: " + ex.getMessage());
+            log.warn("保存配方样例失败: recipeId={}", recipeId, ex);
+            throw ApiException.badRequest("样例文件保存失败，请重新上传");
         }
     }
 

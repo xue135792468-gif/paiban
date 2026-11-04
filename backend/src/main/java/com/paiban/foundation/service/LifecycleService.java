@@ -22,8 +22,6 @@ import com.paiban.foundation.web.LifecycleDtos.DeleteImpactDto;
 import com.paiban.foundation.web.LifecycleDtos.DeleteResultDto;
 import com.paiban.foundation.web.LifecycleDtos.RecentDeletionDto;
 import com.paiban.foundation.web.LifecycleDtos.RestoreResultDto;
-import com.paiban.scheduling.domain.Assignment;
-import com.paiban.scheduling.domain.AssignmentRepository;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -50,18 +48,33 @@ import org.springframework.util.StringUtils;
  * records make the entity “disable only”; assignments/classes left behind are
  * removed in the same batch only when the caller chose CASCADE; drafts and rules
  * never block.
+ *
+ * <p>授课任务 belongs to scheduling, but foundation must not import scheduling
+ * (that direction would create a cycle). The assignment rows this service needs
+ * are read and written through plain SQL, the same way published/substitution
+ * counts are.
  */
 @Service
 public class LifecycleService {
 
     private static final Duration RETENTION = Duration.ofDays(7);
 
+    /** id + owning ids + display label, resolved by joining the foundation tables. */
+    private static final String ASSIGNMENT_SELECT =
+            "select a.id, a.semester_id, a.admin_class_id, a.course_id, a.teacher_id, a.deleted_at, "
+                    + "coalesce(c.name, concat('#', a.admin_class_id)) as class_name, "
+                    + "coalesce(co.name, concat('#', a.course_id)) as course_name, "
+                    + "t.name as teacher_name "
+                    + "from assignment a "
+                    + "left join admin_class c on c.id = a.admin_class_id "
+                    + "left join course co on co.id = a.course_id "
+                    + "left join teacher t on t.id = a.teacher_id ";
+
     private final TeacherRepository teachers;
     private final CourseRepository courses;
     private final GradeRepository grades;
     private final AdminClassRepository classes;
     private final SemesterRepository semesters;
-    private final AssignmentRepository assignments;
     private final RecentDeletionRepository recentDeletions;
     private final AuditLogRepository auditLogs;
     private final JdbcTemplate jdbc;
@@ -74,7 +87,6 @@ public class LifecycleService {
             GradeRepository grades,
             AdminClassRepository classes,
             SemesterRepository semesters,
-            AssignmentRepository assignments,
             RecentDeletionRepository recentDeletions,
             AuditLogRepository auditLogs,
             JdbcTemplate jdbc,
@@ -85,7 +97,6 @@ public class LifecycleService {
         this.grades = grades;
         this.classes = classes;
         this.semesters = semesters;
-        this.assignments = assignments;
         this.recentDeletions = recentDeletions;
         this.auditLogs = auditLogs;
         this.jdbc = jdbc;
@@ -254,11 +265,11 @@ public class LifecycleService {
                     + "join admin_class c on c.id = e.admin_class_id where c.grade_id = ?", row.id());
             case SEMESTER -> one("select count(*) from timetable_entry where semester_id = ?", row.id());
             case ASSIGNMENT -> {
-                Assignment assignment = requireAssignment(row.id());
+                AssignmentRow assignment = requireAssignment(row.id());
                 yield one("select count(*) from timetable_entry where semester_id = ? "
                                 + "and admin_class_id = ? and course_id = ? and teacher_id = ?",
-                        assignment.getSemesterId(), assignment.getAdminClassId(),
-                        assignment.getCourseId(), assignment.getTeacherId());
+                        assignment.semesterId(), assignment.adminClassId(),
+                        assignment.courseId(), assignment.teacherId());
             }
         };
     }
@@ -346,40 +357,55 @@ public class LifecycleService {
 
     private List<EntityRow> cascade(EntityType type, Long id) {
         return switch (type) {
-            case TEACHER -> assignmentRows(assignments.findByTeacherIdAndDeletedAtIsNull(id));
-            case COURSE -> assignmentRows(assignments.findByCourseIdAndDeletedAtIsNull(id));
-            case CLASS -> assignmentRows(assignments.findByAdminClassIdAndDeletedAtIsNull(id));
+            case TEACHER -> assignmentRows("where a.teacher_id = ? and a.deleted_at is null", id);
+            case COURSE -> assignmentRows("where a.course_id = ? and a.deleted_at is null", id);
+            case CLASS -> assignmentRows("where a.admin_class_id = ? and a.deleted_at is null", id);
             case GRADE -> {
                 List<EntityRow> rows = new ArrayList<>();
                 for (AdminClass adminClass : classes.findByGradeIdAndDeletedAtIsNull(id)) {
                     rows.add(new EntityRow(EntityType.CLASS, adminClass.getId(), adminClass.getName(), false));
                     rows.addAll(assignmentRows(
-                            assignments.findByAdminClassIdAndDeletedAtIsNull(adminClass.getId())));
+                            "where a.admin_class_id = ? and a.deleted_at is null", adminClass.getId()));
                 }
                 yield rows;
             }
             case SEMESTER ->
                 // Semester cascade removes every undeleted assignment, including disabled
                 // ones (the recycle-bin batch must bring the whole semester back together).
-                assignmentRows(assignments.findBySemesterIdForList(id));
+                assignmentRows("where a.semester_id = ? and a.deleted_at is null", id);
             case ASSIGNMENT -> List.of();
         };
     }
 
-    private List<EntityRow> assignmentRows(List<Assignment> rows) {
-        return rows.stream()
+    /**
+     * Assignment rows for the cascade batch. Deliberately includes rows that were
+     * already disabled: the whole family goes and comes back as one batch.
+     */
+    private List<EntityRow> assignmentRows(String where, Object... args) {
+        return findAssignments(where, args).stream()
                 .map(assignment -> new EntityRow(
-                        EntityType.ASSIGNMENT, assignment.getId(), assignmentLabel(assignment), false))
+                        EntityType.ASSIGNMENT, assignment.id(), assignment.label(), false))
                 .toList();
     }
 
-    private String assignmentLabel(Assignment assignment) {
-        String className = classes.findById(assignment.getAdminClassId())
-                .map(AdminClass::getName).orElse("#" + assignment.getAdminClassId());
-        String courseName = courses.findById(assignment.getCourseId())
-                .map(Course::getName).orElse("#" + assignment.getCourseId());
-        String teacherName = teachers.findById(assignment.getTeacherId())
-                .map(Teacher::getName).orElse(null);
+    private List<AssignmentRow> findAssignments(String where, Object... args) {
+        return jdbc.query(
+                ASSIGNMENT_SELECT + where + " order by a.id",
+                (rs, index) -> new AssignmentRow(
+                        rs.getLong("id"),
+                        rs.getLong("semester_id"),
+                        rs.getLong("admin_class_id"),
+                        rs.getLong("course_id"),
+                        rs.getLong("teacher_id"),
+                        rs.getTimestamp("deleted_at") != null,
+                        assignmentLabel(
+                                rs.getString("class_name"),
+                                rs.getString("course_name"),
+                                rs.getString("teacher_name"))),
+                args);
+    }
+
+    private String assignmentLabel(String className, String courseName, String teacherName) {
         return className + " / " + courseName + (teacherName == null ? "" : " / " + teacherName);
     }
 
@@ -403,15 +429,18 @@ public class LifecycleService {
                     .map(row -> new EntityRow(type, id, row.getName(), row.getDeletedAt() != null))
                     .orElseThrow(() -> ApiException.notFound(type.label() + "不存在: " + id));
             case ASSIGNMENT -> {
-                Assignment assignment = requireAssignment(id);
-                yield new EntityRow(type, id, assignmentLabel(assignment), assignment.getDeletedAt() != null);
+                AssignmentRow assignment = requireAssignment(id);
+                yield new EntityRow(type, id, assignment.label(), assignment.deleted());
             }
         };
     }
 
-    private Assignment requireAssignment(Long id) {
-        return assignments.findById(id)
-                .orElseThrow(() -> ApiException.notFound("授课任务不存在: " + id));
+    private AssignmentRow requireAssignment(Long id) {
+        List<AssignmentRow> rows = findAssignments("where a.id = ?", id);
+        if (rows.isEmpty()) {
+            throw ApiException.notFound("授课任务不存在: " + id);
+        }
+        return rows.get(0);
     }
 
     private void markDeleted(EntityType type, Long id, Instant now) {
@@ -436,10 +465,8 @@ public class LifecycleService {
                 row.setDeletedAt(now);
                 row.setActive(false);
             });
-            case ASSIGNMENT -> assignments.findById(id).ifPresent(row -> {
-                row.setDeletedAt(now);
-                row.setActive(false);
-            });
+            case ASSIGNMENT -> jdbc.update(
+                    "update assignment set deleted_at = ?, active = false where id = ?", now, id);
         }
     }
 
@@ -450,7 +477,8 @@ public class LifecycleService {
             case COURSE -> courses.findById(id).map(Course::isActive).orElse(false);
             case GRADE -> grades.findById(id).map(Grade::isActive).orElse(false);
             case SEMESTER -> semesters.findById(id).map(Semester::isActive).orElse(false);
-            case ASSIGNMENT -> assignments.findById(id).map(Assignment::isActive).orElse(false);
+            case ASSIGNMENT -> Boolean.TRUE.equals(jdbc.queryForObject(
+                    "select active from assignment where id = ?", Boolean.class, id));
         };
     }
 
@@ -461,7 +489,7 @@ public class LifecycleService {
             case COURSE -> courses.findById(id).ifPresent(row -> row.setActive(active));
             case GRADE -> grades.findById(id).ifPresent(row -> row.setActive(active));
             case SEMESTER -> semesters.findById(id).ifPresent(row -> row.setActive(active));
-            case ASSIGNMENT -> assignments.findById(id).ifPresent(row -> row.setActive(active));
+            case ASSIGNMENT -> jdbc.update("update assignment set active = ? where id = ?", active, id);
         }
     }
 
@@ -503,10 +531,8 @@ public class LifecycleService {
                 row.setDeletedAt(null);
                 row.setActive(active);
             });
-            case ASSIGNMENT -> assignments.findById(id).ifPresent(row -> {
-                row.setDeletedAt(null);
-                row.setActive(active);
-            });
+            case ASSIGNMENT -> jdbc.update(
+                    "update assignment set deleted_at = null, active = ? where id = ?", active, id);
         }
     }
 
@@ -589,4 +615,8 @@ public class LifecycleService {
     }
 
     private record EntityRow(EntityType type, Long id, String label, boolean deleted) {}
+
+    private record AssignmentRow(
+            long id, long semesterId, long adminClassId, long courseId, long teacherId,
+            boolean deleted, String label) {}
 }
