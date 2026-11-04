@@ -48,10 +48,28 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="240" fixed="right">
+        <el-table-column label="操作" width="320" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
             <el-button link type="primary" @click="openReset(row)">重置密码</el-button>
+            <el-button
+              v-if="row.enabled"
+              link
+              type="warning"
+              data-testid="user-disable"
+              @click="disable(row)"
+            >
+              停用
+            </el-button>
+            <el-button
+              v-else
+              link
+              type="success"
+              data-testid="user-enable"
+              @click="enable(row)"
+            >
+              启用
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -103,9 +121,6 @@
             <el-option v-for="teacher in teachers" :key="teacher.id" :label="teacher.name" :value="teacher.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="启用">
-          <el-switch v-model="editForm.enabled" />
-        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="editVisible = false">取消</el-button>
@@ -129,7 +144,7 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import ImportDialog from '@/components/ImportDialog.vue'
 import { http } from '@/api/http'
@@ -177,7 +192,6 @@ const editForm = reactive({
   id: 0,
   username: '',
   displayName: '',
-  enabled: true,
   roleCodes: [] as string[],
   teacherId: undefined as number | undefined,
 })
@@ -247,7 +261,6 @@ function openEdit(row: UserRow) {
     id: row.id,
     username: row.username,
     displayName: row.displayName,
-    enabled: row.enabled,
     roleCodes: [...row.roles],
     teacherId: row.teacherId ?? undefined,
   })
@@ -257,9 +270,11 @@ function openEdit(row: UserRow) {
 async function submitEdit() {
   saving.value = true
   try {
+    // The edit dialog no longer carries the enabled switch: pausing and resuming an
+    // account go through the row actions, so the server's self/last-admin guards and
+    // the audit log always apply.
     await http.put(`/users/${editForm.id}`, {
       displayName: editForm.displayName,
-      enabled: editForm.enabled,
       roleCodes: editForm.roleCodes,
       teacherId: editForm.teacherId,
     })
@@ -270,6 +285,39 @@ async function submitEdit() {
     ElMessage.error(serverMessage(e, '保存失败'))
   } finally {
     saving.value = false
+  }
+}
+
+/**
+ * Ticket 04: accounts are paused, never deleted. A disabled account keeps its roles
+ * and history but cannot sign in; the server refuses pausing yourself or the last admin.
+ */
+async function disable(row: UserRow) {
+  try {
+    await ElMessageBox.confirm(
+      `停用「${row.displayName || row.username}」后该账号不能登录，可以随时再启用。确定停用？`,
+      '停用用户',
+      { confirmButtonText: '停用', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  try {
+    await http.post(`/users/${row.id}/disable`)
+    ElMessage.success('用户已停用')
+    await load()
+  } catch (e: unknown) {
+    ElMessage.error(serverMessage(e, '停用失败'))
+  }
+}
+
+async function enable(row: UserRow) {
+  try {
+    await http.post(`/users/${row.id}/enable`)
+    ElMessage.success('用户已启用')
+    await load()
+  } catch (e: unknown) {
+    ElMessage.error(serverMessage(e, '启用失败'))
   }
 }
 

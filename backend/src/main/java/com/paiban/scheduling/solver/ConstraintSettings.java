@@ -104,7 +104,7 @@ public final class ConstraintSettings {
         Map<String, List<ConstraintEntry>> entriesByType = groupEntries(entries);
         Map<ConstraintType, Rule> rules = new EnumMap<>(ConstraintType.class);
         for (ConstraintConfig config : configs) {
-            if (!config.isEnabled()) {
+            if (!config.isEnabled() || config.getDeletedAt() != null) {
                 continue;
             }
             ConstraintType type;
@@ -149,7 +149,9 @@ public final class ConstraintSettings {
                 Comparator.nullsLast(Comparator.naturalOrder())));
         List<EntryRule> active = new ArrayList<>();
         for (ConstraintEntry row : rows) {
-            if (!row.isEnabled()) {
+            // A deleted row is in the recycle bin, not paused: it must not be evaluated
+            // or change the fingerprint, exactly like a row that was never saved.
+            if (!row.isEnabled() || row.getDeletedAt() != null) {
                 continue;
             }
             Map<String, Object> params = readParams(row.getParamsJson(), mapper);

@@ -46,4 +46,11 @@ public class TimetableDraft {
     /** Optimistic version bumped by every draft write; sent back by clients as expectedVersion. */
     @Column(name = "version", nullable = false)
     private long version;
+
+    /**
+     * Soft delete (ticket 04): the draft and its lessons stay so a restore brings back
+     * exactly the same timetable, including locked lessons.
+     */
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
 }

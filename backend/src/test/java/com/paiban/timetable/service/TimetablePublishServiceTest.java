@@ -113,7 +113,7 @@ class TimetablePublishServiceTest {
 
     private void givenPublishableDraft() {
         TimetableDraft draft = draft();
-        when(drafts.findWithLockById(1L)).thenReturn(Optional.of(draft));
+        when(drafts.findLiveWithLockById(1L)).thenReturn(Optional.of(draft));
         when(validator.validateDraft(1L)).thenReturn(new DraftValidator.ValidationResult(
                 true, 0, List.of(), true, List.<DraftPublishReadiness.Blocker>of(), "fp"));
         when(draftLessons.findByDraftIdOrderByIdAsc(1L)).thenReturn(List.of(lesson(100L)));

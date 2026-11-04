@@ -39,6 +39,10 @@ public class DraftWriteGuard {
      * an editor and never bumps the version.
      */
     public void requireEditable(TimetableDraft draft, Long expectedVersion) {
+        if (draft.getDeletedAt() != null) {
+            // A recycled draft must not accept edits; restoring is the only way back.
+            throw ApiException.notFound("课表草稿不存在: " + draft.getId());
+        }
         String status = draft.getStatus();
         if (!"DRAFT".equals(status)) {
             if ("PUBLISHED".equals(status)) {

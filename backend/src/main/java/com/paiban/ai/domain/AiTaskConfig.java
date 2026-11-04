@@ -41,6 +41,13 @@ public class AiTaskConfig {
     @Column(name = "model_id")
     private Long modelId;
 
+    /**
+     * Ticket 04: deleting a provider/model pauses the bindings instead of removing
+     * them, so a restore can offer the old routing again without reconfiguring.
+     */
+    @Column(nullable = false)
+    private boolean enabled = true;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt = Instant.now();
 }

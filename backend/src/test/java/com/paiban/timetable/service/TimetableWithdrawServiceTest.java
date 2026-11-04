@@ -73,7 +73,7 @@ class TimetableWithdrawServiceTest {
         draft.setId(1L);
         draft.setSemesterId(9L);
         draft.setStatus("PUBLISHED");
-        when(drafts.findWithLockById(1L)).thenReturn(Optional.of(draft));
+        when(drafts.findLiveWithLockById(1L)).thenReturn(Optional.of(draft));
 
         TimetablePublish publish = new TimetablePublish();
         publish.setId(30L);

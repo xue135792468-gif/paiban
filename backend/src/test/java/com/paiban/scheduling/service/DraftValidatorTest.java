@@ -80,7 +80,7 @@ class DraftValidatorTest {
         draft = new TimetableDraft();
         draft.setId(DRAFT_ID);
         draft.setSemesterId(SEMESTER_ID);
-        when(drafts.findById(DRAFT_ID)).thenReturn(Optional.of(draft));
+        when(drafts.findByIdAndDeletedAtIsNull(DRAFT_ID)).thenReturn(Optional.of(draft));
 
         when(draftLessons.findByDraftIdOrderByIdAsc(DRAFT_ID)).thenReturn(List.of(
                 lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1, ROOM_1),

@@ -51,11 +51,11 @@ class ConstraintConfigDiffTest {
     private ConstraintConfigDto config(
             String type, boolean hard, int weight, ConstraintEntryDto... entries) {
         return new ConstraintConfigDto(1L, type, type, "PEDAGOGY", "教学规律", "",
-                Map.of(), weight, hard, true, List.of(entries));
+                Map.of(), weight, hard, true, List.of(entries), List.of());
     }
 
     private ConstraintEntryDto entry(int teacherId) {
         return new ConstraintEntryDto(1L, Map.of("teacherId", teacherId, "dayOfWeek", 1,
-                "periodNo", 1), true, null, null, null);
+                "periodNo", 1), true, null, null, null, List.of());
     }
 }

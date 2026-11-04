@@ -141,7 +141,7 @@ public class DraftValidator {
     /** The fingerprint of the rules in force for this draft's semester. */
     @Transactional(readOnly = true)
     public String rulesFingerprint(Long draftId) {
-        TimetableDraft draft = drafts.findById(draftId)
+        TimetableDraft draft = drafts.findByIdAndDeletedAtIsNull(draftId)
                 .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
         return constraints.settings(draft.getSemesterId()).fingerprint();
     }
@@ -610,7 +610,9 @@ public class DraftValidator {
     }
 
     private Snapshot snapshot(Long draftId) {
-        TimetableDraft draft = drafts.findById(draftId)
+        // Every validate entry point (draft, move, changes, planning) reads through
+        // here, so a recycled draft can never be validated or previewed.
+        TimetableDraft draft = drafts.findByIdAndDeletedAtIsNull(draftId)
                 .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
         List<DraftLesson> lessons = draftLessons.findByDraftIdOrderByIdAsc(draftId);
         Map<Long, ConstraintContext.PeriodView> periodMap = new HashMap<>();

@@ -158,7 +158,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
 import { activeOnly } from '@/utils/activeOptions'
@@ -189,6 +189,8 @@ import {
   type RuleNames,
 } from '@/rules/compiler'
 import { cardsSignature } from '@/rules/signature'
+import { cardChangedSinceLoad, cardLabelOf } from '@/rules/cardChange'
+import { deleteRuleCardWithConfirmation } from '@/rules/deleteRuleCard'
 import { useRuleImpact } from '@/rules/useRuleImpact'
 
 interface Semester {
@@ -221,6 +223,8 @@ const cards = ref<RuleCard[]>([])
 const entryBackedTypes = ref<Set<string>>(new Set())
 const catalogueCodes = ref<Set<string>>(new Set())
 const loadedSignature = ref('')
+/** Cards as they were saved, so a delete only refuses this card's own edits. */
+const loadedCards = ref<RuleCard[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const errorMessage = ref<string | null>(null)
@@ -324,6 +328,7 @@ async function loadState() {
     configs.value = []
     periods.value = []
     cards.value = []
+    loadedCards.value = []
     loadedSignature.value = ''
     return
   }
@@ -343,6 +348,9 @@ async function loadState() {
       section: period.section ?? null,
     }))
     cards.value = cardsFromState(configs.value, { allClassIds: classIds.value })
+    // A snapshot copy: the page replaces single entries of `cards.value` in place, so
+    // keeping the same array reference would make every edit look "already saved".
+    loadedCards.value = [...cards.value]
     loadedSignature.value = cardsSignature(cards.value)
     errorMessage.value = null
     conflict.value = null
@@ -416,29 +424,19 @@ function onDuplicate(card: RuleCard) {
 }
 
 async function onRemove(card: RuleCard) {
-  let text = '删除这张规则卡？删除后不可恢复（回收站尚未覆盖规则）。'
-  const result = await previewImpact(configsOf(card), '删除前的影响')
-  if (result) {
-    text = `这条规则影响 ${result.classes.length} 个班 / ${result.teachers.length} 位教师 / `
-      + `${result.lessonCount} 个课节，${result.conflicts.length} 条冲突。`
-      + '删除后不可恢复（回收站尚未覆盖规则）。'
-    if (result.errors.length > 0) {
-      text += `\n配置还有错误：${result.errors.join('；')}`
-    }
-  } else if (impactError.value) {
-    text = `无法获取影响预览（${impactError.value}）。仍要删除这张规则卡吗？`
-  }
-  try {
-    await ElMessageBox.confirm(text, '删除规则', {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-  } catch {
-    return
-  }
-  cards.value = cards.value.filter((item) => item.key !== card.key)
-  hideImpact()
+  await deleteRuleCardWithConfirmation(card, configsOf(card), {
+    configs: configs.value,
+    dirty: dirty.value,
+    cardChanged: cardChangedSinceLoad(card, loadedCards.value),
+    cardLabel: cardLabelOf(card, ruleNames.value, periods.value),
+    previewImpact,
+    impactError: impactError.value,
+    hideImpact,
+    reload: loadState,
+    removeLocally: (target) => {
+      cards.value = cards.value.filter((item) => item.key !== target.key)
+    },
+  })
 }
 
 function onImpact(card: RuleCard) {

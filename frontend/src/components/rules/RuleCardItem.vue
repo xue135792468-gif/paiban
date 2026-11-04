@@ -10,6 +10,11 @@
       <el-tag v-if="!card.enabled" size="small" type="info" data-testid="rule-disabled-tag">
         已停用
       </el-tag>
+      <el-tooltip v-if="invalidReasons.length > 0" :content="invalidReasons.join('；')">
+        <el-tag size="small" type="danger" effect="plain" data-testid="rule-invalid-tag">
+          已失效
+        </el-tag>
+      </el-tooltip>
       <span class="spacer" />
       <el-button link type="primary" data-testid="rule-impact" @click="emit('impact', card)">
         影响
@@ -79,6 +84,14 @@ const emit = defineEmits<{
 const switchCard = computed(() => props.card.sentences.some((sentence) => isSwitchRule(sentence.type)))
 
 const targetLabel = computed(() => TARGET_LABELS[cardTarget(props.card)])
+
+/**
+ * Ticket 04: a rule whose teacher/class/course was paused or removed does not vanish
+ * silently — the card says 已失效 and the tooltip names the reason from the server.
+ */
+const invalidReasons = computed(() => [
+  ...new Set(props.card.sentences.flatMap((sentence) => sentence.invalidReferences ?? [])),
+])
 
 function strengthOf(index: number): 'HARD' | 'SOFT' {
   return props.card.sentences[index]?.strength ?? 'HARD'

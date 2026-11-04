@@ -99,7 +99,7 @@ class DraftValidatorChangeAssessmentTest {
         draft = new TimetableDraft();
         draft.setId(DRAFT_ID);
         draft.setSemesterId(SEMESTER_ID);
-        when(drafts.findById(DRAFT_ID)).thenReturn(Optional.of(draft));
+        when(drafts.findByIdAndDeletedAtIsNull(DRAFT_ID)).thenReturn(Optional.of(draft));
 
         when(periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(SEMESTER_ID)).thenReturn(List.of(
                 period(P1, 1), period(P2, 2), period(P3, 3), period(P4, 4),

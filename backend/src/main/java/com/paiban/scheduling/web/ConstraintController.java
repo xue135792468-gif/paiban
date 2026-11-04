@@ -3,6 +3,7 @@ package com.paiban.scheduling.web;
 import com.paiban.identity.domain.Permissions;
 import com.paiban.scheduling.service.ConstraintService;
 import com.paiban.scheduling.service.RuleImpactService;
+import com.paiban.scheduling.service.RuleLifecycleService;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintConfigDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintPreviewDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintPreviewRequest;
@@ -18,6 +19,7 @@ import com.paiban.scheduling.web.ConstraintDtos.TemplateApplyRequest;
 import com.paiban.scheduling.web.ConstraintDtos.TemplateDto;
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.Map;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -36,10 +38,13 @@ public class ConstraintController {
 
     private final ConstraintService service;
     private final RuleImpactService impact;
+    private final RuleLifecycleService rules;
 
-    public ConstraintController(ConstraintService service, RuleImpactService impact) {
+    public ConstraintController(
+            ConstraintService service, RuleImpactService impact, RuleLifecycleService rules) {
         this.service = service;
         this.impact = impact;
+        this.rules = rules;
     }
 
     @GetMapping("/constraint-types")
@@ -118,6 +123,21 @@ public class ConstraintController {
             Authentication authentication) {
         return service.audits(semesterId, "all".equalsIgnoreCase(scope),
                 authentication == null ? null : authentication.getName());
+    }
+
+    /**
+     * Deletes one rule card (ticket 04). {@code cardKey} is the card id (the group-key
+     * prefix); leaving it out deletes the whole type row, which is what the switch cards
+     * and the advanced page use. The rows are paused and soft-deleted, so the 7-day
+     * recycle bin can revive exactly this card without touching the others.
+     */
+    @DeleteMapping("/rules/{configId}")
+    @PreAuthorize("hasAuthority('" + Permissions.CONSTRAINT_MANAGE + "')")
+    public Map<String, Object> deleteRule(
+            @PathVariable Long configId,
+            @RequestParam(required = false) String cardKey,
+            @RequestParam(required = false) List<Long> entryIds) {
+        return rules.delete(configId, cardKey, entryIds);
     }
 
     @GetMapping("/constraint-templates")

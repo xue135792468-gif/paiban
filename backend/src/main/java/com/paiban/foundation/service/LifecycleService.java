@@ -216,11 +216,12 @@ public class LifecycleService {
             throw new ApiException(HttpStatus.GONE, "该批次已恢复或已超过 7 天，无法撤销");
         }
         for (RecentDeletion row : rows) {
-            if (!restoreWithHandler(row.getEntityType(), row.getEntityId())) {
+            if (!restoreWithHandler(row)) {
                 restoreOne(EntityType.fromStored(row.getEntityType()), row.getEntityId(), row.getWasActive());
             }
             row.setRestoredAt(now);
             row.setRestoredBy(StringUtils.hasText(actor) ? actor : actor());
+            recentDeletions.save(row);
         }
         RecentDeletion primary = rows.stream()
                 .filter(RecentDeletion::isPrimaryFlag)
@@ -469,10 +470,10 @@ public class LifecycleService {
      * their own handler. The first supporting handler wins; no handler falls back to
      * the original six-family switch.
      */
-    private boolean restoreWithHandler(String entityType, Long id) {
+    private boolean restoreWithHandler(RecentDeletion row) {
         for (DeletionRestoreHandler handler : restoreHandlers) {
-            if (handler.supports(entityType)) {
-                handler.restore(id);
+            if (handler.supports(row.getEntityType())) {
+                handler.restore(row);
                 return true;
             }
         }
@@ -537,6 +538,17 @@ public class LifecycleService {
     private String labelOf(String entityType) {
         if ("IMPORT_RECIPE".equalsIgnoreCase(entityType)) {
             return "导入配方";
+        }
+        for (String[] known : new String[][] {
+                {"CONSTRAINT_RULE", "排课规则"},
+                {"CONSTRAINT_TEMPLATE", "规则模板"},
+                {"TIMETABLE_DRAFT", "课表草稿"},
+                {"AI_PROVIDER", "AI 供应商"},
+                {"AI_MODEL", "AI 模型"},
+                {"DINGTALK_CONFIG", "钉钉配置"}}) {
+            if (known[0].equalsIgnoreCase(entityType)) {
+                return known[1];
+            }
         }
         try {
             return EntityType.fromStored(entityType).label();

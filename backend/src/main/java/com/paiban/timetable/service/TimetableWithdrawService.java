@@ -88,8 +88,8 @@ public class TimetableWithdrawService {
     @Transactional
     public WithdrawResultDto withdraw(Long draftId, String actor) {
         // Same row lock publishing takes: a concurrent publish/withdraw cannot interleave
-        // between the status check and the entry delete.
-        TimetableDraft draft = drafts.findWithLockById(draftId)
+        // between the status check and the entry delete. A recycled draft is not found.
+        TimetableDraft draft = drafts.findLiveWithLockById(draftId)
                 .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
         if (!"PUBLISHED".equals(draft.getStatus())) {
             throw ApiException.conflict("只有已发布的课表可以撤回为草稿");
