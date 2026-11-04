@@ -203,7 +203,7 @@ test('课表导入：网格预览、班级切换、未匹配映射、生成草�
   await expect(page.locator('.lesson').first()).toBeVisible()
   await expect(page.locator('.lesson').first()).toContainText(seed.courseOne)
 
-  const draftId = Number(page.url().match(/\/admin\/drafts\/(\d+)/)?.[1])
+  const draftId = Number(page.url().match(/\/workbench\/drafts\/(\d+)/)?.[1])
   const token = await apiLogin(api)
   const detail = await apiCall(api, token, 'get', `/timetable-drafts/${draftId}`)
   expect(detail.lessons).toHaveLength(4)
@@ -489,7 +489,7 @@ test('解析中停止：已完成批次保留，可以直接继续入库', async
     await commit.click()
     await page.waitForURL(/\/workbench\/drafts\/\d+/)
 
-    const draftId = Number(page.url().match(/\/admin\/drafts\/(\d+)/)?.[1])
+    const draftId = Number(page.url().match(/\/workbench\/drafts\/(\d+)/)?.[1])
     const detail = await apiCall(api, await apiLogin(api), 'get', `/timetable-drafts/${draftId}`)
     expect(detail.lessons).toHaveLength(kept)
   })
@@ -530,7 +530,7 @@ test('单批失败进入部分结果，重试后得到完整预览并入库', as
     await page.locator('.footer-actions').getByRole('button', { name: /确认入库/ }).click()
     await page.waitForURL(/\/workbench\/drafts\/\d+/)
 
-    const draftId = Number(page.url().match(/\/admin\/drafts\/(\d+)/)?.[1])
+    const draftId = Number(page.url().match(/\/workbench\/drafts\/(\d+)/)?.[1])
     const detail = await apiCall(api, await apiLogin(api), 'get', `/timetable-drafts/${draftId}`)
     expect(detail.lessons).toHaveLength(4)
   })
@@ -627,7 +627,7 @@ test('可疑教师值：标黄列在预览里，正常姓名不受影响，仍�
   await page.waitForURL(/\/workbench\/drafts\/\d+/)
   await expect(page.locator('.lesson').first()).toBeVisible()
 
-  const draftId = Number(page.url().match(/\/admin\/drafts\/(\d+)/)?.[1])
+  const draftId = Number(page.url().match(/\/workbench\/drafts\/(\d+)/)?.[1])
   const token = await apiLogin(api)
   const detail = await apiCall(api, token, 'get', `/timetable-drafts/${draftId}`)
   expect(detail.lessons).toHaveLength(2)
@@ -698,7 +698,7 @@ test('作息缺节：可推算项确认补进作息后清单消失并成功入�
   await page.getByRole('button', { name: '查看草稿' }).click()
   await page.waitForURL(/\/workbench\/drafts\/\d+/)
 
-  const draftId = Number(page.url().match(/\/admin\/drafts\/(\d+)/)?.[1])
+  const draftId = Number(page.url().match(/\/workbench\/drafts\/(\d+)/)?.[1])
   const detail = await apiCall(api, token, 'get', `/timetable-drafts/${draftId}`)
   expect(detail.lessons).toHaveLength(2)
   expect(chatRequests).toBe(callsBefore)

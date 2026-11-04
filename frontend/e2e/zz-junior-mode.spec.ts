@@ -48,8 +48,8 @@ test.describe('初中模式', () => {
     await expect(page.getByText('同步策略')).toHaveCount(0)
     await expect(juniorRadio.locator('input')).toBeChecked()
 
-    // 约束配置：无类型级权重滑块、无模板区，改为必须/尽量两档；教研活动禁排
-    // 在本轮修订后保留入口（ADR-0018），逐项重要程度仍按需在条目上展开。
+    // 约束配置：无类型级权重滑块、无模板区，改为必须/尽量两档；保留的偏好类规则
+    // 仍有入口（票 09/11 之后「教研活动禁排」已退役，改用「课程禁排时段」验证）。
     await page.goto('/rules/advanced')
     await expect(page.locator('.constraint-card').first()).toBeVisible()
     // 留空规则始终为硬约束；不要假定默认选中的类型支持“尽量”。
@@ -62,7 +62,7 @@ test.describe('初中模式', () => {
     await expect(page.getByText('权重')).toHaveCount(0)
     await expect(page.getByText('存为模板')).toHaveCount(0)
     await expect(page.getByText('应用模板')).toHaveCount(0)
-    await expect(page.getByText('教研活动禁排')).toBeVisible()
+    await expect(page.getByText('课程禁排时段')).toBeVisible()
 
     // 课表：全校视角隐藏。
     await page.goto('/workbench/timetable')
