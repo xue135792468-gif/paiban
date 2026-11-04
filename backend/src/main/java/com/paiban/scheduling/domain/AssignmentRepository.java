@@ -9,12 +9,19 @@ import org.springframework.data.repository.query.Param;
 public interface AssignmentRepository extends JpaRepository<Assignment, Long> {
 
     /**
-     * Solver / import / capacity view: soft-deleted assignments and deliberately
+     * Full semester view, including soft-deleted and disabled rows. Only callers that
+     * must account for every row (delete impact, recycle bin) should use this; the
+     * solver/import/snapshot paths want {@link #findBySemesterIdAndDeletedAtIsNull}.
+     */
+    List<Assignment> findBySemesterId(Long semesterId);
+
+    /**
+     * Solver / import / capacity / snapshot: soft-deleted assignments and deliberately
      * disabled ones never reach the timetable.
      */
     @Query("select a from Assignment a where a.semesterId = :semesterId "
             + "and a.deletedAt is null and a.active = true")
-    List<Assignment> findBySemesterId(@Param("semesterId") Long semesterId);
+    List<Assignment> findBySemesterIdAndDeletedAtIsNull(@Param("semesterId") Long semesterId);
 
     /** Management list: disabled assignments stay visible so they can be re-enabled. */
     @Query("select a from Assignment a where a.semesterId = :semesterId and a.deletedAt is null")

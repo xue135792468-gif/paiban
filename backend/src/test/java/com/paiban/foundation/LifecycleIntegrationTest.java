@@ -5,6 +5,8 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThan;
 
 import com.paiban.foundation.service.LifecycleService;
+import com.paiban.scheduling.domain.Assignment;
+import com.paiban.scheduling.domain.AssignmentRepository;
 import com.paiban.support.ApiIntegrationTest;
 import com.paiban.support.ScheduleFixture;
 import com.paiban.support.TestData;
@@ -32,6 +34,9 @@ class LifecycleIntegrationTest extends ApiIntegrationTest {
 
     @Autowired
     private LifecycleService lifecycle;
+
+    @Autowired
+    private AssignmentRepository assignmentRepository;
 
     private record Seed(long semesterId, long gradeId, long classId, long courseId, long teacherId) {}
 
@@ -113,6 +118,13 @@ class LifecycleIntegrationTest extends ApiIntegrationTest {
                 .when().get("/api/assignments")
                 .then().statusCode(200).extract().jsonPath().getList("id");
         assertThat(listed).doesNotContain((int) assignmentId);
+
+        // The solver/import query must not see the deleted row, while the full view
+        // (used by impact/admin) still finds it.
+        assertThat(assignmentRepository.findBySemesterIdAndDeletedAtIsNull(seed.semesterId()))
+                .extracting(Assignment::getId).doesNotContain(assignmentId);
+        assertThat(assignmentRepository.findBySemesterId(seed.semesterId()))
+                .extracting(Assignment::getId).contains(assignmentId);
 
         var recent = as(token).when().get("/api/recent-deletions")
                 .then().statusCode(200)
@@ -291,6 +303,91 @@ class LifecycleIntegrationTest extends ApiIntegrationTest {
         List<Integer> courseIds = as(token).when().get("/api/courses")
                 .then().statusCode(200).extract().jsonPath().getList("id");
         assertThat(courseIds).doesNotContain((int) courseId);
+    }
+
+    @Test
+    void restoreLeavesAlreadyDisabledObjectsDisabled() {
+        String token = adminToken();
+        long teacherId = TestData.teacher(token, "先停用老师" + TestData.suffix());
+
+        as(token).when().post("/api/teachers/" + teacherId + "/disable")
+                .then().statusCode(200);
+        as(token).when().delete("/api/teachers/" + teacherId)
+                .then().statusCode(200);
+
+        String batchId = batchIds(token, false).get(0);
+        as(token).when().post("/api/recent-deletions/" + batchId + "/restore")
+                .then().statusCode(200);
+
+        // Deletion is undone, but the deliberate disable before it is not.
+        as(token).when().get("/api/teachers")
+                .then().statusCode(200)
+                .body("find { it.id == " + teacherId + " }.active", equalTo(false));
+    }
+
+    @Test
+    void restoreReenablesAnObjectThatWasActiveBeforeDeletion() {
+        String token = adminToken();
+        long teacherId = TestData.teacher(token, "直接删老师" + TestData.suffix());
+
+        as(token).when().delete("/api/teachers/" + teacherId)
+                .then().statusCode(200);
+
+        String batchId = batchIds(token, false).get(0);
+        as(token).when().post("/api/recent-deletions/" + batchId + "/restore")
+                .then().statusCode(200);
+
+        as(token).when().get("/api/teachers")
+                .then().statusCode(200)
+                .body("find { it.id == " + teacherId + " }.active", equalTo(true));
+    }
+
+    @Test
+    void semesterWithAssignmentsMustBeCascadedAndRestoresTogether() {
+        String token = adminToken();
+        String suffix = TestData.suffix();
+        Seed seed = seed(token, suffix);
+        long firstAssignment = assignment(token, seed, 3);
+        long secondCourse = TestData.course(token, "数学" + suffix);
+        long secondAssignment = as(token)
+                .body(Map.of(
+                        "classId", seed.classId(),
+                        "courseId", secondCourse,
+                        "teacherId", seed.teacherId(),
+                        "weeklyLessons", 2))
+                .when().post("/api/assignments")
+                .then().statusCode(200)
+                .extract().jsonPath().getLong("id");
+
+        // Move "current" elsewhere so the seeded semester can be deleted.
+        TestData.semester(token);
+
+        as(token).when().get("/api/semesters/" + seed.semesterId() + "/delete-impact")
+                .then().statusCode(200)
+                .body("canDelete", equalTo(true))
+                .body("cascadeAssignments", equalTo(2));
+
+        as(token).when().delete("/api/semesters/" + seed.semesterId())
+                .then().statusCode(409);
+        as(token).when().delete("/api/semesters/" + seed.semesterId() + "?mode=CASCADE")
+                .then().statusCode(200);
+
+        List<Integer> assignmentsGone = as(token).queryParam("semesterId", seed.semesterId())
+                .when().get("/api/assignments")
+                .then().statusCode(200).extract().jsonPath().getList("id");
+        assertThat(assignmentsGone).doesNotContain((int) firstAssignment, (int) secondAssignment);
+
+        String batchId = batchIds(token, false).get(0);
+        as(token).when().post("/api/recent-deletions/" + batchId + "/restore")
+                .then().statusCode(200);
+
+        List<Integer> semestersBack = as(token).when().get("/api/semesters")
+                .then().statusCode(200).extract().jsonPath().getList("id");
+        assertThat(semestersBack).contains((int) seed.semesterId());
+        List<Integer> assignmentsBack = as(token).queryParam("semesterId", seed.semesterId())
+                .when().get("/api/assignments")
+                .then().statusCode(200).extract().jsonPath().getList("id");
+        assertThat(assignmentsBack).contains((int) firstAssignment, (int) secondAssignment);
     }
 
     @Test

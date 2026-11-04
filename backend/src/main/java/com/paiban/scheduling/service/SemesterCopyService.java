@@ -136,7 +136,7 @@ public class SemesterCopyService {
 
     private int copyAssignments(Long sourceId, Long targetId, Map<Long, Long> classMapping) {
         int count = 0;
-        for (Assignment assignment : assignmentRepository.findBySemesterId(sourceId)) {
+        for (Assignment assignment : assignmentRepository.findBySemesterIdAndDeletedAtIsNull(sourceId)) {
             Long classId = classMapping.get(assignment.getAdminClassId());
             if (classId == null) {
                 continue;

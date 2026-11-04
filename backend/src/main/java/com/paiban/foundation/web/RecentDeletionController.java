@@ -29,14 +29,16 @@ public class RecentDeletionController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
+    @PreAuthorize("hasAnyAuthority('" + Permissions.FOUNDATION_MANAGE + "','"
+            + Permissions.SEMESTER_MANAGE + "','" + Permissions.ASSIGNMENT_MANAGE + "')")
     public List<RecentDeletionDto> list(
             @RequestParam(defaultValue = "false") boolean includeClosed) {
         return lifecycle.recent(includeClosed);
     }
 
     @PostMapping("/{batchId}/restore")
-    @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
+    @PreAuthorize("hasAnyAuthority('" + Permissions.FOUNDATION_MANAGE + "','"
+            + Permissions.SEMESTER_MANAGE + "','" + Permissions.ASSIGNMENT_MANAGE + "')")
     public RestoreResultDto restore(@PathVariable String batchId, Principal principal) {
         return lifecycle.restore(batchId, principal == null ? null : principal.getName());
     }

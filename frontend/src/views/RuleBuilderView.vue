@@ -161,6 +161,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
+import { activeOnly } from '@/utils/activeOptions'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import RuleForm from '@/components/rules/RuleForm.vue'
 import RuleGroupedList from '@/components/rules/RuleGroupedList.vue'
@@ -194,6 +195,7 @@ interface Semester {
   id: number
   name: string
   current: boolean
+  active?: boolean
 }
 
 interface ConstraintState {
@@ -279,7 +281,7 @@ async function loadSemesters() {
     http.get<Semester[]>('/semesters'),
     http.get<Semester>('/semesters/current', { validateStatus: (status) => status < 500 }),
   ])
-  semesters.value = listRes.data ?? []
+  semesters.value = activeOnly(listRes.data ?? [])
   if (currentRes.status === 200 && currentRes.data?.id) {
     semesterId.value = currentRes.data.id
     return
@@ -289,15 +291,13 @@ async function loadSemesters() {
 }
 
 async function loadTeachers() {
-  const { data } = await http.get<OptionItem[]>('/teachers/options')
-  teachers.value = (data ?? []).map((teacher) => ({ id: teacher.id, name: teacher.name }))
+  const { data } = await http.get<Array<OptionItem & { active?: boolean }>>('/teachers/options')
+  teachers.value = activeOnly(data ?? []).map((teacher) => ({ id: teacher.id, name: teacher.name }))
 }
 
 async function loadCourses() {
   const { data } = await http.get<Array<{ id: number; name: string; active?: boolean }>>('/courses')
-  courses.value = (data ?? [])
-    .filter((course) => course.active !== false)
-    .map((course) => ({ id: course.id, name: course.name }))
+  courses.value = activeOnly(data ?? []).map((course) => ({ id: course.id, name: course.name }))
 }
 
 async function loadClasses() {
@@ -309,9 +309,7 @@ async function loadClasses() {
     '/classes',
     { params: { semesterId: semesterId.value } },
   )
-  classes.value = (data ?? [])
-    .filter((item) => item.active !== false)
-    .map((item) => ({ id: item.id, name: item.name }))
+  classes.value = activeOnly(data ?? []).map((item) => ({ id: item.id, name: item.name }))
 }
 
 async function loadCatalogue() {

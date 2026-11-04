@@ -39,6 +39,16 @@ public class RecentDeletionWriter {
      * stamping the business row's soft-delete column inside the same transaction.
      */
     public String record(String entityType, Long entityId, String label, String kindLabel) {
+        return record(entityType, entityId, label, kindLabel, true);
+    }
+
+    /**
+     * Same as {@link #record(String, Long, String, String)}, plus the entity's
+     * {@code active} flag at deletion time so a restore does not silently re-enable an
+     * object that was already disabled.
+     */
+    public String record(
+            String entityType, Long entityId, String label, String kindLabel, Boolean wasActive) {
         Instant now = Instant.now(clock);
         String batchId = UUID.randomUUID().toString();
         RecentDeletion deletion = new RecentDeletion();
@@ -47,6 +57,7 @@ public class RecentDeletionWriter {
         deletion.setEntityId(entityId);
         deletion.setEntityLabel(label);
         deletion.setPrimaryFlag(true);
+        deletion.setWasActive(wasActive);
         deletion.setDeletedBy(actor());
         deletion.setDeletedAt(now);
         deletion.setExpiresAt(now.plus(RETENTION));

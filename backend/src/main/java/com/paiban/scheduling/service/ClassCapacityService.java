@@ -66,7 +66,7 @@ public class ClassCapacityService {
 
     private Map<Long, Integer> weeklyLessonsByClass(Long semesterId) {
         Map<Long, Integer> totals = new LinkedHashMap<>();
-        for (Assignment assignment : assignments.findBySemesterId(semesterId)) {
+        for (Assignment assignment : assignments.findBySemesterIdAndDeletedAtIsNull(semesterId)) {
             if (assignment.getAdminClassId() == null) {
                 continue;
             }
