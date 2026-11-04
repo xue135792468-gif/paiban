@@ -43,6 +43,10 @@ public final class ConstraintMigrationDtos {
      * The draft-check comparison of one side of a migration. {@code skipped} is true
      * when the semester has no DRAFT, in which case every number is 0 and the
      * fingerprint/config/entry counts are still recorded.
+     *
+     * <p>{@code retainedRows} and {@code retainedDigest} summarise every row the
+     * migration promises not to change, so "before" and "after" can be compared even
+     * though the settings fingerprint deliberately skips paused rows.
      */
     public record MigrationEvaluationDto(boolean skipped,
                                          int lessons,
@@ -52,7 +56,9 @@ public final class ConstraintMigrationDtos {
                                          int configCount,
                                          int enabledConfigCount,
                                          int entryCount,
-                                         int enabledEntryCount) {}
+                                         int enabledEntryCount,
+                                         int retainedRows,
+                                         String retainedDigest) {}
 
     /** The latest run plus its map rows and the before/after comparison. */
     public record MigrationReportDto(String runId,

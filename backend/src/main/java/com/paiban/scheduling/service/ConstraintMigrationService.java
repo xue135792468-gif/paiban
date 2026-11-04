@@ -27,13 +27,18 @@ import com.paiban.scheduling.web.ConstraintMigrationDtos.MigrationEvaluationDto;
 import com.paiban.scheduling.web.ConstraintMigrationDtos.MigrationPreviewDto;
 import com.paiban.scheduling.web.ConstraintMigrationDtos.MigrationReportDto;
 import com.paiban.scheduling.web.ConstraintMigrationDtos.MigrationRowDto;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,7 +59,14 @@ import org.springframework.util.StringUtils;
  * <p>Each run also stores the shared {@code ConstraintChecker} verdict before and
  * after the migration: draft lessons, hard conflicts, soft penalty and the settings
  * fingerprint. The comparison is what proves the 19 retained types kept their meaning
- * and the 7 retired types stopped participating.
+ * and the 7 retired types stopped participating. A digest of every retained row is
+ * recorded on both sides as well, because the fingerprint ignores paused rows by
+ * design and would otherwise agree no matter what the migration did to them.
+ *
+ * <p>Because the run flips stored rows, it also advances the semester's configuration
+ * version through {@link ConstraintConfigService#advanceVersion} in the same
+ * transaction: the rule page, its cached previews and every version-aware save must
+ * notice the change exactly as they would after a manual save.
  */
 @Service
 public class ConstraintMigrationService {
@@ -96,6 +108,7 @@ public class ConstraintMigrationService {
     private final TimetableDraftRepository drafts;
     private final DraftLessonRepository draftLessons;
     private final ConstraintService constraintService;
+    private final ConstraintConfigService configService;
     private final DraftValidator draftValidator;
     private final ObjectMapper objectMapper;
 
@@ -111,6 +124,7 @@ public class ConstraintMigrationService {
             TimetableDraftRepository drafts,
             DraftLessonRepository draftLessons,
             ConstraintService constraintService,
+            ConstraintConfigService configService,
             DraftValidator draftValidator,
             ObjectMapper objectMapper) {
         this.configs = configs;
@@ -124,6 +138,7 @@ public class ConstraintMigrationService {
         this.drafts = drafts;
         this.draftLessons = draftLessons;
         this.constraintService = constraintService;
+        this.configService = configService;
         this.draftValidator = draftValidator;
         this.objectMapper = objectMapper;
     }
@@ -132,7 +147,7 @@ public class ConstraintMigrationService {
 
     @Transactional(readOnly = true)
     public MigrationPreviewDto preview(Long semesterId) {
-        Long resolved = semesters.require(semesterId).getId();
+        Long resolved = resolveSemester(semesterId);
         Plan plan = plan(resolved);
         return new MigrationPreviewDto(
                 resolved,
@@ -150,13 +165,14 @@ public class ConstraintMigrationService {
 
     /**
      * Applies the migration and stores its report. The whole write set (run row, map
-     * rows, paused configs/entries) is one transaction; the before/after evaluation is
-     * computed with the shared settings snapshot and the newest DRAFT, so there is no
-     * migration-specific interpretation of the rules.
+     * rows, paused configs/entries, the advanced configuration version) is one
+     * transaction; the before/after evaluation is computed with the shared settings
+     * snapshot and the newest DRAFT, so there is no migration-specific interpretation
+     * of the rules.
      */
     @Transactional
     public MigrationReportDto run(Long semesterId, String actor) {
-        Long resolved = semesters.require(semesterId).getId();
+        Long resolved = resolveSemester(semesterId);
         Plan plan = plan(resolved);
         Instant startedAt = Instant.now();
         Evaluation before = evaluate(resolved);
@@ -175,6 +191,9 @@ public class ConstraintMigrationService {
         configs.flush();
         entries.flush();
         upsertMap(resolved, run.getRunId(), plan.rows(), startedAt);
+        // Pausing rows is a configuration write: advance the same counter a save uses,
+        // so the advanced page and every cached preview drop their stale 26-type view.
+        configService.advanceVersion(resolved);
 
         Evaluation after = evaluate(resolved);
         run.setStatus("DONE");
@@ -188,11 +207,22 @@ public class ConstraintMigrationService {
 
     @Transactional(readOnly = true)
     public MigrationReportDto report(Long semesterId) {
-        Long resolved = semesters.require(semesterId).getId();
+        Long resolved = resolveSemester(semesterId);
         return runs.findFirstBySemesterIdOrderByIdDesc(resolved)
                 .map(run -> reportOf(run,
                         maps.findByRunIdOrderByOldTypeAscOldEntryIdAsc(run.getRunId())))
                 .orElse(null);
+    }
+
+    /**
+     * The semester the call is about: the named one, else the current semester. Both
+     * endpoints let the parameter be omitted, and every other read/write of the rule
+     * catalogue resolves it the same way. A semester that does not exist is a 404 and a
+     * missing current semester a 400, never a {@code NullPointerException}.
+     */
+    private Long resolveSemester(Long semesterId) {
+        Long resolved = semesterId != null ? semesterId : semesters.requireCurrent().getId();
+        return semesters.require(resolved).getId();
     }
 
     // ------------------------------------------------------------------ planning
@@ -321,6 +351,12 @@ public class ConstraintMigrationService {
             return review(raw, type.getDisplayName(), entry.getId(), raw, entry.getParamsJson(),
                     entry.getGroupKey(), broken.get().note());
         }
+        Optional<ReferenceProblem> shape =
+                entryShapeProblem(type, params, entry.getGroupKey());
+        if (shape.isPresent()) {
+            return review(raw, type.getDisplayName(), entry.getId(), raw, entry.getParamsJson(),
+                    entry.getGroupKey(), shape.get().note());
+        }
         return new DecisionRow(raw, type.getDisplayName(), entry.getId(), Action.RETAIN, raw,
                 entry.getGroupKey(), entry.getParamsJson(), "保留；条目与参数不变", false);
     }
@@ -385,6 +421,46 @@ public class ConstraintMigrationService {
         return Optional.empty();
     }
 
+    /**
+     * The second half of "cannot be mapped automatically": the row's own shape.
+     *
+     * <p>A reference can be intact and the row still meaningless — a misspelled key
+     * ({@code teacher_id}) is silently ignored by every evaluator, and a row that
+     * names no slot, or a multi-slot row with no group key, cannot be reconstructed as
+     * the rule the user wrote. Such rows are listed for a human instead of being
+     * reported as RETAIN, which would claim the migration preserved a rule it did not
+     * even understand (ticket 11 review).
+     */
+    private Optional<ReferenceProblem> entryShapeProblem(
+            ConstraintType type, Map<String, Object> params, String groupKey) {
+        Set<String> declared = new HashSet<>();
+        for (ConstraintType.Param param : type.getParams()) {
+            declared.add(param.name());
+        }
+        for (String key : params.keySet()) {
+            if (!declared.contains(key)) {
+                return Optional.of(new ReferenceProblem(
+                        "参数「" + key + "」不在「" + type.getDisplayName()
+                                + "」的参数表中，可能拼写有误，需人工确认"));
+            }
+        }
+        for (ConstraintType.Param param : type.getParams()) {
+            if (param.required() && isEmptyValue(params.get(param.name()))) {
+                return Optional.of(new ReferenceProblem(
+                        "缺少必填参数「" + param.name() + "」，无法自动映射，需人工确认"));
+            }
+        }
+        if (type.isSlotGrouped() && !StringUtils.hasText(groupKey)) {
+            return Optional.of(new ReferenceProblem(
+                    "条目缺少分组标识（groupKey），无法确认它属于哪条多时段规则，需人工确认"));
+        }
+        return Optional.empty();
+    }
+
+    private boolean isEmptyValue(Object value) {
+        return value == null || (value instanceof String text && !StringUtils.hasText(text));
+    }
+
     // ------------------------------------------------------------------- writes
 
     /** Pauses retired rows only; no row is ever deleted, so the old data stays readable. */
@@ -443,6 +519,13 @@ public class ConstraintMigrationService {
 
     // --------------------------------------------------------------- evaluation
 
+    /**
+     * One side of the comparison. {@code retainedDigest} hashes every row the migration
+     * promises not to change (the active types' configs and entries, sorted by
+     * type/group/params/enabled/hard/weight), which is the evidence the fingerprint
+     * cannot give: {@link ConstraintSettings} ignores paused and retired rows, so it
+     * would agree before and after even if the run had rewritten a retained rule.
+     */
     private record Evaluation(boolean skipped,
                               int lessons,
                               int hardConflicts,
@@ -451,7 +534,11 @@ public class ConstraintMigrationService {
                               int configCount,
                               int enabledConfigCount,
                               int entryCount,
-                              int enabledEntryCount) {}
+                              int enabledEntryCount,
+                              int retainedRows,
+                              String retainedDigest) {}
+
+    private record RetainedSummary(int rows, String digest) {}
 
     /**
      * The migration's comparison record: the newest DRAFT of the semester, judged by
@@ -467,20 +554,84 @@ public class ConstraintMigrationService {
                 .filter(ConstraintConfig::isEnabled).count();
         int enabledEntries = (int) storedEntries.stream()
                 .filter(ConstraintEntry::isEnabled).count();
+        RetainedSummary retained = retainedSummary(semesterId);
         Optional<TimetableDraft> draft = drafts
                 .findBySemesterIdOrderByCreatedAtDesc(semesterId).stream()
                 .filter(row -> "DRAFT".equals(row.getStatus()))
                 .findFirst();
         if (draft.isEmpty()) {
             return new Evaluation(true, 0, 0, 0, fingerprint,
-                    storedConfigs.size(), enabledConfigs, storedEntries.size(), enabledEntries);
+                    storedConfigs.size(), enabledConfigs, storedEntries.size(), enabledEntries,
+                    retained.rows(), retained.digest());
         }
         Long draftId = draft.get().getId();
         DraftValidator.ValidationResult verdict = draftValidator.validateDraft(draftId);
         int penalty = draftValidator.assessChanges(draftId, List.of()).softPenaltyBefore();
         int lessons = (int) draftLessons.countByDraftId(draftId);
         return new Evaluation(false, lessons, verdict.hardConflicts(), penalty, fingerprint,
-                storedConfigs.size(), enabledConfigs, storedEntries.size(), enabledEntries);
+                storedConfigs.size(), enabledConfigs, storedEntries.size(), enabledEntries,
+                retained.rows(), retained.digest());
+    }
+
+    /**
+     * Digest of the retained side: every active config and entry row, retired and
+     * unknown codes excluded (pausing those is exactly what {@code run} does). Params
+     * are rendered with sorted keys so two rows that differ only in JSON ordering
+     * still hash the same.
+     */
+    private RetainedSummary retainedSummary(Long semesterId) {
+        List<String> lines = new ArrayList<>();
+        for (ConstraintConfig config : configs.findBySemesterId(semesterId)) {
+            ConstraintType type = typeOrNull(config.getType());
+            if (type == null || type.isRetired()) {
+                continue;
+            }
+            lines.add(retainedLine("C", type, null, config.getParamsJson(), config.isEnabled(),
+                    config.isHard(), config.getWeight()));
+        }
+        for (ConstraintEntry entry : entries.findBySemesterId(semesterId)) {
+            ConstraintType type = typeOrNull(entry.getType());
+            if (type == null || type.isRetired()) {
+                continue;
+            }
+            lines.add(retainedLine("E", type, entry.getGroupKey(), entry.getParamsJson(),
+                    entry.isEnabled(), entry.getHard(), entry.getWeight()));
+        }
+        lines.sort(Comparator.naturalOrder());
+        return new RetainedSummary(lines.size(), sha256(String.join("\n", lines)));
+    }
+
+    private String retainedLine(String kind, ConstraintType type, String groupKey,
+                                String paramsJson, boolean enabled, Boolean hard, Integer weight) {
+        return kind + "|" + type.name() + "|" + (groupKey == null ? "" : groupKey.trim())
+                + "|" + paramsText(paramsJson) + "|" + enabled + "|" + hard + "|" + weight;
+    }
+
+    /** Params in a stable form: keys sorted, values via {@code String.valueOf}. */
+    private String paramsText(String paramsJson) {
+        Map<String, Object> params = parseOrNull(paramsJson);
+        if (params == null) {
+            return "raw:" + (paramsJson == null ? "" : paramsJson.trim());
+        }
+        List<String> pairs = new ArrayList<>();
+        params.forEach((key, value) -> pairs.add(key + "=" + String.valueOf(value)));
+        pairs.sort(Comparator.naturalOrder());
+        return String.join(",", pairs);
+    }
+
+    private String sha256(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte current : digest) {
+                hex.append(Character.forDigit((current >> 4) & 0xF, 16))
+                        .append(Character.forDigit(current & 0xF, 16));
+            }
+            return hex.toString();
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 is not available", ex);
+        }
     }
 
     // ------------------------------------------------------------------ mapping
@@ -542,11 +693,13 @@ public class ConstraintMigrationService {
                 evaluation.configCount(),
                 evaluation.enabledConfigCount(),
                 evaluation.entryCount(),
-                evaluation.enabledEntryCount());
+                evaluation.enabledEntryCount(),
+                evaluation.retainedRows(),
+                evaluation.retainedDigest());
     }
 
     private Evaluation skipped() {
-        return new Evaluation(true, 0, 0, 0, null, 0, 0, 0, 0);
+        return new Evaluation(true, 0, 0, 0, null, 0, 0, 0, 0, 0, null);
     }
 
     private String displayNameOf(String code) {
