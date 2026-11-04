@@ -190,8 +190,9 @@ public final class PlanVerifier {
                 "同一教师在同一时刻出现多节课", issues);
         reportDuplicates(date, after, lesson -> lesson.classId(), "CLASS_DOUBLE_BOOKED",
                 "同一班级在同一时刻出现多门课", issues);
-        reportDuplicates(date, after, lesson -> lesson.roomId(), "ROOM_DOUBLE_BOOKED",
-                "同一教室在同一时刻被多节课占用", issues);
+        // The room model is retired from the product (ticket 09 removed ROOM_CONFLICT,
+        // ticket 02 stopped requiring rooms to publish). A leftover roomId is display
+        // data only, so room double-booking is no longer a whole-plan invariant.
 
         Map<Long, Integer> beforeCounts = new HashMap<>();
         Map<Long, Integer> afterCounts = new HashMap<>();
