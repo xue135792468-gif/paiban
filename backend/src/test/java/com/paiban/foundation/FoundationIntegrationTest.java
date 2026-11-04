@@ -200,6 +200,49 @@ class FoundationIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void deletedHeadTeacherDoesNotBlockClassEditing() {
+        String token = adminToken();
+        long semesterId = TestData.semester(token);
+        String suffix = TestData.suffix();
+        long teacherId = TestData.teacher(token, "班主任" + suffix);
+        long gradeId = TestData.grade(token, semesterId, "初一" + suffix);
+        String className = "初一1班" + suffix;
+
+        long classId = as(token)
+                .body(Map.of("gradeId", gradeId, "name", className, "headTeacherId", teacherId))
+                .queryParam("semesterId", semesterId)
+                .when().post("/api/classes")
+                .then().statusCode(200)
+                .extract().jsonPath().getLong("id");
+
+        as(token).when().delete("/api/teachers/" + teacherId).then().statusCode(200);
+
+        // Soft-deleted teacher keeps the row, so the class stays editable (here only the
+        // student count changes) and the head-teacher link is not silently dropped.
+        as(token)
+                .body(Map.of(
+                        "gradeId", gradeId,
+                        "name", className,
+                        "headTeacherId", teacherId,
+                        "studentCount", 50))
+                .when().put("/api/classes/" + classId)
+                .then().statusCode(200)
+                .body("studentCount", equalTo(50))
+                .body("headTeacherId", equalTo((int) teacherId));
+
+        String batchId = as(token).when().get("/api/recent-deletions")
+                .then().statusCode(200)
+                .extract().jsonPath().getString("[0].batchId");
+        as(token).when().post("/api/recent-deletions/" + batchId + "/restore")
+                .then().statusCode(200);
+
+        as(token).queryParam("semesterId", semesterId)
+                .when().get("/api/classes")
+                .then().body("find { it.id == " + classId + " }.headTeacherId",
+                        equalTo((int) teacherId));
+    }
+
+    @Test
     void auditLogsExposeRecordedImportActions() {
         String token = adminToken();
         as(token).when().get("/api/foundation/audit-logs")

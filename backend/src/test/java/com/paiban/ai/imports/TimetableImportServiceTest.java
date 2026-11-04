@@ -143,7 +143,7 @@ class TimetableImportServiceTest extends ApiIntegrationTest {
         });
         assertThat(lessons).extracting(DraftLesson::getLessonIndex).containsExactly(0, 1);
 
-        List<Assignment> created = assignments.findBySemesterId(f.semesterId());
+        List<Assignment> created = assignments.findBySemesterIdAndDeletedAtIsNull(f.semesterId());
         assertThat(created).hasSize(1);
         assertThat(created.get(0).getWeeklyLessons()).isEqualTo(2);
         assertThat(created.get(0).getTeacherId()).isEqualTo(f.teacherId());
@@ -337,7 +337,7 @@ class TimetableImportServiceTest extends ApiIntegrationTest {
                         "weeklyLessons", 3))
                 .when().post("/api/assignments")
                 .then().statusCode(200);
-        Assignment existing = assignments.findBySemesterId(f.semesterId()).get(0);
+        Assignment existing = assignments.findBySemesterIdAndDeletedAtIsNull(f.semesterId()).get(0);
         long importedTeacher = TestData.teacher(token, "李四");
         long teachingClassId = teachingClasses.findByAdminClassId(f.classId()).orElseThrow().getId();
 
@@ -349,8 +349,8 @@ class TimetableImportServiceTest extends ApiIntegrationTest {
                 "admin");
 
         assertThat(result.errors()).isEmpty();
-        assertThat(assignments.findBySemesterId(f.semesterId())).hasSize(1);
-        Assignment reused = assignments.findBySemesterId(f.semesterId()).get(0);
+        assertThat(assignments.findBySemesterIdAndDeletedAtIsNull(f.semesterId())).hasSize(1);
+        Assignment reused = assignments.findBySemesterIdAndDeletedAtIsNull(f.semesterId()).get(0);
         assertThat(reused.getId()).isEqualTo(existing.getId());
         assertThat(reused.getWeeklyLessons()).isEqualTo(2);
         assertThat(reused.getTeacherId()).isEqualTo(importedTeacher);
@@ -374,7 +374,7 @@ class TimetableImportServiceTest extends ApiIntegrationTest {
         assertThat(result.errors()).isEmpty();
         assertThat(teachingClasses.findByAdminClassId(f.classId()).orElseThrow().getName())
                 .isEqualTo("一年级1班");
-        Assignment created = assignments.findBySemesterId(f.semesterId()).get(0);
+        Assignment created = assignments.findBySemesterIdAndDeletedAtIsNull(f.semesterId()).get(0);
         assertThat(created.getTeachingClassId())
                 .isEqualTo(teachingClasses.findByAdminClassId(f.classId()).orElseThrow().getId());
     }
@@ -400,7 +400,7 @@ class TimetableImportServiceTest extends ApiIntegrationTest {
                 .contains("张三")
                 .contains("李四");
 
-        Assignment assignment = assignments.findBySemesterId(f.semesterId()).get(0);
+        Assignment assignment = assignments.findBySemesterIdAndDeletedAtIsNull(f.semesterId()).get(0);
         assertThat(assignment.getTeacherId()).isEqualTo(f.teacherId());
         assertThat(draftLessons.findByDraftIdOrderByIdAsc(result.draftId()))
                 .extracting(DraftLesson::getTeacherId)
@@ -440,7 +440,7 @@ class TimetableImportServiceTest extends ApiIntegrationTest {
         reset(draftLessons);
         assertThat(drafts.count()).isZero();
         assertThat(draftLessons.count()).isZero();
-        assertThat(assignments.findBySemesterId(f.semesterId())).isEmpty();
+        assertThat(assignments.findBySemesterIdAndDeletedAtIsNull(f.semesterId())).isEmpty();
     }
 
     private long periodId(long semesterId, int dayOfWeek, int periodNo) {

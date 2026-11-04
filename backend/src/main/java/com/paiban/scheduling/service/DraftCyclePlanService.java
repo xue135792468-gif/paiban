@@ -284,7 +284,7 @@ public class DraftCyclePlanService {
                         + "|" + lesson.roomId()
                         + "|" + lesson.locked())
                 .toList();
-        List<String> assignmentLines = assignments.findBySemesterId(draft.getSemesterId()).stream()
+        List<String> assignmentLines = assignments.findBySemesterIdAndDeletedAtIsNull(draft.getSemesterId()).stream()
                 .sorted(Comparator.comparing(Assignment::getId))
                 .map(assignment -> "A|" + assignment.getId()
                         + "|" + assignment.getAdminClassId()

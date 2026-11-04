@@ -70,7 +70,7 @@ class TimetableProblemBuilderTest {
         assignment.setCourseId(1L);
         assignment.setTeacherId(1L);
         assignment.setWeeklyLessons(2);
-        when(assignmentRepository.findBySemesterId(1L)).thenReturn(List.of(assignment));
+        when(assignmentRepository.findBySemesterIdAndDeletedAtIsNull(1L)).thenReturn(List.of(assignment));
 
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
                 new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
@@ -133,7 +133,7 @@ class TimetableProblemBuilderTest {
         assignment.setCourseId(1L);
         assignment.setTeacherId(1L);
         assignment.setWeeklyLessons(1);
-        when(assignmentRepository.findBySemesterId(1L)).thenReturn(List.of(assignment));
+        when(assignmentRepository.findBySemesterIdAndDeletedAtIsNull(1L)).thenReturn(List.of(assignment));
 
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
                 new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
@@ -190,7 +190,7 @@ class TimetableProblemBuilderTest {
         assignment.setCourseId(1L);
         assignment.setTeacherId(1L);
         assignment.setWeeklyLessons(1);
-        when(assignmentRepository.findBySemesterId(1L)).thenReturn(List.of(assignment));
+        when(assignmentRepository.findBySemesterIdAndDeletedAtIsNull(1L)).thenReturn(List.of(assignment));
 
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
                 new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
@@ -236,7 +236,7 @@ class TimetableProblemBuilderTest {
         when(roomRepository.findAllByOrderByNameAsc()).thenReturn(List.of());
 
         Assignment assignment = assignment(21L, 1L, 1L, 1L, 1);
-        when(assignmentRepository.findBySemesterId(1L)).thenReturn(List.of(assignment));
+        when(assignmentRepository.findBySemesterIdAndDeletedAtIsNull(1L)).thenReturn(List.of(assignment));
 
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
                 new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
@@ -281,7 +281,7 @@ class TimetableProblemBuilderTest {
         room.setCapacity(45);
         when(roomRepository.findAllByOrderByNameAsc()).thenReturn(List.of(room));
 
-        when(assignmentRepository.findBySemesterId(1L))
+        when(assignmentRepository.findBySemesterIdAndDeletedAtIsNull(1L))
                 .thenReturn(List.of(assignment(21L, 1L, 1L, 1L, 2)));
 
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
@@ -335,7 +335,7 @@ class TimetableProblemBuilderTest {
         when(periodRepository.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(1L))
                 .thenReturn(List.of(period(11L, 1), period(12L, 2)));
         when(roomRepository.findAllByOrderByNameAsc()).thenReturn(List.of());
-        when(assignmentRepository.findBySemesterId(1L))
+        when(assignmentRepository.findBySemesterIdAndDeletedAtIsNull(1L))
                 .thenReturn(List.of(assignment(21L, 1L, 1L, 1L, 2)));
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
                 new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));

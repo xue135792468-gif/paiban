@@ -418,9 +418,10 @@ public class FoundationService {
     }
 
     private void validateHeadTeacher(Long headTeacherId) {
-        if (headTeacherId != null && teachers.findById(headTeacherId)
-                .filter(teacher -> teacher.getDeletedAt() == null)
-                .isEmpty()) {
+        // Soft-deleted / disabled teachers keep their row so an existing class link can
+        // still resolve the name. Only a truly missing id is rejected; deleting a head
+        // teacher must not make their class uneditable.
+        if (headTeacherId != null && teachers.findById(headTeacherId).isEmpty()) {
             throw ApiException.notFound("班主任不存在: " + headTeacherId);
         }
     }

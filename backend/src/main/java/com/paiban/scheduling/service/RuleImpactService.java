@@ -166,7 +166,7 @@ public class RuleImpactService {
         Map<Long, String> courseNames = new LinkedHashMap<>();
         courseRows.forEach(item -> courseNames.put(item.getId(), item.getName()));
 
-        List<Assignment> activeAssignments = assignments.findBySemesterId(resolved);
+        List<Assignment> activeAssignments = assignments.findBySemesterIdAndDeletedAtIsNull(resolved);
         Map<Long, Set<Long>> classesByTeacher = new LinkedHashMap<>();
         Map<Long, Set<Long>> classesByCourse = new LinkedHashMap<>();
         Map<Long, Set<Long>> teachersByCourse = new LinkedHashMap<>();

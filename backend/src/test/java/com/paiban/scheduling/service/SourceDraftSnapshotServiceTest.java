@@ -48,7 +48,7 @@ class SourceDraftSnapshotServiceTest {
         List<Assignment> semesterAssignments = List.of(
                 assignment(10L, 1L, 1L, 100L, 1L, 2),
                 assignment(11L, 1L, 2L, 200L, 2L, 1));
-        when(assignments.findBySemesterId(1L)).thenReturn(semesterAssignments);
+        when(assignments.findBySemesterIdAndDeletedAtIsNull(1L)).thenReturn(semesterAssignments);
         when(draftLessons.findByDraftIdOrderByIdAsc(5L)).thenReturn(List.of(
                 row(10L, 0, 1L, 100L, 1L, 11L, true),
                 row(10L, 1, 1L, 100L, 99L, 12L, false),
@@ -80,7 +80,7 @@ class SourceDraftSnapshotServiceTest {
     void jsonRoundTripKeepsTheFrozenSnapshot() {
         TimetableDraft draft = draft(5L, 1L, "DRAFT", 0L, "草稿");
         when(drafts.findWithLockById(5L)).thenReturn(Optional.of(draft));
-        when(assignments.findBySemesterId(1L))
+        when(assignments.findBySemesterIdAndDeletedAtIsNull(1L))
                 .thenReturn(List.of(assignment(10L, 1L, 1L, 100L, 1L, 1)));
         when(draftLessons.findByDraftIdOrderByIdAsc(5L))
                 .thenReturn(List.of(row(10L, 0, 1L, 100L, 1L, null, false)));
@@ -139,7 +139,7 @@ class SourceDraftSnapshotServiceTest {
     @Test
     void unknownAssignmentIsRejected() {
         when(drafts.findWithLockById(5L)).thenReturn(Optional.of(draft(5L, 1L, "DRAFT", 0L, "草稿")));
-        when(assignments.findBySemesterId(1L)).thenReturn(List.of());
+        when(assignments.findBySemesterIdAndDeletedAtIsNull(1L)).thenReturn(List.of());
         when(draftLessons.findByDraftIdOrderByIdAsc(5L))
                 .thenReturn(List.of(row(10L, 0, 1L, 100L, 1L, null, false)));
 
@@ -244,7 +244,7 @@ class SourceDraftSnapshotServiceTest {
                 .thenReturn(List.of(row(10L, 0, 1L, 1L, 100L, null, false)));
         when(teachers.findAllById(any())).thenReturn(List.of(teacher(100L)));
         when(periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(1L)).thenReturn(List.of());
-        when(assignments.findBySemesterId(1L))
+        when(assignments.findBySemesterIdAndDeletedAtIsNull(1L))
                 .thenReturn(List.of(assignment(10L, 1L, 1L, 1L, 100L, 1)));
 
         SourceDraftSnapshot snapshot = service.capture(5L, 1L);
@@ -256,19 +256,19 @@ class SourceDraftSnapshotServiceTest {
                 List.of(assignment(10L, 1L, 2L, 1L, 100L, 1)),   // class
                 List.of(assignment(10L, 1L, 1L, 2L, 100L, 1)));  // course
         for (List<Assignment> edited : edits) {
-            when(assignments.findBySemesterId(1L)).thenReturn(edited);
+            when(assignments.findBySemesterIdAndDeletedAtIsNull(1L)).thenReturn(edited);
             assertThatThrownBy(() -> service.requireAssignmentsUnchanged(snapshot, 1L))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("授课任务在优化开始后发生变化");
         }
-        when(assignments.findBySemesterId(1L))
+        when(assignments.findBySemesterIdAndDeletedAtIsNull(1L))
                 .thenReturn(List.of(assignment(10L, 1L, 1L, 1L, 100L, 1)));
         service.requireAssignmentsUnchanged(snapshot, 1L);
     }
 
     private void prepare(List<Assignment> semesterAssignments, List<DraftLesson> rows) {
         when(drafts.findWithLockById(5L)).thenReturn(Optional.of(draft(5L, 1L, "DRAFT", 0L, "草稿")));
-        when(assignments.findBySemesterId(1L)).thenReturn(semesterAssignments);
+        when(assignments.findBySemesterIdAndDeletedAtIsNull(1L)).thenReturn(semesterAssignments);
         when(draftLessons.findByDraftIdOrderByIdAsc(5L)).thenReturn(rows);
         List<Teacher> known = new ArrayList<>();
         rows.forEach(row -> known.add(teacher(row.getTeacherId())));

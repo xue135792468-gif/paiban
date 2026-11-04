@@ -90,7 +90,7 @@ public class SourceDraftSnapshotService {
             throw ApiException.badRequest("来源草稿没有课节");
         }
 
-        List<Assignment> semesterAssignments = assignments.findBySemesterId(semesterId);
+        List<Assignment> semesterAssignments = assignments.findBySemesterIdAndDeletedAtIsNull(semesterId);
         Map<Long, Assignment> assignmentById = new HashMap<>();
         semesterAssignments.forEach(assignment -> assignmentById.put(assignment.getId(), assignment));
         Map<Long, Period> periodById = new HashMap<>();
@@ -183,7 +183,7 @@ public class SourceDraftSnapshotService {
      */
     @Transactional(readOnly = true)
     public void requireAssignmentsUnchanged(SourceDraftSnapshot snapshot, Long semesterId) {
-        String current = assignmentFingerprint(assignments.findBySemesterId(semesterId));
+        String current = assignmentFingerprint(assignments.findBySemesterIdAndDeletedAtIsNull(semesterId));
         if (!current.equals(snapshot.assignmentFingerprint())) {
             throw new IllegalStateException("授课任务在优化开始后发生变化，请重新发起");
         }

@@ -106,7 +106,7 @@ public class TimetableProblemBuilder {
     public BuiltProblem buildWithWarmStart(
             Long semesterId, ConstraintSettings settings, Set<Long> gradeIds) {
         Context context = context(semesterId);
-        List<Assignment> assignments = assignmentRepository.findBySemesterId(semesterId);
+        List<Assignment> assignments = assignmentRepository.findBySemesterIdAndDeletedAtIsNull(semesterId);
         WarmStartSeedService.WarmStartSeed seed =
                 warmStart.seed(semesterId, context.periodById(), assignments);
         Map<AssignmentKey, Deque<PeriodSlot>> warmPeriods = seed.periods();
@@ -214,7 +214,7 @@ public class TimetableProblemBuilder {
             Long semesterId, ConstraintSettings settings, SourceDraftSnapshot snapshot,
             Set<Long> gradeIds) {
         Context context = context(semesterId);
-        List<Assignment> assignments = assignmentRepository.findBySemesterId(semesterId);
+        List<Assignment> assignments = assignmentRepository.findBySemesterIdAndDeletedAtIsNull(semesterId);
         Map<String, SourceLesson> rows = new HashMap<>();
         snapshot.lessons().forEach(row -> rows.put(lessonKey(row.assignmentId(), row.lessonIndex()), row));
 
@@ -332,7 +332,7 @@ public class TimetableProblemBuilder {
             return;
         }
         Context context = context(semesterId);
-        List<Assignment> assignments = assignmentRepository.findBySemesterId(semesterId);
+        List<Assignment> assignments = assignmentRepository.findBySemesterIdAndDeletedAtIsNull(semesterId);
         if (snapshot != null) {
             // The captured source covers every assignment, but an unlocked lesson may
             // still have no period (an incomplete import). Such a lesson has nothing to

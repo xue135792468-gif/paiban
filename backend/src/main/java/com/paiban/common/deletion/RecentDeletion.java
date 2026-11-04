@@ -52,6 +52,13 @@ public class RecentDeletion {
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
+    /**
+     * The entity's {@code active} flag right before deletion, so restoring a disabled
+     * object leaves it disabled. NULL for rows written before this column existed.
+     */
+    @Column(name = "was_active")
+    private Boolean wasActive;
+
     @Column(name = "restored_at")
     private Instant restoredAt;
 

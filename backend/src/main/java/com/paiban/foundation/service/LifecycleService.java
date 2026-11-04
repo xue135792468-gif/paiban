@@ -104,8 +104,8 @@ public class LifecycleService {
         long assignmentRefs = assignmentRefs(type, id);
         long rules = ruleRefs(type, id);
         long cascadeAssignments = switch (type) {
-            case TEACHER, COURSE, CLASS, GRADE -> assignmentRefs;
-            case SEMESTER, ASSIGNMENT -> 0;
+            case TEACHER, COURSE, CLASS, GRADE, SEMESTER -> assignmentRefs;
+            case ASSIGNMENT -> 0;
         };
         long cascadeClasses = type == EntityType.GRADE
                 ? one("select count(*) from admin_class where grade_id = ? and deleted_at is null", id)
@@ -142,7 +142,9 @@ public class LifecycleService {
             targets.addAll(cascade(type, id));
         }
 
+        List<Boolean> wasActive = new ArrayList<>();
         for (EntityRow target : targets) {
+            wasActive.add(isActive(target.type(), target.id()));
             markDeleted(target.type(), target.id(), now);
         }
         for (int index = 0; index < targets.size(); index++) {
@@ -153,6 +155,7 @@ public class LifecycleService {
             deletion.setEntityId(target.id());
             deletion.setEntityLabel(target.label());
             deletion.setPrimaryFlag(index == 0);
+            deletion.setWasActive(wasActive.get(index));
             deletion.setDeletedBy(actor());
             deletion.setDeletedAt(now);
             deletion.setExpiresAt(now.plus(RETENTION));
@@ -214,7 +217,7 @@ public class LifecycleService {
         }
         for (RecentDeletion row : rows) {
             if (!restoreWithHandler(row.getEntityType(), row.getEntityId())) {
-                restoreOne(EntityType.fromStored(row.getEntityType()), row.getEntityId());
+                restoreOne(EntityType.fromStored(row.getEntityType()), row.getEntityId(), row.getWasActive());
             }
             row.setRestoredAt(now);
             row.setRestoredBy(StringUtils.hasText(actor) ? actor : actor());
@@ -354,7 +357,11 @@ public class LifecycleService {
                 }
                 yield rows;
             }
-            case SEMESTER, ASSIGNMENT -> List.of();
+            case SEMESTER ->
+                // Semester cascade removes every undeleted assignment, including disabled
+                // ones (the recycle-bin batch must bring the whole semester back together).
+                assignmentRows(assignments.findBySemesterIdForList(id));
+            case ASSIGNMENT -> List.of();
         };
     }
 
@@ -435,6 +442,17 @@ public class LifecycleService {
         }
     }
 
+    private boolean isActive(EntityType type, Long id) {
+        return switch (type) {
+            case TEACHER -> teachers.findById(id).map(Teacher::isActive).orElse(false);
+            case CLASS -> classes.findById(id).map(AdminClass::isActive).orElse(false);
+            case COURSE -> courses.findById(id).map(Course::isActive).orElse(false);
+            case GRADE -> grades.findById(id).map(Grade::isActive).orElse(false);
+            case SEMESTER -> semesters.findById(id).map(Semester::isActive).orElse(false);
+            case ASSIGNMENT -> assignments.findById(id).map(Assignment::isActive).orElse(false);
+        };
+    }
+
     private void setActive(EntityType type, Long id, boolean active) {
         switch (type) {
             case TEACHER -> teachers.findById(id).ifPresent(row -> row.setActive(active));
@@ -461,31 +479,32 @@ public class LifecycleService {
         return false;
     }
 
-    private void restoreOne(EntityType type, Long id) {
+    private void restoreOne(EntityType type, Long id, Boolean wasActive) {
+        boolean active = wasActive == null || wasActive;
         switch (type) {
             case TEACHER -> teachers.findById(id).ifPresent(row -> {
                 row.setDeletedAt(null);
-                row.setActive(true);
+                row.setActive(active);
             });
             case CLASS -> classes.findById(id).ifPresent(row -> {
                 row.setDeletedAt(null);
-                row.setActive(true);
+                row.setActive(active);
             });
             case COURSE -> courses.findById(id).ifPresent(row -> {
                 row.setDeletedAt(null);
-                row.setActive(true);
+                row.setActive(active);
             });
             case GRADE -> grades.findById(id).ifPresent(row -> {
                 row.setDeletedAt(null);
-                row.setActive(true);
+                row.setActive(active);
             });
             case SEMESTER -> semesters.findById(id).ifPresent(row -> {
                 row.setDeletedAt(null);
-                row.setActive(true);
+                row.setActive(active);
             });
             case ASSIGNMENT -> assignments.findById(id).ifPresent(row -> {
                 row.setDeletedAt(null);
-                row.setActive(true);
+                row.setActive(active);
             });
         }
     }
