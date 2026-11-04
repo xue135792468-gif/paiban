@@ -49,6 +49,16 @@ public class RecentDeletionWriter {
      */
     public String record(
             String entityType, Long entityId, String label, String kindLabel, Boolean wasActive) {
+        return record(entityType, entityId, label, kindLabel, wasActive, null);
+    }
+
+    /**
+     * Same as above, plus the minimal snapshot a restore cannot recompute. The
+     * snapshot is recycle-bin data and is deliberately absent from the audit detail.
+     */
+    public String record(
+            String entityType, Long entityId, String label, String kindLabel,
+            Boolean wasActive, String snapshotJson) {
         Instant now = Instant.now(clock);
         String batchId = UUID.randomUUID().toString();
         RecentDeletion deletion = new RecentDeletion();
@@ -58,6 +68,7 @@ public class RecentDeletionWriter {
         deletion.setEntityLabel(label);
         deletion.setPrimaryFlag(true);
         deletion.setWasActive(wasActive);
+        deletion.setSnapshotJson(snapshotJson);
         deletion.setDeletedBy(actor());
         deletion.setDeletedAt(now);
         deletion.setExpiresAt(now.plus(RETENTION));
@@ -66,6 +77,12 @@ public class RecentDeletionWriter {
                 actor(), "DELETE_" + entityType, entityType,
                 "删除" + kindLabel + "「" + label + "」（批次 " + batchId + "）", 1, 0));
         return batchId;
+    }
+
+    /** Snapshot overload for entities that only need it (rules, AI, DingTalk). */
+    public String record(
+            String entityType, Long entityId, String label, String kindLabel, String snapshotJson) {
+        return record(entityType, entityId, label, kindLabel, true, snapshotJson);
     }
 
     private String actor() {

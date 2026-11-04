@@ -59,6 +59,14 @@ public class RecentDeletion {
     @Column(name = "was_active")
     private Boolean wasActive;
 
+    /**
+     * Minimal state a restore cannot recompute (rule-card entry ids, AI model ids,
+     * the DingTalk key values). Recycle-bin data only: it may hold a secret and must
+     * never be copied into an audit detail.
+     */
+    @Column(name = "snapshot_json", length = 65535)
+    private String snapshotJson;
+
     @Column(name = "restored_at")
     private Instant restoredAt;
 

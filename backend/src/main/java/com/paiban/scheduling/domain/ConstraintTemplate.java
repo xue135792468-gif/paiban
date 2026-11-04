@@ -35,4 +35,8 @@ public class ConstraintTemplate {
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
+
+    /** Soft delete (ticket 04): a deleted template is restored from the recycle bin. */
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
 }

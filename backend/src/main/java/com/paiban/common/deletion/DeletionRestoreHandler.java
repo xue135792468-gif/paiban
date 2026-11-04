@@ -13,4 +13,13 @@ public interface DeletionRestoreHandler {
     boolean supports(String entityType);
 
     void restore(Long entityId);
+
+    /**
+     * Restore with the recycle row, so a handler can read the snapshot it wrote at
+     * deletion time (rule-card entry ids, DingTalk key values). Handlers that only
+     * need the id keep implementing {@link #restore(Long)}.
+     */
+    default void restore(RecentDeletion deletion) {
+        restore(deletion.getEntityId());
+    }
 }
