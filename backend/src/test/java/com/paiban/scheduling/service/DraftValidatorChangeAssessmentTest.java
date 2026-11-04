@@ -122,7 +122,7 @@ class DraftValidatorChangeAssessmentTest {
     }
 
     @Test
-    void repairingOneOfThreeOldConflictsIsAllowedWithoutNewOnes() {
+    void repairingOneOfTheOldConflictsIsAllowedWithoutNewOnes() {
         useLessons(
                 lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1, ROOM_1),
                 lesson(LESSON_2, MATH, TEACHER_2, CLASS_1, P1, ROOM_2),
@@ -132,10 +132,12 @@ class DraftValidatorChangeAssessmentTest {
         ChangeAssessment assessment = validator.assessChanges(DRAFT_ID, List.of(
                 new LessonChange(LESSON_2, P2, ROOM_2, TEACHER_2)));
 
-        assertThat(assessment.before()).hasSize(3);
+        // Room conflicts are retired from the product (ticket 09), so the two old
+        // conflicts are the class clash on P1 and the teacher clash on P1.
+        assertThat(assessment.before()).hasSize(2);
         assertThat(assessment.allowed()).isTrue();
         assertThat(assessment.added()).isEmpty();
-        assertThat(assessment.remaining()).hasSize(2);
+        assertThat(assessment.remaining()).hasSize(1);
     }
 
     @Test
