@@ -3,7 +3,7 @@ import { apiCall, apiLogin, newContext, seedConstraintScenario, uiLogin, type Co
 import { capture } from './screenshots'
 
 /**
- * 票 04 前端切片：五类阈值约束支持「全局默认 + 具体对象例外」。
+ * 票 04 前端切片：阈值约束（票 09/11 后保留四类）支持「全局默认 + 具体对象例外」。
  *
  * 断言只落在阈值面板（全局行、例外行、覆盖标签）、左侧条目计数与接口返回上。
  * 用例串行、共用同一学期，按真实教务「先配默认、再给个别教师收紧、最后撤销」的顺序走。
@@ -181,12 +181,12 @@ test.describe.serial('约束配置：阈值全局默认与对象例外', () => {
     expect(saved.entries).toHaveLength(0)
   })
 
-  test('五类阈值各有自己的对象选择器（人工复核用，不作断言）', async ({ page }) => {
+  test('四类阈值各有自己的对象选择器（人工复核用，不作断言）', async ({ page }) => {
+    // 票 09/11 退役了「晚自习最多 N 节」，阈值只剩四类。
     const types: Array<[string, string]> = [
       ['TEACHER_MAX_PER_DAY', '教师一天最多 N 节'],
       ['CLASS_MAX_PER_DAY', '班级一天最多 N 节'],
       ['COURSE_MAX_PER_DAY', '课程一天最多 N 节'],
-      ['EVENING_MAX', '晚自习最多 N 节'],
       ['TEACHER_MAX_CONSECUTIVE', '教师连续上课上限'],
     ]
     await uiLogin(page, 'admin', 'admin123')

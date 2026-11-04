@@ -137,7 +137,10 @@ test('钉钉切换到飞书并保留数据', async ({ page }) => {
   })
   await page.goto('/login')
   await page.waitForURL((url) => !url.pathname.startsWith('/login'))
-  await expect(page.getByText('张三').first()).toBeVisible()
+  // 票 01 后登录落在总览，不再有「教师列表」；教师账号的身份落在顶栏账号区。
+  // （教师角色没有 foundation:manage，/data/teachers 会跳 403，不能拿来当断言。）
+  expect(new URL(page.url()).pathname).toBe('/')
+  await expect(page.locator('.user-name')).toHaveText('张三')
 
   // 切换前创建的教师仍然存在（未被同步删除或重建）。
   const teachers = await apiCall(api, token, 'get', '/teachers')

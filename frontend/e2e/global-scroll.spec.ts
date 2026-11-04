@@ -197,7 +197,7 @@ test.describe('矮视口下的导航滚动', () => {
 
     await rulesItem.click()
     await page.waitForURL(/\/rules$/)
-    await expect(page.getByRole('heading', { name: '约束配置' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '排课规则' })).toBeVisible()
 
     const afterNav = await readScroll(page)
     expect(afterNav.mainTop).toBe(0)

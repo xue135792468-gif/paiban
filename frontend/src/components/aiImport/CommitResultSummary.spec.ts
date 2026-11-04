@@ -43,7 +43,7 @@ describe('CommitResultSummary', () => {
 
     await wrapper.findAll('button').find((button) => button.text() === '查看草稿')!.trigger('click')
 
-    expect(push).toHaveBeenCalledWith('/admin/drafts/99')
+    expect(push).toHaveBeenCalledWith('/workbench/drafts/99')
   })
 
   it('失败类别的错误逐条展示', async () => {

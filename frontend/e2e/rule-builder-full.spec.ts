@@ -83,7 +83,8 @@ test.describe('排课规则：完整积木交互', () => {
   async function confirmDelete(page: Page) {
     const dialog = page.locator('.el-message-box')
     await expect(dialog).toBeVisible()
-    await expect(dialog).toContainText('删除后不可恢复')
+    // 票 04：规则卡删除进「最近删除」，7 天内可恢复。
+    await expect(dialog).toContainText('删除后可在「最近删除」中恢复（7 天内）')
     await dialog.locator('.el-message-box__btns .el-button--primary').click()
     await expect(dialog).toBeHidden()
   }
@@ -237,10 +238,18 @@ test.describe('排课规则：完整积木交互', () => {
     const copies = page
       .getByTestId('rule-card')
       .filter({ hasText: `${teacherName} 的 课 在 周五下午 不排` })
+    // 票 04：删卡直接走服务端（进「最近删除」），保存按钮因此不再变脏。
+    const deleted = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'DELETE' &&
+        response.url().includes('/api/rules/') &&
+        response.status() === 200,
+    )
     await copies.last().getByTestId('rule-delete').click()
     await confirmDelete(page)
+    await deleted
     await expect(page.getByTestId('rule-card')).toHaveCount(2)
-    await saveRules(page)
+    await expect(page.getByTestId('rule-save')).toBeDisabled()
 
     saved = await state()
     teacherEntries = saved.configs.find(

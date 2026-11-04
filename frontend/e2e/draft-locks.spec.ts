@@ -296,7 +296,9 @@ test('含锁定课节的草稿删除要求确认，确认后锁定随草稿一�
   const box = page.locator('.el-message-box:visible')
   await expect(box).toContainText('含 1 节锁定课节')
   await expect(box).toContainText('一并移除')
-  await expect(box).toContainText('无法恢复')
+  // 票 04：草稿是软删除，删除后可在「最近删除」恢复 7 天（不再是「不可恢复」）。
+  await expect(box).toContainText('最近删除')
+  await expect(box).toContainText('7 天')
 
   await box.getByRole('button', { name: '取消' }).click()
   await expect(page.locator('.el-message-box:visible')).toHaveCount(0)
