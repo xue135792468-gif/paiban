@@ -4,6 +4,7 @@ import ElementPlus from 'element-plus'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import SchedulingView from './SchedulingView.vue'
+import GradeScopePicker from '@/components/scheduling/GradeScopePicker.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const httpMock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() }))
@@ -72,6 +73,98 @@ describe('排课页的导入课表入口', () => {
     const { wrapper } = await mountScheduling(['scheduling:run'])
 
     expect(wrapper.findAll('button').some((candidate) => candidate.text() === '导入课表')).toBe(false)
+  })
+})
+
+describe('按年级排课', () => {
+  const GRADES = [
+    { id: 1, name: '高一' },
+    { id: 2, name: '高二' },
+    { id: 3, name: '高三' },
+  ]
+  const completedJob = {
+    id: 7,
+    semesterId: 1,
+    status: 'COMPLETED',
+    score: '0hard/0soft',
+    progress: 100,
+    elapsedMs: 1000,
+    estimatedRemainingMs: 0,
+    errorMessage: null,
+    draftId: null,
+    draftName: '方案 A',
+    warmStartSource: 'SOURCE_DRAFT',
+    solveSeconds: 60,
+    createdAt: '2026-01-01T00:00:00Z',
+    gradeIds: [1],
+    diagnostics: [],
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    httpMock.post.mockResolvedValue({ data: completedJob })
+  })
+
+  it('默认全选年级，并把 gradeIds 一起提交', async () => {
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/semesters') return Promise.resolve({ data: [SEMESTER] })
+      if (url === '/semesters/current') return Promise.resolve({ status: 200, data: SEMESTER })
+      if (url === '/grades') return Promise.resolve({ data: GRADES })
+      return Promise.resolve({ data: [] })
+    })
+
+    const { wrapper } = await mountScheduling()
+
+    expect(wrapper.text()).toContain('本次排全部 3 个年级')
+    await button(wrapper, '开始排课').trigger('click')
+    await flushPromises()
+
+    expect(httpMock.post).toHaveBeenCalledWith(
+      '/scheduling-jobs',
+      expect.objectContaining({ gradeIds: [1, 2, 3], maxSeconds: 60 }),
+      expect.anything(),
+    )
+    wrapper.unmount()
+  })
+
+  it('诊断按钮用选中年级与诊断年级的并集发起新任务', async () => {
+    const failedScopeJob = {
+      ...completedJob,
+      resultPublishable: false,
+      diagnostics: [
+        {
+          teacherId: 9,
+          teacherName: '张老师',
+          hardCount: 2,
+          messages: ['张老师 在 周一第1节 不排课'],
+          gradeIds: [1, 3],
+          classNames: ['高一1班', '高三1班'],
+        },
+      ],
+    }
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/semesters') return Promise.resolve({ data: [SEMESTER] })
+      if (url === '/semesters/current') return Promise.resolve({ status: 200, data: SEMESTER })
+      if (url === '/grades') return Promise.resolve({ data: GRADES })
+      if (url === '/scheduling-jobs') return Promise.resolve({ data: [failedScopeJob] })
+      return Promise.resolve({ data: [] })
+    })
+
+    const { wrapper } = await mountScheduling()
+    expect(wrapper.text()).toContain('张老师')
+
+    // Narrow the scope first so the union (selected [1] ∪ diagnostics [1,3]) is visible.
+    wrapper.findComponent(GradeScopePicker).vm.$emit('update:modelValue', [1])
+    await flushPromises()
+    await button(wrapper, '连带重排这些年级').trigger('click')
+    await flushPromises()
+
+    expect(httpMock.post).toHaveBeenCalledWith(
+      '/scheduling-jobs',
+      expect.objectContaining({ gradeIds: [1, 3], maxSeconds: 60 }),
+      expect.anything(),
+    )
+    wrapper.unmount()
   })
 })
 

@@ -18,6 +18,7 @@ import com.paiban.scheduling.domain.TimetableDraftRepository;
 import com.paiban.scheduling.solver.ConstraintSettings;
 import com.paiban.scheduling.web.SchedulingDtos.LessonOverride;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -345,6 +346,116 @@ public class DraftValidator {
             }
         }
         return added;
+    }
+
+    /**
+     * Teacher-centred hard-conflict diagnostics for a finished draft: which teacher blocks
+     * publishing, how many hard facts name them, the human-readable reasons, and the
+     * grades/classes they teach in this draft. Only teacher-owned rule codes are counted
+     * (class/room facts are not attributed to a teacher), and the list is capped at five
+     * so the job card stays readable.
+     */
+    public record TeacherDiagnostic(Long teacherId, String teacherName, int hardCount,
+                                    List<String> messages, List<Long> gradeIds,
+                                    List<String> classNames) {}
+
+    @Transactional(readOnly = true)
+    public List<TeacherDiagnostic> diagnose(Long draftId) {
+        Snapshot snapshot = snapshot(draftId);
+        List<LessonView> views = viewsOf(snapshot);
+        List<ConstraintViolation> violations =
+                ConstraintChecker.checkHardFast(snapshot.context(), views);
+        if (violations.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, Long> gradeByClass = new HashMap<>();
+        adminClasses.findBySemesterIdOrderByGradeIdAscNameAsc(snapshot.draft.getSemesterId())
+                .forEach(adminClass -> gradeByClass.put(adminClass.getId(), adminClass.getGradeId()));
+
+        Map<Long, Long> teacherOfLesson = new HashMap<>();
+        Map<Long, Set<Long>> gradesByTeacher = new LinkedHashMap<>();
+        Map<Long, Set<String>> classesByTeacher = new LinkedHashMap<>();
+        for (L lesson : snapshot.lessons) {
+            if (lesson.teacherId == null) {
+                continue;
+            }
+            teacherOfLesson.put(lesson.id, lesson.teacherId);
+            Long gradeId = gradeByClass.get(lesson.classId);
+            if (gradeId != null) {
+                gradesByTeacher.computeIfAbsent(lesson.teacherId, key -> new LinkedHashSet<>())
+                        .add(gradeId);
+            }
+            ConstraintContext.ClassView adminClass = snapshot.context.classes().get(lesson.classId);
+            if (adminClass != null) {
+                classesByTeacher.computeIfAbsent(lesson.teacherId, key -> new LinkedHashSet<>())
+                        .add(adminClass.name());
+            }
+        }
+
+        Map<Long, List<ConstraintViolation>> byTeacher = new LinkedHashMap<>();
+        for (ConstraintViolation violation : violations) {
+            Long teacherId = teacherOfViolation(violation, teacherOfLesson);
+            if (teacherId != null) {
+                byTeacher.computeIfAbsent(teacherId, key -> new ArrayList<>()).add(violation);
+            }
+        }
+        return byTeacher.entrySet().stream()
+                .map(entry -> {
+                    Long teacherId = entry.getKey();
+                    List<ConstraintViolation> rows = entry.getValue();
+                    ConstraintContext.TeacherView teacher =
+                            snapshot.context.teachers().get(teacherId);
+                    return new TeacherDiagnostic(
+                            teacherId,
+                            teacher == null ? null : teacher.name(),
+                            rows.size(),
+                            rows.stream().map(ConstraintViolation::message).distinct().toList(),
+                            gradesByTeacher.getOrDefault(teacherId, Set.of()).stream()
+                                    .sorted().toList(),
+                            classesByTeacher.getOrDefault(teacherId, Set.of()).stream()
+                                    .sorted().toList());
+                })
+                .sorted(Comparator.comparingInt(TeacherDiagnostic::hardCount).reversed()
+                        .thenComparing(diagnostic -> diagnostic.teacherName() == null
+                                ? "" : diagnostic.teacherName()))
+                .limit(5)
+                .toList();
+    }
+
+    /**
+     * Teacher attribution without widening {@link ConstraintViolation}: lesson-scoped
+     * facts go through the draft row, while the two aggregate teacher thresholds encode
+     * the teacher id in their stable key ({@code TYPE|teacherId-day}).
+     */
+    private static Long teacherOfViolation(
+            ConstraintViolation violation, Map<Long, Long> teacherOfLesson) {
+        if (violation.lessonId() != null) {
+            return teacherOfLesson.get(violation.lessonId());
+        }
+        if (!teacherRelated(violation.code())) {
+            return null;
+        }
+        String key = violation.key();
+        if (key == null) {
+            return null;
+        }
+        String[] parts = key.split("\\|", 2);
+        if (parts.length < 2) {
+            return null;
+        }
+        String scope = parts[1];
+        int dash = scope.indexOf('-');
+        String raw = dash < 0 ? scope : scope.substring(0, dash);
+        try {
+            long teacherId = Long.parseLong(raw);
+            return teacherOfLesson.containsValue(teacherId) ? teacherId : null;
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private static boolean teacherRelated(String code) {
+        return code != null && code.startsWith("TEACHER_");
     }
 
     private static String keyOf(Conflict conflict) {

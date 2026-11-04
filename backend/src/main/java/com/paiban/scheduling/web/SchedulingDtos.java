@@ -18,18 +18,28 @@ public final class SchedulingDtos {
      * {@code sourceDraftId} is optional and appended last so an old client that omits it
      * keeps the legacy default warm-start policy exactly. When set, the job optimises from
      * that concrete draft and carries its locks and current arrangement into the new draft.
+     *
+     * <p>{@code gradeIds} is also appended last for the same compatibility reason. Null or
+     * empty means "all grades"; otherwise only the selected grades are movable and every
+     * other grade's already-scheduled lessons become fixed facts in the same problem.
      */
     public record StartJobRequest(String draftName,
                                   @Min(value = 1, message = "求解时长至少 1 秒")
                                   @Max(value = 600, message = "求解时长最多 600 秒") Integer maxSeconds,
-                                  Long sourceDraftId) {}
+                                  Long sourceDraftId,
+                                  List<Long> gradeIds) {}
+
+    public record JobDiagnosticDto(Long teacherId, String teacherName, int hardCount,
+                                   List<String> messages, List<Long> gradeIds,
+                                   List<String> classNames) {}
 
     public record JobDto(Long id, Long semesterId, String status, String score, int progress,
                          long elapsedMs, long estimatedRemainingMs, String errorMessage, Long draftId,
                          String draftName, String warmStartSource, int solveSeconds, Instant createdAt,
                          Instant startedAt, Instant finishedAt,
                          Long sourceDraftId, Long sourceDraftVersion, Integer inheritedLockCount,
-                         Boolean resultPublishable, List<String> resultBlockers) {}
+                         Boolean resultPublishable, List<String> resultBlockers,
+                         List<Long> gradeIds, List<JobDiagnosticDto> diagnostics) {}
 
     public record DraftDto(Long id, Long semesterId, String name, String status, int scoreHard,
                            int scoreSoft, String createdBy, Instant createdAt, long lessonCount,

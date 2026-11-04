@@ -80,6 +80,14 @@ public class SchedulingJob {
     @Column(name = "result_blockers", columnDefinition = "TEXT")
     private String resultBlockers;
 
+    /** JSON array of the grade ids this job was scoped to; null means all grades. */
+    @Column(name = "grade_ids_json", columnDefinition = "TEXT")
+    private String gradeIdsJson;
+
+    /** JSON array of teacher-centred hard-conflict diagnostics; null when none. */
+    @Column(name = "diagnostics_json", columnDefinition = "TEXT")
+    private String diagnosticsJson;
+
     @Column(name = "created_by", length = 64)
     private String createdBy;
 
