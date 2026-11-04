@@ -108,6 +108,11 @@ public final class ImportDtos {
      * The preview is the contract the page renders: totals, a window of rows, the
      * suspicious-teacher channel, the suggested weekly rule and the recipe verdict.
      * {@code fingerprint} is what "保存为配方" stores; the page never computes it.
+     *
+     * <p>{@code teacherWarnings} is informational (the value looks like a course name or
+     * a placeholder); {@code pendingTeachers} is the actionable subset that does not
+     * exist as a teacher yet, so importing would create it. The page must get an explicit
+     * answer for exactly those before it may commit.
      */
     public record ManualPreviewDto(
             int slotCount,
@@ -118,21 +123,33 @@ public final class ImportDtos {
             List<PreviewRowDto> rows,
             boolean truncated,
             List<com.paiban.ai.imports.ImportDtos.TeacherWarningDto> teacherWarnings,
+            List<String> pendingTeachers,
             SuggestedRuleDto suggestedRule,
             RecipeMatchDto recipeMatch,
             List<String> warnings,
             Map<String, Object> fingerprint,
             String layout) {}
 
-    /** Commit options: where the draft goes and how placeholder teachers are resolved. */
+    /**
+     * Commit options: where the draft goes and how placeholder teachers are resolved.
+     * A placeholder teacher is never created silently: the page must either map it
+     * ({@code teacherNameMappings}, teacher id or another name) or say explicitly that
+     * keeping it — and creating it — is what the user wants
+     * ({@code keepPlaceholderTeachers}).
+     */
     public record CommitOptions(
             Long semesterId,
             String draftName,
             Map<String, String> teacherNameMappings,
-            Boolean applySuggestedRule) {
+            Boolean applySuggestedRule,
+            Boolean keepPlaceholderTeachers) {
 
         public boolean appliesSuggestedRule() {
             return Boolean.TRUE.equals(applySuggestedRule);
+        }
+
+        public boolean keepsPlaceholderTeachers() {
+            return Boolean.TRUE.equals(keepPlaceholderTeachers);
         }
     }
 

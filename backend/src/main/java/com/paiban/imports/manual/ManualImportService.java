@@ -44,8 +44,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
 import org.springframework.util.StringUtils;
 
 /**
@@ -56,6 +59,8 @@ import org.springframework.util.StringUtils;
  */
 @Service
 public class ManualImportService {
+
+    private static final Logger log = LoggerFactory.getLogger(ManualImportService.class);
 
     private static final String[] DAY_LABELS =
             {"周一", "周二", "周三", "周四", "周五", "周六", "周日"};
@@ -116,7 +121,7 @@ public class ManualImportService {
         List<Sheet> sheets = SourceSheets.read(file);
         ManualMapping requested = readMapping(mappingJson);
         Sheet sheet = SourceSheets.select(sheets, requested.sheetName());
-        RecipeMatchDto match = recipes.match(sheet, requested);
+        RecipeMatchDto match = matchAndTrackUse(sheet, requested);
         ManualMapping applied = appliedMapping(requested, match, sheet);
         Parsed parsed = parser.parse(sheet, applied, knownClassNames(resolveSemester(semesterId)));
         List<PreviewRowDto> rows = previewRows(parsed.validRows());
@@ -129,6 +134,7 @@ public class ManualImportService {
                 rows,
                 parsed.validRows().size() > PREVIEW_ROWS,
                 teacherWarnings(parsed),
+                pendingTeachers(parsed),
                 suggestedRule(parsed.emptyRows()),
                 match,
                 List.copyOf(parsed.warnings()),
@@ -138,9 +144,14 @@ public class ManualImportService {
     }
 
     /**
-     * Writes the mapped rows as a draft. Empty slots are "no lesson", not an error; a
-     * placeholder teacher is created only after the user had the chance to map it, and
-     * the warning says so. The optional weekly rule is written in the same transaction.
+     * Writes the mapped rows as a draft. The order matters: every decision the user owes
+     * (what to do with each placeholder teacher) is checked, then the whole batch is
+     * validated against the foundation data, and only a clean batch is written. A batch
+     * with row errors therefore leaves no trace — no teacher, no draft, no rule.
+     *
+     * <p>Empty slots are "no lesson", not an error. A placeholder teacher is created only
+     * when the user said so ({@code keepPlaceholderTeachers}) or mapped it somewhere
+     * explicitly; otherwise the commit is refused with the pending names.
      */
     @Transactional
     public CommitResultDto commit(
@@ -160,16 +171,34 @@ public class ManualImportService {
         List<String> warnings = new ArrayList<>(parsed.warnings());
         Map<String, String> teacherMappings = options.teacherNameMappings() == null
                 ? Map.of() : options.teacherNameMappings();
-        List<RowDto> rows = importRows(parsed.validRows(), teacherMappings, warnings);
-        TimetableImportService.Result result =
-                timetableImports.importRows(rows, semesterId, username);
-        Long appliedRecipeId = "NONE".equals(match.kind()) ? null : match.recipeId();
+        Map<String, String> resolvedTeachers = resolveTeacherMappings(teacherMappings);
+        Map<String, String> existingTeachers = existingTeacherNames();
+        requirePlaceholderDecisions(
+                parsed, resolvedTeachers, options.keepsPlaceholderTeachers(), existingTeachers);
+
+        List<RowDto> rows = toRows(parsed.validRows(), resolvedTeachers);
+        Map<String, String> toCreate = missingTeachers(rows, existingTeachers);
         SuggestedRuleDto rule = suggestedRule(parsed.emptyRows());
 
+        List<RowErrorDto> blocking = blockingErrors(
+                timetableImports.inspect(rows, semesterId).errors(), rows, toCreate);
+        if (!blocking.isEmpty()) {
+            return new CommitResultDto(
+                    null, 0, parsed.emptySlotCount(), blocking,
+                    List.copyOf(warnings), null, null);
+        }
+
+        createTeachers(toCreate, parsed, warnings);
+        TimetableImportService.Result result =
+                timetableImports.importRows(rows, semesterId, username);
         if (!result.errors().isEmpty()) {
+            // The batch passed validation above, so this is a concurrent change (a class
+            // or course removed meanwhile). Roll the teachers back with the rest: a partial
+            // import is exactly what this commit promises never to leave behind.
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
             return new CommitResultDto(
                     null, 0, parsed.emptySlotCount(), result.errors(),
-                    List.copyOf(warnings), appliedRecipeId, null);
+                    List.copyOf(warnings), null, null);
         }
         if (StringUtils.hasText(options.draftName())) {
             TimetableDraft draft = drafts.findById(result.draftId())
@@ -181,6 +210,10 @@ public class ManualImportService {
             applyWeeklyRule(semesterId, rule);
         }
         warnings.addAll(result.warnings());
+        Long appliedRecipeId = appliedRecipeId(requested, match);
+        if (appliedRecipeId != null) {
+            recipes.markUsed(appliedRecipeId);
+        }
         return new CommitResultDto(
                 result.draftId(), result.imported(), parsed.emptySlotCount(),
                 List.of(), List.copyOf(warnings), appliedRecipeId,
@@ -221,6 +254,25 @@ public class ManualImportService {
         return SuspiciousTeacherNames.inspect(occurrences, parsed.courseNames());
     }
 
+    /**
+     * The subset of the warnings that importing would turn into a new teacher. A
+     * placeholder that already exists as a teacher is only a warning: nothing is created,
+     * so the page has nothing to ask about.
+     */
+    private List<String> pendingTeachers(Parsed parsed) {
+        return pendingTeachers(parsed, existingTeacherNames());
+    }
+
+    private List<String> pendingTeachers(Parsed parsed, Map<String, String> existing) {
+        List<String> pending = new ArrayList<>();
+        for (TeacherWarningDto warning : teacherWarnings(parsed)) {
+            if (!existing.containsKey(SlotText.normalizeName(warning.value()))) {
+                pending.add(warning.value());
+            }
+        }
+        return List.copyOf(pending);
+    }
+
     /** All empty slots on one weekday+period justify one whole-school weekly no-class rule. */
     private static SuggestedRuleDto suggestedRule(List<NormalizedRow> emptyRows) {
         if (emptyRows.isEmpty()) {
@@ -241,9 +293,11 @@ public class ManualImportService {
 
     // ---------------------------------------------------------------- commit helpers
 
-    private List<RowDto> importRows(
-            List<NormalizedRow> validRows, Map<String, String> teacherMappings,
-            List<String> warnings) {
+    /**
+     * Resolves the user's teacher choices into "source name → target name". A numeric
+     * value is a teacher id and must exist; anything else is the name to use instead.
+     */
+    private Map<String, String> resolveTeacherMappings(Map<String, String> teacherMappings) {
         Map<String, String> resolved = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : teacherMappings.entrySet()) {
             String source = entry.getKey();
@@ -253,27 +307,70 @@ public class ManualImportService {
             }
             resolved.put(source, resolveTeacherName(target.trim()));
         }
-        Set<String> existing = new LinkedHashSet<>();
-        for (Teacher teacher : teachers.findAllByDeletedAtIsNullOrderByNameAsc()) {
-            existing.add(SlotText.normalizeName(teacher.getName()));
+        return resolved;
+    }
+
+    private String resolveTeacherName(String target) {
+        if (NUMERIC.matcher(target).matches()) {
+            long id;
+            try {
+                id = Long.parseLong(target);
+            } catch (NumberFormatException ex) {
+                throw ApiException.badRequest("映射到的教师不存在：#" + target);
+            }
+            return teachers.findById(id)
+                    .orElseThrow(() -> ApiException.badRequest("映射到的教师不存在：#" + target))
+                    .getName();
         }
-        Set<String> created = new LinkedHashSet<>();
+        return target;
+    }
+
+    /**
+     * Every placeholder that would be created needs an explicit answer before anything is
+     * written: either it was mapped ({@code teacherNameMappings}) or the user chose to
+     * keep it ({@code keepPlaceholderTeachers}). A placeholder that already exists as a
+     * teacher creates nothing, so it needs no decision.
+     */
+    private void requirePlaceholderDecisions(
+            Parsed parsed, Map<String, String> resolvedTeachers, boolean keepPlaceholders,
+            Map<String, String> existingTeachers) {
+        if (keepPlaceholders) {
+            return;
+        }
+        List<String> pending = new ArrayList<>();
+        for (String value : pendingTeachers(parsed, existingTeachers)) {
+            if (!resolvedTeachers.containsKey(value)) {
+                pending.add(value);
+            }
+        }
+        if (!pending.isEmpty()) {
+            throw new ApiException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "这些占位教师还没有决定怎么处理：" + String.join("、", pending)
+                            + "。请映射到已有教师，或确认保留并创建。",
+                    Map.of("pendingTeachers", List.copyOf(pending)));
+        }
+    }
+
+    /** Existing live teachers keyed by normalized name, for lookups that ignore spacing. */
+    private Map<String, String> existingTeacherNames() {
+        Map<String, String> existing = new LinkedHashMap<>();
+        for (Teacher teacher : teachers.findAllByDeletedAtIsNullOrderByNameAsc()) {
+            existing.putIfAbsent(SlotText.normalizeName(teacher.getName()), teacher.getName());
+        }
+        return existing;
+    }
+
+    /** Rows in the shape the timetable import reads; nothing is written here. */
+    private List<RowDto> toRows(List<NormalizedRow> validRows, Map<String, String> resolvedTeachers) {
         List<RowDto> rows = new ArrayList<>();
         for (NormalizedRow row : validRows) {
             if (row.empty()) {
                 continue;
             }
-            String teacherName = resolved.getOrDefault(row.teacherName(), row.teacherName());
+            String teacherName = resolvedTeachers.getOrDefault(row.teacherName(), row.teacherName());
             if (!StringUtils.hasText(teacherName)) {
                 teacherName = "";
-            }
-            if (StringUtils.hasText(teacherName)
-                    && !existing.contains(SlotText.normalizeName(teacherName))) {
-                Teacher teacher = new Teacher();
-                teacher.setName(teacherName);
-                teachers.save(teacher);
-                existing.add(SlotText.normalizeName(teacherName));
-                created.add(teacherName);
             }
             Map<String, String> values = new LinkedHashMap<>();
             values.put("className", row.className());
@@ -283,20 +380,66 @@ public class ManualImportService {
             values.put("teacherName", teacherName);
             rows.add(new RowDto(values, Map.of(), List.of()));
         }
-        for (String name : created) {
-            warnings.add("已按占位名创建教师：" + name);
-        }
         return rows;
     }
 
-    private String resolveTeacherName(String target) {
-        if (NUMERIC.matcher(target).matches()) {
-            long id = Long.parseLong(target);
-            return teachers.findById(id)
-                    .orElseThrow(() -> ApiException.badRequest("映射到的教师不存在：#" + target))
-                    .getName();
+    /** Normalized name → display name for every teacher the batch would have to create. */
+    private Map<String, String> missingTeachers(List<RowDto> rows, Map<String, String> existing) {
+        Map<String, String> toCreate = new LinkedHashMap<>();
+        for (RowDto row : rows) {
+            String name = row.values().get("teacherName");
+            if (!StringUtils.hasText(name)) {
+                continue;
+            }
+            String normalized = SlotText.normalizeName(name);
+            if (!existing.containsKey(normalized)) {
+                toCreate.putIfAbsent(normalized, name.trim());
+            }
         }
-        return target;
+        return toCreate;
+    }
+
+    /**
+     * Row errors that still block the import once the teachers we are about to create are
+     * taken into account. A row whose only complaint is a teacher the batch will create is
+     * not a blocker; every other complaint (unknown class, unknown course, missing period)
+     * is, and blocks the whole batch before anything is written.
+     */
+    private List<RowErrorDto> blockingErrors(
+            List<RowErrorDto> errors, List<RowDto> rows, Map<String, String> toCreate) {
+        List<RowErrorDto> blocking = new ArrayList<>();
+        for (RowErrorDto error : errors) {
+            if (!aboutTeacherWeWillCreate(error, rows, toCreate)) {
+                blocking.add(error);
+            }
+        }
+        return blocking;
+    }
+
+    private boolean aboutTeacherWeWillCreate(
+            RowErrorDto error, List<RowDto> rows, Map<String, String> toCreate) {
+        if (!"teacherName".equals(error.field()) || error.row() < 1 || error.row() > rows.size()) {
+            return false;
+        }
+        String name = rows.get(error.row() - 1).values().get("teacherName");
+        return StringUtils.hasText(name) && toCreate.containsKey(SlotText.normalizeName(name));
+    }
+
+    /** Creates the missing teachers and says so; the warning keeps the action auditable. */
+    private void createTeachers(
+            Map<String, String> toCreate, Parsed parsed, List<String> warnings) {
+        Set<String> placeholders = new LinkedHashSet<>();
+        for (TeacherWarningDto warning : teacherWarnings(parsed)) {
+            placeholders.add(SlotText.normalizeName(warning.value()));
+        }
+        for (Map.Entry<String, String> entry : toCreate.entrySet()) {
+            Teacher teacher = new Teacher();
+            teacher.setName(entry.getValue());
+            teachers.save(teacher);
+            warnings.add(placeholders.contains(entry.getKey())
+                    ? "已按占位名创建教师：" + entry.getValue() + "（你选择保留为教师）"
+                    : "已创建教师：" + entry.getValue());
+        }
     }
 
     /**
@@ -404,6 +547,28 @@ public class ManualImportService {
         return ManualSuggestion.suggest(sheet);
     }
 
+    /**
+     * Matches the sheet and records the use only when the recipe's own mapping is what
+     * runs. A request that already carries a mapping is the user's choice, not the
+     * recipe's, so {@code last_used_at} must not claim it.
+     */
+    private RecipeMatchDto matchAndTrackUse(Sheet sheet, ManualMapping requested) {
+        RecipeMatchDto match = recipes.match(sheet, requested);
+        Long appliedRecipeId = appliedRecipeId(requested, match);
+        if (appliedRecipeId != null) {
+            recipes.markUsed(appliedRecipeId);
+        }
+        return match;
+    }
+
+    /** Only an EXACT recipe applied on its own counts as "used"; a manual mapping does not. */
+    private static Long appliedRecipeId(ManualMapping requested, RecipeMatchDto match) {
+        if (requested != null && requested.hasLayout()) {
+            return null;
+        }
+        return "EXACT".equals(match.kind()) ? match.recipeId() : null;
+    }
+
     private ManualMapping readMapping(String json) {
         if (!StringUtils.hasText(json)) {
             return new ManualMapping(
@@ -412,18 +577,22 @@ public class ManualImportService {
         try {
             return objectMapper.readValue(json, ManualMapping.class);
         } catch (Exception ex) {
-            throw ApiException.badRequest("列映射格式不正确：" + ex.getMessage());
+            // Jackson's message names internal classes and character offsets; keep it in
+            // the log and tell the user what to do instead.
+            log.warn("列映射解析失败", ex);
+            throw ApiException.badRequest("列映射格式不正确，请重新选择列");
         }
     }
 
     private CommitOptions readOptions(String json) {
         if (!StringUtils.hasText(json)) {
-            return new CommitOptions(null, null, Map.of(), false);
+            return new CommitOptions(null, null, Map.of(), false, false);
         }
         try {
             return objectMapper.readValue(json, CommitOptions.class);
         } catch (Exception ex) {
-            throw ApiException.badRequest("入库选项格式不正确：" + ex.getMessage());
+            log.warn("入库选项解析失败", ex);
+            throw ApiException.badRequest("入库选项格式不正确，请刷新页面后重试");
         }
     }
 
