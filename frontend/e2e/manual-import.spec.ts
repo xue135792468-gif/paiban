@@ -93,6 +93,14 @@ test.describe('手动选列导入', () => {
   })
 
   test('选列预览入库后保存配方，第二次上传自动套用', async ({ page }) => {
+    // 这条路径必须完全没有 AI：把请求记录下来，最后断言一次都没打到 AI 接口。
+    const aiRequests: string[] = []
+    page.on('request', (request) => {
+      if (request.url().includes('/api/ai/')) {
+        aiRequests.push(request.url())
+      }
+    })
+
     await uiLogin(page, 'admin', 'admin123')
     await page.goto('/data/import/manual')
 
@@ -104,6 +112,8 @@ test.describe('手动选列导入', () => {
     await expect(page.getByTestId('stat-lessons')).toContainText('10')
     await expect(page.getByTestId('stat-empty')).toContainText('0')
     await expect(page.getByTestId('recipe-match')).toContainText('未找到配方')
+    // 种子里的教师都已存在，占位提醒不应拦住入库。
+    await expect(page.getByTestId('placeholder-pending')).toHaveCount(0)
 
     await page.getByTestId('manual-draft-name').fill(`手动导入草稿-${seed.suffix}`)
     await page.getByTestId('manual-commit').click()
@@ -114,10 +124,18 @@ test.describe('手动选列导入', () => {
     await page.getByTestId('save-recipe-button').click()
     await expect(page.getByTestId('recipe-saved')).toContainText(`手动导入配方-${seed.suffix}`)
 
+    // 入库后的草稿能直接打开：点链接进课表工作台，而不是只弹一句成功。
+    await page.getByRole('link', { name: '打开草稿' }).click()
+    await expect(page).toHaveURL(/\/workbench\/drafts\/\d+/)
+    await expect(page.locator('.draft-page')).toBeVisible()
+
     // 第二次上传同格式文件：识别后自动匹配配方并直接出预览，不用再点“预览”。
+    await page.goto('/data/import/manual')
     await page.getByTestId('manual-file').setInputFiles(CSV(seed))
     await expect(page.getByTestId('recipe-match')).toContainText('已套用配方')
     await expect(page.getByTestId('recipe-match')).toContainText(`手动导入配方-${seed.suffix}`)
     await expect(page.getByTestId('stat-lessons')).toContainText('10')
+
+    expect(aiRequests).toEqual([])
   })
 })

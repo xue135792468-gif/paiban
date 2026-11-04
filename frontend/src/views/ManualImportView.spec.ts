@@ -59,6 +59,7 @@ const PREVIEW: ManualPreview = {
   teacherWarnings: [
     { value: '信息技术', reasons: [{ code: 'placeholder', message: '命中占位词' }], lessonCount: 14, rowNumbers: [1] },
   ],
+  pendingTeachers: ['信息技术'],
   suggestedRule: { type: 'CLASS_UNAVAILABLE', dayOfWeek: 5, periodNo: 7, text: '全校周五第 7 节不上课' },
   recipeMatch: { kind: 'NONE', differences: [] },
   warnings: [],
@@ -117,6 +118,13 @@ async function chooseFile(wrapper: VueWrapper) {
   })
   Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
   await input.trigger('change')
+  await flushPromises()
+}
+
+/** 占位教师必须逐个选择：这里点“保留为教师”。 */
+async function keepPlaceholder(wrapper: VueWrapper) {
+  const row = wrapper.get('[data-testid="placeholder-row"]')
+  await row.get('input[value="keep"]').setValue()
   await flushPromises()
 }
 
@@ -183,12 +191,18 @@ describe('手动导入页', () => {
     await wrapper.get('[data-testid="manual-preview-button"]').trigger('click')
     await flushPromises()
 
+    await keepPlaceholder(wrapper)
     await wrapper.get('[data-testid="manual-commit"]').trigger('click')
     await flushPromises()
     expect(importsMock.commitManualImport).toHaveBeenCalledWith(
       expect.any(File),
       expect.objectContaining({ keyColumn: 0, courseColumn: 1, teacherColumn: 2 }),
-      expect.objectContaining({ semesterId: 7, applySuggestedRule: true }),
+      expect.objectContaining({
+        semesterId: 7,
+        applySuggestedRule: true,
+        keepPlaceholderTeachers: true,
+        teacherNameMappings: {},
+      }),
     )
     expect(wrapper.get('[data-testid="manual-commit-result"]').text()).toContain('写入 546 节')
 
@@ -228,6 +242,7 @@ describe('手动导入页', () => {
     await chooseFile(wrapper)
     await wrapper.get('[data-testid="manual-preview-button"]').trigger('click')
     await flushPromises()
+    await keepPlaceholder(wrapper)
     await wrapper.get('[data-testid="manual-commit"]').trigger('click')
     await flushPromises()
 
@@ -268,10 +283,56 @@ describe('手动导入页', () => {
     await chooseFile(wrapper)
     await wrapper.get('[data-testid="manual-preview-button"]').trigger('click')
     await flushPromises()
+    await keepPlaceholder(wrapper)
     await wrapper.get('[data-testid="manual-commit"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.get('[data-testid="manual-commit-errors"]').text()).toContain('八（99）')
     expect(wrapper.find('[data-testid="manual-save-recipe"]').exists()).toBe(false)
+  })
+
+  it('占位教师没选完就禁用入库，并列出待处理的名单', async () => {
+    const { wrapper } = await mountView()
+    await chooseFile(wrapper)
+    await wrapper.get('[data-testid="manual-preview-button"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="placeholder-pending"]').text()).toContain('信息技术')
+    expect(wrapper.get('[data-testid="manual-commit"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="manual-commit"]').trigger('click')
+    await flushPromises()
+    expect(importsMock.commitManualImport).not.toHaveBeenCalled()
+
+    // 选了“保留为教师”之后按钮可用，且名单清空。
+    await keepPlaceholder(wrapper)
+    expect(wrapper.find('[data-testid="placeholder-pending"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="manual-commit"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('配方相近并手工改过映射后仍然可以保存（另存/更新）', async () => {
+    importsMock.matchImportRecipe.mockResolvedValue({ kind: 'NONE', differences: [] })
+    const similar = {
+      kind: 'SIMILAR' as const,
+      recipeId: 5,
+      recipeName: '八年级长表',
+      differences: [{ kind: 'ADDED' as const, column: '教室', detail: '当前文件第 4 列是新增的「教室」' }],
+      mapping: SHEET.suggestedMapping,
+    }
+    importsMock.previewManualImport.mockResolvedValue({ ...PREVIEW, recipeMatch: similar })
+    const { wrapper } = await mountView()
+    await chooseFile(wrapper)
+    await wrapper.get('[data-testid="manual-preview-button"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="recipe-differences"]').text()).toContain('教室')
+    await wrapper.get('[data-testid="open-save-recipe"]').trigger('click')
+    await flushPromises()
+    // 名字默认填配方原名：直接保存就是“更新配方”。
+    expect((wrapper.get('[data-testid="recipe-name"]').element as HTMLInputElement).value)
+      .toBe('八年级长表')
+
+    await wrapper.get('[data-testid="save-recipe-button"]').trigger('click')
+    await flushPromises()
+    expect(importsMock.saveImportRecipe).toHaveBeenCalledTimes(1)
   })
 })

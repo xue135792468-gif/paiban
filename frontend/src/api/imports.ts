@@ -105,6 +105,8 @@ export interface ManualPreview {
   rows: ManualPreviewRow[]
   truncated: boolean
   teacherWarnings: TeacherWarning[]
+  /** 占位名里“系统里还没有同名教师”的那些：入库会新建，必须先选择怎么处理。 */
+  pendingTeachers: string[]
   suggestedRule: SuggestedRule | null
   recipeMatch: RecipeMatch
   warnings: string[]
@@ -115,7 +117,10 @@ export interface ManualPreview {
 export interface ManualCommitOptions {
   semesterId?: number | null
   draftName?: string
+  /** 占位教师 → 教师 id（或另一个名字）；没映射的占位教师必须靠下面的开关明确保留。 */
   teacherNameMappings?: Record<string, string>
+  /** 明确“保留占位名并创建教师”。不置位又没有映射时，服务端 400 并返回待处理名单。 */
+  keepPlaceholderTeachers?: boolean
   applySuggestedRule?: boolean
 }
 

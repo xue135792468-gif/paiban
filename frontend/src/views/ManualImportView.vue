@@ -88,18 +88,20 @@
         v-model:draft-name="draftName"
         v-model:apply-rule="applyRule"
         v-model:teacher-mappings="teacherMappings"
+        v-model:kept-placeholders="keptPlaceholders"
         :preview="preview"
         :semesters="semesters"
         :teachers="teachers"
+        :pending-teachers="pendingTeachers"
         :committing="committing"
         @commit="runCommit"
       />
 
       <div v-if="canSaveRecipe" class="save-recipe" data-testid="manual-save-recipe">
-        <el-button type="primary" plain data-testid="open-save-recipe" @click="recipeDialog = true">
+        <el-button type="primary" plain data-testid="open-save-recipe" @click="openRecipeDialog">
           保存为配方
         </el-button>
-        <span class="hint">保存后，下次上传同格式文件会自动套用。</span>
+        <span class="hint">{{ saveRecipeHint }}</span>
       </div>
       <el-alert
         v-if="savedRecipe"
@@ -219,10 +221,38 @@ const semesterId = ref<number | null>(null)
 const draftName = ref('')
 const applyRule = ref(true)
 const teacherMappings = ref<Record<string, string>>({})
+/** 占位教师里用户明确“保留并创建”的那些。 */
+const keptPlaceholders = ref<string[]>([])
 
-const canSaveRecipe = computed(
-  () => !!commitResult.value?.draftId && !commitResult.value.appliedRecipeId && !savedRecipe.value,
+/**
+ * 占位教师逐个都要有答案：映射到已有教师，或明确保留。没选完就不让入库——
+ * 这正是“不静默创建”的实现位置。后端只把“会被创建”的占位名放进 pendingTeachers。
+ */
+const pendingTeachers = computed(() =>
+  (preview.value?.pendingTeachers ?? []).filter(
+    (name) => !teacherMappings.value[name] && !keptPlaceholders.value.includes(name),
+  ),
 )
+
+/**
+ * 保存配方入口：预览出来就能存（服务端会用样例文件重跑一遍）。已套用配方的旧规则
+ * 会藏起按钮，导致“相似配方手工改完后存不了”，所以这里只在保存成功后收起。
+ */
+const canSaveRecipe = computed(
+  () => !!preview.value && !savedRecipe.value && !(commitResult.value && !commitResult.value.draftId),
+)
+const saveRecipeHint = computed(() => {
+  const match = preview.value?.recipeMatch
+  if (match && match.kind === 'SIMILAR') {
+    return '这次改了列映射？保存同名配方即可更新它，换个名字就是另存。'
+  }
+  return '保存后，下次上传同格式文件会自动套用。'
+})
+
+function openRecipeDialog() {
+  recipeName.value = preview.value?.recipeMatch?.recipeName ?? recipeName.value
+  recipeDialog.value = true
+}
 
 /** Default to the file being imported; the dialog can pick a separate sample. */
 const sampleFileName = computed(
@@ -293,6 +323,7 @@ function resetWorkflow() {
   recipeSaveDifferences.value = []
   recipeDialog.value = false
   teacherMappings.value = {}
+  keptPlaceholders.value = []
   applyRule.value = true
   draftName.value = ''
 }
@@ -305,6 +336,7 @@ async function runPreview() {
   try {
     preview.value = await previewManualImport(file.value, mapping.value, semesterId.value)
     teacherMappings.value = {}
+    keptPlaceholders.value = []
     applyRule.value = !!preview.value.suggestedRule
     if (!draftName.value) {
       draftName.value = `手动导入 ${new Date().toLocaleDateString()}`
@@ -318,6 +350,10 @@ async function runPreview() {
 
 async function runCommit() {
   if (!file.value || !mapping.value) return
+  if (pendingTeachers.value.length) {
+    ElMessage.warning(`还有 ${pendingTeachers.value.length} 个占位教师没有选择`)
+    return
+  }
   committing.value = true
   commitResult.value = null
   try {
@@ -325,6 +361,7 @@ async function runCommit() {
       semesterId: semesterId.value,
       draftName: draftName.value,
       teacherNameMappings: teacherMappings.value,
+      keepPlaceholderTeachers: keptPlaceholders.value.length > 0,
       applySuggestedRule: applyRule.value,
     })
     if (commitResult.value.draftId) {
