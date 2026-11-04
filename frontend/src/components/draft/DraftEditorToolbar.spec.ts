@@ -1,7 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import DraftEditorToolbar from './DraftEditorToolbar.vue'
+
+const { push } = vi.hoisted(() => ({ push: vi.fn() }))
+vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
 
 function mountToolbar(overrides: Record<string, unknown> = {}) {
   return mount(DraftEditorToolbar, {
@@ -47,5 +50,34 @@ describe('DraftEditorToolbar 撤回入口', () => {
     await wrapper.get('[data-testid=withdraw-draft]').trigger('click')
 
     expect(wrapper.emitted('withdraw')).toHaveLength(1)
+  })
+})
+
+describe('DraftEditorToolbar 重新发布后的调代提示', () => {
+  it('发布后仍有撤回遗留的调代时显示提示并可跳转记录页', async () => {
+    const wrapper = mountToolbar({ cancelledSubstitutions: 2 })
+
+    const alert = wrapper.get('[data-testid=reprocess-substitutions]')
+    expect(alert.text()).toContain('有 2 条撤回时取消的调代需要重新处理')
+
+    await wrapper.get('[data-testid=reprocess-substitutions-link]').trigger('click')
+    expect(push).toHaveBeenCalledWith({
+      path: '/substitution/requests',
+      query: { tab: 'records' },
+    })
+  })
+
+  it('没有遗留调代时不显示提示', () => {
+    const wrapper = mountToolbar({ cancelledSubstitutions: 0 })
+
+    expect(wrapper.find('[data-testid=reprocess-substitutions]').exists()).toBe(false)
+  })
+
+  it('关闭提示时向页面抛出 dismiss-reprocess，让状态回到 0', async () => {
+    const wrapper = mountToolbar({ cancelledSubstitutions: 1 })
+
+    await wrapper.get('[data-testid=reprocess-substitutions] .el-alert__close-btn').trigger('click')
+
+    expect(wrapper.emitted('dismiss-reprocess')).toHaveLength(1)
   })
 })
