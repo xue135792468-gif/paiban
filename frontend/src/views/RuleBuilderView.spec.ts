@@ -209,9 +209,45 @@ describe('RuleBuilderView: grouped list, search and impact', () => {
     expect(confirm).toHaveBeenCalledTimes(1)
     expect(String(confirm.mock.calls[0][0])).toContain('最近删除')
     expect(httpMock.delete).toHaveBeenCalledWith('/rules/2', {
-      params: { cardKey: 'pt-teacher' },
+      // The card's own row ids travel too, so a legacy card without a group key works.
+      params: { cardKey: 'pt-teacher', entryIds: '3' },
     })
     expect(wrapper.findAll('[data-testid="rule-card"]')).toHaveLength(3)
+    wrapper.unmount()
+  })
+
+  it('refuses to delete a saved card with its own unsaved edits before asking', async () => {
+    const configs = stateConfigs.map((config, index) => ({ ...config, id: index + 1 }))
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/semesters') return Promise.resolve({ status: 200, data: semesters })
+      if (url === '/semesters/current') return Promise.resolve({ status: 200, data: semesters[0] })
+      if (url === '/teachers/options') return Promise.resolve({ data: teachers })
+      if (url === '/courses') return Promise.resolve({ data: courses })
+      if (url === '/constraint-types') return Promise.resolve({ data: [] })
+      if (url === '/classes') return Promise.resolve({ data: classes })
+      if (url === '/constraints/state') {
+        return Promise.resolve({ data: { version: 4, configs } })
+      }
+      if (url === '/semesters/1/periods') return Promise.resolve({ data: periodRows })
+      return Promise.resolve({ data: [] })
+    })
+    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never)
+    const wrapper = await mountView()
+
+    const teacherCard = wrapper
+      .findAll('[data-testid="rule-card"]')
+      .find((card) => card.text().includes('王老师'))
+    expect(teacherCard).toBeTruthy()
+    // Pause the card: that is an unsaved edit of this card, so delete is refused up
+    // front instead of after the confirmation.
+    await teacherCard!.find('[data-testid="rule-toggle"]').trigger('click')
+    await flushPromises()
+    await teacherCard!.find('[data-testid="rule-delete"]').trigger('click')
+    await flushPromises()
+
+    expect(confirm).not.toHaveBeenCalled()
+    expect(impactMock.fetchRuleImpact).not.toHaveBeenCalled()
+    expect(httpMock.delete).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 

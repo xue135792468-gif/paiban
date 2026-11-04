@@ -189,6 +189,7 @@ import {
   type RuleNames,
 } from '@/rules/compiler'
 import { cardsSignature } from '@/rules/signature'
+import { cardChangedSinceLoad, cardLabelOf } from '@/rules/cardChange'
 import { deleteRuleCardWithConfirmation } from '@/rules/deleteRuleCard'
 import { useRuleImpact } from '@/rules/useRuleImpact'
 
@@ -222,6 +223,8 @@ const cards = ref<RuleCard[]>([])
 const entryBackedTypes = ref<Set<string>>(new Set())
 const catalogueCodes = ref<Set<string>>(new Set())
 const loadedSignature = ref('')
+/** Cards as they were saved, so a delete only refuses this card's own edits. */
+const loadedCards = ref<RuleCard[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const errorMessage = ref<string | null>(null)
@@ -325,6 +328,7 @@ async function loadState() {
     configs.value = []
     periods.value = []
     cards.value = []
+    loadedCards.value = []
     loadedSignature.value = ''
     return
   }
@@ -344,6 +348,9 @@ async function loadState() {
       section: period.section ?? null,
     }))
     cards.value = cardsFromState(configs.value, { allClassIds: classIds.value })
+    // A snapshot copy: the page replaces single entries of `cards.value` in place, so
+    // keeping the same array reference would make every edit look "already saved".
+    loadedCards.value = [...cards.value]
     loadedSignature.value = cardsSignature(cards.value)
     errorMessage.value = null
     conflict.value = null
@@ -420,6 +427,8 @@ async function onRemove(card: RuleCard) {
   await deleteRuleCardWithConfirmation(card, configsOf(card), {
     configs: configs.value,
     dirty: dirty.value,
+    cardChanged: cardChangedSinceLoad(card, loadedCards.value),
+    cardLabel: cardLabelOf(card, ruleNames.value, periods.value),
     previewImpact,
     impactError: impactError.value,
     hideImpact,

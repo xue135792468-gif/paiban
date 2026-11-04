@@ -60,7 +60,7 @@ describe('SettingsView: 清除钉钉配置', () => {
 
     expect(confirm).toHaveBeenCalledTimes(1)
     expect(String(confirm.mock.calls[0][0])).toContain('最近删除')
-    expect(httpMock.delete).toHaveBeenCalledWith('/integration/dingtalk')
+    expect(httpMock.delete).toHaveBeenCalledWith('/integrations/dingtalk/config')
     wrapper.unmount()
   })
 })

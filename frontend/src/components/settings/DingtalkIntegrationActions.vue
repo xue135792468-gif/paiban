@@ -78,7 +78,7 @@ async function clear() {
   }
   clearing.value = true
   try {
-    await http.delete('/integration/dingtalk')
+    await http.delete('/integrations/dingtalk/config')
     ElMessage.success('钉钉配置已清除，可在「最近删除」中恢复')
     emit('cleared')
   } catch (e: unknown) {

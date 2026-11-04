@@ -121,9 +121,6 @@
             <el-option v-for="teacher in teachers" :key="teacher.id" :label="teacher.name" :value="teacher.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="启用">
-          <el-switch v-model="editForm.enabled" />
-        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="editVisible = false">取消</el-button>
@@ -195,7 +192,6 @@ const editForm = reactive({
   id: 0,
   username: '',
   displayName: '',
-  enabled: true,
   roleCodes: [] as string[],
   teacherId: undefined as number | undefined,
 })
@@ -265,7 +261,6 @@ function openEdit(row: UserRow) {
     id: row.id,
     username: row.username,
     displayName: row.displayName,
-    enabled: row.enabled,
     roleCodes: [...row.roles],
     teacherId: row.teacherId ?? undefined,
   })
@@ -275,9 +270,11 @@ function openEdit(row: UserRow) {
 async function submitEdit() {
   saving.value = true
   try {
+    // The edit dialog no longer carries the enabled switch: pausing and resuming an
+    // account go through the row actions, so the server's self/last-admin guards and
+    // the audit log always apply.
     await http.put(`/users/${editForm.id}`, {
       displayName: editForm.displayName,
-      enabled: editForm.enabled,
       roleCodes: editForm.roleCodes,
       teacherId: editForm.teacherId,
     })

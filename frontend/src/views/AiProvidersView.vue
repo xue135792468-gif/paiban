@@ -624,9 +624,12 @@ async function toggleProvider(provider: AiProvider) {
 }
 
 async function removeProvider(provider: AiProvider) {
+  const modelText = provider.models?.length
+    ? `及其名下 ${provider.models.length} 个模型`
+    : '（当前没有模型）'
   if (!await confirmRemoval(
-    `确定删除供应商「${provider.name}」及其全部模型吗？`
-      + '删除后可在「最近删除」中恢复（7 天内），任务分配会暂时停用。',
+    `确定删除供应商「${provider.name}」${modelText}吗？`
+      + '删除后供应商与这批模型可一起在「最近删除」中恢复（7 天内），任务分配会暂时停用。',
     '删除供应商',
   )) {
     return
