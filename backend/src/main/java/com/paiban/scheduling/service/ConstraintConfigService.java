@@ -114,6 +114,21 @@ public class ConstraintConfigService {
     }
 
     /**
+     * What the editor may show. Retired and unknown-type rows are kept in the database
+     * for the migration report and for "old data stays queryable" (ticket 11), but they
+     * are not part of the editable configuration any more.
+     */
+    @Transactional(readOnly = true)
+    public List<ConstraintConfigDto> visibleList(Long semesterId) {
+        Long resolved = resolveSemester(semesterId);
+        Map<String, List<ConstraintEntry>> byType = entriesByType(entries.findBySemesterId(resolved));
+        return configs.findBySemesterId(resolved).stream()
+                .filter(config -> !isPreservedType(config.getType()))
+                .map(config -> toDto(config, byType.get(config.getType())))
+                .toList();
+    }
+
+    /**
      * The effective configuration plus its version. Every writer sends the version it
      * read back as {@code baseVersion}; a save that names an older version is refused
      * instead of overwriting someone else's work.
@@ -121,7 +136,7 @@ public class ConstraintConfigService {
     @Transactional(readOnly = true)
     public ConstraintStateDto state(Long semesterId) {
         Long resolved = resolveSemester(semesterId);
-        return new ConstraintStateDto(versionOf(resolved), list(resolved));
+        return new ConstraintStateDto(versionOf(resolved), visibleList(resolved));
     }
 
     @Transactional

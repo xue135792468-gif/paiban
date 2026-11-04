@@ -49,7 +49,7 @@ public class ConstraintController {
 
     @GetMapping("/constraints")
     public List<ConstraintConfigDto> list(@RequestParam(required = false) Long semesterId) {
-        return service.list(semesterId);
+        return service.visibleList(semesterId);
     }
 
     /**
