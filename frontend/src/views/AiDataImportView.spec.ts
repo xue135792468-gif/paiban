@@ -32,7 +32,7 @@ function makeRouter(): Router {
     routes: [
       { path: '/admin/ai-import', component: { template: '<div />' } },
       { path: '/admin/teachers', component: { template: '<div />' } },
-      { path: '/admin/drafts/:id', component: { template: '<div />' } },
+      { path: '/workbench/drafts/:id', component: { template: '<div />' } },
       { path: '/:pathMatch(.*)*', component: { template: '<div />' } },
     ],
   })
@@ -586,7 +586,7 @@ describe('映射步骤与入库可用性', () => {
     await flushPromises()
 
     expect(httpMock.post).toHaveBeenCalledWith('/ai/import/sessions/9/commit')
-    expect(router.currentRoute.value.path).toBe('/admin/drafts/42')
+    expect(router.currentRoute.value.path).toBe('/workbench/drafts/42')
   })
 
   it('解析期间显示大表可能需要 1–2 分钟的提示', async () => {
