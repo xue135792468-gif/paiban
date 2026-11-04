@@ -19,7 +19,8 @@
         class="cell"
         :data-period-id="periodIdByCell[`${day}-${row.periodNo}`]"
         :class="cellClass(day, row.periodNo)"
-        :title="blockedReason(day, row.periodNo) || undefined"
+        :data-swap-state="swapStateAt(day, row.periodNo)?.status"
+        :title="cellTitle(day, row.periodNo)"
         :aria-disabled="blockedReason(day, row.periodNo) ? 'true' : undefined"
         @dragover.prevent
         @dragenter.prevent
@@ -41,8 +42,14 @@
               warning: warningIds.has(lesson.id),
               locked: lockedIds.has(lesson.id),
               selected: selectionMode && selectedIds.has(lesson.id),
+              'swap-swappable': swapStatusOf(lesson) === 'swappable',
+              'swap-blocked': swapStatusOf(lesson) === 'blocked',
+              'swap-foreign': swapStatusOf(lesson) === 'foreign',
+              'swap-source': swapStatusOf(lesson) === 'source',
+              'swap-checking': swapStatusOf(lesson) === 'checking',
             }"
             :style="{ background: courseColor(courses, lesson.courseId) }"
+            :title="swapReasonOf(lesson)"
             tabindex="0"
             :aria-label="lessonAria(lesson, day, row.periodNo)"
             :aria-pressed="selectionMode ? selectedIds.has(lesson.id) : undefined"
@@ -57,7 +64,7 @@
               {{ lesson.courseName }}
               <span v-if="lockedIds.has(lesson.id)" class="lock-mark">锁</span>
             </div>
-            <div class="lesson-meta">{{ lesson.teacherName }}</div>
+            <div class="lesson-meta">{{ lessonMeta(lesson) }}</div>
           </div>
         </template>
         <div v-else-if="blockedReason(day, row.periodNo)" class="no-class">不上课</div>
@@ -74,7 +81,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { courseColor } from './colors'
-import type { DraftCourse, DraftLesson, DraftPeriod, MoveTargetState } from './types'
+import type {
+  DraftCourse,
+  DraftLesson,
+  DraftPeriod,
+  MoveTargetState,
+  SwapTargetState,
+} from './types'
 
 const props = withDefaults(
   defineProps<{
@@ -100,6 +113,13 @@ const props = withDefaults(
     /** Multi-select mode: clicking a card selects it instead of starting a drag. */
     selectionMode?: boolean
     selectedLessonIds?: number[]
+    /**
+     * Teacher-view swap mode: one state per lesson id. Non-null turns the grid into
+     * green (swappable) / grey (blocked) target mode; drag targets are not used then.
+     */
+    swapTargets?: Record<number, SwapTargetState> | null
+    /** Teacher view shows the administrative class on every card. */
+    showClassName?: boolean
   }>(),
   {
     draggedLessonId: null,
@@ -111,6 +131,8 @@ const props = withDefaults(
     lockedLessonIds: () => [],
     selectionMode: false,
     selectedLessonIds: () => [],
+    swapTargets: null,
+    showClassName: false,
   },
 )
 
@@ -189,7 +211,10 @@ function dayName(day: number) {
 function lessonAria(lesson: DraftLesson, day: number, periodNo: number) {
   const when = `${dayName(day)}第${periodNo}节`
   const locked = lockedIds.value.has(lesson.id) ? '，已锁定' : ''
-  return `${lesson.courseName ?? '课程'}，${lesson.teacherName ?? '教师'}，${when}${locked}`
+  const className = props.showClassName && lesson.className ? `，${lesson.className}` : ''
+  const swap = swapReasonOf(lesson)
+  const swapText = swap ? `，${swap}` : ''
+  return `${lesson.courseName ?? '课程'}，${lesson.teacherName ?? '教师'}${className}，${when}${locked}${swapText}`
 }
 
 const sectionLabels: Record<string, string> = { MORNING: '上午', AFTERNOON: '下午' }
@@ -207,7 +232,60 @@ function blockedReason(day: number, periodNo: number): string {
   return periodId == null ? '' : props.blockedPeriods[periodId] ?? ''
 }
 
+function swapStatusOf(lesson: DraftLesson) {
+  return props.swapTargets?.[lesson.id]?.status
+}
+
+function swapReasonOf(lesson: DraftLesson): string | undefined {
+  return props.swapTargets?.[lesson.id]?.reason
+}
+
+/** A green target wins over anything else in the cell; a concrete block wins over "foreign". */
+const SWAP_PRIORITY = ['swappable', 'checking', 'blocked', 'source', 'foreign'] as const
+
+function swapStateAt(day: number, periodNo: number): SwapTargetState | null {
+  if (props.swapTargets == null) return null
+  const lessons = lessonsAt(day, periodNo)
+  if (lessons.length === 0) return { status: 'blocked', reason: '没有可换的课' }
+  const states: SwapTargetState[] = []
+  lessons.forEach((lesson) => {
+    const state = props.swapTargets?.[lesson.id]
+    if (state) states.push(state)
+  })
+  for (const status of SWAP_PRIORITY) {
+    const found = states.find((state) => state.status === status)
+    if (found) return found
+  }
+  return { status: 'blocked', reason: '没有可换的课' }
+}
+
+function cellTitle(day: number, periodNo: number): string | undefined {
+  if (props.swapTargets != null) {
+    const state = swapStateAt(day, periodNo)
+    if (state) return state.reason
+  }
+  return blockedReason(day, periodNo) || undefined
+}
+
+function lessonMeta(lesson: DraftLesson) {
+  if (!props.showClassName || !lesson.className) return lesson.teacherName ?? ''
+  return `${lesson.className} · ${lesson.teacherName ?? ''}`
+}
+
 function cellClass(day: number, periodNo: number) {
+  if (props.swapTargets != null) {
+    const state = swapStateAt(day, periodNo)
+    switch (state?.status) {
+      case 'swappable':
+        return 'swap-swappable'
+      case 'checking':
+        return 'swap-checking'
+      case 'source':
+        return 'swap-source'
+      default:
+        return 'swap-blocked'
+    }
+  }
   if (blockedReason(day, periodNo)) {
     return props.draggedLessonId == null ? 'blocked-slot' : 'blocked-slot invalid-target'
   }
@@ -332,6 +410,23 @@ function onDrop(day: number, periodNo: number) {
 .cell.checking {
   background: #f7f9ff;
 }
+.cell.swap-swappable {
+  background: #e8f7ee;
+  outline: 2px solid #6fcf97 inset;
+  cursor: pointer;
+}
+.cell.swap-blocked {
+  background: #f4f5f7;
+  outline: 1px dashed #c0c4cc inset;
+  cursor: not-allowed;
+}
+.cell.swap-checking {
+  background: #f7f9ff;
+}
+.cell.swap-source {
+  background: #eef5ff;
+  outline: 2px solid #409eff inset;
+}
 .empty-cell {
   color: #cbd2e0;
   margin: auto;
@@ -370,6 +465,17 @@ function onDrop(day: number, periodNo: number) {
 /* Inset ring keeps the locked dashed border and the conflict outline visible. */
 .lesson.selected {
   box-shadow: inset 0 0 0 3px #409eff;
+}
+/* Swap mode keeps the course colour but rings the semantic state. */
+.lesson.swap-swappable {
+  box-shadow: inset 0 0 0 2px #2e9e5b;
+}
+.lesson.swap-source {
+  box-shadow: inset 0 0 0 2px #409eff;
+}
+.lesson.swap-blocked,
+.lesson.swap-foreign {
+  opacity: 0.72;
 }
 .lesson:focus-visible {
   outline: 2px solid #409eff;
