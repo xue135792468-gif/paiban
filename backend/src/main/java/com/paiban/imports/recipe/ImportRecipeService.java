@@ -23,13 +23,18 @@ import com.paiban.imports.manual.ManualSuggestion;
 import com.paiban.imports.manual.SourceSheets;
 import com.paiban.imports.manual.SourceSheets.Sheet;
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,6 +53,8 @@ import org.springframework.web.multipart.MultipartFile;
  */
 @Service
 public class ImportRecipeService implements DeletionRestoreHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(ImportRecipeService.class);
 
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
 
@@ -109,24 +116,26 @@ public class ImportRecipeService implements DeletionRestoreHandler {
 
     /**
      * Classifies the uploaded sheet against every enabled recipe. The first EXACT wins;
-     * otherwise the first SIMILAR (same sheet and column count) is returned with a
-     * concrete list of what changed. Applying a match records {@code last_used_at}.
+     * otherwise the first SIMILAR (same sheet name, or the same layout with enough
+     * shared headers) is returned with a concrete list of what changed — including a
+     * column that was added or removed, which changes the column count.
+     *
+     * <p>Matching is read-only on purpose: it never records {@code last_used_at}. A
+     * caller that really applies the recipe (the manual preview/commit with no mapping
+     * of its own) calls {@link #markUsed(Long)} itself, so an inspection probe or a
+     * request that brought its own mapping cannot claim the recipe was used.
      */
-    @Transactional
+    @Transactional(readOnly = true)
     public RecipeMatchDto match(MultipartFile file, String mappingJson) {
         List<SourceSheets.Sheet> sheets = SourceSheets.read(file);
         ManualMapping mapping = null;
         if (StringUtils.hasText(mappingJson)) {
-            try {
-                mapping = objectMapper.readValue(mappingJson, ManualMapping.class);
-            } catch (JsonProcessingException ex) {
-                throw ApiException.badRequest("列映射格式不正确：" + ex.getMessage());
-            }
+            mapping = readMapping(mappingJson);
         }
         return match(SourceSheets.select(sheets, mapping == null ? null : mapping.sheetName()), mapping);
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public RecipeMatchDto match(SourceSheets.Sheet sheet, ManualMapping requestedMapping) {
         ManualMapping probe = requestedMapping != null && requestedMapping.hasLayout()
                 ? requestedMapping
@@ -141,21 +150,17 @@ public class ImportRecipeService implements DeletionRestoreHandler {
                 exact = recipe;
                 break;
             }
-            if (similar == null
-                    && saved.sheetName().equals(fingerprint.sheetName())
-                    && saved.columnCount() == fingerprint.columnCount()) {
+            if (similar == null && similarTo(saved, fingerprint)) {
                 similar = recipe;
                 similarDifferences = differences(saved, fingerprint);
             }
         }
         if (exact != null) {
-            markUsed(exact);
             return new RecipeMatchDto(
                     "EXACT", exact.getId(), exact.getName(), List.of(),
                     readMap(exact.getExpectedJson()), mappingOf(exact));
         }
         if (similar != null) {
-            markUsed(similar);
             return new RecipeMatchDto(
                     "SIMILAR", similar.getId(), similar.getName(), similarDifferences,
                     readMap(similar.getExpectedJson()), mappingOf(similar));
@@ -233,12 +238,16 @@ public class ImportRecipeService implements DeletionRestoreHandler {
         recipe.setColumnsJson(write(request.columns()));
         recipe.setOptionsJson(write(request.options() == null ? Map.of() : request.options()));
         recipe.setExpectedJson(write(analysis.test().expected()));
-        recipe.setEnabled(true);
+        // Only a new recipe starts enabled. Saving over an existing (possibly disabled)
+        // recipe re-tests and updates it; it must not silently switch it back on.
+        if (created) {
+            recipe.setEnabled(true);
+        }
         recipe.setVersion(created ? 1 : recipe.getVersion() + 1);
-        ImportRecipe saved = recipes.save(recipe);
+        ImportRecipe saved = saveGuarded(recipe, "配方名称已被占用，请刷新后重试");
         if (pending != null) {
             saved.setSampleJson(write(sampleStorage.store(saved.getId(), pending)));
-            saved = recipes.save(saved);
+            saved = saveGuarded(saved, "配方名称已被占用，请刷新后重试");
         }
         versions.save(snapshot(saved, username));
         return toDto(saved);
@@ -310,10 +319,10 @@ public class ImportRecipeService implements DeletionRestoreHandler {
             return toDto(recipe);
         }
         recipe.setVersion(recipe.getVersion() + 1);
-        ImportRecipe saved = recipes.save(recipe);
+        ImportRecipe saved = saveGuarded(recipe, "配方已被他人修改，请刷新后重试");
         if (pending != null) {
             saved.setSampleJson(write(sampleStorage.store(saved.getId(), pending)));
-            saved = recipes.save(saved);
+            saved = saveGuarded(saved, "配方已被他人修改，请刷新后重试");
         }
         versions.save(snapshot(saved, username));
         return toDto(saved);
@@ -399,15 +408,13 @@ public class ImportRecipeService implements DeletionRestoreHandler {
     /** Records that a preview or commit applied the recipe; 06 sorts by this. */
     @Transactional
     public void markUsed(Long recipeId) {
+        if (recipeId == null) {
+            return;
+        }
         recipes.findById(recipeId).ifPresent(recipe -> {
             recipe.setLastUsedAt(Instant.now());
             recipes.save(recipe);
         });
-    }
-
-    private void markUsed(ImportRecipe recipe) {
-        recipe.setLastUsedAt(Instant.now());
-        recipes.save(recipe);
     }
 
     // ---------------------------------------------------------------- sample test
@@ -522,28 +529,101 @@ public class ImportRecipeService implements DeletionRestoreHandler {
                 && left.layout().equals(right.layout());
     }
 
-    /** What changed without disqualifying the recipe: header texts, delimiter, layout, header row. */
-    private List<RecipeDifferenceDto> differences(ImportFingerprint saved, ImportFingerprint current) {
-        List<RecipeDifferenceDto> differences = new ArrayList<>();
-        int shared = Math.min(saved.headers().size(), current.headers().size());
-        for (int index = 0; index < shared; index++) {
-            String before = saved.headers().get(index);
-            String after = current.headers().get(index);
-            if (!before.equals(after)) {
-                differences.add(new RecipeDifferenceDto(
-                        "RENAMED", String.valueOf(index + 1),
-                        "表头「" + before + "」改为「" + after + "」"));
+    /**
+     * A recipe still applies when the same worksheet is uploaded (a workbook sheet name is
+     * real identity), or when the same layout family brings at least half of the same
+     * headers — a renamed sheet with the same columns is still the user's own recipe, and
+     * so is the same file with one column added or removed.
+     *
+     * <p>CSV is the exception: every CSV is read as one synthetic sheet called {@code CSV},
+     * so the name says nothing on its own and the headers have to agree.
+     */
+    private boolean similarTo(ImportFingerprint saved, ImportFingerprint current) {
+        boolean sameLayout = saved.layout().equals(current.layout());
+        boolean overlapping = sameLayout && headerOverlap(saved.headers(), current.headers()) >= 0.5;
+        boolean sameSheet = StringUtils.hasText(saved.sheetName())
+                && saved.sheetName().equalsIgnoreCase(current.sheetName());
+        if (!sameSheet) {
+            return overlapping;
+        }
+        return !SourceSheets.CSV_SHEET.equalsIgnoreCase(saved.sheetName()) || overlapping;
+    }
+
+    /** Shared header texts over the wider of the two column lists, 0 when either is empty. */
+    private double headerOverlap(List<String> saved, List<String> current) {
+        int left = saved == null ? 0 : saved.size();
+        int right = current == null ? 0 : current.size();
+        int wider = Math.max(left, right);
+        if (wider == 0) {
+            return 0;
+        }
+        Map<String, Integer> pool = new LinkedHashMap<>();
+        for (String header : saved) {
+            pool.merge(header, 1, Integer::sum);
+        }
+        int shared = 0;
+        for (String header : current) {
+            Integer left1 = pool.get(header);
+            if (left1 != null && left1 > 0) {
+                pool.put(header, left1 - 1);
+                shared++;
             }
         }
-        for (int index = shared; index < current.headers().size(); index++) {
-            String added = current.headers().get(index);
-            differences.add(new RecipeDifferenceDto(
-                    "ADDED", added, "当前文件新增列「" + added + "」"));
-        }
-        for (int index = shared; index < saved.headers().size(); index++) {
-            String removed = saved.headers().get(index);
-            differences.add(new RecipeDifferenceDto(
-                    "REMOVED", removed, "配方里的列「" + removed + "」在当前文件中不存在"));
+        return (double) shared / wider;
+    }
+
+    /**
+     * What changed without disqualifying the recipe. Headers are compared in column
+     * order (the mapping is index-based, so order is part of the layout): an equal number
+     * of columns makes any differing position a rename; a different number of columns is
+     * reported as the columns the recipe has and the file no longer has (REMOVED) and the
+     * ones the file added (ADDED), each with its position, so an inserted column does not
+     * masquerade as a rename of everything after it.
+     */
+    private List<RecipeDifferenceDto> differences(ImportFingerprint saved, ImportFingerprint current) {
+        List<RecipeDifferenceDto> differences = new ArrayList<>();
+        List<String> before = saved.headers() == null ? List.of() : saved.headers();
+        List<String> after = current.headers() == null ? List.of() : current.headers();
+        if (before.size() == after.size()) {
+            for (int index = 0; index < before.size(); index++) {
+                if (!before.get(index).equals(after.get(index))) {
+                    differences.add(new RecipeDifferenceDto(
+                            "RENAMED", String.valueOf(index + 1),
+                            "第 " + (index + 1) + " 列的表头由「" + before.get(index)
+                                    + "」改为「" + after.get(index) + "」"));
+                }
+            }
+        } else {
+            Map<String, Deque<Integer>> addedPositions = new LinkedHashMap<>();
+            for (int index = 0; index < after.size(); index++) {
+                addedPositions.computeIfAbsent(after.get(index), key -> new ArrayDeque<>())
+                        .addLast(index);
+            }
+            List<Integer> removedAt = new ArrayList<>();
+            for (int index = 0; index < before.size(); index++) {
+                Deque<Integer> seats = addedPositions.get(before.get(index));
+                if (seats == null || seats.isEmpty()) {
+                    removedAt.add(index);
+                } else {
+                    seats.pollFirst();
+                }
+            }
+            for (int index : removedAt) {
+                differences.add(new RecipeDifferenceDto(
+                        "REMOVED", before.get(index),
+                        "配方里的第 " + (index + 1) + " 列「" + before.get(index)
+                                + "」在当前文件中不存在"));
+            }
+            List<Integer> addedAt = new ArrayList<>();
+            for (Deque<Integer> seats : addedPositions.values()) {
+                addedAt.addAll(seats);
+            }
+            addedAt.sort(Integer::compareTo);
+            for (int index : addedAt) {
+                differences.add(new RecipeDifferenceDto(
+                        "ADDED", after.get(index),
+                        "当前文件第 " + (index + 1) + " 列是新增的「" + after.get(index) + "」"));
+            }
         }
         if (!saved.delimiter().equals(current.delimiter())) {
             differences.add(new RecipeDifferenceDto(
@@ -565,6 +645,30 @@ public class ImportRecipeService implements DeletionRestoreHandler {
     }
 
     // ---------------------------------------------------------------- helpers
+
+    /**
+     * The name column is unique, so two saves of the same name can both pass the
+     * "does it exist" pre-check and only collide at insert time. That collision is a
+     * conflict the user can fix by refreshing, never a 500.
+     */
+    private ImportRecipe saveGuarded(ImportRecipe recipe, String message) {
+        try {
+            return recipes.save(recipe);
+        } catch (DataIntegrityViolationException ex) {
+            log.warn("配方保存冲突: {}", recipe.getName(), ex);
+            throw ApiException.conflict(message);
+        }
+    }
+
+    /** Parses a client mapping; the parser's own message stays in the log. */
+    private ManualMapping readMapping(String mappingJson) {
+        try {
+            return objectMapper.readValue(mappingJson, ManualMapping.class);
+        } catch (JsonProcessingException ex) {
+            log.warn("列映射解析失败", ex);
+            throw ApiException.badRequest("列映射格式不正确，请重新选择列");
+        }
+    }
 
     private ImportRecipe requireLive(Long id) {
         ImportRecipe recipe = recipes.findById(id)
@@ -609,7 +713,8 @@ public class ImportRecipeService implements DeletionRestoreHandler {
         try {
             return objectMapper.convertValue(columns, ManualMapping.class);
         } catch (IllegalArgumentException ex) {
-            throw ApiException.badRequest("配方列映射无法解析：" + ex.getMessage());
+            log.warn("配方列映射无法解析", ex);
+            throw ApiException.badRequest("配方里的列映射无法识别，请重新保存配方");
         }
     }
 

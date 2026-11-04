@@ -11,9 +11,13 @@ import org.springframework.util.StringUtils;
 
 /**
  * The stable identity of a spreadsheet layout: sheet name, header row, column count,
- * the header texts (sorted, so one renamed column does not reorder the fingerprint),
- * the composite-key delimiter and the layout family. 06's management page and 07's
- * AI-authored recipes both compare against this same shape.
+ * the header texts in column order, the composite-key delimiter and the layout family.
+ * 06's management page and 07's AI-authored recipes both compare against this same shape.
+ *
+ * <p>The header list keeps the sheet's own column order: the mapping addresses columns by
+ * index, so "same texts, different order" is a different layout, and comparing two
+ * fingerprints position by position is what lets the matcher say “第 3 列由「教师」改成
+ * 「任课教师」” instead of inventing a rename for every column after an insertion.
  */
 public record ImportFingerprint(
         String sheetName,
@@ -45,7 +49,6 @@ public record ImportFingerprint(
         } else {
             headers.addAll(HeaderDetection.positionalLabels(columnCount));
         }
-        headers.sort(String::compareTo);
         String layout = mapping != null && mapping.keyColumn() != null ? LAYOUT_LONG : LAYOUT_GRID;
         return new ImportFingerprint(
                 sheet.name(), headerRow, columnCount, headers,

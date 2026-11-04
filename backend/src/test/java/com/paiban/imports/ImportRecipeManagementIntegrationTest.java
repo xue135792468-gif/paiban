@@ -164,6 +164,54 @@ class ImportRecipeManagementIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void savingOverADisabledRecipeKeepsItDisabled() throws Exception {
+        String admin = adminToken();
+        seededSemester(admin);
+        byte[] csv = sampleCsv();
+        long recipeId = saveRecipe(admin, saveBody("停用配方", mapping(1, 2), expected(3)), csv)
+                .jsonPath().getLong("id");
+
+        updateRecipe(admin, recipeId, Map.of("enabled", false), null)
+                .then().statusCode(200).body("enabled", equalTo(false));
+
+        // 同名再保存 = 就地更新映射；不能顺手把停用的配方重新启用。
+        Response resaved = saveRecipe(admin, saveBody("停用配方", mapping(2, 1), expected(3)), null);
+        resaved.then().statusCode(200)
+                .body("enabled", equalTo(false))
+                .body("version", equalTo(3))
+                .body("columns.courseColumn", equalTo(2));
+    }
+
+    /** 解析失败只回人话，不把 Jackson 的异常文本透给用户。 */
+    @Test
+    void parseErrorsDoNotLeakJacksonMessages() throws Exception {
+        String admin = adminToken();
+        long semesterId = seededSemester(admin);
+
+        Response badMapping = RestAssured.given()
+                .header("Authorization", "Bearer " + admin)
+                .multiPart("file", "课表.csv", sampleCsv(), CSV)
+                .multiPart(new io.restassured.builder.MultiPartSpecBuilder("{not json")
+                        .controlName("mapping").mimeType("text/plain")
+                        .charset(StandardCharsets.UTF_8).build())
+                .multiPart("semesterId", String.valueOf(semesterId))
+                .when().post("/api/imports/manual/preview");
+        badMapping.then().statusCode(400).body("message", containsString("列映射格式不正确"));
+        assertThat(badMapping.jsonPath().getString("message"))
+                .doesNotContain("com.fasterxml").doesNotContain("JsonParse");
+
+        Response badRequest = RestAssured.given()
+                .header("Authorization", "Bearer " + admin)
+                .multiPart(new io.restassured.builder.MultiPartSpecBuilder("{not json")
+                        .controlName("request").mimeType("text/plain")
+                        .charset(StandardCharsets.UTF_8).build())
+                .when().post("/api/import-recipes");
+        badRequest.then().statusCode(400).body("message", containsString("格式不正确"));
+        assertThat(badRequest.jsonPath().getString("message"))
+                .doesNotContain("com.fasterxml").doesNotContain("JsonParse");
+    }
+
+    @Test
     void missingSampleFileIsAConflictNotFiveHundred() throws Exception {
         String admin = adminToken();
         seededSemester(admin);
@@ -248,13 +296,15 @@ class ImportRecipeManagementIntegrationTest extends ApiIntegrationTest {
     }
 
     private Response saveRecipe(String token, Map<String, Object> body, byte[] sample) throws Exception {
-        return RestAssured.given()
+        var request = RestAssured.given()
                 .header("Authorization", "Bearer " + token)
                 .multiPart(new io.restassured.builder.MultiPartSpecBuilder(toJson(body))
                         .controlName("request").mimeType("text/plain")
-                        .charset(StandardCharsets.UTF_8).build())
-                .multiPart("sampleFile", SAMPLE_NAME, sample, CSV)
-                .when().post("/api/import-recipes");
+                        .charset(StandardCharsets.UTF_8).build());
+        if (sample != null) {
+            request.multiPart("sampleFile", SAMPLE_NAME, sample, CSV);
+        }
+        return request.when().post("/api/import-recipes");
     }
 
     private Response updateRecipe(

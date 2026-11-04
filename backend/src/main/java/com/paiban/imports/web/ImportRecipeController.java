@@ -13,6 +13,8 @@ import com.paiban.imports.recipe.ImportRecipeService;
 import java.security.Principal;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -33,6 +35,8 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/api/import-recipes")
 public class ImportRecipeController {
+
+    private static final Logger log = LoggerFactory.getLogger(ImportRecipeController.class);
 
     private final ImportRecipeService recipes;
     private final ObjectMapper objectMapper;
@@ -117,7 +121,9 @@ public class ImportRecipeController {
         try {
             return objectMapper.readValue(json, type);
         } catch (Exception ex) {
-            throw ApiException.badRequest("配方内容格式不正确：" + ex.getMessage());
+            // The parser message names internal classes and offsets; log it, answer in Chinese.
+            log.warn("配方请求体无法解析", ex);
+            throw ApiException.badRequest("配方内容格式不正确，请检查后重试");
         }
     }
 
