@@ -14,6 +14,21 @@ import {
  * 票 14：撤回只撤已发布基线。撤回前提示未来调代数；撤回后草稿可编辑并重新发布，
  * 调代行保留在历史里（entry_id 被置空、未来行变已取消）。
  */
+
+// 本文件会把全校的调代模式写成「审批」这一行设置；跑完复位成服务端默认值
+// （application.yml 里 paiban.substitution.approval-mode 的默认就是 approval），
+// 免得留下一行测试专用的显式设置影响后面的用例。
+test.afterAll(async () => {
+  try {
+    const api = await newContext()
+    const token = await apiLogin(api)
+    await apiCall(api, token, 'put', '/settings', {
+      'substitution.approval-mode': 'approval',
+    })
+  } catch {
+    // 清理失败不该把通过的用例变成失败。
+  }
+})
 test('发布 → 撤回（提示未来调代）→ 编辑 → 重新发布，历史仍在', async ({ page }) => {
   const api = await newContext()
   const seed = await seedSchool(api)
