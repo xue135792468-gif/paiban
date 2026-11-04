@@ -171,6 +171,43 @@ export interface SaveRecipePayload {
   columns: ManualMapping
   options: Record<string, unknown>
   expected: Record<string, number>
+  /** Ticket 07 provenance: set only when the user adopted an AI suggestion. */
+  aiSuggested?: boolean
+  aiRawResponse?: string
+  aiSuggestedMapping?: ManualMapping
+}
+
+/** Column mapping the model proposed; null/absent columns mean "no such column". */
+export interface AiRecipeSuggestion {
+  layout: 'LONG' | 'GRID'
+  sheetName?: string
+  headerRow?: number
+  delimiter?: string
+  compositeColumn?: number | null
+  classColumn?: number | null
+  dayColumn?: number | null
+  periodColumn?: number | null
+  courseColumn?: number | null
+  teacherColumn?: number | null
+  ignoreColumns?: number[]
+  reasoning?: string
+}
+
+/**
+ * `available: false` is a normal answer when no AI provider is configured. A failed
+ * call is `available: true, success: false` with `raw` and `error`, so the page can
+ * keep the manual form untouched.
+ */
+export interface AiRecipeSuggestionResult {
+  available: boolean
+  success: boolean
+  suggestion?: AiRecipeSuggestion
+  previewSummary?: RecipeCounts
+  raw?: string
+  explanation?: string
+  modelName?: string
+  latencyMs?: number
+  error?: string
 }
 
 export interface RecipePatchPayload {
@@ -265,6 +302,56 @@ export async function matchImportRecipe(
   }
   const { data } = await http.post<RecipeMatch>('/import-recipes/match', form)
   return data
+}
+
+/**
+ * Asks the model for a column mapping when no recipe matched. The server re-parses
+ * the proposal with the manual preview pipeline before answering, so a `success`
+ * result is already known to produce rows.
+ */
+export async function suggestImportColumns(
+  file: File,
+  sheetName?: string | null,
+  headerRow?: number | null,
+): Promise<AiRecipeSuggestionResult> {
+  const form = fileForm(file)
+  if (sheetName) {
+    form.append('sheetName', sheetName)
+  }
+  if (headerRow !== null && headerRow !== undefined) {
+    form.append('headerRow', String(headerRow))
+  }
+  const { data } = await http.post<AiRecipeSuggestionResult>(
+    '/imports/manual/ai-suggest',
+    form,
+  )
+  return data
+}
+
+/**
+ * Turns an AI proposal into the same mapping the manual selects hold. Composite
+ * columns keep the 班级|星期|节次 order the server validated; everything else is
+ * copied verbatim so the user can still edit any field before previewing.
+ */
+export function mappingFromSuggestion(suggestion: AiRecipeSuggestion): ManualMapping {
+  const mapping: ManualMapping = {
+    sheetName: suggestion.sheetName,
+    headerRow: suggestion.headerRow ?? -1,
+    ignoreBlankRows: true,
+    keyParts: ['className', 'dayOfWeek', 'periodNo'],
+  }
+  if (suggestion.compositeColumn !== null && suggestion.compositeColumn !== undefined) {
+    mapping.keyColumn = suggestion.compositeColumn
+    mapping.delimiter = suggestion.delimiter || '|'
+  } else {
+    mapping.keyColumn = null
+    mapping.classNameColumn = suggestion.classColumn ?? null
+    mapping.dayOfWeekColumn = suggestion.dayColumn ?? null
+    mapping.periodNoColumn = suggestion.periodColumn ?? null
+  }
+  mapping.courseColumn = suggestion.courseColumn ?? null
+  mapping.teacherColumn = suggestion.teacherColumn ?? null
+  return mapping
 }
 
 export async function listImportRecipes(): Promise<ImportRecipe[]> {

@@ -178,7 +178,12 @@ public final class ImportDtos {
             java.time.Instant createdAt,
             java.time.Instant lastUsedAt) {}
 
-    /** Save/update the current mapping as a recipe; name is unique per installation. */
+    /**
+     * Save/update the current mapping as a recipe; name is unique per installation.
+     * The {@code ai*} fields are the ticket-07 provenance: they are written into the
+     * version snapshot only, so the final user mapping and the raw AI proposal stay
+     * distinguishable without a new audit table.
+     */
     public record SaveRecipeRequest(
             String name,
             String layout,
@@ -186,7 +191,53 @@ public final class ImportDtos {
             Map<String, Object> columns,
             Map<String, Object> options,
             Map<String, Object> expected,
-            Object sample) {}
+            Object sample,
+            Boolean aiSuggested,
+            String aiRawResponse,
+            Map<String, Object> aiSuggestedMapping) {}
+
+    /**
+     * The column mapping one model answer proposes. Column indexes are 0-based and
+     * {@code null} means "no such column"; {@code compositeColumn} packs
+     * 班级/星期/节次 into one cell, otherwise the three separate columns are used.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record AiRecipeSuggestion(
+            String layout,
+            String sheetName,
+            Integer headerRow,
+            String delimiter,
+            Integer compositeColumn,
+            Integer classColumn,
+            Integer dayColumn,
+            Integer periodColumn,
+            Integer courseColumn,
+            Integer teacherColumn,
+            List<Integer> ignoreColumns,
+            String reasoning) {}
+
+    /**
+     * Answer of {@code POST /api/imports/manual/ai-suggest}. {@code available=false}
+     * is a normal 200 with no AI configured; a failed or unparseable call is
+     * {@code available=true, success=false} plus {@code raw}, so the page can fall back
+     * to manual mapping without an error dialog.
+     */
+    public record AiRecipeSuggestionDto(
+            boolean available,
+            boolean success,
+            AiRecipeSuggestion suggestion,
+            RecipeCounts previewSummary,
+            String raw,
+            String explanation,
+            String modelName,
+            long latencyMs,
+            String error) {
+
+        public static AiRecipeSuggestionDto unavailable(String message) {
+            return new AiRecipeSuggestionDto(
+                    false, false, null, null, null, message, null, 0L, null);
+        }
+    }
 
     /** The five numbers a recipe promises; the save/test comparison uses exactly these. */
     public record RecipeCounts(

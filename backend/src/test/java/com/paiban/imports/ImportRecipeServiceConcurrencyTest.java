@@ -66,7 +66,7 @@ class ImportRecipeServiceConcurrencyTest {
         ApiException thrown = catchThrowableOfType(
                 () -> service.save(
                         new SaveRecipeRequest("并发配方", "LONG", Map.of(), columns(), Map.of(),
-                                expected(), null),
+                                expected(), null, null, null, null),
                         new MockMultipartFile("sampleFile", "sample.csv", "text/csv", SAMPLE),
                         "admin"),
                 ApiException.class);

@@ -1,5 +1,5 @@
 import { expect, request, test, type APIRequestContext } from '@playwright/test'
-import { apiCall, apiLogin, uiLogin } from './helpers'
+import { apiCall, apiLogin, clearImportRecipes, uiLogin } from './helpers'
 
 /**
  * 票 05：没有 AI 的手动选列导入。
@@ -70,10 +70,12 @@ async function seedManualImport(api: APIRequestContext): Promise<ManualImportSee
   })
 
   const days = ['星期一', '星期二', '星期三', '星期四', '星期五']
-  const lines = ['班级|星期|节次,课程,教师']
+  // A per-run extra column keeps the fingerprint distinct from the other import
+  // specs in the same Playwright database; the mapper ignores unknown columns.
+  const lines = [`班级|星期|节次,课程,教师,备注-${suffix}`]
   for (const className of [classA, classB]) {
     for (const [index, day] of days.entries()) {
-      lines.push(`${className}|${day}|${index + 1},${index % 2 ? courseB : courseA},${index % 2 ? teacherB : teacherA}`)
+      lines.push(`${className}|${day}|${index + 1},${index % 2 ? courseB : courseA},${index % 2 ? teacherB : teacherA},`)
     }
   }
   return { suffix, semesterId: semester.id, csv: lines.join('\n') }
@@ -85,6 +87,7 @@ test.describe('手动选列导入', () => {
 
   test.beforeAll(async () => {
     api = await request.newContext()
+    await clearImportRecipes(api)
     seed = await seedManualImport(api)
   })
 
@@ -93,11 +96,13 @@ test.describe('手动选列导入', () => {
   })
 
   test('选列预览入库后保存配方，第二次上传自动套用', async ({ page }) => {
-    // 这条路径必须完全没有 AI：把请求记录下来，最后断言一次都没打到 AI 接口。
+    // 这条路径必须完全没有 AI 分析：只记录真正会调用模型/建议的端点；
+    // /api/ai/status 之类的可用性探测不算 AI 调用。
     const aiRequests: string[] = []
     page.on('request', (request) => {
-      if (request.url().includes('/api/ai/')) {
-        aiRequests.push(request.url())
+      const url = request.url()
+      if (url.includes('/ai-suggest') || url.includes('/chat/completions')) {
+        aiRequests.push(url)
       }
     })
 

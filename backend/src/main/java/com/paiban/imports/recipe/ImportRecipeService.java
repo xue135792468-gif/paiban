@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.paiban.common.deletion.DeletionRestoreHandler;
 import com.paiban.common.deletion.RecentDeletionWriter;
 import com.paiban.common.web.ApiException;
@@ -63,6 +64,9 @@ public class ImportRecipeService implements DeletionRestoreHandler {
     private static final String KIND_LABEL = "导入配方";
 
     private static final int MAX_NAME_LENGTH = 120;
+
+    /** Keeps the AI raw answer small enough for a version snapshot. */
+    private static final int MAX_AI_RAW_LENGTH = 20_000;
 
     private static final Pattern DELETED_SUFFIX =
             Pattern.compile("（已删除 [0-9a-fA-F]{8}）$");
@@ -249,7 +253,7 @@ public class ImportRecipeService implements DeletionRestoreHandler {
             saved.setSampleJson(write(sampleStorage.store(saved.getId(), pending)));
             saved = saveGuarded(saved, "配方名称已被占用，请刷新后重试");
         }
-        versions.save(snapshot(saved, username));
+        versions.save(snapshot(saved, username, aiProvenance(request)));
         return toDto(saved);
     }
 
@@ -324,7 +328,7 @@ public class ImportRecipeService implements DeletionRestoreHandler {
             saved.setSampleJson(write(sampleStorage.store(saved.getId(), pending)));
             saved = saveGuarded(saved, "配方已被他人修改，请刷新后重试");
         }
-        versions.save(snapshot(saved, username));
+        versions.save(snapshot(saved, username, Map.of()));
         return toDto(saved);
     }
 
@@ -362,7 +366,7 @@ public class ImportRecipeService implements DeletionRestoreHandler {
         recipe.setSampleJson(write(sample));
         recipe.setVersion(recipe.getVersion() + 1);
         ImportRecipe saved = recipes.save(recipe);
-        versions.save(snapshot(saved, username));
+        versions.save(snapshot(saved, username, Map.of()));
         return toDto(saved);
     }
 
@@ -679,13 +683,45 @@ public class ImportRecipeService implements DeletionRestoreHandler {
         return recipe;
     }
 
-    private ImportRecipeVersion snapshot(ImportRecipe recipe, String username) {
+    private ImportRecipeVersion snapshot(
+            ImportRecipe recipe, String username, Map<String, Object> extra) {
         ImportRecipeVersion version = new ImportRecipeVersion();
         version.setRecipeId(recipe.getId());
         version.setVersion(recipe.getVersion());
-        version.setSnapshotJson(write(toDto(recipe)));
+        ObjectNode snapshot = objectMapper.valueToTree(toDto(recipe));
+        if (extra != null) {
+            for (Map.Entry<String, Object> entry : extra.entrySet()) {
+                if (entry.getValue() != null) {
+                    snapshot.set(entry.getKey(), objectMapper.valueToTree(entry.getValue()));
+                }
+            }
+        }
+        version.setSnapshotJson(write(snapshot));
         version.setCreatedBy(username);
         return version;
+    }
+
+    /**
+     * Ticket 07: a recipe adopted from an AI suggestion keeps both sides of the story
+     * in its first version snapshot — the model's raw answer plus the mapping it
+     * proposed, next to {@code columns}, which is what the user finally confirmed.
+     * Only the snapshot grows; no table gains an audit column.
+     */
+    private Map<String, Object> aiProvenance(SaveRecipeRequest request) {
+        if (request == null || !Boolean.TRUE.equals(request.aiSuggested())) {
+            return Map.of();
+        }
+        Map<String, Object> provenance = new LinkedHashMap<>();
+        provenance.put("aiSuggested", true);
+        String raw = request.aiRawResponse();
+        if (StringUtils.hasText(raw)) {
+            provenance.put("aiRawResponse", raw.length() > MAX_AI_RAW_LENGTH
+                    ? raw.substring(0, MAX_AI_RAW_LENGTH) : raw);
+        }
+        if (request.aiSuggestedMapping() != null && !request.aiSuggestedMapping().isEmpty()) {
+            provenance.put("aiSuggestedMapping", request.aiSuggestedMapping());
+        }
+        return provenance;
     }
 
     private RecipeDto toDto(ImportRecipe recipe) {

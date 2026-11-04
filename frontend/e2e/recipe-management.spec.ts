@@ -1,5 +1,5 @@
 import { expect, request, test, type APIRequestContext } from '@playwright/test'
-import { apiCall, apiLogin, uiLogin } from './helpers'
+import { apiCall, apiLogin, clearImportRecipes, uiLogin } from './helpers'
 
 /**
  * 票 06：配方管理。
@@ -63,11 +63,13 @@ async function seedRecipeScenario(api: APIRequestContext): Promise<RecipeSeed> {
   }
 
   const days = ['星期一', '星期二', '星期三', '星期四', '星期五']
-  const lines = ['班级|星期|节次,课程,教师']
+  // A per-run extra column keeps the fingerprint distinct from the other import
+  // specs in the same Playwright database; the mapper ignores unknown columns.
+  const lines = [`班级|星期|节次,课程,教师,备注-${suffix}`]
   for (const className of [classA, classB]) {
     for (const [index, day] of days.entries()) {
       lines.push(
-        `${className}|${day}|${index + 1},${index % 2 ? courseB : courseA},${index % 2 ? teacherB : teacherA}`,
+        `${className}|${day}|${index + 1},${index % 2 ? courseB : courseA},${index % 2 ? teacherB : teacherA},`,
       )
     }
   }
@@ -81,6 +83,7 @@ test.describe('导入配方管理', () => {
 
   test.beforeAll(async () => {
     api = await request.newContext()
+    await clearImportRecipes(api)
     seed = await seedRecipeScenario(api)
   })
 

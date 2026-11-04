@@ -37,6 +37,16 @@
         </div>
       </template>
       <ManualImportMapper v-if="mapping" v-model="mapping" :sheets="inspect.sheets" />
+
+      <ManualAiSuggestion
+        v-if="showAiSection"
+        :available="aiAvailable"
+        :suggesting="aiSuggesting"
+        :result="aiSuggestion"
+        :headers="currentHeaders"
+        @suggest="runAiSuggest"
+        @adopt="adoptAiSuggestion"
+      />
     </el-card>
 
     <el-card v-if="preview" shadow="never" class="block">
@@ -173,20 +183,25 @@ import { serverDetails, serverMessage } from '@/api/errors'
 import {
   commitManualImport,
   inspectManualImport,
+  mappingFromSuggestion,
   matchImportRecipe,
   previewManualImport,
   saveImportRecipe,
+  suggestImportColumns,
+  type AiRecipeSuggestionResult,
   type ImportRecipe,
   type ManualCommitResult,
   type ManualInspect,
   type ManualMapping,
   type ManualPreview,
   type RecipeCountDifference,
+  type RecipeMatch,
 } from '@/api/imports'
 import ManualImportMapper from '@/components/manualImport/ManualImportMapper.vue'
 import ManualImportPreview from '@/components/manualImport/ManualImportPreview.vue'
 import ManualCommitPanel from '@/components/manualImport/ManualCommitPanel.vue'
 import { activeOnly } from '@/utils/activeOptions'
+import ManualAiSuggestion from '@/components/manualImport/ManualAiSuggestion.vue'
 
 interface SemesterOption {
   id: number
@@ -223,6 +238,11 @@ const applyRule = ref(true)
 const teacherMappings = ref<Record<string, string>>({})
 /** 占位教师里用户明确“保留并创建”的那些。 */
 const keptPlaceholders = ref<string[]>([])
+const recipeMatch = ref<RecipeMatch | null>(null)
+const aiAvailable = ref(false)
+const aiSuggesting = ref(false)
+const aiSuggestion = ref<AiRecipeSuggestionResult | null>(null)
+const aiAdopted = ref(false)
 
 /**
  * 占位教师逐个都要有答案：映射到已有教师，或明确保留。没选完就不让入库——
@@ -254,6 +274,25 @@ function openRecipeDialog() {
   recipeDialog.value = true
 }
 
+const currentHeaders = computed(
+  () => inspect.value?.sheets.find((sheet) => sheet.name === mapping.value?.sheetName)?.headers ?? [],
+)
+
+const noRecipe = computed(() => recipeMatch.value === null || recipeMatch.value.kind === 'NONE')
+const showAiSection = computed(
+  () => !!inspect.value && !!mapping.value && noRecipe.value,
+)
+
+/** Ticket 07 provenance, attached to the recipe snapshot only when AI was adopted. */
+const aiSource = computed(() => {
+  const result = aiSuggestion.value
+  if (!aiAdopted.value || !result?.suggestion) return {}
+  return {
+    aiSuggested: true,
+    aiRawResponse: result.raw,
+    aiSuggestedMapping: mappingFromSuggestion(result.suggestion),
+  }
+})
 /** Default to the file being imported; the dialog can pick a separate sample. */
 const sampleFileName = computed(
   () => recipeSampleFile.value?.name ?? file.value?.name ?? '未选择',
@@ -265,8 +304,20 @@ function onRecipeSampleChange(event: Event) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadSemesters(), loadTeachers()])
+  await Promise.all([loadSemesters(), loadTeachers(), loadAiStatus()])
 })
+
+/** AI is optional: an unconfigured provider only hides the suggestion entry. */
+async function loadAiStatus() {
+  try {
+    const { data } = await http.get<{ tasks?: Record<string, { configured?: boolean }> }>(
+      '/ai/status',
+    )
+    aiAvailable.value = Boolean(data?.tasks?.data_import?.configured)
+  } catch {
+    aiAvailable.value = false
+  }
+}
 
 async function loadSemesters() {
   try {
@@ -300,7 +351,11 @@ async function onFileChange(event: Event) {
     inspect.value = result
     const first = result.sheets[0]
     mapping.value = first ? { ...first.suggestedMapping, sheetName: first.name } : null
-    const match = await matchImportRecipe(selected).catch(() => null)
+    recipeMatch.value = await matchImportRecipe(selected).catch(() => ({
+      kind: 'NONE' as const,
+      differences: [],
+    }))
+    const match = recipeMatch.value
     if (match && match.mapping && match.kind !== 'NONE') {
       mapping.value = { ...match.mapping }
       await runPreview()
@@ -326,10 +381,50 @@ function resetWorkflow() {
   keptPlaceholders.value = []
   applyRule.value = true
   draftName.value = ''
+  recipeMatch.value = null
+  aiSuggestion.value = null
+  aiAdopted.value = false
 }
 
-async function runPreview() {
+/** Asks the model for a mapping; failures warn once and leave the manual form as is. */
+async function runAiSuggest() {
   if (!file.value || !mapping.value) return
+  aiSuggesting.value = true
+  aiSuggestion.value = null
+  aiAdopted.value = false
+  try {
+    const result = await suggestImportColumns(
+      file.value,
+      mapping.value.sheetName,
+      mapping.value.headerRow ?? null,
+    )
+    if (!result.available) {
+      aiAvailable.value = false
+      ElMessage.warning(result.explanation || 'AI 未配置，可手动选列')
+      return
+    }
+    if (!result.success || !result.suggestion) {
+      ElMessage.warning(result.error || 'AI 没能识别这个表格，请手动选列')
+      return
+    }
+    aiSuggestion.value = result
+  } catch (error) {
+    ElMessage.warning(serverMessage(error, 'AI 暂时不可用，请手动选列'))
+  } finally {
+    aiSuggesting.value = false
+  }
+}
+
+/** Fills the existing mapper with the proposal; the user can still edit every field. */
+function adoptAiSuggestion() {
+  const suggestion = aiSuggestion.value?.suggestion
+  if (!suggestion) return
+  mapping.value = mappingFromSuggestion(suggestion)
+  aiAdopted.value = true
+  ElMessage.success('已填入 AI 建议的列映射，可修改后预览')
+}
+
+async function runPreview() {  if (!file.value || !mapping.value) return
   previewing.value = true
   commitResult.value = null
   savedRecipe.value = null
@@ -406,6 +501,7 @@ async function saveRecipe() {
           teacherCount: preview.value.teacherCount,
           courseCount: preview.value.courseCount,
         },
+        ...aiSource.value,
       },
       recipeSampleFile.value ?? file.value,
     )
