@@ -5,9 +5,10 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 
+import com.paiban.scheduling.domain.ConstraintConfig;
+import com.paiban.scheduling.domain.ConstraintConfigRepository;
 import com.paiban.scheduling.domain.ConstraintEntry;
 import com.paiban.scheduling.domain.ConstraintEntryRepository;
-import com.paiban.scheduling.domain.ConstraintConfigRepository;
 import com.paiban.scheduling.domain.ConstraintTemplate;
 import com.paiban.scheduling.domain.ConstraintTemplateRepository;
 import com.paiban.support.ApiIntegrationTest;
@@ -32,6 +33,11 @@ import org.springframework.test.context.ActiveProfiles;
  * <p>Everything here goes through the public template REST surface; entry rows and
  * legacy template rows are seeded directly only where the current writer could not
  * express the state under test (an old-format template, an oversized snapshot).
+ *
+ * <p>Ticket 09/11 shrank the catalogue to 19 visible types while keeping the 7 retired
+ * rows in the database. A template therefore still snapshots every row, but the apply
+ * is checked twice: the row is gone from {@code /api/constraints} and still present in
+ * the repository.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -91,8 +97,13 @@ class ConstraintTemplateCompatibilityTest extends ApiIntegrationTest {
                 .when().post("/api/constraint-templates/" + templateId + "/apply")
                 .then().statusCode(200);
 
+        // The template still snapshots all five rows, but two of them are retired types
+        // (ticket 09/11): they stay in the database, and the editor only sees three.
         List<Map<String, Object>> restored = configs(token, source);
-        assertThat(restored).hasSize(5);
+        assertThat(restored).hasSize(3);
+        assertThat(restored).extracting(row -> row.get("type"))
+                .containsExactlyInAnyOrder(
+                        "TEACHER_UNAVAILABLE", "TEACHER_MAX_PER_DAY", "CLASS_MAX_PER_DAY");
 
         Map<String, Object> unavailable = byType(restored, "TEACHER_UNAVAILABLE");
         assertParams(unavailable, List.of(
@@ -103,12 +114,17 @@ class ConstraintTemplateCompatibilityTest extends ApiIntegrationTest {
         assertThat(unavailable.get("hard")).isEqualTo(true);
         assertThat(unavailable.get("enabled")).isEqualTo(true);
 
-        Map<String, Object> roomType = byType(restored, "COURSE_REQUIRED_ROOM_TYPE");
-        assertParams(roomType, List.of(
-                Map.of("courseId", chinese, "roomType", "LAB"),
-                Map.of("courseId", math, "roomType", "NORMAL")));
-        assertThat(roomType.get("weight")).isEqualTo(70);
-        assertThat(roomType.get("hard")).isEqualTo(false);
+        // Retired rows survive the apply with their values, they are only invisible.
+        ConstraintConfig preservedRoomType = preservedConfig(source, "COURSE_REQUIRED_ROOM_TYPE");
+        assertThat(preservedRoomType.getWeight()).isEqualTo(70);
+        assertThat(preservedRoomType.isHard()).isFalse();
+        assertThat(entryRepository.findBySemesterIdAndTypeOrderByIdAsc(
+                source, "COURSE_REQUIRED_ROOM_TYPE"))
+                .hasSize(2)
+                .anySatisfy(row -> assertThat(row.getParamsJson())
+                        .contains("\"courseId\":" + chinese).contains("LAB"))
+                .anySatisfy(row -> assertThat(row.getParamsJson())
+                        .contains("\"courseId\":" + math).contains("NORMAL"));
 
         Map<String, Object> teacherMax = byType(restored, "TEACHER_MAX_PER_DAY");
         assertParams(teacherMax, List.of(
@@ -122,8 +138,9 @@ class ConstraintTemplateCompatibilityTest extends ApiIntegrationTest {
                 Map.of("classId", klass, "maxPerDay", 5)));
         assertThat(classMax.get("hard")).isEqualTo(true);
 
-        Map<String, Object> roomConflict = byType(restored, "ROOM_CONFLICT");
-        assertThat(roomConflict.get("enabled")).isEqualTo(false);
+        // The switched-off switch is retired too: its row keeps enabled=false in the
+        // database, and no entry rows were invented for it.
+        assertThat(preservedConfig(source, "ROOM_CONFLICT").isEnabled()).isFalse();
         assertThat(entryRows(source, "ROOM_CONFLICT")).isZero();
     }
 
@@ -147,15 +164,24 @@ class ConstraintTemplateCompatibilityTest extends ApiIntegrationTest {
                 .when().post("/api/constraint-templates/" + templateId + "/apply")
                 .then().statusCode(200);
 
+        // Only the two retained types are visible; COURSE_NOT_IN_EVENING is retired.
         List<Map<String, Object>> restored = configs(token, semesterId);
+        assertThat(restored).extracting(row -> row.get("type"))
+                .containsExactlyInAnyOrder("TEACHER_UNAVAILABLE", "TEACHER_MAX_PER_DAY");
         assertParams(byType(restored, "TEACHER_UNAVAILABLE"), List.of(
                 Map.of("teacherId", teacher, "dayOfWeek", 1, "periodNo", 3)));
         assertParams(byType(restored, "TEACHER_MAX_PER_DAY"), List.of(Map.of("maxPerDay", 5)));
-        assertParams(byType(restored, "COURSE_NOT_IN_EVENING"), List.of(
-                Map.of("courseId", course)));
         assertThat(byType(restored, "TEACHER_MAX_PER_DAY").get("weight")).isEqualTo(60);
+        // The retired row the old template named is preserved with its single entry.
+        preservedConfig(semesterId, "COURSE_NOT_IN_EVENING");
+        assertThat(entryRepository.findBySemesterIdAndTypeOrderByIdAsc(
+                semesterId, "COURSE_NOT_IN_EVENING"))
+                .singleElement()
+                .satisfies(row -> assertThat(row.getParamsJson())
+                        .contains("\"courseId\":" + course));
 
-        // Re-saving the applied configuration round-trips the same meaning.
+        // Re-saving the applied configuration round-trips the same meaning, retired
+        // rows included, so a template never loses data just because it is invisible.
         long reSaved = saveTemplate(token, semesterId, "老模板升级-" + TestData.suffix())
                 .then().statusCode(200)
                 .body("entryCount", equalTo(3))
@@ -164,9 +190,12 @@ class ConstraintTemplateCompatibilityTest extends ApiIntegrationTest {
         as(token).queryParam("semesterId", second)
                 .when().post("/api/constraint-templates/" + reSaved + "/apply")
                 .then().statusCode(200);
+        assertThat(configs(token, second)).extracting(row -> row.get("type"))
+                .containsExactlyInAnyOrder("TEACHER_UNAVAILABLE", "TEACHER_MAX_PER_DAY");
         assertParams(byType(configs(token, second), "TEACHER_UNAVAILABLE"), List.of(
                 Map.of("teacherId", teacher, "dayOfWeek", 1, "periodNo", 3)));
         assertThat(entryRows(second, "TEACHER_UNAVAILABLE")).isEqualTo(1);
+        assertThat(entryRows(second, "COURSE_NOT_IN_EVENING")).isEqualTo(1);
     }
 
     @Test
@@ -290,8 +319,16 @@ class ConstraintTemplateCompatibilityTest extends ApiIntegrationTest {
                 Map.of("classId", targetClass, "maxPerDay", 5)));
         assertParams(byType(applied, "TEACHER_UNAVAILABLE"), List.of(
                 Map.of("teacherId", teacher, "dayOfWeek", 1, "periodNo", 1)));
-        assertParams(byType(applied, "COURSE_REQUIRED_ROOM_TYPE"), List.of(
-                Map.of("courseId", course, "roomType", "LAB")));
+        // COURSE_REQUIRED_ROOM_TYPE is retired: the row (and its entry) came across but
+        // is not part of the visible catalogue any more.
+        assertThat(applied).extracting(row -> row.get("type"))
+                .doesNotContain("COURSE_REQUIRED_ROOM_TYPE");
+        preservedConfig(target, "COURSE_REQUIRED_ROOM_TYPE");
+        assertThat(entryRepository.findBySemesterIdAndTypeOrderByIdAsc(
+                target, "COURSE_REQUIRED_ROOM_TYPE"))
+                .singleElement()
+                .satisfies(row -> assertThat(row.getParamsJson())
+                        .contains("\"courseId\":" + course).contains("LAB"));
         assertThat(entryRepository.findBySemesterId(target).stream()
                 .noneMatch(row -> row.getParamsJson().contains(
                         "\"classId\":" + sourceClass + "}")))
@@ -366,8 +403,17 @@ class ConstraintTemplateCompatibilityTest extends ApiIntegrationTest {
         long sourceClass = adminClass(token, source, className);
         long targetClass = adminClass(token, target, className);
 
+        // Seven types retired by ticket 09/11: still writable (old data keeps its
+        // meaning) but no longer offered, so this test seeds them to prove they survive
+        // the round trip instead of being dropped.
+        List<String> retiredTypes = List.of("TEACHER_MEETING_BLOCKED",
+                "COURSE_REQUIRED_ROOM_TYPE", "COURSE_NOT_IN_EVENING", "EVENING_MAX",
+                "ROOM_CONFLICT", "ROOM_CAPACITY_FIT", "HEAD_TEACHER_FIRST_PERIOD");
+        List<String> switches = List.of("TEACHER_CONFLICT", "CLASS_CONFLICT",
+                "CLASS_GAP_MINIMIZED");
+
         List<Map<String, Object>> configs = new ArrayList<>();
-        // 19 entry-backed types, one grouped requirement each with its own soft weight.
+        // One requirement per entry-backed type, each with its own soft weight.
         configs.add(controlledHard("CLASS_UNAVAILABLE",
                 Map.of("classId", sourceClass, "dayOfWeek", 1, "periodNo", 1)));
         configs.add(controlled("TEACHER_UNAVAILABLE", 44,
@@ -401,9 +447,13 @@ class ConstraintTemplateCompatibilityTest extends ApiIntegrationTest {
                 Map.of("classId", sourceClass, "maxPerDay", 2)));
         configs.add(controlled("TEACHER_MAX_CONSECUTIVE", 44,
                 Map.of("teacherId", teacher, "maxConsecutive", 3)));
-        // Six single-switch types: global controls only, no entries.
-        for (String type : List.of("TEACHER_CONFLICT", "CLASS_CONFLICT", "ROOM_CONFLICT",
-                "ROOM_CAPACITY_FIT", "CLASS_GAP_MINIMIZED", "HEAD_TEACHER_FIRST_PERIOD")) {
+        // The three retained single-switch types plus the three retired switches.
+        for (String type : switches) {
+            configs.add(Map.of("type", type, "params", Map.of(), "weight", 100,
+                    "hard", true, "enabled", true));
+        }
+        for (String type : List.of("ROOM_CONFLICT", "ROOM_CAPACITY_FIT",
+                "HEAD_TEACHER_FIRST_PERIOD")) {
             configs.add(Map.of("type", type, "params", Map.of(), "weight", 100,
                     "hard", true, "enabled", true));
         }
@@ -421,14 +471,25 @@ class ConstraintTemplateCompatibilityTest extends ApiIntegrationTest {
                 .when().post("/api/constraint-templates/" + templateId + "/apply")
                 .then().statusCode(200);
 
+        // 26 rows went in, 19 come out: the catalogue the editor reads.
         List<Map<String, Object>> restored = configs(token, target);
-        assertThat(restored).hasSize(26);
+        assertThat(restored).hasSize(19);
+        assertThat(restored).extracting(row -> row.get("type"))
+                .doesNotContainAnyElementsOf(retiredTypes);
+        List<String> expectedControlled = new ArrayList<>();
+        for (Map<String, Object> seeded : configs) {
+            String type = (String) seeded.get("type");
+            if (!retiredTypes.contains(type) && !switches.contains(type)
+                    && !"CLASS_UNAVAILABLE".equals(type)) {
+                expectedControlled.add(type);
+            }
+        }
         List<Map<String, Object>> controlledRows = restored.stream()
                 .filter(row -> ((List<?>) row.get("entries")).size() == 1)
-                .filter(row -> !"TEACHER_CONFLICT".equals(row.get("type")))
                 .filter(row -> !"CLASS_UNAVAILABLE".equals(row.get("type")))
                 .toList();
-        assertThat(controlledRows).hasSize(19);
+        assertThat(controlledRows).extracting(row -> row.get("type"))
+                .containsExactlyInAnyOrderElementsOf(expectedControlled);
         controlledRows.forEach(row -> {
             Map<?, ?> entry = (Map<?, ?>) ((List<?>) row.get("entries")).get(0);
             assertThat(entry.get("groupKey")).as("group key of %s", row.get("type"))
@@ -455,11 +516,21 @@ class ConstraintTemplateCompatibilityTest extends ApiIntegrationTest {
         Map<?, ?> classEntry = (Map<?, ?>) ((List<?>) classMax.get("entries")).get(0);
         assertThat(((Number) ((Map<?, ?>) classEntry.get("params")).get("classId")).longValue())
                 .isEqualTo(targetClass);
-        // Six switches keep being switches: no entries were invented for them.
-        for (String type : List.of("TEACHER_CONFLICT", "CLASS_CONFLICT", "ROOM_CONFLICT",
-                "ROOM_CAPACITY_FIT", "CLASS_GAP_MINIMIZED", "HEAD_TEACHER_FIRST_PERIOD")) {
+        // The three retained switches keep being switches: no entries for them.
+        for (String type : switches) {
             assertThat(byType(restored, type).get("entries")).isEqualTo(List.of());
         }
+
+        // The seven retired rows and their entries came across too: preserved in the
+        // database for the migration report, invisible to the editor.
+        assertThat(configRepository.findBySemesterId(target))
+                .extracting(ConstraintConfig::getType)
+                .containsAll(retiredTypes);
+        assertThat(entryRepository.findBySemesterId(target))
+                .extracting(ConstraintEntry::getType)
+                .containsAll(List.of("TEACHER_MEETING_BLOCKED", "COURSE_REQUIRED_ROOM_TYPE",
+                        "COURSE_NOT_IN_EVENING", "EVENING_MAX"));
+        assertThat(entryRows(target, "ROOM_CONFLICT")).isZero();
     }
 
     @Test
@@ -613,6 +684,19 @@ class ConstraintTemplateCompatibilityTest extends ApiIntegrationTest {
         return entryRepository.findBySemesterId(semesterId).stream()
                 .filter(row -> type.equals(row.getType()))
                 .count();
+    }
+
+    /**
+     * The stored row of a type the catalogue no longer offers. Ticket 11 keeps those
+     * rows (the migration report and old data still need them), they are simply not
+     * part of {@code /api/constraints} any more — so the only way to see them is here.
+     */
+    private ConstraintConfig preservedConfig(long semesterId, String type) {
+        List<ConstraintConfig> rows = configRepository.findBySemesterId(semesterId).stream()
+                .filter(row -> type.equals(row.getType()))
+                .toList();
+        assertThat(rows).as("preserved row %s", type).hasSize(1);
+        return rows.get(0);
     }
 
     private long seedTemplate(String name, String configsJson) {
