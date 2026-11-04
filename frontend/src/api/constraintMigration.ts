@@ -36,6 +36,10 @@ export interface MigrationEvaluation {
   enabledConfigCount: number
   entryCount: number
   enabledEntryCount: number
+  /** Rows the migration promises not to change (active types only). */
+  retainedRows: number
+  /** Digest of those rows; equal before/after proves nothing retained moved. */
+  retainedDigest: string | null
 }
 
 export interface MigrationReport {
@@ -93,18 +97,5 @@ export function actionLabel(action: string): string {
       return '待确认'
     default:
       return action
-  }
-}
-
-export function actionTagType(action: string): 'success' | 'info' | 'danger' | 'warning' {
-  switch (action) {
-    case 'RETAIN':
-      return 'success'
-    case 'DISABLE':
-      return 'info'
-    case 'REVIEW':
-      return 'warning'
-    default:
-      return 'info'
   }
 }

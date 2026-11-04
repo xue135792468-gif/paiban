@@ -79,6 +79,8 @@ function evaluation(overrides: Partial<MigrationEvaluation> = {}): MigrationEval
     enabledConfigCount: 26,
     entryCount: 1,
     enabledEntryCount: 1,
+    retainedRows: 20,
+    retainedDigest: 'fedcba9876543210',
     ...overrides,
   }
 }
@@ -151,11 +153,40 @@ describe('ConstraintMigrationCard', () => {
     expect(wrapper.text()).toContain('硬冲突')
     expect(wrapper.text()).toContain('启用配置')
     expect(wrapper.text()).toContain('19/26')
+    // The retained side is compared by digest, not only by the fingerprint that
+    // ignores paused rows.
+    expect(wrapper.text()).toContain('保留摘要')
+    expect(wrapper.text()).toContain('fedcba98')
+    // The page must learn about the migration; otherwise its version stays stale.
+    expect(wrapper.emitted('migrated')).toHaveLength(1)
 
     const rows = wrapper.findAll('[data-testid="constraint-migration-report-rows"] tbody tr')
     expect(rows).toHaveLength(3)
     expect(rows[0].text()).toContain('待确认')
     expect(rows[0].text()).toContain('参数「teacherId」')
+  })
+
+  it('does not claim a fixed reason for review rows', async () => {
+    const groupedReview = {
+      ...reviewRow,
+      note: '条目缺少分组标识（groupKey），无法确认它属于哪条多时段规则，需人工确认',
+    }
+    api.fetchMigrationPreview.mockResolvedValue(
+      preview({ review: 1, rows: [row(), disabledRow, groupedReview] }),
+    )
+    api.fetchMigrationReport.mockResolvedValue(
+      report({ rows: [row(), disabledRow, groupedReview] }),
+    )
+
+    const wrapper = mountCard()
+    await flushPromises()
+
+    const source = wrapper.get('[data-testid="constraint-migration-source"]').text()
+    expect(source).toContain('1 条无法自动映射')
+    // The reason comes from the backend note, never from a hardcoded guess.
+    expect(source).not.toContain('教师/课程/班级已不存在')
+    expect(wrapper.get('[data-testid="constraint-migration-report-rows"]').text())
+      .toContain('缺少分组标识')
   })
 
   it('renders the stored report and marks a missing draft in the comparison', async () => {
