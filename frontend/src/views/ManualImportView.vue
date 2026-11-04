@@ -124,53 +124,16 @@
         已保存配方「{{ savedRecipe.name }}」，样例测试通过，下次上传同格式文件会自动套用。
       </el-alert>
 
-      <el-dialog v-model="recipeDialog" title="保存为配方" width="480px">
-        <el-input
-          v-model="recipeName"
-          data-testid="recipe-name"
-          placeholder="例如：八年级长表"
-          maxlength="60"
-        />
-        <div class="sample-pick">
-          <span class="sample-label">样例文件</span>
-          <input
-            type="file"
-            accept=".xlsx,.csv"
-            data-testid="recipe-sample-file"
-            @change="onRecipeSampleChange"
-          >
-          <span class="file-name">{{ sampleFileName }}</span>
-        </div>
-        <p class="hint">
-          保存时服务端会用样例文件重跑一遍；数字与下方预览不一致时不会保存。
-        </p>
-        <el-alert
-          v-if="recipeSaveDifferences.length"
-          type="error"
-          :closable="false"
-          show-icon
-          class="result"
-          data-testid="recipe-save-differences"
-        >
-          <p>样例测试未通过，配方没有保存：</p>
-          <ul>
-            <li v-for="difference in recipeSaveDifferences" :key="difference.field">
-              {{ difference.label }}：预期 {{ difference.expected }}，实际 {{ difference.actual }}
-            </li>
-          </ul>
-        </el-alert>
-        <template #footer>
-          <el-button data-testid="cancel-save-recipe" @click="recipeDialog = false">取消</el-button>
-          <el-button
-            type="primary"
-            :loading="savingRecipe"
-            data-testid="save-recipe-button"
-            @click="saveRecipe"
-          >
-            保存
-          </el-button>
-        </template>
-      </el-dialog>
+      <RecipeSaveDialog
+        v-model="recipeDialog"
+        v-model:name="recipeName"
+        v-model:sample-file="recipeSampleFile"
+        :preview="preview"
+        :mapping="mapping"
+        :ai-source="aiSource"
+        :fallback-file="file"
+        @saved="onRecipeSaved"
+      />
     </el-card>
   </div>
 </template>
@@ -179,14 +142,13 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { http } from '@/api/http'
-import { serverDetails, serverMessage } from '@/api/errors'
+import { serverMessage } from '@/api/errors'
 import {
   commitManualImport,
   inspectManualImport,
   mappingFromSuggestion,
   matchImportRecipe,
   previewManualImport,
-  saveImportRecipe,
   suggestImportColumns,
   type AiRecipeSuggestionResult,
   type ImportRecipe,
@@ -194,12 +156,12 @@ import {
   type ManualInspect,
   type ManualMapping,
   type ManualPreview,
-  type RecipeCountDifference,
   type RecipeMatch,
 } from '@/api/imports'
 import ManualImportMapper from '@/components/manualImport/ManualImportMapper.vue'
 import ManualImportPreview from '@/components/manualImport/ManualImportPreview.vue'
 import ManualCommitPanel from '@/components/manualImport/ManualCommitPanel.vue'
+import RecipeSaveDialog from '@/components/manualImport/RecipeSaveDialog.vue'
 import { activeOnly } from '@/utils/activeOptions'
 import ManualAiSuggestion from '@/components/manualImport/ManualAiSuggestion.vue'
 
@@ -224,12 +186,10 @@ const commitResult = ref<ManualCommitResult | null>(null)
 const inspecting = ref(false)
 const previewing = ref(false)
 const committing = ref(false)
-const savingRecipe = ref(false)
 const recipeDialog = ref(false)
 const savedRecipe = ref<ImportRecipe | null>(null)
 const recipeName = ref('')
 const recipeSampleFile = ref<File | null>(null)
-const recipeSaveDifferences = ref<RecipeCountDifference[]>([])
 const semesters = ref<SemesterOption[]>([])
 const teachers = ref<TeacherOption[]>([])
 const semesterId = ref<number | null>(null)
@@ -274,6 +234,11 @@ function openRecipeDialog() {
   recipeDialog.value = true
 }
 
+/** 弹窗保存成功：换成本页那张“已保存配方”的提示。 */
+function onRecipeSaved(recipe: ImportRecipe) {
+  savedRecipe.value = recipe
+}
+
 const currentHeaders = computed(
   () => inspect.value?.sheets.find((sheet) => sheet.name === mapping.value?.sheetName)?.headers ?? [],
 )
@@ -293,15 +258,6 @@ const aiSource = computed(() => {
     aiSuggestedMapping: mappingFromSuggestion(result.suggestion),
   }
 })
-/** Default to the file being imported; the dialog can pick a separate sample. */
-const sampleFileName = computed(
-  () => recipeSampleFile.value?.name ?? file.value?.name ?? '未选择',
-)
-
-function onRecipeSampleChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  recipeSampleFile.value = input.files?.[0] ?? null
-}
 
 onMounted(async () => {
   await Promise.all([loadSemesters(), loadTeachers(), loadAiStatus()])
@@ -375,7 +331,6 @@ function resetWorkflow() {
   savedRecipe.value = null
   recipeName.value = ''
   recipeSampleFile.value = null
-  recipeSaveDifferences.value = []
   recipeDialog.value = false
   teacherMappings.value = {}
   keptPlaceholders.value = []
@@ -470,53 +425,6 @@ async function runCommit() {
     committing.value = false
   }
 }
-
-async function saveRecipe() {
-  if (!preview.value || !mapping.value) return
-  if (!recipeName.value.trim()) {
-    ElMessage.warning('请先给配方起个名字')
-    return
-  }
-  savingRecipe.value = true
-  recipeSaveDifferences.value = []
-  try {
-    savedRecipe.value = await saveImportRecipe(
-      {
-        name: recipeName.value.trim(),
-        layout: preview.value.layout,
-        fingerprint: preview.value.fingerprint,
-        columns: {
-          ...mapping.value,
-          delimiter: mapping.value.delimiter || '|',
-          ignoreBlankRows: mapping.value.ignoreBlankRows !== false,
-        },
-        options: {
-          delimiter: mapping.value.delimiter || '|',
-          ignoreBlankRows: mapping.value.ignoreBlankRows !== false,
-        },
-        expected: {
-          slotCount: preview.value.slotCount,
-          lessonCount: preview.value.lessonCount,
-          emptySlotCount: preview.value.emptySlotCount,
-          teacherCount: preview.value.teacherCount,
-          courseCount: preview.value.courseCount,
-        },
-        ...aiSource.value,
-      },
-      recipeSampleFile.value ?? file.value,
-    )
-    recipeDialog.value = false
-    ElMessage.success('配方已保存，样例测试通过')
-  } catch (error) {
-    const details = serverDetails(error)
-    recipeSaveDifferences.value = Array.isArray(details.differences)
-      ? (details.differences as RecipeCountDifference[])
-      : []
-    ElMessage.error(serverMessage(error, '保存配方失败'))
-  } finally {
-    savingRecipe.value = false
-  }
-}
 </script>
 
 <style scoped>
@@ -573,10 +481,6 @@ async function saveRecipe() {
 .result {
   margin-top: 12px;
 }
-.result ul {
-  margin: 4px 0 0;
-  padding-left: 18px;
-}
 .save-recipe {
   display: flex;
   align-items: flex-end;
@@ -593,19 +497,5 @@ async function saveRecipe() {
   font-size: 13px;
   color: var(--paiban-muted);
   min-width: 240px;
-}
-.sample-pick {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 12px;
-  font-size: 13px;
-}
-.sample-label {
-  color: var(--paiban-muted);
-}
-.file-name {
-  font-size: 13px;
-  color: var(--paiban-ink);
 }
 </style>
