@@ -285,6 +285,7 @@ import LifecycleCell from '@/components/lifecycle/LifecycleCell.vue'
 import InfoTooltip from '@/components/InfoTooltip.vue'
 import { useAuthStore } from '@/stores/auth'
 import { serverMessage } from '@/api/errors'
+import { activeOnly } from '@/utils/activeOptions'
 
 interface Semester {
   id: number
@@ -292,6 +293,7 @@ interface Semester {
   startDate?: string
   endDate?: string
   current: boolean
+  active?: boolean
 }
 
 interface ClassItem {
@@ -313,6 +315,7 @@ interface TeacherItem {
   id: number
   name: string
   subject?: string
+  active?: boolean
 }
 
 interface AssignmentItem {
@@ -390,7 +393,7 @@ async function loadSemesters() {
       http.get<Semester[]>('/semesters'),
       http.get<Semester>('/semesters/current', { validateStatus: (status) => status < 500 }),
     ])
-    semesters.value = listRes.data ?? []
+    semesters.value = activeOnly(listRes.data ?? [])
 
     let targetId: number | null = null
     if (currentRes.status === 200 && currentRes.data?.id) {
@@ -436,7 +439,7 @@ async function loadCourses() {
 async function loadTeachers() {
   try {
     const { data } = await http.get<TeacherItem[]>('/teachers/options')
-    teachers.value = data ?? []
+    teachers.value = activeOnly(data ?? [])
   } catch (e: any) {
     ElMessage.error(serverMessage(e, '加载教师列表失败'))
   }

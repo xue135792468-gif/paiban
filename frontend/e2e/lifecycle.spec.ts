@@ -67,6 +67,15 @@ test.describe('删除 / 停用 / 最近删除', () => {
 
     await dialog.getByTestId('delete-impact-disable').click()
     await expect(page.getByRole('row').filter({ hasText: teacherName })).toContainText('已停用')
+
+    // Ticket 03 acceptance: a disabled teacher must not be offered in a picker.
+    await page.goto('/data/assignments')
+    await page.getByRole('button', { name: '新建授课任务' }).click()
+    const assignmentDialog = page.locator('.el-dialog').filter({ hasText: '新建授课任务' })
+    await assignmentDialog.getByRole('combobox', { name: '* 教师' }).click()
+    await expect(
+      page.locator('.el-select-dropdown:visible').getByText(teacherName, { exact: true }),
+    ).toHaveCount(0)
     await context.dispose()
   })
 })

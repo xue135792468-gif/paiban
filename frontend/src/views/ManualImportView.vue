@@ -184,6 +184,7 @@ import {
 import ManualImportMapper from '@/components/manualImport/ManualImportMapper.vue'
 import ManualImportPreview from '@/components/manualImport/ManualImportPreview.vue'
 import ManualCommitPanel from '@/components/manualImport/ManualCommitPanel.vue'
+import { activeOnly } from '@/utils/activeOptions'
 
 interface SemesterOption {
   id: number
@@ -194,6 +195,7 @@ interface SemesterOption {
 interface TeacherOption {
   id: number
   name: string
+  active?: boolean
 }
 
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -250,7 +252,7 @@ async function loadSemesters() {
 async function loadTeachers() {
   try {
     const { data } = await http.get<TeacherOption[]>('/teachers')
-    teachers.value = data
+    teachers.value = activeOnly(data ?? [])
   } catch (error) {
     ElMessage.error(serverMessage(error, '加载教师列表失败'))
   }

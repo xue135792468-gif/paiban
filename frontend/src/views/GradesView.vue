@@ -148,6 +148,7 @@ import ImportDialog from '@/components/ImportDialog.vue'
 import LifecycleCell from '@/components/lifecycle/LifecycleCell.vue'
 import { useAuthStore } from '@/stores/auth'
 import { serverMessage } from '@/api/errors'
+import { activeOnly } from '@/utils/activeOptions'
 
 interface Semester {
   id: number
@@ -155,6 +156,7 @@ interface Semester {
   startDate?: string
   endDate?: string
   current: boolean
+  active?: boolean
 }
 
 interface GradeItem {
@@ -198,7 +200,7 @@ async function loadSemesters() {
       http.get<Semester[]>('/semesters'),
       http.get<Semester>('/semesters/current', { validateStatus: (status) => status < 500 }),
     ])
-    semesters.value = listRes.data ?? []
+    semesters.value = activeOnly(listRes.data ?? [])
 
     let targetId: number | null = null
     if (currentRes.status === 200 && currentRes.data?.id) {

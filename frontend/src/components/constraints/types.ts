@@ -191,6 +191,7 @@ export interface ConstraintConfigRequest {
 export interface OptionItem {
   id: number
   name: string
+  active?: boolean
 }
 
 /**
