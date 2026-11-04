@@ -333,7 +333,9 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
 
         as(token).when().delete(DRAFT.formatted(seeded.draftId())).then().statusCode(200);
 
-        assertThat(drafts.findById(seeded.draftId())).isEmpty();
+        assertThat(drafts.findByIdAndDeletedAtIsNull(seeded.draftId())).isEmpty();
+        assertThat(drafts.findById(seeded.draftId()))
+                .hasValueSatisfying(row -> assertThat(row.getDeletedAt()).isNotNull());
     }
 
     @Test

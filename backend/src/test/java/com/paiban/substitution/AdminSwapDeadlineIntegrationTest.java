@@ -21,6 +21,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import org.mockito.Mockito;
 
+import java.time.ZoneId;
+
 /**
  * 票 05 的开课截止三分（规格第 6 节）：调课环的本单截止 = 环内所有被改变实例
  * 「当前与拟生效」开课时刻的最小值。跨日二人环（周三 08:00 ↔ 周五 08:00）的
@@ -50,6 +52,7 @@ class AdminSwapDeadlineIntegrationTest extends ApiIntegrationTest {
     void fixClock() {
         now.set(JUST_BEFORE);
         Mockito.when(clock.instant()).thenAnswer(invocation -> now.get());
+        Mockito.when(clock.getZone()).thenReturn(ZoneId.of("Asia/Shanghai"));
     }
 
     @Test

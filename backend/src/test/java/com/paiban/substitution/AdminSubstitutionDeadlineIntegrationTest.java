@@ -21,6 +21,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import org.mockito.Mockito;
 import java.time.Clock;
+import java.time.ZoneId;
 
 /**
  * 开课截止的三分边界（票据清单第 9 条）：截止前一瞬可确认；恰好开课与开课之后拒绝。
@@ -49,6 +50,7 @@ class AdminSubstitutionDeadlineIntegrationTest extends ApiIntegrationTest {
     void fixClock() {
         now.set(JUST_BEFORE);
         Mockito.when(clock.instant()).thenAnswer(invocation -> now.get());
+        Mockito.when(clock.getZone()).thenReturn(ZoneId.of("Asia/Shanghai"));
     }
 
     @Test
