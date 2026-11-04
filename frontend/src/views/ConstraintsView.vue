@@ -29,6 +29,12 @@
       </div>
     </div>
 
+    <ConstraintMigrationCard
+      v-if="semesterId && canManage"
+      :semester-id="semesterId"
+      :can-manage="canManage"
+    />
+
     <div v-if="semesters.length > 0 && canManage && !isJunior" class="sub-toolbar">
       <ConstraintTemplateBar
         :semester-id="semesterId"
@@ -208,6 +214,7 @@ import ConstraintSummaryBar from '@/components/constraints/ConstraintSummaryBar.
 import ConstraintTypeNav from '@/components/constraints/ConstraintTypeNav.vue'
 import ConstraintTypePanel from '@/components/constraints/ConstraintTypePanel.vue'
 import ConstraintTemplateBar from '@/components/constraints/ConstraintTemplateBar.vue'
+import ConstraintMigrationCard from '@/components/constraints/ConstraintMigrationCard.vue'
 import ConstraintCollaborationAlerts from '@/components/constraints/ConstraintCollaborationAlerts.vue'
 import ConstraintAiPanel from '@/components/constraints/ConstraintAiPanel.vue'
 import { useConstraintDraft } from '@/components/constraints/useConstraintDraft'

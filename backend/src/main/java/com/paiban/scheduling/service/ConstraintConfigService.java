@@ -641,9 +641,14 @@ public class ConstraintConfigService {
         }
         existingConfigs.values().stream()
                 .filter(config -> !plannedTypes.contains(config.getType()))
+                // Ticket 11: retired rows are paused, never physically deleted. The rule
+                // page only sends the 19 active types, so a full save must leave the old
+                // 7 types (and their pausable entries) in place.
+                .filter(config -> !isRetiredType(config.getType()))
                 .forEach(configs::delete);
         existingEntries.entrySet().stream()
                 .filter(byType -> !plannedTypes.contains(byType.getKey()))
+                .filter(byType -> !isRetiredType(byType.getKey()))
                 .flatMap(byType -> byType.getValue().values().stream())
                 .forEach(entries::delete);
         return result;
@@ -1449,6 +1454,15 @@ public class ConstraintConfigService {
     private boolean isEntryBacked(String typeCode) {
         try {
             return ConstraintType.valueOf(typeCode).isEntryBacked();
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
+    }
+
+    /** A product-retired type keeps its rows (paused) even when a save omits it. */
+    private boolean isRetiredType(String typeCode) {
+        try {
+            return ConstraintType.valueOf(typeCode).isRetired();
         } catch (IllegalArgumentException ex) {
             return false;
         }
