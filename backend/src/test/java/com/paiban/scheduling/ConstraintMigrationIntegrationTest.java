@@ -273,6 +273,145 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(204);
     }
 
+    // ------------------------------------------------- ticket 11 review (P0/P1)
+
+    /**
+     * Pausing the seven types is a configuration write: the version the advanced page
+     * and every cached preview compare against must move, otherwise the page keeps
+     * rendering its pre-migration 26-type view.
+     */
+    @Test
+    void runAdvancesTheVersionAndTheAdvancedPageNoLongerSeesTheSevenTypes() {
+        String token = adminToken();
+        long semesterId = semesterWithPeriods(token);
+        insertAllConfigs(semesterId);
+        long before = stateVersion(token, semesterId);
+
+        as(token).queryParam("semesterId", semesterId)
+                .when().post("/api/constraint-migration/run").then().statusCode(200);
+
+        assertThat(stateVersion(token, semesterId)).isGreaterThan(before);
+        List<Map<String, Object>> configs = enabledStateConfigs(token, semesterId);
+        assertThat(configs).extracting(row -> String.valueOf(row.get("type")))
+                .containsExactlyInAnyOrderElementsOf(activeTypeNames());
+        assertThat(configs).extracting(row -> String.valueOf(row.get("type")))
+                .doesNotContainAnyElementsOf(retiredTypeNames());
+    }
+
+    /** Omitting the parameter means "the current semester", the same as every other rule read. */
+    @Test
+    void omittedSemesterParamResolvesTheCurrentSemester() {
+        String token = adminToken();
+        long semesterId = semesterWithPeriods(token);
+        insertAllConfigs(semesterId);
+
+        Response preview = as(token).when().get("/api/constraint-migration/preview")
+                .then().statusCode(200).extract().response();
+        assertThat(preview.jsonPath().getLong("semesterId")).isEqualTo(semesterId);
+        assertThat(preview.jsonPath().getInt("disabled")).isEqualTo(7);
+
+        Response run = as(token).when().post("/api/constraint-migration/run")
+                .then().statusCode(200).extract().response();
+        assertThat(run.jsonPath().getLong("semesterId")).isEqualTo(semesterId);
+
+        Response report = as(token).when().get("/api/constraint-migration/report")
+                .then().statusCode(200).extract().response();
+        assertThat(report.jsonPath().getLong("semesterId")).isEqualTo(semesterId);
+    }
+
+    /** Without a current semester the omission is a 400 in plain language, never a 500. */
+    @Test
+    void omittedSemesterWithoutACurrentOneIsABadRequestOnAllThreeEndpoints() {
+        String token = adminToken();
+        as(token).body(Map.of(
+                        "name", "无当前学期" + TestData.suffix(),
+                        "startDate", "2025-09-01",
+                        "endDate", "2026-01-20"))
+                .when().post("/api/semesters").then().statusCode(200);
+
+        for (String path : List.of("/api/constraint-migration/preview",
+                "/api/constraint-migration/report")) {
+            Response response = as(token).when().get(path).then().extract().response();
+            assertThat(response.statusCode()).as(path).isEqualTo(400);
+            assertThat(response.asString()).as(path).contains("当前学期");
+        }
+        Response run = as(token).when().post("/api/constraint-migration/run")
+                .then().extract().response();
+        assertThat(run.statusCode()).isEqualTo(400);
+        assertThat(run.asString()).contains("当前学期");
+    }
+
+    /**
+     * A key the type's schema does not declare is a rule no evaluator reads. Reporting
+     * it as RETAIN would claim the migration preserved something it did not understand.
+     */
+    @Test
+    void aMisspelledParameterKeyIsListedForReviewAndLeftUntouched() {
+        String token = adminToken();
+        long semesterId = semesterWithPeriods(token);
+        insertAllConfigs(semesterId);
+        ConstraintEntry typo = new ConstraintEntry();
+        typo.setSemesterId(semesterId);
+        typo.setType("TEACHER_UNAVAILABLE");
+        typo.setGroupKey("typo-slot");
+        typo.setParamsJson("{\"teacher_id\":123,\"dayOfWeek\":2,\"periodNo\":2}");
+        typo.setEnabled(true);
+        long entryId = entryRepository.save(typo).getId();
+
+        Response preview = as(token).queryParam("semesterId", semesterId)
+                .when().get("/api/constraint-migration/preview")
+                .then().statusCode(200).extract().response();
+        assertThat(preview.jsonPath().getInt("review")).isEqualTo(1);
+        Map<String, Object> reviewRow =
+                row(preview.jsonPath().getList("rows"), "TEACHER_UNAVAILABLE", entryId);
+        assertThat(reviewRow.get("action")).isEqualTo("REVIEW");
+        assertThat(String.valueOf(reviewRow.get("note"))).contains("teacher_id");
+
+        as(token).queryParam("semesterId", semesterId)
+                .when().post("/api/constraint-migration/run").then().statusCode(200);
+
+        ConstraintEntry stored = entryRepository.findById(entryId).orElseThrow();
+        assertThat(stored.isEnabled()).isTrue();
+        assertThat(stored.getParamsJson()).contains("teacher_id");
+    }
+
+    /**
+     * The before/after evidence: a retained rule still produces the same hard conflict,
+     * and the digest of every retained row is identical. The settings fingerprint alone
+     * proves little, because it skips paused rows by design.
+     */
+    @Test
+    void aRetainedRuleKeepsItsDraftConflictAndTheRetainedDigest() {
+        String token = adminToken();
+        long semesterId = semesterWithPeriods(token);
+        long gradeId = TestData.grade(token, semesterId, "七年级" + TestData.suffix());
+        long classId = TestData.adminClass(token, semesterId, gradeId, "七1班" + TestData.suffix());
+        long teacher = TestData.teacher(token, "保留规则老师" + TestData.suffix());
+        long course = TestData.course(token, "保留规则课程" + TestData.suffix());
+        long room = TestData.room(token, "保留规则教室" + TestData.suffix());
+        insertAllConfigs(semesterId);
+        long entryId = groupedUnavailableEntry(semesterId, teacher);
+        long draftId = draftWithLesson(semesterId, classId, course, teacher, room);
+
+        List<String> before = conflictCodes(token, draftId);
+        assertThat(before).contains("TEACHER_UNAVAILABLE");
+
+        Response run = as(token).queryParam("semesterId", semesterId)
+                .when().post("/api/constraint-migration/run")
+                .then().statusCode(200).extract().response();
+
+        assertThat(run.jsonPath().getString("after.retainedDigest"))
+                .isEqualTo(run.jsonPath().getString("before.retainedDigest"));
+        assertThat(run.jsonPath().getInt("after.retainedRows"))
+                .isEqualTo(run.jsonPath().getInt("before.retainedRows"));
+        // 19 retained type rows plus the one retained entry row.
+        assertThat(run.jsonPath().getInt("before.retainedRows"))
+                .isEqualTo(ConstraintType.activeValues().size() + 1);
+        assertThat(run.jsonPath().getInt("before.hardConflicts")).isGreaterThan(0);
+        assertThat(conflictCodes(token, draftId)).isEqualTo(before);
+        assertThat(entryRepository.findById(entryId).orElseThrow().isEnabled()).isTrue();
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private List<String> activeTypeNames() {
@@ -328,6 +467,51 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
         entry.setParamsJson("{\"teacherId\":999999,\"dayOfWeek\":1,\"periodNo\":1}");
         entry.setEnabled(true);
         return entryRepository.save(entry).getId();
+    }
+
+    /** One well-formed retained entry: grouped, every reference alive, hard via the type. */
+    private long groupedUnavailableEntry(long semesterId, long teacherId) {
+        ConstraintEntry entry = new ConstraintEntry();
+        entry.setSemesterId(semesterId);
+        entry.setType("TEACHER_UNAVAILABLE");
+        entry.setGroupKey("slot-1");
+        entry.setParamsJson("{\"teacherId\":" + teacherId
+                + ",\"dayOfWeek\":1,\"periodNo\":1}");
+        entry.setEnabled(true);
+        return entryRepository.save(entry).getId();
+    }
+
+    private long stateVersion(String token, long semesterId) {
+        return as(token).queryParam("semesterId", semesterId)
+                .when().get("/api/constraints/state")
+                .then().statusCode(200).extract().jsonPath().getLong("version");
+    }
+
+    private List<Map<String, Object>> enabledStateConfigs(String token, long semesterId) {
+        List<Map<String, Object>> configs = as(token).queryParam("semesterId", semesterId)
+                .when().get("/api/constraints/state")
+                .then().statusCode(200).extract().jsonPath().getList("configs");
+        return configs.stream()
+                .filter(row -> Boolean.TRUE.equals(row.get("enabled")))
+                .toList();
+    }
+
+    /** The newest DRAFT holds one lesson in the slot the retained rule forbids. */
+    private long draftWithLesson(long semesterId, long classId, long courseId, long teacherId,
+                                 long roomId) {
+        Period first = periodRepository.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(semesterId)
+                .stream()
+                .filter(period -> period.getDayOfWeek() == 1 && period.getPeriodNo() == 1)
+                .findFirst().orElseThrow();
+        TimetableDraft draft = new TimetableDraft();
+        draft.setSemesterId(semesterId);
+        draft.setName("保留规则草稿" + TestData.suffix());
+        draft.setStatus("DRAFT");
+        draft.setCreatedBy("test");
+        draft.setCreatedAt(Instant.now());
+        long draftId = draftRepository.save(draft).getId();
+        placeLesson(draftId, classId, courseId, teacherId, first.getId(), roomId, 1);
+        return draftId;
     }
 
     private long draftWithTeacherConflict(long semesterId, long classA, long classB,

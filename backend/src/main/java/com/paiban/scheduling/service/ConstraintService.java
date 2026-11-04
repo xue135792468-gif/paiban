@@ -67,6 +67,10 @@ public class ConstraintService {
         return configService.list(semesterId);
     }
 
+    public List<ConstraintConfigDto> visibleList(Long semesterId) {
+        return configService.visibleList(semesterId);
+    }
+
     public ConstraintStateDto state(Long semesterId) {
         return configService.state(semesterId);
     }

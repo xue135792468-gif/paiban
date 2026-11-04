@@ -17,6 +17,10 @@ import org.springframework.web.bind.annotation.RestController;
  * Ticket 11: preview / run / report of the legacy 26-to-19 rule migration. Preview is
  * a dry run; run is idempotent; report reads the latest stored run. All three need
  * {@code constraint:manage}, like every other write to the rule catalogue.
+ *
+ * <p>{@code semesterId} may be omitted: the service then resolves the current semester
+ * the same way the rest of the rule catalogue does, and answers 400 when no semester is
+ * current yet (ticket 11 review — the parameter used to reach the lookup unchecked).
  */
 @RestController
 @RequestMapping("/api/constraint-migration")

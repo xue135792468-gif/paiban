@@ -29,10 +29,12 @@
       </div>
     </div>
 
+    <!-- 迁移会停用旧类型并推进配置版本：重新拉取，别拿旧版本去保存。 -->
     <ConstraintMigrationCard
       v-if="semesterId && canManage"
       :semester-id="semesterId"
       :can-manage="canManage"
+      @migrated="loadConstraints"
     />
 
     <div v-if="semesters.length > 0 && canManage && !isJunior" class="sub-toolbar">

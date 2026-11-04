@@ -114,6 +114,21 @@ public class ConstraintConfigService {
     }
 
     /**
+     * What the editor may show. Retired and unknown-type rows are kept in the database
+     * for the migration report and for "old data stays queryable" (ticket 11), but they
+     * are not part of the editable configuration any more.
+     */
+    @Transactional(readOnly = true)
+    public List<ConstraintConfigDto> visibleList(Long semesterId) {
+        Long resolved = resolveSemester(semesterId);
+        Map<String, List<ConstraintEntry>> byType = entriesByType(entries.findBySemesterId(resolved));
+        return configs.findBySemesterId(resolved).stream()
+                .filter(config -> !isPreservedType(config.getType()))
+                .map(config -> toDto(config, byType.get(config.getType())))
+                .toList();
+    }
+
+    /**
      * The effective configuration plus its version. Every writer sends the version it
      * read back as {@code baseVersion}; a save that names an older version is refused
      * instead of overwriting someone else's work.
@@ -121,7 +136,7 @@ public class ConstraintConfigService {
     @Transactional(readOnly = true)
     public ConstraintStateDto state(Long semesterId) {
         Long resolved = resolveSemester(semesterId);
-        return new ConstraintStateDto(versionOf(resolved), list(resolved));
+        return new ConstraintStateDto(versionOf(resolved), visibleList(resolved));
     }
 
     @Transactional
@@ -643,12 +658,13 @@ public class ConstraintConfigService {
                 .filter(config -> !plannedTypes.contains(config.getType()))
                 // Ticket 11: retired rows are paused, never physically deleted. The rule
                 // page only sends the 19 active types, so a full save must leave the old
-                // 7 types (and their pausable entries) in place.
-                .filter(config -> !isRetiredType(config.getType()))
+                // 7 types (and their pausable entries) in place — and, since ticket 11's
+                // review, rows whose type code is unknown to the catalogue too.
+                .filter(config -> !isPreservedType(config.getType()))
                 .forEach(configs::delete);
         existingEntries.entrySet().stream()
                 .filter(byType -> !plannedTypes.contains(byType.getKey()))
-                .filter(byType -> !isRetiredType(byType.getKey()))
+                .filter(byType -> !isPreservedType(byType.getKey()))
                 .flatMap(byType -> byType.getValue().values().stream())
                 .forEach(entries::delete);
         return result;
@@ -707,13 +723,22 @@ public class ConstraintConfigService {
                 Map.of("version", current, "configs", list(semesterId)));
     }
 
-    /** True when any stored entry uses a shape a legacy request cannot represent. */
+    /**
+     * True when any active stored entry uses a shape a legacy request cannot represent.
+     * Rows of a retired (or unknown) type are ignored: after the ticket-11 migration the
+     * seven paused types carry {@code enabled = false} rows, and counting those would
+     * keep rejecting every legacy save with a message about "逐项控制/分组" that no longer
+     * describes anything the user can edit (ticket 11 review).
+     */
     private boolean hasAdvancedEntries(Long semesterId) {
-        return entries.findBySemesterId(semesterId).stream().anyMatch(entry ->
-                !entry.isEnabled()
-                        || entry.getHard() != null
-                        || entry.getWeight() != null
-                        || (entry.getGroupKey() != null && StringUtils.hasText(entry.getGroupKey())));
+        return entries.findBySemesterId(semesterId).stream()
+                .filter(entry -> !isPreservedType(entry.getType()))
+                .anyMatch(entry ->
+                        !entry.isEnabled()
+                                || entry.getHard() != null
+                                || entry.getWeight() != null
+                                || (entry.getGroupKey() != null
+                                        && StringUtils.hasText(entry.getGroupKey())));
     }
 
     /**
@@ -740,6 +765,24 @@ public class ConstraintConfigService {
         } catch (DataIntegrityViolationException ex) {
             throw versionConflict(semesterId, base, versionOf(semesterId));
         }
+    }
+
+    /**
+     * Advances the version for a writer that is not a configuration save.
+     *
+     * <p>Ticket 11's migration pauses rows in place, but the rule page, its cached
+     * previews and the version-aware save must still see that the configuration
+     * changed. It therefore moves the same counter through the same conditional bump
+     * as {@code commitPlan}, so a concurrent save conflicts exactly as it would with
+     * any other writer. The caller owns the transaction: a later failure rolls the
+     * bump back together with its own writes.
+     *
+     * @return the version now stored
+     */
+    public long advanceVersion(Long semesterId) {
+        long current = versionOf(semesterId);
+        advanceState(semesterId, current);
+        return current + 1;
     }
 
     // ------------------------------------------------------------------ entries
@@ -1452,19 +1495,34 @@ public class ConstraintConfigService {
     }
 
     private boolean isEntryBacked(String typeCode) {
-        try {
-            return ConstraintType.valueOf(typeCode).isEntryBacked();
-        } catch (IllegalArgumentException ex) {
-            return false;
-        }
+        ConstraintType type = typeOrNull(typeCode);
+        return type != null && type.isEntryBacked();
     }
 
-    /** A product-retired type keeps its rows (paused) even when a save omits it. */
-    private boolean isRetiredType(String typeCode) {
+    /**
+     * True when a stored row must survive a save that did not name it: a retired type
+     * is paused and kept readable, and a code the catalogue no longer knows at all is
+     * also kept untouched — deleting what we cannot interpret would lose user data the
+     * rule page never showed (ticket 11 review; previously an unknown code fell through
+     * as "not retired" and was deleted on the next full save).
+     */
+    private boolean isPreservedType(String typeCode) {
+        if (!StringUtils.hasText(typeCode)) {
+            return true;
+        }
+        ConstraintType type = typeOrNull(typeCode);
+        return type == null || type.isRetired();
+    }
+
+    /** Null for a blank or unknown code; never throws (unlike {@code valueOf}). */
+    private ConstraintType typeOrNull(String typeCode) {
+        if (!StringUtils.hasText(typeCode)) {
+            return null;
+        }
         try {
-            return ConstraintType.valueOf(typeCode).isRetired();
+            return ConstraintType.valueOf(typeCode);
         } catch (IllegalArgumentException ex) {
-            return false;
+            return null;
         }
     }
 

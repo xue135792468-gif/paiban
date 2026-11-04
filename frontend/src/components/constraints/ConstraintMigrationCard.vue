@@ -60,7 +60,8 @@
         <p v-if="preview" class="migration-copy" data-testid="constraint-migration-source">
           共 {{ preview.configCount }} 条类型配置、{{ preview.entryCount }} 条参数条目。
           <template v-if="preview.review > 0">
-            其中 {{ preview.review }} 条引用的教师/课程/班级已不存在，迁移不会自动停用，请在报告中逐条确认。
+            其中 {{ preview.review }} 条无法自动映射，迁移只做标记、不改内容，请运行后在报告中
+            按后端给出的原因逐条确认。
           </template>
         </p>
 
@@ -207,8 +208,11 @@ const comparisonRows = computed(() => {
       `${report.value.before.enabledEntryCount}/${report.value.before.entryCount}`,
       `${report.value.after.enabledEntryCount}/${report.value.after.entryCount}`,
     ),
+    rowOf('保留行数', report.value.before.retainedRows, report.value.after.retainedRows),
     rowOf('规则指纹', shortFingerprint(report.value.before.settingsFingerprint),
       shortFingerprint(report.value.after.settingsFingerprint)),
+    rowOf('保留摘要', shortFingerprint(report.value.before.retainedDigest),
+      shortFingerprint(report.value.after.retainedDigest)),
   ]
 })
 

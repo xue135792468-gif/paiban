@@ -5,6 +5,8 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 
+import com.paiban.scheduling.domain.ConstraintConfig;
+import com.paiban.scheduling.domain.ConstraintConfigRepository;
 import com.paiban.scheduling.domain.ConstraintEntry;
 import com.paiban.scheduling.domain.ConstraintEntryRepository;
 import com.paiban.scheduling.domain.ConstraintTemplate;
@@ -35,6 +37,9 @@ class ConstraintEntriesIntegrationTest extends ApiIntegrationTest {
 
     @Autowired
     private ConstraintEntryRepository entryRepository;
+
+    @Autowired
+    private ConstraintConfigRepository configRepository;
 
     @Autowired
     private ConstraintTemplateRepository templateRepository;
@@ -248,28 +253,49 @@ class ConstraintEntriesIntegrationTest extends ApiIntegrationTest {
     void otherTypesKeepTheirLegacyParamsMeaning() {
         String token = adminToken();
         long semesterId = semesterWithPeriods(token);
-        long course = TestData.course(token, "晚自习课程" + TestData.suffix());
+        long course = TestData.course(token, "选修课程" + TestData.suffix());
+        long retiredCourse = TestData.course(token, "晚自习课程" + TestData.suffix());
 
         as(token).queryParam("semesterId", semesterId)
                 .body(Map.of("configs", List.of(
-                        Map.of("type", "COURSE_NOT_IN_EVENING",
-                                "params", Map.of("courseId", course),
+                        Map.of("type", "COURSE_UNAVAILABLE",
+                                "params", Map.of("courseId", course,
+                                        "dayOfWeek", 2, "periodNo", 1),
                                 "weight", 100, "hard", true, "enabled", true),
                         Map.of("type", "TEACHER_MAX_PER_DAY",
                                 "params", Map.of("maxPerDay", 5),
-                                "weight", 60, "hard", false, "enabled", true))))
+                                "weight", 60, "hard", false, "enabled", true),
+                        // Retired since ticket 09/11: accepted and stored, never shown.
+                        Map.of("type", "COURSE_NOT_IN_EVENING",
+                                "params", Map.of("courseId", retiredCourse),
+                                "weight", 50, "hard", false, "enabled", true))))
                 .when().put("/api/constraints")
                 .then().statusCode(200);
 
-        as(token).queryParam("semesterId", semesterId)
+        Response visible = as(token).queryParam("semesterId", semesterId)
                 .when().get("/api/constraints")
                 .then().statusCode(200)
-                .body("find { it.type == 'COURSE_NOT_IN_EVENING' }.params.courseId", equalTo((int) course))
-                .body("find { it.type == 'COURSE_NOT_IN_EVENING' }.entries", hasSize(1))
-                .body("find { it.type == 'COURSE_NOT_IN_EVENING' }.entries[0].params.courseId",
+                .body("find { it.type == 'COURSE_UNAVAILABLE' }.params.courseId",
                         equalTo((int) course))
+                .body("find { it.type == 'COURSE_UNAVAILABLE' }.params.dayOfWeek", equalTo(2))
+                .body("find { it.type == 'COURSE_UNAVAILABLE' }.entries", hasSize(1))
+                .body("find { it.type == 'COURSE_UNAVAILABLE' }.entries[0].params.courseId",
+                        equalTo((int) course))
+                .body("find { it.type == 'COURSE_UNAVAILABLE' }.entries[0].params.dayOfWeek",
+                        equalTo(2))
                 .body("find { it.type == 'TEACHER_MAX_PER_DAY' }.params.maxPerDay", equalTo(5))
-                .body("find { it.type == 'TEACHER_MAX_PER_DAY' }.entries", hasSize(1));
+                .body("find { it.type == 'TEACHER_MAX_PER_DAY' }.entries", hasSize(1))
+                .extract().response();
+        // The retired row was written, but the editor's list does not offer the type.
+        assertThat(visible.jsonPath().getList("type")).doesNotContain("COURSE_NOT_IN_EVENING");
+        assertThat(configRepository.findBySemesterId(semesterId))
+                .extracting(ConstraintConfig::getType)
+                .contains("COURSE_NOT_IN_EVENING");
+        assertThat(entryRepository.findBySemesterIdAndTypeOrderByIdAsc(
+                semesterId, "COURSE_NOT_IN_EVENING"))
+                .singleElement()
+                .satisfies(row -> assertThat(row.getParamsJson())
+                        .contains("\"courseId\":" + retiredCourse));
     }
 
     @Test
@@ -365,6 +391,70 @@ class ConstraintEntriesIntegrationTest extends ApiIntegrationTest {
 
         as(token).when().post("/api/timetable-drafts/" + draftId + "/publish")
                 .then().statusCode(409);
+    }
+
+    // ------------------------------------------------- ticket 11 review (P1)
+
+    /**
+     * A row whose type code the catalogue no longer knows must survive a full save:
+     * the rule page never sends it, and deleting what we cannot interpret loses data
+     * the migration explicitly promised to keep readable.
+     */
+    @Test
+    void aStoredRowOfAnUnknownRuleTypeSurvivesAFullSave() {
+        String token = adminToken();
+        long semesterId = semesterWithPeriods(token);
+        ConstraintConfig unknown = new ConstraintConfig();
+        unknown.setSemesterId(semesterId);
+        unknown.setType("LEGACY_CUSTOM_RULE");
+        unknown.setParamsJson("{\"limit\":3}");
+        unknown.setWeight(50);
+        unknown.setEnabled(true);
+        configRepository.save(unknown);
+        ConstraintEntry unknownEntry = new ConstraintEntry();
+        unknownEntry.setSemesterId(semesterId);
+        unknownEntry.setType("LEGACY_CUSTOM_RULE");
+        unknownEntry.setParamsJson("{\"limit\":3}");
+        unknownEntry.setEnabled(true);
+        entryRepository.save(unknownEntry);
+
+        // Exactly what the rule page sends: the active catalogue, nothing else.
+        save(token, semesterId, List.of(Map.of(
+                "type", "TEACHER_CONFLICT", "weight", 100, "hard", true, "enabled", true,
+                "entries", List.of()))).then().statusCode(200);
+
+        assertThat(configRepository.findBySemesterId(semesterId))
+                .extracting(ConstraintConfig::getType)
+                .contains("LEGACY_CUSTOM_RULE");
+        assertThat(entryRepository.findBySemesterId(semesterId))
+                .extracting(ConstraintEntry::getType)
+                .contains("LEGACY_CUSTOM_RULE");
+        assertThat(entryRepository.findById(unknownEntry.getId()).orElseThrow().getParamsJson())
+                .contains("limit");
+    }
+
+    /**
+     * Ticket 11 pauses the seven retired types. Their rows are {@code enabled = false},
+     * which used to look like a per-entry override and made every legacy save fail with
+     * a "逐项控制/分组" message that no longer described anything (ticket 11 review).
+     */
+    @Test
+    void aPausedRowOfARetiredTypeDoesNotForceTheVersionParameter() {
+        String token = adminToken();
+        long semesterId = semesterWithPeriods(token);
+        ConstraintEntry retired = new ConstraintEntry();
+        retired.setSemesterId(semesterId);
+        retired.setType("ROOM_CONFLICT");
+        retired.setParamsJson("{}");
+        retired.setEnabled(false);
+        entryRepository.save(retired);
+
+        save(token, semesterId, List.of(Map.of(
+                "type", "TEACHER_CONFLICT", "weight", 100, "hard", true, "enabled", true,
+                "entries", List.of()))).then().statusCode(200);
+
+        // The paused row is still stored and still paused; nothing was deleted.
+        assertThat(entryRepository.findById(retired.getId()).orElseThrow().isEnabled()).isFalse();
     }
 
     // ------------------------------------------------------------------ helpers
