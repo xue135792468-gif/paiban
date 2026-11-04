@@ -4,7 +4,8 @@
       <div>
         <h2>排课规则</h2>
         <p class="subtitle">
-          用「对谁 / 什么时候 / 要求」拼一条规则。保存后自动排课、草稿校验和调代都按同一条规则执行。
+          用「对谁 / 哪些课 / 什么时候 / 要求」拼一句规则。一张卡可以装 1–3 句，共用一个开关；
+          保存后自动排课、草稿校验和调代都按同一份规则执行。
         </p>
       </div>
       <div class="head-actions">
@@ -41,6 +42,13 @@
             :value="semester.id"
           />
         </el-select>
+        <el-input
+          v-model="query"
+          clearable
+          placeholder="搜索规则（名称或句子）"
+          class="search-input"
+          data-testid="rule-search"
+        />
         <el-button type="primary" :disabled="semesterId === null" data-testid="rule-new" @click="openNew">
           新建规则
         </el-button>
@@ -86,6 +94,15 @@
         @cancel="closeForm"
       />
 
+      <RuleImpactSummary
+        v-if="impactVisible"
+        :title="impactTitle"
+        :impact="impact"
+        :loading="impactLoading"
+        :error="impactError"
+        @close="impactVisible = false"
+      />
+
       <el-card v-loading="loading" shadow="never" class="content-card">
         <EmptyStateGuide
           v-if="!loading && cards.length === 0"
@@ -94,17 +111,18 @@
           help-slug="scheduling"
           help-anchor="constraints"
         />
-        <div v-else class="cards" data-testid="rule-cards">
-          <RuleCardItem
-            v-for="card in cards"
-            :key="card.key"
-            :card="card"
-            :sentence="sentenceOf(card)"
-            @edit="openEdit"
-            @toggle="onToggle"
-            @remove="onRemove"
-          />
-        </div>
+        <RuleGroupedList
+          v-else
+          :cards="cards"
+          :query="query"
+          :names="ruleNames"
+          :periods="periods"
+          @edit="openEdit"
+          @toggle="onToggle"
+          @duplicate="onDuplicate"
+          @remove="onRemove"
+          @impact="onImpact"
+        />
       </el-card>
 
       <footer class="footer">
@@ -140,33 +158,37 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
-import RuleCardItem from '@/components/rules/RuleCardItem.vue'
 import RuleForm from '@/components/rules/RuleForm.vue'
+import RuleGroupedList from '@/components/rules/RuleGroupedList.vue'
+import RuleImpactSummary from '@/components/rules/RuleImpactSummary.vue'
 import type {
   ConstraintConfigDto,
   ConstraintTypeDef,
   OptionItem,
 } from '@/components/constraints/types'
 import {
-  cardFromInput,
+  applyCardInputs,
+  cardConfigs,
   cardsFromState,
   catalogueTypeCodes,
   configsFromCards,
-  describeCard,
+  duplicateCard,
   entryBackedTypeCodes,
   isSwitchRule,
-  newGroupKey,
   otherRuleCount,
+  toggleCard,
   unrepresentedGroupCount,
+  type CardSentenceInput,
   type PeriodOption,
   type RuleCard,
-  type RuleInput,
   type RuleNames,
 } from '@/rules/compiler'
+import { cardsSignature } from '@/rules/signature'
+import { useRuleImpact } from '@/rules/useRuleImpact'
 
 interface Semester {
   id: number
@@ -204,12 +226,23 @@ const conflict = ref<{ message: string; version: number } | null>(null)
 const formOpen = ref(false)
 const formKey = ref(0)
 const editingKey = ref<string | null>(null)
+const query = ref('')
+const {
+  visible: impactVisible,
+  loading: impactLoading,
+  error: impactError,
+  impact,
+  title: impactTitle,
+  preview: previewImpact,
+  hide: hideImpact,
+} = useRuleImpact(semesterId)
 
 const availableDays = computed(() =>
   Array.from(new Set(periods.value.map((period) => period.dayOfWeek))).sort(
     (left, right) => left - right,
   ),
 )
+const classIds = computed(() => classes.value.map((item) => item.id))
 const ruleNames = computed<RuleNames>(() => {
   const teacherNames = new Map(teachers.value.map((teacher) => [teacher.id, teacher.name]))
   const classNames = new Map(classes.value.map((item) => [item.id, item.name]))
@@ -220,38 +253,25 @@ const ruleNames = computed<RuleNames>(() => {
     klass: (id) => classNames.get(id) ?? `班级${id}`,
   }
 })
-const dirty = computed(() => signatureOf(cards.value) !== loadedSignature.value)
+const dirty = computed(() => cardsSignature(cards.value) !== loadedSignature.value)
 const otherCount = computed(() =>
   otherRuleCount(
     configs.value,
     catalogueCodes.value.size > 0 ? catalogueCodes.value : undefined,
   ),
 )
-const unrepresentedCount = computed(() => unrepresentedGroupCount(configs.value))
+const unrepresentedCount = computed(() =>
+  unrepresentedGroupCount(configs.value, { allClassIds: classIds.value }),
+)
 const editingCard = computed(
   () => cards.value.find((card) => card.key === editingKey.value) ?? null,
 )
 
-function signatureOf(rows: RuleCard[]): string {
-  return JSON.stringify(
-    rows.map((card) => ({
-      key: card.key,
-      groupKey: card.groupKey,
-      type: card.type,
-      classId: card.classId,
-      teacherId: card.teacherId,
-      courseId: card.courseId,
-      dayOfWeek: card.dayOfWeek,
-      periodNos: [...card.periodNos].sort((left, right) => left - right),
-      amount: card.amount,
-      strength: card.strength,
-      enabled: card.enabled,
-    })),
-  )
-}
-
-function sentenceOf(card: RuleCard): string {
-  return describeCard(card, ruleNames.value, periods.value)
+function configsOf(card: RuleCard) {
+  return cardConfigs(card, {
+    entryBackedTypes: entryBackedTypes.value,
+    classIds: classIds.value,
+  })
 }
 
 async function loadSemesters() {
@@ -324,8 +344,8 @@ async function loadState() {
       periodNo: period.periodNo,
       section: period.section ?? null,
     }))
-    cards.value = cardsFromState(configs.value)
-    loadedSignature.value = signatureOf(cards.value)
+    cards.value = cardsFromState(configs.value, { allClassIds: classIds.value })
+    loadedSignature.value = cardsSignature(cards.value)
     errorMessage.value = null
     conflict.value = null
   } catch (e: any) {
@@ -338,6 +358,7 @@ async function loadState() {
 
 async function onSemesterChange() {
   closeForm()
+  hideImpact()
   await loadClasses()
   await loadState()
 }
@@ -359,44 +380,71 @@ function closeForm() {
   editingKey.value = null
 }
 
-function onFormSubmit(input: RuleInput) {
-  const next = cardFromInput(input)
+function onFormSubmit(payload: CardSentenceInput[]) {
+  const next = applyCardInputs(editingCard.value, payload)
   if (editingKey.value !== null) {
     const index = cards.value.findIndex((card) => card.key === editingKey.value)
     if (index >= 0) {
-      const current = cards.value[index]
-      // Changing the requirement changes the storage type; an id of the old type
-      // would be rejected by the server, so such an edit starts without ids.
-      const typeChanged = current.type !== next.type
-      cards.value[index] = {
-        ...current,
-        ...next,
-        key: current.key,
-        groupKey: typeChanged ? newGroupKey() : current.groupKey,
-        enabled: current.enabled,
-        entryIds: typeChanged ? {} : current.entryIds,
-      }
+      cards.value[index] = next
     }
   } else {
     // A switch rule has exactly one card; creating it again replaces the old one
     // instead of sending two configs of the same type (the server refuses those).
-    if (isSwitchRule(next.type)) {
-      cards.value = cards.value.filter((card) => card.type !== next.type)
+    const switchTypes = new Set(
+      next.sentences.map((sentence) => sentence.type).filter((type) => isSwitchRule(type)),
+    )
+    if (switchTypes.size > 0) {
+      cards.value = cards.value.filter((card) =>
+        !card.sentences.some((sentence) => switchTypes.has(sentence.type)))
     }
     cards.value.push(next)
   }
   closeForm()
+  void previewImpact(configsOf(next), '这条规则的影响')
 }
 
 function onToggle(card: RuleCard) {
-  const target = cards.value.find((item) => item.key === card.key)
-  if (target) {
-    target.enabled = !target.enabled
+  const index = cards.value.findIndex((item) => item.key === card.key)
+  if (index >= 0) {
+    cards.value[index] = toggleCard(cards.value[index], !cards.value[index].enabled)
   }
 }
 
-function onRemove(card: RuleCard) {
+function onDuplicate(card: RuleCard) {
+  if (card.sentences.some((sentence) => isSwitchRule(sentence.type))) {
+    return
+  }
+  cards.value.push(duplicateCard(card))
+}
+
+async function onRemove(card: RuleCard) {
+  let text = '删除这张规则卡？删除后不可恢复（回收站尚未覆盖规则）。'
+  const result = await previewImpact(configsOf(card), '删除前的影响')
+  if (result) {
+    text = `这条规则影响 ${result.classes.length} 个班 / ${result.teachers.length} 位教师 / `
+      + `${result.lessonCount} 个课节，${result.conflicts.length} 条冲突。`
+      + '删除后不可恢复（回收站尚未覆盖规则）。'
+    if (result.errors.length > 0) {
+      text += `\n配置还有错误：${result.errors.join('；')}`
+    }
+  } else if (impactError.value) {
+    text = `无法获取影响预览（${impactError.value}）。仍要删除这张规则卡吗？`
+  }
+  try {
+    await ElMessageBox.confirm(text, '删除规则', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
   cards.value = cards.value.filter((item) => item.key !== card.key)
+  hideImpact()
+}
+
+function onImpact(card: RuleCard) {
+  void previewImpact(configsOf(card), '这条规则的影响')
 }
 
 async function save() {
@@ -408,7 +456,13 @@ async function save() {
   try {
     const payload = configsFromCards(configs.value, cards.value, {
       entryBackedTypes: entryBackedTypes.value,
+      classIds: classIds.value,
     })
+    const preview = await previewImpact(payload, '保存前的影响')
+    if (preview && preview.errors.length > 0) {
+      ElMessage.error('规则还有错误，未保存')
+      return
+    }
     await http.put(
       '/constraints',
       { configs: payload },
@@ -420,6 +474,7 @@ async function save() {
       },
     )
     ElMessage.success('排课规则已保存')
+    hideImpact()
     await loadState()
   } catch (e: any) {
     if (e?.response?.status === 409) {
@@ -447,7 +502,8 @@ onMounted(async () => {
   try {
     await Promise.all([loadSemesters(), loadTeachers(), loadCatalogue(), loadCourses()])
     if (semesterId.value !== null) {
-      await Promise.all([loadClasses(), loadState()])
+      await loadClasses()
+      await loadState()
     }
   } catch (e: any) {
     errorMessage.value = serverMessage(e, '加载排课规则失败')
@@ -499,6 +555,10 @@ h2 {
   width: 240px;
 }
 
+.search-input {
+  width: 220px;
+}
+
 .alert {
   margin-bottom: 14px;
 }
@@ -512,6 +572,7 @@ h2 {
 
 .content-card {
   border-radius: var(--paiban-radius, 8px);
+  margin-top: 12px;
 }
 
 .footer {

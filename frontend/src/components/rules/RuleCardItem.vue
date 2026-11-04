@@ -5,21 +5,26 @@
     :class="{ 'rule-card--off': !card.enabled }"
     data-testid="rule-card"
   >
-    <div class="rule-line">
-      <span class="sentence" data-testid="rule-sentence">{{ sentence }}</span>
+    <div class="card-head">
+      <span class="target-tag" data-testid="rule-card-target">{{ targetLabel }}</span>
       <el-tag v-if="!card.enabled" size="small" type="info" data-testid="rule-disabled-tag">
         已停用
       </el-tag>
-      <el-tag
-        v-else size="small"
-        :type="card.strength === 'HARD' ? 'danger' : 'info'"
-        data-testid="rule-strength-tag"
-      >
-        {{ card.strength === 'HARD' ? '必须' : '尽量' }}
-      </el-tag>
       <span class="spacer" />
+      <el-button link type="primary" data-testid="rule-impact" @click="emit('impact', card)">
+        影响
+      </el-button>
       <el-button link type="primary" data-testid="rule-edit" @click="emit('edit', card)">
         编辑
+      </el-button>
+      <el-button
+        v-if="!switchCard"
+        link
+        type="primary"
+        data-testid="rule-duplicate"
+        @click="emit('duplicate', card)"
+      >
+        复制
       </el-button>
       <el-button link type="primary" data-testid="rule-toggle" @click="emit('toggle', card)">
         {{ card.enabled ? '停用' : '启用' }}
@@ -28,22 +33,56 @@
         删除
       </el-button>
     </div>
+
+    <div class="sentences">
+      <div
+        v-for="(sentence, index) in sentences"
+        :key="index"
+        class="sentence-line"
+        :data-testid="`rule-sentence-line-${index}`"
+      >
+        <span
+          class="sentence"
+          :data-testid="index === 0 ? 'rule-sentence' : `rule-sentence-${index}`"
+        >
+          {{ sentence }}
+        </span>
+        <el-tag
+          size="small"
+          :type="strengthOf(index) === 'HARD' ? 'danger' : 'info'"
+          :data-testid="index === 0 ? 'rule-strength-tag' : `rule-strength-tag-${index}`"
+        >
+          {{ strengthOf(index) === 'HARD' ? '必须' : '尽量' }}
+        </el-tag>
+      </div>
+    </div>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import type { RuleCard } from '@/rules/compiler'
+import { computed } from 'vue'
+import { TARGET_LABELS, cardTarget, isSwitchRule, type RuleCard } from '@/rules/compiler'
 
-defineProps<{
+const props = defineProps<{
   card: RuleCard
-  sentence: string
+  sentences: string[]
 }>()
 
 const emit = defineEmits<{
   edit: [card: RuleCard]
   toggle: [card: RuleCard]
+  duplicate: [card: RuleCard]
   remove: [card: RuleCard]
+  impact: [card: RuleCard]
 }>()
+
+const switchCard = computed(() => props.card.sentences.some((sentence) => isSwitchRule(sentence.type)))
+
+const targetLabel = computed(() => TARGET_LABELS[cardTarget(props.card)])
+
+function strengthOf(index: number): 'HARD' | 'SOFT' {
+  return props.card.sentences[index]?.strength ?? 'HARD'
+}
 </script>
 
 <style scoped>
@@ -60,7 +99,30 @@ const emit = defineEmits<{
   opacity: 0.72;
 }
 
-.rule-line {
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.target-tag {
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--el-fill-color-light, #f5f7fa);
+  color: var(--paiban-muted, #6b7280);
+  font-size: 12px;
+  line-height: 22px;
+}
+
+.sentences {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sentence-line {
   display: flex;
   align-items: center;
   gap: 8px;

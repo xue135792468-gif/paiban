@@ -75,6 +75,34 @@ public final class ConstraintDtos {
     public record ConstraintPreviewRequest(List<ConstraintConfigRequest> configs) {}
 
     /**
+     * Ask what a not-yet-saved rule (or a whole payload) would touch. The rules are
+     * merged onto the semester's saved configuration for evaluation, while the
+     * reported scope is derived from {@code configs} alone — so the page can preview
+     * one card without pretending every other rule is gone.
+     */
+    public record RuleImpactRequest(Long semesterId, List<ConstraintConfigRequest> configs) {}
+
+    public record ImpactObjectDto(Long id, String name) {}
+
+    public record ImpactSlotDto(int dayOfWeek, int periodNo) {}
+
+    public record ImpactConflictDto(Long lessonId, String type, String message) {}
+
+    /**
+     * The answer to "what would this rule touch": the classes, teachers and slots of
+     * its scope, how many lessons of the newest DRAFT fall inside it, and the hard
+     * conflicts the shared {@code ConstraintChecker} reports for those lessons.
+     * {@code errors}/{@code warnings} are the same refusals a preview would return.
+     */
+    public record RuleImpactDto(List<ImpactObjectDto> classes,
+                                List<ImpactObjectDto> teachers,
+                                List<ImpactSlotDto> slots,
+                                int lessonCount,
+                                List<ImpactConflictDto> conflicts,
+                                List<String> errors,
+                                List<String> warnings) {}
+
+    /**
      * A dry run answers two separate questions: {@code errors}/{@code invalidReferences}
      * say whether the configuration may be saved, {@code warnings} say whether the
      * resulting weekly capacity is enough. Warnings never block a save — the page keeps

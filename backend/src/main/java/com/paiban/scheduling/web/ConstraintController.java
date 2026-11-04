@@ -2,12 +2,15 @@ package com.paiban.scheduling.web;
 
 import com.paiban.identity.domain.Permissions;
 import com.paiban.scheduling.service.ConstraintService;
+import com.paiban.scheduling.service.RuleImpactService;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintConfigDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintPreviewDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintPreviewRequest;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintSaveAuditDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintStateDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintTypeDto;
+import com.paiban.scheduling.web.ConstraintDtos.RuleImpactDto;
+import com.paiban.scheduling.web.ConstraintDtos.RuleImpactRequest;
 import com.paiban.scheduling.web.ConstraintDtos.SaveConstraintsRequest;
 import com.paiban.scheduling.web.ConstraintDtos.SaveTemplateRequest;
 import com.paiban.scheduling.web.ConstraintDtos.TemplateApplyPreview;
@@ -32,9 +35,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class ConstraintController {
 
     private final ConstraintService service;
+    private final RuleImpactService impact;
 
-    public ConstraintController(ConstraintService service) {
+    public ConstraintController(ConstraintService service, RuleImpactService impact) {
         this.service = service;
+        this.impact = impact;
     }
 
     @GetMapping("/constraint-types")
@@ -86,6 +91,19 @@ public class ConstraintController {
             @Valid @RequestBody ConstraintPreviewRequest request) {
         return service.preview(
                 semesterId, request.configs() == null ? List.of() : request.configs());
+    }
+
+    /**
+     * The rule page's "what would this touch?" dry run: affected classes, teachers and
+     * slots, the lessons of the newest draft inside that scope, and the hard conflicts
+     * of the shared checker. Nothing is written.
+     */
+    @PostMapping("/rules/impact")
+    @PreAuthorize("hasAuthority('" + Permissions.CONSTRAINT_MANAGE + "')")
+    public RuleImpactDto impact(@Valid @RequestBody RuleImpactRequest request) {
+        return impact.impact(
+                request.semesterId(),
+                request.configs() == null ? List.of() : request.configs());
     }
 
     /**
