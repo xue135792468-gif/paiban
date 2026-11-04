@@ -86,19 +86,20 @@ test.describe.serial('约束配置：旧规则迁移卡片', () => {
     await expect(reportRows).toHaveCount(9)
     await expect(reportRows.filter({ hasText: '教室不冲突' }).first()).toContainText('停用')
 
-    // 落库证据：7 类停用、参数仍在；保留的 2 类仍是启用。
-    const configs = await apiCall(api, token, 'get', '/constraints', undefined, {
+    // 落库证据：7 类进入停用清单且参数仍可查；公开的可见配置只剩保留类。
+    const migrationReport = await apiCall(api, token, 'get', '/constraint-migration/report', undefined, {
       semesterId: seed.semesterId,
     })
-    const retired = configs.filter((item: any) => RETIRED.includes(item.type))
-    expect(retired).toHaveLength(7)
-    expect(retired.every((item: any) => item.enabled === false)).toBe(true)
-    expect(retired.every((item: any) => typeof item.params === 'object')).toBe(true)
-    expect(
-      configs
-        .filter((item: any) => !RETIRED.includes(item.type))
-        .every((item: any) => item.enabled === true),
-    ).toBe(true)
+    const retiredRows = migrationReport.rows.filter(
+      (row: any) => RETIRED.includes(row.oldType) && row.action === 'DISABLE',
+    )
+    expect(retiredRows).toHaveLength(7)
+    expect(retiredRows.every((row: any) => typeof row.params === 'object')).toBe(true)
+    const visible = await apiCall(api, token, 'get', '/constraints', undefined, {
+      semesterId: seed.semesterId,
+    })
+    expect(visible.some((item: any) => RETIRED.includes(item.type))).toBe(false)
+    expect(visible.every((item: any) => item.enabled === true)).toBe(true)
 
     // 迁移推进了配置版本：页面与缓存不会再拿着旧版本判断「没有变化」。
     expect(await stateVersion(api, token)).toBeGreaterThan(versionBefore)
