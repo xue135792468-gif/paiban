@@ -5,6 +5,8 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 
+import com.paiban.common.deletion.RecentDeletion;
+import com.paiban.common.deletion.RecentDeletionRepository;
 import com.paiban.support.ApiIntegrationTest;
 import com.paiban.support.ScheduleFixture;
 import com.paiban.support.TestData;
@@ -12,8 +14,11 @@ import io.restassured.response.Response;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
@@ -24,6 +29,12 @@ import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 class ExtendedLifecycleIntegrationTest extends ApiIntegrationTest {
+
+    @Autowired
+    private RecentDeletionRepository recentDeletions;
+
+    @Autowired
+    private JdbcTemplate jdbc;
 
     private record Seed(long semesterId, long gradeId, long classId, long courseId, long teacherId) {}
 
@@ -46,9 +57,14 @@ class ExtendedLifecycleIntegrationTest extends ApiIntegrationTest {
     }
 
     private Map<String, Object> entry(long teacherId, int day, int period, String groupKey) {
+        return entry(teacherId, day, period, groupKey, true);
+    }
+
+    private Map<String, Object> entry(
+            long teacherId, int day, int period, String groupKey, boolean enabled) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("params", Map.of("teacherId", teacherId, "dayOfWeek", day, "periodNo", period));
-        row.put("enabled", true);
+        row.put("enabled", enabled);
         row.put("groupKey", groupKey);
         return row;
     }
@@ -78,6 +94,27 @@ class ExtendedLifecycleIntegrationTest extends ApiIntegrationTest {
         state.then().statusCode(200);
         return state.jsonPath().getList(
                 "configs.find { it.type == 'TEACHER_UNAVAILABLE' }.entries.groupKey");
+    }
+
+    /** Live (not recycled) entry rows of one type, with their switch flag. */
+    private List<Map<String, Object>> liveEntries(String token, long semesterId, String type) {
+        Response state = as(token).queryParam("semesterId", semesterId)
+                .when().get("/api/constraints/state");
+        state.then().statusCode(200);
+        List<Map<String, Object>> rows = state.jsonPath().getList(
+                "configs.findAll { it.type == '" + type + "' }"
+                        + ".collectMany { it.entries == null ? [] : it.entries }");
+        return rows == null ? List.of() : rows;
+    }
+
+    private Map<String, Boolean> enabledByGroup(List<Map<String, Object>> rows) {
+        Map<String, Boolean> result = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            Object group = row.get("groupKey");
+            result.put(group == null ? "<legacy>" : String.valueOf(group),
+                    Boolean.TRUE.equals(row.get("enabled")));
+        }
+        return result;
     }
 
     private String latestBatch(String token, String entityType) {
@@ -294,6 +331,13 @@ class ExtendedLifecycleIntegrationTest extends ApiIntegrationTest {
                 .body("hasSecret", equalTo(false));
 
         String batchId = latestBatch(token, "DINGTALK_CONFIG");
+        RecentDeletion dingtalkRow = recentDeletions.findByBatchIdOrderByIdAsc(batchId).stream()
+                .filter(row -> "DINGTALK_CONFIG".equals(row.getEntityType()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(dingtalkRow.getSnapshotJson())
+                .contains("enc:v1:")
+                .doesNotContain("ding-secret");
         List<String> auditDetails = as(token).when().get("/api/foundation/audit-logs")
                 .then().statusCode(200).extract().jsonPath().getList("detail");
         assertThat(auditDetails).noneMatch(detail -> detail != null && detail.contains("ding-secret"));
@@ -329,5 +373,197 @@ class ExtendedLifecycleIntegrationTest extends ApiIntegrationTest {
         List<Integer> restored = as(token).when().get("/api/constraint-templates")
                 .then().statusCode(200).extract().jsonPath().getList("id");
         assertThat(restored).contains((int) templateId);
+    }
+
+    @Test
+    void recycledDraftIsRefusedByValidationSwapPublishWithdrawAndRoomFill() {
+        String token = adminToken();
+        ScheduleFixture.Result world = ScheduleFixture.solved(token, 5);
+        long draftId = world.draftId();
+        long lessonId = as(token).when().get("/api/timetable-drafts/" + draftId)
+                .then().statusCode(200).extract().jsonPath().getLong("lessons[0].id");
+
+        as(token).when().delete("/api/timetable-drafts/" + draftId)
+                .then().statusCode(200);
+
+        as(token).when().get("/api/timetable-drafts/" + draftId + "/validation")
+                .then().statusCode(404);
+        as(token).when().get("/api/timetable-drafts/" + draftId + "/lessons/"
+                        + lessonId + "/swap-candidates")
+                .then().statusCode(404);
+        as(token).when().get("/api/timetable-drafts/" + draftId + "/lessons/"
+                        + lessonId + "/move-targets")
+                .then().statusCode(404);
+        as(token).when().get("/api/timetable-drafts/" + draftId + "/room-fill/plan")
+                .then().statusCode(404);
+        as(token).when().post("/api/timetable-drafts/" + draftId + "/publish")
+                .then().statusCode(404);
+        as(token).when().post("/api/timetable-drafts/" + draftId + "/withdraw")
+                .then().statusCode(404);
+
+        // Withdrawal reads the draft through the same live-only lock: a published row
+        // that somehow carries deleted_at (crash, manual data fix) is not withdrawable.
+        ScheduleFixture.Result published = ScheduleFixture.published(token, 5);
+        jdbc.update("update timetable_draft set deleted_at = CURRENT_TIMESTAMP where id = ?",
+                published.draftId());
+        as(token).when().post("/api/timetable-drafts/" + published.draftId() + "/withdraw")
+                .then().statusCode(404);
+    }
+
+    @Test
+    void restoringARuleCardKeepsTheSwitchStateItWasDeletedWith() {
+        String token = adminToken();
+        Seed seed = seed(token);
+        saveUnavailable(token, seed, List.of(
+                entry(seed.teacherId(), 1, 1, "card-a:0", true),
+                entry(seed.teacherId(), 2, 1, "card-b:0", false)))
+                .then().statusCode(200);
+        long configId = configId(token, seed.semesterId(), "TEACHER_UNAVAILABLE");
+
+        // A card that was on comes back on.
+        as(token).queryParam("cardKey", "card-a")
+                .when().delete("/api/rules/" + configId)
+                .then().statusCode(200);
+        restore(token, latestBatch(token, "CONSTRAINT_RULE"));
+        assertThat(enabledByGroup(liveEntries(token, seed.semesterId(), "TEACHER_UNAVAILABLE")))
+                .containsEntry("card-a:0", true)
+                .containsEntry("card-b:0", false);
+
+        // A card that was paused before deletion must stay paused after restore.
+        as(token).queryParam("cardKey", "card-b")
+                .when().delete("/api/rules/" + configId)
+                .then().statusCode(200);
+        restore(token, latestBatch(token, "CONSTRAINT_RULE"));
+        assertThat(enabledByGroup(liveEntries(token, seed.semesterId(), "TEACHER_UNAVAILABLE")))
+                .containsEntry("card-b:0", false);
+    }
+
+    @Test
+    void legacyRuleCardWithoutGroupKeyCanBeDeletedAndRestored() {
+        String token = adminToken();
+        Seed seed = seed(token);
+        saveUnavailable(token, seed, List.of(entry(seed.teacherId(), 1, 1, null)))
+                .then().statusCode(200);
+        long configId = configId(token, seed.semesterId(), "TEACHER_UNAVAILABLE");
+        List<Map<String, Object>> rows = liveEntries(
+                token, seed.semesterId(), "TEACHER_UNAVAILABLE");
+        assertThat(rows).hasSize(1);
+        long entryId = ((Number) Objects.requireNonNull(rows.get(0).get("id"))).longValue();
+
+        as(token)
+                .queryParam("cardKey", "entry:" + entryId)
+                .queryParam("entryIds", entryId)
+                .when().delete("/api/rules/" + configId)
+                .then().statusCode(200);
+        assertThat(liveEntries(token, seed.semesterId(), "TEACHER_UNAVAILABLE")).isEmpty();
+
+        restore(token, latestBatch(token, "CONSTRAINT_RULE"));
+        List<Map<String, Object>> restored = liveEntries(
+                token, seed.semesterId(), "TEACHER_UNAVAILABLE");
+        assertThat(restored).hasSize(1);
+        assertThat(restored.get(0).get("groupKey")).isNull();
+        assertThat(enabledByGroup(restored)).containsEntry("<legacy>", true);
+    }
+
+    @Test
+    void templateSnapshotAndPreviewSkipRecycledRuleRows() {
+        String token = adminToken();
+        Seed seed = seed(token);
+        saveUnavailable(token, seed, List.of(
+                entry(seed.teacherId(), 1, 1, "card-a:0"),
+                entry(seed.teacherId(), 1, 2, "card-a:0"),
+                entry(seed.teacherId(), 2, 1, "card-b:0")))
+                .then().statusCode(200);
+        long configId = configId(token, seed.semesterId(), "TEACHER_UNAVAILABLE");
+
+        as(token).queryParam("cardKey", "card-a")
+                .when().delete("/api/rules/" + configId)
+                .then().statusCode(200);
+
+        Response created = as(token).queryParam("semesterId", seed.semesterId())
+                .body(Map.of("name", "模板" + TestData.suffix()))
+                .when().post("/api/constraint-templates");
+        created.then().statusCode(200);
+        assertThat(created.jsonPath().getInt("entryCount")).isEqualTo(1);
+        long templateId = created.jsonPath().getLong("id");
+
+        as(token).queryParam("semesterId", seed.semesterId())
+                .when().post("/api/constraint-templates/" + templateId + "/preview")
+                .then().statusCode(200)
+                .body("entryCount", equalTo(1));
+    }
+
+    @Test
+    void editingAUserCannotBypassTheDisableGuard() {
+        String token = adminToken();
+        long userId = createUser(token, "u" + TestData.suffix(), "pass1234", "teacher");
+
+        as(token).body(Map.of("displayName", "改过名字", "enabled", false))
+                .when().put("/api/users/" + userId)
+                .then().statusCode(200);
+        as(token).when().get("/api/users")
+                .then().statusCode(200)
+                .body("find { it.id == " + userId + " }.enabled", equalTo(false));
+
+        as(token).body(Map.of("enabled", true))
+                .when().put("/api/users/" + userId)
+                .then().statusCode(200);
+        as(token).when().get("/api/users")
+                .then().statusCode(200)
+                .body("find { it.id == " + userId + " }.enabled", equalTo(true));
+
+        List<String> actions = as(token).when().get("/api/foundation/audit-logs")
+                .then().statusCode(200).extract().jsonPath().getList("action");
+        assertThat(actions).contains("DISABLE_USER", "ENABLE_USER");
+
+        long selfId = as(token).when().get("/api/users")
+                .then().statusCode(200)
+                .extract().jsonPath().getLong("find { it.username == 'admin' }.id");
+        as(token).body(Map.of("enabled", false))
+                .when().put("/api/users/" + selfId)
+                .then().statusCode(409);
+        as(token).when().get("/api/users")
+                .then().statusCode(200)
+                .body("find { it.id == " + selfId + " }.enabled", equalTo(true));
+    }
+
+    @Test
+    void restoringAProviderOnlyBringsBackTheModelsDeletedWithIt() {
+        String token = adminToken();
+        String name = "测试供应商" + TestData.suffix();
+        Response created = as(token).body(Map.of(
+                        "name", name,
+                        "type", "custom",
+                        "protocol", "openai",
+                        "baseUrl", "https://example.invalid/v1",
+                        "apiKey", "sk-secret",
+                        "enabled", true,
+                        "models", List.of(
+                                Map.of("modelName", "model-a", "displayName", "模型A", "enabled", true),
+                                Map.of("modelName", "model-b", "displayName", "模型B", "enabled", true))))
+                .when().post("/api/ai-providers");
+        created.then().statusCode(200);
+        long providerId = created.jsonPath().getLong("id");
+        long modelBId = as(token).when().get("/api/ai-providers/" + providerId)
+                .then().statusCode(200)
+                .extract().jsonPath()
+                .getLong("models.find { it.modelName == 'model-b' }.id");
+
+        // Delete one model on its own first: that recycle decision is not the provider's.
+        as(token).when().delete("/api/ai-providers/" + providerId + "/models/" + modelBId)
+                .then().statusCode(200);
+        as(token).when().delete("/api/ai-providers/" + providerId)
+                .then().statusCode(200);
+
+        restore(token, latestBatch(token, "AI_PROVIDER"));
+
+        as(token).when().get("/api/ai-providers/" + providerId)
+                .then().statusCode(200)
+                .body("models.size()", equalTo(1))
+                .body("models[0].modelName", equalTo("model-a"));
+        // The separately deleted model is still waiting in the recycle bin.
+        as(token).when().get("/api/recent-deletions")
+                .then().statusCode(200)
+                .body("entityType", hasItem("AI_MODEL"));
     }
 }

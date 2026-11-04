@@ -48,6 +48,8 @@ public class RuleLifecycleService implements DeletionRestoreHandler {
     static final String ENTITY_TYPE = "CONSTRAINT_RULE";
     private static final String KIND_LABEL = "排课规则";
     private static final String SWITCH_PREFIX = "switch:";
+    /** Builder card id of a rule row read back without a group key ({@code entry:<id>}). */
+    private static final String LEGACY_CARD_PREFIX = "entry:";
 
     private final ConstraintConfigRepository configs;
     private final ConstraintEntryRepository entries;
@@ -84,9 +86,13 @@ public class RuleLifecycleService implements DeletionRestoreHandler {
      * Deletes one card of a type row. {@code cardKey} is the card id (the group-key
      * prefix); blank deletes the whole type row (used by switch cards and the advanced
      * page). Returns the recycle batch plus how many entries were paused.
+     *
+     * <p>{@code entryIds} names the rows the card is made of. It is the reliable way to
+     * delete a card whose rows have no group key (legacy rows read back as
+     * {@code entry:<id>}), and it also pins the exact rows when a card id is ambiguous.
      */
     @Transactional
-    public Map<String, Object> delete(Long configId, String cardKey) {
+    public Map<String, Object> delete(Long configId, String cardKey, List<Long> entryIds) {
         ConstraintConfig config = configs.findById(configId)
                 .orElseThrow(() -> ApiException.notFound("排课规则不存在: " + configId));
         if (config.getDeletedAt() != null) {
@@ -97,17 +103,33 @@ public class RuleLifecycleService implements DeletionRestoreHandler {
         boolean wholeType = !StringUtils.hasText(cardKey)
                 || cardKey.startsWith(SWITCH_PREFIX)
                 || cardKey.equals(config.getType());
-        List<ConstraintEntry> targets = wholeType
-                ? rows.stream().filter(row -> row.getDeletedAt() == null).toList()
-                : rows.stream()
-                        .filter(row -> row.getDeletedAt() == null && matchesCard(row, cardKey))
-                        .toList();
-        if (!wholeType && targets.isEmpty()) {
+        boolean byEntryIds = entryIds != null && !entryIds.isEmpty();
+        List<ConstraintEntry> targets;
+        if (byEntryIds) {
+            Set<Long> ids = new LinkedHashSet<>(entryIds);
+            targets = rows.stream()
+                    .filter(row -> row.getDeletedAt() == null && ids.contains(row.getId()))
+                    .toList();
+        } else {
+            targets = wholeType
+                    ? rows.stream().filter(row -> row.getDeletedAt() == null).toList()
+                    : rows.stream()
+                            .filter(row -> row.getDeletedAt() == null && matchesCard(row, cardKey))
+                            .toList();
+        }
+        if (!byEntryIds && !wholeType && targets.isEmpty()) {
+            throw ApiException.notFound("规则卡不存在或已被删除: " + cardKey);
+        }
+        if (byEntryIds && targets.isEmpty()) {
             throw ApiException.notFound("规则卡不存在或已被删除: " + cardKey);
         }
 
         Instant now = Instant.now(clock);
+        // Remember the switch state of every row before pausing it: a card that was
+        // turned off must come back turned off, not silently enabled.
+        Map<Long, Boolean> enabledByEntry = new LinkedHashMap<>();
         for (ConstraintEntry row : targets) {
+            enabledByEntry.put(row.getId(), row.isEnabled());
             row.setDeletedAt(now);
             row.setEnabled(false);
         }
@@ -115,16 +137,23 @@ public class RuleLifecycleService implements DeletionRestoreHandler {
         targets.forEach(row -> targetIds.add(row.getId()));
         boolean anyLiveLeft = rows.stream()
                 .anyMatch(row -> row.getDeletedAt() == null && !targetIds.contains(row.getId()));
+        boolean configEnabled = config.isEnabled();
         if (!anyLiveLeft) {
             config.setDeletedAt(now);
         }
 
         String label = labelOf(config, targets);
-        String snapshot = snapshotJson(config.getId(), cardKey, targetIds);
+        String snapshot = snapshotJson(config.getId(), cardKey, targetIds, enabledByEntry, configEnabled);
         String batchId = deletionWriter.record(
                 ENTITY_TYPE, config.getId(), label, KIND_LABEL, snapshot);
         configService.advanceVersion(config.getSemesterId());
         return Map.of("batchId", batchId, "deletedCount", targets.size());
+    }
+
+    /** Older callers delete by card key or whole type only. */
+    @Transactional
+    public Map<String, Object> delete(Long configId, String cardKey) {
+        return delete(configId, cardKey, null);
     }
 
     @Override
@@ -147,11 +176,14 @@ public class RuleLifecycleService implements DeletionRestoreHandler {
                 .orElseThrow(() -> ApiException.notFound("排课规则不存在: " + configId));
         JsonNode snapshot = readSnapshot(snapshotJson);
         if (snapshot != null && snapshot.has("entryIds")) {
+            Map<Long, Boolean> enabledByEntry = enabledByEntryOf(snapshot);
             for (JsonNode node : snapshot.get("entryIds")) {
                 entries.findById(node.asLong()).ifPresent(row -> {
                     if (config.getType().equals(row.getType())) {
                         row.setDeletedAt(null);
-                        row.setEnabled(true);
+                        // Older snapshots have no flag: those rows were enabled at delete
+                        // time (the pre-review code always wrote that), so default true.
+                        row.setEnabled(enabledByEntry.getOrDefault(row.getId(), true));
                     }
                 });
             }
@@ -167,7 +199,7 @@ public class RuleLifecycleService implements DeletionRestoreHandler {
         }
         if (config.getDeletedAt() != null) {
             config.setDeletedAt(null);
-            config.setEnabled(true);
+            config.setEnabled(booleanOf(snapshot, "configEnabled", true));
             configs.save(config);
         }
         configService.advanceVersion(config.getSemesterId());
@@ -176,23 +208,66 @@ public class RuleLifecycleService implements DeletionRestoreHandler {
     // ---------------------------------------------------------------- helpers
 
     private boolean matchesCard(ConstraintEntry row, String cardKey) {
+        String trimmed = cardKey.trim();
+        // Compatibility for a card read back from a legacy row (no group key): the
+        // builder names it "entry:<rowId>", so delete by row id instead of group.
+        if (trimmed.startsWith(LEGACY_CARD_PREFIX)) {
+            Long entryId = parseLong(trimmed.substring(LEGACY_CARD_PREFIX.length()));
+            return entryId != null && entryId.equals(row.getId());
+        }
         String group = row.getGroupKey();
         if (!StringUtils.hasText(group)) {
             return false;
         }
-        String trimmed = cardKey.trim();
         return group.equals(trimmed) || group.startsWith(trimmed + ":");
     }
 
-    private String snapshotJson(Long configId, String cardKey, Set<Long> entryIds) {
+    private String snapshotJson(
+            Long configId, String cardKey, Set<Long> entryIds,
+            Map<Long, Boolean> enabledByEntry, boolean configEnabled) {
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("configId", configId);
         snapshot.put("cardKey", cardKey);
         snapshot.put("entryIds", new ArrayList<>(entryIds));
+        Map<String, Boolean> flags = new LinkedHashMap<>();
+        enabledByEntry.forEach((id, enabled) -> flags.put(String.valueOf(id), enabled));
+        snapshot.put("enabledByEntry", flags);
+        snapshot.put("configEnabled", configEnabled);
         try {
             return objectMapper.writeValueAsString(snapshot);
         } catch (JsonProcessingException ex) {
             throw new IllegalStateException("规则删除快照无法序列化", ex);
+        }
+    }
+
+    /** Entry id → enabled flag from a snapshot; empty (default true) for old rows. */
+    private Map<Long, Boolean> enabledByEntryOf(JsonNode snapshot) {
+        Map<Long, Boolean> result = new LinkedHashMap<>();
+        JsonNode flags = snapshot.get("enabledByEntry");
+        if (flags == null || !flags.isObject()) {
+            return result;
+        }
+        flags.fields().forEachRemaining(entry -> {
+            Long id = parseLong(entry.getKey());
+            if (id != null) {
+                result.put(id, entry.getValue().asBoolean(true));
+            }
+        });
+        return result;
+    }
+
+    private boolean booleanOf(JsonNode snapshot, String field, boolean fallback) {
+        if (snapshot == null || !snapshot.has(field) || snapshot.get(field).isNull()) {
+            return fallback;
+        }
+        return snapshot.get(field).asBoolean(fallback);
+    }
+
+    private Long parseLong(String value) {
+        try {
+            return Long.valueOf(value.trim());
+        } catch (NumberFormatException ex) {
+            return null;
         }
     }
 

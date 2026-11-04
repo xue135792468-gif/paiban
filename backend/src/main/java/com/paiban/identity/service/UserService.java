@@ -70,14 +70,21 @@ public class UserService {
         if (request.displayName() != null) {
             user.setDisplayName(request.displayName());
         }
-        if (request.enabled() != null) {
-            user.setEnabled(request.enabled());
-        }
         if (request.roleCodes() != null) {
             user.setRoles(resolveRoles(request.roleCodes()));
         }
         if (request.teacherId() != null) {
             user.setTeacherId(request.teacherId());
+        }
+        // An enabled flag sent with the edit form is not a free write: it goes through
+        // the same guards and audit as the dedicated disable/enable endpoints, so this
+        // route cannot pause yourself or the last administrator silently.
+        if (request.enabled() != null && request.enabled() != user.isEnabled()) {
+            if (request.enabled()) {
+                enable(id);
+            } else {
+                disable(id);
+            }
         }
         return toSummary(user);
     }
@@ -127,7 +134,9 @@ public class UserService {
         if (target.getRoles().stream().noneMatch(role -> "admin".equals(role.getCode()))) {
             return false;
         }
-        return users.findAllByRolesCode("admin").stream()
+        // Lock every administrator row first, so two concurrent disables cannot both
+        // read "the other one is still enabled" and leave the school without an admin.
+        return users.findRoleHoldersForUpdate("admin").stream()
                 .noneMatch(other -> !other.getId().equals(target.getId()) && other.isEnabled());
     }
 

@@ -213,7 +213,7 @@ public class ManualImportService {
                     List.copyOf(warnings), null, null);
         }
         if (StringUtils.hasText(options.draftName())) {
-            TimetableDraft draft = drafts.findById(result.draftId())
+            TimetableDraft draft = drafts.findByIdAndDeletedAtIsNull(result.draftId())
                     .orElseThrow(() -> new IllegalStateException("导入草稿不见了"));
             draft.setName(options.draftName().trim());
             drafts.save(draft);

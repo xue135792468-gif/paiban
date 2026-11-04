@@ -135,8 +135,9 @@ public class ConstraintController {
     @PreAuthorize("hasAuthority('" + Permissions.CONSTRAINT_MANAGE + "')")
     public Map<String, Object> deleteRule(
             @PathVariable Long configId,
-            @RequestParam(required = false) String cardKey) {
-        return rules.delete(configId, cardKey);
+            @RequestParam(required = false) String cardKey,
+            @RequestParam(required = false) List<Long> entryIds) {
+        return rules.delete(configId, cardKey, entryIds);
     }
 
     @GetMapping("/constraint-templates")

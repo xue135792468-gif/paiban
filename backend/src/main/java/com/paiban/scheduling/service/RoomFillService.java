@@ -416,7 +416,8 @@ public class RoomFillService {
     }
 
     private TimetableDraft requireDraft(Long draftId) {
-        return drafts.findById(draftId)
+        // A recycled draft is not a planning target; restoring it first is the way back.
+        return drafts.findByIdAndDeletedAtIsNull(draftId)
                 .orElseThrow(() -> com.paiban.common.web.ApiException.notFound("课表草稿不存在: " + draftId));
     }
 }

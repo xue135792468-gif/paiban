@@ -63,9 +63,11 @@ public class IntegrationController {
 
     /**
      * Ticket 04: clears the DingTalk keys into the 7-day recycle bin. The snapshot
-     * (including the secret) lives in {@code recent_deletion}, never in the audit row.
+     * (secret encrypted) lives in {@code recent_deletion}, never in the audit row.
+     * The path mirrors the other {@code /integrations/dingtalk/*} endpoints; the old
+     * {@code /integration/dingtalk} path stays as a compatibility alias.
      */
-    @DeleteMapping("/integration/dingtalk")
+    @DeleteMapping({"/integrations/dingtalk/config", "/integration/dingtalk"})
     @PreAuthorize("hasAuthority('" + Permissions.INTEGRATION_MANAGE + "')")
     public Map<String, Object> clear() {
         return dingtalkLifecycle.delete();

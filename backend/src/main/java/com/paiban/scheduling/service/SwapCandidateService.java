@@ -95,7 +95,7 @@ public class SwapCandidateService {
             SwapType type,
             CandidateFilters filters,
             boolean includeUnavailable) {
-        TimetableDraft draft = drafts.findById(draftId)
+        TimetableDraft draft = drafts.findByIdAndDeletedAtIsNull(draftId)
                 .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
         List<DraftLesson> lessons = draftLessons.findByDraftIdOrderByIdAsc(draftId);
         DraftLesson target = lessons.stream()
@@ -371,7 +371,7 @@ public class SwapCandidateService {
      */
     @Transactional(readOnly = true)
     public MoveTargetsResponse moveTargets(Long draftId, Long lessonId) {
-        TimetableDraft draft = drafts.findById(draftId)
+        TimetableDraft draft = drafts.findByIdAndDeletedAtIsNull(draftId)
                 .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
         List<DraftLesson> lessons = draftLessons.findByDraftIdOrderByIdAsc(draftId);
         DraftLesson target = lessons.stream()
