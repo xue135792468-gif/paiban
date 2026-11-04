@@ -128,8 +128,7 @@ public class SubstitutionMapper {
                 ? null : entries.findById(substitution.getEntryId()).orElse(null);
         // After a publish withdrawal the entry is gone; the request keeps the class,
         // course and slot snapshot so the history row still reads correctly.
-        SubstitutionRequest request = entry == null && substitution.getRequestId() != null
-                ? requests.findById(substitution.getRequestId()).orElse(null) : null;
+        SubstitutionRequest request = SubstitutionSnapshots.requestOf(substitution, requests);
         Long classId = entry != null ? entry.getAdminClassId()
                 : request != null ? request.getAdminClassId() : null;
         Long courseId = entry != null ? entry.getCourseId()

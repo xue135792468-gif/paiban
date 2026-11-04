@@ -98,18 +98,17 @@ public class SubstitutionQueryService {
     }
 
     /**
-     * Class of a history row. After a publish withdrawal the entry is gone, so fall
-     * back to the request's class snapshot; otherwise class-filtered history would
-     * silently lose those rows.
+     * Class of a history row. After a publish withdrawal the entry is gone, so the
+     * request snapshot answers instead (see {@link SubstitutionSnapshots}); otherwise
+     * class-filtered history would silently lose those rows.
      */
     private Long classOf(Substitution item, Map<Long, TimetableEntry> entryMap) {
         TimetableEntry entry = entryMap.get(item.getEntryId());
         if (entry != null) {
             return entry.getAdminClassId();
         }
-        return item.getRequestId() == null ? null : requests.findById(item.getRequestId())
-                .map(SubstitutionRequest::getAdminClassId)
-                .orElse(null);
+        SubstitutionRequest snapshot = SubstitutionSnapshots.requestOf(item, requests);
+        return snapshot == null ? null : snapshot.getAdminClassId();
     }
 
     /** Semester-end export: the same filtered rows as the records page, as CSV. */

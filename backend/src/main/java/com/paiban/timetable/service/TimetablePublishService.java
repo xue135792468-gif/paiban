@@ -12,13 +12,17 @@ import com.paiban.scheduling.domain.TimetableDraft;
 import com.paiban.scheduling.domain.TimetableDraftRepository;
 import com.paiban.scheduling.service.DraftPublishReadiness;
 import com.paiban.scheduling.service.DraftValidator;
+import com.paiban.substitution.domain.Substitution;
+import com.paiban.substitution.domain.SubstitutionRepository;
 import com.paiban.timetable.domain.TimetableEntry;
 import com.paiban.timetable.domain.TimetableEntryRepository;
 import com.paiban.timetable.domain.TimetablePublish;
 import com.paiban.timetable.domain.TimetablePublishRepository;
 import com.paiban.timetable.web.TimetableDtos.PublishInfoDto;
 import com.paiban.timetable.web.TimetableDtos.PublishResultDto;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -37,6 +41,8 @@ public class TimetablePublishService {
     private final PeriodRepository periods;
     private final ApplicationEventPublisher events;
     private final AuditLogRepository auditLogs;
+    private final SubstitutionRepository substitutions;
+    private final Clock clock;
 
     public TimetablePublishService(
             TimetableDraftRepository drafts,
@@ -46,7 +52,9 @@ public class TimetablePublishService {
             DraftValidator validator,
             PeriodRepository periods,
             ApplicationEventPublisher events,
-            AuditLogRepository auditLogs) {
+            AuditLogRepository auditLogs,
+            SubstitutionRepository substitutions,
+            Clock clock) {
         this.drafts = drafts;
         this.draftLessons = draftLessons;
         this.entries = entries;
@@ -55,6 +63,8 @@ public class TimetablePublishService {
         this.periods = periods;
         this.events = events;
         this.auditLogs = auditLogs;
+        this.substitutions = substitutions;
+        this.clock = clock;
     }
 
     @Transactional
@@ -104,6 +114,18 @@ public class TimetablePublishService {
         draft.setStatus("PUBLISHED");
         drafts.save(draft);
 
+        // One live baseline per semester. The status check above already refuses a second
+        // published draft, but legacy rows (and a crash between statements) can leave an
+        // older ACTIVE row behind; demoting it here keeps "the" baseline unambiguous.
+        List<TimetablePublish> previousActive = publishes.findBySemesterIdAndStatus(
+                draft.getSemesterId(), TimetablePublish.ACTIVE);
+        for (TimetablePublish previous : previousActive) {
+            previous.setStatus(TimetablePublish.WITHDRAWN);
+            previous.setWithdrawnAt(now);
+            previous.setWithdrawnBy(actor);
+        }
+        publishes.saveAll(previousActive);
+
         TimetablePublish publish = new TimetablePublish();
         publish.setSemesterId(draft.getSemesterId());
         publish.setDraftId(draftId);
@@ -122,7 +144,23 @@ public class TimetablePublishService {
                 0));
 
         events.publishEvent(new TimetablePublishedEvent(draft.getSemesterId(), draftId, actor));
-        return new PublishResultDto(draftId, baseline.size(), now, saved.getId());
+        return new PublishResultDto(
+                draftId, baseline.size(), now, saved.getId(),
+                cancelledFutureSubstitutions(draft.getSemesterId()));
+    }
+
+    /**
+     * Overlay rows that a withdrawal cancelled and that still cover a future lesson: the
+     * admin has to redo them against the fresh baseline. Old cancelled rows stay
+     * CANCELLED forever (they are history), so this count only clears once the affected
+     * dates have passed — the page shows the prompt as a reminder, not as a task state.
+     */
+    private int cancelledFutureSubstitutions(Long semesterId) {
+        LocalDate today = LocalDate.now(clock);
+        return (int) substitutions.findBySemesterIdAndStatus(semesterId, Substitution.CANCELLED)
+                .stream()
+                .filter(row -> SubstitutionFutures.affectsFuture(row, today))
+                .count();
     }
 
     /**

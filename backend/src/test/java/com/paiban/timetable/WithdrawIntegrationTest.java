@@ -9,6 +9,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 
 import com.paiban.substitution.domain.Substitution;
+import com.paiban.substitution.domain.SubstitutionHistoryRepository;
 import com.paiban.substitution.domain.SubstitutionRepository;
 import com.paiban.substitution.domain.SubstitutionRequest;
 import com.paiban.substitution.domain.SubstitutionRequestRepository;
@@ -43,6 +44,9 @@ class WithdrawIntegrationTest extends ApiIntegrationTest {
     private SubstitutionRequestRepository substitutionRequests;
 
     @Autowired
+    private SubstitutionHistoryRepository substitutionHistory;
+
+    @Autowired
     private TimetablePublishRepository publishes;
 
     @Autowired
@@ -51,56 +55,86 @@ class WithdrawIntegrationTest extends ApiIntegrationTest {
     private record Seeded(ScheduleFixture.Result fixture, long entryId,
                           LocalDate pastDate, List<LocalDate> futureDates) {}
 
+    /** The slot the seeded substitutions point at, copied out of a published entry. */
+    private record Slot(long entryId, long classId, long courseId, long teacherId,
+                        long periodId, int dayOfWeek, int periodNo) {}
+
     /**
      * A future semester with a published baseline and three effective substitutions:
      * one past row plus two future rows, all pointing at the same timetable entry.
      */
     private Seeded publishedWithSubstitutions(String token) {
+        ScheduleFixture.Result fixture = publishedBaseline(token);
+        Slot slot = slotOf(token, fixture);
         LocalDate monday = ScheduleFixture.nextMonday();
-        long semesterId = TestData.semesterStarting(token, monday);
-        ScheduleFixture.Result fixture = ScheduleFixture.publishedIn(token, 5, semesterId);
-        List<Map<String, Object>> classEntries = ScheduleFixture.classEntries(token, fixture.classId());
-        Map<String, Object> entry = classEntries.get(0);
-        long entryId = number(entry, "id");
-        long classId = number(entry, "classId");
-        long courseId = number(entry, "courseId");
-        long teacherId = number(entry, "teacherId");
-        long periodId = number(entry, "periodId");
-        int dayOfWeek = ((Number) entry.get("dayOfWeek")).intValue();
-        int periodNo = ((Number) entry.get("periodNo")).intValue();
-
-        LocalDate today = LocalDate.now();
-        LocalDate pastDate = today.minusDays(5);
+        LocalDate pastDate = LocalDate.now(com.paiban.substitution.service.LessonDeadline.SCHOOL_ZONE)
+                .minusDays(5);
         List<LocalDate> futureDates = List.of(monday, monday.plusDays(1));
         for (LocalDate date : List.of(pastDate, monday, monday.plusDays(1))) {
-            SubstitutionRequest request = new SubstitutionRequest();
-            request.setSemesterId(semesterId);
-            request.setEntryId(entryId);
-            request.setAdminClassId(classId);
-            request.setCourseId(courseId);
-            request.setOriginalTeacherId(teacherId);
-            request.setEffectiveDate(date);
-            request.setPeriodId(periodId);
-            request.setDayOfWeek(dayOfWeek);
-            request.setPeriodNo(periodNo);
-            request.setType(Substitution.TYPE_COVER);
-            request.setStatus(SubstitutionRequest.EFFECTIVE);
-            request.setApprovalMode("approval");
-            substitutionRequests.save(request);
-
-            Substitution substitution = new Substitution();
-            substitution.setSemesterId(semesterId);
-            substitution.setRequestId(request.getId());
-            substitution.setEntryId(entryId);
-            substitution.setEffectiveDate(date);
-            substitution.setLessonDate(date);
-            substitution.setOriginalTeacherId(teacherId);
-            substitution.setSubstituteTeacherId(fixture.otherTeacherId());
-            substitution.setType(Substitution.TYPE_COVER);
-            substitution.setStatus(Substitution.EFFECTIVE);
-            substitutions.save(substitution);
+            seedEffective(fixture.semesterId(), slot, fixture.otherTeacherId(), date, date);
         }
-        return new Seeded(fixture, entryId, pastDate, futureDates);
+        return new Seeded(fixture, slot.entryId(), pastDate, futureDates);
+    }
+
+    /** A semester anchored on the next Monday with its baseline already published. */
+    private ScheduleFixture.Result publishedBaseline(String token) {
+        long semesterId = TestData.semesterStarting(token, ScheduleFixture.nextMonday());
+        return ScheduleFixture.publishedIn(token, 5, semesterId);
+    }
+
+    private Slot slotOf(String token, ScheduleFixture.Result fixture) {
+        Map<String, Object> entry = ScheduleFixture.classEntries(token, fixture.classId()).get(0);
+        return new Slot(
+                number(entry, "id"),
+                number(entry, "classId"),
+                number(entry, "courseId"),
+                number(entry, "teacherId"),
+                number(entry, "periodId"),
+                ((Number) entry.get("dayOfWeek")).intValue(),
+                ((Number) entry.get("periodNo")).intValue());
+    }
+
+    /** An EFFECTIVE request plus its EFFECTIVE overlay row for one instance date. */
+    private SubstitutionRequest seedEffective(long semesterId, Slot slot, long substituteTeacherId,
+                                              LocalDate effectiveDate, LocalDate lessonDate) {
+        SubstitutionRequest request = seedRequest(
+                semesterId, slot, effectiveDate, SubstitutionRequest.EFFECTIVE);
+        Substitution substitution = new Substitution();
+        substitution.setSemesterId(semesterId);
+        substitution.setRequestId(request.getId());
+        substitution.setEntryId(slot.entryId());
+        substitution.setEffectiveDate(effectiveDate);
+        substitution.setLessonDate(lessonDate);
+        substitution.setOriginalTeacherId(slot.teacherId());
+        substitution.setSubstituteTeacherId(substituteTeacherId);
+        substitution.setType(Substitution.TYPE_COVER);
+        substitution.setStatus(Substitution.EFFECTIVE);
+        substitutions.save(substitution);
+        return request;
+    }
+
+    /** An approved request that has not produced an overlay row yet. */
+    private SubstitutionRequest seedApproved(long semesterId, Slot slot, LocalDate effectiveDate) {
+        return seedRequest(semesterId, slot, effectiveDate, SubstitutionRequest.APPROVED);
+    }
+
+    private SubstitutionRequest seedRequest(long semesterId, Slot slot, LocalDate effectiveDate,
+                                            String status) {
+        SubstitutionRequest request = new SubstitutionRequest();
+        request.setSemesterId(semesterId);
+        request.setEntryId(slot.entryId());
+        request.setAdminClassId(slot.classId());
+        request.setCourseId(slot.courseId());
+        request.setOriginalTeacherId(slot.teacherId());
+        request.setEffectiveDate(effectiveDate);
+        request.setPeriodId(slot.periodId());
+        request.setDayOfWeek(slot.dayOfWeek());
+        request.setPeriodNo(slot.periodNo());
+        request.setType(Substitution.TYPE_COVER);
+        request.setStatus(status);
+        request.setApprovalMode("approval");
+        substitutionRequests.save(request);
+        return request;
     }
 
     private static long number(Map<String, Object> map, String key) {
@@ -125,7 +159,7 @@ class WithdrawIntegrationTest extends ApiIntegrationTest {
                 .body("published", equalTo(true))
                 .body("draftId", equalTo((int) draftId))
                 .body("futureSubstitutions", equalTo(2))
-                .body("totalSubstitutions", equalTo(3));
+                .body("allSubstitutions", equalTo(3));
 
         as(token).when().post("/api/timetable-drafts/" + draftId + "/withdraw")
                 .then().statusCode(200)
@@ -159,6 +193,31 @@ class WithdrawIntegrationTest extends ApiIntegrationTest {
                 .hasSize(3)
                 .allSatisfy(request -> assertThat(request.getEntryId()).isNull());
 
+        // The request must follow its cancelled rows: a cancelled arrangement that still
+        // reads EFFECTIVE/APPROVED would tell the request page the lesson is covered.
+        List<SubstitutionRequest> requestRows =
+                substitutionRequests.findBySemesterIdOrderByCreatedAtDesc(semesterId);
+        assertThat(requestRows).filteredOn(request -> request.getEffectiveDate().isAfter(seeded.pastDate()))
+                .allSatisfy(request -> {
+                    assertThat(request.getStatus()).isEqualTo(SubstitutionRequest.CANCELLED);
+                    assertThat(substitutionHistory.findByRequestIdOrderByCreatedAtAsc(request.getId()))
+                            .singleElement()
+                            .satisfies(item -> {
+                                assertThat(item.getFromStatus()).isEqualTo(SubstitutionRequest.EFFECTIVE);
+                                assertThat(item.getToStatus()).isEqualTo(SubstitutionRequest.CANCELLED);
+                                assertThat(item.getActor()).isEqualTo("admin");
+                                assertThat(item.getComment()).contains("发布撤回");
+                            });
+                });
+        assertThat(requestRows).filteredOn(
+                        request -> request.getEffectiveDate().equals(seeded.pastDate()))
+                .singleElement()
+                .satisfies(request -> {
+                    assertThat(request.getStatus()).isEqualTo(SubstitutionRequest.EFFECTIVE);
+                    assertThat(substitutionHistory.findByRequestIdOrderByCreatedAtAsc(request.getId()))
+                            .isEmpty();
+                });
+
         as(token).when().get("/api/foundation/audit-logs")
                 .then().statusCode(200)
                 .body("action", hasItem("WITHDRAW_TIMETABLE"));
@@ -188,9 +247,13 @@ class WithdrawIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(200)
                 .body("saved", equalTo(true));
 
-        as(token).when().post("/api/timetable-drafts/" + draftId + "/publish")
+        // Publishing reports how many cancelled substitutions still cover future dates, so
+        // the page can prompt for re-processing instead of staying silent.
+        as(token).body(Map.of())
+                .when().post("/api/timetable-drafts/" + draftId + "/publish")
                 .then().statusCode(200)
-                .body("entryCount", greaterThan(0));
+                .body("entryCount", greaterThan(0))
+                .body("cancelledSubstitutions", equalTo(2));
 
         as(token).when().get("/api/timetable/publish-info")
                 .then().statusCode(200)
@@ -276,5 +339,104 @@ class WithdrawIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(200)
                 .body("published", equalTo(false))
                 .body("futureSubstitutions", equalTo(0));
+    }
+
+    /**
+     * Legacy rows (no lesson_date) mean "from effective_date onward": one that still
+     * starts today or later loses its anchor, one that started in the past is history.
+     */
+    @Test
+    void legacyRowsWithoutLessonDateAreCancelledOnlyWhenTheyStillLieAhead() {
+        String token = adminToken();
+        ScheduleFixture.Result fixture = publishedBaseline(token);
+        Slot slot = slotOf(token, fixture);
+        LocalDate today = LocalDate.now(com.paiban.substitution.service.LessonDeadline.SCHOOL_ZONE);
+        seedEffective(fixture.semesterId(), slot, fixture.otherTeacherId(), today, null);
+        seedEffective(fixture.semesterId(), slot, fixture.otherTeacherId(), today.minusDays(9), null);
+
+        as(token).queryParam("semesterId", fixture.semesterId())
+                .when().get("/api/timetable/withdraw-preview")
+                .then().statusCode(200)
+                .body("futureSubstitutions", equalTo(1));
+
+        as(token).when().post("/api/timetable-drafts/" + fixture.draftId() + "/withdraw")
+                .then().statusCode(200)
+                .body("cancelledSubstitutions", equalTo(1));
+
+        assertThat(substitutions.findBySemesterIdOrderByEffectiveDateDesc(fixture.semesterId()))
+                .filteredOn(row -> row.getEffectiveDate().equals(today))
+                .singleElement()
+                .satisfies(row -> assertThat(row.getStatus()).isEqualTo(Substitution.CANCELLED));
+        assertThat(substitutions.findBySemesterIdOrderByEffectiveDateDesc(fixture.semesterId()))
+                .filteredOn(row -> row.getEffectiveDate().isBefore(today))
+                .singleElement()
+                .satisfies(row -> assertThat(row.getStatus()).isEqualTo(Substitution.EFFECTIVE));
+    }
+
+    /**
+     * An approved request for a future date has no row yet, but it still must not stay
+     * APPROVED once the baseline it was approved against is gone.
+     */
+    @Test
+    void approvedFutureRequestIsCountedAndCancelledWithItsHistory() {
+        String token = adminToken();
+        ScheduleFixture.Result fixture = publishedBaseline(token);
+        Slot slot = slotOf(token, fixture);
+        LocalDate monday = ScheduleFixture.nextMonday();
+        SubstitutionRequest request = seedApproved(fixture.semesterId(), slot, monday);
+
+        as(token).queryParam("semesterId", fixture.semesterId())
+                .when().get("/api/timetable/withdraw-preview")
+                .then().statusCode(200)
+                .body("futureSubstitutions", equalTo(1));
+
+        as(token).when().post("/api/timetable-drafts/" + fixture.draftId() + "/withdraw")
+                .then().statusCode(200)
+                .body("cancelledSubstitutions", equalTo(1));
+
+        assertThat(substitutionRequests.findById(request.getId()))
+                .hasValueSatisfying(row -> {
+                    assertThat(row.getStatus()).isEqualTo(SubstitutionRequest.CANCELLED);
+                    assertThat(row.getEntryId()).isNull();
+                });
+        assertThat(substitutionHistory.findByRequestIdOrderByCreatedAtAsc(request.getId()))
+                .singleElement()
+                .satisfies(item -> {
+                    assertThat(item.getFromStatus()).isEqualTo(SubstitutionRequest.APPROVED);
+                    assertThat(item.getToStatus()).isEqualTo(SubstitutionRequest.CANCELLED);
+                    assertThat(item.getActor()).isEqualTo("admin");
+                });
+    }
+
+    /**
+     * A semester only ever has one live baseline, however many withdraw/publish cycles
+     * run. The demotion inside publish() itself is pinned by
+     * {@code TimetablePublishServiceTest}: through the API a second publish is refused
+     * with SEMESTER_ALREADY_PUBLISHED long before that line can run.
+     */
+    @Test
+    void repeatedWithdrawAndPublishKeepsExactlyOneActiveRow() {
+        String token = adminToken();
+        ScheduleFixture.Result fixture = publishedBaseline(token);
+        long semesterId = fixture.semesterId();
+        withdraw(token, fixture.draftId());
+
+        as(token).body(Map.of())
+                .when().post("/api/timetable-drafts/" + fixture.draftId() + "/publish")
+                .then().statusCode(200);
+        withdraw(token, fixture.draftId());
+        as(token).body(Map.of())
+                .when().post("/api/timetable-drafts/" + fixture.draftId() + "/publish")
+                .then().statusCode(200);
+
+        List<TimetablePublish> rows = publishes.findBySemesterIdOrderByPublishedAtDesc(semesterId);
+        assertThat(rows).hasSize(3);
+        assertThat(rows).filteredOn(row -> TimetablePublish.ACTIVE.equals(row.getStatus())).hasSize(1);
+        assertThat(rows).filteredOn(row -> TimetablePublish.WITHDRAWN.equals(row.getStatus()))
+                .hasSize(2)
+                .allSatisfy(row -> {
+                    assertThat(row.getWithdrawnAt()).isNotNull();
+                    assertThat(row.getWithdrawnBy()).isEqualTo("admin");
+                });
     }
 }

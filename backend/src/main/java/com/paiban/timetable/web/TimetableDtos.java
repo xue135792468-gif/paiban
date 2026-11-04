@@ -34,7 +34,16 @@ public final class TimetableDtos {
                                     /** 调课落点实例日期；仅 SWAP 且被调走时有值。 */
                                     LocalDate targetLessonDate) {}
 
-    public record PublishResultDto(Long draftId, int entryCount, Instant publishedAt, Long publishId) {}
+    /**
+     * {@code cancelledSubstitutions} is the number of future overlay rows a withdrawal
+     * cancelled and that nothing has re-done yet; the page turns it into a "re-process
+     * substitutions" prompt after the success toast.
+     */
+    public record PublishResultDto(Long draftId,
+                                   int entryCount,
+                                   Instant publishedAt,
+                                   Long publishId,
+                                   int cancelledSubstitutions) {}
 
     /**
      * {@code published} is the product answer ("is there a live baseline?"); the
@@ -55,7 +64,7 @@ public final class TimetableDtos {
                                      Long draftId,
                                      Long publishId,
                                      int futureSubstitutions,
-                                     long totalSubstitutions) {}
+                                     long allSubstitutions) {}
 
     public record WithdrawResultDto(Long draftId,
                                     Long publishId,
