@@ -17,6 +17,7 @@
       @compare="openCompare"
       @rename="rename"
       @publish="publishDraft"
+      @withdraw="withdrawDraft"
       @remove="removeDraft"
     />
     <DraftStats
@@ -514,11 +515,8 @@ async function undoMove() {
 
 useUndoShortcut({ canUndo, busy, undo: undoMove })
 
-const { rename, publish: publishDraft, remove: removeDraft } = useDraftActions({
-  draftId,
-  detail,
-  reload: load,
-})
+const { rename, publish: publishDraft, remove: removeDraft, withdraw: withdrawDraft } =
+  useDraftActions({ draftId, detail, reload: load })
 
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape' && teacherSwap.active.value) teacherSwap.exit()

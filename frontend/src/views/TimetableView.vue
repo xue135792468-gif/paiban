@@ -58,7 +58,7 @@
 
     <el-alert
       v-if="published === null"
-      title="当前学期还没有发布课表，以下内容可能为空。请先在「自动排课」中发布。"
+      title="当前学期还没有发布课表，可在「课表工作台」发布后再查看。"
       type="warning"
       :closable="false"
       show-icon
@@ -70,8 +70,8 @@
         v-if="!hasData"
         title="暂无课表数据"
         :description="emptyDescription"
-        :button-text="showSchedulingGuide ? '去自动排课' : undefined"
-        :button-to="showSchedulingGuide ? '/admin/scheduling' : undefined"
+        :button-text="showSchedulingGuide ? '去课表工作台' : undefined"
+        :button-to="showSchedulingGuide ? '/workbench' : undefined"
         help-slug="timetable"
         help-anchor="views"
       />
@@ -177,9 +177,12 @@ interface Course {
 }
 
 interface PublishInfo {
-  draftId: number
-  draftName: string
-  publishedAt: string
+  published: boolean
+  draftId?: number | null
+  draftName?: string | null
+  publishedAt?: string | null
+  withdrawnAt?: string | null
+  status?: string | null
 }
 
 const auth = useAuthStore()
@@ -241,7 +244,7 @@ const showSchedulingGuide = computed(
 
 const emptyDescription = computed(() =>
   !published.value
-    ? '当前学期还没有发布课表。请先在「自动排课」中生成并发布课表；如基础数据尚未录入，可从初始化向导开始。'
+    ? '当前学期还没有发布课表，可在「课表工作台」发布后再查看；如基础数据尚未录入，可从初始化向导开始。'
     : '当前查看对象在所选日期没有课节，试试切换查看对象或日期。',
 )
 
@@ -397,7 +400,7 @@ onMounted(async () => {
       http.get('/timetable/publish-info'),
     ])
     periods.value = periodRes.data
-    published.value = publishRes.data ?? null
+    published.value = publishRes.data?.published ? publishRes.data : null
   }
   targetId.value = targets.value.length > 0 ? targets.value[0].id : null
   if (!canViewAll.value) {

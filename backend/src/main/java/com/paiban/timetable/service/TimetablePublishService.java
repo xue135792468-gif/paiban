@@ -2,6 +2,8 @@ package com.paiban.timetable.service;
 
 import com.paiban.common.event.TimetablePublishedEvent;
 import com.paiban.common.web.ApiException;
+import com.paiban.foundation.domain.AuditLog;
+import com.paiban.foundation.domain.AuditLogRepository;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
 import com.paiban.scheduling.domain.DraftLesson;
@@ -34,6 +36,7 @@ public class TimetablePublishService {
     private final DraftValidator validator;
     private final PeriodRepository periods;
     private final ApplicationEventPublisher events;
+    private final AuditLogRepository auditLogs;
 
     public TimetablePublishService(
             TimetableDraftRepository drafts,
@@ -42,7 +45,8 @@ public class TimetablePublishService {
             TimetablePublishRepository publishes,
             DraftValidator validator,
             PeriodRepository periods,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            AuditLogRepository auditLogs) {
         this.drafts = drafts;
         this.draftLessons = draftLessons;
         this.entries = entries;
@@ -50,6 +54,7 @@ public class TimetablePublishService {
         this.validator = validator;
         this.periods = periods;
         this.events = events;
+        this.auditLogs = auditLogs;
     }
 
     @Transactional
@@ -104,7 +109,17 @@ public class TimetablePublishService {
         publish.setDraftId(draftId);
         publish.setPublishedBy(actor);
         publish.setPublishedAt(now);
+        publish.setStatus(TimetablePublish.ACTIVE);
         TimetablePublish saved = publishes.save(publish);
+
+        auditLogs.save(new AuditLog(
+                actor == null ? "system" : actor,
+                "PUBLISH_TIMETABLE",
+                "TIMETABLE",
+                "draftId=" + draftId + ", publishId=" + saved.getId()
+                        + ", entries=" + baseline.size(),
+                baseline.size(),
+                0));
 
         events.publishEvent(new TimetablePublishedEvent(draft.getSemesterId(), draftId, actor));
         return new PublishResultDto(draftId, baseline.size(), now, saved.getId());
@@ -139,13 +154,25 @@ public class TimetablePublishService {
 
     @Transactional(readOnly = true)
     public PublishInfoDto publishInfo(Long semesterId) {
-        return publishes.findFirstBySemesterIdOrderByPublishedAtDesc(semesterId)
-                .map(publish -> new PublishInfoDto(
-                        publish.getSemesterId(),
-                        publish.getDraftId(),
-                        drafts.findById(publish.getDraftId()).map(TimetableDraft::getName).orElse(null),
-                        publish.getPublishedBy(),
-                        publish.getPublishedAt()))
-                .orElse(null);
+        return publishes.findFirstBySemesterIdAndStatusOrderByPublishedAtDesc(
+                        semesterId, TimetablePublish.ACTIVE)
+                .map(publish -> toInfo(publish, true))
+                .or(() -> publishes.findFirstBySemesterIdOrderByPublishedAtDesc(semesterId)
+                        .map(publish -> toInfo(publish, false)))
+                .orElseGet(() -> new PublishInfoDto(
+                        false, semesterId, null, null, null, null, null, null, null));
+    }
+
+    private PublishInfoDto toInfo(TimetablePublish publish, boolean published) {
+        return new PublishInfoDto(
+                published,
+                publish.getSemesterId(),
+                publish.getId(),
+                publish.getDraftId(),
+                drafts.findById(publish.getDraftId()).map(TimetableDraft::getName).orElse(null),
+                publish.getPublishedBy(),
+                publish.getPublishedAt(),
+                publish.getWithdrawnAt(),
+                publish.getStatus());
     }
 }

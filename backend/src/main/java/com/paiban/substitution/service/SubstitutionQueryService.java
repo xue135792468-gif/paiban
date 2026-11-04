@@ -9,6 +9,8 @@ import com.paiban.identity.domain.AppUser;
 import com.paiban.identity.service.UserService;
 import com.paiban.substitution.domain.Substitution;
 import com.paiban.substitution.domain.SubstitutionRepository;
+import com.paiban.substitution.domain.SubstitutionRequest;
+import com.paiban.substitution.domain.SubstitutionRequestRepository;
 import com.paiban.substitution.web.SubstitutionDtos.SubstitutionRecordDto;
 import com.paiban.substitution.web.SubstitutionDtos.TeacherStatsDto;
 import com.paiban.timetable.domain.TimetableEntry;
@@ -27,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class SubstitutionQueryService {
 
     private final SubstitutionRepository substitutions;
+    private final SubstitutionRequestRepository requests;
     private final TimetableEntryRepository entries;
     private final AdminClassRepository adminClasses;
     private final TeacherRepository teachers;
@@ -34,12 +37,16 @@ public class SubstitutionQueryService {
     private final UserService users;
     private final SubstitutionMapper mapper;
 
-    /** 记录/导出展示的历史状态集合：当前生效 + 已被后续修订替代（规格第 7 节）。 */
+    /**
+     * 记录/导出展示的历史状态集合：当前生效 + 已被后续修订替代 + 因撤回基线而取消
+     * （规格第 7 节；票 14 撤回后保留的调代行必须还能在历史里看到）。
+     */
     private static final List<String> HISTORY_STATUSES =
-            List.of(Substitution.EFFECTIVE, Substitution.SUPERSEDED);
+            List.of(Substitution.EFFECTIVE, Substitution.SUPERSEDED, Substitution.CANCELLED);
 
     public SubstitutionQueryService(
             SubstitutionRepository substitutions,
+            SubstitutionRequestRepository requests,
             TimetableEntryRepository entries,
             AdminClassRepository adminClasses,
             TeacherRepository teachers,
@@ -47,6 +54,7 @@ public class SubstitutionQueryService {
             UserService users,
             SubstitutionMapper mapper) {
         this.substitutions = substitutions;
+        this.requests = requests;
         this.entries = entries;
         this.adminClasses = adminClasses;
         this.teachers = teachers;
@@ -77,10 +85,7 @@ public class SubstitutionQueryService {
             Map<Long, TimetableEntry> entryMap = entries.findAll().stream()
                     .collect(Collectors.toMap(TimetableEntry::getId, Function.identity()));
             result = result.stream()
-                    .filter(item -> {
-                        TimetableEntry entry = entryMap.get(item.getEntryId());
-                        return entry != null && classId.equals(entry.getAdminClassId());
-                    })
+                    .filter(item -> classId.equals(classOf(item, entryMap)))
                     .toList();
         }
         if (dateFrom != null) {
@@ -90,6 +95,21 @@ public class SubstitutionQueryService {
             result = result.stream().filter(item -> !item.getEffectiveDate().isAfter(dateTo)).toList();
         }
         return result.stream().map(mapper::toRecordDto).toList();
+    }
+
+    /**
+     * Class of a history row. After a publish withdrawal the entry is gone, so fall
+     * back to the request's class snapshot; otherwise class-filtered history would
+     * silently lose those rows.
+     */
+    private Long classOf(Substitution item, Map<Long, TimetableEntry> entryMap) {
+        TimetableEntry entry = entryMap.get(item.getEntryId());
+        if (entry != null) {
+            return entry.getAdminClassId();
+        }
+        return item.getRequestId() == null ? null : requests.findById(item.getRequestId())
+                .map(SubstitutionRequest::getAdminClassId)
+                .orElse(null);
     }
 
     /** Semester-end export: the same filtered rows as the records page, as CSV. */

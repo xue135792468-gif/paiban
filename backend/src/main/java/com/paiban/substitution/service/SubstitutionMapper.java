@@ -17,6 +17,7 @@ import com.paiban.substitution.domain.SubstitutionPlanMove;
 import com.paiban.substitution.domain.SubstitutionPlanMoveRepository;
 import com.paiban.substitution.domain.SubstitutionRepository;
 import com.paiban.substitution.domain.SubstitutionRequest;
+import com.paiban.substitution.domain.SubstitutionRequestRepository;
 import com.paiban.substitution.plan.PlanMove;
 import com.paiban.common.policy.ExchangeRankingPreset;
 import com.paiban.substitution.web.SubstitutionDtos.PlanMoveDto;
@@ -38,6 +39,7 @@ public class SubstitutionMapper {
     static final String[] DAY_NAMES = {"", "周一", "周二", "周三", "周四", "周五", "周六", "周日"};
 
     private final SubstitutionRepository substitutions;
+    private final SubstitutionRequestRepository requests;
     private final SubstitutionPlanMoveRepository planMoves;
     private final TimetableEntryRepository entries;
     private final AdminClassRepository adminClasses;
@@ -49,6 +51,7 @@ public class SubstitutionMapper {
 
     public SubstitutionMapper(
             SubstitutionRepository substitutions,
+            SubstitutionRequestRepository requests,
             SubstitutionPlanMoveRepository planMoves,
             TimetableEntryRepository entries,
             AdminClassRepository adminClasses,
@@ -58,6 +61,7 @@ public class SubstitutionMapper {
             PeriodRepository periods,
             UserService users) {
         this.substitutions = substitutions;
+        this.requests = requests;
         this.planMoves = planMoves;
         this.entries = entries;
         this.adminClasses = adminClasses;
@@ -74,10 +78,12 @@ public class SubstitutionMapper {
         String courseName = courses.findById(request.getCourseId()).map(Course::getName).orElse(null);
         String originalTeacher = teachers.findById(request.getOriginalTeacherId())
                 .map(Teacher::getName).orElse(null);
-        Long substituteId = substitutions.findFirstByEntryIdAndEffectiveDateAndStatus(
-                        request.getEntryId(), request.getEffectiveDate(), Substitution.EFFECTIVE)
-                .map(Substitution::getSubstituteTeacherId)
-                .orElse(request.getExpectedSubstituteTeacherId());
+        Long substituteId = request.getEntryId() == null
+                ? request.getExpectedSubstituteTeacherId()
+                : substitutions.findFirstByEntryIdAndEffectiveDateAndStatus(
+                                request.getEntryId(), request.getEffectiveDate(), Substitution.EFFECTIVE)
+                        .map(Substitution::getSubstituteTeacherId)
+                        .orElse(request.getExpectedSubstituteTeacherId());
         String substituteTeacher = substituteId == null ? null : teachers.findById(substituteId)
                 .map(Teacher::getName).orElse(null);
         String approver = request.getApproverId() == null ? null : users.get(request.getApproverId())
@@ -118,10 +124,19 @@ public class SubstitutionMapper {
     }
 
     public SubstitutionRecordDto toRecordDto(Substitution substitution) {
-        TimetableEntry entry = entries.findById(substitution.getEntryId()).orElse(null);
-        String className = entry == null ? null : adminClasses.findById(entry.getAdminClassId())
+        TimetableEntry entry = substitution.getEntryId() == null
+                ? null : entries.findById(substitution.getEntryId()).orElse(null);
+        // After a publish withdrawal the entry is gone; the request keeps the class,
+        // course and slot snapshot so the history row still reads correctly.
+        SubstitutionRequest request = entry == null && substitution.getRequestId() != null
+                ? requests.findById(substitution.getRequestId()).orElse(null) : null;
+        Long classId = entry != null ? entry.getAdminClassId()
+                : request != null ? request.getAdminClassId() : null;
+        Long courseId = entry != null ? entry.getCourseId()
+                : request != null ? request.getCourseId() : null;
+        String className = classId == null ? null : adminClasses.findById(classId)
                 .map(AdminClass::getName).orElse(null);
-        String courseName = entry == null ? null : courses.findById(entry.getCourseId())
+        String courseName = courseId == null ? null : courses.findById(courseId)
                 .map(Course::getName).orElse(null);
         String original = teachers.findById(substitution.getOriginalTeacherId())
                 .map(Teacher::getName).orElse(null);
@@ -130,8 +145,10 @@ public class SubstitutionMapper {
         Long roomId = substitution.getNewRoomId() != null ? substitution.getNewRoomId()
                 : entry == null ? null : entry.getRoomId();
         String roomName = roomId == null ? null : rooms.findById(roomId).map(Room::getName).orElse(null);
-        int fromDay = entry == null ? 0 : entry.getDayOfWeek();
-        int fromNo = entry == null ? 0 : entry.getPeriodNo();
+        int fromDay = entry != null ? entry.getDayOfWeek()
+                : request != null ? request.getDayOfWeek() : 0;
+        int fromNo = entry != null ? entry.getPeriodNo()
+                : request != null ? request.getPeriodNo() : 0;
         int toDay = substitution.getNewDayOfWeek() != null ? substitution.getNewDayOfWeek() : fromDay;
         int toNo = substitution.getNewPeriodNo() != null ? substitution.getNewPeriodNo() : fromNo;
         return new SubstitutionRecordDto(
@@ -142,9 +159,9 @@ public class SubstitutionMapper {
                 substitution.getPlanId(),
                 substitution.getEffectiveDate(),
                 substitution.getLessonDate(),
-                entry == null ? null : entry.getAdminClassId(),
+                classId,
                 className,
-                entry == null ? null : entry.getCourseId(),
+                courseId,
                 courseName,
                 substitution.getOriginalTeacherId(),
                 original,

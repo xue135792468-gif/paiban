@@ -5,6 +5,7 @@ import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
 import type { DraftDetail } from '@/components/draft/types'
 import { deleteDraftWithConfirmation } from '@/composables/useDraftDeletion'
+import { withdrawDraftWithConfirmation } from '@/composables/useDraftWithdraw'
 
 export interface DraftActionsOptions {
   draftId: number
@@ -78,5 +79,17 @@ export function useDraftActions(options: DraftActionsOptions) {
     }
   }
 
-  return { rename, publish, remove }
+  async function withdraw() {
+    const draft = options.detail.value?.draft
+    if (!draft) return
+    const outcome = await withdrawDraftWithConfirmation({
+      id: options.draftId,
+      semesterId: draft.semesterId,
+    })
+    if (outcome === 'withdrawn') {
+      await options.reload()
+    }
+  }
+
+  return { rename, publish, remove, withdraw }
 }
