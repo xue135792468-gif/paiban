@@ -334,7 +334,47 @@ class ManualImportIntegrationTest extends ApiIntegrationTest {
         assertThat(preview.path("suggestedRule").path("dayOfWeek").asInt()).isEqualTo(5);
         assertThat(preview.path("suggestedRule").path("periodNo").asInt()).isEqualTo(7);
         assertThat(preview.path("teacherWarnings").findValuesAsText("value")).contains("信息技术");
-        // 这些名字在教师表里已存在，导入不会新建，所以没有需要用户拍板的占位教师。
+        // 票 05 的 P1 占位门槛：pendingTeachers 只含「会被新建」的占位名，已在教师表里的
+        // 只提示不拦（见 ManualImportService.pendingTeachers）。本用例用 TestData.semester
+        // 起一个空学期，没有预置「信息技术」，所以它必须出现在待定列表里，而不是空列表；
+        // 这与 previewsAndCommitsTheSyntheticWorkbookThenReusesItsRecipe（预置了该教师，
+        // 故 pendingTeachers 为空）互为对照。旧断言 isEmpty() 写在占位门槛落地之前，已过时。
+        assertThat(preview.path("pendingTeachers").isArray()).isTrue();
+        assertThat(preview.path("pendingTeachers").toString()).contains("信息技术");
+    }
+
+    /**
+     * 占位门槛的反向对照（同样默认跳过）：预置「信息技术」为真实教师后，真实工作簿里
+     * 这个占位名只作为 warning 出现、不再进入 pendingTeachers，导入不需要用户拍板。
+     */
+    @Test
+    @EnabledIfSystemProperty(named = "paiban.realWorkbook", matches = ".+")
+    void realWorkbookPlaceholderAlreadyInTeacherTableIsOnlyAWarning() throws Exception {
+        String admin = adminToken();
+        long semesterId = TestData.semester(admin);
+        TestData.teacher(admin, "信息技术");
+        byte[] workbook = Files.readAllBytes(
+                Paths.get(System.getProperty("paiban.realWorkbook")));
+
+        JsonNode inspected = mapper.readTree(
+                uploadNamed(admin, "/api/imports/manual/inspect", workbook, null, null,
+                        "课表.xlsx", XLSX).asString());
+        String sheetName = inspected.path("sheets").get(0).path("name").asText();
+        Map<String, Object> mapping = new LinkedHashMap<>();
+        mapping.put("sheetName", sheetName);
+        mapping.put("headerRow", -1);
+        mapping.put("delimiter", "|");
+        mapping.put("keyColumn", 0);
+        mapping.put("keyParts", List.of("className", "dayOfWeek", "periodNo"));
+        mapping.put("courseColumn", 1);
+        mapping.put("teacherColumn", 2);
+        mapping.put("ignoreBlankRows", true);
+
+        JsonNode preview = mapper.readTree(uploadNamed(
+                admin, "/api/imports/manual/preview", workbook, toJson(mapping),
+                "{\"semesterId\":" + semesterId + "}", "课表.xlsx", XLSX).asString());
+        assertThat(preview.path("slotCount").asInt()).isEqualTo(560);
+        assertThat(preview.path("teacherWarnings").findValuesAsText("value")).contains("信息技术");
         assertThat(preview.path("pendingTeachers")).isEmpty();
     }
 
