@@ -56,7 +56,6 @@ echo
 if [[ "$REAL_WORKBOOK_RAN" -eq 1 ]]; then
   echo "==> ticket16: ok（含 D 盘物理工作簿用例）"
 else
-  echo "==> 注意：本次未跑 D 盘物理工作簿用例（第 1 项需显式传 PAIBAN_REAL_WORKBOOK 复跑）；"
-  echo "    本脚本只确认合成 560 槽 fixture 与其余定向测试通过"
-  echo "==> ticket16: ok"
+  echo "==> 注意：本次未跑 D 盘物理工作簿用例（第 1 项需显式传 PAIBAN_REAL_WORKBOOK 复跑）；本脚本只确认合成 560 槽 fixture 与其余定向测试通过"
+  echo "==> ticket16: partial ok（合成 fixture + 3 项定向测试；物理工作簿用例跳过）"
 fi

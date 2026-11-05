@@ -25,6 +25,8 @@ jobs:
         run: bash scripts/check-ticket-status.sh
       - name: Check AI HTTP timeouts
         run: bash scripts/check-ai-http-timeouts.sh
+      - name: Check module boundaries
+        run: bash scripts/check-module-boundaries.sh
       - name: Verify backend
         working-directory: backend
         run: ./mvnw -B verify -Dtestcontainers=true

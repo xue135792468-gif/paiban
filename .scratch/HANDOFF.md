@@ -1,5 +1,7 @@
 # 接手说明（2026-10-25 会话交接）
 
+> **2026-11-05 收敛收口已完成并上线**：票 15（物理删除旧代码/数据 + Flyway V55）与票 16（全量验收）已实现、验收、push 并部署到生产，V55 已首次在生产库执行。**接手先看 [票 16 全量验收记录](product-trim/hold/16-full-acceptance.md) 与 [验收报告](product-trim/hold/16-acceptance-report.md)**（数字只记在这两处，不重复写进本文件）。下方「现在的状态 / 红线 / 待办」是 2026-10-25 的历史快照：教室体系已被票 15 物理删除，「发布要求教室」「补教室」等条目不再适用；当前状态以票 16 记录、`git log` 与线上事实为准。部署 health 判定见 `docs/runbooks/deploy.md` 第 5 步（含 18443 假红与域名 502 归属说明）。
+
 > **2026-11-03 第四次后续更新：排课列表页也支持确认删除含锁草稿，已合并部署**：PR [#26](https://github.com/xue135792468-gif/paiban/pull/26) 四 job 全绿，合并提交 `c31dede`。列表 `DraftDto` 增加 `lockedCount`；共享 `deleteDraftWithConfirmation` 由编辑器与列表页复用，有锁文案带草稿名、锁定数、“一并移除、无法恢复”，确认按钮“解锁并删除”。后端 16/16、helper 4/4、`draft-locks` E2E 9/9；备份 `paiban-pre-20261103T072936Z.sql.gz`（137,823 字节，gzip 通过）；重建 backend + frontend，四容器 healthy、两处 health 200、Flyway 仍 47。
 
 > **2026-11-03 第三次后续更新：含锁草稿确认后解锁删除，已合并部署**：PR [#25](https://github.com/xue135792468-gif/paiban/pull/25) 四 job 全绿，合并提交 `e58de7c`。默认 DELETE 含锁草稿仍 409；草稿编辑器确认框写明“含 N 节锁定、会一并移除、无法恢复”，确认后带 `unlockLocked=true&expectedLockedCount=N`；服务端行锁内复核数量，缺数量 400、数量变化 409，一致才删除并写 `DRAFT_DELETE` 审计。后端 15/15、`draft-locks` E2E 8/8；备份 `paiban-pre-20261103T061737Z.sql.gz`（141,594 字节，gzip 通过）；重建 backend + frontend，四容器 healthy、两处 health 200、Flyway 仍 47。排课列表页删除入口未改，含锁草稿仍会 409。

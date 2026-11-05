@@ -23,8 +23,10 @@ Docker 一律 `sudo -n`。代码变更才需要重建；纯文档变更只要 `u
 5. **校验（全部满足才算部署完成）**：
    - Flyway：`sudo -n docker exec paiban-postgres-1 psql -U paiban -d paiban -tAc "select max(version::int) from flyway_schema_history"` ＝ `backend/src/main/resources/db/migration` 里的最高版本；
    - 容器：`sudo -n docker ps --filter name=paiban --format '{{.Names}} {{.Status}}'` ＝ postgres/backend/frontend/nginx **4 个全 healthy**；
-   - 本机 HTTPS：`curl -kfsS -o /dev/null -w '%{http_code}' https://127.0.0.1:18443/api/health` ＝ `200`（别用 `http://127.0.0.1:18080`，会被 301 到 HTTPS）；
+   - 本机 HTTPS：`curl -kfsS -o /dev/null -w '%{http_code}' https://localhost/api/health` ＝ `200`（服务器内从 nginx 自己的 443 端口进，`ss -ltnp` 可见宿主机只监听 80/443）；
    - 公网：`curl -fsS -o /dev/null -w '%{http_code}' https://paiban.xhyzzz.dpdns.org/api/health` ＝ `200`。
+   - **假红提醒（2026-11-05 实测）**：旧版本这里写 `https://127.0.0.1:18443`，该端口在这台机器上并不存在，会 `Failed to connect`；从 Windows 本机用裸公网 IP `https://15.134.169.2/...` 也会因自签证书 + 裸 IP 无 SNI 被 `schannel: failed to receive handshake` 拒绝（Git Bash 的 curl 同样走 schannel）。两者都**不是部署故障**：HTTP 80 从外部返回 `301` 即证明流量到达 nginx，服务器内 `https://localhost/api/health` 为 200、四容器 healthy 即为健康。公网判定请用上面的域名，别用裸 IP。
+   - **域名 502 的归属（2026-11-05 实测）**：`paiban.xhyzzz.dpdns.org` 解析到 Cloudflare 隧道段（`198.18.0.x`），某次从本机复测得到 `502` 且响应头 `Server: cloudflare`；同时服务器内 `https://localhost/api/health` 仍 200、四容器 healthy、nginx 日志无新请求。判定为**隧道回源未到达 nginx**，属 cloudflared 侧（该机长期维护的另一套服务），**不是排课系统部署回归**。部署验收以「容器 healthy + 服务器内 health 200 + Flyway/数据抽检」为准；隧道 502 需单独排查 cloudflared，不要据此回滚应用。
 6. 失败回退：`cd ~/paiban && git reset --hard <上一个已知良好的 commit>`（**不要加 `--build` 去重建回滚镜像**），重跑第 3–5 步；数据库迁移不会自动回滚，先看 `flyway_schema_history` 和第 1 步的备份再决定是否手工恢复。
 
 一键：`bash ~/ops/paiban-deploy.sh`（做第 2–4 步并打印 Flyway 版本与容器状态；备份仍需手工做第 1 步）。
@@ -47,7 +49,7 @@ AI 可能把节次写成「上午第1节」，与作息 label（「第1节」）
    ```
 2. 造 1 行 CSV：表头 `班级,星期,节次,课程,教师`，节次写 `1`。修复后 `上午第1节` 也能解析，但数字不依赖作息 label，最稳。
 3. 上传并轮询到 `PREVIEW`：
-   `curl -kfsS -H "Authorization: Bearer $TOKEN" -F 'file=@smoke.csv;type=text/csv' "https://127.0.0.1:18443/api/ai/import/excel?target=workbook"`
+   `curl -kfsS -H "Authorization: Bearer $TOKEN" -F 'file=@smoke.csv;type=text/csv' "https://localhost/api/ai/import/excel?target=workbook"`
    然后 `GET /api/ai/import/sessions/{id}` 直到 `status != PARSING`。
 4. 连续两次确认入库：第一次 `POST .../commit` 期望 `200` 且返回 `draftId`；第二次期望 `409`（已入库/正在入库）。
 5. 只新增一份草稿：`select count(*) from timetable_draft where id > <第一次提交前的 max(id)>` 期望 `1`。

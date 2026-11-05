@@ -24,9 +24,11 @@ fi
 
 declare -A seen=()
 failures=0
+scanned=0
 shopt -s nullglob
 
 for file in "$MIGRATION_DIR"/V*.sql; do
+  scanned=$((scanned + 1))
   name="$(basename "$file")"
   if [[ ! "$name" =~ ^V([0-9]+)__[A-Za-z0-9_]+\.sql$ ]]; then
     echo "invalid migration filename: $name (expected V<number>__<snake_case>.sql)" >&2
@@ -46,6 +48,13 @@ done
 
 if [[ $failures -gt 0 ]]; then
   echo "migration check failed: $failures problem(s)" >&2
+  exit 1
+fi
+
+# 扫到 0 个迁移文件时不能报 ok：目录写错、挂载丢失或 grep 路径漂移都会让这个
+# 守卫静默失效（打印 0 unique versions 却 exit 0，等于没检查）。
+if [[ $scanned -eq 0 ]]; then
+  echo "migrations fail: no V*.sql found in $MIGRATION_DIR" >&2
   exit 1
 fi
 
