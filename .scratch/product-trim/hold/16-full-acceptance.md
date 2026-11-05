@@ -68,10 +68,18 @@
 - **Spec**：(a)5 / (b)3 / (c)4。已修报告路径与措辞、回填第 9/11 项真实数字；第 1 项物理文件已单独实跑、第 10 项额外验「旧列已删」是删除范围反证、「恢复基线」口径已显式写明，均判定为误报/保留。
 - 复审后定向重跑：`FullChainAcceptanceTest`(1) + `TrimMigrationDataPreservationTest`(3) = **4 项，0 失败 / 0 错误，BUILD SUCCESS**。
 
-### 边界 / 遗留
-- 本机验收阶段未连生产、未部署、未 push；这些已在 2026-11-05 后续会话推进（见下「后续补测」）。
-- 未改 `.scratch/HANDOFF.md`；未改任何业务代码 / Flyway 迁移 / 前端源码。提交只 stage 本任务路径。
-- **生产库本身仍为 Flyway v47、V55 未在生产执行、未部署**，需用户确认上线窗口后按 `docs/runbooks/deploy.md` 执行。
+### 正式上线（2026-11-05 15:09–15:2x UTC，用户授权「继续上线」）
+按 `docs/runbooks/deploy.md`：资源闸门（可用 851 MB）→ **部署前备份** `~/backups/paiban/paiban-pre-20261105T150909Z.sql.gz`（141533 B，`gzip -t` 通过，备份时 v47 / `1092|1638|6`）→ `git pull --ff-only` 到 `c44074f` → 后台构建（`setsid`，`BUILD_EXIT=0`，回滚镜像 `paiban-*:rollback-weekly-20261102T001615Z` 保留）→ `up -d`。
+
+- **Flyway 在生产库自动应用 V48–V55 共 8 步，全部 `success=true`，版本到 v55**。
+- 四容器 healthy、restart=0；`https://localhost/api/health` = **200**（`status:UP`）。
+- 生产数据 `55|1092|1638|6|6|2|0`（flyway / timetable_entry / draft_lesson / ai_import_log / constraint_config / timetable_publish / substitution），与备份前一致；已删表残留 **0**、`timetable_entry.room_id` 残留 **0**。
+- 真机冒烟：admin 登录 OK、当前学期 id=1、班级视图读八（10）班课表正常（科学/语文…）、`/api/constraint-types` = **18 类**；老端点 `/api/rooms`、`/api/notifications/recent`、`/api/ai/history`、`/api/feishu/config` 全 **404**。
+- **一个假红判定**：跑册的 `https://127.0.0.1:18443` 在这台机器不存在（nginx 只监听宿主机 80/443），正确形态是服务器内 `https://localhost/api/health`；从 Windows 用裸公网 IP 打 HTTPS 因自签证书 + 裸 IP 无 SNI 被 schannel 拒，但 HTTP 80 外部返回 **301** 证明流量到达 nginx —— 客户端 TLS 限制，非部署回归，不回滚。
+
+### 仍未做（可选的后续打磨，不阻塞上线）
+- 7 天软删除的硬清理任务、小学年级推断、`ex.getMessage()` 透传等低优先级 P2（本轮 Out of Scope）。
+- 十期钉钉评审后续票（`.scratch/phase10-dingtalk-org-sync/issues/03-review-follow-ups.md`）按收敛规格不扩展。
 
 ### 后续补测（2026-11-05，用户要求「没 Docker 的测试去云服务器上测」）
 - `git push origin main`：`50ac999..34b2754` 成功；CI run `42046237373` 的 `deploy-scripts` / `frontend` / **`backend`（含 `-Dtestcontainers=true` 真跑 `PostgresContainerIT`）** 均 ✅，`e2e` 进行中。本地与 `origin/main` 一致。

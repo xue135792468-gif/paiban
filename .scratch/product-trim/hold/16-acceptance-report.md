@@ -127,6 +127,7 @@ VERIFY_EXIT=0
 **过程中修复的两个脚本问题**（首次实跑暴露，已修后重跑通过）：① Flyway 容器走 TCP 被 `pg_hba` 的 `scram-sha-256` 拒绝 → 改为从 postgres 容器读取真实 `POSTGRES_PASSWORD`（不打印、不写死）；② `recent_deletion` / `import_recipe` 在 v47 生产库里尚不存在 → 改为标记为 NEW、只要求迁移后存在。首次失败的那次已自动清理临时库、生产库零改动。
 
 **仍未做**：V55 **在生产库执行**、镜像重建与 `up -d`、四容器/两处 health 验收、真机冒烟 —— 这些属于部署，需用户确认上线窗口后按 `docs/runbooks/deploy.md` 执行。
+→ **已于 2026-11-05 完成，见第十一节。**
 
 ## 十、push 与 CI（2026-11-05）
 
@@ -134,3 +135,24 @@ VERIFY_EXIT=0
 - CI run `42046237373`：`deploy-scripts` ✅、`frontend` ✅、**`backend` ✅（`-Dtestcontainers=true` 真跑 `PostgresContainerIT`）**、`e2e` 进行中（约 18 分钟）。历史范例：PR #27 四 job 全绿。
 - 本地 `main` 与 `origin/main` 已一致（`git log origin/main..HEAD` 为空）。
 
+
+## 十一、正式上线（2026-11-05 15:09–15:2x UTC）
+
+用户授权「继续上线」，按 `docs/runbooks/deploy.md` 执行。
+
+| 步骤 | 结果 |
+|---|---|
+| 资源闸门 | `free -m` 可用 **851 MB**（>400），四容器 healthy，生产 v47 |
+| 部署前备份 | `~/backups/paiban/paiban-pre-20261105T150909Z.sql.gz`，**141533 B**，`gzip -t` 通过；备份时 `1092\|1638\|6` |
+| 代码同步 | `git pull --ff-only` → `c44074f` |
+| 后台构建 | `setsid` + `~/paiban-build.log`，**BUILD_EXIT=0**；回滚镜像 `paiban-*:rollback-weekly-20261102T001615Z` 保留 |
+| `up -d` | **Flyway V48–V55 共 8 步全部 success=true，生产到 v55** |
+| 四容器 | frontend / backend / nginx / postgres 全 healthy、restart=0 |
+| 本机 health | `https://localhost/api/health` = **200**（`{"status":"UP"}`） |
+| 生产数据 | `55\|1092\|1638\|6\|6\|2\|0`（flyway/timetable_entry/draft_lesson/ai_import_log/constraint_config/timetable_publish/substitution），与备份前一致 |
+| 删除范围 | 已删表残留 **0**、`timetable_entry.room_id` 残留 **0** |
+| 真机冒烟 | admin 登录 OK；当前学期 id=1；八（10）班课表读出科学/语文…；`/api/constraint-types` = **18 类**；`/api/rooms`、`/api/notifications/recent`、`/api/ai/history`、`/api/feishu/config` 全 **404** |
+
+**一个「假红」判定**：跑册写的 `https://127.0.0.1:18443/api/health` 在这台机器不存在（`ss` 显示 nginx 只监听宿主机 80/443），正确形态是服务器内 `https://localhost/api/health` → 200。从 Windows 本机用裸公网 IP 打 HTTPS 会 `schannel: failed to receive handshake`（`server_name _` 自签证书 + 裸 IP 无 SNI；Git Bash curl 同样走 schannel），但 HTTP 80 从外部返回 **301** 证明流量到达 nginx；服务器内部用自己公网 IP 打 HTTPS 也超时（hairpin NAT）。**均为客户端/网络限制，非部署回归，不回滚。**
+
+**结论**：票 15（物理删除 + V55）与票 16（全量验收）已正式上线生产；V55 首次在生产库执行成功，旧数据按「行数/主体不丢」通过。备份与回滚镜像均保留。
