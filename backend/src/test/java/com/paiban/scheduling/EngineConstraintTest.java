@@ -6,14 +6,12 @@ import ai.timefold.solver.core.api.score.ScoreManager;
 import ai.timefold.solver.core.api.score.buildin.hardsoft.HardSoftScore;
 import ai.timefold.solver.core.api.solver.SolverFactory;
 import ai.timefold.solver.core.config.solver.SolverConfig;
-import com.paiban.foundation.domain.PeriodSection;
 import com.paiban.scheduling.domain.ConstraintType;
 import com.paiban.scheduling.solver.ConstraintSettings;
 import com.paiban.scheduling.solver.ConstraintSettingsHolder;
 import com.paiban.scheduling.solver.Lesson;
 import com.paiban.scheduling.solver.PaibanConstraintProvider;
 import com.paiban.scheduling.solver.PeriodSlot;
-import com.paiban.scheduling.solver.RoomSlot;
 import com.paiban.scheduling.solver.TimetableSolution;
 import java.util.List;
 import java.util.Map;
@@ -23,22 +21,15 @@ import org.junit.jupiter.api.Test;
 /** Engine-level tests: each preset constraint is scored through the public ScoreManager. */
 class EngineConstraintTest {
 
-    private static final PeriodSlot MON1 = new PeriodSlot(1L, 1, 1, PeriodSection.MORNING, true, false, false);
-    private static final PeriodSlot MON2 = new PeriodSlot(2L, 1, 2, PeriodSection.MORNING, false, false, false);
-    private static final PeriodSlot MON3 = new PeriodSlot(5L, 1, 3, PeriodSection.MORNING, false, false, false);
-    private static final PeriodSlot MON4 = new PeriodSlot(7L, 1, 4, PeriodSection.MORNING, false, false, false);
-    private static final PeriodSlot MON5 = new PeriodSlot(3L, 1, 5, PeriodSection.AFTERNOON, false, false, true);
-    private static final PeriodSlot EVEN1 = new PeriodSlot(4L, 1, 9, PeriodSection.EVENING, false, true, false);
-    private static final PeriodSlot TUE1 = new PeriodSlot(8L, 2, 1, PeriodSection.MORNING, true, false, false);
-    private static final PeriodSlot TUE2 = new PeriodSlot(9L, 2, 2, PeriodSection.MORNING, false, false, false);
-    private static final PeriodSlot TUE3 = new PeriodSlot(10L, 2, 3, PeriodSection.MORNING, false, false, false);
-    /** A mid-numbered slot whose section label says evening: the count must follow the label. */
-    private static final PeriodSlot SECTION_EVENING =
-            new PeriodSlot(6L, 1, 7, PeriodSection.EVENING, false, false, true);
-    private static final RoomSlot ROOM = new RoomSlot(1L, "301", "NORMAL", 50);
-    private static final RoomSlot ROOM_B = new RoomSlot(3L, "303", "NORMAL", 50);
-    private static final RoomSlot SMALL_ROOM = new RoomSlot(2L, "302", "NORMAL", 20);
-    private static final RoomSlot LAB = new RoomSlot(4L, "401", "LAB", 50);
+    private static final PeriodSlot MON1 = new PeriodSlot(1L, 1, 1, true, false);
+    private static final PeriodSlot MON2 = new PeriodSlot(2L, 1, 2, false, false);
+    private static final PeriodSlot MON3 = new PeriodSlot(5L, 1, 3, false, false);
+    private static final PeriodSlot MON4 = new PeriodSlot(7L, 1, 4, false, false);
+    private static final PeriodSlot MON5 = new PeriodSlot(3L, 1, 5, false, false);
+    private static final PeriodSlot EVEN1 = new PeriodSlot(4L, 1, 9, false, true);
+    private static final PeriodSlot TUE1 = new PeriodSlot(8L, 2, 1, true, false);
+    private static final PeriodSlot TUE2 = new PeriodSlot(9L, 2, 2, false, false);
+    private static final PeriodSlot TUE3 = new PeriodSlot(10L, 2, 3, false, false);
 
     @AfterEach
     void resetSettings() {
@@ -53,26 +44,25 @@ class EngineConstraintTest {
         return ScoreManager.create(SolverFactory.create(config));
     }
 
-    private Lesson lesson(long id, long teacherId, long classId, long courseId, PeriodSlot period, RoomSlot room) {
-        return lesson(id, teacherId, classId, courseId, period, room, null, false);
+    private Lesson lesson(long id, long teacherId, long classId, long courseId, PeriodSlot period) {
+        return lesson(id, teacherId, classId, courseId, period, null, false);
     }
 
-    private Lesson lesson(long id, long teacherId, long classId, long courseId, PeriodSlot period, RoomSlot room,
+    private Lesson lesson(long id, long teacherId, long classId, long courseId, PeriodSlot period,
                           Long headTeacherId, boolean allowConsecutive) {
         Lesson lesson = new Lesson(id, id, courseId, "课程" + courseId, teacherId, classId,
-                headTeacherId, null, null, allowConsecutive, 40, 0);
+                headTeacherId, null, allowConsecutive, 40, 0);
         lesson.setPeriod(period);
-        lesson.setRoom(room);
         return lesson;
     }
 
     @Test
     void teacherConflictIsAHardViolation() {
         ConstraintSettingsHolder.set(ConstraintSettings.defaults());
-        Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
-        Lesson b = lesson(2, 10, 200, 1001, MON1, ROOM_B);
+        Lesson a = lesson(1, 10, 100, 1000, MON1);
+        Lesson b = lesson(2, 10, 200, 1001, MON1);
         TimetableSolution solution =
-                new TimetableSolution(List.of(a, b), List.of(MON1, MON2, MON5), List.of(ROOM, ROOM_B));
+                new TimetableSolution(List.of(a, b), List.of(MON1, MON2, MON5));
 
         scoreManager().updateScore(solution);
 
@@ -82,9 +72,9 @@ class EngineConstraintTest {
     @Test
     void noConflictScoresZeroHard() {
         ConstraintSettingsHolder.set(ConstraintSettings.defaults());
-        Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
-        Lesson b = lesson(2, 11, 200, 1001, MON2, ROOM);
-        TimetableSolution solution = new TimetableSolution(List.of(a, b), List.of(MON1, MON2, MON5), List.of(ROOM));
+        Lesson a = lesson(1, 10, 100, 1000, MON1);
+        Lesson b = lesson(2, 11, 200, 1001, MON2);
+        TimetableSolution solution = new TimetableSolution(List.of(a, b), List.of(MON1, MON2, MON5));
 
         scoreManager().updateScore(solution);
 
@@ -98,10 +88,10 @@ class EngineConstraintTest {
         disabled.setEnabled(false);
         ConstraintSettingsHolder.set(ConstraintSettings.from(
                 List.of(disabled), new com.fasterxml.jackson.databind.ObjectMapper()));
-        Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
-        Lesson b = lesson(2, 11, 100, 1001, MON1, ROOM_B);
+        Lesson a = lesson(1, 10, 100, 1000, MON1);
+        Lesson b = lesson(2, 11, 100, 1001, MON1);
         TimetableSolution solution =
-                new TimetableSolution(List.of(a, b), List.of(MON1, MON2, MON5), List.of(ROOM, ROOM_B));
+                new TimetableSolution(List.of(a, b), List.of(MON1, MON2, MON5));
 
         scoreManager().updateScore(solution);
 
@@ -111,9 +101,9 @@ class EngineConstraintTest {
     @Test
     void softConstraintProducesSoftPenalty() {
         ConstraintSettingsHolder.set(settings(ConstraintType.TEACHER_MAX_PER_DAY, false, 60, Map.of("maxPerDay", 1)));
-        Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
-        Lesson b = lesson(2, 10, 200, 1001, MON2, ROOM);
-        TimetableSolution solution = new TimetableSolution(List.of(a, b), List.of(MON1, MON2, MON5), List.of(ROOM));
+        Lesson a = lesson(1, 10, 100, 1000, MON1);
+        Lesson b = lesson(2, 10, 200, 1001, MON2);
+        TimetableSolution solution = new TimetableSolution(List.of(a, b), List.of(MON1, MON2, MON5));
 
         scoreManager().updateScore(solution);
 
@@ -124,86 +114,29 @@ class EngineConstraintTest {
     @Test
     void classConflictIsHard() {
         ConstraintSettingsHolder.set(ConstraintSettings.defaults());
-        Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
-        Lesson b = lesson(2, 11, 100, 1001, MON1, null);
-        TimetableSolution solution = new TimetableSolution(List.of(a, b), List.of(MON1, MON2, MON5), List.of(ROOM));
+        Lesson a = lesson(1, 10, 100, 1000, MON1);
+        Lesson b = lesson(2, 11, 100, 1001, MON1);
+        TimetableSolution solution = new TimetableSolution(List.of(a, b), List.of(MON1, MON2, MON5));
 
         scoreManager().updateScore(solution);
 
         assertThat(solution.getScore().hardScore()).isLessThan(0);
     }
 
-    @Test
-    void fixedRoomKeepsTheClassInItsOwnClassroom() {
-        ConstraintSettingsHolder.set(ConstraintSettings.defaults());
-        Lesson lesson = new Lesson(1L, 1L, 1000L, "数学", 10L, 100L, null, null, null, false, 40, 0);
-        lesson.setPeriod(MON1);
-        lesson.setRoom(ROOM_B);
-        lesson.setFixedRoom(ROOM);
-        TimetableSolution solution =
-                new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM, ROOM_B));
 
-        scoreManager().updateScore(solution);
 
-        assertThat(solution.getScore().hardScore()).isEqualTo(-1);
-    }
 
-    @Test
-    void fixedRoomIsSatisfiedByTheClassroomItself() {
-        ConstraintSettingsHolder.set(ConstraintSettings.defaults());
-        Lesson lesson = new Lesson(1L, 1L, 1000L, "数学", 10L, 100L, null, null, null, false, 40, 0);
-        lesson.setPeriod(MON1);
-        lesson.setRoom(ROOM);
-        lesson.setFixedRoom(ROOM);
-        TimetableSolution solution =
-                new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM));
-
-        scoreManager().updateScore(solution);
-
-        assertThat(solution.getScore().hardScore()).isZero();
-    }
-
-    @Test
-    void fixedRoomDoesNotFightASpecialRoomRequirement() {
-        ConstraintSettingsHolder.set(ConstraintSettings.defaults());
-        Lesson lesson = new Lesson(1L, 1L, 1000L, "实验", 10L, 100L, null, "实验", "LAB", false, 40, 0);
-        lesson.setPeriod(MON1);
-        lesson.setRoom(LAB);
-        lesson.setFixedRoom(ROOM_B);
-        TimetableSolution solution =
-                new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM, ROOM_B, LAB));
-
-        scoreManager().updateScore(solution);
-
-        assertThat(solution.getScore().hardScore()).isZero();
-    }
-
-    @Test
-    void normalRoomTypeStillRequiresTheClassFixedRoom() {
-        ConstraintSettingsHolder.set(ConstraintSettings.defaults());
-        Lesson lesson = new Lesson(1L, 1L, 1000L, "数学", 10L, 100L, null, null, "NORMAL", false, 40, 0);
-        lesson.setPeriod(MON1);
-        lesson.setRoom(ROOM_B);
-        lesson.setFixedRoom(ROOM);
-        TimetableSolution solution =
-                new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM, ROOM_B));
-
-        scoreManager().updateScore(solution);
-
-        assertThat(solution.getScore().hardScore()).isEqualTo(-1);
-    }
 
     @Test
     void anUnassignedLessonCostsMoreThanASingleConflict() {
         ConstraintSettingsHolder.set(ConstraintSettings.defaults());
-        Lesson hole = new Lesson(1L, 1L, 1000L, "数学", 10L, 100L, null, null, null, false, 40, 0);
-        hole.setRoom(ROOM);
+        Lesson hole = new Lesson(1L, 1L, 1000L, "数学", 10L, 100L, null, null, false, 40, 0);
         TimetableSolution holeSolution =
-                new TimetableSolution(List.of(hole), List.of(MON1, MON2, MON5), List.of(ROOM, ROOM_B));
-        Lesson first = lesson(2, 10, 100, 1000, MON1, ROOM);
-        Lesson second = lesson(3, 11, 100, 1001, MON1, ROOM_B);
+                new TimetableSolution(List.of(hole), List.of(MON1, MON2, MON5));
+        Lesson first = lesson(2, 10, 100, 1000, MON1);
+        Lesson second = lesson(3, 11, 100, 1001, MON1);
         TimetableSolution conflictSolution =
-                new TimetableSolution(List.of(first, second), List.of(MON1, MON2, MON5), List.of(ROOM, ROOM_B));
+                new TimetableSolution(List.of(first, second), List.of(MON1, MON2, MON5));
 
         scoreManager().updateScore(holeSolution);
         scoreManager().updateScore(conflictSolution);
@@ -212,26 +145,12 @@ class EngineConstraintTest {
                 .isLessThan(conflictSolution.getScore().hardScore());
     }
 
-    @Test
-    void aLessonWithAPeriodButNoRoomIsAlsoAFixedRoomViolation() {
-        ConstraintSettingsHolder.set(ConstraintSettings.defaults());
-        Lesson lesson = new Lesson(1L, 1L, 1000L, "数学", 10L, 100L, null, null, null, false, 40, 0);
-        lesson.setPeriod(MON1);
-        lesson.setRoom(null);
-        lesson.setFixedRoom(ROOM);
-        TimetableSolution solution =
-                new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM));
-
-        scoreManager().updateScore(solution);
-
-        assertThat(solution.getScore().hardScore()).isLessThanOrEqualTo(-2);
-    }
 
     @Test
     void unassignedLessonIsPenalized() {
         ConstraintSettingsHolder.set(ConstraintSettings.defaults());
-        Lesson lesson = new Lesson(1L, 1L, 1000L, "数学", 10L, 100L, null, null, null, false, 40, 0);
-        TimetableSolution solution = new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM));
+        Lesson lesson = new Lesson(1L, 1L, 1000L, "数学", 10L, 100L, null, null, false, 40, 0);
+        TimetableSolution solution = new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5));
 
         scoreManager().updateScore(solution);
 
@@ -242,9 +161,9 @@ class EngineConstraintTest {
     void teacherUnavailableSlotIsHard() {
         ConstraintSettingsHolder.set(settings(ConstraintType.TEACHER_UNAVAILABLE, true, 100,
                 Map.of("teacherId", 10, "dayOfWeek", 1, "periodNo", 1)));
-        Lesson lesson = lesson(1, 10, 100, 1000, MON1, ROOM);
+        Lesson lesson = lesson(1, 10, 100, 1000, MON1);
         TimetableSolution solution =
-                new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM));
+                new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5));
 
         scoreManager().updateScore(solution);
 
@@ -254,37 +173,24 @@ class EngineConstraintTest {
     @Test
     void sameCourseOncePerDayIsHard() {
         ConstraintSettingsHolder.set(settings(ConstraintType.SAME_COURSE_ONCE_PER_DAY, true, 100, Map.of()));
-        Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
-        Lesson b = lesson(2, 10, 100, 1000, MON2, ROOM_B);
+        Lesson a = lesson(1, 10, 100, 1000, MON1);
+        Lesson b = lesson(2, 10, 100, 1000, MON2);
         TimetableSolution solution =
-                new TimetableSolution(List.of(a, b), List.of(MON1, MON2), List.of(ROOM, ROOM_B));
+                new TimetableSolution(List.of(a, b), List.of(MON1, MON2));
 
         scoreManager().updateScore(solution);
 
         assertThat(solution.getScore().hardScore()).isLessThan(0);
     }
 
-    @Test
-    void sportFirstAfternoonIsPenalized() {
-        ConstraintSettingsHolder.set(settings(ConstraintType.SPORT_NOT_FIRST_AFTERNOON, true, 100, Map.of()));
-        Lesson lesson = new Lesson(1L, 1L, 1000L, "体育", 10L, 100L, null, "体育", null, false, 40, 0);
-        lesson.setPeriod(MON5);
-        lesson.setRoom(ROOM);
-        TimetableSolution solution =
-                new TimetableSolution(List.of(lesson), List.of(MON1, MON5), List.of(ROOM));
-
-        scoreManager().updateScore(solution);
-
-        assertThat(solution.getScore().hardScore()).isLessThan(0);
-    }
 
     @Test
     void teacherDayOffIsPenalized() {
         ConstraintSettingsHolder.set(settings(ConstraintType.TEACHER_DAY_OFF, true, 100,
                 Map.of("teacherId", 10, "dayOfWeek", 1)));
-        Lesson lesson = lesson(1, 10, 100, 1000, MON1, ROOM);
+        Lesson lesson = lesson(1, 10, 100, 1000, MON1);
         TimetableSolution solution =
-                new TimetableSolution(List.of(lesson), List.of(MON1, MON2), List.of(ROOM));
+                new TimetableSolution(List.of(lesson), List.of(MON1, MON2));
 
         scoreManager().updateScore(solution);
 
@@ -294,10 +200,10 @@ class EngineConstraintTest {
     @Test
     void classMaxPerDayIsPenalized() {
         ConstraintSettingsHolder.set(settings(ConstraintType.CLASS_MAX_PER_DAY, false, 50, Map.of("maxPerDay", 1)));
-        Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
-        Lesson b = lesson(2, 11, 100, 1001, MON2, ROOM_B);
+        Lesson a = lesson(1, 10, 100, 1000, MON1);
+        Lesson b = lesson(2, 11, 100, 1001, MON2);
         TimetableSolution solution =
-                new TimetableSolution(List.of(a, b), List.of(MON1, MON2), List.of(ROOM, ROOM_B));
+                new TimetableSolution(List.of(a, b), List.of(MON1, MON2));
 
         scoreManager().updateScore(solution);
 
@@ -308,11 +214,11 @@ class EngineConstraintTest {
     @Test
     void courseMaxPerDayIsPenalized() {
         ConstraintSettingsHolder.set(settings(ConstraintType.COURSE_MAX_PER_DAY, false, 50, Map.of("maxPerDay", 2)));
-        Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
-        Lesson b = lesson(2, 11, 100, 1000, MON2, ROOM_B);
-        Lesson c = lesson(3, 12, 100, 1000, MON3, ROOM);
+        Lesson a = lesson(1, 10, 100, 1000, MON1);
+        Lesson b = lesson(2, 11, 100, 1000, MON2);
+        Lesson c = lesson(3, 12, 100, 1000, MON3);
         TimetableSolution solution =
-                new TimetableSolution(List.of(a, b, c), List.of(MON1, MON2, MON3), List.of(ROOM, ROOM_B));
+                new TimetableSolution(List.of(a, b, c), List.of(MON1, MON2, MON3));
 
         scoreManager().updateScore(solution);
 
@@ -324,10 +230,10 @@ class EngineConstraintTest {
     void consecutiveLessonsNotMetIsPenalized() {
         ConstraintSettingsHolder.set(settings(ConstraintType.CONSECUTIVE_LESSONS, false, 60,
                 Map.of("courseId", 1000, "minConsecutive", 2)));
-        Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM, null, true);
-        Lesson b = lesson(2, 11, 100, 1000, MON5, ROOM_B, null, true);
+        Lesson a = lesson(1, 10, 100, 1000, MON1, null, true);
+        Lesson b = lesson(2, 11, 100, 1000, MON5, null, true);
         TimetableSolution solution =
-                new TimetableSolution(List.of(a, b), List.of(MON1, MON5), List.of(ROOM, ROOM_B));
+                new TimetableSolution(List.of(a, b), List.of(MON1, MON5));
 
         scoreManager().updateScore(solution);
 
@@ -338,10 +244,10 @@ class EngineConstraintTest {
     @Test
     void courseSpreadIsPenalized() {
         ConstraintSettingsHolder.set(settings(ConstraintType.COURSE_SPREAD, false, 50, Map.of()));
-        Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
-        Lesson b = lesson(2, 11, 100, 1000, MON2, ROOM_B);
+        Lesson a = lesson(1, 10, 100, 1000, MON1);
+        Lesson b = lesson(2, 11, 100, 1000, MON2);
         TimetableSolution solution =
-                new TimetableSolution(List.of(a, b), List.of(MON1, MON2), List.of(ROOM, ROOM_B));
+                new TimetableSolution(List.of(a, b), List.of(MON1, MON2));
 
         scoreManager().updateScore(solution);
 
@@ -353,9 +259,9 @@ class EngineConstraintTest {
     void mainSubjectAfterMorningIsPenalized() {
         ConstraintSettingsHolder.set(settings(ConstraintType.MAIN_SUBJECT_MORNING, false, 55,
                 Map.of("courseId", 1000, "beforePeriodNo", 4)));
-        Lesson lesson = lesson(1, 10, 100, 1000, MON5, ROOM);
+        Lesson lesson = lesson(1, 10, 100, 1000, MON5);
         TimetableSolution solution =
-                new TimetableSolution(List.of(lesson), List.of(MON1, MON5), List.of(ROOM));
+                new TimetableSolution(List.of(lesson), List.of(MON1, MON5));
 
         scoreManager().updateScore(solution);
 
@@ -367,9 +273,9 @@ class EngineConstraintTest {
     void teacherPreferredSlotIsRewarded() {
         ConstraintSettingsHolder.set(settings(ConstraintType.TEACHER_PREFERRED_SLOT, false, 40,
                 Map.of("teacherId", 10, "dayOfWeek", 1, "periodNo", 1)));
-        Lesson lesson = lesson(1, 10, 100, 1000, MON1, ROOM);
+        Lesson lesson = lesson(1, 10, 100, 1000, MON1);
         TimetableSolution solution =
-                new TimetableSolution(List.of(lesson), List.of(MON1, MON2), List.of(ROOM));
+                new TimetableSolution(List.of(lesson), List.of(MON1, MON2));
 
         scoreManager().updateScore(solution);
 
@@ -381,11 +287,11 @@ class EngineConstraintTest {
     void teacherMaxConsecutiveIsPenalized() {
         ConstraintSettingsHolder.set(settings(ConstraintType.TEACHER_MAX_CONSECUTIVE, false, 45,
                 Map.of("maxConsecutive", 2)));
-        Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
-        Lesson b = lesson(2, 10, 200, 1001, MON2, ROOM);
-        Lesson c = lesson(3, 10, 300, 1002, MON3, ROOM);
+        Lesson a = lesson(1, 10, 100, 1000, MON1);
+        Lesson b = lesson(2, 10, 200, 1001, MON2);
+        Lesson c = lesson(3, 10, 300, 1002, MON3);
         TimetableSolution solution =
-                new TimetableSolution(List.of(a, b, c), List.of(MON1, MON2, MON3), List.of(ROOM));
+                new TimetableSolution(List.of(a, b, c), List.of(MON1, MON2, MON3));
 
         scoreManager().updateScore(solution);
 
@@ -397,9 +303,9 @@ class EngineConstraintTest {
     void teacherNoFirstPeriodIsPenalized() {
         ConstraintSettingsHolder.set(settings(ConstraintType.TEACHER_NO_FIRST_PERIOD, false, 35,
                 Map.of("teacherId", 10)));
-        Lesson lesson = lesson(1, 10, 100, 1000, MON1, ROOM);
+        Lesson lesson = lesson(1, 10, 100, 1000, MON1);
         TimetableSolution solution =
-                new TimetableSolution(List.of(lesson), List.of(MON1, MON2), List.of(ROOM));
+                new TimetableSolution(List.of(lesson), List.of(MON1, MON2));
 
         scoreManager().updateScore(solution);
 
@@ -410,10 +316,10 @@ class EngineConstraintTest {
     @Test
     void classGapIsPenalized() {
         ConstraintSettingsHolder.set(settings(ConstraintType.CLASS_GAP_MINIMIZED, false, 30, Map.of()));
-        Lesson a = lesson(1, 10, 100, 1000, MON1, ROOM);
-        Lesson b = lesson(2, 11, 100, 1001, MON5, ROOM_B);
+        Lesson a = lesson(1, 10, 100, 1000, MON1);
+        Lesson b = lesson(2, 11, 100, 1001, MON5);
         TimetableSolution solution =
-                new TimetableSolution(List.of(a, b), mondayOneToFive(), List.of(ROOM, ROOM_B));
+                new TimetableSolution(List.of(a, b), mondayOneToFive());
 
         scoreManager().updateScore(solution);
 
@@ -430,20 +336,20 @@ class EngineConstraintTest {
     @Test
     void classGapSoftScoreCountsEveryRealEmptyPeriod() {
         ConstraintSettingsHolder.set(settings(ConstraintType.CLASS_GAP_MINIMIZED, false, 40, Map.of()));
-        Lesson early = lesson(1, 10, 100, 1000, MON1, ROOM);
-        Lesson mid = lesson(2, 11, 100, 1001, MON3, ROOM_B);
+        Lesson early = lesson(1, 10, 100, 1000, MON1);
+        Lesson mid = lesson(2, 11, 100, 1001, MON3);
         TimetableSolution oneGap =
-                new TimetableSolution(List.of(early, mid), mondayOneToFive(), List.of(ROOM, ROOM_B));
+                new TimetableSolution(List.of(early, mid), mondayOneToFive());
 
         scoreManager().updateScore(oneGap);
 
         assertThat(oneGap.getScore().hardScore()).isZero();
         assertThat(oneGap.getScore().softScore()).isEqualTo(-40);
 
-        Lesson first = lesson(3, 12, 100, 1002, MON1, ROOM);
-        Lesson last = lesson(4, 13, 100, 1003, MON5, ROOM_B);
+        Lesson first = lesson(3, 12, 100, 1002, MON1);
+        Lesson last = lesson(4, 13, 100, 1003, MON5);
         TimetableSolution threeGaps =
-                new TimetableSolution(List.of(first, last), mondayOneToFive(), List.of(ROOM, ROOM_B));
+                new TimetableSolution(List.of(first, last), mondayOneToFive());
 
         scoreManager().updateScore(threeGaps);
 
@@ -458,10 +364,10 @@ class EngineConstraintTest {
     @Test
     void classGapSoftScoreIgnoresPeriodNumbersTheSchoolDoesNotUse() {
         ConstraintSettingsHolder.set(settings(ConstraintType.CLASS_GAP_MINIMIZED, false, 40, Map.of()));
-        Lesson first = lesson(1, 10, 100, 1000, MON1, ROOM);
-        Lesson third = lesson(2, 11, 100, 1001, MON3, ROOM_B);
+        Lesson first = lesson(1, 10, 100, 1000, MON1);
+        Lesson third = lesson(2, 11, 100, 1001, MON3);
         TimetableSolution solution = new TimetableSolution(
-                List.of(first, third), List.of(MON1, MON3), List.of(ROOM, ROOM_B));
+                List.of(first, third), List.of(MON1, MON3));
 
         scoreManager().updateScore(solution);
 
@@ -476,15 +382,15 @@ class EngineConstraintTest {
         List<PeriodSlot> periods = List.of(
                 MON1, MON2, MON3, MON4, MON5, TUE1, TUE2, TUE3);
         List<Lesson> lessons = List.of(
-                lesson(1, 10, 100, 1000, MON1, ROOM),
-                lesson(2, 11, 100, 1001, MON3, ROOM),
-                lesson(3, 12, 200, 1002, MON1, ROOM),
-                lesson(4, 13, 200, 1003, MON3, ROOM),
-                lesson(5, 14, 200, 1004, MON5, ROOM),
-                lesson(6, 10, 100, 1000, TUE1, ROOM),
-                lesson(7, 11, 100, 1001, TUE3, ROOM));
+                lesson(1, 10, 100, 1000, MON1),
+                lesson(2, 11, 100, 1001, MON3),
+                lesson(3, 12, 200, 1002, MON1),
+                lesson(4, 13, 200, 1003, MON3),
+                lesson(5, 14, 200, 1004, MON5),
+                lesson(6, 10, 100, 1000, TUE1),
+                lesson(7, 11, 100, 1001, TUE3));
         TimetableSolution solution =
-                new TimetableSolution(lessons, periods, List.of(ROOM, ROOM_B));
+                new TimetableSolution(lessons, periods);
 
         scoreManager().updateScore(solution);
 
@@ -498,10 +404,10 @@ class EngineConstraintTest {
         ConstraintSettingsHolder.set(settings(ConstraintType.CLASS_GAP_MINIMIZED, false, 40, Map.of()));
         TimetableSolution solution = new TimetableSolution(
                 List.of(
-                        lesson(1, 10, 100, 1000, MON1, ROOM),
-                        lesson(2, 11, 100, 1001, MON2, ROOM),
-                        lesson(3, 12, 100, 1002, MON3, ROOM)),
-                mondayOneToFive(), List.of(ROOM, ROOM_B));
+                        lesson(1, 10, 100, 1000, MON1),
+                        lesson(2, 11, 100, 1001, MON2),
+                        lesson(3, 12, 100, 1002, MON3)),
+                mondayOneToFive());
 
         scoreManager().updateScore(solution);
 
@@ -515,9 +421,9 @@ class EngineConstraintTest {
         ConstraintSettingsHolder.set(settings(ConstraintType.CLASS_GAP_MINIMIZED, true, 40, Map.of()));
         TimetableSolution withGap = new TimetableSolution(
                 List.of(
-                        lesson(1, 10, 100, 1000, MON1, ROOM),
-                        lesson(2, 11, 100, 1001, MON3, ROOM_B)),
-                mondayOneToFive(), List.of(ROOM, ROOM_B));
+                        lesson(1, 10, 100, 1000, MON1),
+                        lesson(2, 11, 100, 1001, MON3)),
+                mondayOneToFive());
 
         scoreManager().updateScore(withGap);
 
@@ -525,9 +431,9 @@ class EngineConstraintTest {
 
         TimetableSolution noRealGap = new TimetableSolution(
                 List.of(
-                        lesson(1, 10, 100, 1000, MON1, ROOM),
-                        lesson(2, 11, 100, 1001, MON3, ROOM_B)),
-                List.of(MON1, MON3), List.of(ROOM, ROOM_B));
+                        lesson(1, 10, 100, 1000, MON1),
+                        lesson(2, 11, 100, 1001, MON3)),
+                List.of(MON1, MON3));
 
         scoreManager().updateScore(noRealGap);
 
@@ -544,9 +450,9 @@ class EngineConstraintTest {
                 List.of(disabled), new com.fasterxml.jackson.databind.ObjectMapper()));
         TimetableSolution solution = new TimetableSolution(
                 List.of(
-                        lesson(1, 10, 100, 1000, MON1, ROOM),
-                        lesson(2, 11, 100, 1001, MON3, ROOM_B)),
-                mondayOneToFive(), List.of(ROOM, ROOM_B));
+                        lesson(1, 10, 100, 1000, MON1),
+                        lesson(2, 11, 100, 1001, MON3)),
+                mondayOneToFive());
 
         scoreManager().updateScore(solution);
 
@@ -562,10 +468,9 @@ class EngineConstraintTest {
     @Test
     void sportLastPeriodIsPenalized() {
         ConstraintSettingsHolder.set(settings(ConstraintType.PE_LAST_PERIOD_AVOID, false, 35, Map.of()));
-        Lesson sport = new Lesson(1L, 1L, 1000L, "体育", 10L, 100L, null, "体育", null, false, 40, 0);
+        Lesson sport = new Lesson(1L, 1L, 1000L, "体育", 10L, 100L, null, "体育", false, 40, 0);
         sport.setPeriod(EVEN1);
-        sport.setRoom(ROOM);
-        TimetableSolution solution = new TimetableSolution(List.of(sport), List.of(MON1, EVEN1), List.of(ROOM));
+        TimetableSolution solution = new TimetableSolution(List.of(sport), List.of(MON1, EVEN1));
 
         scoreManager().updateScore(solution);
 
@@ -582,10 +487,10 @@ class EngineConstraintTest {
                         entry(ConstraintType.TEACHER_UNAVAILABLE,
                                 Map.of("teacherId", 10, "dayOfWeek", 1, "periodNo", 2))),
                 new com.fasterxml.jackson.databind.ObjectMapper()));
-        Lesson first = lesson(1, 10, 100, 1000, MON1, ROOM);
-        Lesson second = lesson(2, 10, 200, 1001, MON2, ROOM_B);
+        Lesson first = lesson(1, 10, 100, 1000, MON1);
+        Lesson second = lesson(2, 10, 200, 1001, MON2);
         TimetableSolution solution = new TimetableSolution(
-                List.of(first, second), List.of(MON1, MON2, MON5), List.of(ROOM, ROOM_B));
+                List.of(first, second), List.of(MON1, MON2, MON5));
 
         scoreManager().updateScore(solution);
 
@@ -599,43 +504,13 @@ class EngineConstraintTest {
                 List.of(entry(ConstraintType.TEACHER_UNAVAILABLE,
                         Map.of("teacherId", 11, "dayOfWeek", 1, "periodNo", 1))),
                 new com.fasterxml.jackson.databind.ObjectMapper()));
-        Lesson lesson = lesson(1, 10, 100, 1000, MON1, ROOM);
+        Lesson lesson = lesson(1, 10, 100, 1000, MON1);
         TimetableSolution solution =
-                new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM));
+                new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5));
 
         scoreManager().updateScore(solution);
 
         assertThat(solution.getScore().hardScore()).isZero();
-    }
-
-    /**
-     * Ticket 09: retired catalogue rows stay readable but must never score. Even with a
-     * hard control and an obviously broken timetable, the engine sees no rule at all.
-     */
-    @Test
-    void retiredTypesDoNotScoreEvenWhenConfiguredHard() {
-        ConstraintSettingsHolder.set(ConstraintSettings.from(
-                List.of(
-                        config(ConstraintType.ROOM_CONFLICT, true, 100, Map.of()),
-                        config(ConstraintType.ROOM_CAPACITY_FIT, true, 100, Map.of()),
-                        config(ConstraintType.COURSE_REQUIRED_ROOM_TYPE, true, 100,
-                                Map.of("courseId", 1000, "roomType", "PLAYGROUND")),
-                        config(ConstraintType.COURSE_NOT_IN_EVENING, true, 100, Map.of("courseId", 1000)),
-                        config(ConstraintType.EVENING_MAX, true, 100, Map.of("maxPerDay", 0)),
-                        config(ConstraintType.TEACHER_MEETING_BLOCKED, true, 100,
-                                Map.of("dayOfWeek", 1, "periodNo", 1)),
-                        config(ConstraintType.HEAD_TEACHER_FIRST_PERIOD, false, 20, Map.of())),
-                List.of(),
-                new com.fasterxml.jackson.databind.ObjectMapper()));
-        Lesson first = lesson(1, 10, 100, 1000, MON1, SMALL_ROOM);
-        Lesson second = lesson(2, 11, 100, 1001, MON1, SMALL_ROOM);
-        TimetableSolution solution = new TimetableSolution(
-                List.of(first, second), List.of(MON1, MON2, MON5), List.of(SMALL_ROOM));
-
-        scoreManager().updateScore(solution);
-
-        assertThat(solution.getScore().hardScore()).isZero();
-        assertThat(solution.getScore().softScore()).isZero();
     }
 
     @Test
@@ -645,10 +520,10 @@ class EngineConstraintTest {
                 List.of(entry(ConstraintType.SAME_COURSE_ONCE_PER_DAY, Map.of()),
                         entry(ConstraintType.SAME_COURSE_ONCE_PER_DAY, Map.of("courseId", 1000))),
                 new com.fasterxml.jackson.databind.ObjectMapper()));
-        Lesson first = lesson(1, 10, 100, 1000, MON1, ROOM);
-        Lesson second = lesson(2, 10, 100, 1000, MON2, ROOM_B);
+        Lesson first = lesson(1, 10, 100, 1000, MON1);
+        Lesson second = lesson(2, 10, 100, 1000, MON2);
         TimetableSolution solution =
-                new TimetableSolution(List.of(first, second), List.of(MON1, MON2), List.of(ROOM, ROOM_B));
+                new TimetableSolution(List.of(first, second), List.of(MON1, MON2));
 
         scoreManager().updateScore(solution);
 
@@ -666,9 +541,9 @@ class EngineConstraintTest {
                 new com.fasterxml.jackson.databind.ObjectMapper()));
         // Monday period 2 is the second entry: matching it is enough, the teacher does
         // not have to sit in every preferred slot at once.
-        Lesson lesson = lesson(1, 10, 100, 1000, MON2, ROOM);
+        Lesson lesson = lesson(1, 10, 100, 1000, MON2);
         TimetableSolution solution =
-                new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5), List.of(ROOM));
+                new TimetableSolution(List.of(lesson), List.of(MON1, MON2, MON5));
 
         scoreManager().updateScore(solution);
 
@@ -690,13 +565,12 @@ class EngineConstraintTest {
                         entry(ConstraintType.TEACHER_MAX_PER_DAY,
                                 Map.of("teacherId", 10, "maxPerDay", 1))),
                 new com.fasterxml.jackson.databind.ObjectMapper()));
-        Lesson first = lesson(1, 10, 100, 1000, MON1, ROOM);
-        Lesson second = lesson(2, 10, 200, 1001, MON2, ROOM_B);
-        Lesson third = lesson(3, 11, 300, 1002, MON1, ROOM);
-        Lesson fourth = lesson(4, 11, 400, 1003, MON2, ROOM_B);
+        Lesson first = lesson(1, 10, 100, 1000, MON1);
+        Lesson second = lesson(2, 10, 200, 1001, MON2);
+        Lesson third = lesson(3, 11, 300, 1002, MON1);
+        Lesson fourth = lesson(4, 11, 400, 1003, MON2);
         TimetableSolution solution = new TimetableSolution(
-                List.of(first, second, third, fourth), List.of(MON1, MON2, MON5),
-                List.of(ROOM, ROOM_B));
+                List.of(first, second, third, fourth), List.of(MON1, MON2, MON5));
 
         scoreManager().updateScore(solution);
 
@@ -712,10 +586,10 @@ class EngineConstraintTest {
                 List.of(entry(ConstraintType.TEACHER_MAX_PER_DAY,
                         Map.of("teacherId", 99, "maxPerDay", 1))),
                 new com.fasterxml.jackson.databind.ObjectMapper()));
-        Lesson first = lesson(1, 10, 100, 1000, MON1, ROOM);
-        Lesson second = lesson(2, 10, 200, 1001, MON2, ROOM_B);
+        Lesson first = lesson(1, 10, 100, 1000, MON1);
+        Lesson second = lesson(2, 10, 200, 1001, MON2);
         TimetableSolution solution = new TimetableSolution(
-                List.of(first, second), List.of(MON1, MON2, MON5), List.of(ROOM, ROOM_B));
+                List.of(first, second), List.of(MON1, MON2, MON5));
 
         scoreManager().updateScore(solution);
 

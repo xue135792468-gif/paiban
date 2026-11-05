@@ -41,7 +41,6 @@ export function useSwapFlow(options: SwapFlowOptions) {
   const singleGroup = ref(false)
   const previewVisible = ref(false)
   const previewCandidate = ref<SwapCandidate | null>(null)
-  const swapRooms = ref(false)
   const swapping = ref(false)
 
   let requestSeq = 0
@@ -104,9 +103,6 @@ export function useSwapFlow(options: SwapFlowOptions) {
 
   function selectCandidate(candidate: SwapCandidate) {
     previewCandidate.value = candidate
-    // A candidate that is only valid when both rooms move must pre-select the box,
-    // otherwise confirming it would hit the conflict the server already found.
-    swapRooms.value = candidate.roomSwapRequired === true
     previewVisible.value = true
   }
 
@@ -131,12 +127,7 @@ export function useSwapFlow(options: SwapFlowOptions) {
     swapping.value = true
     try {
       const expectedVersion = options.getVersion?.() ?? null
-      const outcome = await adjust.swap(
-        lesson,
-        candidate,
-        swapRooms.value,
-        expectedVersion ?? undefined,
-      )
+      const outcome = await adjust.swap(lesson, candidate, expectedVersion ?? undefined)
       if (outcome.warnings.length > 0) {
         notify.warning(outcome.warnings.join('；'))
       }
@@ -162,7 +153,6 @@ export function useSwapFlow(options: SwapFlowOptions) {
     singleGroup,
     previewVisible,
     previewCandidate,
-    swapRooms,
     swapping,
     selectLesson,
     clearSelection,

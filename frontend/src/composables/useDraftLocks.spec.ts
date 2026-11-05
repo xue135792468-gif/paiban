@@ -37,7 +37,6 @@ function detail(lessons: DraftLesson[], version = 7): DraftDetail {
     },
     lessons,
     periods: [],
-    rooms: [],
     rulesFingerprint: 'fp',
   }
 }
@@ -123,7 +122,7 @@ describe('useDraftLocks', () => {
     expect(locks.canUseClassScope.value).toBe(false)
     expect(locks.canUseScope('day')).toBe(false)
     expect(locks.canUseScope('selected')).toBe(true)
-    expect(() => locks.scope('day', 1)).toThrow('教师/教室视角只能按所选锁定')
+    expect(() => locks.scope('day', 1)).toThrow('教师视角只能按所选锁定')
   })
 
   it('所选含未排课节时拒绝，且一次请求都不发', async () => {

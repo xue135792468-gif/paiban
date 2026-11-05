@@ -12,7 +12,6 @@ function lessonRow(className: string, period: string, course: string): PreviewRo
       periodNo: period,
       courseName: course,
       teacherName: '张三',
-      roomName: '101',
     },
     confidence: {},
     lowConfidence: [],

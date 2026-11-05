@@ -40,7 +40,6 @@ import {
   cardMatches,
   cardTarget,
   describeSentence,
-  type PeriodOption,
   type RuleCard,
   type RuleNames,
   type RuleTargetGroup,
@@ -52,7 +51,6 @@ const props = defineProps<{
   cards: RuleCard[]
   query: string
   names: RuleNames
-  periods: PeriodOption[]
 }>()
 
 const emit = defineEmits<{
@@ -67,7 +65,7 @@ const groups = computed(() => {
   const buckets = new Map<RuleTargetGroup, RuleCard[]>()
   TARGET_ORDER.forEach((key) => buckets.set(key, []))
   for (const card of props.cards) {
-    if (!cardMatches(card, props.query, props.names, props.periods)) {
+    if (!cardMatches(card, props.query, props.names)) {
       continue
     }
     buckets.get(cardTarget(card))?.push(card)
@@ -79,7 +77,7 @@ const groups = computed(() => {
 
 function sentencesOf(card: RuleCard): string[] {
   return card.sentences.map((sentence) =>
-    describeSentence(sentence, props.names, props.periods))
+    describeSentence(sentence, props.names))
 }
 </script>
 

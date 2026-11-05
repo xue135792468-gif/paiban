@@ -15,7 +15,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SettingsService {
 
-    public static final String SUBSTITUTION_APPROVAL_MODE = "substitution.approval-mode";
     public static final String SUBSTITUTION_SEARCH_WINDOW_DAYS = "substitution.search-window-days";
     public static final String SUBSTITUTION_MAX_PLAN_TEACHERS = "substitution.max-plan-teachers";
     public static final String SUBSTITUTION_RANKING_PRESET = "substitution.ranking-preset";
@@ -29,19 +28,9 @@ public class SettingsService {
     public static final String DINGTALK_CORP_ID = "integration.dingtalk.corp-id";
     public static final String DINGTALK_EVENT_TOKEN = "integration.dingtalk.event-token";
     public static final String DINGTALK_SYNC_STRATEGY = "integration.dingtalk.sync-strategy";
-    public static final String FEISHU_ENABLED = "integration.feishu.enabled";
-    public static final String FEISHU_APP_ID = "integration.feishu.app-id";
-    public static final String FEISHU_APP_SECRET = "integration.feishu.app-secret";
-    public static final String FEISHU_VERIFICATION_TOKEN = "integration.feishu.verification-token";
-    public static final String FEISHU_ENCRYPT_KEY = "integration.feishu.encrypt-key";
-    public static final String FEISHU_SYNC_STRATEGY = "integration.feishu.sync-strategy";
-    /** none | dingtalk | feishu; blank derives from the enabled flags for backward compatibility. */
-    public static final String ACTIVE_PLATFORM = "integration.active-platform";
     public static final String PLATFORM_NONE = "none";
     public static final String PLATFORM_DINGTALK = "dingtalk";
-    public static final String PLATFORM_FEISHU = "feishu";
     public static final String SCHOOL_NAME = "school.name";
-    public static final String SCHOOL_TYPE = "school.type";
     public static final String SCHOOL_LOGO_PATH = "school.logo-path";
     public static final String PUBLIC_BASE_URL = "public.base-url";
     public static final String AI_SUBSTITUTE_RECOMMENDATION = "ai.features.substitute-recommendation";
@@ -50,60 +39,35 @@ public class SettingsService {
 
     private final AppSettingRepository repository;
 
-    private final String defaultApprovalMode;
     private final String defaultNotificationScope;
     private final boolean defaultDingtalkEnabled;
     private final String defaultDingtalkAppKey;
     private final String defaultDingtalkAppSecret;
     private final String defaultDingtalkAgentId;
     private final String defaultDingtalkSyncStrategy;
-    private final boolean defaultFeishuEnabled;
-    private final String defaultFeishuAppId;
-    private final String defaultFeishuAppSecret;
-    private final String defaultFeishuVerificationToken;
-    private final String defaultFeishuEncryptKey;
-    private final String defaultFeishuSyncStrategy;
     private final String defaultSchoolLogoPath;
 
     public SettingsService(
             AppSettingRepository repository,
-            @Value("${paiban.substitution.approval-mode:approval}") String defaultApprovalMode,
             @Value("${paiban.notification.scope:minimal}") String defaultNotificationScope,
             @Value("${paiban.integration.dingtalk.enabled:false}") boolean defaultDingtalkEnabled,
             @Value("${paiban.integration.dingtalk.app-key:}") String defaultDingtalkAppKey,
             @Value("${paiban.integration.dingtalk.app-secret:}") String defaultDingtalkAppSecret,
             @Value("${paiban.integration.dingtalk.agent-id:}") String defaultDingtalkAgentId,
             @Value("${paiban.integration.dingtalk.sync-strategy:dingtalk}") String defaultDingtalkSyncStrategy,
-            @Value("${paiban.integration.feishu.enabled:false}") boolean defaultFeishuEnabled,
-            @Value("${paiban.integration.feishu.app-id:}") String defaultFeishuAppId,
-            @Value("${paiban.integration.feishu.app-secret:}") String defaultFeishuAppSecret,
-            @Value("${paiban.integration.feishu.verification-token:}") String defaultFeishuVerificationToken,
-            @Value("${paiban.integration.feishu.encrypt-key:}") String defaultFeishuEncryptKey,
-            @Value("${paiban.integration.feishu.sync-strategy:feishu}") String defaultFeishuSyncStrategy,
             @Value("${paiban.export.school-logo-path:}") String defaultSchoolLogoPath) {
         this.repository = repository;
-        this.defaultApprovalMode = defaultApprovalMode;
         this.defaultNotificationScope = defaultNotificationScope;
         this.defaultDingtalkEnabled = defaultDingtalkEnabled;
         this.defaultDingtalkAppKey = defaultDingtalkAppKey;
         this.defaultDingtalkAppSecret = defaultDingtalkAppSecret;
         this.defaultDingtalkAgentId = defaultDingtalkAgentId;
         this.defaultDingtalkSyncStrategy = defaultDingtalkSyncStrategy;
-        this.defaultFeishuEnabled = defaultFeishuEnabled;
-        this.defaultFeishuAppId = defaultFeishuAppId;
-        this.defaultFeishuAppSecret = defaultFeishuAppSecret;
-        this.defaultFeishuVerificationToken = defaultFeishuVerificationToken;
-        this.defaultFeishuEncryptKey = defaultFeishuEncryptKey;
-        this.defaultFeishuSyncStrategy = defaultFeishuSyncStrategy;
         this.defaultSchoolLogoPath = defaultSchoolLogoPath;
     }
 
     public String get(String key, String fallback) {
         return repository.findById(key).map(AppSetting::getValue).orElse(fallback);
-    }
-
-    public String approvalMode() {
-        return get(SUBSTITUTION_APPROVAL_MODE, defaultApprovalMode);
     }
 
     /** Cross-day swap search window in natural days; 7 by default, 1-30. */
@@ -198,45 +162,9 @@ public class SettingsService {
         return get(DINGTALK_SYNC_STRATEGY, defaultDingtalkSyncStrategy);
     }
 
-    public boolean feishuEnabled() {
-        return Boolean.parseBoolean(get(FEISHU_ENABLED, String.valueOf(defaultFeishuEnabled)));
-    }
-
-    public String feishuAppId() {
-        return get(FEISHU_APP_ID, defaultFeishuAppId);
-    }
-
-    public String feishuAppSecret() {
-        return get(FEISHU_APP_SECRET, defaultFeishuAppSecret);
-    }
-
-    public String feishuVerificationToken() {
-        return get(FEISHU_VERIFICATION_TOKEN, defaultFeishuVerificationToken);
-    }
-
-    public String feishuEncryptKey() {
-        return get(FEISHU_ENCRYPT_KEY, defaultFeishuEncryptKey);
-    }
-
-    public String feishuSyncStrategy() {
-        return get(FEISHU_SYNC_STRATEGY, defaultFeishuSyncStrategy);
-    }
-
-    /**
-     * The platform currently in charge of auth, org sync and notifications.
-     *
-     * <p>An explicit stored value wins. Otherwise the enabled flags decide, with
-     * DingTalk first so a pre-05 deployment (both flags on) keeps its behaviour.
-     */
+    /** DingTalk is the only supported integration platform. */
     public String activePlatform() {
-        String stored = get(ACTIVE_PLATFORM, "");
-        if (isPlatform(stored)) {
-            return stored;
-        }
-        if (dingtalkEnabled()) {
-            return PLATFORM_DINGTALK;
-        }
-        return feishuEnabled() ? PLATFORM_FEISHU : PLATFORM_NONE;
+        return dingtalkEnabled() ? PLATFORM_DINGTALK : PLATFORM_NONE;
     }
 
     /** True when the given platform is the one currently in charge. */
@@ -244,17 +172,8 @@ public class SettingsService {
         return platform != null && platform.equals(activePlatform());
     }
 
-    public static boolean isPlatform(String value) {
-        return PLATFORM_NONE.equals(value) || PLATFORM_DINGTALK.equals(value) || PLATFORM_FEISHU.equals(value);
-    }
-
     public String schoolName() {
         return get(SCHOOL_NAME, "示例中学");
-    }
-
-    /** Junior (初中) or senior (高中) mode; UI-only, never read by business logic. */
-    public String schoolType() {
-        return get(SCHOOL_TYPE, "junior");
     }
 
     public String schoolLogoPath() {
@@ -295,7 +214,6 @@ public class SettingsService {
     @Transactional(readOnly = true)
     public Map<String, String> all() {
         Map<String, String> values = new LinkedHashMap<>();
-        values.put(SUBSTITUTION_APPROVAL_MODE, approvalMode());
         values.put(SUBSTITUTION_SEARCH_WINDOW_DAYS, String.valueOf(substitutionSearchWindowDays()));
         values.put(SUBSTITUTION_MAX_PLAN_TEACHERS, String.valueOf(substitutionMaxPlanTeachers()));
         values.put(SUBSTITUTION_RANKING_PRESET, substitutionRankingPreset());
@@ -306,12 +224,7 @@ public class SettingsService {
         values.put(DINGTALK_CORP_ID, dingtalkCorpId());
         values.put(DINGTALK_EVENT_TOKEN, dingtalkEventToken());
         values.put(DINGTALK_SYNC_STRATEGY, dingtalkSyncStrategy());
-        values.put(FEISHU_ENABLED, String.valueOf(feishuEnabled()));
-        values.put(FEISHU_APP_ID, feishuAppId());
-        values.put(FEISHU_SYNC_STRATEGY, feishuSyncStrategy());
-        values.put(ACTIVE_PLATFORM, activePlatform());
         values.put(SCHOOL_NAME, schoolName());
-        values.put(SCHOOL_TYPE, schoolType());
         values.put(SCHOOL_LOGO_PATH, schoolLogoPath());
         values.put(PUBLIC_BASE_URL, publicBaseUrl());
         values.put(AI_SUBSTITUTE_RECOMMENDATION, String.valueOf(aiSubstituteRecommendation()));

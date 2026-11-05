@@ -376,7 +376,7 @@ class ExtendedLifecycleIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void recycledDraftIsRefusedByValidationSwapPublishWithdrawAndRoomFill() {
+    void recycledDraftIsRefusedByValidationSwapPublishAndWithdraw() {
         String token = adminToken();
         ScheduleFixture.Result world = ScheduleFixture.solved(token, 5);
         long draftId = world.draftId();
@@ -393,8 +393,6 @@ class ExtendedLifecycleIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(404);
         as(token).when().get("/api/timetable-drafts/" + draftId + "/lessons/"
                         + lessonId + "/move-targets")
-                .then().statusCode(404);
-        as(token).when().get("/api/timetable-drafts/" + draftId + "/room-fill/plan")
                 .then().statusCode(404);
         as(token).when().post("/api/timetable-drafts/" + draftId + "/publish")
                 .then().statusCode(404);

@@ -22,16 +22,6 @@ export interface DingTalkConfig {
   syncStrategy: string
 }
 
-export interface FeishuConfig {
-  enabled: boolean
-  appId: string
-  appSecret?: string
-  hasSecret: boolean
-  syncStrategy: string
-  verificationToken?: string
-  verificationTokenConfigured: boolean
-}
-
 export interface SyncFieldChange {
   field: string
   label: string

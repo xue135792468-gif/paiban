@@ -152,7 +152,7 @@ class SubstitutionRescheduleDeadlineIntegrationTest extends ApiIntegrationTest {
         firstSwap(admin, fx);
 
         // 周四：基线日（周三）已过去，但当前实际授课（周五）还没开始——
-        // 再次调整与代课都以当前实际安排判定截止，不因基线日期已过而锁死。
+        // 再次调整以当前实际安排判定截止，不因基线日期已过而锁死。
         now.set(THURSDAY_NOON);
         long planId = generatePlan(admin, fx, fx.entryChineseId(), fx.friday(),
                 fx.nextMonday(), fx.mondayPeriodId());
@@ -167,22 +167,36 @@ class SubstitutionRescheduleDeadlineIntegrationTest extends ApiIntegrationTest {
         // 截止 = 当前落点（周五 08:00），不是已过去的基线日（周三 08:00）。
         assertThat(preview.jsonPath().getString("deadlineAt")).contains("2025-09-05T00:00:00");
 
-        // 代课路径同样按当前实际安排判定。
+        // 代课路径同样按被代课节的实际授课日期判定截止：语文已调到周五，
+        // 再对周五的这次授课代课（再次调整），截止仍是周五 08:00，不是已过去的基线日。
         Response coverPreview = as(admin).body(Map.of(
                         "entryId", fx.entryChineseId(),
                         "lessonDate", fx.friday().toString(),
                         "substituteTeacherId", fx.teacherSpareId(),
                         "reason", "基线已过仍可代课"))
                 .when().post("/api/substitution-workbench/previews");
-        coverPreview.then().statusCode(200);
+        assertThat(coverPreview.getStatusCode()).as(coverPreview.asString()).isEqualTo(200);
+        assertThat(coverPreview.jsonPath().getString("deadlineAt")).contains("2025-09-05T00:00:00");
         long coverVoucher = coverPreview.jsonPath().getLong("voucherId");
-        consumeOk(admin, coverVoucher, "confirm");
+        long coverRequestId = consumeOk(admin, coverVoucher, "confirm");
+
+        // 再次调整生效：新行接管周五这次授课（教师 = 丙），旧的调课生效行退出（CANCELLED）。
+        assertThat(substitutionRows.findByRequestId(coverRequestId)).singleElement().satisfies(row -> {
+            assertThat(row.getStatus()).isEqualTo(Substitution.EFFECTIVE);
+            assertThat(row.getType()).isEqualTo(Substitution.TYPE_COVER);
+            assertThat(row.getLessonDate()).isEqualTo(fx.friday());
+            assertThat(row.getSubstituteTeacherId()).isEqualTo(fx.teacherSpareId());
+        });
         assertThat(substitutionRows.findByEntryId(fx.entryChineseId()))
-                .anySatisfy(row -> {
-                    assertThat(row.getStatus()).isEqualTo(Substitution.EFFECTIVE);
-                    assertThat(row.getType()).isEqualTo(Substitution.TYPE_COVER);
-                    assertThat(row.getLessonDate()).isEqualTo(fx.friday());
-                });
+                .filteredOn(row -> Substitution.TYPE_SWAP.equals(row.getType()))
+                .hasSize(1)
+                .allSatisfy(row -> assertThat(row.getStatus()).isEqualTo(Substitution.CANCELLED));
+        // 课表仍把这次授课摆在周五（覆盖行沿用实例当前落点），教师已换成丙。
+        as(admin).queryParam("date", fx.friday().toString())
+                .when().get("/api/timetable/class/" + fx.classAId())
+                .then().statusCode(200)
+                .body("find { it.id == " + fx.entryChineseId() + " }.teacherId",
+                        org.hamcrest.Matchers.equalTo((int) fx.teacherSpareId()));
 
         // 代课生效后课表已变化：早先的再次调课凭证以明确冲突拒绝（基准被替代）。
         as(admin).body(Map.of())
@@ -197,7 +211,7 @@ class SubstitutionRescheduleDeadlineIntegrationTest extends ApiIntegrationTest {
         var fx = fx();
         String admin = adminToken();
         firstSwap(admin, fx);
-        // 周日前再代课一次（丙接管周五的语文），让「恢复基线」路径有明确语义。
+        // 周日前再代课一次（丙接管周五的语文），让「恢复基线/再换人」路径有明确语义。
         Response cover = as(admin).body(Map.of(
                         "entryId", fx.entryChineseId(),
                         "lessonDate", fx.friday().toString(),
@@ -219,6 +233,7 @@ class SubstitutionRescheduleDeadlineIntegrationTest extends ApiIntegrationTest {
                         "reason", "已开始后恢复基线"))
                 .when().post("/api/substitution-workbench/previews");
         assertThat(restore.getStatusCode()).as(restore.jsonPath().getString("message")).isEqualTo(409);
+        assertThat(restore.jsonPath().getString("message")).contains("开课");
 
         // 继续换人（丙 → 李）：同样被开课截止挡下。
         Response change = as(admin).body(Map.of(
@@ -228,6 +243,7 @@ class SubstitutionRescheduleDeadlineIntegrationTest extends ApiIntegrationTest {
                         "reason", "已开始后再换人"))
                 .when().post("/api/substitution-workbench/previews");
         assertThat(change.getStatusCode()).as(change.jsonPath().getString("message")).isEqualTo(409);
+        assertThat(change.jsonPath().getString("message")).contains("开课");
 
         // 再调课路径：来源槽（周五 1）已开始 → 生成方案明确拒绝。
         Response reschedule = as(admin).body(Map.of(
@@ -262,14 +278,16 @@ class SubstitutionRescheduleDeadlineIntegrationTest extends ApiIntegrationTest {
         assertThat(substitutionRows.findByRequestId(requestId))
                 .extracting(Substitution::getEntryId)
                 .containsExactlyInAnyOrder(fx.entryChineseId(), fx.entryEnglishId());
-        // 冻结实例的旧生效行保持 EFFECTIVE；语文旧行转 SUPERSEDED。
+        // 冻结实例的旧生效行保持 EFFECTIVE；语文旧行退出当前安排（CANCELLED）。
         assertThat(substitutionRows.findByEntryId(fx.entryMathId()))
                 .allSatisfy(row -> assertThat(row.getStatus()).isEqualTo(Substitution.EFFECTIVE));
         assertThat(substitutionRows.findByEntryId(fx.entryChineseId()))
                 .anySatisfy(row -> {
                     assertThat(row.getRequestId()).isEqualTo(requestId);
                     assertThat(row.getStatus()).isEqualTo(Substitution.EFFECTIVE);
-                    assertThat(row.getLessonDate()).isEqualTo(fx.wednesday());
+                    // 修订链已删除：生效行的 lesson_date 就是本次来源实例（当前落点周五），
+                    // 不再回溯基线来源日（周三）。
+                    assertThat(row.getLessonDate()).isEqualTo(fx.friday());
                     assertThat(row.getTargetLessonDate()).isEqualTo(fx.nextMonday());
                 });
     }

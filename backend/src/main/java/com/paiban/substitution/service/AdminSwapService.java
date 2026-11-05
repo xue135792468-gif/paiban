@@ -71,7 +71,7 @@ import org.springframework.util.StringUtils;
  *       试算结果（30 分钟 TTL），凭证沿用票 03 的 {@link SubstitutionPreview}
  *       合同（绑定操作者、快照哈希、选定方案、过期 ≤30 分钟且 ≤ 开课截止）。</li>
  *   <li>提交审批进待批队列（旧课表继续）；亲自确认调用
- *       {@link SubstitutionPlanService#approvePlan}——学期行锁、快照哈希重验、
+ *       {@link SubstitutionPlanService#confirmPlan}——学期行锁、快照哈希重验、
  *       {@link PlanVerifier} 独立校验、整环生效行、审计与通知完全同路径，不绕过。</li>
  *   <li>本单开课截止 = 环内所有被改变实例「当前与拟生效」开课时刻的最小值
  *       （{@link LessonDeadline#earliest}）；等待行锁后重读时钟，排队跨点即拒绝。</li>
@@ -321,13 +321,6 @@ public class AdminSwapService {
                 .map(issue -> issue.code() + ": " + issue.message())
                 .toList();
 
-        // 修订链（票 07）：预览绑定来源实例的当前生效申请作为基准。
-        // 有基准 = 修订调课（RESCHEDULE_REVISION），无基准 = 首次新调课（RESCHEDULE）。
-        Long revisesRequestId = SubstitutionLookups
-                .currentInstanceRow(substitutions, body.entryId(), body.lessonDate())
-                .map(Substitution::getRequestId).orElse(null);
-        String revisionKind = RevisionPolicy.swapRevisionKind(revisesRequestId);
-
         Instant now = clock.instant();
         SubstitutionPreview voucher = new SubstitutionPreview();
         voucher.setSemesterId(source.semesterId());
@@ -335,8 +328,6 @@ public class AdminSwapService {
         voucher.setLessonDate(body.lessonDate());
         voucher.setPlanId(plan.getId());
         voucher.setPreviousTeacherId(source.current().teacherId());
-        voucher.setRevisesRequestId(revisesRequestId);
-        voucher.setRevisionKind(revisionKind);
         voucher.setOperatorUserId(user.getId());
         voucher.setSnapshotHash(snapshot.snapshotHash());
         voucher.setReason(body.reason());
@@ -373,32 +364,18 @@ public class AdminSwapService {
                 changeItems(snapshot, moves),
                 issues,
                 true,
-                true,
-                revisesRequestId,
-                revisionKind);
+                true);
     }
 
     // ------------------------------------------------------- submit / confirm
 
-    /** 管理员代发调课：提交审批进待批队列，旧安排继续生效，不发已生效通知。 */
-    @Transactional
-    public WorkbenchActionResult submitApproval(Long voucherId, String username, String comment) {
-        return consumeVoucher(voucherId, username,
-                SubstitutionPreview.ACTION_SUBMIT_APPROVAL, comment, false);
-    }
-
     /**
-     * 管理员亲自确认整环生效：同一事务里创建 SWAP 申请并走
-     * {@link SubstitutionPlanService#approvePlan} 的普通批准路径
+     * 管理员直接确认整环生效：同一事务里创建 SWAP 申请并走
+     * {@link SubstitutionPlanService#confirmPlan} 的生效路径
      * （TTL、快照哈希重验、独立校验、整环生效行、审计与通知），失败整单零写入。
      */
     @Transactional
-    public WorkbenchActionResult confirm(Long voucherId, String username, String comment) {
-        return consumeVoucher(voucherId, username, SubstitutionPreview.ACTION_CONFIRM, comment, true);
-    }
-
-    private WorkbenchActionResult consumeVoucher(
-            Long voucherId, String username, String action, String comment, boolean effectiveNow) {
+    public WorkbenchActionResult confirmDirect(Long voucherId, String username, String comment) {
         AppUser user = users.getByUsername(username);
         requireManager(user);
         SubstitutionPreview voucher = previews.findById(voucherId)
@@ -406,14 +383,14 @@ public class AdminSwapService {
         if (!voucher.getOperatorUserId().equals(user.getId())) {
             throw ApiException.forbidden("预览凭证绑定操作者，不能使用他人的预览");
         }
-        String actionHash = SubstitutionLookups.actionHash(action, comment);
+        String actionHash = SubstitutionLookups.actionHash(SubstitutionPreview.ACTION_CONFIRM, comment);
 
         // 幂等：相同动作 + 相同参数的重试返回第一次结果；参数改变返回冲突。
-        var replayed = voucher.replay(action, actionHash);
+        var replayed = voucher.replay(SubstitutionPreview.ACTION_CONFIRM, actionHash);
         if (replayed.isPresent()) {
             return WorkbenchActionResult.fromJson(replayed.get());
         }
-        if (voucher.conflictsWith(action, actionHash)) {
+        if (voucher.conflictsWith(SubstitutionPreview.ACTION_CONFIRM, actionHash)) {
             throw ApiException.conflict("该预览凭证已用于其他操作，如需调整请重新预览");
         }
         if (!SubstitutionPreview.ACTIVE.equals(voucher.getStatus())) {
@@ -424,11 +401,9 @@ public class AdminSwapService {
         if (!SubstitutionPlan.PROPOSED.equals(plan.getStatus())) {
             throw ApiException.conflict("该方案当前状态为 " + plan.getStatus() + "，不能继续");
         }
-        if (effectiveNow) {
-            // 确认路径：先拿学期行锁（可能要等其他管理员的调代写入），拿到锁后再
-            // 重读时钟、重建快照——排队期间课表可能已被改动，一切复核以锁后状态为准。
-            effects.lockSemester(voucher.getSemesterId());
-        }
+        // 先拿学期行锁，拿到锁后再重读时钟、重建快照——排队期间课表可能已被改动，
+        // 一切复核都以锁后状态为准。
+        effects.lockSemester(voucher.getSemesterId());
         // 等待行锁后必须重新读取时间：排队跨过开课截止必须拒绝。
         new DeadlineChecker(clock::instant).requireBeforeDeadline(
                 voucher.getDeadlineAt(), "置换环内最早的课节");
@@ -446,38 +421,16 @@ public class AdminSwapService {
         LessonFreeze.frozenTouchReason(moves,
                 periodId -> SubstitutionLookups.periodStart(periods, periodId), clock.instant())
                 .ifPresent(reason -> { throw ApiException.conflict(reason); });
-        // 基准复核（票 07）：来源实例的当前生效行必须仍属于预览绑定的基准申请。
-        // 快照哈希已保证整份课表未变，这里钉住基准防旁路；基准被抢先替代时明确冲突。
-        var currentRow = SubstitutionLookups
-                .currentInstanceRow(substitutions, voucher.getEntryId(), voucher.getLessonDate());
-        if (currentRow.isPresent()) {
-            if (voucher.getRevisesRequestId() == null
-                    || !voucher.getRevisesRequestId().equals(currentRow.get().getRequestId())) {
-                expire(voucher);
-                throw ApiException.conflict("该课节的当前安排已变化，旧预览不能生效，请重新预览");
-            }
-        } else if (voucher.getRevisesRequestId() != null) {
-            expire(voucher);
-            throw ApiException.conflict("该修订的基准安排已不存在，请重新预览");
-        }
 
-        SubstitutionRequest request = createSwapRequest(user, voucher, snapshot, moves);
+        SubstitutionRequest request = createSwapRequest(user, voucher, snapshot, moves, comment);
         plan.setRequestId(request.getId());
         plans.save(plan);
 
-        WorkbenchActionResult result;
-        if (effectiveNow) {
-            // 与普通批准完全同路径：TTL、快照哈希、独立校验、生效行、历史与通知都在
-            // approvePlan 里，全部发生在当前事务内；失败则整单回滚、凭证不被消费。
-            planService.approvePlan(plan.getId(), username, comment);
-            result = new WorkbenchActionResult(request.getId(), SubstitutionRequest.EFFECTIVE, false);
-        } else {
-            result = new WorkbenchActionResult(request.getId(), SubstitutionRequest.PENDING_APPROVAL, false);
-        }
+        planService.confirmPlan(plan.getId(), username, comment);
+        WorkbenchActionResult result = new WorkbenchActionResult(
+                request.getId(), SubstitutionRequest.EFFECTIVE, false);
         auditLogs.save(new AuditLog(
-                username,
-                effectiveNow ? "SUBSTITUTION_ADMIN_SWAP_CONFIRMED" : "SUBSTITUTION_ADMIN_SWAP_DISPATCHED",
-                "SUBSTITUTION",
+                username, "SUBSTITUTION_ADMIN_SWAP_CONFIRMED", "SUBSTITUTION",
                 "operator=" + user.getUsername()
                         + ", operatorUserId=" + user.getId()
                         + ", voucherId=" + voucherId
@@ -485,14 +438,15 @@ public class AdminSwapService {
                         + ", requestId=" + request.getId()
                         + ", moves=" + moves.size(),
                 moves.size(), 0));
-        voucher.consume(action, actionHash, result.toJson(), clock.instant());
+        voucher.consume(SubstitutionPreview.ACTION_CONFIRM, actionHash, result.toJson(), clock.instant());
         previews.save(voucher);
         return result;
     }
 
     /** SWAP 代发申请：代发对象 = 来源课基线教师；明确目标日期/课节随申请落库。 */
     private SubstitutionRequest createSwapRequest(
-            AppUser operator, SubstitutionPreview voucher, PlanSnapshot snapshot, List<PlanMove> moves) {
+            AppUser operator, SubstitutionPreview voucher, PlanSnapshot snapshot,
+            List<PlanMove> moves, String comment) {
         TimetableEntry entry = entries.findById(voucher.getEntryId())
                 .orElseThrow(() -> ApiException.conflict("来源课节不存在，请重新预览"));
         PlanSnapshot.ScheduledLesson current = snapshot.scheduleOn(voucher.getLessonDate()).lessons()
@@ -519,12 +473,6 @@ public class AdminSwapService {
         request.setTargetDate(sourceMove.toDate());
         request.setReason(voucher.getReason());
         request.setType(Substitution.TYPE_SWAP);
-        // 修订链（票 07）：RESCHEDULE = 首次新调课；RESCHEDULE_REVISION = 以当前
-        // 生效安排为基准的修订调课。前驱申请随凭证绑定落库，批准后由 approvePlan 处理。
-        request.setRevisesRequestId(voucher.getRevisesRequestId());
-        request.setRevisionKind(voucher.getRevisionKind());
-        // 管理员的提交审批与亲自确认都不依赖全局教师自助模式。
-        request.setApprovalMode("approval");
         request.setStatus(SubstitutionRequest.SUBMITTED);
         Instant now = clock.instant();
         request.setCreatedAt(now);
@@ -532,12 +480,7 @@ public class AdminSwapService {
         SubstitutionRequest saved = requests.save(request);
         effects.recordHistory(saved.getId(), null, SubstitutionRequest.SUBMITTED,
                 operator.getUsername(), null);
-        saved.setStatus(SubstitutionRequest.PENDING_APPROVAL);
-        saved.setUpdatedAt(now);
-        SubstitutionRequest pending = requests.save(saved);
-        effects.recordHistory(saved.getId(), SubstitutionRequest.SUBMITTED,
-                SubstitutionRequest.PENDING_APPROVAL, operator.getUsername(), null);
-        return pending;
+        return saved;
     }
 
     // ------------------------------------------------------------------ compare
@@ -777,7 +720,6 @@ public class AdminSwapService {
                         SubstitutionMapper.label(move.toDayOfWeek(), move.toPeriodNo()),
                         move.teacherId(),
                         SubstitutionLookups.teacherName(snapshot, move.teacherId()),
-                        move.roomId() == null ? null : SubstitutionLookups.roomName(snapshot, move.roomId()),
                         "SLOT_MOVED"))
                 .toList();
     }
@@ -793,7 +735,6 @@ public class AdminSwapService {
                     SubstitutionLookups.courseName(snapshot, lesson.courseId()),
                     SubstitutionLookups.className(snapshot, lesson.classId()),
                     lesson.teacherId(), SubstitutionLookups.teacherName(snapshot, lesson.teacherId()),
-                    lesson.roomId() == null ? null : SubstitutionLookups.roomName(snapshot, lesson.roomId()),
                     false));
         }
         return map;
@@ -816,7 +757,6 @@ public class AdminSwapService {
                     SubstitutionLookups.courseName(snapshot, lesson.courseId()),
                     SubstitutionLookups.className(snapshot, lesson.classId()),
                     lesson.teacherId(), SubstitutionLookups.teacherName(snapshot, lesson.teacherId()),
-                    lesson.roomId() == null ? null : SubstitutionLookups.roomName(snapshot, lesson.roomId()),
                     false));
         }
         for (PlanMove move : moves) {
@@ -831,7 +771,6 @@ public class AdminSwapService {
                     SubstitutionLookups.courseName(snapshot, move.courseId()),
                     SubstitutionLookups.className(snapshot, move.classId()),
                     move.teacherId(), SubstitutionLookups.teacherName(snapshot, move.teacherId()),
-                    move.roomId() == null ? null : SubstitutionLookups.roomName(snapshot, move.roomId()),
                     false));
         }
         return map;
@@ -851,7 +790,7 @@ public class AdminSwapService {
             boolean changed = !sameCell(cell, other.get(entry.getKey()));
             cells.add(changed ? new GridCellDto(cell.entryId(), cell.periodNo(), cell.periodLabel(),
                     cell.courseName(), cell.className(), cell.teacherId(), cell.teacherName(),
-                    cell.roomName(), true) : cell);
+                    true) : cell);
         }
         cells.sort(Comparator.comparingInt(GridCellDto::periodNo));
         return cells;
@@ -860,8 +799,7 @@ public class AdminSwapService {
     private boolean sameCell(GridCellDto cell, GridCellDto other) {
         return other != null
                 && Objects.equals(cell.entryId(), other.entryId())
-                && Objects.equals(cell.teacherId(), other.teacherId())
-                && Objects.equals(cell.roomName(), other.roomName());
+                && Objects.equals(cell.teacherId(), other.teacherId());
     }
 
     private String label(PlanSnapshot.ScheduledLesson lesson) {

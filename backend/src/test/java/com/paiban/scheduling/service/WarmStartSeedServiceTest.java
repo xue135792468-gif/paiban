@@ -5,7 +5,6 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.paiban.foundation.domain.PeriodSection;
 import com.paiban.scheduling.domain.Assignment;
 import com.paiban.scheduling.domain.DraftLesson;
 import com.paiban.scheduling.domain.DraftLessonRepository;
@@ -251,6 +250,6 @@ class WarmStartSeedServiceTest {
     }
 
     private static PeriodSlot slot(long id, int periodNo) {
-        return new PeriodSlot(id, 1, periodNo, PeriodSection.MORNING, periodNo == 1, false, false);
+        return new PeriodSlot(id, 1, periodNo, periodNo == 1, false);
     }
 }

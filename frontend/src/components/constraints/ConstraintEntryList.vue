@@ -11,7 +11,6 @@
       :entry="entry"
       :index="index"
       :editable="editable"
-      :is-junior="isJunior"
       :teachers="teachers"
       :courses="courses"
       :classes="classes"
@@ -58,7 +57,6 @@ import type { OptionItem, TypeDraft } from './types'
 const props = defineProps<{
   row: TypeDraft
   editable: boolean
-  isJunior: boolean
   teachers: OptionItem[]
   courses: OptionItem[]
   classes?: OptionItem[]
@@ -83,7 +81,7 @@ const emit = defineEmits<{
 
 const duplicates = computed(() => duplicateMessages(props.row))
 
-// 互斥条件（同一课程两个教室类型等）也落在卡片上，用户一眼看到该改哪一条。
+// 互斥条件（同一课程两个互斥参数等）也落在卡片上，用户一眼看到该改哪一条。
 const conflicts = computed(() =>
   scalarConflictsByCard(props.row, {
     teacherNames: new Map(),

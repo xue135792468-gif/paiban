@@ -161,7 +161,6 @@ public class SourceDraftSnapshotService {
                         row.getTeacherId(),
                         row.getStudentCount(),
                         row.getPeriodId(),
-                        row.getRoomId(),
                         row.isLocked()));
             }
         }

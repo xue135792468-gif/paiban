@@ -20,7 +20,7 @@ class SemesterCopyIntegrationTest extends ApiIntegrationTest {
         String token = adminToken();
         String suffix = TestData.suffix();
         long source = TestData.semester(token);
-        as(token).body(Map.of("morningCount", 4, "afternoonCount", 4, "eveningCount", 2))
+        as(token).body(Map.of("periodCount", 10))
                 .when().post("/api/semesters/" + source + "/periods/default").then().statusCode(200);
         long gradeId = TestData.grade(token, source, "高一" + suffix);
         long classId = TestData.adminClass(token, source, gradeId, "高一1班" + suffix);

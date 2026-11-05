@@ -16,9 +16,6 @@ public final class SubstitutionDtos {
                                             String type,
                                             Long targetPeriodId) {}
 
-    public record DecisionRequest(Long substituteTeacherId, String comment,
-                                  Long newRoomId, Long newPeriodId) {}
-
     public record SubstitutionRequestDto(Long id,
                                          Long entryId,
                                          Long classId,
@@ -40,15 +37,7 @@ public final class SubstitutionDtos {
                                          String type,
                                          String reason,
                                          String status,
-                                         String approvalMode,
-                                         String approver,
-                                         Instant approvedAt,
-                                         String approvalComment,
-                                         Instant createdAt,
-                                         /** 修订链（票 04）：被本申请再次调整的已生效申请；首次为空。 */
-                                         Long revisesRequestId,
-                                         /** CHANGE_SUBSTITUTE / RESTORE_BASELINE；首次为空。 */
-                                         String revisionKind) {}
+                                         Instant createdAt) {}
 
     public record HistoryDto(Long id, String fromStatus, String toStatus, String actor,
                              String comment, Instant createdAt) {}
@@ -59,7 +48,7 @@ public final class SubstitutionDtos {
                                         Long classId, String className, Long courseId, String courseName,
                                         Long originalTeacherId, String originalTeacherName,
                                         Long substituteTeacherId, String substituteTeacherName,
-                                        Long roomId, String roomName, String status, Instant createdAt,
+                                        String status, Instant createdAt,
                                         int fromDayOfWeek, int fromPeriodNo, String fromPeriodLabel,
                                         int toDayOfWeek, int toPeriodNo, String toPeriodLabel) {}
 
@@ -76,8 +65,6 @@ public final class SubstitutionDtos {
                               String courseName,
                               Long teacherId,
                               String teacherName,
-                              Long roomId,
-                              String roomName,
                               Long fromPeriodId,
                               int fromDayOfWeek,
                               int fromPeriodNo,

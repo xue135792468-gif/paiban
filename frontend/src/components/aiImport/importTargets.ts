@@ -59,7 +59,7 @@ export const IMPORT_TARGETS: ImportTargetCard[] = [
     title: '课程',
     available: false,
     handles: '课程清单、科目设置表',
-    output: '课程档案：课程名称、科目、是否连堂、所需教室类型',
+    output: '课程档案：课程名称、科目、是否连堂',
     limits: '即将支持，当前请用「课程」页面录入',
     excelHint: '',
     textPlaceholder: '',

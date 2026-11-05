@@ -22,7 +22,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
- * 票 09：26→19 的目录收敛，以及数量型/形态型/预设规则写入后与求解器、
+ * 票 09/15：目录收敛，以及数量型/形态型/预设规则写入后与求解器、
  * 草稿校验、调代共用同一份 {@link ConstraintSettings} 快照。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -39,7 +39,7 @@ class RuleTypesIntegrationTest extends ApiIntegrationTest {
     private ConstraintEntryRepository entryRepository;
 
     @Test
-    void theCatalogueReturnsNineteenTypesAndHidesTheSevenRetiredOnes() {
+    void theCatalogueReturnsTheEighteenCurrentTypes() {
         String token = adminToken();
 
         List<Map<String, Object>> types = as(token)
@@ -48,23 +48,23 @@ class RuleTypesIntegrationTest extends ApiIntegrationTest {
                 .extract().jsonPath().getList("$");
 
         List<String> codes = types.stream().map(row -> String.valueOf(row.get("code"))).toList();
-        assertThat(codes).hasSize(19);
+        assertThat(codes).hasSize(18);
         assertThat(codes).doesNotContain(
                 "ROOM_CONFLICT", "ROOM_CAPACITY_FIT", "COURSE_REQUIRED_ROOM_TYPE",
                 "COURSE_NOT_IN_EVENING", "EVENING_MAX", "TEACHER_MEETING_BLOCKED",
-                "HEAD_TEACHER_FIRST_PERIOD");
+                "HEAD_TEACHER_FIRST_PERIOD", "SPORT_NOT_FIRST_AFTERNOON");
         assertThat(codes).contains(
                 "TEACHER_CONFLICT", "CLASS_CONFLICT", "CLASS_UNAVAILABLE",
                 "TEACHER_UNAVAILABLE", "COURSE_UNAVAILABLE", "COURSE_MAX_PER_DAY",
                 "TEACHER_MAX_PER_DAY", "CLASS_MAX_PER_DAY", "SAME_COURSE_ONCE_PER_DAY",
                 "CONSECUTIVE_LESSONS", "COURSE_SPREAD", "CLASS_GAP_MINIMIZED",
-                "TEACHER_MAX_CONSECUTIVE", "SPORT_NOT_FIRST_AFTERNOON",
+                "TEACHER_MAX_CONSECUTIVE",
                 "PE_LAST_PERIOD_AVOID", "MAIN_SUBJECT_MORNING",
                 "TEACHER_NO_FIRST_PERIOD", "TEACHER_DAY_OFF", "TEACHER_PREFERRED_SLOT");
     }
 
     @Test
-    void retiredConfigRowsStayReadableButNeverEnterTheSharedSnapshot() {
+    void unknownConfigRowsStayReadableButNeverEnterTheSharedSnapshot() {
         String token = adminToken();
         long semesterId = semesterWithPeriods(token);
         saveRetiredRows(semesterId);
@@ -75,13 +75,8 @@ class RuleTypesIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(200);
 
         ConstraintSettings settings = constraintService.settings(semesterId);
-        for (ConstraintType type : ConstraintType.values()) {
-            if (type.isRetired()) {
-                assertThat(settings.enabled(type)).as(type.name()).isFalse();
-                assertThat(settings.requirements(type)).as(type.name()).isEmpty();
-            }
-        }
-        // Retired rows also cannot change the fingerprint used by the preview guard.
+        // A code the catalogue no longer knows cannot change the fingerprint used by
+        // the preview guard.
         ConstraintSettings clean = constraintService.settings(TestData.semester(token));
         assertThat(settings.fingerprint()).isEqualTo(clean.fingerprint());
     }
@@ -111,7 +106,6 @@ class RuleTypesIntegrationTest extends ApiIntegrationTest {
                 "weight", 30, "hard", true, "enabled", true));
         configs.add(entryConfig("TEACHER_MAX_CONSECUTIVE", 45,
                 Map.of("teacherId", teacherId, "maxConsecutive", 3)));
-        configs.add(entryConfig("SPORT_NOT_FIRST_AFTERNOON", 70, Map.of("courseId", courseId)));
         configs.add(entryConfig("PE_LAST_PERIOD_AVOID", 35, Map.of("courseId", courseId)));
         configs.add(entryConfig("MAIN_SUBJECT_MORNING", 55,
                 Map.of("courseId", courseId, "beforePeriodNo", 4)));
@@ -131,7 +125,7 @@ class RuleTypesIntegrationTest extends ApiIntegrationTest {
                 "COURSE_MAX_PER_DAY", "TEACHER_MAX_PER_DAY", "CLASS_MAX_PER_DAY",
                 "SAME_COURSE_ONCE_PER_DAY", "CONSECUTIVE_LESSONS", "COURSE_SPREAD",
                 "CLASS_GAP_MINIMIZED", "TEACHER_MAX_CONSECUTIVE",
-                "SPORT_NOT_FIRST_AFTERNOON", "PE_LAST_PERIOD_AVOID",
+                "PE_LAST_PERIOD_AVOID",
                 "MAIN_SUBJECT_MORNING", "TEACHER_NO_FIRST_PERIOD",
                 "TEACHER_DAY_OFF", "TEACHER_PREFERRED_SLOT")) {
             ConstraintType type = ConstraintType.valueOf(code);
@@ -153,28 +147,24 @@ class RuleTypesIntegrationTest extends ApiIntegrationTest {
     }
 
     private void saveRetiredRows(long semesterId) {
-        for (ConstraintType type : ConstraintType.values()) {
-            if (!type.isRetired()) {
-                continue;
-            }
-            ConstraintConfig config = new ConstraintConfig();
-            config.setSemesterId(semesterId);
-            config.setType(type.name());
-            config.setParamsJson("{}");
-            config.setWeight(100);
-            config.setHard(true);
-            config.setEnabled(true);
-            configRepository.save(config);
+        // Old rows with a code the product removed: they must stay readable and inert.
+        ConstraintConfig config = new ConstraintConfig();
+        config.setSemesterId(semesterId);
+        config.setType("ROOM_CONFLICT");
+        config.setParamsJson("{}");
+        config.setWeight(100);
+        config.setHard(true);
+        config.setEnabled(true);
+        configRepository.save(config);
 
-            ConstraintEntry entry = new ConstraintEntry();
-            entry.setSemesterId(semesterId);
-            entry.setType(type.name());
-            entry.setParamsJson("{}");
-            entry.setEnabled(true);
-            entry.setHard(true);
-            entry.setGroupKey("retired-" + type.name());
-            entryRepository.save(entry);
-        }
+        ConstraintEntry entry = new ConstraintEntry();
+        entry.setSemesterId(semesterId);
+        entry.setType("ROOM_CONFLICT");
+        entry.setParamsJson("{}");
+        entry.setEnabled(true);
+        entry.setHard(true);
+        entry.setGroupKey("retired-ROOM_CONFLICT");
+        entryRepository.save(entry);
     }
 
     private long semesterWithPeriods(String token) {

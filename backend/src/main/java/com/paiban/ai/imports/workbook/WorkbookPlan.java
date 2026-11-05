@@ -159,7 +159,7 @@ public record WorkbookPlan(List<SheetPlan> sheets, boolean confirmed, String exp
         List<Field> fields = switch (category) {
             case TIMETABLE -> List.of(
                     Field.CLASS_NAME, Field.DAY, Field.PERIOD,
-                    Field.COURSE, Field.TEACHER, Field.ROOM);
+                    Field.COURSE, Field.TEACHER);
             case TEACHER -> List.of(
                     Field.NAME, Field.TEACHER, Field.EMPLOYEE_NO, Field.PHONE,
                     Field.EMAIL, Field.SUBJECT);

@@ -235,10 +235,10 @@ public class DraftCyclePlanService {
                 throw ApiException.conflict("课表已变化，请重新搜索");
             }
             changes.add(new LessonChange(
-                    move.lessonId(), move.toPeriodId(), lesson.roomId(), lesson.teacherId()));
+                    move.lessonId(), move.toPeriodId(), lesson.teacherId()));
             items.add(new LessonChangeItem(
-                    move.lessonId(), move.toPeriodId(), null, null,
-                    move.fromPeriodId(), lesson.teacherId(), lesson.roomId()));
+                    move.lessonId(), move.toPeriodId(), null,
+                    move.fromPeriodId(), lesson.teacherId()));
         }
         // Independent whole-table re-check: every move is judged together, exactly as
         // the write service will see it, and the token's targets must be reproduced.
@@ -281,7 +281,6 @@ public class DraftCyclePlanService {
                         + "|" + lesson.courseId()
                         + "|" + lesson.teacherId()
                         + "|" + lesson.periodId()
-                        + "|" + lesson.roomId()
                         + "|" + lesson.locked())
                 .toList();
         List<String> assignmentLines = assignments.findBySemesterIdAndDeletedAtIsNull(draft.getSemesterId()).stream()
@@ -364,7 +363,7 @@ public class DraftCyclePlanService {
     private static List<LessonView> viewsOf(PlanningSnapshot snapshot) {
         return snapshot.lessons().stream()
                 .map(lesson -> new LessonView(lesson.id(), lesson.classId(), lesson.courseId(),
-                        lesson.teacherId(), lesson.roomId(), lesson.periodId(), lesson.studentCount()))
+                        lesson.teacherId(), lesson.periodId(), lesson.studentCount()))
                 .toList();
     }
 

@@ -143,7 +143,7 @@ public class TimetableWithdrawService {
     /**
      * What the withdrawal would take away: the overlay rows that still cover a future
      * lesson plus the requests behind them. A request stays an approval record, so it
-     * must not read EFFECTIVE/APPROVED once its rows no longer apply — the history page
+     * must not read EFFECTIVE once its rows no longer apply — the history page
      * and the re-processing prompt both read that status.
      */
     private FutureImpact futureImpact(Long semesterId, LocalDate today) {
@@ -186,10 +186,10 @@ public class TimetableWithdrawService {
         return new FutureImpact(cancelledRows, List.copyOf(requestRows));
     }
 
-    /** Approved requests whose effective date is today or later: nothing ran yet. */
+    /** Effective requests whose effective date is today or later: nothing ran yet. */
     private List<SubstitutionRequest> futureApprovedRequests(Long semesterId, LocalDate today) {
         return requests.findBySemesterIdAndStatusOrderByCreatedAtDesc(
-                        semesterId, SubstitutionRequest.APPROVED)
+                        semesterId, SubstitutionRequest.EFFECTIVE)
                 .stream()
                 .filter(request -> request.getEffectiveDate() == null
                         || !request.getEffectiveDate().isBefore(today))

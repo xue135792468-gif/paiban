@@ -27,14 +27,6 @@
             <el-input v-model="row.label" size="small" />
           </template>
         </el-table-column>
-        <el-table-column label="时段" width="130">
-          <template #default="{ row }">
-            <el-select v-model="row.section" size="small">
-              <el-option label="上午" value="MORNING" />
-              <el-option label="下午" value="AFTERNOON" />
-            </el-select>
-          </template>
-        </el-table-column>
         <el-table-column label="开始" width="120">
           <template #default="{ row }">
             <el-time-picker
@@ -97,7 +89,6 @@ interface Period {
   dayOfWeek: number
   periodNo: number
   label: string
-  section: string
   startTime: string
   endTime: string
 }
@@ -105,7 +96,6 @@ interface Period {
 interface SlotRow {
   periodNo: number
   label: string
-  section: string
   startTime: string
   endTime: string
   days: number[]
@@ -143,9 +133,6 @@ function toRows(periods: Period[]): SlotRow[] {
       row = {
         periodNo: period.periodNo,
         label: period.label,
-        // Legacy EVENING rows still load; the product no longer exposes a study-hall
-        // section, so they show as afternoon instead of an unknown option.
-        section: period.section === 'EVENING' ? 'AFTERNOON' : period.section,
         startTime: normalizeTime(period.startTime),
         endTime: normalizeTime(period.endTime),
         days: [],
@@ -181,7 +168,6 @@ function addRow() {
   rows.value.push({
     periodNo: (last?.periodNo ?? 0) + 1,
     label: `第${(last?.periodNo ?? 0) + 1}节`,
-    section: 'MORNING',
     startTime: last?.endTime ?? '08:00',
     endTime: '08:45',
     days: [1, 2, 3, 4, 5],
@@ -190,7 +176,7 @@ function addRow() {
 
 async function generateDefault() {
   try {
-    await ElMessageBox.confirm('将用默认作息（上午 4 节、下午 4 节，周一至周五）覆盖当前配置，继续？', '生成默认作息', {
+    await ElMessageBox.confirm('将用默认作息（每天 8 节，周一至周五）覆盖当前配置，继续？', '生成默认作息', {
       type: 'warning',
     })
   } catch {
@@ -226,7 +212,6 @@ async function save() {
       slots: rows.value.map((row) => ({
         periodNo: row.periodNo,
         label: row.label,
-        section: row.section,
         startTime: row.startTime,
         endTime: row.endTime,
         days: [...row.days].sort(),

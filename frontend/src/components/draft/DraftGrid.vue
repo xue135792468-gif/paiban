@@ -11,7 +11,6 @@
       <div class="row-head">
         <div class="row-title">第{{ row.periodNo }}节</div>
         <div v-if="row.time" class="row-time">{{ row.time }}</div>
-        <div v-if="sectionLabel(row.section)" class="row-section">{{ sectionLabel(row.section) }}</div>
       </div>
       <div
         v-for="day in days"
@@ -170,7 +169,7 @@ const lockedIds = computed(() => new Set(props.lockedLessonIds ?? []))
 const selectedIds = computed(() => new Set(props.selectedLessonIds ?? []))
 
 const periodRows = computed(() => {
-  const map = new Map<number, { periodNo: number; time: string; section: string }>()
+  const map = new Map<number, { periodNo: number; time: string }>()
   props.periods.forEach((period) => {
     if (!map.has(period.periodNo)) {
       const start = period.startTime?.slice(0, 5) ?? ''
@@ -178,7 +177,6 @@ const periodRows = computed(() => {
       map.set(period.periodNo, {
         periodNo: period.periodNo,
         time: start && end ? `${start}-${end}` : '',
-        section: period.section,
       })
     }
   })
@@ -215,12 +213,6 @@ function lessonAria(lesson: DraftLesson, day: number, periodNo: number) {
   const swap = swapReasonOf(lesson)
   const swapText = swap ? `，${swap}` : ''
   return `${lesson.courseName ?? '课程'}，${lesson.teacherName ?? '教师'}${className}，${when}${locked}${swapText}`
-}
-
-const sectionLabels: Record<string, string> = { MORNING: '上午', AFTERNOON: '下午' }
-
-function sectionLabel(section: string) {
-  return sectionLabels[section] ?? ''
 }
 
 function lessonsAt(day: number, periodNo: number) {
@@ -372,10 +364,6 @@ function onDrop(day: number, periodNo: number) {
 .row-time {
   font-size: 11px;
   color: var(--paiban-muted);
-}
-.row-section {
-  font-size: 11px;
-  color: #9aa1b1;
 }
 .cell {
   min-height: 72px;

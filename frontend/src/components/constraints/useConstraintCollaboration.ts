@@ -33,7 +33,6 @@ export interface AiPanelHandle {
 export function useConstraintCollaboration(options: {
   draft: ReturnType<typeof useConstraintDraft>
   semesterId: Ref<number | null>
-  isJunior: ComputedRef<boolean>
   objectNames: ComputedRef<ObjectNames>
 }) {
   const aiPanel = ref<AiPanelHandle | null>(null)
@@ -173,7 +172,6 @@ export function useConstraintCollaboration(options: {
       resolved: ai?.resolved ?? {},
       decisions: aiDecisions.value,
       configs: options.draft.payload(),
-      isJunior: options.isJunior.value,
     }
   }
 

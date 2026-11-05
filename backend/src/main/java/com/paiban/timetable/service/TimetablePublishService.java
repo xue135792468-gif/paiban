@@ -98,7 +98,6 @@ public class TimetablePublishService {
             entry.setAdminClassId(lesson.getAdminClassId());
             entry.setCourseId(lesson.getCourseId());
             entry.setTeacherId(lesson.getTeacherId());
-            entry.setRoomId(lesson.getRoomId());
             entry.setPeriodId(lesson.getPeriodId());
             entry.setDayOfWeek(period.getDayOfWeek());
             entry.setPeriodNo(period.getPeriodNo());

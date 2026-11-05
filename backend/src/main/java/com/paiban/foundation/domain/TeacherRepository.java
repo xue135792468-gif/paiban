@@ -22,9 +22,5 @@ public interface TeacherRepository extends JpaRepository<Teacher, Long> {
 
     Optional<Teacher> findByDingtalkUserId(String dingtalkUserId);
 
-    Optional<Teacher> findByFeishuUserId(String feishuUserId);
-
-    Optional<Teacher> findByFeishuOpenId(String feishuOpenId);
-
     boolean existsByEmployeeNo(String employeeNo);
 }

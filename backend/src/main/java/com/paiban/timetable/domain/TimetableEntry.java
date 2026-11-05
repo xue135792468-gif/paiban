@@ -41,9 +41,6 @@ public class TimetableEntry {
     @Column(name = "teacher_id", nullable = false)
     private Long teacherId;
 
-    @Column(name = "room_id")
-    private Long roomId;
-
     @Column(name = "period_id", nullable = false)
     private Long periodId;
 

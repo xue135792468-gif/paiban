@@ -1,11 +1,9 @@
 package com.paiban.substitution.plan;
 
 import com.paiban.common.policy.ExchangeRankingPreset;
-import com.paiban.foundation.domain.PeriodSection;
 import com.paiban.scheduling.constraint.ConstraintChecker;
 import com.paiban.scheduling.constraint.ConstraintContext.CourseView;
 import com.paiban.scheduling.constraint.ConstraintContext.PeriodView;
-import com.paiban.scheduling.constraint.ConstraintContext.RoomView;
 import com.paiban.scheduling.constraint.ConstraintViolation;
 import com.paiban.scheduling.constraint.LessonView;
 import com.paiban.scheduling.domain.ConstraintType;
@@ -338,7 +336,6 @@ public final class SwapPlanner {
                     lesson.classId(),
                     lesson.courseId(),
                     lesson.teacherId(),
-                    lesson.roomId(),
                     lesson.periodId(),
                     fromPeriod == null ? lesson.dayOfWeek() : fromPeriod.dayOfWeek(),
                     fromPeriod == null ? lesson.periodNo() : fromPeriod.periodNo(),
@@ -412,7 +409,7 @@ public final class SwapPlanner {
                     continue;
                 }
                 changed.add(new ScheduledLesson(
-                        move.entryId(), move.classId(), move.courseId(), move.teacherId(), move.roomId(),
+                        move.entryId(), move.classId(), move.courseId(), move.teacherId(),
                         move.toPeriodId(), move.toDayOfWeek(), move.toPeriodNo(),
                         search.snapshot.studentCount(move.classId())));
             }
@@ -460,7 +457,7 @@ public final class SwapPlanner {
     private static List<LessonView> views(List<ScheduledLesson> lessons) {
         return lessons.stream()
                 .map(lesson -> new LessonView(lesson.entryId(), lesson.classId(), lesson.courseId(),
-                        lesson.teacherId(), lesson.roomId(), lesson.periodId(), lesson.studentCount()))
+                        lesson.teacherId(), lesson.periodId(), lesson.studentCount()))
                 .toList();
     }
 
@@ -493,44 +490,6 @@ public final class SwapPlanner {
                     lesson.entryId(), target.id()));
             return false;
         }
-        RoomView room = snapshot.room(lesson.roomId());
-        if (blocked(settings, ConstraintType.ROOM_CONFLICT)
-                && lesson.roomId() != null
-                && day.lessons().stream().anyMatch(other -> Objects.equals(other.roomId(), lesson.roomId())
-                        && other.periodId() == target.id()
-                        && other.entryId() != lesson.entryId()
-                        && other.entryId() != vacatingEntryId)) {
-            reasons.add(new PlanDiagnosis("ROOM_BUSY",
-                    "教室「" + (room == null ? lesson.roomId() : room.name()) + "」在 " + label + " 已被占用",
-                    lesson.entryId(), target.id()));
-            return false;
-        }
-        if (blocked(settings, ConstraintType.ROOM_CAPACITY_FIT)
-                && room != null && room.capacity() < lesson.studentCount()) {
-            reasons.add(new PlanDiagnosis("ROOM_CAPACITY",
-                    "教室「" + room.name() + "」容量不足", lesson.entryId(), target.id()));
-            return false;
-        }
-        CourseView course = snapshot.course(lesson.courseId());
-        String requiredType = course == null ? null : course.requiredRoomType();
-        Control roomTypeControl = new Control(true, 100);
-        String configured = settings.courseText(
-                ConstraintType.COURSE_REQUIRED_ROOM_TYPE, lesson.courseId(), "roomType");
-        if (configured != null) {
-            Control control = settings.match(ConstraintType.COURSE_REQUIRED_ROOM_TYPE,
-                    entry -> ConstraintEntryMatcher.courseWithRoomType(entry, lesson.courseId()));
-            if (control != null) {
-                roomTypeControl = control;
-                requiredType = configured;
-            }
-        }
-        if (roomTypeControl.hard()
-                && requiredType != null && !requiredType.isBlank()
-                && (room == null || !requiredType.equals(room.type()))) {
-            reasons.add(new PlanDiagnosis("ROOM_TYPE",
-                    "课程需要「" + requiredType + "」类型的教室", lesson.entryId(), target.id()));
-            return false;
-        }
         Control unavailable = settings.match(ConstraintType.TEACHER_UNAVAILABLE,
                 entry -> ConstraintEntryMatcher.teacherSlot(
                         entry, lesson.teacherId(), target.dayOfWeek(), target.periodNo()));
@@ -538,26 +497,6 @@ public final class SwapPlanner {
             reasons.add(new PlanDiagnosis("TEACHER_UNAVAILABLE",
                     teacherName(snapshot, lesson.teacherId()) + " 在 " + label + " 不排课",
                     lesson.entryId(), target.id()));
-            return false;
-        }
-        var teacher = snapshot.teacher(lesson.teacherId());
-        Control meeting = settings.match(ConstraintType.TEACHER_MEETING_BLOCKED,
-                entry -> ConstraintEntryMatcher.slot(
-                        entry, target.dayOfWeek(), target.periodNo())
-                        && ConstraintEntryMatcher.meetingSubject(entry,
-                        teacher == null ? null : teacher.subject()));
-        if (meeting != null && meeting.hard()) {
-            reasons.add(new PlanDiagnosis("TEACHER_MEETING",
-                    teacherName(snapshot, lesson.teacherId()) + " 在 " + label + " 参加教研",
-                    lesson.entryId(), target.id()));
-            return false;
-        }
-        Control notEvening = settings.match(ConstraintType.COURSE_NOT_IN_EVENING,
-                entry -> ConstraintEntryMatcher.courseOrAll(entry, lesson.courseId()));
-        if (notEvening != null && notEvening.hard()
-                && target.section() == PeriodSection.EVENING) {
-            reasons.add(new PlanDiagnosis("COURSE_NOT_IN_EVENING",
-                    "该课程不能安排在晚自习", lesson.entryId(), target.id()));
             return false;
         }
         Control courseUnavailable = settings.match(ConstraintType.COURSE_UNAVAILABLE,

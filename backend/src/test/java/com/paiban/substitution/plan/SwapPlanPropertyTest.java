@@ -71,7 +71,7 @@ class SwapPlanPropertyTest {
         PlanMove move = plan.moves().get(index);
         List<PlanMove> tampered = new ArrayList<>(plan.moves());
         tampered.set(index, new PlanMove(move.entryId(), move.classId(), move.courseId(),
-                move.teacherId(), move.roomId(), move.fromPeriodId(), move.fromDayOfWeek(),
+                move.teacherId(), move.fromPeriodId(), move.fromDayOfWeek(),
                 move.fromPeriodNo(), move.fromDate(), target, day,
                 (int) (target % 100), move.toDate(), move.order()));
         return tampered;

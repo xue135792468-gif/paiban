@@ -201,7 +201,7 @@ describe('useTeacherSwap', () => {
     const outcome = await flow.confirm()
 
     expect(outcome.saved).toBe(true)
-    expect(adjust.swap).toHaveBeenCalledWith(source, greenCandidate, false, 9)
+    expect(adjust.swap).toHaveBeenCalledWith(source, greenCandidate, 9)
     expect(reload).toHaveBeenCalledTimes(1)
     expect(flow.active.value).toBe(false)
   })
@@ -218,17 +218,6 @@ describe('useTeacherSwap', () => {
     expect(flow.previewVisible.value).toBe(false)
   })
 
-  it('需要同时交换教室的候选中预选教室交换', async () => {
-    const adjust = fakeAdjust()
-    const flow = useTeacherSwap({ adjust, getLessons: () => lessons, notify: fakeNotify() })
-    const roomCandidate = candidate({ roomSwapRequired: true })
-    await flow.enter(source)
-    flow.openPreview(roomCandidate)
-
-    expect(flow.swapRooms.value).toBe(true)
-    await flow.confirm()
-    expect(adjust.swap).toHaveBeenCalledWith(source, roomCandidate, true, undefined)
-  })
 
   it('教师视图点绿格打开预览、点灰格无效，班级视图不接管点击', async () => {
     const flow = useTeacherSwap({

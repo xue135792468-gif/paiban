@@ -22,7 +22,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
- * Ticket 10/04 through the public REST surface: the five threshold types are saved
+ * Ticket 10/04 through the public REST surface: the threshold types are saved
  * as entries (one global default plus per-object exceptions), a duplicate scope is
  * rejected without touching the stored configuration, and the draft verdict reads
  * the same scoped value the solver and the substitution flows do.
@@ -151,7 +151,7 @@ class ConstraintScopedThresholdsIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void theOtherFourThresholdsRoundTripWithTheirOwnScopeField() {
+    void theOtherThreeThresholdsRoundTripWithTheirOwnScopeField() {
         String token = adminToken();
         World world = prepare(token);
         save(token, world, List.of(
@@ -161,9 +161,6 @@ class ConstraintScopedThresholdsIntegrationTest extends ApiIntegrationTest {
                 threshold("COURSE_MAX_PER_DAY", true, 50, List.of(
                         params(Map.of("maxPerDay", 2)),
                         params(Map.of("courseId", world.courseId(), "maxPerDay", 1)))),
-                threshold("EVENING_MAX", true, 40, List.of(
-                        params(Map.of("maxPerDay", 2)),
-                        params(Map.of("classId", world.classId(), "maxPerDay", 0)))),
                 threshold("TEACHER_MAX_CONSECUTIVE", true, 45, List.of(
                         params(Map.of("maxConsecutive", 3)),
                         params(Map.of("teacherId", world.teacherA(), "maxConsecutive", 2))))))
@@ -172,7 +169,6 @@ class ConstraintScopedThresholdsIntegrationTest extends ApiIntegrationTest {
                         equalTo((int) world.classId()))
                 .body("find { it.type == 'COURSE_MAX_PER_DAY' }.entries[1].params.courseId",
                         equalTo((int) world.courseId()))
-                .body("find { it.type == 'EVENING_MAX' }.entries[1].params.maxPerDay", equalTo(0))
                 .body("find { it.type == 'TEACHER_MAX_CONSECUTIVE' }.entries[1].params.maxConsecutive",
                         equalTo(2));
 
@@ -198,7 +194,7 @@ class ConstraintScopedThresholdsIntegrationTest extends ApiIntegrationTest {
 
     // ------------------------------------------------------------------ helpers
 
-    private record World(long semesterId, long classId, long courseId, long roomId,
+    private record World(long semesterId, long classId, long courseId,
                          long teacherA, long teacherB, Map<Integer, Long> periods) {}
 
     private World prepare(String token) {
@@ -212,8 +208,7 @@ class ConstraintScopedThresholdsIntegrationTest extends ApiIntegrationTest {
         long teacherA = TestData.teacher(token, "张老师" + suffix);
         long teacherB = TestData.teacher(token, "李老师" + suffix);
         long courseId = TestData.course(token, "数学" + suffix);
-        long roomId = TestData.room(token, "教室" + suffix);
-        return new World(semesterId, classId, courseId, roomId, teacherA, teacherB,
+        return new World(semesterId, classId, courseId, teacherA, teacherB,
                 periodsOf(token, semesterId));
     }
 
@@ -279,7 +274,6 @@ class ConstraintScopedThresholdsIntegrationTest extends ApiIntegrationTest {
         row.setAdminClassId(world.classId());
         row.setStudentCount(45);
         row.setPeriodId(periodId);
-        row.setRoomId(world.roomId());
         draftLessons.save(row);
     }
 

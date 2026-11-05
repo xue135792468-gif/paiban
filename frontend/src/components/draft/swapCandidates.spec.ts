@@ -18,8 +18,6 @@ function candidate(overrides: Partial<SwapCandidate>): SwapCandidate {
     dayOfWeek: 1,
     periodNo: 1,
     periodLabel: '周一第1节',
-    roomId: 20,
-    roomName: '101',
     available: true,
     conflicts: [],
     warnings: [],

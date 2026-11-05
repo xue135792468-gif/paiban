@@ -380,7 +380,7 @@ class WeeklyNoClassSchoolScopeIntegrationTest extends ApiIntegrationTest {
 
     private Response save(String token, long semester, List<Map<String, Object>> configs) {
         List<Map<String, Object>> all = new ArrayList<>();
-        for (String type : List.of("TEACHER_CONFLICT", "CLASS_CONFLICT", "ROOM_CONFLICT")) {
+        for (String type : List.of("TEACHER_CONFLICT", "CLASS_CONFLICT", "CLASS_GAP_MINIMIZED")) {
             all.add(Map.of("type", type, "params", Map.of(), "enabled", true,
                     "hard", true, "weight", 100));
         }

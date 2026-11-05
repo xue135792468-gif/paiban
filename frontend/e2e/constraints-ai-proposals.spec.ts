@@ -103,7 +103,7 @@ test.describe.serial('约束配置：自然语言只读建议', () => {
           explanation: '周三下午全部禁排',
           teacherName: '慕老师',
           days: [3],
-          section: 'AFTERNOON',
+          periods: [5, 6, 7, 8],
         },
       ],
     })
@@ -229,7 +229,7 @@ test.describe.serial('约束配置：自然语言只读建议', () => {
           status: 'READY',
           teacherName: manualTeacher.name,
           days: [4],
-          section: 'AFTERNOON',
+          periods: [5, 6, 7, 8],
         },
       ],
     })
@@ -277,21 +277,23 @@ test.describe.serial('约束配置：自然语言只读建议', () => {
           status: 'NEEDS_INPUT',
           teacherName: '张老师',
           days: [3],
-          section: 'AFTERNOON',
+          periods: [5, 6, 7, 8],
         },
         {
-          sourceText: '体育不排晚自习',
-          type: 'COURSE_NOT_IN_EVENING',
+          sourceText: '体育不排第1节',
+          type: 'COURSE_UNAVAILABLE',
           strength: 'HARD',
           status: 'READY',
           courseName: `体育${suffix}`,
+          days: [3],
+          periods: [1],
         },
       ],
     })
 
     await uiLogin(page, 'admin', 'admin123')
     await openPanel(page)
-    await page.getByTestId('constraint-ai-input').fill('张老师周三下午不排，体育不排晚自习。')
+    await page.getByTestId('constraint-ai-input').fill('张老师周三下午不排，体育不排第1节。')
     await page.getByTestId('constraint-ai-generate').click()
     await expect(page.getByTestId('constraint-ai-run')).toBeVisible()
 

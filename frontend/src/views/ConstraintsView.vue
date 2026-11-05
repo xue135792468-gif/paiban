@@ -4,11 +4,7 @@
       <div>
         <h2>约束配置</h2>
         <p class="subtitle">
-          {{
-            isJunior
-              ? '配置学期排课规则，选择「必须」或「尽量」。'
-              : '配置学期排课规则与偏好权重，支持保存与复用为模板。'
-          }}
+          配置学期排课规则与偏好权重，支持保存与复用为模板。
         </p>
       </div>
       <div class="actions">
@@ -37,7 +33,7 @@
       @migrated="loadConstraints"
     />
 
-    <div v-if="semesters.length > 0 && canManage && !isJunior" class="sub-toolbar">
+    <div v-if="semesters.length > 0 && canManage" class="sub-toolbar">
       <ConstraintTemplateBar
         :semester-id="semesterId"
         :classes="classes"
@@ -166,7 +162,6 @@
             v-if="selected"
             :row="selected"
             :can-manage="canManage"
-            :is-junior="isJunior"
             :teachers="teachers"
             :courses="courses"
             :day-options="availableDays"
@@ -231,7 +226,6 @@ import type {
   OptionItem,
 } from '@/components/constraints/types'
 import { useAuthStore } from '@/stores/auth'
-import { useSettingsStore } from '@/stores/settings'
 import { serverMessage } from '@/api/errors'
 import { activeOnly } from '@/utils/activeOptions'
 
@@ -248,10 +242,8 @@ interface ConstraintState {
 }
 
 const auth = useAuthStore()
-const settings = useSettingsStore()
 const canManage = computed(() => auth.hasPermission('constraint:manage'))
 const canReadAll = computed(() => auth.hasPermission('settings:manage'))
-const isJunior = computed(() => settings.isJunior)
 
 const draft = useConstraintDraft()
 const { counts, groups, selected, selectedCode, dirty } = draft
@@ -293,7 +285,6 @@ const objectNames = computed<ObjectNames>(() => ({
 const collaboration = useConstraintCollaboration({
   draft,
   semesterId,
-  isJunior,
   objectNames,
 })
 const {
@@ -483,7 +474,7 @@ async function loadPeriods() {
 
 async function loadConstraints() {
   if (!semesterId.value) {
-    draft.hydrate([], [], { isJunior: isJunior.value })
+    draft.hydrate([], [])
     return
   }
   loading.value = true
@@ -496,9 +487,7 @@ async function loadConstraints() {
       loadClasses(),
       loadPeriods(),
     ])
-    draft.hydrate(typeRes.data ?? [], stateRes.data?.configs ?? [], {
-      isJunior: isJunior.value,
-    })
+    draft.hydrate(typeRes.data ?? [], stateRes.data?.configs ?? [])
     draft.setBaseVersion(stateRes.data?.version ?? 0)
     clearErrors()
     await loaded()

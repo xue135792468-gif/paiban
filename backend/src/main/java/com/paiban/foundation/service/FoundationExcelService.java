@@ -3,7 +3,6 @@ package com.paiban.foundation.service;
 import com.paiban.foundation.web.FoundationDtos.ClassDto;
 import com.paiban.foundation.web.FoundationDtos.CourseDto;
 import com.paiban.foundation.web.FoundationDtos.GradeDto;
-import com.paiban.foundation.web.FoundationDtos.RoomDto;
 import com.paiban.foundation.web.FoundationDtos.TeacherDto;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -71,8 +70,7 @@ public class FoundationExcelService {
     private List<String> exportHeaders(String entity) {
         return switch (entity) {
             case "teachers" -> List.of("姓名", "工号", "手机号", "邮箱", "学科", "状态");
-            case "rooms" -> List.of("教室名称", "容量", "类型", "楼栋");
-            case "courses" -> List.of("课程名称", "学科", "是否允许连堂", "是否必须室外", "所需教室类型", "颜色");
+            case "courses" -> List.of("课程名称", "学科", "是否允许连堂", "颜色");
             case "grades" -> List.of("年级名称", "排序");
             case "classes" -> List.of("年级名称", "班级名称", "班主任姓名", "学生人数");
             default -> throw new IllegalArgumentException("不支持导出的实体: " + entity);
@@ -83,9 +81,6 @@ public class FoundationExcelService {
         return switch (entity) {
             case "teachers" -> foundation.listTeachers().stream()
                     .map(this::teacherRow)
-                    .toList();
-            case "rooms" -> foundation.listRooms().stream()
-                    .map(this::roomRow)
                     .toList();
             case "courses" -> foundation.listCourses().stream()
                     .map(this::courseRow)
@@ -110,18 +105,11 @@ public class FoundationExcelService {
                 teacher.active() ? "启用" : "停用");
     }
 
-    private List<String> roomRow(RoomDto room) {
-        return java.util.Arrays.asList(
-                room.name(), String.valueOf(room.capacity()), room.type(), room.building());
-    }
-
     private List<String> courseRow(CourseDto course) {
         return java.util.Arrays.asList(
                 course.name(),
                 course.subject(),
                 course.allowConsecutive() ? "是" : "否",
-                course.requireOutdoor() ? "是" : "否",
-                course.requiredRoomType(),
                 course.color());
     }
 
@@ -159,15 +147,9 @@ public class FoundationExcelService {
             case "teachers:手机号" -> "13800000000";
             case "teachers:邮箱" -> "zhang@example.com";
             case "teachers:学科" -> "数学";
-            case "rooms:教室名称" -> "高一(1)班教室";
-            case "rooms:容量" -> "50";
-            case "rooms:类型" -> "NORMAL";
-            case "rooms:楼栋" -> "教学楼A";
             case "courses:课程名称" -> "数学";
             case "courses:学科" -> "数学";
             case "courses:是否允许连堂" -> "是";
-            case "courses:是否必须室外" -> "否";
-            case "courses:所需教室类型" -> "NORMAL";
             case "courses:颜色" -> "#AEC6CF";
             case "grades:年级名称" -> "高一";
             case "grades:排序" -> "1";

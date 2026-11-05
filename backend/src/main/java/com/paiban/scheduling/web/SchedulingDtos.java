@@ -1,7 +1,6 @@
 package com.paiban.scheduling.web;
 
 import com.paiban.foundation.web.SemesterDtos.PeriodDto;
-import com.paiban.foundation.web.FoundationDtos.RoomDto;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -48,17 +47,17 @@ public final class SchedulingDtos {
     public record DraftLessonDto(Long id, Long assignmentId, int lessonIndex, Long courseId,
                                  String courseName, Long teacherId, String teacherName,
                                  Long classId, String className, int studentCount, Long periodId,
-                                 Integer dayOfWeek, Integer periodNo, String section,
-                                 String periodLabel, Long roomId, String roomName, boolean locked) {}
+                                 Integer dayOfWeek, Integer periodNo,
+                                 String periodLabel, boolean locked) {}
 
     public record BlockedSlotDto(Long classId, Long periodId, String reason) {}
 
     public record DraftDetailDto(DraftDto draft, List<DraftLessonDto> lessons,
-                                 List<PeriodDto> periods, List<RoomDto> rooms,
+                                 List<PeriodDto> periods,
                                  List<BlockedSlotDto> blockedSlots, String rulesFingerprint) {}
 
     public record ValidateMoveRequest(@NotNull(message = "课节不能为空") Long lessonId,
-                                      Long periodId, Long roomId) {}
+                                      Long periodId) {}
 
     /**
      * One in-memory change to a draft lesson. A null field leaves that attribute
@@ -66,12 +65,12 @@ public final class SchedulingDtos {
      * need. Duplicate lesson ids merge field by field; later values win.
      */
     public record LessonOverride(@NotNull(message = "课节不能为空") Long lessonId,
-                                 Long periodId, Long roomId, Long teacherId) {}
+                                 Long periodId, Long teacherId) {}
 
     public record ValidateMovesRequest(@NotNull(message = "覆盖列表不能为空")
                                        @Valid List<LessonOverride> moves) {}
 
-    public record MoveLessonRequest(Long periodId, Long roomId, Boolean force, Long expectedVersion) {}
+    public record MoveLessonRequest(Long periodId, Boolean force, Long expectedVersion) {}
 
     public record RenameDraftRequest(@NotBlank(message = "名称不能为空") String name) {}
 

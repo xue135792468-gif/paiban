@@ -131,14 +131,6 @@
           <div class="period-actions">
             <el-button
               size="small"
-              :disabled="!hasAfternoon"
-              :data-testid="tid('rule-afternoon')"
-              @click="selectAfternoon"
-            >
-              下午
-            </el-button>
-            <el-button
-              size="small"
               :disabled="lastPeriod() === null"
               :data-testid="tid('rule-last-period')"
               @click="selectLastPeriod"
@@ -220,7 +212,6 @@ import {
   CLASS_UNAVAILABLE,
   RULE_GROUPS,
   RULE_SPECS,
-  afternoonPeriods,
   describeRule,
   normalizePeriods,
   weekdayLabel,
@@ -268,7 +259,7 @@ const names = computed<RuleNames>(() => ({
   klass: (id: number) => props.classes.find((item) => item.id === id)?.name ?? `班级${id}`,
 }))
 
-const preview = computed(() => describeRule(local, names.value, props.periods))
+const preview = computed(() => describeRule(local, names.value))
 
 function tid(base: string): string {
   return props.index === 0 ? base : `${base}-${props.index}`
@@ -289,10 +280,6 @@ const periodOptions = computed(() => {
       .map((period) => period.periodNo),
   )
 })
-
-const hasAfternoon = computed(() =>
-  local.dayOfWeek !== null
-  && afternoonPeriods(props.periods, local.dayOfWeek).length > 0)
 
 function lastPeriod(): number | null {
   const options = periodOptions.value
@@ -350,13 +337,6 @@ function onTeacherScope(scope: unknown) {
 function onDayChange() {
   const allowed = new Set(periodOptions.value)
   local.periodNos = local.periodNos.filter((periodNo) => allowed.has(periodNo))
-}
-
-function selectAfternoon() {
-  if (local.dayOfWeek === null) {
-    return
-  }
-  local.periodNos = afternoonPeriods(props.periods, local.dayOfWeek)
 }
 
 function selectLastPeriod() {

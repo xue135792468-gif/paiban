@@ -16,7 +16,7 @@ const type: ConstraintTypeDef = {
 }
 function load(entries: Array<{ id: number; params: Record<string, unknown>; groupKey: string }>) {
   const draft = useConstraintDraft()
-  draft.hydrate([type], [{ type: type.code, enabled: true, hard: true, weight: 100, params: {}, entries }], { isJunior: false })
+  draft.hydrate([type], [{ type: type.code, enabled: true, hard: true, weight: 100, params: {}, entries }])
   return draft
 }
 describe('weekly no-class scope through editable save payload', () => {

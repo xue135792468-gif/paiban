@@ -11,7 +11,6 @@
       :can-publish="canPublish"
       :cancelled-substitutions="cancelledSubstitutions"
       :publishable="publishable"
-      :is-junior="isJunior"
       @back="router.push('/admin/scheduling')"
       @dismiss-reprocess="dismissCancelledSubstitutions"
       @undo="undoMove"
@@ -156,7 +155,6 @@
     />
 
     <DraftCompareDialog
-      v-if="!isJunior"
       v-model="compareVisible"
       :draft-id="draftId"
       :semester-id="detail?.draft.semesterId"
@@ -185,7 +183,6 @@
 
     <SwapPreviewDialog
       v-model:visible="previewVisible"
-      v-model:swap-rooms="swapRooms"
       :periods="detail?.periods ?? []"
       :lessons="detail?.lessons ?? []"
       :courses="courses"
@@ -197,7 +194,6 @@
     />
     <SwapPreviewDialog
       v-model:visible="teacherSwap.previewVisible.value"
-      v-model:swap-rooms="teacherSwap.swapRooms.value"
       :periods="detail?.periods ?? []"
       :lessons="detail?.lessons ?? []"
       :courses="courses"
@@ -215,7 +211,6 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
-import { useSettingsStore } from '@/stores/settings'
 import DraftGrid from '@/components/draft/DraftGrid.vue'
 import DraftCompareDialog from '@/components/draft/DraftCompareDialog.vue'
 import DraftStats from '@/components/draft/DraftStats.vue'
@@ -243,8 +238,6 @@ import type { CyclePlan, DraftConflict, DraftLesson } from '@/components/draft/t
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
-const settings = useSettingsStore()
-const isJunior = computed(() => settings.schoolType === 'junior')
 const draftId = Number(route.params.id)
 const canEdit = computed(() => auth.hasPermission('timetable:edit'))
 const canPublish = computed(() => auth.hasPermission('timetable:publish'))
@@ -276,7 +269,6 @@ const {
   initialGroup,
   previewVisible,
   previewCandidate,
-  swapRooms,
   swapping,
   selectLesson,
   clearSelection,

@@ -269,7 +269,6 @@ class ConstraintRequirementControlsIntegrationTest extends ApiIntegrationTest {
         long classId = TestData.adminClass(
                 token, semesterId, gradeId, "高一1班" + TestData.suffix());
         long teacher = TestData.teacher(token, "任课" + TestData.suffix());
-        long room = TestData.room(token, "教室" + TestData.suffix());
         Map<Integer, Long> periods = periodIds(token, semesterId);
 
         TimetableDraft draft = new TimetableDraft();
@@ -289,7 +288,6 @@ class ConstraintRequirementControlsIntegrationTest extends ApiIntegrationTest {
         lesson.setAdminClassId(classId);
         lesson.setStudentCount(45);
         lesson.setPeriodId(periods.get(dayOfWeek * 100 + periodNo));
-        lesson.setRoomId(room);
         draftLessonRepository.save(lesson);
         return draftId;
     }

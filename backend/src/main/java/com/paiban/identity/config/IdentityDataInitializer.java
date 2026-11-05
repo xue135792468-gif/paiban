@@ -57,7 +57,6 @@ public class IdentityDataInitializer {
         PERMISSION_NAMES.put(Permissions.SUBSTITUTION_VIEW, "查看全部调代记录");
         PERMISSION_NAMES.put(Permissions.SUBSTITUTION_VIEW_OWN, "查看本人调代记录");
         PERMISSION_NAMES.put(Permissions.SUBSTITUTION_VIEW_CLASS, "查看本班调代记录");
-        PERMISSION_NAMES.put(Permissions.NOTIFICATION_VIEW, "查看通知");
         PERMISSION_NAMES.put(Permissions.SETTINGS_MANAGE, "设置中心");
         PERMISSION_NAMES.put(Permissions.INTEGRATION_MANAGE, "集成配置");
         PERMISSION_NAMES.put(Permissions.ONBOARDING_MANAGE, "初始化向导");
@@ -97,8 +96,7 @@ public class IdentityDataInitializer {
                 permissions.get(Permissions.TIMETABLE_VIEW_OWN),
                 permissions.get(Permissions.ASSIGNMENT_VIEW_OWN),
                 permissions.get(Permissions.SUBSTITUTION_SUBMIT),
-                permissions.get(Permissions.SUBSTITUTION_VIEW_OWN),
-                permissions.get(Permissions.NOTIFICATION_VIEW));
+                permissions.get(Permissions.SUBSTITUTION_VIEW_OWN));
         Role teacher = upsertRole(roleRepository, "teacher", "教师", teacherPermissions);
 
         Set<Permission> headTeacherPermissions = new java.util.HashSet<>(teacherPermissions);

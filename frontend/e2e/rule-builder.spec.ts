@@ -54,15 +54,21 @@ test.describe('排课规则：句子积木', () => {
     await form(page).getByTestId('rule-submit').click()
   }
 
+  /**
+   * 票 15 删掉了「上午/下午/晚自习」硬分区，规则时段改为按节次勾选。
+   * 这条规则表达的是「周五整个下午不排课」，现在等价于勾上第 5–8 节。
+   */
   async function addTeacherAfternoonRule(page: Page, teacherName: string) {
     await page.getByTestId('rule-new').click()
     await expect(form(page)).toBeVisible()
     await pickOption(form(page), 'rule-type', '教师 的 课 不排')
     await pickOption(form(page), 'rule-teacher', teacherName)
     await chooseDay(page, '周五')
-    await form(page).getByTestId('rule-afternoon').click()
+    for (const periodNo of [5, 6, 7, 8]) {
+      await form(page).getByTestId(`rule-period-${periodNo}`).click()
+    }
     await expect(form(page).getByTestId('rule-preview')).toContainText(
-      `${teacherName} 的 课 在 周五下午 不排`,
+      `${teacherName} 的 课 在 周五第 5、6、7、8 节 不排`,
     )
     await form(page).getByTestId('rule-submit').click()
   }
@@ -148,7 +154,7 @@ test.describe('排课规则：句子积木', () => {
     await page.reload()
     await expect(page.getByTestId('rule-card')).toHaveCount(2)
     await expect(page.getByText('全校 的 课 在 周五第 7 节 不排')).toBeVisible()
-    await expect(page.getByText(`${teacherName} 的 课 在 周五下午 不排`)).toBeVisible()
+    await expect(page.getByText(`${teacherName} 的 课 在 周五第 5、6、7、8 节 不排`)).toBeVisible()
   })
 
   test('停用一张卡片、删除另一张，其它类型规则不受影响', async ({ page }) => {
@@ -247,7 +253,7 @@ test.describe('排课规则：句子积木', () => {
 
     const teacherCard = page
       .getByTestId('rule-card')
-      .filter({ hasText: `${seed.teachers[0].name} 的 课 在 周五下午 不排` })
+      .filter({ hasText: `${seed.teachers[0].name} 的 课 在 周五第 5、6、7、8 节 不排` })
     // 票 04：删卡直接走服务端（进「最近删除」），保存按钮因此不再变脏。
     const deleted = page.waitForResponse(
       (response) =>
@@ -275,7 +281,8 @@ test.describe('排课规则：句子积木', () => {
 
     await page.goto('/rules/advanced')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
-    await expect(page.getByTestId('constraint-nav-item')).toHaveCount(19)
+    // 票 15 退役 8 个枚举（含 SPORT_NOT_FIRST_AFTERNOON）后，约束目录共 18 类。
+    await expect(page.getByTestId('constraint-nav-item')).toHaveCount(18)
   })
 
   test('创建数量型、形态型与预设规则，刷新后仍在', async ({ page }) => {

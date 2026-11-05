@@ -36,6 +36,5 @@ public record SourceDraftSnapshot(
             Long teacherId,
             int studentCount,
             Long periodId,
-            Long roomId,
             boolean locked) {}
 }

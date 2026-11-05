@@ -12,7 +12,7 @@ public interface TimetableDraftRepository extends JpaRepository<TimetableDraft, 
 
     /**
      * Live drafts only: a draft in the 7-day recycle bin must disappear from every
-     * list, warm-start seed, room-fill plan and publish side effect (ticket 04).
+     * list, warm-start seed and publish side effect (ticket 04).
      */
     @Query("select d from TimetableDraft d where d.semesterId = :semesterId "
             + "and d.deletedAt is null order by d.createdAt desc")
@@ -25,7 +25,7 @@ public interface TimetableDraftRepository extends JpaRepository<TimetableDraft, 
 
     /**
      * Live drafts only: a recycled draft must behave as missing for every read that
-     * could act on it (validation, swap candidates, room fill, publishing, importing
+     * could act on it (validation, swap candidates, publishing, importing
      * and withdrawal). Restoring is the only way back.
      */
     Optional<TimetableDraft> findByIdAndDeletedAtIsNull(Long id);

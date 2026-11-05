@@ -73,24 +73,6 @@
     @update:model-value="(value: number | null | undefined) => emit('update', param.name, value)"
   />
 
-  <el-select
-    v-else-if="param.type === 'ROOM_TYPE'"
-    :model-value="selectValue(values, param.name)"
-    placeholder="选择教室类型"
-    clearable
-    :disabled="disabled"
-    :data-testid="testId"
-    class="field-room-type"
-    @update:model-value="(value: unknown) => emit('update', param.name, value)"
-  >
-    <el-option
-      v-for="option in ROOM_TYPE_OPTIONS"
-      :key="option.value"
-      :label="option.label"
-      :value="option.value"
-    />
-  </el-select>
-
   <el-input
     v-else
     :model-value="textValue(values, param.name)"
@@ -108,7 +90,6 @@ import { computed } from 'vue'
 import { ElInput, ElInputNumber, ElOption, ElSelect } from 'element-plus'
 import {
   DAY_OPTIONS,
-  ROOM_TYPE_OPTIONS,
   dayLabel,
   idOptions,
   numberValue,
@@ -159,10 +140,6 @@ const periodChoices = computed(() => props.periodOptions ?? [])
 
 .field-number {
   width: 130px;
-}
-
-.field-room-type {
-  width: 160px;
 }
 
 .field-text {

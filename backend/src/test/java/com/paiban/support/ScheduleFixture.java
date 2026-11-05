@@ -14,7 +14,7 @@ import java.util.Map;
 public final class ScheduleFixture {
 
     public record Result(long semesterId, long classId, long otherClassId, long teacherId,
-                         long otherTeacherId, long roomId, long draftId, int lessonCount) {}
+                         long otherTeacherId, long draftId, int lessonCount) {}
 
     private ScheduleFixture() {}
 
@@ -34,7 +34,7 @@ public final class ScheduleFixture {
     public static Result solvedIn(String token, int maxSeconds, long semesterId) {
         String suffix = TestData.suffix();
         RestAssuredHolder.given(token)
-                .body(Map.of("morningCount", 4, "afternoonCount", 4, "eveningCount", 2))
+                .body(Map.of("periodCount", 10, "days", List.of(1, 2, 3, 4, 5)))
                 .when().post("/api/semesters/" + semesterId + "/periods/default")
                 .then().statusCode(200);
 
@@ -47,8 +47,6 @@ public final class ScheduleFixture {
         long courseB = TestData.course(token, "数学" + suffix);
         long teacherA = TestData.teacher(token, "语文老师" + suffix);
         long teacherB = TestData.teacher(token, "数学老师" + suffix);
-        long roomId = TestData.room(token, "教室A" + suffix);
-        TestData.room(token, "教室B" + suffix);
 
         assign(token, classId, courseA, teacherA, 3);
         assign(token, classId, courseB, teacherB, 3);
@@ -81,7 +79,7 @@ public final class ScheduleFixture {
         if (draftId < 0) {
             throw new IllegalStateException("排课超时");
         }
-        return new Result(semesterId, classId, otherClassId, teacherA, teacherB, roomId, draftId, 12);
+        return new Result(semesterId, classId, otherClassId, teacherA, teacherB, draftId, 12);
     }
 
     public static Result published(String token, int maxSeconds) {

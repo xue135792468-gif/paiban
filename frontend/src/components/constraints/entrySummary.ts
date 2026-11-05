@@ -1,5 +1,5 @@
 import { allTargetLabel, headParams } from './entryModel'
-import { dayLabel, hasValue, roomTypeLabel } from './paramValues'
+import { dayLabel, hasValue } from './paramValues'
 import { isWeeklyNoClass, weeklyClasses } from './weeklyScope'
 import type { EntryDraft, ParamDef, TypeDraft } from './types'
 
@@ -32,8 +32,6 @@ function paramText(param: ParamDef, value: unknown, ctx: SummaryContext): string
       return `连排${value}节`
     case 'beforePeriodNo':
       return `上午截止第${value}节`
-    case 'roomType':
-      return roomTypeLabel(value)
     default:
       break
   }

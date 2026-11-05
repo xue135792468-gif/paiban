@@ -1,7 +1,6 @@
 package com.paiban.scheduling;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 
 import com.paiban.scheduling.domain.DraftLesson;
@@ -54,23 +53,36 @@ class WeeklyNoClassPublishedAcceptanceTest extends ApiIntegrationTest {
     void aNewBanRejectsNewPlansAndAnAlreadyGeneratedPlanWithoutPartialChanges() {
         Fixture f = fixture();
         List<Map<String, Object>> baseline = ScheduleFixture.publishedEntries(f.admin(), f.classId());
-        long request = as(f.teacher()).body(Map.of("entryId", f.sourceEntry(),
-                        "effectiveDate", f.monday().toString(), "reason", "留空验收", "type", "SWAP",
-                        "targetPeriodId", f.targetPeriod()))
-                .post("/api/substitution-requests").then().statusCode(200)
-                .extract().jsonPath().getLong("id");
-        long plan = as(f.admin()).post("/api/substitution-requests/" + request + "/plans")
+
+        // 先生成一个候选置换环并预览：凭证绑定的是「加约束之前」的课表快照。
+        long plan = as(f.admin()).body(Map.of("entryId", f.sourceEntry(),
+                        "lessonDate", f.monday().toString(), "targetDate", f.monday().toString(),
+                        "targetPeriodId", f.targetPeriod(), "reason", "留空验收"))
+                .when().post("/api/substitution-workbench/swap-plans")
                 .then().statusCode(200).body("plans", hasSize(1))
-                .extract().jsonPath().getLong("plans[0].id");
+                .extract().jsonPath().getLong("plans[0].planId");
+        long voucher = as(f.admin()).body(Map.of("entryId", f.sourceEntry(),
+                        "lessonDate", f.monday().toString(), "planId", plan, "reason", "留空验收"))
+                .when().post("/api/substitution-workbench/swap-previews")
+                .then().statusCode(200).extract().jsonPath().getLong("voucherId");
+
         save(f, version(f), List.of(ban(f)));
-        as(f.admin()).post("/api/substitution-plans/" + plan + "/approve").then().statusCode(409);
-        as(f.admin()).get("/api/substitution-requests/" + request).then().statusCode(200)
-                .body("status", equalTo("PENDING_APPROVAL"));
-        var generated = as(f.admin()).post("/api/substitution-requests/" + request + "/plans")
-                .then().statusCode(200).body("plans", hasSize(0)).extract().response();
-        assertThat(generated.asString()).contains("CLASS_UNAVAILABLE");
+
+        // 已生成的方案不能再生效：确认时被硬约束整单拒绝，零写入、凭证不消费。
+        as(f.admin()).body(Map.of())
+                .when().post("/api/substitution-workbench/previews/" + voucher + "/confirm-swap")
+                .then().statusCode(409)
+                .body("message", org.hamcrest.Matchers.containsString("CLASS_UNAVAILABLE"));
         as(f.admin()).get("/api/substitutions").then().statusCode(200).body("$", hasSize(0));
         assertThat(ScheduleFixture.publishedEntries(f.admin(), f.classId())).isEqualTo(baseline);
+
+        // 加约束后重新生成候选：不再产出方案，并说明是哪条硬约束。
+        var generated = as(f.admin()).body(Map.of("entryId", f.sourceEntry(),
+                        "lessonDate", f.monday().toString(), "targetDate", f.monday().toString(),
+                        "targetPeriodId", f.targetPeriod(), "reason", "留空验收"))
+                .when().post("/api/substitution-workbench/swap-plans")
+                .then().statusCode(200).body("plans", hasSize(0)).extract().response();
+        assertThat(generated.asString()).contains("CLASS_UNAVAILABLE");
     }
 
     private Map<String, Object> ban(Fixture f) {
@@ -105,7 +117,6 @@ class WeeklyNoClassPublishedAcceptanceTest extends ApiIntegrationTest {
         long other = TestData.teacher(admin, "另一教师" + suffix);
         long course = TestData.course(admin, "验收语文" + suffix);
         long otherCourse = TestData.course(admin, "验收数学" + suffix);
-        long room = TestData.room(admin, "验收教室" + suffix);
         TimetableDraft draft = new TimetableDraft();
         draft.setSemesterId(semester);
         draft.setName("固定留空发布边界" + suffix);
@@ -122,7 +133,6 @@ class WeeklyNoClassPublishedAcceptanceTest extends ApiIntegrationTest {
             row.setCourseId(i == 0 ? course : otherCourse);
             row.setTeacherId(i == 0 ? teacher : other);
             row.setStudentCount(45);
-            row.setRoomId(room);
             row.setPeriodId(((Number) periods.get(i).get("id")).longValue());
             lessons.save(row);
         }

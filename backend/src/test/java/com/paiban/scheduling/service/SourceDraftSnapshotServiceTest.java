@@ -11,7 +11,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
-import com.paiban.foundation.domain.PeriodSection;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.scheduling.domain.Assignment;
@@ -330,7 +329,6 @@ class SourceDraftSnapshotServiceTest {
         period.setDayOfWeek(1);
         period.setPeriodNo(periodNo);
         period.setLabel("第" + periodNo + "节");
-        period.setSection(PeriodSection.MORNING);
         return period;
     }
 }

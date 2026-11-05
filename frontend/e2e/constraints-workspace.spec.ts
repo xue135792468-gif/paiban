@@ -188,7 +188,6 @@ test.describe.serial('约束配置：跨设备未保存工作', () => {
         ],
         selectedProposalIds: [],
         decisions: [],
-        isJunior: false,
       },
     }, { semesterId: seed.semesterId })
 
@@ -216,7 +215,6 @@ test.describe.serial('约束配置：跨设备未保存工作', () => {
         ],
         selectedProposalIds: [],
         decisions: [],
-        isJunior: false,
       },
     }, { semesterId: seed.semesterId })
 

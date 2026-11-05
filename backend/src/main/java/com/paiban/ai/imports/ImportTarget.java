@@ -51,8 +51,7 @@ public enum ImportTarget {
                 new Field("dayOfWeek", "星期", true),
                 new Field("periodNo", "节次", true),
                 new Field("courseName", "课程", true),
-                new Field("teacherName", "教师", true),
-                new Field("roomName", "教室", false));
+                new Field("teacherName", "教师", true));
     }
 
     public String code() {

@@ -6,7 +6,6 @@ import com.paiban.ai.imports.PeriodGapPlanner.Existing;
 import com.paiban.ai.imports.PeriodGapPlanner.Plan;
 import com.paiban.ai.imports.PeriodGapPlanner.Slot;
 import com.paiban.ai.imports.PeriodGapPlanner.Status;
-import com.paiban.foundation.domain.PeriodSection;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,16 +19,16 @@ import org.junit.jupiter.api.Test;
  */
 class PeriodGapPlannerTest {
 
-    private static Existing period(int day, int no, String label, PeriodSection section, String start, String end) {
-        return new Existing(day, no, label, section, LocalTime.parse(start), LocalTime.parse(end));
+    private static Existing period(int day, int no, String label, String start, String end) {
+        return new Existing(day, no, label, LocalTime.parse(start), LocalTime.parse(end));
     }
 
     private static Existing morning(int day, int no, String start, String end) {
-        return period(day, no, "上午第" + no + "节", PeriodSection.MORNING, start, end);
+        return period(day, no, "上午第" + no + "节", start, end);
     }
 
     private static Existing afternoon(int day, int no, String start, String end) {
-        return period(day, no, "下午第" + (no - 4) + "节", PeriodSection.AFTERNOON, start, end);
+        return period(day, no, "下午第" + (no - 4) + "节", start, end);
     }
 
     /** The 8 periods 「一键生成默认作息」 writes for one day. */
@@ -62,7 +61,6 @@ class PeriodGapPlannerTest {
 
         assertThat(plan.status()).isEqualTo(Status.PROPOSED);
         assertThat(plan.label()).isEqualTo("第3节");
-        assertThat(plan.section()).isEqualTo(PeriodSection.MORNING);
         assertThat(plan.startTime()).isEqualTo(LocalTime.of(9, 50));
         assertThat(plan.endTime()).isEqualTo(LocalTime.of(10, 35));
         assertThat(plan.reason()).isNull();
@@ -79,7 +77,6 @@ class PeriodGapPlannerTest {
         assertThat(plans.get(0).status()).isEqualTo(Status.PROPOSED);
         assertThat(plans.get(0).startTime()).isEqualTo(LocalTime.of(17, 40));
         assertThat(plans.get(0).endTime()).isEqualTo(LocalTime.of(18, 25));
-        assertThat(plans.get(0).section()).isEqualTo(PeriodSection.AFTERNOON);
         assertThat(plans.get(1).startTime()).isEqualTo(LocalTime.of(18, 35));
         assertThat(plans.get(1).endTime()).isEqualTo(LocalTime.of(19, 20));
     }
@@ -94,7 +91,6 @@ class PeriodGapPlannerTest {
         Plan plan = only(PeriodGapPlanner.plan(existing, List.of(new Slot(6, 5))));
 
         assertThat(plan.status()).isEqualTo(Status.PROPOSED);
-        assertThat(plan.section()).isEqualTo(PeriodSection.AFTERNOON);
         assertThat(plan.startTime()).isEqualTo(LocalTime.of(14, 0));
         assertThat(plan.endTime()).isEqualTo(LocalTime.of(14, 45));
     }
@@ -124,8 +120,8 @@ class PeriodGapPlannerTest {
     @Test
     void overlappingExistingPeriodsAreManual() {
         List<Existing> existing = List.of(
-                period(1, 1, "第一节", PeriodSection.MORNING, "10:00", "10:45"),
-                period(1, 2, "第二节", PeriodSection.MORNING, "10:30", "11:15"));
+                period(1, 1, "第一节", "10:00", "10:45"),
+                period(1, 2, "第二节", "10:30", "11:15"));
 
         Plan plan = only(PeriodGapPlanner.plan(existing, List.of(new Slot(1, 3))));
 
@@ -136,7 +132,7 @@ class PeriodGapPlannerTest {
     @Test
     void aProposalThatWouldRunPastMidnightIsManual() {
         List<Existing> existing = new ArrayList<>(defaultDay(1));
-        existing.add(period(7, 1, "晚自习", PeriodSection.EVENING, "23:30", "23:50"));
+        existing.add(period(7, 1, "晚自习", "23:30", "23:50"));
 
         Plan plan = only(PeriodGapPlanner.plan(existing, List.of(new Slot(7, 2))));
 
@@ -160,6 +156,8 @@ class PeriodGapPlannerTest {
 
     @Test
     void aSlotBetweenMorningAndAfternoonNeedsAHuman() {
+        // 上午/下午的分区概念已随 PeriodSection 退役：第 5 节两侧的课间对不上任何
+        // 可参照的间隔，仍然只能交给人工。
         List<Existing> existing = List.of(
                 morning(1, 4, "10:45", "11:30"),
                 afternoon(1, 6, "14:55", "15:40"));
@@ -167,7 +165,7 @@ class PeriodGapPlannerTest {
         Plan plan = only(PeriodGapPlanner.plan(existing, List.of(new Slot(1, 5))));
 
         assertThat(plan.status()).isEqualTo(Status.MANUAL);
-        assertThat(plan.reason()).contains("时段");
+        assertThat(plan.reason()).contains("课间间隔");
     }
 
     @Test

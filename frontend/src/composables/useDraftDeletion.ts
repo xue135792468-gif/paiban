@@ -6,7 +6,6 @@ import { serverMessage } from '@/api/errors'
 export type DraftDeleteTarget = {
   id: number
   name: string
-  lockedCount?: number | null
 }
 
 export type DraftDeleteOutcome = 'deleted' | 'cancelled' | 'failed'
@@ -25,9 +24,8 @@ export interface DraftDeleteDeps {
 
 /**
  * Delete a draft behind one confirmation, shared by the scheduling list and the
- * draft editor. A draft with locks asks for an explicit "unlock and delete": the
- * request then carries the count the user just saw, so the server can reject a
- * stale dialog with 409 instead of silently removing a different set of locks.
+ * draft editor. Locks travel with the draft: deleting it removes its `locked`
+ * flags along with every lesson, so no separate unlock step is asked for.
  */
 export async function deleteDraftWithConfirmation(
   draft: DraftDeleteTarget,
@@ -40,27 +38,18 @@ export async function deleteDraftWithConfirmation(
       ElMessageBox.confirm(message, title, options as never))
   const notify = deps.notify ?? ElMessage
 
-  const lockedCount = Math.max(0, draft.lockedCount ?? 0)
-  const message =
-    lockedCount > 0
-      ? `该草稿「${draft.name}」含 ${lockedCount} 节锁定课节，删除会一并移除这些锁定。`
-        + '删除后可在「最近删除」中恢复（7 天内）。确定解锁并删除？'
-      : `确定删除草稿「${draft.name}」吗？删除后可在「最近删除」中恢复（7 天内）。`
-
   try {
-    await confirm(message, '删除草稿', {
-      confirmButtonText: lockedCount > 0 ? '解锁并删除' : '确定删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
+    await confirm(
+      `确定删除草稿「${draft.name}」吗？删除后可在「最近删除」中恢复（7 天内）。`,
+      '删除草稿',
+      { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning' },
+    )
   } catch {
     return 'cancelled'
   }
 
   try {
-    await client.delete(`/timetable-drafts/${draft.id}`, {
-      params: { unlockLocked: lockedCount > 0, expectedLockedCount: lockedCount },
-    })
+    await client.delete(`/timetable-drafts/${draft.id}`)
     notify.success('草稿已删除')
     return 'deleted'
   } catch (error) {

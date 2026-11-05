@@ -8,7 +8,6 @@
   >
     <DualTimetablePreview
       v-if="source && candidate"
-      v-model:swap-rooms="roomsModel"
       :periods="periods"
       :lessons="lessons"
       :courses="courses"
@@ -25,11 +24,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 import DualTimetablePreview from './DualTimetablePreview.vue'
 import type { DraftCourse, DraftLesson, DraftPeriod, SwapCandidate } from './types'
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
     visible: boolean
     periods: DraftPeriod[]
@@ -37,7 +35,6 @@ const props = withDefaults(
     courses: DraftCourse[]
     source: DraftLesson | null
     candidate: SwapCandidate | null
-    swapRooms: boolean
     submitting?: boolean
   }>(),
   { submitting: false },
@@ -45,13 +42,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void
-  (e: 'update:swapRooms', value: boolean): void
   (e: 'cancel'): void
   (e: 'confirm'): void
 }>()
-
-const roomsModel = computed({
-  get: () => props.swapRooms,
-  set: (value: boolean) => emit('update:swapRooms', value),
-})
 </script>

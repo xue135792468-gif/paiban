@@ -195,7 +195,6 @@ const props = defineProps<{
   entry: EntryDraft
   index: number
   editable: boolean
-  isJunior: boolean
   teachers: OptionItem[]
   courses: OptionItem[]
   classes?: OptionItem[]
@@ -235,9 +234,7 @@ const effectiveHard = computed(() => props.row.hardOnly ? true : props.entry.har
 const effectiveWeight = computed(() => props.entry.weight ?? props.row.weight)
 
 const effectiveText = computed(() => {
-  const strength = effectiveHard.value
-    ? props.isJunior ? '必须' : '硬约束'
-    : props.isJunior ? '尽量' : '软约束'
+  const strength = effectiveHard.value ? '硬约束' : '软约束'
   if (effectiveHard.value) {
     return `实际：${strength}`
   }

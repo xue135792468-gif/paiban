@@ -31,12 +31,6 @@ public class Course {
     @Column(name = "allow_consecutive", nullable = false)
     private boolean allowConsecutive;
 
-    @Column(name = "require_outdoor", nullable = false)
-    private boolean requireOutdoor;
-
-    @Column(name = "required_room_type", length = 50)
-    private String requiredRoomType;
-
     @Column(length = 20)
     private String color;
 

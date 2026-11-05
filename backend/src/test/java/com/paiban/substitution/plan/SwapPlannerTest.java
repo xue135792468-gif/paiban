@@ -27,8 +27,8 @@ class SwapPlannerTest {
     @Test
     void findsATwoTeacherSameDayCycle() {
         PlanFixtures.Builder builder = base();
-        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
-        long second = builder.addLesson(CLASS_1, 2, 2, 2L, 1, 2);
+        long first = builder.addLesson(CLASS_1, 1, 1, 1, 1);
+        long second = builder.addLesson(CLASS_1, 2, 2, 1, 2);
         PlanSnapshot snapshot = builder.build();
 
         PlanningResult result = SwapPlanner.plan(
@@ -53,9 +53,9 @@ class SwapPlannerTest {
     @Test
     void escalatesToAThreeTeacherCycleWhenTheDirectPathIsBlocked() {
         PlanFixtures.Builder builder = base();
-        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
-        long second = builder.addLesson(CLASS_1, 2, 2, 2L, 1, 2);
-        long third = builder.addLesson(CLASS_1, 3, 3, 3L, 1, 3);
+        long first = builder.addLesson(CLASS_1, 1, 1, 1, 1);
+        long second = builder.addLesson(CLASS_1, 2, 2, 1, 2);
+        long third = builder.addLesson(CLASS_1, 3, 3, 1, 3);
         // Teacher 2 is already teaching class 2 at Monday period 1, so they cannot
         // take the source slot; the cycle has to bring teacher 3 in.
         builder.lesson(CLASS_2, 4, 2, 4L, 1, 1);
@@ -78,7 +78,7 @@ class SwapPlannerTest {
     @Test
     void explainsWhyNoCycleExists() {
         PlanFixtures.Builder builder = base();
-        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
+        long first = builder.addLesson(CLASS_1, 1, 1, 1, 1);
         builder.lesson(CLASS_1, 2, 2, 2L, 1, 2);
         builder.lesson(CLASS_1, 3, 3, 3L, 1, 3);
         builder.lesson(CLASS_2, 4, 2, 4L, 1, 1);
@@ -101,9 +101,9 @@ class SwapPlannerTest {
     @Test
     void findsACrossDayCycleAndKeepsEachDaysLessonCount() {
         PlanFixtures.Builder builder = base();
-        long fridayFirst = builder.addLesson(CLASS_1, 1, 1, 1L, 5, 1);
-        long fridaySecond = builder.addLesson(CLASS_1, 2, 2, 2L, 5, 2);
-        long mondaySecond = builder.addLesson(CLASS_1, 3, 3, 3L, 1, 2);
+        long fridayFirst = builder.addLesson(CLASS_1, 1, 1, 5, 1);
+        long fridaySecond = builder.addLesson(CLASS_1, 2, 2, 5, 2);
+        long mondaySecond = builder.addLesson(CLASS_1, 3, 3, 1, 2);
         // Teacher 2 cannot take Friday period 1, so the cycle has to use next Monday.
         builder.lesson(CLASS_2, 4, 2, 4L, 5, 1);
         PlanSnapshot snapshot = builder.build();
@@ -133,15 +133,15 @@ class SwapPlannerTest {
     void findsKnownThreeCourseCycleDespiteTemporarySameCourseCollision() {
         PlanFixtures.Builder builder = base()
                 .settings(sameCourseOncePerDay());
-        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
-        long second = builder.addLesson(CLASS_1, 2, 2, 2L, 2, 1);
-        long third = builder.addLesson(CLASS_1, 1, 3, 3L, 2, 2);
+        long first = builder.addLesson(CLASS_1, 1, 1, 1, 1);
+        long second = builder.addLesson(CLASS_1, 2, 2, 2, 1);
+        long third = builder.addLesson(CLASS_1, 1, 3, 2, 2);
         PlanSnapshot snapshot = builder.build();
 
         List<PlanMove> knownCycle = List.of(
-                move(first, 1, 1, 1, 1, 1, 2, 1, 0),
-                move(second, 2, 2, 2, 2, 1, 2, 2, 1),
-                move(third, 1, 3, 3, 2, 2, 1, 1, 2));
+                move(first, 1, 1, 1, 1, 2, 1, 0),
+                move(second, 2, 2, 2, 1, 2, 2, 1),
+                move(third, 1, 3, 2, 2, 1, 1, 2));
         assertThat(PlanVerifier.verify(snapshot, knownCycle, PlanVerifier.Kind.SWAP, -1).passed())
                 .isTrue();
 
@@ -172,9 +172,9 @@ class SwapPlannerTest {
     void finalHardRuleStillRejectsCycleThatLeavesSameCourseCollision() {
         PlanFixtures.Builder builder = base()
                 .settings(sameCourseOncePerDay());
-        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
-        builder.addLesson(CLASS_1, 2, 2, 2L, 2, 1);
-        builder.addLesson(CLASS_1, 1, 3, 3L, 2, 2);
+        long first = builder.addLesson(CLASS_1, 1, 1, 1, 1);
+        builder.addLesson(CLASS_1, 2, 2, 2, 1);
+        builder.addLesson(CLASS_1, 1, 3, 2, 2);
         // Teacher 3 is already teaching another class in the source slot, so the
         // third lesson cannot move back and the collision cannot be repaired.
         builder.lesson(CLASS_2, 3, 3, 3L, 1, 1);
@@ -193,9 +193,9 @@ class SwapPlannerTest {
     void budgetExhaustionDoesNotClaimNoSolution() {
         PlanFixtures.Builder builder = base()
                 .settings(sameCourseOncePerDay());
-        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
-        builder.addLesson(CLASS_1, 2, 2, 2L, 2, 1);
-        builder.addLesson(CLASS_1, 1, 3, 3L, 2, 2);
+        long first = builder.addLesson(CLASS_1, 1, 1, 1, 1);
+        builder.addLesson(CLASS_1, 2, 2, 2, 1);
+        builder.addLesson(CLASS_1, 1, 3, 2, 2);
         PlanSnapshot snapshot = builder.build();
 
         PlanningResult result = SwapPlanner.plan(
@@ -225,7 +225,7 @@ class SwapPlannerTest {
         for (int i = 0; i < entryIds.length; i++) {
             LessonSeed lesson = testCase.lessons().get(i);
             entryIds[i] = builder.addLesson(CLASS_1, lesson.courseId(), lesson.teacherId(),
-                    lesson.roomId(), lesson.dayOfWeek(), lesson.periodNo());
+                    lesson.dayOfWeek(), lesson.periodNo());
         }
         PlanSnapshot snapshot = builder.build();
 
@@ -234,7 +234,6 @@ class SwapPlannerTest {
                 .map(spec -> move(entryIds[spec.entryIndex()],
                         testCase.lessons().get(spec.entryIndex()).courseId(),
                         testCase.lessons().get(spec.entryIndex()).teacherId(),
-                        testCase.lessons().get(spec.entryIndex()).roomId(),
                         spec.fromDayOfWeek(), spec.fromPeriodNo(),
                         spec.toDayOfWeek(), spec.toPeriodNo(), spec.order()))
                 .toList();
@@ -293,7 +292,7 @@ class SwapPlannerTest {
     @Test
     void rejectsCrossDayCyclesOutsideTheWindow() {
         PlanFixtures.Builder builder = base();
-        long fridayFirst = builder.addLesson(CLASS_1, 1, 1, 1L, 5, 1);
+        long fridayFirst = builder.addLesson(CLASS_1, 1, 1, 5, 1);
         builder.lesson(CLASS_1, 2, 2, 2L, 5, 2);
         builder.lesson(CLASS_1, 3, 3, 3L, 1, 2);
         builder.lesson(CLASS_2, 4, 2, 4L, 5, 1);
@@ -311,7 +310,7 @@ class SwapPlannerTest {
     @Test
     void respectsTheTeacherCap() {
         PlanFixtures.Builder builder = base();
-        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
+        long first = builder.addLesson(CLASS_1, 1, 1, 1, 1);
         builder.lesson(CLASS_1, 2, 2, 2L, 1, 2);
         builder.lesson(CLASS_1, 3, 3, 3L, 1, 3);
         builder.lesson(CLASS_2, 4, 2, 4L, 1, 1);
@@ -347,8 +346,8 @@ class SwapPlannerTest {
     @Test
     void explicitTargetDatePlansTheCycleOnThatExactDate() {
         PlanFixtures.Builder builder = base();
-        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
-        long second = builder.addLesson(CLASS_1, 2, 2, 2L, 3, 1);
+        long first = builder.addLesson(CLASS_1, 1, 1, 1, 1);
+        long second = builder.addLesson(CLASS_1, 2, 2, 3, 1);
         PlanSnapshot snapshot = builder.build();
         // 明确指定下周三：不会被替换成同星期的另一周（本周三，旧推算的落点）。
         java.time.LocalDate nextWednesday = PlanFixtures.MONDAY.plusDays(9);
@@ -376,8 +375,8 @@ class SwapPlannerTest {
     @Test
     void sameWeekdayNextWeekIsNotMistakenForTheOriginalSlot() {
         PlanFixtures.Builder builder = base();
-        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
-        long second = builder.addLesson(CLASS_1, 2, 2, 2L, 1, 2);
+        long first = builder.addLesson(CLASS_1, 1, 1, 1, 1);
+        long second = builder.addLesson(CLASS_1, 2, 2, 1, 2);
         PlanSnapshot snapshot = builder.build();
         java.time.LocalDate nextMonday = PlanFixtures.MONDAY.plusDays(7);
 
@@ -403,9 +402,9 @@ class SwapPlannerTest {
     @Test
     void multiTeacherCycleWorksWithAnExplicitTargetDate() {
         PlanFixtures.Builder builder = base();
-        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
-        long second = builder.addLesson(CLASS_1, 2, 2, 2L, 1, 2);
-        long third = builder.addLesson(CLASS_1, 3, 3, 3L, 1, 3);
+        long first = builder.addLesson(CLASS_1, 1, 1, 1, 1);
+        long second = builder.addLesson(CLASS_1, 2, 2, 1, 2);
+        long third = builder.addLesson(CLASS_1, 3, 3, 1, 3);
         // Teacher 2 在周一第 1 节已被高一2班占用，直接互移不可行，需要第三人成环。
         builder.lesson(CLASS_2, 4, 2, 4L, 1, 1);
         PlanSnapshot snapshot = builder.build();
@@ -428,8 +427,8 @@ class SwapPlannerTest {
     @Test
     void explicitTargetDateBeforeTheSourceIsRejected() {
         PlanFixtures.Builder builder = base();
-        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
-        builder.addLesson(CLASS_1, 2, 2, 2L, 3, 1);
+        long first = builder.addLesson(CLASS_1, 1, 1, 1, 1);
+        builder.addLesson(CLASS_1, 2, 2, 3, 1);
         PlanSnapshot snapshot = builder.build();
 
         PlanningResult result = SwapPlanner.plan(
@@ -446,8 +445,8 @@ class SwapPlannerTest {
     @Test
     void explicitTargetDateBeyondTheWindowIsRejected() {
         PlanFixtures.Builder builder = base();
-        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
-        builder.addLesson(CLASS_1, 2, 2, 2L, 3, 1);
+        long first = builder.addLesson(CLASS_1, 1, 1, 1, 1);
+        builder.addLesson(CLASS_1, 2, 2, 3, 1);
         PlanSnapshot snapshot = builder.build();
 
         // 窗口 7 天 → [周一, 周日]；下周二越界（旧推算的落点最多到 +6 天）。
@@ -466,8 +465,8 @@ class SwapPlannerTest {
     void explicitTargetDateBeyondTheSemesterIsRejected() {
         PlanFixtures.Builder builder = base();
         builder.semesterEndsAfter(10);
-        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
-        builder.addLesson(CLASS_1, 2, 2, 2L, 3, 1);
+        long first = builder.addLesson(CLASS_1, 1, 1, 1, 1);
+        builder.addLesson(CLASS_1, 2, 2, 3, 1);
         PlanSnapshot snapshot = builder.build();
 
         // 目标日期在窗口（30 天）内但超出学期最后一天（MONDAY+10 是周四，与课节星期一致）。
@@ -485,7 +484,7 @@ class SwapPlannerTest {
     @Test
     void explicitTargetDateOnAnEmptySlotIsRejected() {
         PlanFixtures.Builder builder = base();
-        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
+        long first = builder.addLesson(CLASS_1, 1, 1, 1, 1);
         PlanSnapshot snapshot = builder.build();
 
         // 明确目标日期当天（周三），本班第 4 节没有课：空格只挪不补。
@@ -503,8 +502,8 @@ class SwapPlannerTest {
     @Test
     void explicitTargetDateWithMismatchedWeekdayIsRejected() {
         PlanFixtures.Builder builder = base();
-        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
-        builder.addLesson(CLASS_1, 2, 2, 2L, 3, 1);
+        long first = builder.addLesson(CLASS_1, 1, 1, 1, 1);
+        builder.addLesson(CLASS_1, 2, 2, 3, 1);
         PlanSnapshot snapshot = builder.build();
 
         // 目标课节是周三第 1 节，目标日期却是周二：明确拒绝而不是静默换日。
@@ -524,8 +523,8 @@ class SwapPlannerTest {
     @Test
     void frozenSlotsAreSkippedWhenSearchingCycleNodes() {
         PlanFixtures.Builder builder = base();
-        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
-        long second = builder.addLesson(CLASS_1, 2, 2, 2L, 1, 2);
+        long first = builder.addLesson(CLASS_1, 1, 1, 1, 1);
+        long second = builder.addLesson(CLASS_1, 2, 2, 1, 2);
         PlanSnapshot snapshot = builder.build();
 
         // 不带冻结槽：周一第 1 → 第 2 的二人环可解。
@@ -552,8 +551,8 @@ class SwapPlannerTest {
     @Test
     void frozenSourceSlotIsRejectedWithASourceDiagnosis() {
         PlanFixtures.Builder builder = base();
-        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
-        builder.addLesson(CLASS_1, 2, 2, 2L, 1, 2);
+        long first = builder.addLesson(CLASS_1, 1, 1, 1, 1);
+        builder.addLesson(CLASS_1, 2, 2, 1, 2);
         PlanSnapshot snapshot = builder.build();
 
         PlanningResult result = SwapPlanner.plan(
@@ -572,9 +571,9 @@ class SwapPlannerTest {
     @Test
     void cycleDetoursAroundFrozenIntermediateSlots() {
         PlanFixtures.Builder builder = base();
-        long first = builder.addLesson(CLASS_1, 1, 1, 1L, 1, 1);
-        long second = builder.addLesson(CLASS_1, 2, 2, 2L, 1, 2);
-        long third = builder.addLesson(CLASS_1, 3, 3, 3L, 2, 1);
+        long first = builder.addLesson(CLASS_1, 1, 1, 1, 1);
+        long second = builder.addLesson(CLASS_1, 2, 2, 1, 2);
+        long third = builder.addLesson(CLASS_1, 3, 3, 2, 1);
         PlanSnapshot snapshot = builder.build();
 
         // 目标 = 周二第 1 节（third）。不冻结时既有二人环也有经周一第 2 节（second）
@@ -617,22 +616,21 @@ class SwapPlannerTest {
         for (long teacher = 1; teacher <= 10; teacher++) {
             builder.teacher(teacher, "老师" + teacher, "科目" + teacher);
             builder.course(teacher, "课程" + teacher, null);
-            builder.room(teacher, "教室" + teacher, "NORMAL", 50);
         }
         return builder;
     }
 
-    private static PlanMove move(long entryId, long courseId, long teacherId, long roomId,
+    private static PlanMove move(long entryId, long courseId, long teacherId,
                                  int fromDay, int fromPeriodNo,
                                  int toDay, int toPeriodNo, int order) {
-        return new PlanMove(entryId, CLASS_1, courseId, teacherId, roomId,
+        return new PlanMove(entryId, CLASS_1, courseId, teacherId,
                 PlanFixtures.periodId(fromDay, fromPeriodNo), fromDay, fromPeriodNo,
                 PlanFixtures.date(fromDay),
                 PlanFixtures.periodId(toDay, toPeriodNo), toDay, toPeriodNo,
                 PlanFixtures.date(toDay), order);
     }
 
-    private record LessonSeed(long courseId, long teacherId, long roomId,
+    private record LessonSeed(long courseId, long teacherId, long ignoredRoomId,
                               int dayOfWeek, int periodNo) {}
 
     private record MoveSeed(int entryIndex, int fromDayOfWeek, int fromPeriodNo,
@@ -651,8 +649,6 @@ class SwapPlannerTest {
         List<ConstraintConfig> configs = List.of(
                 config(ConstraintType.TEACHER_CONFLICT, true, 100, mapper),
                 config(ConstraintType.CLASS_CONFLICT, true, 100, mapper),
-                config(ConstraintType.ROOM_CONFLICT, true, 100, mapper),
-                config(ConstraintType.ROOM_CAPACITY_FIT, true, 100, mapper),
                 config(ConstraintType.SAME_COURSE_ONCE_PER_DAY, true, 100, mapper));
         return ConstraintSettings.from(configs, List.of(entry(
                 ConstraintType.SAME_COURSE_ONCE_PER_DAY, mapper)), mapper);

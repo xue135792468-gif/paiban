@@ -21,7 +21,6 @@ function entry(overrides: Partial<Entry> = {}): Entry {
     periodNo: 1,
     dayOfWeek: 3,
     substituted: false,
-    roomName: '教室 A',
     ...overrides,
   }
 }

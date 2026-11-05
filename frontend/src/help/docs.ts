@@ -55,7 +55,7 @@ const META: Record<HelpSlug, { title: string; summary: string; group: HelpGroupT
   },
   settings: {
     title: '设置',
-    summary: '学校信息、调代与通知、AI 助手入口',
+    summary: '学校信息、调代与通知、AI 供应商',
     group: '功能模块',
   },
   'ai-import': {
@@ -65,7 +65,7 @@ const META: Record<HelpSlug, { title: string; summary: string; group: HelpGroupT
   },
   'substitution-workbench': {
     title: '调代工作台',
-    summary: '教务管理员代人安排调代：一次性日期、对照确认、审批与亲自生效',
+    summary: '教务管理员代人安排调代：一次性日期、对照确认与亲自生效',
     group: '功能模块',
   },
   'flow-term-start': {
@@ -75,7 +75,7 @@ const META: Record<HelpSlug, { title: string; summary: string; group: HelpGroupT
   },
   'flow-substitution': {
     title: '日常调代流程',
-    summary: '从提交申请到审批生效，谁在什么时间做什么',
+    summary: '从提交申请到确认生效，谁在什么时间做什么',
     group: '场景流程',
   },
   'flow-term-end': {

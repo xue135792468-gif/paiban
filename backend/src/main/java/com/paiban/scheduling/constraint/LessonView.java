@@ -9,6 +9,5 @@ public record LessonView(long id,
                          Long classId,
                          Long courseId,
                          Long teacherId,
-                         Long roomId,
                          Long periodId,
                          int studentCount) {}

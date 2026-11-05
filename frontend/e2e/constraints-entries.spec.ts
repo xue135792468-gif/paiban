@@ -158,7 +158,7 @@ test.describe.serial('约束配置：教师禁排多条条目', () => {
     await page.goto('/rules/advanced')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
 
-    // 已启用的开关型（教师/班级/教室不冲突）算类型、不算条目。首帧可能还没 hydrate
+    // 已启用的开关型（教师/班级不冲突）算类型、不算条目。首帧可能还没 hydrate
     // 完，所以轮询到两个数都稳定为非 0 再判定一致。
     const navCounts = () =>
       page.locator('[data-type] [data-testid="constraint-nav-count"]').allInnerTexts()
@@ -178,7 +178,7 @@ test.describe.serial('约束配置：教师禁排多条条目', () => {
     expect(navEntriesOf(await navCounts())).toBe(1)
 
     const enabledText = await page.getByTestId('constraint-summary-enabled').innerText()
-    expect(enabledText).toMatch(/已启用 \d+ \/ 19 类/)
+    expect(enabledText).toMatch(/已启用 \d+ \/ 18 类/)
 
     // 开关型在左侧标注「开关」而不是 0 条。
     await expect(

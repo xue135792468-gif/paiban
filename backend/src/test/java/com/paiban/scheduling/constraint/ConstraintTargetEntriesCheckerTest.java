@@ -28,9 +28,6 @@ class ConstraintTargetEntriesCheckerTest {
     private static final long TEACHER_1 = 11L;
     private static final long TEACHER_2 = 12L;
     private static final long TEACHER_3 = 13L;
-    private static final long ROOM_NORMAL = 21L;
-    private static final long ROOM_LAB = 22L;
-    private static final long ROOM_PLAYGROUND = 23L;
     private static final long COURSE_CHINESE = 31L;
     private static final long COURSE_MATH = 32L;
     private static final long COURSE_PE = 33L;
@@ -38,20 +35,16 @@ class ConstraintTargetEntriesCheckerTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Test
-    void registryMarksTheTwentyEntryBackedTypes() {
+    void registryMarksTheFifteenEntryBackedTypes() {
         List<ConstraintType> entryBacked = java.util.Arrays.stream(ConstraintType.values())
                 .filter(ConstraintType::isEntryBacked)
                 .toList();
 
-        assertThat(entryBacked).hasSize(20).contains(
+        assertThat(entryBacked).hasSize(15).contains(
                 ConstraintType.CLASS_UNAVAILABLE,
                 ConstraintType.COURSE_UNAVAILABLE,
                 ConstraintType.TEACHER_UNAVAILABLE,
-                ConstraintType.TEACHER_MEETING_BLOCKED,
-                ConstraintType.COURSE_REQUIRED_ROOM_TYPE,
-                ConstraintType.COURSE_NOT_IN_EVENING,
                 ConstraintType.SAME_COURSE_ONCE_PER_DAY,
-                ConstraintType.SPORT_NOT_FIRST_AFTERNOON,
                 ConstraintType.CONSECUTIVE_LESSONS,
                 ConstraintType.COURSE_SPREAD,
                 ConstraintType.MAIN_SUBJECT_MORNING,
@@ -62,12 +55,11 @@ class ConstraintTargetEntriesCheckerTest {
                 ConstraintType.TEACHER_MAX_PER_DAY,
                 ConstraintType.CLASS_MAX_PER_DAY,
                 ConstraintType.COURSE_MAX_PER_DAY,
-                ConstraintType.EVENING_MAX,
                 ConstraintType.TEACHER_MAX_CONSECUTIVE);
         assertThat(entryBacked).doesNotContain(
                 ConstraintType.TEACHER_CONFLICT,
-                ConstraintType.CLASS_GAP_MINIMIZED,
-                ConstraintType.HEAD_TEACHER_FIRST_PERIOD);
+                ConstraintType.CLASS_CONFLICT,
+                ConstraintType.CLASS_GAP_MINIMIZED);
     }
 
     @Test
@@ -75,9 +67,9 @@ class ConstraintTargetEntriesCheckerTest {
         ConstraintSettings settings = settings(ConstraintType.TEACHER_NO_FIRST_PERIOD, true, 35,
                 Map.of("teacherId", TEACHER_1), Map.of("teacherId", TEACHER_2));
         PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 1, 1)
-                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2, ROOM_NORMAL, 1, 1)
-                .lesson(PlanFixtures.CLASS_1, COURSE_ART, TEACHER_3, ROOM_LAB, 1, 2)
+                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1,  0L, 1, 1)
+                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2,  0L, 1, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_ART, TEACHER_3,  0L, 1, 2)
                 .build();
 
         assertThat(codes(violations(settings, snapshot, 1), "TEACHER_NO_FIRST_PERIOD")).hasSize(2);
@@ -89,10 +81,10 @@ class ConstraintTargetEntriesCheckerTest {
                 Map.of("teacherId", TEACHER_1, "dayOfWeek", 2),
                 Map.of("teacherId", TEACHER_2, "dayOfWeek", 3));
         PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 2, 1)
-                .lesson(PlanFixtures.CLASS_1, COURSE_MATH, TEACHER_2, ROOM_NORMAL, 3, 1)
-                .lesson(PlanFixtures.CLASS_1, COURSE_ART, TEACHER_1, ROOM_LAB, 3, 2)
-                .lesson(PlanFixtures.CLASS_2, COURSE_ART, TEACHER_2, ROOM_LAB, 2, 2)
+                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1,  0L, 2, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_MATH, TEACHER_2,  0L, 3, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_ART, TEACHER_1,  0L, 3, 2)
+                .lesson(PlanFixtures.CLASS_2, COURSE_ART, TEACHER_2,  0L, 2, 2)
                 .build();
 
         assertThat(codes(violations(settings, snapshot, 2), "TEACHER_DAY_OFF")).hasSize(1);
@@ -109,7 +101,7 @@ class ConstraintTargetEntriesCheckerTest {
         ConstraintSettings settings = settings(ConstraintType.TEACHER_DAY_OFF, true, 30,
                 Map.of("teacherId", TEACHER_1, "dayOfWeek", 2));
         PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 2, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1,  0L, 2, 1)
                 .build();
 
         // Draft validation and publishing both read this verdict, so a hard day-level
@@ -125,8 +117,8 @@ class ConstraintTargetEntriesCheckerTest {
         ConstraintSettings settings = settings(ConstraintType.TEACHER_DAY_OFF, true, 30,
                 Map.of("teacherId", TEACHER_1, "dayOfWeek", 2));
         PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 2, 1)
-                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_3, ROOM_NORMAL, 2, 2)
+                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1,  0L, 2, 1)
+                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_3,  0L, 2, 2)
                 .build();
         ConstraintContext context = withSettings(snapshot, settings).context();
         List<LessonView> views = viewsOn(snapshot, 2);
@@ -143,10 +135,10 @@ class ConstraintTargetEntriesCheckerTest {
                 Map.of("teacherId", TEACHER_1, "dayOfWeek", 1, "periodNo", 1),
                 Map.of("teacherId", TEACHER_1, "dayOfWeek", 1, "periodNo", 2));
         PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 1, 1)
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 1, 2)
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 1, 3)
-                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2, ROOM_NORMAL, 1, 3)
+                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1,  0L, 1, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1,  0L, 1, 2)
+                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1,  0L, 1, 3)
+                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2,  0L, 1, 3)
                 .build();
 
         // Two entries are a choice, never an "and": only the slot outside both fails,
@@ -159,40 +151,15 @@ class ConstraintTargetEntriesCheckerTest {
         assertThat(violations.get(0).lessonId()).isEqualTo(1002L);
     }
 
-    @Test
-    void sportEntriesUnionAndScoreOncePerLesson() {
-        ConstraintSettings hard = settings(ConstraintType.SPORT_NOT_FIRST_AFTERNOON, true, 70,
-                Map.of(), Map.of("courseId", COURSE_MATH));
-        PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_PE, TEACHER_1, ROOM_PLAYGROUND, 1, 5)
-                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2, ROOM_NORMAL, 1, 5)
-                .lesson(PlanFixtures.CLASS_1, COURSE_ART, TEACHER_3, ROOM_LAB, 1, 5)
-                .build();
-
-        // The PE lesson matches the "sport class" entry only once even though the
-        // blank entry would also cover it; the art lesson is untouched.
-        List<String> rows = codes(violations(hard, snapshot, 1), "SPORT_NOT_FIRST_AFTERNOON");
-        assertThat(rows).hasSize(2);
-        assertThat(rows).anyMatch(row -> row.startsWith("SPORT_NOT_FIRST_AFTERNOON@1000"));
-        assertThat(rows).anyMatch(row -> row.startsWith("SPORT_NOT_FIRST_AFTERNOON@1001"));
-
-        ConstraintSettings soft = settings(ConstraintType.SPORT_NOT_FIRST_AFTERNOON, false, 70,
-                Map.of(), Map.of("courseId", COURSE_MATH));
-        assertThat(ConstraintChecker.softPenalty(snapshot.context(), viewsOn(snapshot, 1)))
-                .isEqualTo(0);
-        assertThat(ConstraintChecker.softPenalty(
-                withSettings(snapshot, soft).context(), viewsOn(snapshot, 1)))
-                .isEqualTo(2 * 70);
-    }
 
     @Test
     void peLastPeriodCountsOncePerLesson() {
         ConstraintSettings hard = settings(ConstraintType.PE_LAST_PERIOD_AVOID, true, 35,
                 Map.of(), Map.of("courseId", COURSE_MATH));
         PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_PE, TEACHER_1, ROOM_PLAYGROUND, 1, 8)
-                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2, ROOM_NORMAL, 1, 8)
-                .lesson(PlanFixtures.CLASS_1, COURSE_ART, TEACHER_3, ROOM_LAB, 1, 7)
+                .lesson(PlanFixtures.CLASS_1, COURSE_PE, TEACHER_1,  0L, 1, 8)
+                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2,  0L, 1, 8)
+                .lesson(PlanFixtures.CLASS_1, COURSE_ART, TEACHER_3,  0L, 1, 7)
                 .build();
 
         assertThat(codes(violations(hard, snapshot, 1), "PE_LAST_PERIOD_AVOID")).hasSize(2);
@@ -209,9 +176,9 @@ class ConstraintTargetEntriesCheckerTest {
         ConstraintSettings hard = settings(ConstraintType.COURSE_SPREAD, true, 50,
                 Map.of(), Map.of("courseId", COURSE_CHINESE));
         PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 1, 1)
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 1, 2)
-                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2, ROOM_NORMAL, 1, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1,  0L, 1, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1,  0L, 1, 2)
+                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2,  0L, 1, 1)
                 .build();
 
         // The same (class, course, day) fact matches both the "all courses" and the
@@ -230,9 +197,9 @@ class ConstraintTargetEntriesCheckerTest {
         ConstraintSettings settings = settings(ConstraintType.SAME_COURSE_ONCE_PER_DAY, true, 100,
                 Map.of(), Map.of("courseId", COURSE_CHINESE));
         PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 1, 1)
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 1, 2)
-                .lesson(PlanFixtures.CLASS_1, COURSE_MATH, TEACHER_2, ROOM_NORMAL, 1, 3)
+                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1,  0L, 1, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1,  0L, 1, 2)
+                .lesson(PlanFixtures.CLASS_1, COURSE_MATH, TEACHER_2,  0L, 1, 3)
                 .build();
 
         assertThat(codes(violations(settings, snapshot, 1), "SAME_COURSE_PER_DAY")).hasSize(1);
@@ -244,10 +211,10 @@ class ConstraintTargetEntriesCheckerTest {
                 Map.of("courseId", COURSE_CHINESE, "beforePeriodNo", 4),
                 Map.of("courseId", COURSE_MATH, "beforePeriodNo", 6));
         PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 1, 5)
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 1, 3)
-                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2, ROOM_NORMAL, 1, 5)
-                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2, ROOM_NORMAL, 1, 7)
+                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1,  0L, 1, 5)
+                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1,  0L, 1, 3)
+                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2,  0L, 1, 5)
+                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2,  0L, 1, 7)
                 .build();
 
         List<String> rows = codes(violations(settings, snapshot, 1), "MAIN_SUBJECT_MORNING");
@@ -262,10 +229,10 @@ class ConstraintTargetEntriesCheckerTest {
                 Map.of("courseId", COURSE_CHINESE, "minConsecutive", 2),
                 Map.of("courseId", COURSE_MATH, "minConsecutive", 2));
         PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 1, 1)
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 1, 3)
-                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2, ROOM_NORMAL, 1, 1)
-                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2, ROOM_NORMAL, 1, 2)
+                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1,  0L, 1, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1,  0L, 1, 3)
+                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2,  0L, 1, 1)
+                .lesson(PlanFixtures.CLASS_2, COURSE_MATH, TEACHER_2,  0L, 1, 2)
                 .build();
 
         // Only the gapped Chinese pair complains; the adjacent maths pair is fine.
@@ -284,10 +251,10 @@ class ConstraintTargetEntriesCheckerTest {
         // A pre-V26 row that nothing migrated: `params_json` must not come back to
         // life, or an upgraded school would keep a rule the editor no longer shows.
         ConstraintSettings legacyParamsOnly = ConstraintSettings.from(
-                List.of(config(ConstraintType.COURSE_NOT_IN_EVENING, true, 100,
+                List.of(config(ConstraintType.COURSE_UNAVAILABLE, true, 100,
                         Map.of("courseId", COURSE_CHINESE))), MAPPER);
         PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 1, 8)
+                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1,  0L, 1, 8)
                 .build();
 
         assertThat(violations(legacyParamsOnly, snapshot, 1)).isEmpty();
@@ -298,8 +265,8 @@ class ConstraintTargetEntriesCheckerTest {
                 List.of(config(ConstraintType.TEACHER_MAX_PER_DAY, true, 60,
                         Map.of("maxPerDay", 1))), MAPPER);
         PlanSnapshot twoLessons = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 1, 1)
-                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1, ROOM_NORMAL, 1, 2)
+                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1,  0L, 1, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_CHINESE, TEACHER_1,  0L, 1, 2)
                 .build();
         assertThat(codes(violations(threshold, twoLessons, 1), "TEACHER_MAX_PER_DAY")).isEmpty();
     }
@@ -316,10 +283,7 @@ class ConstraintTargetEntriesCheckerTest {
                 .course(COURSE_CHINESE, "语文", null)
                 .course(COURSE_MATH, "数学", null)
                 .course(COURSE_PE, "体育", null)
-                .course(COURSE_ART, "美术", null)
-                .room(ROOM_NORMAL, "普通教室", "NORMAL", 50)
-                .room(ROOM_LAB, "实验室", "LAB", 50)
-                .room(ROOM_PLAYGROUND, "操场", "PLAYGROUND", 50);
+                .course(COURSE_ART, "美术", null);
     }
 
     private static List<ConstraintViolation> violations(
@@ -351,9 +315,6 @@ class ConstraintTargetEntriesCheckerTest {
                 .course(COURSE_MATH, "数学", null)
                 .course(COURSE_PE, "体育", null)
                 .course(COURSE_ART, "美术", null)
-                .room(ROOM_NORMAL, "普通教室", "NORMAL", 50)
-                .room(ROOM_LAB, "实验室", "LAB", 50)
-                .room(ROOM_PLAYGROUND, "操场", "PLAYGROUND", 50)
                 .replay(snapshot)
                 .build();
     }
@@ -361,7 +322,7 @@ class ConstraintTargetEntriesCheckerTest {
     private static List<LessonView> viewsOn(PlanSnapshot snapshot, int dayOfWeek) {
         return snapshot.scheduleOn(PlanFixtures.date(dayOfWeek)).lessons().stream()
                 .map(lesson -> new LessonView(lesson.entryId(), lesson.classId(), lesson.courseId(),
-                        lesson.teacherId(), lesson.roomId(), lesson.periodId(), lesson.studentCount()))
+                        lesson.teacherId(), lesson.periodId(), lesson.studentCount()))
                 .toList();
     }
 

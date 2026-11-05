@@ -111,11 +111,8 @@ public final class ConstraintSettings {
             try {
                 type = ConstraintType.valueOf(config.getType());
             } catch (IllegalArgumentException ex) {
-                continue;
-            }
-            // A retired type stays in the database so old data remains readable, but it
-            // must never influence evaluation or the fingerprint (ticket 09).
-            if (type.isRetired()) {
+                // A code the catalogue no longer knows is kept in the database but must
+                // never influence evaluation or the fingerprint (ticket 09, Q6).
                 continue;
             }
             List<EntryRule> active = activeEntries(type, config, entriesByType, mapper);
@@ -252,7 +249,7 @@ public final class ConstraintSettings {
     }
 
     /**
-     * The control of a type that carries no requirement rows (the six single switches).
+     * The control of a type that carries no requirement rows (the single switches).
      * Null for an entry-backed type: "no rows" means not configured, and inventing the
      * type default would evaluate a rule the user never wrote.
      */

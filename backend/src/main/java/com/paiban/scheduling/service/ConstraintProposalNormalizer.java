@@ -2,10 +2,8 @@ package com.paiban.scheduling.service;
 import org.springframework.util.StringUtils;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.paiban.foundation.domain.PeriodSection;
 import com.paiban.scheduling.domain.ConstraintType;
 import com.paiban.scheduling.domain.ConstraintType.Param;
-import com.paiban.scheduling.domain.ConstraintType.ParamType;
 import com.paiban.scheduling.web.ConstraintProposalDtos.ConstraintProposalDto;
 import com.paiban.scheduling.web.ConstraintProposalDtos.ObjectOptionDto;
 import com.paiban.scheduling.web.ConstraintProposalDtos.ProposalCandidateDto;
@@ -43,66 +41,37 @@ public final class ConstraintProposalNormalizer {
 
     public record TeacherRef(long id, String name, String subject) {}
 
-    public record CourseRef(long id, String name, String subject, String requiredRoomType) {}
+    public record CourseRef(long id, String name, String subject) {}
 
     public record ClassRef(long id, String name) {}
 
     /**
-     * The semester's actual timetable, grouped per day and section. {@code periods} are
-     * absolute day period numbers, so "afternoon second period" is resolved by the
-     * section's own list rather than by a hard-coded 5–8.
+     * The semester's actual timetable: every day's absolute period numbers. Without the
+     * retired morning/afternoon/evening section model the model must name a concrete
+     * period number; the server no longer guesses "afternoon second period".
      */
     public record Context(
             List<TeacherRef> teachers,
             List<CourseRef> courses,
             List<ClassRef> classes,
-            Map<Integer, Map<PeriodSection, List<Integer>>> timetable) {
+            Map<Integer, List<Integer>> timetable) {
 
         public Set<Integer> days() {
             return timetable.keySet().stream().sorted().collect(Collectors.toCollection(LinkedHashSet::new));
         }
 
-        public List<Integer> periodNumbers(Integer day, PeriodSection section) {
-            Map<PeriodSection, List<Integer>> sections = timetable.get(day);
-            if (sections == null) {
-                return List.of();
-            }
-            return sections.getOrDefault(section, List.of());
+        public List<Integer> periodNumbers(Integer day) {
+            return timetable.getOrDefault(day, List.of());
         }
 
         /** True when any day of the semester uses this absolute period number. */
         public boolean hasPeriodNo(int periodNo) {
             return timetable.values().stream()
-                    .flatMap(sections -> sections.values().stream())
                     .anyMatch(numbers -> numbers.contains(periodNo));
         }
 
         public boolean hasSlot(int day, int periodNo) {
-            Map<PeriodSection, List<Integer>> sections = timetable.get(day);
-            return sections != null && sections.values().stream()
-                    .anyMatch(numbers -> numbers.contains(periodNo));
-        }
-
-        /**
-         * The last morning period when every day has the same morning blocks; null when
-         * the school's mornings differ, which is the case where "上午" cannot be turned
-         * into one cut-off without guessing.
-         */
-        public Integer morningCutoff() {
-            Integer cutoff = null;
-            for (Integer day : timetable.keySet()) {
-                List<Integer> morning = periodNumbers(day, PeriodSection.MORNING);
-                if (morning.isEmpty()) {
-                    continue;
-                }
-                int max = morning.stream().mapToInt(Integer::intValue).max().orElse(0);
-                if (cutoff == null) {
-                    cutoff = max;
-                } else if (cutoff != max) {
-                    return null;
-                }
-            }
-            return cutoff;
+            return periodNumbers(day).contains(periodNo);
         }
     }
 
@@ -216,15 +185,6 @@ public final class ConstraintProposalNormalizer {
                 addSlotEntries(type, node, context, attempt, groupKey,
                         params -> params.put("teacherId", teacher));
             }
-            case TEACHER_MEETING_BLOCKED -> {
-                String subject = text(node, "subject");
-                addSlotEntries(type, node, context, attempt, groupKey,
-                        params -> {
-                            if (StringUtils.hasText(subject)) {
-                                params.put("subject", subject);
-                            }
-                        });
-            }
             case COURSE_UNAVAILABLE -> {
                 Long course = requiredCourse(node, context, attempt);
                 addSlotEntries(type, node, context, attempt, groupKey,
@@ -253,28 +213,7 @@ public final class ConstraintProposalNormalizer {
                 params.put("teacherId", teacher);
                 attempt.entries.add(entry(params, null));
             }
-            case COURSE_REQUIRED_ROOM_TYPE -> {
-                Long course = requiredCourse(node, context, attempt);
-                String roomType = text(node, "roomType");
-                if (!StringUtils.hasText(roomType)) {
-                    attempt.needsInput("缺少教室类型");
-                } else if (roomTypeParam(type).map(Param::options)
-                        .filter(options -> !options.contains(roomType)).isPresent()) {
-                    attempt.invalid("教室类型无效: " + roomType);
-                }
-                Map<String, Object> params = new LinkedHashMap<>();
-                params.put("courseId", course);
-                params.put("roomType", roomType);
-                attempt.entries.add(entry(params, null));
-            }
-            case COURSE_NOT_IN_EVENING -> {
-                Long course = requiredCourse(node, context, attempt);
-                Map<String, Object> params = new LinkedHashMap<>();
-                params.put("courseId", course);
-                attempt.entries.add(entry(params, null));
-            }
-            case SAME_COURSE_ONCE_PER_DAY, SPORT_NOT_FIRST_AFTERNOON,
-                    PE_LAST_PERIOD_AVOID, COURSE_SPREAD -> {
+            case SAME_COURSE_ONCE_PER_DAY, PE_LAST_PERIOD_AVOID, COURSE_SPREAD -> {
                 Long course = optionalCourse(node, context, attempt);
                 Map<String, Object> params = new LinkedHashMap<>();
                 if (course != null) {
@@ -299,10 +238,7 @@ public final class ConstraintProposalNormalizer {
                 Long course = requiredCourse(node, context, attempt);
                 Integer before = number(node, "beforePeriodNo");
                 if (before == null) {
-                    before = context.morningCutoff();
-                    if (before == null) {
-                        attempt.needsInput("本学期每天上午的截止节次不一致，请补充「上午截止节次」");
-                    }
+                    attempt.needsInput("请补充「上午截止节次」");
                 } else {
                     validateRange(type, "beforePeriodNo", before, attempt);
                 }
@@ -318,7 +254,7 @@ public final class ConstraintProposalNormalizer {
                 if (type.isScopedThreshold()) {
                     buildThreshold(type, node, context, attempt);
                 } else {
-                    // The six single switches carry no parameters.
+                    // The single-switch types carry no parameters.
                     attempt.entries.add(entry(new LinkedHashMap<>(), null));
                 }
             }
@@ -376,10 +312,11 @@ public final class ConstraintProposalNormalizer {
             attempt.needsInput("缺少星期");
         }
         List<Integer> absolutePeriods = integers(node, "periods");
-        List<Integer> ordinals = integers(node, "sectionOrdinals");
-        PeriodSection section = section(node, attempt);
         Integer singlePeriod = integer(node, "periodNo");
-        if (absolutePeriods.isEmpty() && section == null && singlePeriod == null
+        if (StringUtils.hasText(text(node, "section")) || !integers(node, "sectionOrdinals").isEmpty()) {
+            attempt.invalid("不支持按上午/下午/晚自习描述课节，请直接给出节次");
+        }
+        if (absolutePeriods.isEmpty() && singlePeriod == null
                 && READY.equals(attempt.status)) {
             attempt.needsInput("缺少课节");
         }
@@ -394,20 +331,6 @@ public final class ConstraintProposalNormalizer {
             List<Integer> periodNos = new ArrayList<>();
             if (!absolutePeriods.isEmpty()) {
                 periodNos.addAll(absolutePeriods);
-            } else if (section != null) {
-                List<Integer> available = context.periodNumbers(day, section);
-                if (!ordinals.isEmpty()) {
-                    for (Integer ordinal : ordinals) {
-                        if (ordinal == null || ordinal < 1 || ordinal > available.size()) {
-                            attempt.invalid("周" + day + "没有"
-                                    + section.getLabel() + "第" + ordinal + "节");
-                        } else {
-                            periodNos.add(available.get(ordinal - 1));
-                        }
-                    }
-                } else {
-                    periodNos.addAll(available);
-                }
             } else if (singlePeriod != null) {
                 periodNos.add(singlePeriod);
             }
@@ -571,22 +494,6 @@ public final class ConstraintProposalNormalizer {
 
     // ------------------------------------------------------------------ values
 
-    private static PeriodSection section(JsonNode node, Attempt attempt) {
-        String raw = text(node, "section").toUpperCase(Locale.ROOT);
-        if (!StringUtils.hasText(raw)) {
-            return null;
-        }
-        return switch (raw) {
-            case "MORNING" -> PeriodSection.MORNING;
-            case "AFTERNOON" -> PeriodSection.AFTERNOON;
-            case "EVENING" -> PeriodSection.EVENING;
-            default -> {
-                attempt.invalid("未知时段: " + raw);
-                yield null;
-            }
-        };
-    }
-
     private static void validateRange(
             ConstraintType type, String field, Integer value, Attempt attempt) {
         Param param = type.getParams().stream()
@@ -601,12 +508,6 @@ public final class ConstraintProposalNormalizer {
         if (param.max() != null && value > param.max()) {
             attempt.invalid(param.label() + "不能大于 " + param.max());
         }
-    }
-
-    private static java.util.Optional<Param> roomTypeParam(ConstraintType type) {
-        return type.getParams().stream()
-                .filter(param -> param.type() == ParamType.ROOM_TYPE)
-                .findFirst();
     }
 
     // ------------------------------------------------------------------ json helpers

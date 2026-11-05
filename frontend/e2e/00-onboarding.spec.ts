@@ -5,8 +5,7 @@ import { apiCall, apiLogin, uiLogin } from './helpers'
 const expect = baseExpect.configure({ timeout: 10_000 })
 
 // Depends on an empty e2e database：向导只在「还没有班级/作息」时出现，
-// 因此本文件以 00- 前缀保证在其它造数据的 spec 之前运行（与 zz-junior-mode
-// 靠在最后同一约定）。每个用例先重置管理员的向导进度，测试顺序无关。
+// 因此本文件以 00- 前缀保证在其它造数据的 spec 之前运行。每个用例先重置管理员的向导进度，测试顺序无关。
 
 async function resetWizard(request: APIRequestContext) {
   const token = await apiLogin(request)

@@ -46,8 +46,8 @@ const reviewRow = row({
 })
 
 const disabledRow = row({
-  oldType: 'ROOM_CONFLICT',
-  oldTypeName: '教室不冲突',
+  oldType: 'LEGACY_RESOURCE_A',
+  oldTypeName: '旧资源规则',
   action: 'DISABLE',
   newType: null,
   note: '产品已删除该类型：停用旧配置，参数保留可查',

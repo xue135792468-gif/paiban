@@ -29,10 +29,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
- * Ticket 11 acceptance: the stored 26-type configuration migrates to the 19-type
- * catalogue without deleting a row, the 7 retired types are paused, a dangling
- * reference becomes a REVIEW item instead of a silent pause, a second run is
- * idempotent, and the before/after draft verdict is recorded with the same numbers
+ * Ticket 11 acceptance: the stored legacy configuration migrates to the current
+ * catalogue without deleting a row, every known type is retained, an unknown old code
+ * and a dangling reference become REVIEW items instead of a silent pause, a second run
+ * is idempotent, and the before/after draft verdict is recorded with the same numbers
  * for the retained types.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -62,9 +62,9 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
 
     @Test
     void mappingTableCoverstheWholeCatalogue() {
-        assertThat(ConstraintType.values()).hasSize(26);
-        assertThat(ConstraintType.activeValues()).hasSize(19);
-        assertThat(ConstraintMigrationService.TYPE_ACTIONS).hasSize(26);
+        assertThat(ConstraintType.values()).hasSize(18);
+        assertThat(ConstraintType.activeValues()).hasSize(18);
+        assertThat(ConstraintMigrationService.TYPE_ACTIONS).hasSize(18);
         for (ConstraintType type : ConstraintType.values()) {
             assertThat(ConstraintMigrationService.TYPE_ACTIONS.get(type))
                     .as(type.name())
@@ -77,7 +77,7 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void runDisablesSevenTypesKeepsNineteenAndRecordsBeforeAfter() {
+    void runKeepsEveryCurrentTypeAndRecordsBeforeAfter() {
         String token = adminToken();
         long semesterId = semesterWithPeriods(token);
         long classA = TestData.adminClass(token, semesterId,
@@ -88,7 +88,6 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
                 "七2班" + TestData.suffix());
         long teacher = TestData.teacher(token, "迁移老师" + TestData.suffix());
         long course = TestData.course(token, "迁移课程" + TestData.suffix());
-        long room = TestData.room(token, "迁移教室" + TestData.suffix());
         insertAllConfigs(semesterId);
         long reviewEntryId = danglingEntry(semesterId);
 
@@ -96,19 +95,15 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
                 .when().get("/api/constraint-migration/preview")
                 .then().statusCode(200).extract().response();
 
-        assertThat(preview.jsonPath().getInt("configCount")).isEqualTo(26);
+        assertThat(preview.jsonPath().getInt("configCount")).isEqualTo(18);
         assertThat(preview.jsonPath().getInt("entryCount")).isEqualTo(1);
-        assertThat(preview.jsonPath().getInt("retained")).isEqualTo(19);
+        assertThat(preview.jsonPath().getInt("retained")).isEqualTo(18);
         assertThat(preview.jsonPath().getInt("converted")).isZero();
-        assertThat(preview.jsonPath().getInt("disabled")).isEqualTo(7);
+        assertThat(preview.jsonPath().getInt("disabled")).isZero();
         assertThat(preview.jsonPath().getInt("review")).isEqualTo(1);
         List<Map<String, Object>> previewRows = preview.jsonPath().getList("rows");
-        assertThat(previewRows).hasSize(27);
+        assertThat(previewRows).hasSize(19);
 
-        Map<String, Object> disabledRow = row(previewRows, "ROOM_CONFLICT", 0L);
-        assertThat(disabledRow.get("action")).isEqualTo("DISABLE");
-        assertThat(disabledRow.get("newType")).isNull();
-        assertThat(disabledRow.get("requiresReview")).isEqualTo(false);
 
         Map<String, Object> retainedRow = row(previewRows, "TEACHER_UNAVAILABLE", 0L);
         assertThat(retainedRow.get("action")).isEqualTo("RETAIN");
@@ -119,7 +114,7 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
         assertThat(reviewRow.get("requiresReview")).isEqualTo(true);
         assertThat(String.valueOf(reviewRow.get("note"))).contains("teacherId");
 
-        long draftId = draftWithTeacherConflict(semesterId, classA, classB, teacher, course, room);
+        long draftId = draftWithTeacherConflict(semesterId, classA, classB, teacher, course);
         List<String> beforeCodes = conflictCodes(token, draftId);
 
         Response run = as(token).queryParam("semesterId", semesterId)
@@ -127,10 +122,10 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(200).extract().response();
 
         assertThat(run.jsonPath().getString("status")).isEqualTo("DONE");
-        assertThat(run.jsonPath().getInt("retained")).isEqualTo(19);
-        assertThat(run.jsonPath().getInt("disabled")).isEqualTo(7);
+        assertThat(run.jsonPath().getInt("retained")).isEqualTo(18);
+        assertThat(run.jsonPath().getInt("disabled")).isZero();
         assertThat(run.jsonPath().getInt("review")).isEqualTo(1);
-        assertThat(run.jsonPath().getList("rows")).hasSize(27);
+        assertThat(run.jsonPath().getList("rows")).hasSize(19);
 
         assertThat(run.jsonPath().getBoolean("before.skipped")).isFalse();
         assertThat(run.jsonPath().getInt("before.lessons")).isEqualTo(2);
@@ -141,15 +136,13 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
                 .isEqualTo(run.jsonPath().getInt("before.softPenalty"));
         assertThat(run.jsonPath().getString("after.settingsFingerprint"))
                 .isEqualTo(run.jsonPath().getString("before.settingsFingerprint"));
-        assertThat(run.jsonPath().getInt("before.enabledConfigCount")).isEqualTo(26);
-        assertThat(run.jsonPath().getInt("after.enabledConfigCount")).isEqualTo(19);
+        assertThat(run.jsonPath().getInt("before.enabledConfigCount")).isEqualTo(18);
+        assertThat(run.jsonPath().getInt("after.enabledConfigCount")).isEqualTo(18);
 
         // Every old row is still there; only the 7 retired types flipped enabled.
         List<ConstraintConfig> stored = configRepository.findBySemesterId(semesterId);
-        assertThat(stored).hasSize(26);
-        assertThat(stored.stream().filter(row -> !row.isEnabled())
-                .map(ConstraintConfig::getType))
-                .containsExactlyInAnyOrderElementsOf(retiredTypeNames());
+        assertThat(stored).hasSize(18);
+        assertThat(stored.stream().filter(row -> !row.isEnabled())).isEmpty();
         assertThat(stored.stream().filter(ConstraintConfig::isEnabled)
                 .map(ConstraintConfig::getType))
                 .containsExactlyInAnyOrderElementsOf(activeTypeNames());
@@ -167,15 +160,12 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
 
         List<ConstraintMigrationMap> mapRows =
                 mapRepository.findBySemesterIdOrderByOldTypeAscOldEntryIdAsc(semesterId);
-        assertThat(mapRows).hasSize(27);
+        assertThat(mapRows).hasSize(19);
         assertThat(mapRows.stream()
                 .map(row -> row.getOldType() + "#" + row.getOldEntryId()).distinct().count())
-                .isEqualTo(27);
-        assertThat(mapRows.stream()
-                .filter(row -> "ROOM_CAPACITY_FIT".equals(row.getOldType()))
-                .findFirst().orElseThrow().getAction()).isEqualTo("DISABLE");
+                .isEqualTo(19);
 
-        // A later full save from the rule page only carries the 19 active types; the
+        // A later full save from the rule page only carries the current active types; the
         // paused old rows must survive it (ticket 09 deferred this to ticket 11).
         long version = as(token).queryParam("semesterId", semesterId)
                 .when().get("/api/constraints/state")
@@ -185,9 +175,9 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
                 .body(Map.of("configs", activeConfigRequests()))
                 .when().put("/api/constraints")
                 .then().statusCode(200);
-        assertThat(configRepository.findBySemesterId(semesterId)).hasSize(26);
+        assertThat(configRepository.findBySemesterId(semesterId)).hasSize(18);
         assertThat(configRepository.findBySemesterId(semesterId).stream()
-                .filter(row -> !row.isEnabled()).count()).isEqualTo(7);
+                .filter(row -> !row.isEnabled()).count()).isZero();
     }
 
     @Test
@@ -207,21 +197,21 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
 
         assertThat(runRepository.count()).isEqualTo(firstRunCount + 1);
         assertThat(mapRepository
-                .findBySemesterIdOrderByOldTypeAscOldEntryIdAsc(semesterId)).hasSize(27);
+                .findBySemesterIdOrderByOldTypeAscOldEntryIdAsc(semesterId)).hasSize(19);
         assertThat(configRepository.findBySemesterId(semesterId).stream()
-                .filter(row -> !row.isEnabled()).count()).isEqualTo(7);
+                .filter(row -> !row.isEnabled()).count()).isZero();
         assertThat(entryRepository.findById(reviewEntryId).orElseThrow().isEnabled()).isTrue();
 
         Response report = as(token).queryParam("semesterId", semesterId)
                 .when().get("/api/constraint-migration/report")
                 .then().statusCode(200).extract().response();
         assertThat(report.jsonPath().getString("status")).isEqualTo("DONE");
-        assertThat(report.jsonPath().getList("rows")).hasSize(27);
+        assertThat(report.jsonPath().getList("rows")).hasSize(19);
         assertThat(report.jsonPath().getInt("review")).isEqualTo(1);
     }
 
     @Test
-    void retiredEntriesArePausedAndRemainVisible() {
+    void aTypeTheProductNoLongerKnowsIsListedForReviewAndLeftEnabled() {
         String token = adminToken();
         long semesterId = semesterWithPeriods(token);
         ConstraintConfig retired = new ConstraintConfig();
@@ -239,13 +229,19 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
         retiredEntry.setEnabled(true);
         entryRepository.save(retiredEntry);
 
+        Response preview = as(token).queryParam("semesterId", semesterId)
+                .when().get("/api/constraint-migration/preview")
+                .then().statusCode(200).extract().response();
+        assertThat(preview.jsonPath().getInt("review")).isEqualTo(2);
+
         as(token).queryParam("semesterId", semesterId)
                 .when().post("/api/constraint-migration/run")
                 .then().statusCode(200);
 
-        assertThat(configRepository.findById(retired.getId()).orElseThrow().isEnabled()).isFalse();
+        // An unknown code cannot be interpreted, so it must be kept untouched.
+        assertThat(configRepository.findById(retired.getId()).orElseThrow().isEnabled()).isTrue();
         assertThat(entryRepository.findById(retiredEntry.getId()).orElseThrow().isEnabled())
-                .isFalse();
+                .isTrue();
     }
 
     @Test
@@ -276,12 +272,13 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
     // ------------------------------------------------- ticket 11 review (P0/P1)
 
     /**
-     * Pausing the seven types is a configuration write: the version the advanced page
-     * and every cached preview compare against must move, otherwise the page keeps
-     * rendering its pre-migration 26-type view.
+     * The run is a configuration write: the version the advanced page and every cached
+     * preview compare against must move, otherwise the page keeps rendering its stale
+     * view. With no retired type left in the catalogue every known row is retained;
+     * an unknown old code is still listed for REVIEW (covered by its own test).
      */
     @Test
-    void runAdvancesTheVersionAndTheAdvancedPageNoLongerSeesTheSevenTypes() {
+    void runAdvancesTheVersionAndKeepsEveryKnownTypeOnTheAdvancedPage() {
         String token = adminToken();
         long semesterId = semesterWithPeriods(token);
         insertAllConfigs(semesterId);
@@ -294,8 +291,7 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
         List<Map<String, Object>> configs = enabledStateConfigs(token, semesterId);
         assertThat(configs).extracting(row -> String.valueOf(row.get("type")))
                 .containsExactlyInAnyOrderElementsOf(activeTypeNames());
-        assertThat(configs).extracting(row -> String.valueOf(row.get("type")))
-                .doesNotContainAnyElementsOf(retiredTypeNames());
+        assertThat(configs).hasSize(ConstraintType.activeValues().size());
     }
 
     /** Omitting the parameter means "the current semester", the same as every other rule read. */
@@ -308,7 +304,7 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
         Response preview = as(token).when().get("/api/constraint-migration/preview")
                 .then().statusCode(200).extract().response();
         assertThat(preview.jsonPath().getLong("semesterId")).isEqualTo(semesterId);
-        assertThat(preview.jsonPath().getInt("disabled")).isEqualTo(7);
+        assertThat(preview.jsonPath().getInt("disabled")).isZero();
 
         Response run = as(token).when().post("/api/constraint-migration/run")
                 .then().statusCode(200).extract().response();
@@ -388,10 +384,9 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
         long classId = TestData.adminClass(token, semesterId, gradeId, "七1班" + TestData.suffix());
         long teacher = TestData.teacher(token, "保留规则老师" + TestData.suffix());
         long course = TestData.course(token, "保留规则课程" + TestData.suffix());
-        long room = TestData.room(token, "保留规则教室" + TestData.suffix());
         insertAllConfigs(semesterId);
         long entryId = groupedUnavailableEntry(semesterId, teacher);
-        long draftId = draftWithLesson(semesterId, classId, course, teacher, room);
+        long draftId = draftWithLesson(semesterId, classId, course, teacher);
 
         List<String> before = conflictCodes(token, draftId);
         assertThat(before).contains("TEACHER_UNAVAILABLE");
@@ -428,11 +423,6 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
                         "enabled", true,
                         "entries", List.of()))
                 .toList();
-    }
-
-    private List<String> retiredTypeNames() {
-        return java.util.Arrays.stream(ConstraintType.values())
-                .filter(ConstraintType::isRetired).map(ConstraintType::name).toList();
     }
 
     private long semesterWithPeriods(String token) {
@@ -497,8 +487,7 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
     }
 
     /** The newest DRAFT holds one lesson in the slot the retained rule forbids. */
-    private long draftWithLesson(long semesterId, long classId, long courseId, long teacherId,
-                                 long roomId) {
+    private long draftWithLesson(long semesterId, long classId, long courseId, long teacherId) {
         Period first = periodRepository.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(semesterId)
                 .stream()
                 .filter(period -> period.getDayOfWeek() == 1 && period.getPeriodNo() == 1)
@@ -510,12 +499,12 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
         draft.setCreatedBy("test");
         draft.setCreatedAt(Instant.now());
         long draftId = draftRepository.save(draft).getId();
-        placeLesson(draftId, classId, courseId, teacherId, first.getId(), roomId, 1);
+        placeLesson(draftId, classId, courseId, teacherId, first.getId(), 1);
         return draftId;
     }
 
     private long draftWithTeacherConflict(long semesterId, long classA, long classB,
-                                          long teacher, long course, long room) {
+                                          long teacher, long course) {
         List<Period> periods = periodRepository
                 .findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(semesterId);
         Period first = periods.stream()
@@ -528,13 +517,13 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
         draft.setCreatedBy("test");
         draft.setCreatedAt(Instant.now());
         long draftId = draftRepository.save(draft).getId();
-        placeLesson(draftId, classA, course, teacher, first.getId(), room, 1);
-        placeLesson(draftId, classB, course, teacher, first.getId(), room, 2);
+        placeLesson(draftId, classA, course, teacher, first.getId(), 1);
+        placeLesson(draftId, classB, course, teacher, first.getId(), 2);
         return draftId;
     }
 
     private void placeLesson(long draftId, long classId, long courseId, long teacherId,
-                             long periodId, long roomId, int index) {
+                             long periodId, int index) {
         DraftLesson lesson = new DraftLesson();
         lesson.setDraftId(draftId);
         lesson.setAssignmentId(0L);
@@ -544,7 +533,6 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
         lesson.setAdminClassId(classId);
         lesson.setStudentCount(45);
         lesson.setPeriodId(periodId);
-        lesson.setRoomId(roomId);
         draftLessonRepository.save(lesson);
     }
 

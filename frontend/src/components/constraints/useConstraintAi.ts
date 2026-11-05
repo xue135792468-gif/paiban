@@ -101,8 +101,6 @@ export interface ResolveOverrides {
   strength?: 'HARD' | 'SOFT' | 'INHERIT'
   days?: number[]
   periods?: number[]
-  section?: string
-  sectionOrdinals?: number[]
   values?: Record<string, unknown>
 }
 

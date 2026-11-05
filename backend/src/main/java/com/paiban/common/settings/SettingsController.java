@@ -29,7 +29,6 @@ import org.springframework.web.multipart.MultipartFile;
 public class SettingsController {
 
     private static final List<String> EDITABLE = List.of(
-            SettingsService.SUBSTITUTION_APPROVAL_MODE,
             SettingsService.SUBSTITUTION_SEARCH_WINDOW_DAYS,
             SettingsService.SUBSTITUTION_MAX_PLAN_TEACHERS,
             SettingsService.SUBSTITUTION_RANKING_PRESET,
@@ -41,14 +40,7 @@ public class SettingsController {
             SettingsService.DINGTALK_CORP_ID,
             SettingsService.DINGTALK_EVENT_TOKEN,
             SettingsService.DINGTALK_SYNC_STRATEGY,
-            SettingsService.FEISHU_ENABLED,
-            SettingsService.FEISHU_APP_ID,
-            SettingsService.FEISHU_APP_SECRET,
-            SettingsService.FEISHU_VERIFICATION_TOKEN,
-            SettingsService.FEISHU_ENCRYPT_KEY,
-            SettingsService.FEISHU_SYNC_STRATEGY,
             SettingsService.SCHOOL_NAME,
-            SettingsService.SCHOOL_TYPE,
             SettingsService.PUBLIC_BASE_URL,
             SettingsService.AI_SUBSTITUTE_RECOMMENDATION,
             SettingsService.AI_NATURAL_LANGUAGE_CONSTRAINTS,
@@ -81,9 +73,7 @@ public class SettingsController {
      */
     @GetMapping("/public")
     public Map<String, String> publicSettings() {
-        return Map.of(
-                "schoolType", settings.schoolType(),
-                "schoolName", settings.schoolName());
+        return Map.of("schoolName", settings.schoolName());
     }
 
     @PutMapping
@@ -176,10 +166,6 @@ public class SettingsController {
     }
 
     private void validate(String key, String value) {
-        if (SettingsService.SUBSTITUTION_APPROVAL_MODE.equals(key)
-                && !List.of("approval", "direct").contains(value)) {
-            throw ApiException.badRequest("审批模式只能是 approval 或 direct");
-        }
         if (SettingsService.SUBSTITUTION_SEARCH_WINDOW_DAYS.equals(key)) {
             requireIntInRange(key, value, 1, 30, "调课搜索窗口必须在 1 到 30 天之间");
         }
@@ -194,20 +180,11 @@ public class SettingsController {
                 && !List.of("minimal", "with-grade-leader", "with-admin").contains(value)) {
             throw ApiException.badRequest("通知范围只能是 minimal / with-grade-leader / with-admin");
         }
-        if (SettingsService.SCHOOL_TYPE.equals(key)
-                && !List.of("junior", "senior").contains(value)) {
-            throw ApiException.badRequest("学校类型只能是 junior 或 senior");
-        }
         if ((SettingsService.DINGTALK_ENABLED.equals(key)
-                || SettingsService.FEISHU_ENABLED.equals(key)
                 || SettingsService.AI_SUBSTITUTE_RECOMMENDATION.equals(key)
                 || SettingsService.AI_NATURAL_LANGUAGE_CONSTRAINTS.equals(key))
                 && !List.of("true", "false").contains(value)) {
             throw ApiException.badRequest(key + " 只能是 true 或 false");
-        }
-        if (SettingsService.FEISHU_SYNC_STRATEGY.equals(key)
-                && !List.of("feishu", "local").contains(value)) {
-            throw ApiException.badRequest("飞书同步策略只能是 feishu 或 local");
         }
         if (SettingsService.AI_IMPORT_CONFIDENCE_THRESHOLD.equals(key)) {
             try {

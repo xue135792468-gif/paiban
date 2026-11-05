@@ -8,28 +8,12 @@
         <span class="summary-text">{{ summary }}</span>
       </div>
       <div class="preview-actions">
-        <el-checkbox
-          v-if="type === 'INTRA_CLASS'"
-          :model-value="swapRooms"
-          @update:model-value="(value: string | number | boolean) => emit('update:swapRooms', Boolean(value))"
-        >
-          同时交换教室
-        </el-checkbox>
         <el-radio-group v-model="mode" size="small">
           <el-radio-button value="before">调整前</el-radio-button>
           <el-radio-button value="after">调整后</el-radio-button>
         </el-radio-group>
       </div>
     </div>
-
-    <el-alert
-      v-if="candidate.roomSwapRequired"
-      type="info"
-      :closable="false"
-      show-icon
-      class="preview-warnings"
-      title="该换位需要同时交换教室，已自动勾选「同时交换教室」"
-    />
 
     <el-alert
       v-if="candidate.warnings.length > 0"
@@ -92,17 +76,12 @@ const props = defineProps<{
   courses: DraftCourse[]
   source: DraftLesson
   candidate: SwapCandidate
-  swapRooms: boolean
-}>()
-
-const emit = defineEmits<{
-  (e: 'update:swapRooms', value: boolean): void
 }>()
 
 const mode = ref<'before' | 'after'>('before')
 const type = computed(() => swapTypeOf(props.source, props.candidate))
 const preview = computed(() =>
-  buildSwapPreview(props.lessons, props.source, props.candidate, props.periods, props.swapRooms),
+  buildSwapPreview(props.lessons, props.source, props.candidate, props.periods),
 )
 const snapshot = computed(() => (mode.value === 'after' ? preview.value.after : preview.value.before))
 const leftLessons = computed(() => teacherPaneLessons(snapshot.value, props.source.teacherId))
@@ -113,7 +92,7 @@ const summary = computed(() => {
   if (type.value === 'INTRA_CLASS') {
     return `${props.source.courseName} ${props.source.periodLabel ?? ''} ⇄ ${props.candidate.courseName} ${props.candidate.periodLabel ?? ''}（同班换位，节次互换）`
   }
-  return `${props.source.teacherName} ⇄ ${props.candidate.teacherName}（跨班换人，节次与教室不变）`
+  return `${props.source.teacherName} ⇄ ${props.candidate.teacherName}（跨班换人，节次不变）`
 })
 
 watch(

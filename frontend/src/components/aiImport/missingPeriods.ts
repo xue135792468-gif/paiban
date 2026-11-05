@@ -9,7 +9,6 @@ export interface MissingPeriodItem {
   /** PROPOSED: the backend computed a time; MANUAL: a human has to set it. */
   status: 'PROPOSED' | 'MANUAL'
   label: string
-  section?: string | null
   startTime?: string | null
   endTime?: string | null
   /** Why a MANUAL item needs a human (or why nothing can be appended). */
@@ -38,19 +37,8 @@ export interface ApplyMissingPeriodsResult {
 
 const DAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
-const SECTION_LABELS: Record<string, string> = {
-  MORNING: '上午',
-  AFTERNOON: '下午',
-  EVENING: '晚自习',
-}
-
 export function dayLabel(dayOfWeek: number): string {
   return DAY_LABELS[dayOfWeek - 1] ?? `星期${dayOfWeek}`
-}
-
-export function sectionLabel(section?: string | null): string {
-  if (!section) return '—'
-  return SECTION_LABELS[section] ?? section
 }
 
 /** `08:00:00` → `08:00`; a missing or unreadable value stays readable. */
@@ -89,6 +77,5 @@ export function applyItem(item: MissingPeriodItem): MissingPeriodApplyItem | nul
 
 /** The one-line description the confirm dialog lists. */
 export function describeItem(item: MissingPeriodItem): string {
-  const section = item.section ? `${sectionLabel(item.section)} ` : ''
-  return `${dayLabel(item.dayOfWeek)} ${item.label} ${section}${timeRange(item)}`
+  return `${dayLabel(item.dayOfWeek)} ${item.label} ${timeRange(item)}`
 }

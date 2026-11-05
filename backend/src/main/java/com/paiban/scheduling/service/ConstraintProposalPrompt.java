@@ -42,11 +42,8 @@ public class ConstraintProposalPrompt {
                   "courseName":"课程名称，没有则留空",
                   "className":"行政班名称，没有则留空",
                   "subject":"学科名称，没有则留空",
-                  "roomType":"NORMAL|LAB|PLAYGROUND|MULTIMEDIA|OTHER",
                   "days":[1,3],
                   "periods":[1,6],
-                  "section":"MORNING|AFTERNOON|EVENING",
-                  "sectionOrdinals":[1,2],
                   "allDays":false,
                   "values":{"maxPerDay":4,"maxConsecutive":3,"minConsecutive":2,"beforePeriodNo":4}
                 }]}
@@ -64,11 +61,9 @@ public class ConstraintProposalPrompt {
                    也不要把名字只写在 reason 里。
                 5. 只有原句出现明确强度词时才设置强度：不排、不能、不得、必须、最多、至少、
                    不允许 → strength=HARD；“尽量/优先/最好” → SOFT。
-                   没有这些词的陈述（例如“化学课安排在实验室”）用 strength=INHERIT，
-                   不要因为出现“安排/使用/排到”就升级为 HARD。反例：C04“体育课必须在操场上”有“必须”，
-                   用 HARD；C05“化学课安排在实验室”没有强度词，用 INHERIT。
-                6. 上午/下午/晚自习按上下文真实课节解释。periods 使用当天绝对节次；
-                   也可以用 section + sectionOrdinals（如“下午第2节”= section=AFTERNOON, sectionOrdinals=[2]）。
+                   没有这些词的陈述用 strength=INHERIT，不要因为出现“安排/使用/排到”就升级为 HARD。
+                6. 用户说的“上午/下午/晚自习第 N 节”要换算成当天绝对节次填进 periods；
+                   不再使用 section / sectionOrdinals 字段。
                    allDays=true 表示每个实际上课日。
                 7. 课节不在本学期作息内、数值超出范围时 status=INVALID 并说明，不要截断或自动创建课节。
                 8. “每天/每个班/全部课程”等全体范围要明确表达；不要用空列表表示全体。
@@ -105,9 +100,6 @@ public class ConstraintProposalPrompt {
         StringBuilder builder = new StringBuilder(param.name())
                 .append("=").append(param.label())
                 .append(param.required() ? "[必填]" : "[可空]");
-        if (param.type() == ConstraintType.ParamType.ROOM_TYPE) {
-            builder.append(" 可选值 ").append(String.join("/", param.options()));
-        }
         if (param.min() != null || param.max() != null) {
             builder.append(" 范围 ").append(param.min()).append("-").append(param.max());
         }

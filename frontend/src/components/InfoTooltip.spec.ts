@@ -11,13 +11,10 @@ const CONTRACT_KEYS: TooltipKey[] = [
   'constraint.param',
   'course.consecutive',
   'assignment.weeklyLessons',
-  'substitution.approvalMode',
   'substitution.effectiveDate',
   'timetable.view',
   'timetable.substitutionMark',
-  'settings.schoolType',
   'settings.aiProvider',
-  'settings.platformSwitch',
 ]
 
 function mountTooltip(field: TooltipKey) {
@@ -46,7 +43,7 @@ describe('InfoTooltip', () => {
   })
 
   it('is reachable by keyboard and screen readers', () => {
-    const wrapper = mountTooltip('settings.schoolType')
+    const wrapper = mountTooltip('constraint.weight')
     const trigger = wrapper.get('[aria-label]')
 
     expect(trigger.attributes('aria-label')).toContain('字段说明')

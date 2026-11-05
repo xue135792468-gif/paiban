@@ -30,7 +30,7 @@ class PlanVerifierTest {
         PlanMove original = plan.moves().get(0);
         List<PlanMove> tampered = new ArrayList<>(plan.moves());
         tampered.set(0, new PlanMove(original.entryId(), original.classId(), original.courseId(),
-                999L, original.roomId(), original.fromPeriodId(), original.fromDayOfWeek(),
+                999L, original.fromPeriodId(), original.fromDayOfWeek(),
                 original.fromPeriodNo(), original.fromDate(), original.toPeriodId(),
                 original.toDayOfWeek(), original.toPeriodNo(), original.toDate(), original.order()));
 
@@ -50,7 +50,7 @@ class PlanVerifierTest {
         List<PlanMove> tampered = new ArrayList<>(plan.moves());
         long otherPeriod = PlanFixtures.periodId(1, 3);
         tampered.set(0, new PlanMove(original.entryId(), original.classId(), original.courseId(),
-                original.teacherId(), original.roomId(), original.fromPeriodId(), original.fromDayOfWeek(),
+                original.teacherId(), original.fromPeriodId(), original.fromDayOfWeek(),
                 original.fromPeriodNo(), original.fromDate(), otherPeriod, 1, 3,
                 original.toDate(), original.order()));
 
@@ -75,46 +75,6 @@ class PlanVerifierTest {
                 .contains("SOFT_SCORE_MISMATCH");
     }
 
-    /**
-     * The room model is retired from the product (ticket 09 dropped ROOM_CONFLICT,
-     * ticket 02 stopped requiring rooms to publish): a leftover roomId is display data,
-     * so two lessons sharing a room no longer fails the plan. This pins the new
-     * contract; the teacher/class invariants above still fail a plan on their own.
-     */
-    @Test
-    void allowsWhenTheTargetRoomIsAlreadyOccupied() {
-        PlanFixtures.Builder builder = PlanFixtures.builder()
-                .adminClass(CLASS_1, "高一1班", 45, null)
-                .adminClass(2L, "高一2班", 45, null)
-                .teacher(1, "张老师", "语文")
-                .teacher(2, "李老师", "数学")
-                .teacher(3, "王老师", "英语")
-                .course(1, "语文", null)
-                .course(2, "数学", null)
-                .course(3, "英语", null)
-                .room(1, "教室1", "NORMAL", 50)
-                .room(2, "教室2", "NORMAL", 50)
-                .room(9, "冲突教室", "NORMAL", 50)
-                .lesson(CLASS_1, 1, 1, 1L, 1, 1)
-                .lesson(CLASS_1, 2, 2, 2L, 1, 2)
-                .lesson(2L, 3, 3, 9L, 1, 2);
-        PlanSnapshot snapshot = builder.build();
-        CandidatePlan plan = plan(snapshot).result().candidates().get(0);
-        PlanMove original = plan.moves().get(0);
-        List<PlanMove> tampered = new ArrayList<>(plan.moves());
-        tampered.set(0, new PlanMove(original.entryId(), original.classId(), original.courseId(),
-                original.teacherId(), 9L, original.fromPeriodId(), original.fromDayOfWeek(),
-                original.fromPeriodNo(), original.fromDate(), original.toPeriodId(),
-                original.toDayOfWeek(), original.toPeriodNo(), original.toDate(), original.order()));
-
-        PlanVerifier.Result verification = PlanVerifier.verify(
-                snapshot, tampered, PlanVerifier.Kind.SWAP, -1);
-
-        assertThat(verification.passed()).isTrue();
-        assertThat(verification.issues()).extracting(PlanVerifier.Issue::code)
-                .doesNotContain("ROOM_DOUBLE_BOOKED");
-    }
-
     @Test
     void rejectsWhenADateLosesALesson() {
         PlanSnapshot snapshot = twoTeacherSnapshot();
@@ -122,7 +82,7 @@ class PlanVerifierTest {
         PlanMove original = plan.moves().get(0);
         List<PlanMove> tampered = new ArrayList<>(plan.moves());
         tampered.set(0, new PlanMove(original.entryId(), original.classId(), original.courseId(),
-                original.teacherId(), original.roomId(), original.fromPeriodId(), original.fromDayOfWeek(),
+                original.teacherId(), original.fromPeriodId(), original.fromDayOfWeek(),
                 original.fromPeriodNo(), original.fromDate(), original.toPeriodId(),
                 original.toDayOfWeek(), original.toPeriodNo(), original.toDate().plusDays(1),
                 original.order()));
@@ -177,7 +137,7 @@ class PlanVerifierTest {
                 .scheduleOn(PlanFixtures.date(1)).lessons().stream()
                 .map(lesson -> new com.paiban.scheduling.constraint.LessonView(
                         lesson.entryId(), lesson.classId(), lesson.courseId(), lesson.teacherId(),
-                        lesson.roomId(), lesson.periodId(), lesson.studentCount()))
+                        lesson.periodId(), lesson.studentCount()))
                 .toList();
         assertThat(views).hasSize(2000);
 

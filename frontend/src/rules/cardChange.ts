@@ -1,4 +1,4 @@
-import { describeCard, type PeriodOption, type RuleCard, type RuleNames } from './compiler'
+import { describeCard, type RuleCard, type RuleNames } from './compiler'
 import { cardsSignature } from './signature'
 
 /**
@@ -15,10 +15,6 @@ export function cardChangedSinceLoad(card: RuleCard, loadedCards: RuleCard[]): b
 }
 
 /** Readable sentence of one card, so a dialog names the card it acts on. */
-export function cardLabelOf(
-  card: RuleCard,
-  names: RuleNames,
-  periods: PeriodOption[],
-): string {
-  return describeCard(card, names, periods)
+export function cardLabelOf(card: RuleCard, names: RuleNames): string {
+  return describeCard(card, names)
 }

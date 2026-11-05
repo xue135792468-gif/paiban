@@ -14,7 +14,6 @@ function period(
     dayOfWeek,
     periodNo,
     label: `第${periodNo}节`,
-    section: '',
     startTime: '',
     endTime: '',
     ...overrides,
@@ -38,7 +37,6 @@ function lesson(
     studentCount: 40,
     dayOfWeek,
     periodNo,
-    roomName: '101',
     locked: false,
     ...overrides,
   }
@@ -123,7 +121,7 @@ describe('DraftGrid', () => {
     expect(lessons[1].classes()).not.toContain('conflict')
   })
 
-  it('卡片只显示课程与教师，旧数据的教室字段不渲染', () => {
+  it('卡片只显示课程与教师，不渲染教室', () => {
     const wrapper = mountGrid({ lessons: [lesson(1, 1, 1)] })
 
     const text = wrapper.get('.lesson').text()

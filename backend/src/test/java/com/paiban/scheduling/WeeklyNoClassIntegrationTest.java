@@ -60,7 +60,7 @@ class WeeklyNoClassIntegrationTest extends ApiIntegrationTest {
                 .body("[0].entries[0].enabled", equalTo(false));
         as(f.token()).get("/api/timetable-drafts/" + f.draftId()).then().statusCode(200)
                 .body("blockedSlots", hasSize(0));
-        as(f.token()).body(Map.of("periodId", f.blockedPeriod(), "roomId", f.roomId()))
+        as(f.token()).body(Map.of("periodId", f.blockedPeriod()))
                 .patch("/api/timetable-drafts/" + f.draftId() + "/lessons/" + f.lessonId())
                 .then().statusCode(200).body("saved", equalTo(true));
     }
@@ -75,7 +75,7 @@ class WeeklyNoClassIntegrationTest extends ApiIntegrationTest {
                 .body("blockedSlots[0].periodId", equalTo((int) f.blockedPeriod()))
                 .body("blockedSlots[0].reason", equalTo("指定班级规则（本班）"));
         for (boolean force : List.of(false, true)) {
-            as(f.token()).body(Map.of("periodId", f.blockedPeriod(), "roomId", f.roomId(), "force", force))
+            as(f.token()).body(Map.of("periodId", f.blockedPeriod(), "force", force))
                     .patch("/api/timetable-drafts/" + f.draftId() + "/lessons/" + f.lessonId())
                     .then().statusCode(200).body("saved", equalTo(false));
         }
@@ -93,7 +93,7 @@ class WeeklyNoClassIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(200).body("publishable", equalTo(false));
         as(f.token()).post("/api/timetable-drafts/" + f.draftId() + "/publish")
                 .then().statusCode(409);
-        as(f.token()).body(Map.of("periodId", f.freePeriod(), "roomId", f.roomId()))
+        as(f.token()).body(Map.of("periodId", f.freePeriod()))
                 .patch("/api/timetable-drafts/" + f.draftId() + "/lessons/" + f.lessonId())
                 .then().statusCode(200).body("saved", equalTo(true));
         as(f.token()).get("/api/timetable-drafts/" + f.draftId() + "/validation")
@@ -132,7 +132,7 @@ class WeeklyNoClassIntegrationTest extends ApiIntegrationTest {
 
     private void saveBan(Fixture f) {
         List<Map<String, Object>> configs = new ArrayList<>();
-        for (String type : List.of("TEACHER_CONFLICT", "CLASS_CONFLICT", "ROOM_CONFLICT")) {
+        for (String type : List.of("TEACHER_CONFLICT", "CLASS_CONFLICT", "CLASS_GAP_MINIMIZED")) {
             configs.add(Map.of("type", type, "params", Map.of(), "enabled", true, "hard", true, "weight", 100));
         }
         configs.add(banConfig(f, true));
@@ -169,7 +169,6 @@ class WeeklyNoClassIntegrationTest extends ApiIntegrationTest {
         long adminClass = TestData.adminClass(token, semester, grade, "留空班" + suffix);
         long teacher = TestData.teacher(token, "留空教师" + suffix);
         long course = TestData.course(token, "留空课程" + suffix);
-        long room = TestData.room(token, "留空教室" + suffix);
         long assignment = as(token).body(Map.of("classId", adminClass, "teacherId", teacher,
                         "courseId", course, "weeklyLessons", 1))
                 .post("/api/assignments").then().statusCode(200).extract().jsonPath().getLong("id");
@@ -183,14 +182,13 @@ class WeeklyNoClassIntegrationTest extends ApiIntegrationTest {
         lesson.setAdminClassId(adminClass);
         lesson.setTeacherId(teacher);
         lesson.setCourseId(course);
-        lesson.setRoomId(room);
         lesson.setStudentCount(45);
         lesson.setPeriodId(initiallyBlocked ? blocked : free);
         lesson = lessons.save(lesson);
-        return new Fixture(token, semester, adminClass, room, draft.getId(), lesson.getId(), blocked, free);
+        return new Fixture(token, semester, adminClass, draft.getId(), lesson.getId(), blocked, free);
     }
 
     private static long id(Map<String, Object> row) { return ((Number) row.get("id")).longValue(); }
-    private record Fixture(String token, long semesterId, long classId, long roomId,
+    private record Fixture(String token, long semesterId, long classId,
                            long draftId, long lessonId, long blockedPeriod, long freePeriod) {}
 }

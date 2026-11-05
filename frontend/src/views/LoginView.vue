@@ -30,7 +30,6 @@
               @keyup.enter="submit"
             />
           </el-form-item>
-          <el-alert v-if="feishuNotice" :title="feishuNotice" type="warning" :closable="false" show-icon class="error" />
           <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="error" />
           <el-button type="primary" size="large" class="submit" :loading="loading" @click="submit">
             登录
@@ -48,7 +47,6 @@ import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { http } from '@/api/http'
-import { isFeishuEnv, requestFeishuAuthCode } from '@/api/feishu'
 import { useLoginLanding } from '@/composables/useLoginLanding'
 import { serverMessage } from '@/api/errors'
 
@@ -64,7 +62,6 @@ const rules: FormRules = {
 }
 const loading = ref(false)
 const error = ref('')
-const feishuNotice = ref('')
 
 function loadDingTalkSdk(): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -123,35 +120,7 @@ async function tryDingTalkLogin() {
   }
 }
 
-/** Feishu injects `window.tt` inside its H5 container; any failure keeps the password form. */
-async function tryFeishuLogin() {
-  try {
-    const { data: config } = await http.get('/auth/feishu/config')
-    if (!config?.enabled) return
-    const code = await requestFeishuAuthCode(config.appId ?? '')
-    const result = await auth.feishuLogin(code)
-    if (result.status === 'ok') {
-      ElMessage.success('飞书免登成功')
-      await landAfterLogin()
-      return
-    }
-    if (result.status === 'binding_required') {
-      if (result.bindToken) {
-        router.replace({ path: '/bind', query: { token: result.bindToken } })
-        return
-      }
-      feishuNotice.value = '账号未绑定，请联系教务管理员'
-    }
-  } catch {
-    // stay on the password form
-  }
-}
-
 onMounted(async () => {
-  if (isFeishuEnv()) {
-    await tryFeishuLogin()
-    return
-  }
   await tryDingTalkLogin()
 })
 

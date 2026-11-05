@@ -7,7 +7,7 @@ function blocker(overrides: Partial<DraftPublishBlocker> = {}): DraftPublishBloc
 }
 
 describe('blockerTarget', () => {
-  it('补教室动作已下线，不再给出任何入口', () => {
+  it('已下线动作不再给出任何入口', () => {
     expect(blockerTarget('ASSIGN_ROOMS')).toEqual({ kind: 'none' })
   })
 

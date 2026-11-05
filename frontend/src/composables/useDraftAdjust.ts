@@ -75,7 +75,7 @@ export type UndoEntry =
   | {
       kind: 'move'
       lessonId: number
-      from: { periodId: number | null; roomId: number | null }
+      from: { periodId: number | null }
       /** Version produced by this write; undo must match it or be refused. */
       version?: number
     }
@@ -83,13 +83,12 @@ export type UndoEntry =
       kind: 'swap'
       lessonId: number
       targetLessonId: number
-      swapRooms: boolean
       version?: number
     }
   /** One atomic action; the items are already inverted for the undo call. */
   | { kind: 'changes'; items: DraftChangeItem[]; label: string }
 
-type LessonPosition = Pick<DraftLesson, 'id' | 'periodId' | 'roomId'> & { teacherId?: number }
+type LessonPosition = Pick<DraftLesson, 'id' | 'periodId'> & { teacherId?: number }
 
 const DEFAULT_UNDO_LIMIT = 20
 
@@ -103,18 +102,16 @@ function violationsToConflicts(violations: DraftViolation[] | undefined): DraftC
 
 /**
  * The reverse of one change item: what used to be the target becomes what we now
- * expect, and vice versa. A null `toTeacherId`/`toRoomId` means "keep", so the
- * inverse expects the same value the original item carried as its source.
+ * expect, and vice versa. A null `toTeacherId` means "keep", so the inverse
+ * expects the same value the original item carried as its source.
  */
 function inverseItem(item: DraftChangeItem): DraftChangeItem {
   return {
     lessonId: item.lessonId,
     toPeriodId: item.expectedPeriodId,
     toTeacherId: item.expectedTeacherId,
-    toRoomId: item.expectedRoomId,
     expectedPeriodId: item.toPeriodId,
     expectedTeacherId: item.toTeacherId ?? item.expectedTeacherId,
-    expectedRoomId: item.toRoomId ?? item.expectedRoomId,
   }
 }
 
@@ -162,15 +159,13 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
 
   async function move(
     lesson: LessonPosition,
-    target: { periodId: number; roomId?: number | null },
+    target: { periodId: number },
     expectedVersion?: number,
   ): Promise<MoveOutcome> {
-    const roomId = target.roomId ?? lesson.roomId ?? null
     const fromPeriodId = lesson.periodId ?? null
     try {
       const body: Record<string, unknown> = {
         periodId: target.periodId,
-        roomId,
       }
       if (expectedVersion != null) body.expectedVersion = expectedVersion
       const { data } = await client.patch(lessonUrl(lesson.id), body)
@@ -179,13 +174,12 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
       }
       // A lesson dragged out of the unassigned drawer has no period to return to;
       // undo sends periodId null, which the server reads as "back to unassigned".
-      const changed = fromPeriodId !== target.periodId || (lesson.roomId ?? null) !== roomId
-      if (changed) {
+      if (fromPeriodId !== target.periodId) {
         remember(data.version)
         push({
           kind: 'move',
           lessonId: lesson.id,
-          from: { periodId: fromPeriodId, roomId: lesson.roomId ?? null },
+          from: { periodId: fromPeriodId },
           version: data.version,
         })
       }
@@ -201,14 +195,12 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
   async function swap(
     lesson: Pick<DraftLesson, 'id'>,
     candidate: { lessonId: number },
-    swapRooms = false,
     expectedVersion?: number,
   ): Promise<SwapOutcome> {
     try {
       const body: Record<string, unknown> = {
         lessonId: lesson.id,
         targetLessonId: candidate.lessonId,
-        swapRooms,
       }
       if (expectedVersion != null) body.expectedVersion = expectedVersion
       const { data } = await client.post(swapUrl(), body)
@@ -221,7 +213,6 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
         kind: 'swap',
         lessonId: lesson.id,
         targetLessonId: candidate.lessonId,
-        swapRooms,
         version: data.version,
       })
       notify.success('已换课')
@@ -292,7 +283,7 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
     }
   }
 
-  /** Moves one lesson to an empty period; teacher and room stay with the lesson. */
+  /** Moves one lesson to an empty period; the teacher stays with the lesson. */
   async function moveTo(
     lesson: LessonPosition,
     targetPeriodId: number,
@@ -303,15 +294,13 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
       lessonId: lesson.id,
       toPeriodId: targetPeriodId,
       toTeacherId: null,
-      toRoomId: null,
       expectedPeriodId: lesson.periodId ?? null,
       expectedTeacherId: lesson.teacherId ?? 0,
-      expectedRoomId: lesson.roomId ?? null,
     }
     return applyChangeSet([item], expectedVersion, rulesFingerprint, '已移动课节')
   }
 
-  /** Exchanges the periods of two same-class lessons; teacher and room never move. */
+  /** Exchanges the periods of two same-class lessons; the teacher never moves. */
   async function swapLessons(
     source: LessonPosition,
     target: LessonPosition,
@@ -322,19 +311,15 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
       lessonId: source.id,
       toPeriodId: target.periodId ?? null,
       toTeacherId: null,
-      toRoomId: null,
       expectedPeriodId: source.periodId ?? null,
       expectedTeacherId: source.teacherId ?? 0,
-      expectedRoomId: source.roomId ?? null,
     }
     const targetItem: DraftChangeItem = {
       lessonId: target.id,
       toPeriodId: source.periodId ?? null,
       toTeacherId: null,
-      toRoomId: null,
       expectedPeriodId: target.periodId ?? null,
       expectedTeacherId: target.teacherId ?? 0,
-      expectedRoomId: target.roomId ?? null,
     }
     return applyChangeSet([sourceItem, targetItem], expectedVersion, rulesFingerprint, '已交换两节课')
   }
@@ -383,10 +368,8 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
           lessonId: move.lessonId,
           toPeriodId: move.fromPeriodId,
           toTeacherId: lesson?.teacherId ?? move.teacherId,
-          toRoomId: lesson?.roomId ?? null,
           expectedPeriodId: move.toPeriodId,
           expectedTeacherId: lesson?.teacherId ?? move.teacherId,
-          expectedRoomId: lesson?.roomId ?? null,
         }
       })
       const { data } = (await client.post(
@@ -461,7 +444,6 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
       } else if (entry.kind === 'move') {
         const body: Record<string, unknown> = {
           periodId: entry.from.periodId,
-          roomId: entry.from.roomId,
         }
         // Use the current version, not the version captured at write time: an earlier
         // undo (or anyone else's edit) has already advanced it. entry.version is only
@@ -479,7 +461,6 @@ export function useDraftAdjust(draftId: number, options: DraftAdjustOptions = {}
         const body: Record<string, unknown> = {
           lessonId: entry.lessonId,
           targetLessonId: entry.targetLessonId,
-          swapRooms: entry.swapRooms,
         }
         const expectedVersion = context.expectedVersion ?? lastVersion.value ?? entry.version
         if (expectedVersion != null) body.expectedVersion = expectedVersion

@@ -12,14 +12,6 @@ export interface CurrentUser {
   permissions: string[]
 }
 
-export interface FeishuLoginResponse {
-  status: 'ok' | 'binding_required'
-  token?: string
-  expiresInMinutes?: number
-  user?: CurrentUser
-  bindToken?: string
-}
-
 const TOKEN_KEY = 'paiban_token'
 const USER_KEY = 'paiban_user'
 
@@ -53,18 +45,6 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = data.token
     user.value = data.user
     persist()
-  }
-
-  /**
-   * Feishu H5免登. The backend exchanges the single-use code; when it reports
-   * `binding_required` no session exists and the caller drives the binding flow.
-   */
-  async function feishuLogin(code: string): Promise<FeishuLoginResponse> {
-    const { data } = await http.post('/auth/feishu', { code })
-    if (data.status === 'ok' && data.token && data.user) {
-      setSession(data.token, data.user)
-    }
-    return data as FeishuLoginResponse
   }
 
   async function refresh() {
@@ -102,15 +82,6 @@ export const useAuthStore = defineStore('auth', () => {
     return user.value?.roles.includes(code) ?? false
   }
 
-  /**
-   * Filling a draft's missing rooms creates main data (rooms) as well as editing the
-   * draft, so the server wants both powers. Kept here, not assembled in the view, so the
-   * pair has one definition.
-   */
-  const canFillDraftRooms = computed(
-    () => hasPermission('timetable:edit') && hasPermission('foundation:manage'),
-  )
-
   return {
     token,
     user,
@@ -118,7 +89,6 @@ export const useAuthStore = defineStore('auth', () => {
     displayName,
     roles,
     login,
-    feishuLogin,
     logout,
     setSession,
     refresh,
@@ -126,6 +96,5 @@ export const useAuthStore = defineStore('auth', () => {
     hasAnyPermission,
     hasAllPermissions,
     hasRole,
-    canFillDraftRooms,
   }
 })

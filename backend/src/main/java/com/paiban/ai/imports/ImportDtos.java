@@ -1,6 +1,5 @@
 package com.paiban.ai.imports;
 
-import com.paiban.foundation.domain.PeriodSection;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -171,7 +170,6 @@ public final class ImportDtos {
             int periodNo,
             String status,
             String label,
-            PeriodSection section,
             LocalTime startTime,
             LocalTime endTime,
             String reason) {}

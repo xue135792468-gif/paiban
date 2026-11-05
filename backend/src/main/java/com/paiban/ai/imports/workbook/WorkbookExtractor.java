@@ -198,7 +198,7 @@ public class WorkbookExtractor {
     private String fieldHint(SheetCategory category) {
         return switch (category) {
             case TIMETABLE -> "课表字段：className（班级）、dayOfWeek（星期）、periodNo（节次）、"
-                    + "courseName（课程）、teacherName（教师）、roomName（教室，可空）。\n";
+                    + "courseName（课程）、teacherName（教师）。\n";
             case TEACHER -> "教师字段：name（姓名）、employeeNo（工号）、phone（电话）、"
                     + "email（邮箱）、subject（学科）。只有姓名必填。\n";
             case COURSE -> "课程字段：name（课程名）、subject（学科，可空）。\n";

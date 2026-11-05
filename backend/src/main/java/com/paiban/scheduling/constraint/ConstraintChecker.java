@@ -1,11 +1,8 @@
 package com.paiban.scheduling.constraint;
-import org.springframework.util.StringUtils;
 
-import com.paiban.foundation.domain.PeriodSection;
 import com.paiban.scheduling.constraint.ConstraintContext.ClassView;
 import com.paiban.scheduling.constraint.ConstraintContext.CourseView;
 import com.paiban.scheduling.constraint.ConstraintContext.PeriodView;
-import com.paiban.scheduling.constraint.ConstraintContext.RoomView;
 import com.paiban.scheduling.constraint.ConstraintContext.TeacherView;
 import com.paiban.scheduling.domain.ConstraintType;
 import com.paiban.scheduling.solver.ConstraintEntryMatcher;
@@ -23,10 +20,9 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * The single implementation of the 19 active preset rules (7 types were retired in
- * ticket 09). The draft validator and the
- * published-timetable verifier both call this class; neither owns a copy of the rule
- * definitions.
+ * The single implementation of the 18 active preset rules. The draft validator and
+ * the published-timetable verifier both call this class; neither owns a copy of the
+ * rule definitions.
  *
  * <p>Since the ticket-14 revision every rule asks the settings snapshot for the
  * <em>effective control</em> of the fact it found. A hard control makes the fact a
@@ -142,31 +138,11 @@ public final class ConstraintChecker {
                 teacherName(ctx, lesson.teacherId()) + " 在 " + periodLabel(period) + " 不排课",
                 lesson.id(), unavailable);
 
-        Control meeting = settings.match(ConstraintType.TEACHER_MEETING_BLOCKED,
-                entry -> ConstraintEntryMatcher.slot(entry, period.dayOfWeek(), period.periodNo())
-                        && ConstraintEntryMatcher.meetingSubject(
-                                entry, teacherSubject(ctx, lesson.teacherId())));
-        addIfHard(out, "TEACHER_MEETING",
-                teacherName(ctx, lesson.teacherId()) + " 在 " + periodLabel(period) + " 参加教研活动",
-                lesson.id(), meeting);
-
-        Control notEvening = settings.match(ConstraintType.COURSE_NOT_IN_EVENING,
-                entry -> ConstraintEntryMatcher.courseOrAll(entry, lesson.courseId()));
-        if (notEvening != null && notEvening.hard() && period.section() == PeriodSection.EVENING) {
-            out.add(new ConstraintViolation("COURSE_NOT_IN_EVENING",
-                    courseName + " 不能安排在晚自习", lesson.id(), true));
-        }
-
         Control courseUnavailable = settings.match(ConstraintType.COURSE_UNAVAILABLE,
                 entry -> ConstraintEntryMatcher.courseSlot(
                         entry, lesson.courseId(), period.dayOfWeek(), period.periodNo()));
         addIfHard(out, "COURSE_UNAVAILABLE",
                 courseName + " 在 " + periodLabel(period) + " 不排课", lesson.id(), courseUnavailable);
-    }
-
-    private static String teacherSubject(ConstraintContext ctx, Long teacherId) {
-        TeacherView teacher = teacherId == null ? null : ctx.teachers().get(teacherId);
-        return teacher == null ? null : teacher.subject();
     }
 
     // ------------------------------------------------------------------ pairs
@@ -197,14 +173,6 @@ public final class ConstraintChecker {
                     className(ctx, a.classId()) + " 在 " + periodLabel(periodA)
                             + " 已排 " + courseName(ctx, b.courseId()),
                     a.id(), true, ConstraintViolation.pairKey("CLASS_CONFLICT", a.id(), b.id())));
-        }
-        Control roomConflict = settings.control(ConstraintType.ROOM_CONFLICT);
-        if (roomConflict != null && roomConflict.hard()
-                && a.roomId() != null && Objects.equals(a.roomId(), b.roomId())) {
-            out.add(new ConstraintViolation("ROOM_CONFLICT",
-                    "教室「" + roomName(ctx, a.roomId()) + "」在 " + periodLabel(periodA)
-                            + " 已被 " + className(ctx, b.classId()) + " 占用",
-                    a.id(), true, ConstraintViolation.pairKey("ROOM_CONFLICT", a.id(), b.id())));
         }
     }
 
@@ -272,7 +240,6 @@ public final class ConstraintChecker {
         Map<String, List<LessonView>> teacherDay = new HashMap<>();
         Map<String, List<LessonView>> classDay = new HashMap<>();
         Map<String, List<LessonView>> classCourseDay = new HashMap<>();
-        Map<String, List<LessonView>> classEvening = new HashMap<>();
         Map<String, List<LessonView>> teacherPeriods = new HashMap<>();
         for (LessonView lesson : lessons) {
             PeriodView period = periodOf(ctx, lesson);
@@ -291,11 +258,6 @@ public final class ConstraintChecker {
             teacherPeriods.computeIfAbsent(
                     lessonKey(lesson.teacherId(), period.dayOfWeek()), key -> new ArrayList<>())
                     .add(lesson);
-            if (period.section() == PeriodSection.EVENING) {
-                classEvening.computeIfAbsent(
-                        lessonKey(lesson.classId(), period.dayOfWeek()), key -> new ArrayList<>())
-                        .add(lesson);
-            }
         }
 
         checkThreshold(ctx, s, ConstraintType.TEACHER_MAX_PER_DAY, teacherDay, touched,
@@ -327,15 +289,6 @@ public final class ConstraintChecker {
                                     + " 单日排了 " + count + " 节，超过上限 " + limit)
                             : null;
                 }, out);
-        checkThreshold(ctx, s, ConstraintType.EVENING_MAX, classEvening, touched,
-                (key, count) -> {
-                    Long classId = objectIdOf(key);
-                    Integer limit = s.limitOrNull(ConstraintType.EVENING_MAX, classId);
-                    return limit != null && count > limit
-                            ? new ThresholdMessage("EVENING_MAX",
-                            className(ctx, classId) + " 晚自习排了 " + count + " 节，超过上限 " + limit)
-                            : null;
-                }, out);
 
         for (LessonView lesson : lessons) {
             PeriodView period = periodOf(ctx, lesson);
@@ -345,12 +298,6 @@ public final class ConstraintChecker {
             boolean relevant = touched == null || touched.lessons().contains(lesson.id());
             CourseView course = lesson.courseId() == null ? null : ctx.courses().get(lesson.courseId());
 
-            if (relevant && period.section() == PeriodSection.AFTERNOON
-                    && isFirstAfternoon(period, ctx)) {
-                addIfHard(out, "SPORT_NOT_FIRST_AFTERNOON",
-                        courseName(ctx, lesson.courseId()) + " 不应排在下午第一节", lesson.id(),
-                        sportMatch(s, ConstraintType.SPORT_NOT_FIRST_AFTERNOON, lesson, course));
-            }
             if (relevant && isLastOfDay(period, ctx)) {
                 addIfHard(out, "PE_LAST_PERIOD_AVOID",
                         "体育被排在当天最后一节", lesson.id(),
@@ -377,14 +324,6 @@ public final class ConstraintChecker {
                 addIfHard(out, "TEACHER_DAY_OFF",
                         teacherName(ctx, lesson.teacherId()) + " 的无课日被排了课", lesson.id(),
                         teacherDayMatch(s, lesson.teacherId(), period.dayOfWeek()));
-                ClassView adminClass = lesson.classId() == null ? null : ctx.classes().get(lesson.classId());
-                if (adminClass != null
-                        && Objects.equals(adminClass.headTeacherId(), lesson.teacherId())
-                        && !isFirstOfDay(period, ctx)) {
-                    addIfHard(out, "HEAD_TEACHER_FIRST_PERIOD",
-                            "班主任的课没有排在本班第一节", lesson.id(),
-                            s.control(ConstraintType.HEAD_TEACHER_FIRST_PERIOD));
-                }
             }
         }
 
@@ -449,7 +388,7 @@ public final class ConstraintChecker {
             List<ConstraintViolation> out) {
         Set<String> relevant = switch (type) {
             case TEACHER_MAX_PER_DAY, TEACHER_MAX_CONSECUTIVE -> touched == null ? null : touched.teacherDay();
-            case CLASS_MAX_PER_DAY, EVENING_MAX -> touched == null ? null : touched.classDay();
+            case CLASS_MAX_PER_DAY -> touched == null ? null : touched.classDay();
             case COURSE_MAX_PER_DAY -> touched == null ? null : touched.classCourseDay();
             default -> null;
         };
@@ -610,7 +549,6 @@ public final class ConstraintChecker {
         Map<String, List<LessonView>> teacherDay = new HashMap<>();
         Map<String, List<LessonView>> classDay = new HashMap<>();
         Map<String, List<LessonView>> classCourseDay = new HashMap<>();
-        Map<String, List<LessonView>> classEvening = new HashMap<>();
         for (LessonView lesson : lessons) {
             PeriodView period = periodOf(ctx, lesson);
             if (period == null) {
@@ -625,16 +563,10 @@ public final class ConstraintChecker {
             classCourseDay.computeIfAbsent(
                     lessonKey(lesson.classId(), lesson.courseId(), period.dayOfWeek()),
                     key -> new ArrayList<>()).add(lesson);
-            if (period.section() == PeriodSection.EVENING) {
-                classEvening.computeIfAbsent(
-                        lessonKey(lesson.classId(), period.dayOfWeek()), key -> new ArrayList<>())
-                        .add(lesson);
-            }
         }
 
         total += softThreshold(settings, ConstraintType.TEACHER_MAX_PER_DAY, teacherDay, ConstraintChecker::objectIdOf);
         total += softThreshold(settings, ConstraintType.CLASS_MAX_PER_DAY, classDay, ConstraintChecker::objectIdOf);
-        total += softThreshold(settings, ConstraintType.EVENING_MAX, classEvening, ConstraintChecker::objectIdOf);
         total += softCourseThreshold(settings, classCourseDay);
         total += softConflicts(ctx, lessons, settings);
 
@@ -644,39 +576,16 @@ public final class ConstraintChecker {
                 continue;
             }
             CourseView course = lesson.courseId() == null ? null : ctx.courses().get(lesson.courseId());
-            RoomView room = lesson.roomId() == null ? null : ctx.rooms().get(lesson.roomId());
-            Control capacity = settings.control(ConstraintType.ROOM_CAPACITY_FIT);
-            if (room != null && room.capacity() < lesson.studentCount()) {
-                total += softHit(capacity, true);
-            }
-            String configuredType = lesson.courseId() == null ? null : settings.courseText(
-                    ConstraintType.COURSE_REQUIRED_ROOM_TYPE, lesson.courseId(), "roomType");
-            if (configuredType != null && StringUtils.hasText(configuredType)
-                    && (room == null || !configuredType.equals(room.type()))) {
-                total += softHit(settings.match(ConstraintType.COURSE_REQUIRED_ROOM_TYPE,
-                        entry -> ConstraintEntryMatcher.courseWithRoomType(entry, lesson.courseId())), true);
-            }
             total += softHit(settings.match(ConstraintType.TEACHER_UNAVAILABLE,
                             entry -> ConstraintEntryMatcher.teacherSlot(
                                     entry, lesson.teacherId(),
                                     period.dayOfWeek(), period.periodNo())),
                     true);
-            total += softHit(settings.match(ConstraintType.TEACHER_MEETING_BLOCKED,
-                            entry -> ConstraintEntryMatcher.slot(
-                                    entry, period.dayOfWeek(), period.periodNo())
-                                    && ConstraintEntryMatcher.meetingSubject(
-                                            entry, teacherSubject(ctx, lesson.teacherId()))),
-                    true);
-            total += softHit(settings.match(ConstraintType.COURSE_NOT_IN_EVENING,
-                            entry -> ConstraintEntryMatcher.courseOrAll(entry, lesson.courseId())),
-                    period.section() == PeriodSection.EVENING);
             total += softHit(settings.match(ConstraintType.COURSE_UNAVAILABLE,
                             entry -> ConstraintEntryMatcher.courseSlot(
                                     entry, lesson.courseId(),
                                     period.dayOfWeek(), period.periodNo())),
                     true);
-            total += softHit(sportMatch(settings, ConstraintType.SPORT_NOT_FIRST_AFTERNOON, lesson, course),
-                    period.section() == PeriodSection.AFTERNOON && isFirstAfternoon(period, ctx));
             total += softHit(sportMatch(settings, ConstraintType.PE_LAST_PERIOD_AVOID, lesson, course),
                     isLastOfDay(period, ctx));
             if (lesson.courseId() != null) {
@@ -691,11 +600,6 @@ public final class ConstraintChecker {
                             settings, ConstraintType.TEACHER_NO_FIRST_PERIOD, lesson.teacherId()),
                     isFirstOfDay(period, ctx));
             total += softHit(teacherDayMatch(settings, lesson.teacherId(), period.dayOfWeek()), true);
-            ClassView adminClass = lesson.classId() == null ? null : ctx.classes().get(lesson.classId());
-            total += softHit(settings.control(ConstraintType.HEAD_TEACHER_FIRST_PERIOD),
-                    adminClass != null
-                            && Objects.equals(adminClass.headTeacherId(), lesson.teacherId())
-                            && !isFirstOfDay(period, ctx));
         }
 
         for (Map.Entry<String, List<LessonView>> entry : classCourseDay.entrySet()) {
@@ -769,7 +673,7 @@ public final class ConstraintChecker {
     }
 
     /**
-     * Soft side of the three structural conflicts. The solver already scores them via
+     * Soft side of the two structural conflicts. The solver already scores them via
      * the same type-level control; without this, a school that marks one of them soft
      * would get a zero penalty from the independent checker while the solver still
      * avoided it, and the two verdicts would disagree.
@@ -778,11 +682,9 @@ public final class ConstraintChecker {
             ConstraintContext ctx, List<LessonView> lessons, ConstraintSettings settings) {
         Control teacher = settings.control(ConstraintType.TEACHER_CONFLICT);
         Control adminClass = settings.control(ConstraintType.CLASS_CONFLICT);
-        Control room = settings.control(ConstraintType.ROOM_CONFLICT);
         boolean teacherSoft = teacher != null && !teacher.hard();
         boolean classSoft = adminClass != null && !adminClass.hard();
-        boolean roomSoft = room != null && !room.hard();
-        if (!teacherSoft && !classSoft && !roomSoft) {
+        if (!teacherSoft && !classSoft) {
             return 0;
         }
         Map<Long, List<LessonView>> byPeriod = new HashMap<>();
@@ -802,9 +704,6 @@ public final class ConstraintChecker {
                     }
                     if (classSoft && Objects.equals(a.classId(), b.classId())) {
                         total += adminClass.weight();
-                    }
-                    if (roomSoft && a.roomId() != null && Objects.equals(a.roomId(), b.roomId())) {
-                        total += room.weight();
                     }
                 }
             }
@@ -959,15 +858,6 @@ public final class ConstraintChecker {
         return course != null && course.name() != null && course.name().contains("体育");
     }
 
-    private static boolean isFirstAfternoon(PeriodView period, ConstraintContext ctx) {
-        return ctx.periods().values().stream()
-                .filter(other -> other.dayOfWeek() == period.dayOfWeek()
-                        && other.section() == PeriodSection.AFTERNOON)
-                .mapToInt(PeriodView::periodNo)
-                .min()
-                .orElse(-1) == period.periodNo();
-    }
-
     private static boolean isLastOfDay(PeriodView period, ConstraintContext ctx) {
         return ctx.periods().values().stream()
                 .filter(other -> other.dayOfWeek() == period.dayOfWeek())
@@ -1012,25 +902,10 @@ public final class ConstraintChecker {
         return course == null ? "该课程" : course.name();
     }
 
-    private static String roomName(ConstraintContext ctx, Long id) {
-        RoomView room = id == null ? null : ctx.rooms().get(id);
-        return room == null ? "该教室" : room.name();
-    }
-
     private static String periodLabel(PeriodView period) {
         String day = period.dayOfWeek() >= 1 && period.dayOfWeek() <= 7
                 ? DAY_NAMES[period.dayOfWeek()]
                 : "周" + period.dayOfWeek();
         return day + "第" + period.periodNo() + "节";
-    }
-
-    private static String roomTypeLabel(String type) {
-        return switch (type) {
-            case "NORMAL" -> "普通教室";
-            case "LAB" -> "实验室";
-            case "PLAYGROUND" -> "操场";
-            case "MULTIMEDIA" -> "多媒体";
-            default -> "其他";
-        };
     }
 }

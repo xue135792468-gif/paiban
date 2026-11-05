@@ -87,8 +87,7 @@ class PerformanceBenchmarkIT extends ApiIntegrationTest {
                 long id = day * 100L + periodNo;
                 builder.teacher(id, "老师" + id, "科目" + id);
                 builder.course(id, "课程" + id, null);
-                builder.room(id, "教室" + id, "NORMAL", 50);
-                builder.lesson(1L, id, id, id, day, periodNo);
+                builder.lesson(1L, id, id, null, day, periodNo);
             }
         }
         PlanSnapshot snapshot = builder.build();
@@ -110,7 +109,7 @@ class PerformanceBenchmarkIT extends ApiIntegrationTest {
         String token = adminToken();
         long semesterId = TestData.semester(token);
         as(token)
-                .body(Map.of("morningCount", 4, "afternoonCount", 4, "eveningCount", 0))
+                .body(Map.of("periodCount", 8, "days", List.of(1, 2, 3, 4, 5)))
                 .when().post("/api/semesters/" + semesterId + "/periods/default")
                 .then().statusCode(200);
         long gradeId = TestData.grade(token, semesterId, "高一");
@@ -122,10 +121,6 @@ class PerformanceBenchmarkIT extends ApiIntegrationTest {
         List<Long> teacherIds = new ArrayList<>();
         for (int i = 0; i < TEACHERS; i++) {
             teacherIds.add(TestData.teacher(token, "教师" + i));
-        }
-        List<Long> roomIds = new ArrayList<>();
-        for (int i = 0; i < ROOMS; i++) {
-            roomIds.add(TestData.room(token, "教室" + i));
         }
         List<Long> classIds = new ArrayList<>();
         for (int i = 0; i < CLASSES; i++) {
@@ -203,12 +198,6 @@ class PerformanceBenchmarkIT extends ApiIntegrationTest {
         report("教师课表", teacherMs, VIEW_TARGET_MS);
         assertThat(teacherMs).as("教师课表耗时").isLessThan(VIEW_TARGET_MS);
 
-        long roomMs = medianMs(20, () -> as(token)
-                .when().get("/api/timetable/room/" + roomIds.get(0))
-                .then().statusCode(200));
-        report("教室课表", roomMs, VIEW_TARGET_MS);
-        assertThat(roomMs).as("教室课表耗时").isLessThan(VIEW_TARGET_MS);
-
         long schoolMs = medianMs(5, () -> as(token)
                 .when().get("/api/timetable/school")
                 .then().statusCode(200));
@@ -249,14 +238,13 @@ class PerformanceBenchmarkIT extends ApiIntegrationTest {
                 lesson.getTeacherId(),
                 lesson.getAdminClassId(),
                 lesson.getStudentCount(),
-                lesson.getPeriod().getId(),
-                lesson.getRoom().getId()
+                lesson.getPeriod().getId()
             });
         }
         jdbc.batchUpdate(
                 "insert into draft_lesson "
                         + "(draft_id, assignment_id, lesson_index, course_id, teacher_id, admin_class_id, "
-                        + "student_count, period_id, room_id) values (?,?,?,?,?,?,?,?,?)",
+                        + "student_count, period_id) values (?,?,?,?,?,?,?,?)",
                 rows);
         return draftId;
     }

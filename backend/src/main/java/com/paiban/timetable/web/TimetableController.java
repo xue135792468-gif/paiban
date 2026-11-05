@@ -79,15 +79,6 @@ public class TimetableController {
         return views.teacherView(teacherId, view, date);
     }
 
-    @GetMapping("/timetable/room/{roomId}")
-    @PreAuthorize("hasAuthority('" + Permissions.TIMETABLE_VIEW + "')")
-    public List<TimetableEntryDto> roomView(
-            @PathVariable Long roomId,
-            @RequestParam(defaultValue = "latest") String view,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return views.roomView(roomId, view, date);
-    }
-
     @GetMapping("/timetable/school")
     @PreAuthorize("hasAuthority('" + Permissions.TIMETABLE_VIEW + "')")
     public SchoolTimetableDto schoolView(
@@ -130,24 +121,6 @@ public class TimetableController {
             @RequestParam(defaultValue = "latest") String view,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         return download(exports.pdf("teacher", teacherId, view, date), "教师课表.pdf", MediaType.APPLICATION_PDF);
-    }
-
-    @GetMapping("/timetable/room/{roomId}/export/excel")
-    @PreAuthorize("hasAuthority('" + Permissions.EXPORT_TIMETABLE + "')")
-    public ResponseEntity<byte[]> exportRoomExcel(
-            @PathVariable Long roomId,
-            @RequestParam(defaultValue = "latest") String view,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return download(exports.excel("room", roomId, view, date), "教室占用表.xlsx", XLSX);
-    }
-
-    @GetMapping("/timetable/room/{roomId}/export/pdf")
-    @PreAuthorize("hasAuthority('" + Permissions.EXPORT_TIMETABLE + "')")
-    public ResponseEntity<byte[]> exportRoomPdf(
-            @PathVariable Long roomId,
-            @RequestParam(defaultValue = "latest") String view,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return download(exports.pdf("room", roomId, view, date), "教室占用表.pdf", MediaType.APPLICATION_PDF);
     }
 
     @GetMapping("/timetable/school/export/excel")

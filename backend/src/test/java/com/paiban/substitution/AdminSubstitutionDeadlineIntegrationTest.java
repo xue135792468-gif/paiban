@@ -103,17 +103,6 @@ class AdminSubstitutionDeadlineIntegrationTest extends ApiIntegrationTest {
                 .body("message", org.hamcrest.Matchers.containsString("开课"));
     }
 
-    @Test
-    void submitApprovalIsAlsoBlockedByTheDeadline() {
-        var fx = AdminSubstitutionIntegrationTest.buildFixture(adminToken(), TestData.suffix(), MONDAY);
-        long voucherId = preview(fx);
-        now.set(EXACTLY_AT_START);
-        as(adminToken()).body(Map.of())
-                .when().post("/api/substitution-workbench/previews/" + voucherId + "/submit-approval")
-                .then().statusCode(409);
-        assertThat(substitutionRows.count()).isZero();
-    }
-
     private long preview(AdminSubstitutionIntegrationTest.Fixture fx) {
         Response response = as(adminToken()).body(Map.of(
                         "entryId", fx.entryAId(),

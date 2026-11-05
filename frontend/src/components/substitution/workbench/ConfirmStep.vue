@@ -49,10 +49,6 @@
           <div class="scope" data-testid="confirm-scope">{{ flow.scope }}</div>
         </div>
 
-        <!-- 修订（票 04 语义）：再次调整已生效申请时出现。 -->
-        <div v-if="flow.revisionText" class="callout" data-testid="revision-banner">
-          <div class="cw"><span class="ic">!</span><span>{{ flow.revisionText }}</span></div>
-        </div>
 
         <!-- 跨科门：仅代课；未勾选时两个提交按钮 disabled（dock 侧读同一状态）。 -->
         <div v-if="flow.crossSubject" class="callout" data-testid="cross-subject-callout">
@@ -99,7 +95,7 @@ import type { ConfirmFlow } from './useConfirmFlow'
 const props = defineProps<{ flow: ConfirmFlow }>()
 
 const emit = defineEmits<{
-  /** 提交审批 / 亲自确认成功后通知 View 切成功态（标题与正文在 flow 上）。 */
+  /** 亲自确认成功后通知 View 切成功态（标题与正文在 flow 上）。 */
   success: []
 }>()
 

@@ -429,7 +429,6 @@ function timetableRow(
       periodNo: period,
       courseName: course,
       teacherName: teacher,
-      roomName: '101',
     },
     confidence: {},
     lowConfidence: [],
@@ -447,7 +446,6 @@ function timetablePreview(overrides: Record<string, unknown> = {}) {
         { field: 'periodNo', label: '节次', required: true },
         { field: 'courseName', label: '课程', required: true },
         { field: 'teacherName', label: '教师', required: true },
-        { field: 'roomName', label: '教室', required: false },
       ],
       rows: [
         timetableRow('一年级1班', '周一', '1', '语文', '张三'),

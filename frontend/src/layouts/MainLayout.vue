@@ -24,32 +24,6 @@
             <el-icon><QuestionFilled /></el-icon>
           </el-button>
 
-          <el-popover v-if="canSeeNotifications" placement="bottom-end" :width="340" trigger="click">
-            <template #reference>
-              <el-badge :value="unread" :hidden="unread === 0" :max="99" class="bell-badge">
-                <el-button circle text>
-                  <el-icon><Bell /></el-icon>
-                </el-button>
-              </el-badge>
-            </template>
-            <div class="notif-head">
-              <span>通知</span>
-              <el-button link type="primary" @click="router.push('/notifications')">查看全部</el-button>
-            </div>
-            <div v-if="recent.length === 0" class="notif-empty">暂无通知</div>
-            <div
-              v-for="item in recent"
-              :key="item.id"
-              class="notif-item"
-              :class="{ unread: !item.read }"
-              @click="openNotification(item)"
-            >
-              <div class="notif-title">{{ item.title }}</div>
-              <div class="notif-content">{{ item.content }}</div>
-              <div class="notif-time">{{ formatTime(item.createdAt) }}</div>
-            </div>
-          </el-popover>
-
           <el-dropdown trigger="click" @command="onCommand">
             <span class="user-chip">
               <el-avatar :size="28">{{ initials }}</el-avatar>
@@ -91,26 +65,14 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Bell, QuestionFilled } from '@element-plus/icons-vue'
-import { http } from '@/api/http'
+import { QuestionFilled } from '@element-plus/icons-vue'
 import { HELP_GROUPS } from '@/help/docs'
 import { helpLink, type HelpSlug } from '@/help/links'
 import { MENU_GROUPS, visibleMenuGroups } from '@/layouts/navigation'
 import { useAuthStore } from '@/stores/auth'
-import { useSettingsStore } from '@/stores/settings'
 import { hasSeenTour, startTour, type TourStage } from '@/onboarding/tour'
 
-interface NotificationItem {
-  id: number
-  title: string
-  content: string
-  link?: string
-  read: boolean
-  createdAt: string
-}
-
 const auth = useAuthStore()
-const settings = useSettingsStore()
 const route = useRoute()
 const router = useRouter()
 
@@ -157,43 +119,6 @@ const roleLabel = computed(() => {
   if (auth.hasRole('teacher')) return '教师'
   return ''
 })
-
-const canSeeNotifications = computed(() => auth.hasPermission('notification:view'))
-const unread = ref(0)
-const recent = ref<NotificationItem[]>([])
-let timer: number | undefined
-
-async function loadNotifications() {
-  if (!canSeeNotifications.value) return
-  try {
-    const [countRes, recentRes] = await Promise.all([
-      http.get('/notifications/unread-count'),
-      http.get('/notifications/recent'),
-    ])
-    unread.value = countRes.data.count
-    recent.value = recentRes.data
-  } catch {
-    // notifications are non-critical
-  }
-}
-
-async function openNotification(item: NotificationItem) {
-  try {
-    if (!item.read) {
-      await http.post(`/notifications/${item.id}/read`)
-    }
-  } catch {
-    // ignore
-  }
-  await loadNotifications()
-  if (item.link) {
-    router.push(item.link)
-  }
-}
-
-function formatTime(value: string) {
-  return value ? value.replace('T', ' ').slice(5, 16) : ''
-}
 
 function onCommand(command: string) {
   if (command === 'logout') {
@@ -250,13 +175,9 @@ watch(
 
 onMounted(() => {
   auth.refresh().catch(() => undefined)
-  settings.load()
-  loadNotifications()
-  timer = window.setInterval(loadNotifications, 30000)
 })
 
 onUnmounted(() => {
-  if (timer) window.clearInterval(timer)
   if (tourTimer) window.clearTimeout(tourTimer)
 })
 </script>
@@ -328,9 +249,6 @@ onUnmounted(() => {
   align-items: center;
   gap: 14px;
 }
-.bell-badge {
-  display: inline-flex;
-}
 .user-chip {
   display: flex;
   align-items: center;
@@ -351,53 +269,6 @@ onUnmounted(() => {
   /* 顶栏固定，内容占满剩余高度并独立滚动；min-height:0 防 flex 撑破。 */
   min-height: 0;
   overflow-y: auto;
-}
-.notif-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-weight: 600;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #f1f2f6;
-}
-.notif-empty {
-  text-align: center;
-  color: var(--paiban-muted);
-  padding: 24px 0;
-  font-size: 13px;
-}
-.notif-item {
-  padding: 10px 6px;
-  border-bottom: 1px dashed #f1f2f6;
-  cursor: pointer;
-}
-.notif-item:hover {
-  background: #f8faff;
-}
-.notif-item.unread .notif-title::before {
-  content: '';
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #4f6ef7;
-  margin-right: 6px;
-  vertical-align: middle;
-}
-.notif-title {
-  font-size: 13px;
-  font-weight: 600;
-}
-.notif-content {
-  font-size: 12px;
-  color: #6b7280;
-  margin-top: 3px;
-  line-height: 1.5;
-}
-.notif-time {
-  font-size: 11px;
-  color: #9ca3af;
-  margin-top: 4px;
 }
 .help-group + .help-group {
   margin-top: 20px;

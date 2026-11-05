@@ -5,7 +5,6 @@ import com.paiban.foundation.domain.AuditLog;
 import com.paiban.foundation.domain.AuditLogRepository;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
-import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.scheduling.domain.DraftLesson;
 import com.paiban.scheduling.domain.DraftLessonRepository;
@@ -41,7 +40,6 @@ public class DraftChangeService {
     private final DraftLessonRepository draftLessons;
     private final PeriodRepository periods;
     private final TeacherRepository teachers;
-    private final RoomRepository rooms;
     private final AuditLogRepository auditLogs;
 
     public DraftChangeService(
@@ -51,7 +49,6 @@ public class DraftChangeService {
             DraftLessonRepository draftLessons,
             PeriodRepository periods,
             TeacherRepository teachers,
-            RoomRepository rooms,
             AuditLogRepository auditLogs) {
         this.guard = guard;
         this.validator = validator;
@@ -59,7 +56,6 @@ public class DraftChangeService {
         this.draftLessons = draftLessons;
         this.periods = periods;
         this.teachers = teachers;
-        this.rooms = rooms;
         this.auditLogs = auditLogs;
     }
 
@@ -95,13 +91,12 @@ public class DraftChangeService {
             DraftLesson lesson = byId.get(item.lessonId());
             Long periodId = item.toPeriodId();
             Long teacherId = item.toTeacherId() == null ? lesson.getTeacherId() : item.toTeacherId();
-            Long roomId = item.toRoomId() == null ? lesson.getRoomId() : item.toRoomId();
             boolean movesPeriodOrTeacher = !Objects.equals(periodId, lesson.getPeriodId())
                     || !Objects.equals(teacherId, lesson.getTeacherId());
             if (lesson.isLocked() && movesPeriodOrTeacher) {
                 guard.requireUnlocked(lesson, "调整");
             }
-            changes.add(new DraftValidator.LessonChange(lesson.getId(), periodId, roomId, teacherId));
+            changes.add(new DraftValidator.LessonChange(lesson.getId(), periodId, teacherId));
             changed.add(lesson);
         }
 
@@ -121,7 +116,6 @@ public class DraftChangeService {
         for (DraftValidator.LessonChange change : changes) {
             DraftLesson lesson = byId.get(change.lessonId());
             lesson.setPeriodId(change.periodId());
-            lesson.setRoomId(change.roomId());
             lesson.setTeacherId(change.teacherId());
         }
         draftLessons.saveAll(changed);
@@ -165,7 +159,7 @@ public class DraftChangeService {
         return byId;
     }
 
-    /** Periods must exist and belong to this draft's semester; teachers and rooms must exist. */
+    /** Periods must exist and belong to this draft's semester; teachers must exist. */
     private void validateTargets(TimetableDraft draft, List<LessonChangeItem> items) {
         for (LessonChangeItem item : items) {
             if (item.toPeriodId() != null) {
@@ -179,9 +173,6 @@ public class DraftChangeService {
             if (item.toTeacherId() != null && !teachers.existsById(item.toTeacherId())) {
                 throw ApiException.badRequest("教师不存在: " + item.toTeacherId());
             }
-            if (item.toRoomId() != null && !rooms.existsById(item.toRoomId())) {
-                throw ApiException.badRequest("教室不存在: " + item.toRoomId());
-            }
         }
     }
 
@@ -190,8 +181,7 @@ public class DraftChangeService {
         for (LessonChangeItem item : items) {
             DraftLesson lesson = byId.get(item.lessonId());
             if (!Objects.equals(item.expectedPeriodId(), lesson.getPeriodId())
-                    || !Objects.equals(item.expectedTeacherId(), lesson.getTeacherId())
-                    || !Objects.equals(item.expectedRoomId(), lesson.getRoomId())) {
+                    || !Objects.equals(item.expectedTeacherId(), lesson.getTeacherId())) {
                 throw ApiException.conflict("课表已被其他人修改，请刷新后重试");
             }
         }

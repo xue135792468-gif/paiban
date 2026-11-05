@@ -29,23 +29,7 @@ function candidate(overrides: Partial<SwapCandidate> = {}): SwapCandidate {
 }
 
 describe('useSwapFlow', () => {
-  it('turns the room exchange on for a candidate that requires it', () => {
-    const flow = useSwapFlow({ adjust: fakeAdjust(), notify: fakeNotify() })
 
-    flow.selectCandidate(candidate({ roomSwapRequired: true }))
-
-    expect(flow.previewVisible.value).toBe(true)
-    expect(flow.swapRooms.value).toBe(true)
-  })
-
-  it('leaves the room exchange off for an ordinary candidate', () => {
-    const flow = useSwapFlow({ adjust: fakeAdjust(), notify: fakeNotify() })
-
-    flow.selectCandidate(candidate({ roomSwapRequired: true }))
-    flow.selectCandidate(candidate())
-
-    expect(flow.swapRooms.value).toBe(false)
-  })
 
   it('cross-class entry requests only cross-class candidates and hides the tabs', () => {
     const adjust = fakeAdjust()
@@ -78,6 +62,6 @@ describe('useSwapFlow', () => {
     const outcome = await flow.confirm()
 
     expect(outcome.saved).toBe(true)
-    expect(swap).toHaveBeenCalledWith(lesson, picked, false, 9)
+    expect(swap).toHaveBeenCalledWith(lesson, picked, 9)
   })
 })

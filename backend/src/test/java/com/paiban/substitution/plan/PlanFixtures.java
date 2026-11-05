@@ -1,10 +1,8 @@
 package com.paiban.substitution.plan;
 
-import com.paiban.foundation.domain.PeriodSection;
 import com.paiban.scheduling.constraint.ConstraintContext.ClassView;
 import com.paiban.scheduling.constraint.ConstraintContext.CourseView;
 import com.paiban.scheduling.constraint.ConstraintContext.PeriodView;
-import com.paiban.scheduling.constraint.ConstraintContext.RoomView;
 import com.paiban.scheduling.constraint.ConstraintContext.TeacherView;
 import com.paiban.scheduling.solver.ConstraintSettings;
 import com.paiban.substitution.plan.PlanSnapshot.AppliedSubstitution;
@@ -42,7 +40,6 @@ public final class PlanFixtures {
 
     public static final class Builder {
         private final Map<Long, PeriodView> periods = new HashMap<>();
-        private final Map<Long, RoomView> rooms = new HashMap<>();
         private final Map<Long, CourseView> courses = new HashMap<>();
         private final Map<Long, TeacherView> teachers = new HashMap<>();
         private final Map<Long, ClassView> classes = new HashMap<>();
@@ -86,27 +83,27 @@ public final class PlanFixtures {
         }
 
         public Builder course(long id, String name, String requiredRoomType) {
-            courses.put(id, new CourseView(id, name, requiredRoomType));
+            courses.put(id, new CourseView(id, name));
             return this;
         }
 
+        /** Rooms are retired from the product; kept as a no-op so fixture call sites stay stable. */
         public Builder room(long id, String name, String type, int capacity) {
-            rooms.put(id, new RoomView(id, name, type, capacity));
             return this;
         }
 
         /** Adds a lesson for fluent setup. */
-        public Builder lesson(long classId, long courseId, long teacherId, Long roomId,
+        public Builder lesson(long classId, long courseId, long teacherId, Long ignoredRoomId,
                               int dayOfWeek, int periodNo) {
-            addLesson(classId, courseId, teacherId, roomId, dayOfWeek, periodNo);
+            addLesson(classId, courseId, teacherId, dayOfWeek, periodNo);
             return this;
         }
 
         /** Adds a lesson and returns its auto-generated entry id. */
-        public long addLesson(long classId, long courseId, long teacherId, Long roomId,
+        public long addLesson(long classId, long courseId, long teacherId,
                               int dayOfWeek, int periodNo) {
             long entryId = nextEntryId++;
-            baseline.add(new BaselineLesson(entryId, classId, courseId, teacherId, roomId,
+            baseline.add(new BaselineLesson(entryId, classId, courseId, teacherId,
                     periodId(dayOfWeek, periodNo), dayOfWeek, periodNo));
             return entryId;
         }
@@ -123,23 +120,23 @@ public final class PlanFixtures {
 
         /** 旧格式生效行：lessonDate 为空，按「effectiveDate 起持续覆盖」读取。 */
         public Builder substitution(long entryId, LocalDate effectiveDate, Long newPeriodId,
-                                    int newDayOfWeek, int newPeriodNo, Long newRoomId,
+                                    int newDayOfWeek, int newPeriodNo, Long ignoredRoomId,
                                     Long substituteTeacherId, String type) {
             substitutions.add(new AppliedSubstitution(
                     nextEntryId++, entryId, effectiveDate, null, null,
                     Instant.EPOCH.plusSeconds(nextEntryId),
-                    newPeriodId, newDayOfWeek, newPeriodNo, newRoomId, substituteTeacherId, type));
+                    newPeriodId, newDayOfWeek, newPeriodNo, substituteTeacherId, type));
             return this;
         }
 
         /** 新格式日期实例：只作用于 lessonDate；SWAP 的落点实例日期由 targetLessonDate 表达。 */
         public Builder datedSubstitution(long entryId, LocalDate lessonDate, LocalDate targetLessonDate,
                                          Long newPeriodId, int newDayOfWeek, int newPeriodNo,
-                                         Long newRoomId, Long substituteTeacherId, String type) {
+                                         Long ignoredRoomId, Long substituteTeacherId, String type) {
             substitutions.add(new AppliedSubstitution(
                     nextEntryId++, entryId, lessonDate, lessonDate, targetLessonDate,
                     Instant.EPOCH.plusSeconds(nextEntryId),
-                    newPeriodId, newDayOfWeek, newPeriodNo, newRoomId, substituteTeacherId, type));
+                    newPeriodId, newDayOfWeek, newPeriodNo, substituteTeacherId, type));
             return this;
         }
 
@@ -147,20 +144,14 @@ public final class PlanFixtures {
             for (int day = 1; day <= days; day++) {
                 for (int no = 1; no <= periodsPerDay; no++) {
                     long id = periodId(day, no);
-                    periods.put(id, new PeriodView(id, day, no, section(no)));
+                    periods.put(id, new PeriodView(id, day, no));
                 }
             }
             return new PlanSnapshot(
-                    1L, MONDAY, MONDAY.plusDays(semesterDays - 1L), periods, rooms, courses,
+                    1L, MONDAY, MONDAY.plusDays(semesterDays - 1L), periods, courses,
                     teachers, classes, baseline, substitutions, settings);
         }
 
-        private PeriodSection section(int periodNo) {
-            if (periodNo <= 4) {
-                return PeriodSection.MORNING;
-            }
-            return periodNo <= 7 ? PeriodSection.AFTERNOON : PeriodSection.EVENING;
-        }
     }
 
     private PlanFixtures() {}

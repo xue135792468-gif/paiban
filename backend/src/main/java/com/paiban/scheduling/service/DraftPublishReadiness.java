@@ -25,7 +25,7 @@ public final class DraftPublishReadiness {
     public static final String INVALID_PERIODS = "INVALID_PERIODS";
     /** A lesson has no period yet. */
     public static final String UNSCHEDULED_LESSONS = "UNSCHEDULED_LESSONS";
-    /** The 24 scheduling rules report at least one hard conflict. */
+    /** The 18 scheduling rules report at least one hard conflict. */
     public static final String HARD_CONFLICTS = "HARD_CONFLICTS";
     /** The semester already has a published baseline; it is read-only from here on. */
     public static final String SEMESTER_ALREADY_PUBLISHED = "SEMESTER_ALREADY_PUBLISHED";

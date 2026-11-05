@@ -11,8 +11,6 @@ public interface TimetableEntryRepository extends JpaRepository<TimetableEntry, 
 
     List<TimetableEntry> findBySemesterIdAndTeacherId(Long semesterId, Long teacherId);
 
-    List<TimetableEntry> findBySemesterIdAndRoomId(Long semesterId, Long roomId);
-
     void deleteBySemesterId(Long semesterId);
 
     long countBySemesterId(Long semesterId);

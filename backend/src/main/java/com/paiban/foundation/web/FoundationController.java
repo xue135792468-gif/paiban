@@ -8,11 +8,9 @@ import com.paiban.foundation.web.FoundationDtos.AuditLogDto;
 import com.paiban.foundation.web.FoundationDtos.ClassDto;
 import com.paiban.foundation.web.FoundationDtos.CourseDto;
 import com.paiban.foundation.web.FoundationDtos.GradeDto;
-import com.paiban.foundation.web.FoundationDtos.RoomDto;
 import com.paiban.foundation.web.FoundationDtos.SaveClassRequest;
 import com.paiban.foundation.web.FoundationDtos.SaveCourseRequest;
 import com.paiban.foundation.web.FoundationDtos.SaveGradeRequest;
-import com.paiban.foundation.web.FoundationDtos.SaveRoomRequest;
 import com.paiban.foundation.web.FoundationDtos.SaveTeacherRequest;
 import com.paiban.foundation.web.FoundationDtos.TeacherDto;
 import com.paiban.foundation.web.LifecycleDtos.DeleteImpactDto;
@@ -92,29 +90,6 @@ public class FoundationController {
     @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
     public void enableTeacher(@PathVariable Long id) {
         lifecycle.enable(EntityType.TEACHER, id);
-    }
-
-    @GetMapping("/rooms")
-    public List<RoomDto> rooms() {
-        return service.listRooms();
-    }
-
-    @PostMapping("/rooms")
-    @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
-    public RoomDto createRoom(@Valid @RequestBody SaveRoomRequest request) {
-        return service.createRoom(request);
-    }
-
-    @PutMapping("/rooms/{id}")
-    @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
-    public RoomDto updateRoom(@PathVariable Long id, @Valid @RequestBody SaveRoomRequest request) {
-        return service.updateRoom(id, request);
-    }
-
-    @DeleteMapping("/rooms/{id}")
-    @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
-    public void deleteRoom(@PathVariable Long id) {
-        service.deleteRoom(id);
     }
 
     @GetMapping("/courses")

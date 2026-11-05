@@ -87,7 +87,7 @@ describe('类型形态由目录参数推断', () => {
   it('无参数＝开关型，声明了阈值作用域＝阈值，其余＝条目型', () => {
     expect(typeShape(row({ code: 'TEACHER_CONFLICT' }))).toBe('SWITCH')
     expect(typeShape(row(THRESHOLD_ROW))).toBe('THRESHOLD')
-    expect(typeShape(row({ code: 'COURSE_NOT_IN_EVENING', params: SAME_COURSE_PARAMS }))).toBe('ENTRY')
+    expect(typeShape(row({ code: 'LEGACY_COURSE_RULE', params: SAME_COURSE_PARAMS }))).toBe('ENTRY')
     expect(typeShape(row({ code: 'TEACHER_UNAVAILABLE', params: SLOT_PARAMS }))).toBe('ENTRY')
     expect(typeShape(row({ code: 'CONSECUTIVE_LESSONS', params: CONSECUTIVE_PARAMS }))).toBe('ENTRY')
 
@@ -104,11 +104,11 @@ describe('类型形态由目录参数推断', () => {
   it('十二条目标型全部按条目型渲染，阈值与开关不在此列', () => {
     const entryBacked = [
       'TEACHER_UNAVAILABLE',
-      'TEACHER_MEETING_BLOCKED',
-      'COURSE_REQUIRED_ROOM_TYPE',
-      'COURSE_NOT_IN_EVENING',
+      'LEGACY_MEETING_RULE',
+      'LEGACY_ROOM_RULE',
+      'LEGACY_COURSE_RULE',
       'SAME_COURSE_ONCE_PER_DAY',
-      'SPORT_NOT_FIRST_AFTERNOON',
+      'LEGACY_SPORT_RULE',
       'CONSECUTIVE_LESSONS',
       'COURSE_SPREAD',
       'MAIN_SUBJECT_MORNING',
@@ -123,15 +123,15 @@ describe('类型形态由目录参数推断', () => {
         : CONSECUTIVE_PARAMS
       expect(isEntryType(row({ code, params }))).toBe(true)
     })
-    expect(isEntryType(row({ ...THRESHOLD_ROW, code: 'EVENING_MAX' }))).toBe(false)
-    expect(isEntryType(row({ code: 'ROOM_CONFLICT' }))).toBe(false)
+    expect(isEntryType(row({ ...THRESHOLD_ROW, code: 'LEGACY_THRESHOLD_RULE' }))).toBe(false)
+    expect(isEntryType(row({ code: 'LEGACY_RESOURCE_A' }))).toBe(false)
   })
 
   it('三种时段型把一条卡片展开成多个后端条目', () => {
     expect(isSlotSetType(row({ code: 'TEACHER_PREFERRED_SLOT', params: SLOT_PARAMS }))).toBe(true)
     expect(isSlotSetType(row({ code: 'TEACHER_UNAVAILABLE', params: SLOT_PARAMS }))).toBe(true)
     expect(isSlotSetType(row({ code: 'COURSE_UNAVAILABLE', params: SLOT_PARAMS }))).toBe(true)
-    expect(isSlotSetType(row({ code: 'COURSE_NOT_IN_EVENING', params: SAME_COURSE_PARAMS }))).toBe(false)
+    expect(isSlotSetType(row({ code: 'LEGACY_COURSE_RULE', params: SAME_COURSE_PARAMS }))).toBe(false)
   })
 })
 
@@ -171,7 +171,7 @@ describe('卡片展开成后端条目', () => {
 
   it('必填对象没填的卡片不落库，也不算一条', () => {
     const draftRow = row({
-      code: 'COURSE_NOT_IN_EVENING',
+      code: 'LEGACY_COURSE_RULE',
       params: [{ name: 'courseId', label: '课程', type: 'ID', required: true }],
       entries: [entry('e1', {})],
     })
@@ -181,7 +181,7 @@ describe('卡片展开成后端条目', () => {
 
   it('每条卡片一条条目，位置按请求顺序编号（服务端错误定位用）', () => {
     const draftRow = row({
-      code: 'COURSE_NOT_IN_EVENING',
+      code: 'LEGACY_COURSE_RULE',
       params: [{ name: 'courseId', label: '课程', type: 'ID', required: true }],
       entries: [entry('e1', { courseId: 9 }), entry('e2', { courseId: 4 })],
     })

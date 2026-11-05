@@ -257,7 +257,6 @@ function thresholdDraftOf(
 export function useConstraintDraft() {
   const rows = ref<TypeDraft[]>([])
   const selectedCode = ref<string | null>(null)
-  const isJuniorMode = ref(false)
   const snapshot = ref('')
   /** The catalogue the page hydrated from; used to rebuild rows after a conflict. */
   const catalogueTypes = ref<ConstraintTypeDef[]>([])
@@ -291,9 +290,7 @@ export function useConstraintDraft() {
   function hydrate(
     types: ConstraintTypeDef[],
     configs: ConstraintConfigDto[],
-    options: { isJunior: boolean },
   ) {
-    isJuniorMode.value = options.isJunior
     catalogueTypes.value = types
     // Reserve before any row is built: restoring cards and building slots advances the
     // same counter that names new requirements.
@@ -334,7 +331,7 @@ export function useConstraintDraft() {
     if (catalogueTypes.value.length === 0) {
       return
     }
-    hydrate(catalogueTypes.value, configs, { isJunior: isJuniorMode.value })
+    hydrate(catalogueTypes.value, configs)
   }
 
   function select(code: string) {

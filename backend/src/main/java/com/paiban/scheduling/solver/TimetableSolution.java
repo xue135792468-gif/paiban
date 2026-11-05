@@ -17,15 +17,13 @@ public class TimetableSolution {
 
     private List<Lesson> lessons;
     private List<PeriodSlot> periods;
-    private List<RoomSlot> rooms;
     private HardSoftScore score;
 
     public TimetableSolution() {}
 
-    public TimetableSolution(List<Lesson> lessons, List<PeriodSlot> periods, List<RoomSlot> rooms) {
+    public TimetableSolution(List<Lesson> lessons, List<PeriodSlot> periods) {
         this.lessons = lessons;
         this.periods = periods;
-        this.rooms = rooms;
     }
 
     @PlanningEntityCollectionProperty
@@ -45,16 +43,6 @@ public class TimetableSolution {
 
     public void setPeriods(List<PeriodSlot> periods) {
         this.periods = periods;
-    }
-
-    @ProblemFactCollectionProperty
-    @ValueRangeProvider(id = "roomRange")
-    public List<RoomSlot> getRooms() {
-        return rooms;
-    }
-
-    public void setRooms(List<RoomSlot> rooms) {
-        this.rooms = rooms;
     }
 
     @PlanningScore

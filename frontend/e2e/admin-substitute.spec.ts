@@ -11,7 +11,7 @@ import {
 /**
  * 票 03：管理员调代工作台全流程（三步向导版）。
  * 管理员不绑定教师身份：搜索教师 → 实际日期课表 → 选课 → 代课候选 →
- * 第③步变化格/文字明细对照（旧「左右对照」的新呈现）→ 提交审批 / 亲自确认。
+ * 第③步变化格/文字明细对照（旧「左右对照」的新呈现）→ 亲自确认生效。
  */
 
 async function pickTeacher(page: Page, seed: WorkbenchSeed) {
@@ -82,42 +82,11 @@ test('管理员亲自确认：选教师 → 指定代课 → 对照清单 → �
   await expect(sourceCard(page, seed.lessonDate)).toHaveCount(0)
 })
 
-test('管理员提交审批：进入待批队列，旧安排继续生效', async ({ page }) => {
-  const api = await newContext()
-  const seed = await seedWorkbenchScenario(api)
-
-  await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/substitution')
-  await expect(page.getByTestId('teacher-select')).toBeVisible()
-  await pickTeacher(page, seed)
-  await fillLessonDate(page, seed)
-
-  await pickSubstituteAndPreview(page, seed, '先走审批流')
-  await expect(page.getByTestId('change-visual')).toBeVisible()
-  await page.getByTestId('cross-subject-ack').check()
-
-  await page.getByTestId('submit-approval').click()
-  await expect(page.getByTestId('workbench-result')).toContainText('已提交审批')
-  await expect(page.getByTestId('workbench-result')).toContainText(
-    '申请已进入待批队列，审批通过前课表维持原样',
-  )
-
-  // 待批期间旧安排继续生效：回步骤 1 后周三这节课仍在原教师名下，可继续操作。
-  await page.getByTestId('wizard-again').click()
-  await expect(page.getByTestId('wizard-panel-1')).toBeVisible()
-  await expect(sourceCard(page, seed.lessonDate)).toContainText(seed.teacherName)
-
-  // 申请进了待审批队列，原因可定位到这一单。
-  await page.goto('/substitution/requests')
-  await page.getByRole('tab', { name: '待审批' }).click()
-  await expect(page.getByText('先走审批流').first()).toBeVisible()
-})
-
 test('教师账号打开工作台被引导回自助入口', async ({ page }) => {
   const api = await newContext()
   const seed = await seedWorkbenchScenario(api)
   await uiLogin(page, seed.username, seed.password)
   await page.goto('/substitution')
-  // 缺全校课表查看与审批权限：页面按权限把关；「调代课」自助入口照常可用。
+  // 缺全校课表查看权限：页面按权限把关；「调代课」自助入口照常可用。
   await expect(page.getByTestId('workbench-forbidden')).toBeVisible()
 })

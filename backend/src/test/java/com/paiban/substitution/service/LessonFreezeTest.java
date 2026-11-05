@@ -100,7 +100,7 @@ class LessonFreezeTest {
 
     private static PlanMove move(long entryId, long fromPeriodId, LocalDate fromDate,
                                  long toPeriodId, LocalDate toDate) {
-        return new PlanMove(entryId, PlanFixtures.CLASS_1, 1L, 1L, null,
+        return new PlanMove(entryId, PlanFixtures.CLASS_1, 1L, 1L,
                 fromPeriodId, fromDate.getDayOfWeek().getValue(), 1, fromDate,
                 toPeriodId, toDate.getDayOfWeek().getValue(), 2, toDate, 0);
     }

@@ -17,9 +17,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Executes the two manual lesson exchanges: intra-class swaps (periods, optionally
- * rooms) and cross-class teacher exchanges (teachers only). The type is derived
- * from the two lessons' classes; a client-supplied type is never trusted.
+ * Executes the two manual lesson exchanges: intra-class swaps (periods) and
+ * cross-class teacher exchanges (teachers only). The type is derived from the two
+ * lessons' classes; a client-supplied type is never trusted.
  */
 @Service
 public class SwapService {
@@ -48,7 +48,7 @@ public class SwapService {
 
     @Transactional
     public SwapResult swap(
-            Long draftId, Long lessonId, Long targetLessonId, boolean swapRooms, Long expectedVersion) {
+            Long draftId, Long lessonId, Long targetLessonId, Long expectedVersion) {
         TimetableDraft draft = guard.lockEditable(draftId, expectedVersion);
         DraftLesson source = requireLesson(draftId, lessonId);
         DraftLesson target = requireLesson(draftId, targetLessonId);
@@ -69,8 +69,6 @@ public class SwapService {
 
         Long sourcePeriod = source.getPeriodId();
         Long targetPeriod = target.getPeriodId();
-        Long sourceRoom = source.getRoomId();
-        Long targetRoom = target.getRoomId();
         Long sourceTeacher = source.getTeacherId();
         Long targetTeacher = target.getTeacherId();
 
@@ -78,15 +76,15 @@ public class SwapService {
         if (INTRA_CLASS.equals(type)) {
             changes = List.of(
                     new DraftValidator.LessonChange(
-                            source.getId(), targetPeriod, swapRooms ? targetRoom : sourceRoom, sourceTeacher),
+                            source.getId(), targetPeriod, sourceTeacher),
                     new DraftValidator.LessonChange(
-                            target.getId(), sourcePeriod, swapRooms ? sourceRoom : targetRoom, targetTeacher));
+                            target.getId(), sourcePeriod, targetTeacher));
         } else {
             changes = List.of(
                     new DraftValidator.LessonChange(
-                            source.getId(), sourcePeriod, sourceRoom, targetTeacher),
+                            source.getId(), sourcePeriod, targetTeacher),
                     new DraftValidator.LessonChange(
-                            target.getId(), targetPeriod, targetRoom, sourceTeacher));
+                            target.getId(), targetPeriod, sourceTeacher));
         }
 
         List<Conflict> conflicts = new ArrayList<>();
@@ -103,10 +101,8 @@ public class SwapService {
         DraftValidator.LessonChange sourceChange = changes.get(0);
         DraftValidator.LessonChange targetChange = changes.get(1);
         source.setPeriodId(sourceChange.periodId());
-        source.setRoomId(sourceChange.roomId());
         source.setTeacherId(sourceChange.teacherId());
         target.setPeriodId(targetChange.periodId());
-        target.setRoomId(targetChange.roomId());
         target.setTeacherId(targetChange.teacherId());
         draftLessons.save(source);
         draftLessons.save(target);

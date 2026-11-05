@@ -14,50 +14,17 @@ import org.springframework.test.context.ActiveProfiles;
 class SettingsIntegrationTest extends ApiIntegrationTest {
 
     @Test
-    void schoolTypeDefaultsToJunior() {
-        as(adminToken()).when().get("/api/settings")
-                .then().statusCode(200)
-                .body("'school.type'", org.hamcrest.Matchers.equalTo("junior"));
-
-        as(adminToken()).when().get("/api/settings/public")
-                .then().statusCode(200)
-                .body("schoolType", org.hamcrest.Matchers.equalTo("junior"));
-    }
-
-    @Test
-    void schoolTypeCanBeSwitchedBetweenJuniorAndSenior() {
-        String token = adminToken();
-
-        as(token).body(Map.of("school.type", "senior"))
-                .when().put("/api/settings")
-                .then().statusCode(200)
-                .body("'school.type'", org.hamcrest.Matchers.equalTo("senior"));
-
-        as(token).when().get("/api/settings")
-                .then().statusCode(200)
-                .body("'school.type'", org.hamcrest.Matchers.equalTo("senior"));
-
-        as(token).when().get("/api/settings/public")
-                .then().statusCode(200)
-                .body("schoolType", org.hamcrest.Matchers.equalTo("senior"));
-
-        as(token).body(Map.of("school.type", "junior"))
-                .when().put("/api/settings")
-                .then().statusCode(200)
-                .body("'school.type'", org.hamcrest.Matchers.equalTo("junior"));
-    }
-
-    @Test
-    void invalidSchoolTypeIsRejected() {
+    void invalidSettingsKeyIsRejected() {
         as(adminToken()).body(Map.of("school.type", "university"))
                 .when().put("/api/settings")
                 .then().statusCode(400);
     }
 
+    /** The public surface exists only so the UI can render the school name. */
     @Test
-    void publicSettingsExposeOnlySchoolTypeAndNameToTeachers() {
+    void publicSettingsExposeOnlySchoolNameToTeachers() {
         String token = adminToken();
-        as(token).body(Map.of("school.name", "公开测试中学", "school.type", "senior"))
+        as(token).body(Map.of("school.name", "公开测试中学"))
                 .when().put("/api/settings").then().statusCode(200);
 
         String username = "setpub_" + TestData.suffix();
@@ -70,8 +37,7 @@ class SettingsIntegrationTest extends ApiIntegrationTest {
                 .extract().jsonPath().getMap("$");
 
         assertThat(publicSettings)
-                .containsOnlyKeys("schoolType", "schoolName")
-                .containsEntry("schoolType", "senior")
+                .containsOnlyKeys("schoolName")
                 .containsEntry("schoolName", "公开测试中学");
     }
 

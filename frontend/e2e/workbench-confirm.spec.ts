@@ -16,7 +16,7 @@ import { capture } from './screenshots'
 
 /**
  * 票 02：第③步（核对并提交）。
- * 覆盖：代课结论卡与可视化（提交审批课表不变 / 亲自确认课表生效）、跨科勾选门、
+ * 覆盖：代课结论卡与可视化（亲自确认课表生效）、跨科勾选门、
  * 同周调课（一张周表两格）、跨周调课（本周+下周两排同屏）、方案 A/B 页签切换、
  * 返回上一步零写入、409 错误条与重新生成、390px 按天列表无横向溢出、控制台零错误。
  */
@@ -30,6 +30,8 @@ interface ConfirmSeed {
   sameSubjectFreeName: string
   crossSubjectFreeId: number
   crossSubjectFreeName: string
+  /** 第三位空闲教师：409 用例里让另一位管理员第二次抢先改动同一课节。 */
+  thirdFreeId: number
   lessonDate: string
   targetDate: string
   crossDate: string
@@ -62,9 +64,7 @@ async function seedConfirmScenario(context: APIRequestContext): Promise<ConfirmS
   })
   await apiCall(context, token, 'post', `/semesters/${semester.id}/set-current`)
   await apiCall(context, token, 'post', `/semesters/${semester.id}/periods/default`, {
-    morningCount: 2,
-    afternoonCount: 0,
-    eveningCount: 0,
+    periodCount: 2,
     days: [1, 2, 3, 4, 5],
   })
   const periodRows = await apiCall(context, token, 'get', `/semesters/${semester.id}/periods`)
@@ -122,16 +122,6 @@ async function seedConfirmScenario(context: APIRequestContext): Promise<ConfirmS
     subject: '英语',
     allowConsecutive: false,
   })
-  const roomA = await apiCall(context, token, 'post', '/rooms', {
-    name: `确认教室A${suffix}`,
-    capacity: 50,
-    type: 'NORMAL',
-  })
-  const roomB = await apiCall(context, token, 'post', '/rooms', {
-    name: `确认教室B${suffix}`,
-    capacity: 50,
-    type: 'NORMAL',
-  })
   await apiCall(context, token, 'post', '/assignments', {
     classId: class1.id,
     courseId: chinese.id,
@@ -158,16 +148,15 @@ async function seedConfirmScenario(context: APIRequestContext): Promise<ConfirmS
   if (byCourse(chinese.id).length !== 1 || byCourse(math.id).length !== 2 || byCourse(english.id).length !== 1) {
     throw new Error('unexpected draft lessons for the confirm seed')
   }
-  const place = (lessonId: number, key: string, roomId: number) =>
+  const place = (lessonId: number, key: string) =>
     apiCall(context, token, 'patch', `/timetable-drafts/${draftId}/lessons/${lessonId}`, {
       periodId: periods[key],
-      roomId,
       force: true,
     })
-  await place(byCourse(chinese.id)[0].id, '3-1', roomA.id)
-  await place(byCourse(math.id)[0].id, '4-1', roomB.id)
-  await place(byCourse(math.id)[1].id, '5-1', roomB.id)
-  await place(byCourse(english.id)[0].id, '1-1', roomA.id)
+  await place(byCourse(chinese.id)[0].id, '3-1')
+  await place(byCourse(math.id)[0].id, '4-1')
+  await place(byCourse(math.id)[1].id, '5-1')
+  await place(byCourse(english.id)[0].id, '1-1')
   await publishDraft(context, draftId)
 
   const entries = await apiCall(context, token, 'get', `/timetable/class/${class1.id}`, undefined, {
@@ -190,6 +179,7 @@ async function seedConfirmScenario(context: APIRequestContext): Promise<ConfirmS
     sameSubjectFreeName: teacherWang.name,
     crossSubjectFreeId: teacherLi.id,
     crossSubjectFreeName: teacherLi.name,
+    thirdFreeId: teacherQian.id,
     lessonDate: wednesday,
     targetDate: friday,
     crossDate: nextMonday,
@@ -282,7 +272,7 @@ test.beforeEach(({ page }) => {
   page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error}`))
 })
 
-test('代课（同科）：结论卡、单格可视化、提交审批后课表不变', async ({ page }) => {
+test('代课（同科）：结论卡、单格可视化、亲自确认生效', async ({ page }) => {
   const api = await newContext()
   const seed = await seedConfirmScenario(api)
   await toCoverStep3(page, seed, seed.sameSubjectFreeId)
@@ -309,20 +299,20 @@ test('代课（同科）：结论卡、单格可视化、提交审批后课表�
 
   await capture(page, 't02-01-cover-conclusion-visual')
 
-  // 提交审批：成功态「已提交审批」，stepper 与 dock 隐藏。
-  await page.getByTestId('submit-approval').click()
+  // 亲自确认：成功态「已生效」，stepper 与 dock 隐藏。
+  await page.getByTestId('personal-confirm').click()
   const result = page.getByTestId('workbench-result')
-  await expect(result).toContainText('已提交审批')
-  await expect(result).toContainText('申请已进入待批队列，审批通过前课表维持原样')
+  await expect(result).toContainText('已生效')
+  await expect(result).toContainText('课表已更新，相关老师会收到通知')
   await expect(result).toContainText('申请 #')
   await expect(page.getByTestId('wizard-stepper')).toHaveCount(0)
   await expect(page.getByTestId('wizard-dock')).toHaveCount(0)
 
-  // 再调整一节课：回步骤 1；课表未变（仍是张老师）。
+  // 再调整一节课：回步骤 1；课表已变（原教师这节被代课人接走）。
   await page.getByTestId('wizard-again').click()
   await expect(page.getByTestId('wizard-panel-1')).toBeVisible()
   await expect(page.getByTestId('wizard-live')).toHaveText('第 1 步，共 3 步：选哪节课')
-  await expect(sourceCard(page, seed.lessonDate)).toContainText(seed.teacherZhangName)
+  await expect(sourceCard(page, seed.lessonDate)).toHaveCount(0)
   expect(consoleErrors).toEqual([])
 })
 
@@ -353,7 +343,7 @@ test('代课：亲自确认生效后课表已变', async ({ page }) => {
   expect(consoleErrors).toEqual([])
 })
 
-test('跨科门：未勾选两提交按钮禁用，勾选后可用', async ({ page }) => {
+test('跨科门：未勾选确认按钮禁用，勾选后可用', async ({ page }) => {
   const api = await newContext()
   const seed = await seedConfirmScenario(api)
   await toCoverStep3(page, seed, seed.crossSubjectFreeId)
@@ -361,11 +351,9 @@ test('跨科门：未勾选两提交按钮禁用，勾选后可用', async ({ pa
   const callout = page.getByTestId('cross-subject-callout')
   await expect(callout).toContainText(`${seed.crossSubjectFreeName}是数学老师，与${seed.courseChineseName}不同科，属于跨科代课`)
   await expect(page.getByTestId('cross-subject-ack')).not.toBeChecked()
-  await expect(page.getByTestId('submit-approval')).toBeDisabled()
   await expect(page.getByTestId('personal-confirm')).toBeDisabled()
 
   await page.getByTestId('cross-subject-ack').check()
-  await expect(page.getByTestId('submit-approval')).toBeEnabled()
   await expect(page.getByTestId('personal-confirm')).toBeEnabled()
 
   await capture(page, 't02-02-cross-subject-gate')
@@ -505,7 +493,7 @@ test('方案 A/B：页签切换格数变化（A=2、B≥3），明细同步', as
   expect(consoleErrors).toEqual([])
 })
 
-test('返回上一步零写入：无 submit/confirm 请求，重进步骤 3 重新生成', async ({ page }) => {
+test('返回上一步零写入：无 confirm 请求，重进步骤 3 重新生成', async ({ page }) => {
   const api = await newContext()
   const seed = await seedConfirmScenario(api)
   await openConfirmWizard(page, seed)
@@ -519,7 +507,7 @@ test('返回上一步零写入：无 submit/confirm 请求，重进步骤 3 重�
   const consumeRequests: string[] = []
   page.on('request', (request) => {
     const url = request.url()
-    if (url.includes('/submit-approval') || url.includes('/confirm')) consumeRequests.push(url)
+    if (url.includes('/confirm')) consumeRequests.push(url)
   })
 
   await page.getByTestId('wizard-back-3').click()
@@ -533,36 +521,61 @@ test('返回上一步零写入：无 submit/confirm 请求，重进步骤 3 重�
   expect(consoleErrors).toEqual([])
 })
 
-test('409：产生活跃单后提交被拒，错误条给大白话与重新生成', async ({ page }) => {
+test('409：预览过期被拒，重新生成后再次调整直接覆盖', async ({ page }) => {
   const api = await newContext()
   const seed = await seedConfirmScenario(api)
   await toCoverStep3(page, seed, seed.sameSubjectFreeId)
 
-  // 预览建好后，另一位管理员走 API 提交审批，给同一课节造成活跃单（不生效、待批）。
   const token = await apiLogin(api)
-  const rival = await apiCall(api, token, 'post', '/substitution-workbench/previews', {
-    entryId: seed.wednesdayEntryId,
-    lessonDate: seed.lessonDate,
-    substituteTeacherId: seed.crossSubjectFreeId,
-  })
-  await apiCall(api, token, 'post', `/substitution-workbench/previews/${rival.voucherId}/submit-approval`)
+  /** 另一位管理员走同一确认端点，直接把这一课节改成指定代课老师。 */
+  async function rivalConfirm(substituteTeacherId: number) {
+    const rival = await apiCall(api, token, 'post', '/substitution-workbench/previews', {
+      entryId: seed.wednesdayEntryId,
+      lessonDate: seed.lessonDate,
+      substituteTeacherId,
+    })
+    await apiCall(api, token, 'post', `/substitution-workbench/previews/${rival.voucherId}/confirm`, {})
+  }
 
-  // 提交审批撞 409：错误条显示后端大白话原文，不跳步。
-  await page.getByTestId('submit-approval').click()
+  /** 「重新生成」→ 等新预览真正回来（响应 + 确认按钮可用）。 */
+  async function regenerate() {
+    const previewed = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        response.url().endsWith('/substitution-workbench/previews') &&
+        response.status() === 200,
+    )
+    await page.getByTestId('regenerate').click()
+    await previewed
+    await expect(page.getByTestId('personal-confirm')).toBeEnabled()
+  }
+
+  // 预览建好后，另一位管理员抢先让这一课节生效。
+  await rivalConfirm(seed.crossSubjectFreeId)
+
+  // 亲自确认撞 409：快照已变，错误条提示重新预览，不跳步。
+  await page.getByTestId('personal-confirm').click()
   const errorBar = page.getByTestId('confirm-error')
-  await expect(errorBar).toContainText('已有待处理的申请')
-  await expect(errorBar).toContainText('请先处理该单')
+  await expect(errorBar).toContainText('重新预览')
   await expect(page.getByTestId('wizard-panel-3')).toBeVisible()
-  // 错误态禁用两个提交按钮（必须先重新生成），错误条里的重新生成保持可用。
-  await expect(page.getByTestId('submit-approval')).toBeDisabled()
+  // 错误态禁用确认按钮（必须先重新生成），错误条里的重新生成保持可用。
   await expect(page.getByTestId('personal-confirm')).toBeDisabled()
   await expect(page.getByTestId('regenerate')).toBeEnabled()
   await capture(page, 't02-07-409-error')
 
-  // 重新生成：活跃单仍在，同样 409——错误条始终可操作、可重试。
-  await page.getByTestId('regenerate').click()
-  await expect(errorBar).toContainText('已有待处理的申请')
+  // 票 15 起「再次调整 = 直接覆盖」：抢先生效的调代不会在预览阶段被拒，
+  // 所以重新生成能拿到新凭证；只要确认前别人又动了这一课节，服务端仍以 409 拦下。
+  await regenerate()
+  await rivalConfirm(seed.thirdFreeId)
+  await page.getByTestId('personal-confirm').click()
+  await expect(errorBar).toContainText('重新预览')
   await expect(page.getByTestId('wizard-panel-3')).toBeVisible()
+  await expect(page.getByTestId('personal-confirm')).toBeDisabled()
+
+  // 第三次预览后没人再抢：亲自确认直接覆盖上一位代课老师，课表生效。
+  await regenerate()
+  await page.getByTestId('personal-confirm').click()
+  await expect(page.getByTestId('workbench-result')).toContainText('已生效')
   // 预期的 409 会以浏览器资源加载错误出现在 console 里；除它之外不允许任何错误。
   const unexpected = consoleErrors.filter((text) => !text.includes('409'))
   expect(unexpected).toEqual([])

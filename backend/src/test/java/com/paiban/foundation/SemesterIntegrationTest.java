@@ -35,7 +35,7 @@ class SemesterIntegrationTest extends ApiIntegrationTest {
         String name = "2025秋季-" + suffix();
         long id = createSemester(token, name);
 
-        as(token).body(Map.of("morningCount", 4, "afternoonCount", 4, "eveningCount", 2))
+        as(token).body(Map.of("periodCount", 10))
                 .when().post("/api/semesters/" + id + "/periods/default")
                 .then().statusCode(200)
                 .body("$", hasSize(50));
@@ -78,7 +78,6 @@ class SemesterIntegrationTest extends ApiIntegrationTest {
         Map<String, Object> slot = Map.of(
                 "periodNo", 1,
                 "label", "第一节",
-                "section", "MORNING",
                 "startTime", "08:00",
                 "endTime", "08:45",
                 "days", List.of(1, 2, 3));

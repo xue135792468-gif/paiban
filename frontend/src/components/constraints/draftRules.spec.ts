@@ -73,9 +73,9 @@ function row(overrides: Partial<TypeDraft> & { code: string }): TypeDraft {
 function sampleRows(): TypeDraft[] {
   return [
     row({ code: 'TEACHER_CONFLICT', category: 'CONFLICT', categoryLabel: '冲突类', enabled: true }),
-    row({ code: 'ROOM_CONFLICT', category: 'RESOURCE', categoryLabel: '资源类', enabled: true }),
+    row({ code: 'LEGACY_RESOURCE_A', category: 'RESOURCE', categoryLabel: '资源类', enabled: true }),
     row({
-      code: 'COURSE_NOT_IN_EVENING',
+      code: 'LEGACY_COURSE_RULE',
       category: 'PEDAGOGY',
       categoryLabel: '教学规律',
       params: COURSE_PARAMS,
@@ -127,7 +127,7 @@ describe('约束计数口径', () => {
     expect(countsOf(sampleRows())).toEqual({
       enabledTypes: 5,
       totalTypes: 6,
-      // 两个开关型是硬约束；课程不排晚自习、教师禁排、同课一次、阈值都是软约束。
+      // 两个开关型是硬约束；课程禁排旧类型、教师禁排、同课一次、阈值都是软约束。
       hardTypes: 2,
       // 1 条课程 + 2 条教师禁排 + 2 条阈值（全局默认 + 一条例外，关闭但仍保留）+ 2 条同课一次。
       entries: 7,
@@ -167,15 +167,15 @@ describe('约束计数口径', () => {
   it('十二类目标型都按条目计数，不再被当成单值类型', () => {
     const rows = [
       row({
-        code: 'COURSE_REQUIRED_ROOM_TYPE',
+        code: 'LEGACY_ROOM_RULE',
         params: [
           { name: 'courseId', label: '课程', type: 'ID', required: true },
-          { name: 'roomType', label: '教室类型', type: 'ROOM_TYPE', required: true },
+          { name: 'legacyField', label: '场地类型', type: 'LEGACY_FIELD', required: true },
         ],
         enabled: true,
         entries: [
-          entry('e1', { courseId: 1, roomType: 'NORMAL' }),
-          entry('e2', { courseId: 2, roomType: 'LAB' }),
+          entry('e1', { courseId: 1, legacyField: 'LEGACY_B' }),
+          entry('e2', { courseId: 2, legacyField: 'LEGACY_A' }),
         ],
       }),
       row({
@@ -210,8 +210,8 @@ describe('保存 payload', () => {
     const payload = buildSavePayload(sampleRows())
     const byType = new Map(payload.map((config) => [config.type, config]))
 
-    expect(byType.get('COURSE_NOT_IN_EVENING')).toEqual({
-      type: 'COURSE_NOT_IN_EVENING',
+    expect(byType.get('LEGACY_COURSE_RULE')).toEqual({
+      type: 'LEGACY_COURSE_RULE',
       entries: [{ id: null, params: { courseId: 9 }, ...CONTROLS }],
       weight: 60,
       hard: false,
@@ -247,7 +247,7 @@ describe('保存 payload', () => {
       enabled: true,
     })
     // 条目型与阈值都不能同时带 params：后端以 entries 为准，两个字段并存会让人以为有两条来源。
-    expect(byType.get('COURSE_NOT_IN_EVENING')).not.toHaveProperty('params')
+    expect(byType.get('LEGACY_COURSE_RULE')).not.toHaveProperty('params')
     expect(byType.get('TEACHER_MAX_PER_DAY')).not.toHaveProperty('params')
   })
 
@@ -350,7 +350,7 @@ describe('保存 payload', () => {
     expect(config.entries).toEqual([{ id: null, params: { teacherId: 5, maxPerDay: 2 }, ...CONTROLS }])
   })
 
-  it('初中模式不重写已有权重：保存保持原值', () => {
+  it('不重写已有权重：保存保持原值', () => {
     const rows = [
       row({
         code: 'TEACHER_UNAVAILABLE',
@@ -373,7 +373,7 @@ describe('保存 payload', () => {
     expect(payload.map((config) => config.weight)).toEqual([80, 30])
   })
 
-  it('课程禁排照样提交（含其条目），初中模式也要能编辑', () => {
+  it('课程禁排照样提交（含其条目）', () => {
     const rows = [
       row({
         code: 'COURSE_UNAVAILABLE',

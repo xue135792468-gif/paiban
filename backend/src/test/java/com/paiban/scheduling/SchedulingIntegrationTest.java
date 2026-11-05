@@ -6,7 +6,6 @@ import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 
-import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.support.ApiIntegrationTest;
 import com.paiban.support.TestData;
 import io.restassured.response.Response;
@@ -20,9 +19,6 @@ import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 class SchedulingIntegrationTest extends ApiIntegrationTest {
-
-    @Autowired
-    private RoomRepository rooms;
 
     private record Fixture(long semesterId, int lessonCount) {}
 
@@ -43,9 +39,6 @@ class SchedulingIntegrationTest extends ApiIntegrationTest {
         for (int i = 0; i < courses; i++) {
             courseIds.add(TestData.course(token, names[i] + suffix));
             teacherIds.add(TestData.teacher(token, names[i] + "老师" + suffix));
-        }
-        for (int i = 0; i < classes; i++) {
-            TestData.room(token, "教室" + i + suffix);
         }
 
         int lessonCount = 0;
@@ -116,23 +109,6 @@ class SchedulingIntegrationTest extends ApiIntegrationTest {
         assertThat(lessons).allSatisfy(lesson -> assertThat(lesson.get("periodId")).isNotNull());
     }
 
-    @Test
-    void schedulingStillRequiresRoomsUntilTheRoomModelIsRemoved() {
-        String token = adminToken();
-        Fixture fixture = prepare(token, TestData.suffix(), 2, 3, 2);
-        rooms.deleteAll();
-
-        // Publishing no longer needs rooms, but the solver does: with an empty room value
-        // range every lesson stays unassigned on the room variable, Timefold's forEach
-        // then skips those entities in the teacher/class conflict constraints, and the
-        // 10-hard "hole" penalty dominates every period move (measured: all lessons in
-        // week-1-period-1, 48 hard conflicts). Opening this needs the room model removal.
-        as(token).queryParam("semesterId", fixture.semesterId())
-                .body(Map.of("maxSeconds", 5))
-                .when().post("/api/scheduling-jobs")
-                .then().statusCode(400)
-                .body("message", equalTo("请先配置教室再提交排课"));
-    }
 
     @Test
     void blankSemesterReportsNoWarmStartSource() {
@@ -357,9 +333,6 @@ class SchedulingIntegrationTest extends ApiIntegrationTest {
         long targetPeriod = ((Number) sameClassOther.get("periodId")).longValue();
         Map<String, Object> move = new java.util.HashMap<>();
         move.put("periodId", targetPeriod);
-        if (first.get("roomId") != null) {
-            move.put("roomId", first.get("roomId"));
-        }
 
         as(token).body(move)
                 .when().patch("/api/timetable-drafts/" + draftId + "/lessons/" + lessonId)

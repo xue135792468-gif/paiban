@@ -44,7 +44,6 @@ class AiImportPromptsTest {
                 .contains("periodNo")
                 .contains("courseName")
                 .contains("teacherName")
-                .contains("roomName")
                 .doesNotContain("姓名");
     }
 
@@ -81,7 +80,6 @@ class AiImportPromptsTest {
         assertThat(prompt)
                 .contains("目标对象：timetable")
                 .contains("className（班级，必填）")
-                .contains("roomName（教室，可空）")
                 .doesNotContain("教师名单")
                 .doesNotContain("姓名");
     }
@@ -97,7 +95,6 @@ class AiImportPromptsTest {
                 .contains("periodNo（节次，必填）")
                 .contains("courseName（课程，必填）")
                 .contains("teacherName（教师，必填）")
-                .contains("roomName（教室，可空）")
                 .doesNotContain("employeeNo");
     }
 

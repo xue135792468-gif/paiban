@@ -46,9 +46,8 @@ class RuleBuilderIntegrationTest extends ApiIntegrationTest {
         long ruleTeacher = TestData.teacher(token, "周五下午禁排" + TestData.suffix());
         long otherTeacher = TestData.teacher(token, "对照教师" + TestData.suffix());
         long course = TestData.course(token, "规则课" + TestData.suffix());
-        long room = TestData.room(token, "规则教室" + TestData.suffix());
 
-        save(token, semesterId, null, ruleTeacher, true, true, course).then().statusCode(200);
+        save(token, semesterId, null, ruleTeacher, true, true).then().statusCode(200);
 
         List<ConstraintEntry> school = entries(semesterId, "CLASS_UNAVAILABLE");
         assertThat(school).hasSize(1);
@@ -69,13 +68,12 @@ class RuleBuilderIntegrationTest extends ApiIntegrationTest {
 
         // Another type survives the sentence save, so the rule page never erases
         // what was configured in the advanced page.
-        assertThat(entries(semesterId, "COURSE_NOT_IN_EVENING")).hasSize(1);
 
         Map<String, Long> periods = periodIds(token, semesterId);
         long firstClass = TestData.grade(token, semesterId, "高一" + TestData.suffix());
         long classA = TestData.adminClass(token, semesterId, firstClass, "高一1班" + TestData.suffix());
         long classB = TestData.adminClass(token, semesterId, firstClass, "高一2班" + TestData.suffix());
-        long draftId = draft(token, semesterId, classA, course, otherTeacher, periods, 5, 7, room, classB, ruleTeacher);
+        long draftId = draft(token, semesterId, classA, course, otherTeacher, periods, 5, 7, classB, ruleTeacher);
         assertThat(draftLessonRepository.findByDraftIdOrderByIdAsc(draftId)).hasSize(2);
 
         Response validation = validate(token, draftId);
@@ -91,17 +89,16 @@ class RuleBuilderIntegrationTest extends ApiIntegrationTest {
         long ruleTeacher = TestData.teacher(token, "停用禁排" + TestData.suffix());
         long otherTeacher = TestData.teacher(token, "停用对照" + TestData.suffix());
         long course = TestData.course(token, "停用规则课" + TestData.suffix());
-        long room = TestData.room(token, "停用规则教室" + TestData.suffix());
 
-        save(token, semesterId, null, ruleTeacher, true, true, course).then().statusCode(200);
+        save(token, semesterId, null, ruleTeacher, true, true).then().statusCode(200);
         Map<String, Long> periods = periodIds(token, semesterId);
         long gradeId = TestData.grade(token, semesterId, "高一" + TestData.suffix());
         long classA = TestData.adminClass(token, semesterId, gradeId, "高一1班" + TestData.suffix());
         long classB = TestData.adminClass(token, semesterId, gradeId, "高一2班" + TestData.suffix());
-        long draftId = draft(token, semesterId, classA, course, otherTeacher, periods, 5, 7, room, classB, ruleTeacher);
+        long draftId = draft(token, semesterId, classA, course, otherTeacher, periods, 5, 7, classB, ruleTeacher);
 
         // 停用教师卡片：只把这一组的 entry 变成 enabled=false。
-        save(token, semesterId, version(token, semesterId), ruleTeacher, false, true, course)
+        save(token, semesterId, version(token, semesterId), ruleTeacher, false, true)
                 .then().statusCode(200);
         assertThat(entries(semesterId, "TEACHER_UNAVAILABLE"))
                 .hasSize(4)
@@ -116,11 +113,10 @@ class RuleBuilderIntegrationTest extends ApiIntegrationTest {
         assertThat(disabledTypes).doesNotContain("TEACHER_UNAVAILABLE");
 
         // 删除教师组：整条要求从请求里消失，班级规则和其它类型原样保留。
-        save(token, semesterId, version(token, semesterId), ruleTeacher, false, false, course)
+        save(token, semesterId, version(token, semesterId), ruleTeacher, false, false)
                 .then().statusCode(200);
         assertThat(entries(semesterId, "TEACHER_UNAVAILABLE")).isEmpty();
         assertThat(entries(semesterId, "CLASS_UNAVAILABLE")).hasSize(1);
-        assertThat(entries(semesterId, "COURSE_NOT_IN_EVENING")).hasSize(1);
 
         Response afterDelete = validate(token, draftId);
         List<String> deletedTypes = afterDelete.jsonPath().getList("conflicts.type", String.class);
@@ -134,7 +130,6 @@ class RuleBuilderIntegrationTest extends ApiIntegrationTest {
         long semesterId = semesterWithPeriods(token);
         long ruleTeacher = TestData.teacher(token, "尽量禁排" + TestData.suffix());
         long course = TestData.course(token, "尽量规则课" + TestData.suffix());
-        long room = TestData.room(token, "尽量规则教室" + TestData.suffix());
 
         List<Map<String, Object>> rows = new ArrayList<>();
         for (int periodNo = 5; periodNo <= 8; periodNo++) {
@@ -166,7 +161,7 @@ class RuleBuilderIntegrationTest extends ApiIntegrationTest {
         draft.setCreatedBy("test");
         draft.setCreatedAt(Instant.now());
         long draftId = draftRepository.save(draft).getId();
-        placeLesson(draftId, classId, course, ruleTeacher, periods.get("5-5"), room, 1);
+        placeLesson(draftId, classId, course, ruleTeacher, periods.get("5-5"), 1);
 
         Response validation = validate(token, draftId);
         assertThat(validation.jsonPath().getList("conflicts.type", String.class))
@@ -181,19 +176,12 @@ class RuleBuilderIntegrationTest extends ApiIntegrationTest {
             Long baseVersion,
             long ruleTeacherId,
             boolean teacherEnabled,
-            boolean includeTeacher,
-            long courseId) {
+            boolean includeTeacher) {
         List<Map<String, Object>> configs = new ArrayList<>();
         configs.add(classConfig());
         if (includeTeacher) {
             configs.add(teacherConfig(ruleTeacherId, teacherEnabled));
         }
-        configs.add(Map.of(
-                "type", "COURSE_NOT_IN_EVENING",
-                "params", Map.of("courseId", courseId),
-                "weight", 100,
-                "hard", true,
-                "enabled", true));
         var request = as(token).queryParam("semesterId", semesterId);
         if (baseVersion != null) {
             request = request.queryParam("baseVersion", baseVersion);
@@ -250,7 +238,6 @@ class RuleBuilderIntegrationTest extends ApiIntegrationTest {
             Map<String, Long> periods,
             int rulePeriod,
             int classRulePeriod,
-            long roomId,
             long classB,
             long ruleTeacherId) {
         TimetableDraft draft = new TimetableDraft();
@@ -261,14 +248,14 @@ class RuleBuilderIntegrationTest extends ApiIntegrationTest {
         draft.setCreatedAt(Instant.now());
         long draftId = draftRepository.save(draft).getId();
         // 周五下午：ruleTeacher 在上规则的那一节；另一个班落在全校不上课的周五第 7 节。
-        placeLesson(draftId, classB, courseId, ruleTeacherId, periods.get("5-" + rulePeriod), roomId, 1);
-        placeLesson(draftId, classA, courseId, otherTeacher, periods.get("5-" + classRulePeriod), roomId, 2);
+        placeLesson(draftId, classB, courseId, ruleTeacherId, periods.get("5-" + rulePeriod), 1);
+        placeLesson(draftId, classA, courseId, otherTeacher, periods.get("5-" + classRulePeriod), 2);
         return draftId;
     }
 
     private void placeLesson(
             long draftId, long classId, long courseId, long teacherId,
-            long periodId, long roomId, int index) {
+            long periodId, int index) {
         DraftLesson lesson = new DraftLesson();
         lesson.setDraftId(draftId);
         lesson.setAssignmentId(0L);
@@ -278,7 +265,6 @@ class RuleBuilderIntegrationTest extends ApiIntegrationTest {
         lesson.setAdminClassId(classId);
         lesson.setStudentCount(45);
         lesson.setPeriodId(periodId);
-        lesson.setRoomId(roomId);
         draftLessonRepository.save(lesson);
     }
 

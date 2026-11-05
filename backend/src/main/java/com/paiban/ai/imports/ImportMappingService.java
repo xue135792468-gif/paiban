@@ -12,8 +12,6 @@ import com.paiban.foundation.domain.Course;
 import com.paiban.foundation.domain.CourseRepository;
 import com.paiban.foundation.domain.Grade;
 import com.paiban.foundation.domain.GradeRepository;
-import com.paiban.foundation.domain.Room;
-import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.foundation.service.SemesterService;
@@ -31,7 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * System entities an import can map a name onto, plus the lookup the mapping step
- * offers. Classes are scoped to a semester; courses, teachers and rooms are global.
+ * offers. Classes are scoped to a semester; courses and teachers are global.
  */
 @Service
 public class ImportMappingService {
@@ -43,21 +41,18 @@ public class ImportMappingService {
     private final GradeRepository grades;
     private final CourseRepository courses;
     private final TeacherRepository teachers;
-    private final RoomRepository rooms;
 
     public ImportMappingService(
             SemesterService semesters,
             AdminClassRepository adminClasses,
             GradeRepository grades,
             CourseRepository courses,
-            TeacherRepository teachers,
-            RoomRepository rooms) {
+            TeacherRepository teachers) {
         this.semesters = semesters;
         this.adminClasses = adminClasses;
         this.grades = grades;
         this.courses = courses;
         this.teachers = teachers;
-        this.rooms = rooms;
     }
 
     /** Candidates of one type, filtered by name substring, sorted by name, capped at 20. */
@@ -69,8 +64,6 @@ public class ImportMappingService {
                     course -> new LookupDto(course.getId(), course.getName(), course.getSubject()), q);
             case "teacher" -> limit(teachers.findAllByOrderByNameAsc(), Teacher::getName,
                     teacher -> new LookupDto(teacher.getId(), teacher.getName(), teacher.getSubject()), q);
-            case "room" -> limit(rooms.findAllByOrderByNameAsc(), Room::getName,
-                    room -> new LookupDto(room.getId(), room.getName(), room.getBuilding()), q);
             default -> throw ApiException.badRequest("不支持的查询类型: " + type);
         };
     }
@@ -104,11 +97,6 @@ public class ImportMappingService {
                     canonical.putIfAbsent(normalizeName(teacher.getName()), teacher.getName());
                 }
             }
-            case "room" -> {
-                for (Room room : rooms.findAllByOrderByNameAsc()) {
-                    canonical.putIfAbsent(normalizeName(room.getName()), room.getName());
-                }
-            }
             default -> throw ApiException.badRequest("不支持的查询类型: " + type);
         }
         List<String> found = new ArrayList<>();
@@ -131,7 +119,7 @@ public class ImportMappingService {
     private String lookupType(String type) {
         String normalized = type == null ? "" : type.trim().toLowerCase(Locale.ROOT);
         return switch (normalized) {
-            case "class", "course", "teacher", "room" -> normalized;
+            case "class", "course", "teacher" -> normalized;
             default -> throw ApiException.badRequest("不支持的查询类型: " + type);
         };
     }
@@ -247,7 +235,6 @@ public class ImportMappingService {
             case CLASS -> createClass(plan, resolvedGrades);
             case COURSE -> createCourse(plan.name());
             case TEACHER -> createTeacher(plan.name());
-            case ROOM -> createRoom(plan.name());
         };
     }
 
@@ -361,17 +348,6 @@ public class ImportMappingService {
         teacher.setName(name);
         teacher.setActive(true);
         return teachers.save(teacher).getName();
-    }
-
-    private String createRoom(String name) {
-        for (Room existing : rooms.findAllByOrderByNameAsc()) {
-            if (normalizeName(existing.getName()).equals(normalizeName(name))) {
-                return existing.getName();
-            }
-        }
-        Room room = new Room();
-        room.setName(name);
-        return rooms.save(room).getName();
     }
 
     // ------------------------------------------------- workbook commit (phase 11)
@@ -582,7 +558,6 @@ public class ImportMappingService {
             case "className" -> MappingKind.CLASS;
             case "courseName" -> MappingKind.COURSE;
             case "teacherName" -> MappingKind.TEACHER;
-            case "roomName" -> MappingKind.ROOM;
             default -> throw ApiException.badRequest("不支持映射的字段: " + field);
         };
     }
@@ -605,9 +580,6 @@ public class ImportMappingService {
                     .getName();
             case TEACHER -> teachers.findById(targetId)
                     .orElseThrow(() -> ApiException.badRequest("找不到教师: " + targetId))
-                    .getName();
-            case ROOM -> rooms.findById(targetId)
-                    .orElseThrow(() -> ApiException.badRequest("找不到教室: " + targetId))
                     .getName();
         };
     }
@@ -635,7 +607,7 @@ public class ImportMappingService {
     }
 
     private enum MappingKind {
-        CLASS, COURSE, TEACHER, ROOM
+        CLASS, COURSE, TEACHER
     }
 
     private record Rewrite(String field, String source, String target) {}

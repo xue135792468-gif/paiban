@@ -46,9 +46,6 @@
         <template #default="{ row }">{{ dayLabel(row.dayOfWeek) }}</template>
       </el-table-column>
       <el-table-column prop="label" label="节次" width="90" />
-      <el-table-column label="时段" width="90">
-        <template #default="{ row }">{{ sectionLabel(row.section) }}</template>
-      </el-table-column>
       <el-table-column label="起止时间" min-width="140">
         <template #default="{ row }">{{ timeRange(row) }}</template>
       </el-table-column>
@@ -108,7 +105,6 @@ import {
   describeItem,
   keyOf,
   proposedItems,
-  sectionLabel,
   timeRange,
   type ApplyMissingPeriodsResult,
   type MissingPeriodItem,

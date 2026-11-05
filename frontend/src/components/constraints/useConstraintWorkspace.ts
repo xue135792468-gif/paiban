@@ -17,7 +17,6 @@ export interface WorkspacePayload {
   resolved?: Record<string, ConstraintProposal>
   decisions?: SaveDecision[]
   configs?: ConstraintConfigRequest[]
-  isJunior?: boolean
 }
 
 export interface WorkspaceDto {

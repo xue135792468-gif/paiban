@@ -23,7 +23,6 @@ interface ImportSeed {
   teacherTwo: string
   courseOne: string
   courseTwo: string
-  room: string
   importedTeacherOne: string
   importedTeacherTwo: string
 }
@@ -55,7 +54,7 @@ let chatRequests = 0
 /** Toast wording is product copy: one place, and only ever a supporting signal. */
 const TOAST_PERIODS_APPENDED = /已补充 1 节课时/
 
-/** A toast by its own container, so a matching notification title can never win. */
+/** A toast by its own container, so a page-wide text lookup cannot win. */
 function toast(page: Page, text: RegExp) {
   return page.locator('.el-message').filter({ hasText: text })
 }
@@ -395,9 +394,9 @@ test('空页面显示上次导入入口并可继续', async ({ page }) => {
 test('八（1）推断为八年级并随班级创建', async ({ page }) => {
   const newClass = `八（1）-${seed.suffix}`
   const sheet = [
-    ['班级', '星期', '节次', '课程', '教师', '教室'],
-    [seed.classOne, '周一', '第1节', seed.courseOne, seed.teacherOne, seed.room],
-    [newClass, '周一', '第2节', seed.courseTwo, seed.teacherTwo, seed.room],
+    ['班级', '星期', '节次', '课程', '教师'],
+    [seed.classOne, '周一', '第1节', seed.courseOne, seed.teacherOne],
+    [newClass, '周一', '第2节', seed.courseTwo, seed.teacherTwo],
   ]
 
   await withTimetablePayload(inferredGradePreview(seed, newClass), async () => {
@@ -786,12 +785,12 @@ async function startTimetableImport(
  */
 function batchedSheet(): string[][] {
   return [
-    ['高一年级课程表', '', '', '', '', ''],
-    ['班级', '星期', '节次', '课程', '教师', '教室'],
-    [seed.classOne, '周一', '第1节', seed.courseOne, seed.teacherOne, seed.room],
-    [seed.classTwo, '周一', '第1节', seed.courseTwo, seed.teacherTwo, seed.room],
-    [seed.classOne, '周一', '第2节', seed.courseTwo, seed.teacherTwo, seed.room],
-    [seed.classTwo, '周一', '第2节', seed.courseOne, seed.teacherOne, seed.room],
+    ['高一年级课程表', '', '', '', ''],
+    ['班级', '星期', '节次', '课程', '教师'],
+    [seed.classOne, '周一', '第1节', seed.courseOne, seed.teacherOne],
+    [seed.classTwo, '周一', '第1节', seed.courseTwo, seed.teacherTwo],
+    [seed.classOne, '周一', '第2节', seed.courseTwo, seed.teacherTwo],
+    [seed.classTwo, '周一', '第2节', seed.courseOne, seed.teacherOne],
   ]
 }
 
@@ -803,7 +802,7 @@ function batchPayloadsFor(sheet: string[][]): Record<string, unknown>[] {
     mappings: [
       {
         source: header.join(' / '),
-        target: 'className / dayOfWeek / periodNo / courseName / teacherName / roomName',
+        target: 'className / dayOfWeek / periodNo / courseName / teacherName',
         note: '表头与列顺序已识别',
       },
     ],
@@ -815,7 +814,6 @@ function batchPayloadsFor(sheet: string[][]): Record<string, unknown>[] {
           periodNo: row[2],
           courseName: row[3],
           teacherName: row[4],
-          roomName: row[5],
         },
       },
     ],
@@ -874,9 +872,7 @@ async function seedImportSchool(context: APIRequestContext): Promise<ImportSeed>
   })
   await apiCall(context, token, 'post', `/semesters/${semester.id}/set-current`)
   await apiCall(context, token, 'post', `/semesters/${semester.id}/periods/default`, {
-    morningCount: 4,
-    afternoonCount: 4,
-    eveningCount: 2,
+    periodCount: 10,
     days: [1, 2, 3, 4, 5],
   })
   const grade = await apiCall(context, token, 'post', `/grades?semesterId=${semester.id}`, {
@@ -893,7 +889,6 @@ async function seedImportSchool(context: APIRequestContext): Promise<ImportSeed>
     teacherTwo: `李老师-${suffix}`,
     courseOne: `语文-${suffix}`,
     courseTwo: `数学-${suffix}`,
-    room: `101教室-${suffix}`,
     importedTeacherOne: `导入教师甲-${suffix}`,
     importedTeacherTwo: `导入教师乙-${suffix}`,
   }
@@ -926,23 +921,18 @@ async function seedImportSchool(context: APIRequestContext): Promise<ImportSeed>
     subject: '数学',
     allowConsecutive: false,
   })
-  await apiCall(context, token, 'post', '/rooms', {
-    name: names.room,
-    capacity: 50,
-    type: 'NORMAL',
-  })
   return names
 }
 
 /** The sheet is deliberately messy: a merged title row sits above the header. */
 function timetableSheet(seedData: ImportSeed): string[][] {
   return [
-    ['高一年级课程表', '', '', '', '', ''],
-    ['班级', '星期', '节次', '课程', '教师', '教室'],
-    [seedData.classOne, '周一', '第1节', seedData.courseOne, seedData.teacherOne, seedData.room],
-    [seedData.classOne, '周一', '第2节', seedData.courseTwo, seedData.teacherTwo, seedData.room],
-    [seedData.classOne, '周二', '第1节', `物理-${seedSuffix(seedData)}`, seedData.teacherOne, seedData.room],
-    [seedData.classTwo, '周一', '第1节', seedData.courseTwo, seedData.teacherTwo, seedData.room],
+    ['高一年级课程表', '', '', '', ''],
+    ['班级', '星期', '节次', '课程', '教师'],
+    [seedData.classOne, '周一', '第1节', seedData.courseOne, seedData.teacherOne],
+    [seedData.classOne, '周一', '第2节', seedData.courseTwo, seedData.teacherTwo],
+    [seedData.classOne, '周二', '第1节', `物理-${seedSuffix(seedData)}`, seedData.teacherOne],
+    [seedData.classTwo, '周一', '第1节', seedData.courseTwo, seedData.teacherTwo],
   ]
 }
 
@@ -967,7 +957,6 @@ function timetablePreview(seedData: ImportSeed): Record<string, unknown> {
     periodNo,
     courseName,
     teacherName,
-    roomName: seedData.room,
   })
   return {
     mappings: [
@@ -1000,7 +989,6 @@ function inferredGradePreview(seedData: ImportSeed, newClass: string): Record<st
     periodNo,
     courseName,
     teacherName,
-    roomName: seedData.room,
   })
   return {
     mappings: [

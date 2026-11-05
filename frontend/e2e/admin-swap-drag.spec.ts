@@ -23,6 +23,7 @@ import {
 /** 拖拽种子：在票 05 种子骨架上加料——张老师在本班多一节课（周五第 2 节写作），
  * 并在高一2班带两节语文（周一/周四第 1 节），分别充当「来源日之前」与「跨班」投放格。 */
 interface SwapDragSeed {
+  semesterId: number
   classId: number
   class2Name: string
   teacherChineseName: string
@@ -55,9 +56,7 @@ async function seedSwapDragScenario(api: APIRequestContext): Promise<SwapDragSee
   })
   await apiCall(api, token, 'post', `/semesters/${semester.id}/set-current`)
   await apiCall(api, token, 'post', `/semesters/${semester.id}/periods/default`, {
-    morningCount: 2,
-    afternoonCount: 0,
-    eveningCount: 0,
+    periodCount: 2,
     days: [1, 2, 3, 4, 5],
   })
   const periodRows = await apiCall(api, token, 'get', `/semesters/${semester.id}/periods`)
@@ -105,16 +104,6 @@ async function seedSwapDragScenario(api: APIRequestContext): Promise<SwapDragSee
     subject: '数学',
     allowConsecutive: false,
   })
-  const roomA = await apiCall(api, token, 'post', '/rooms', {
-    name: `拖拽教室A${suffix}`,
-    capacity: 50,
-    type: 'NORMAL',
-  })
-  const roomB = await apiCall(api, token, 'post', '/rooms', {
-    name: `拖拽教室B${suffix}`,
-    capacity: 50,
-    type: 'NORMAL',
-  })
   await apiCall(api, token, 'post', '/assignments', {
     classId: class1.id,
     courseId: chinese.id,
@@ -149,7 +138,7 @@ async function seedSwapDragScenario(api: APIRequestContext): Promise<SwapDragSee
     const key = `${lesson.classId}-${lesson.courseId}`
     byClassCourse.set(key, [...(byClassCourse.get(key) ?? []), lesson])
   }
-  const place = (classId: number, courseId: number, index: number, key: string, roomId: number) => {
+  const place = (classId: number, courseId: number, index: number, key: string) => {
     const lessons = byClassCourse.get(`${classId}-${courseId}`)
     const lesson = lessons?.[index]
     if (!lesson) {
@@ -157,18 +146,18 @@ async function seedSwapDragScenario(api: APIRequestContext): Promise<SwapDragSee
     }
     return apiCall(api, token, 'patch', `/timetable-drafts/${draftId}/lessons/${lesson.id}`, {
       periodId: periods[key],
-      roomId,
       force: true,
     })
   }
-  await place(class1.id, chinese.id, 0, '3-1', roomA.id)
-  await place(class1.id, writing.id, 0, '5-2', roomA.id)
-  await place(class1.id, math.id, 0, '5-1', roomB.id)
-  await place(class2.id, chinese.id, 0, '1-1', roomB.id)
-  await place(class2.id, chinese.id, 1, '4-1', roomB.id)
+  await place(class1.id, chinese.id, 0, '3-1')
+  await place(class1.id, writing.id, 0, '5-2')
+  await place(class1.id, math.id, 0, '5-1')
+  await place(class2.id, chinese.id, 0, '1-1')
+  await place(class2.id, chinese.id, 1, '4-1')
   await publishDraft(api, draftId)
 
   return {
+    semesterId: semester.id,
     classId: class1.id,
     class2Name: class2.name,
     teacherChineseName: teacherChinese.name,
@@ -276,10 +265,10 @@ test('拖到空格、来源日之前与跨班格子：显示明确原因，留�
 
   // API 侧不变量：拖动零写入——没有申请，也没有生效行。
   const token = await apiLogin(api)
-  const pending = await apiCall(api, token, 'get', '/substitution-requests', undefined, {
-    status: 'PENDING_APPROVAL',
+  const requests = await apiCall(api, token, 'get', '/substitution-requests', undefined, {
+    semesterId: seed.semesterId,
   })
-  expect(pending.length).toBe(0)
+  expect(requests.length).toBe(0)
   const effective = await apiCall(api, token, 'get', '/substitutions', undefined, { type: 'SWAP' })
   expect(effective.length).toBe(0)
 })
@@ -292,7 +281,7 @@ test('取消预览后零变化：无申请、无生效、当前有效课表不�
   const consumeRequests: string[] = []
   page.on('request', (request) => {
     const url = request.url()
-    if (url.includes('/submit-approval') || url.includes('/confirm')) consumeRequests.push(url)
+    if (url.includes('/confirm')) consumeRequests.push(url)
   })
 
   const targetCell = page.getByTestId(`workbench-cell-${seed.targetDate}-2`)
@@ -312,10 +301,10 @@ test('取消预览后零变化：无申请、无生效、当前有效课表不�
   await expect(page.getByTestId('pick-lesson').first()).toBeVisible()
 
   const token = await apiLogin(api)
-  const pending = await apiCall(api, token, 'get', '/substitution-requests', undefined, {
-    status: 'PENDING_APPROVAL',
+  const requests = await apiCall(api, token, 'get', '/substitution-requests', undefined, {
+    semesterId: seed.semesterId,
   })
-  expect(pending.length).toBe(0)
+  expect(requests.length).toBe(0)
   const effective = await apiCall(api, token, 'get', '/substitutions', undefined, { type: 'SWAP' })
   expect(effective.length).toBe(0)
 

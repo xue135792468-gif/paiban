@@ -45,10 +45,7 @@ public class DraftLesson {
     @Column(name = "period_id")
     private Long periodId;
 
-    @Column(name = "room_id")
-    private Long roomId;
-
-    /** Locks this concrete lesson's period and teacher; rooms stay movable. */
+    /** Locks this concrete lesson's period and teacher. */
     @Column(name = "locked", nullable = false)
     private boolean locked;
 }

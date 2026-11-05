@@ -12,21 +12,17 @@ import {
 /**
  * 票 11：旧规则迁移卡片（/rules/advanced 顶部）的用户可见流程。
  *
- * 迁移前：预览计数来自后端真实扫描（本案 7 类已删除规则 + 2 类保留规则）。
- * 确认运行后：报告出现，7 类已删除规则在库里被停用但数据仍在；刷新页面后报告仍在，
- * 且配置版本已经推进（页面不会拿着旧版本去保存）。已删除的 7 类写不进公开 API
- * （规则页只认识 19 类），所以旧数据用 SQL 直接落库。
+ * 迁移前：预览计数来自后端真实扫描（本案 2 类保留的开关 + 若干产品已不认识的旧类型）。
+ * 确认运行后：报告出现；产品已删的旧类型无法自动映射，只标「待确认」、数据原样保留；
+ * 刷新页面后报告仍在，且配置版本已经推进。旧数据用 SQL 直接落库（公开 API 只认识
+ * 当前目录里的 18 类）。
  */
 test.describe.serial('约束配置：旧规则迁移卡片', () => {
-  // 产品已删除、迁移时只停用的 7 类（ConstraintType.RETIRED）。
-  const RETIRED = [
-    'ROOM_CONFLICT',
-    'ROOM_CAPACITY_FIT',
-    'COURSE_REQUIRED_ROOM_TYPE',
-    'COURSE_NOT_IN_EVENING',
-    'EVENING_MAX',
-    'TEACHER_MEETING_BLOCKED',
-    'HEAD_TEACHER_FIRST_PERIOD',
+  // 产品已删除、目录里已不存在的旧类型编码：后端对未知编码一律 REVIEW，不停用。
+  const UNKNOWN = [
+    'LEGACY_RESOURCE_A',
+    'LEGACY_RESOURCE_B',
+    'LEGACY_TIMETABLE_RULE',
   ]
 
   let api: APIRequestContext
@@ -35,11 +31,11 @@ test.describe.serial('约束配置：旧规则迁移卡片', () => {
   test.beforeAll(async () => {
     api = await newContext()
     seed = await seedConstraintScenario(api)
-    // 开学时后端只为「教师/班级不冲突」建了两行；其余旧行按旧版 26 类落库。
+    // 开学时后端只为「教师/班级不冲突」建了两行；其余旧行按旧版配置落库。
     await runSql(
       api,
       'insert into constraint_config (semester_id, type, params_json, weight, hard, enabled) values '
-        + RETIRED.map((type) => `(${seed.semesterId}, '${type}', '{}', 100, true, true)`).join(', '),
+        + UNKNOWN.map((type) => `(${seed.semesterId}, '${type}', '{}', 100, true, true)`).join(', '),
     )
   })
 
@@ -66,10 +62,10 @@ test.describe.serial('约束配置：旧规则迁移卡片', () => {
     await page.goto('/rules/advanced')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
 
-    // 预览：7 类停用、9 条类型配置，且还没运行过（无报告）。
+    // 预览：2 条保留 + 3 条待确认，5 条类型配置，且还没运行过（无报告）。
     await expect(card(page)).toBeVisible()
-    await expect(page.getByTestId('constraint-migration-counts')).toContainText('7 停用')
-    await expect(page.getByTestId('constraint-migration-source')).toContainText('9 条类型配置')
+    await expect(page.getByTestId('constraint-migration-counts')).toContainText('3 待确认')
+    await expect(page.getByTestId('constraint-migration-source')).toContainText('5 条类型配置')
     await expect(page.getByTestId('constraint-migration-report')).toHaveCount(0)
 
     await page.getByTestId('constraint-migration-run').click()
@@ -80,25 +76,25 @@ test.describe.serial('约束配置：旧规则迁移卡片', () => {
     const report = page.getByTestId('constraint-migration-report')
     await expect(report).toBeVisible()
     await expect(page.getByTestId('constraint-migration-report-summary'))
-      .toContainText('停用 7')
-    // 逐条清单：9 条类型级规则，其中 7 条标注「停用」。
+      .toContainText('待确认 3')
+    // 逐条清单：5 条类型级规则，其中 3 条无法自动映射。
     const reportRows = page.getByTestId('constraint-migration-report-rows').locator('tbody tr')
-    await expect(reportRows).toHaveCount(9)
-    await expect(reportRows.filter({ hasText: '教室不冲突' }).first()).toContainText('停用')
+    await expect(reportRows).toHaveCount(5)
+    await expect(reportRows.filter({ hasText: 'LEGACY_RESOURCE_A' }).first()).toContainText('待确认')
 
-    // 落库证据：7 类进入停用清单且参数仍可查；公开的可见配置只剩保留类。
+    // 落库证据：未知编码只标记 REVIEW、参数仍可查、行仍启用；公开的可见配置只剩保留类。
     const migrationReport = await apiCall(api, token, 'get', '/constraint-migration/report', undefined, {
       semesterId: seed.semesterId,
     })
-    const retiredRows = migrationReport.rows.filter(
-      (row: any) => RETIRED.includes(row.oldType) && row.action === 'DISABLE',
+    const reviewRows = migrationReport.rows.filter(
+      (row: any) => UNKNOWN.includes(row.oldType) && row.action === 'REVIEW',
     )
-    expect(retiredRows).toHaveLength(7)
-    expect(retiredRows.every((row: any) => typeof row.params === 'object')).toBe(true)
+    expect(reviewRows).toHaveLength(3)
+    expect(reviewRows.every((row: any) => typeof row.params === 'object')).toBe(true)
     const visible = await apiCall(api, token, 'get', '/constraints', undefined, {
       semesterId: seed.semesterId,
     })
-    expect(visible.some((item: any) => RETIRED.includes(item.type))).toBe(false)
+    expect(visible.some((item: any) => UNKNOWN.includes(item.type))).toBe(false)
     expect(visible.every((item: any) => item.enabled === true)).toBe(true)
 
     // 迁移推进了配置版本：页面与缓存不会再拿着旧版本判断「没有变化」。
@@ -108,6 +104,6 @@ test.describe.serial('约束配置：旧规则迁移卡片', () => {
     await page.reload()
     await expect(page.getByTestId('constraint-migration-report')).toBeVisible()
     await expect(page.getByTestId('constraint-migration-report-summary'))
-      .toContainText('停用 7')
+      .toContainText('待确认 3')
   })
 })

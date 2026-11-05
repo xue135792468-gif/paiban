@@ -82,8 +82,6 @@ public final class ConstraintProposalDtos {
             String strength,
             List<Integer> days,
             List<Integer> periods,
-            String section,
-            List<Integer> sectionOrdinals,
             Map<String, Object> values) {}
 
     /** List row: enough to reopen the run without shipping every raw answer. */

@@ -336,11 +336,8 @@ const {
 } = useImportSession()
 const restoring = ref(false)
 
-// Rooms are retired: an old workbook may still carry a room column, but there is
-// nothing for the user to map or resolve in this product.
-const mappableIssues = computed(() =>
-  previewIssues.value.filter((issue) => issue.row > 0 && issue.field !== 'roomName'),
-)
+/** Row 0 issues are page-level blockers; everything else is a value to map. */
+const mappableIssues = computed(() => previewIssues.value.filter((issue) => issue.row > 0))
 /** What a commit wrote: from this page, or from a restored committed session. */
 const committedCategories = computed(
   () => commitResult.value?.categories ?? preview.value?.workbook?.committed ?? [],

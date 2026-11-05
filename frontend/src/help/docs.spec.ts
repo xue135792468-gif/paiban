@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { HELP_DOCS, HELP_GROUPS, findDoc, searchDocs } from './docs'
 import { HELP_SLUGS } from './links'
 
-/** Anchors promised to other tickets by design-contract.md §1 (教室 retired in product-trim). */
+/** Anchors promised to other tickets by design-contract.md §1 (教室相关功能已在产品裁剪中下线). */
 const REQUIRED_ANCHORS: Record<string, string[]> = {
   foundation: ['grades', 'classes', 'teachers', 'courses', 'import'],
   scheduling: ['constraints', 'assignments', 'run', 'draft', 'publish'],
-  substitution: ['apply', 'approve', 'notify'],
+  substitution: ['apply', 'notify'],
   timetable: ['views', 'export', 'substitution-mark'],
-  settings: ['school-type', 'ai'],
+  settings: ['ai'],
   'flow-term-start': [
     'school',
     'periods',
@@ -19,10 +19,10 @@ const REQUIRED_ANCHORS: Record<string, string[]> = {
     'constraints',
     'finish',
   ],
-  'flow-substitution': ['apply', 'approve'],
+  'flow-substitution': ['apply'],
   'flow-term-end': ['stats'],
   /** 票 09：管理员调代工作台说明，四个锚点对应票据 1-4 条。 */
-  'substitution-workbench': ['one-time', 'concepts', 'approve', 'compare'],
+  'substitution-workbench': ['one-time', 'concepts', 'compare'],
 }
 
 describe('HELP_DOCS', () => {
@@ -70,11 +70,9 @@ describe('HELP_DOCS', () => {
       '/data/import/manual',
       '/data/recipes',
       '/ai',
-      '/ai/history',
       '/settings/general',
       '/settings/users',
       '/settings/recycle-bin',
-      '/notifications',
       '/onboarding',
     ]
     for (const doc of HELP_DOCS) {

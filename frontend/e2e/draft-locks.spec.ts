@@ -294,9 +294,8 @@ test('含锁定课节的草稿删除要求确认，确认后锁定随草稿一�
 
   await page.getByRole('button', { name: '删除', exact: true }).click()
   const box = page.locator('.el-message-box:visible')
-  await expect(box).toContainText('含 1 节锁定课节')
-  await expect(box).toContainText('一并移除')
-  // 票 04：草稿是软删除，删除后可在「最近删除」恢复 7 天（不再是「不可恢复」）。
+  // 草稿是软删除，删除后可在「最近删除」恢复 7 天；锁随草稿一起移除，无需额外解锁。
+  await expect(box).toContainText('确定删除草稿')
   await expect(box).toContainText('最近删除')
   await expect(box).toContainText('7 天')
 
@@ -308,7 +307,7 @@ test('含锁定课节的草稿删除要求确认，确认后锁定随草稿一�
 
   await page.getByRole('button', { name: '删除', exact: true }).click()
   const confirmBox = page.locator('.el-message-box:visible')
-  await confirmBox.getByRole('button', { name: '解锁并删除' }).click()
+  await confirmBox.getByRole('button', { name: '确定删除' }).click()
   await expect(page).toHaveURL(/\/workbench$/)
 
   const token = await apiLogin(api)
@@ -335,15 +334,14 @@ test('排课列表页删除含锁草稿也走确认，取消保留、确认后�
 
   await row.getByRole('button', { name: '删除', exact: true }).click()
   const box = page.locator('.el-message-box:visible')
-  await expect(box).toContainText('含 1 节锁定课节')
-  await expect(box).toContainText('一并移除')
+  await expect(box).toContainText('确定删除草稿')
   await box.getByRole('button', { name: '取消' }).click()
   await expect(page.locator('.el-message-box:visible')).toHaveCount(0)
   await expect(row).toBeVisible()
 
   await row.getByRole('button', { name: '删除', exact: true }).click()
   const confirmBox = page.locator('.el-message-box:visible')
-  await confirmBox.getByRole('button', { name: '解锁并删除' }).click()
+  await confirmBox.getByRole('button', { name: '确定删除' }).click()
   await expect(row).toHaveCount(0)
 
   const token = await apiLogin(api)

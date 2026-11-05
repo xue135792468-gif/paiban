@@ -520,15 +520,13 @@ public class ConstraintConfigService {
 
     /**
      * The scalar conditions a type attaches to one object. Two entries for the same
-     * object with different values are contradictory (one course cannot be in both a
-     * lab and a playground), so the request is rejected instead of silently keeping
-     * whichever row happens to be read first.
+     * object with different values are contradictory (two consecutive-run lengths or
+     * two cut-offs), so the request is rejected instead of silently keeping whichever
+     * row happens to be read first.
      */
     private record ScalarSpec(String objectField, List<String> scalarFields) {}
 
     private static final Map<ConstraintType, ScalarSpec> SCALAR_SPECS = Map.of(
-            ConstraintType.COURSE_REQUIRED_ROOM_TYPE,
-            new ScalarSpec("courseId", List.of("roomType")),
             ConstraintType.CONSECUTIVE_LESSONS,
             new ScalarSpec("courseId", List.of("minConsecutive")),
             ConstraintType.MAIN_SUBJECT_MORNING,
@@ -763,7 +761,7 @@ public class ConstraintConfigService {
         existingConfigs.values().stream()
                 .filter(config -> !plannedTypes.contains(config.getType()))
                 // Ticket 11: retired rows are paused, never physically deleted. The rule
-                // page only sends the 19 active types, so a full save must leave the old
+                // page only sends the current active types, so a full save must leave the old
                 // 7 types (and their pausable entries) in place — and, since ticket 11's
                 // review, rows whose type code is unknown to the catalogue too.
                 .filter(config -> !isPreservedType(config.getType()))
@@ -1215,8 +1213,8 @@ public class ConstraintConfigService {
 
     /**
      * Rejects two entries that target the same object with different scalar
-     * conditions (a course in two room types, two consecutive-run lengths, two
-     * morning cut-offs). Only entry-backed types carry such a spec.
+     * conditions (two consecutive-run lengths, two morning cut-offs). Only entry-backed
+     * types carry such a spec.
      */
     private void rejectContradictoryScalars(
             ConstraintType type, List<PlannedEntry> planned, List<String> errors) {
@@ -1276,10 +1274,6 @@ public class ConstraintConfigService {
             case TEACHER_UNAVAILABLE, TEACHER_PREFERRED_SLOT, COURSE_UNAVAILABLE, CLASS_UNAVAILABLE ->
                     requireSlot(location, params, timetable, errors);
             case TEACHER_DAY_OFF -> requireDay(location, params, timetable, errors);
-            case TEACHER_MEETING_BLOCKED -> {
-                requireSubject(location, params, errors);
-                requireSlot(location, params, timetable, errors);
-            }
             case MAIN_SUBJECT_MORNING ->
                     requirePeriodNo(location, params, "beforePeriodNo", "上午截止节次", timetable, errors);
             default -> {
@@ -1371,37 +1365,6 @@ public class ConstraintConfigService {
         }
     }
 
-    /**
-     * A subject entry must name a subject the school actually uses. The catalogue is
-     * the union of teacher subjects and course subjects; when the school has not
-     * filled any in yet there is nothing to check against, so the entry is accepted.
-     */    private void requireSubject(String location, Map<String, Object> params, List<String> errors) {
-        Object raw = params.get("subject");
-        if (raw == null || !StringUtils.hasText(raw.toString())) {
-            return;
-        }
-        String subject = raw.toString();
-        Set<String> known = knownSubjects();
-        if (!known.isEmpty() && known.stream().noneMatch(subject::equalsIgnoreCase)) {
-            errors.add(location + ": 参数「学科」不存在: " + subject);
-        }
-    }
-
-    private Set<String> knownSubjects() {
-        Set<String> known = new LinkedHashSet<>();
-        for (Teacher teacher : teachers.findAll()) {
-            if (StringUtils.hasText(teacher.getSubject())) {
-                known.add(teacher.getSubject().trim());
-            }
-        }
-        for (Course course : courses.findAll()) {
-            if (StringUtils.hasText(course.getSubject())) {
-                known.add(course.getSubject().trim());
-            }
-        }
-        return known;
-    }
-
     /** A fixed day off must name a weekday that actually has periods. */
     private void requireDay(
             String location, Map<String, Object> params, SemesterScope timetable,
@@ -1480,15 +1443,6 @@ public class ConstraintConfigService {
             }
             if (param.type() == ParamType.TEXT) {
                 normalized.put(param.name(), value.toString());
-                continue;
-            }
-            if (param.type() == ParamType.ROOM_TYPE) {
-                String text = value.toString();
-                if (!param.options().contains(text)) {
-                    errors.add(prefix + "教室类型无效: " + text);
-                } else {
-                    normalized.put(param.name(), text);
-                }
                 continue;
             }
             Integer number = asInteger(value);
@@ -1584,7 +1538,7 @@ public class ConstraintConfigService {
 
     /**
      * Entry DTOs of one config row. A row that only has the legacy
-     * {@code params_json} is shown as one implicit entry for the six single-switch
+     * {@code params_json} is shown as one implicit entry for the single-switch
      * types, so old readers keep working. For an entry-backed type the legacy column is
      * ignored on purpose: V26/V27/V28 moved every value into a row, so an un-migrated
      * row means "not configured" — showing it as an entry would promise evaluation the

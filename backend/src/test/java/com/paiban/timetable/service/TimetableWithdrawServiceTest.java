@@ -93,7 +93,7 @@ class TimetableWithdrawServiceTest {
         when(substitutions.findBySemesterIdAndStatus(9L, Substitution.EFFECTIVE))
                 .thenReturn(List.of(today, tomorrow));
         when(requests.findBySemesterIdAndStatusOrderByCreatedAtDesc(
-                9L, SubstitutionRequest.APPROVED)).thenReturn(List.of());
+                9L, SubstitutionRequest.EFFECTIVE)).thenReturn(List.of());
         when(substitutions.findByRequestId(102L)).thenReturn(List.of(tomorrow));
         SubstitutionRequest request = new SubstitutionRequest();
         request.setId(102L);
@@ -115,7 +115,7 @@ class TimetableWithdrawServiceTest {
         when(substitutions.findBySemesterIdAndStatus(9L, Substitution.EFFECTIVE))
                 .thenReturn(List.of(tomorrow));
         when(requests.findBySemesterIdAndStatusOrderByCreatedAtDesc(
-                9L, SubstitutionRequest.APPROVED)).thenReturn(List.of());
+                9L, SubstitutionRequest.EFFECTIVE)).thenReturn(List.of());
         when(substitutions.findByRequestId(102L)).thenReturn(List.of(tomorrow));
         SubstitutionRequest request = new SubstitutionRequest();
         request.setId(102L);

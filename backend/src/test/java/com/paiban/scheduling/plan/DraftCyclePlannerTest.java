@@ -12,9 +12,6 @@ import com.paiban.foundation.domain.Course;
 import com.paiban.foundation.domain.CourseRepository;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
-import com.paiban.foundation.domain.PeriodSection;
-import com.paiban.foundation.domain.Room;
-import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.scheduling.domain.ConstraintConfig;
@@ -67,11 +64,6 @@ class DraftCyclePlannerTest {
     private static final long TEACHER_B = 402L;
     private static final long TEACHER_C = 403L;
 
-    private static final long ROOM_1 = 501L;
-    private static final long ROOM_2 = 502L;
-    private static final long ROOM_3 = 503L;
-    private static final long ROOM_4 = 504L;
-    private static final long ROOM_5 = 505L;
 
     private static final long SOURCE = 601L;
     private static final long TARGET = 602L;
@@ -88,7 +80,6 @@ class DraftCyclePlannerTest {
         TimetableDraftRepository drafts = mock(TimetableDraftRepository.class);
         draftLessons = mock(DraftLessonRepository.class);
         PeriodRepository periods = mock(PeriodRepository.class);
-        RoomRepository rooms = mock(RoomRepository.class);
         CourseRepository courses = mock(CourseRepository.class);
         TeacherRepository teachers = mock(TeacherRepository.class);
         AdminClassRepository adminClasses = mock(AdminClassRepository.class);
@@ -105,9 +96,6 @@ class DraftCyclePlannerTest {
         when(periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(SEMESTER_ID)).thenReturn(List.of(
                 period(P1, 1, 1), period(P2, 1, 2), period(P3, 1, 3),
                 period(P4, 1, 4), period(P5, 2, 1)));
-        when(rooms.findAll()).thenReturn(List.of(
-                room(ROOM_1, "教室1"), room(ROOM_2, "教室2"), room(ROOM_3, "教室3"),
-                room(ROOM_4, "教室4"), room(ROOM_5, "教室5")));
         when(courses.findAll()).thenReturn(List.of(
                 course(CHINESE, "语文"), course(MATH, "数学"),
                 course(ENGLISH, "英语"), course(PHYSICS, "物理")));
@@ -118,15 +106,15 @@ class DraftCyclePlannerTest {
                 adminClass(CLASS_1, "高一1班"), adminClass(CLASS_2, "高一2班")));
 
         validator = new DraftValidator(
-                drafts, draftLessons, periods, rooms, courses, teachers, adminClasses,
+                drafts, draftLessons, periods, courses, teachers, adminClasses,
                 constraints, baselines);
     }
 
     @Test
     void legalDirectSwapIsReturnedWithoutSearching() {
         useLessons(
-                lesson(SOURCE, CHINESE, TEACHER_A, CLASS_1, P1, ROOM_1),
-                lesson(TARGET, MATH, TEACHER_B, CLASS_1, P2, ROOM_2));
+                lesson(SOURCE, CHINESE, TEACHER_A, CLASS_1, P1),
+                lesson(TARGET, MATH, TEACHER_B, CLASS_1, P2));
 
         Result result = plan(SOURCE, P2, 3, 5_000);
 
@@ -141,11 +129,11 @@ class DraftCyclePlannerTest {
     @Test
     void threeLessonCycleIsFoundWhenTheDirectSwapIsBlocked() {
         useLessons(
-                lesson(SOURCE, CHINESE, TEACHER_A, CLASS_1, P1, ROOM_1),
-                lesson(TARGET, MATH, TEACHER_B, CLASS_1, P2, ROOM_2),
-                lesson(INTERMEDIATE, ENGLISH, TEACHER_C, CLASS_1, P3, ROOM_3),
+                lesson(SOURCE, CHINESE, TEACHER_A, CLASS_1, P1),
+                lesson(TARGET, MATH, TEACHER_B, CLASS_1, P2),
+                lesson(INTERMEDIATE, ENGLISH, TEACHER_C, CLASS_1, P3),
                 // Other class occupies the source slot with TARGET's teacher: T cannot go home.
-                lesson(900L, PHYSICS, TEACHER_B, CLASS_2, P1, ROOM_4));
+                lesson(900L, PHYSICS, TEACHER_B, CLASS_2, P1));
 
         Result result = plan(SOURCE, P2, 3, 5_000);
 
@@ -179,8 +167,8 @@ class DraftCyclePlannerTest {
         assertThat(limited.candidates()).isEmpty();
 
         useLessons(
-                lesson(SOURCE, CHINESE, TEACHER_A, CLASS_1, P1, ROOM_1),
-                lesson(TARGET, MATH, TEACHER_B, CLASS_1, P2, ROOM_2));
+                lesson(SOURCE, CHINESE, TEACHER_A, CLASS_1, P1),
+                lesson(TARGET, MATH, TEACHER_B, CLASS_1, P2));
         Result direct = plan(SOURCE, P2, 2, 5_000);
         assertThat(direct.candidates()).hasSize(1);
         assertThat(direct.candidates().get(0).cycleLength()).isEqualTo(2);
@@ -189,10 +177,10 @@ class DraftCyclePlannerTest {
     @Test
     void lockedIntermediateLessonMakesTheCycleImpossible() {
         useLessons(
-                lesson(SOURCE, CHINESE, TEACHER_A, CLASS_1, P1, ROOM_1),
-                lesson(TARGET, MATH, TEACHER_B, CLASS_1, P2, ROOM_2),
-                lockedLesson(INTERMEDIATE, ENGLISH, TEACHER_C, CLASS_1, P3, ROOM_3),
-                lesson(900L, PHYSICS, TEACHER_B, CLASS_2, P1, ROOM_4));
+                lesson(SOURCE, CHINESE, TEACHER_A, CLASS_1, P1),
+                lesson(TARGET, MATH, TEACHER_B, CLASS_1, P2),
+                lockedLesson(INTERMEDIATE, ENGLISH, TEACHER_C, CLASS_1, P3),
+                lesson(900L, PHYSICS, TEACHER_B, CLASS_2, P1));
 
         Result result = plan(SOURCE, P2, 3, 5_000);
 
@@ -203,12 +191,12 @@ class DraftCyclePlannerTest {
     @Test
     void otherClassTeacherOnTheOnlyEscapeSlotPrunesThePlanAndTheVerifierRejectsForgeries() {
         useLessons(
-                lesson(SOURCE, CHINESE, TEACHER_A, CLASS_1, P1, ROOM_1),
-                lesson(TARGET, MATH, TEACHER_B, CLASS_1, P2, ROOM_2),
-                lesson(INTERMEDIATE, ENGLISH, TEACHER_C, CLASS_1, P3, ROOM_3),
-                lesson(900L, PHYSICS, TEACHER_B, CLASS_2, P1, ROOM_4),
+                lesson(SOURCE, CHINESE, TEACHER_A, CLASS_1, P1),
+                lesson(TARGET, MATH, TEACHER_B, CLASS_1, P2),
+                lesson(INTERMEDIATE, ENGLISH, TEACHER_C, CLASS_1, P3),
+                lesson(900L, PHYSICS, TEACHER_B, CLASS_2, P1),
                 // Another class already sits on P3 with TARGET's teacher: T cannot escape there.
-                lesson(901L, PHYSICS, TEACHER_B, CLASS_2, P3, ROOM_5));
+                lesson(901L, PHYSICS, TEACHER_B, CLASS_2, P3));
 
         Result result = plan(SOURCE, P2, 3, 5_000);
         assertThat(result.candidates()).isEmpty();
@@ -218,9 +206,9 @@ class DraftCyclePlannerTest {
         DraftValidator.ChangeAssessment forged = validator.assess(
                 validator.planningSnapshot(DRAFT_ID),
                 List.of(
-                        new DraftValidator.LessonChange(SOURCE, P2, ROOM_1, TEACHER_A),
-                        new DraftValidator.LessonChange(TARGET, P3, ROOM_2, TEACHER_B),
-                        new DraftValidator.LessonChange(INTERMEDIATE, P1, ROOM_3, TEACHER_C)));
+                        new DraftValidator.LessonChange(SOURCE, P2, TEACHER_A),
+                        new DraftValidator.LessonChange(TARGET, P3, TEACHER_B),
+                        new DraftValidator.LessonChange(INTERMEDIATE, P1, TEACHER_C)));
         assertThat(forged.added()).isNotEmpty();
     }
 
@@ -238,8 +226,8 @@ class DraftCyclePlannerTest {
     void distinctTeacherCountIgnoresHowManyLessonsOneTeacherMoves() {
         // Direct swap between two lessons of the same teacher: one teacher, two lessons.
         useLessons(
-                lesson(SOURCE, CHINESE, TEACHER_A, CLASS_1, P1, ROOM_1),
-                lesson(TARGET, MATH, TEACHER_A, CLASS_1, P2, ROOM_2));
+                lesson(SOURCE, CHINESE, TEACHER_A, CLASS_1, P1),
+                lesson(TARGET, MATH, TEACHER_A, CLASS_1, P2));
 
         Result result = plan(SOURCE, P2, 3, 5_000);
 
@@ -270,39 +258,9 @@ class DraftCyclePlannerTest {
                 List.of(planLesson(3L, CLASS_2, P3)), CLASS_1, Set.of())).isFalse();
     }
 
-    @Test
-    void aSoftRoomConflictOnTheOnlyEscapeSlotIsNotPrunedAway() {
-        useHardTeacherSoftRoomSettings();
-        // The direct swap adds a hard teacher conflict at P1, so it is refused. The only
-        // cycle needs T to land on P3 where another class already uses its room; that is
-        // a soft room conflict, which the final assessment scores but does not block. A
-        // hardness-blind pruning rule would drop the only legal plan.
-        useLessons(
-                lesson(SOURCE, CHINESE, TEACHER_A, CLASS_1, P1, ROOM_1),
-                lesson(TARGET, MATH, TEACHER_B, CLASS_1, P2, ROOM_2),
-                lesson(INTERMEDIATE, ENGLISH, TEACHER_C, CLASS_1, P3, ROOM_3),
-                lesson(900L, PHYSICS, TEACHER_B, CLASS_2, P1, ROOM_4),
-                lesson(910L, PHYSICS, TEACHER_C, CLASS_2, P2, ROOM_2),
-                lesson(911L, PHYSICS, TEACHER_A, CLASS_2, P3, ROOM_2));
-
-        Result result = plan(SOURCE, P2, 3, 5_000);
-
-        assertThat(result.budgetExhausted()).isFalse();
-        assertThat(result.candidates()).isNotEmpty();
-        assertThat(result.candidates().get(0).moves()).containsExactlyInAnyOrder(
-                new Move(SOURCE, P1, P2),
-                new Move(TARGET, P2, P3),
-                new Move(INTERMEDIATE, P3, P1));
-    }
 
     // ------------------------------------------------------------------ fixtures
 
-    private void useHardTeacherSoftRoomSettings() {
-        when(constraints.settings(SEMESTER_ID)).thenReturn(ConstraintSettings.from(
-                List.of(conflictConfig(ConstraintType.TEACHER_CONFLICT, true),
-                        conflictConfig(ConstraintType.ROOM_CONFLICT, false)),
-                mapper));
-    }
 
     private static ConstraintConfig conflictConfig(ConstraintType type, boolean hard) {
         ConstraintConfig config = new ConstraintConfig();
@@ -315,15 +273,15 @@ class DraftCyclePlannerTest {
     }
 
     private static PlanLesson planLesson(long id, long classId, Long periodId) {
-        return new PlanLesson(id, id, 1, classId, CHINESE, TEACHER_A, periodId, ROOM_1, 45, false);
+        return new PlanLesson(id, id, 1, classId, CHINESE, TEACHER_A, periodId, 45, false);
     }
 
     private void useThreeLessonCycle() {
         useLessons(
-                lesson(SOURCE, CHINESE, TEACHER_A, CLASS_1, P1, ROOM_1),
-                lesson(TARGET, MATH, TEACHER_B, CLASS_1, P2, ROOM_2),
-                lesson(INTERMEDIATE, ENGLISH, TEACHER_C, CLASS_1, P3, ROOM_3),
-                lesson(900L, PHYSICS, TEACHER_B, CLASS_2, P1, ROOM_4));
+                lesson(SOURCE, CHINESE, TEACHER_A, CLASS_1, P1),
+                lesson(TARGET, MATH, TEACHER_B, CLASS_1, P2),
+                lesson(INTERMEDIATE, ENGLISH, TEACHER_C, CLASS_1, P3),
+                lesson(900L, PHYSICS, TEACHER_B, CLASS_2, P1));
     }
 
     private Result plan(long sourceLessonId, long targetPeriodId, int maxMovedLessons,
@@ -349,7 +307,7 @@ class DraftCyclePlannerTest {
     }
 
     private static DraftLesson lesson(long id, long courseId, long teacherId, long classId,
-                                      Long periodId, Long roomId) {
+                                      Long periodId) {
         DraftLesson lesson = new DraftLesson();
         lesson.setId(id);
         lesson.setDraftId(DRAFT_ID);
@@ -360,13 +318,12 @@ class DraftCyclePlannerTest {
         lesson.setAdminClassId(classId);
         lesson.setStudentCount(45);
         lesson.setPeriodId(periodId);
-        lesson.setRoomId(roomId);
         return lesson;
     }
 
     private static DraftLesson lockedLesson(long id, long courseId, long teacherId, long classId,
-                                            Long periodId, Long roomId) {
-        DraftLesson lesson = lesson(id, courseId, teacherId, classId, periodId, roomId);
+                                            Long periodId) {
+        DraftLesson lesson = lesson(id, courseId, teacherId, classId, periodId);
         lesson.setLocked(true);
         return lesson;
     }
@@ -378,18 +335,9 @@ class DraftCyclePlannerTest {
         period.setDayOfWeek(dayOfWeek);
         period.setPeriodNo(periodNo);
         period.setLabel("第" + periodNo + "节");
-        period.setSection(PeriodSection.MORNING);
         return period;
     }
 
-    private static Room room(long id, String name) {
-        Room room = new Room();
-        room.setId(id);
-        room.setName(name);
-        room.setCapacity(50);
-        room.setType("NORMAL");
-        return room;
-    }
 
     private static Course course(long id, String name) {
         Course course = new Course();

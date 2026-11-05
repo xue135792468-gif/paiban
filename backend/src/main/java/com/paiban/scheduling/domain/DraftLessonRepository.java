@@ -11,7 +11,7 @@ public interface DraftLessonRepository extends JpaRepository<DraftLesson, Long> 
     /** Every lesson of the given drafts in one query, ordered by draft then row id. */
     List<DraftLesson> findByDraftIdInOrderByDraftIdAscIdAsc(Collection<Long> draftIds);
 
-    /** Every lesson of the given drafts, for semester-wide questions (e.g. room use). */
+    /** Every lesson of the given drafts, for semester-wide questions. */
     List<DraftLesson> findByDraftIdIn(List<Long> draftIds);
 
     long countByDraftId(Long draftId);

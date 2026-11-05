@@ -116,7 +116,6 @@
           :cards="cards"
           :query="query"
           :names="ruleNames"
-          :periods="periods"
           @edit="openEdit"
           @toggle="onToggle"
           @duplicate="onDuplicate"
@@ -208,7 +207,6 @@ interface ConstraintState {
 interface PeriodDto {
   dayOfWeek: number
   periodNo: number
-  section?: string | null
 }
 
 const semesters = ref<Semester[]>([])
@@ -345,7 +343,6 @@ async function loadState() {
     periods.value = (periodRes.data ?? []).map((period) => ({
       dayOfWeek: period.dayOfWeek,
       periodNo: period.periodNo,
-      section: period.section ?? null,
     }))
     cards.value = cardsFromState(configs.value, { allClassIds: classIds.value })
     // A snapshot copy: the page replaces single entries of `cards.value` in place, so
@@ -428,7 +425,7 @@ async function onRemove(card: RuleCard) {
     configs: configs.value,
     dirty: dirty.value,
     cardChanged: cardChangedSinceLoad(card, loadedCards.value),
-    cardLabel: cardLabelOf(card, ruleNames.value, periods.value),
+    cardLabel: cardLabelOf(card, ruleNames.value),
     previewImpact,
     impactError: impactError.value,
     hideImpact,

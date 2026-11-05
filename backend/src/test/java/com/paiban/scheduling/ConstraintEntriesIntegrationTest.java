@@ -249,54 +249,6 @@ class ConstraintEntriesIntegrationTest extends ApiIntegrationTest {
         assertThat(unavailableEntries(source).get(0).getId()).isEqualTo(seededEntryId);
     }
 
-    @Test
-    void otherTypesKeepTheirLegacyParamsMeaning() {
-        String token = adminToken();
-        long semesterId = semesterWithPeriods(token);
-        long course = TestData.course(token, "选修课程" + TestData.suffix());
-        long retiredCourse = TestData.course(token, "晚自习课程" + TestData.suffix());
-
-        as(token).queryParam("semesterId", semesterId)
-                .body(Map.of("configs", List.of(
-                        Map.of("type", "COURSE_UNAVAILABLE",
-                                "params", Map.of("courseId", course,
-                                        "dayOfWeek", 2, "periodNo", 1),
-                                "weight", 100, "hard", true, "enabled", true),
-                        Map.of("type", "TEACHER_MAX_PER_DAY",
-                                "params", Map.of("maxPerDay", 5),
-                                "weight", 60, "hard", false, "enabled", true),
-                        // Retired since ticket 09/11: accepted and stored, never shown.
-                        Map.of("type", "COURSE_NOT_IN_EVENING",
-                                "params", Map.of("courseId", retiredCourse),
-                                "weight", 50, "hard", false, "enabled", true))))
-                .when().put("/api/constraints")
-                .then().statusCode(200);
-
-        Response visible = as(token).queryParam("semesterId", semesterId)
-                .when().get("/api/constraints")
-                .then().statusCode(200)
-                .body("find { it.type == 'COURSE_UNAVAILABLE' }.params.courseId",
-                        equalTo((int) course))
-                .body("find { it.type == 'COURSE_UNAVAILABLE' }.params.dayOfWeek", equalTo(2))
-                .body("find { it.type == 'COURSE_UNAVAILABLE' }.entries", hasSize(1))
-                .body("find { it.type == 'COURSE_UNAVAILABLE' }.entries[0].params.courseId",
-                        equalTo((int) course))
-                .body("find { it.type == 'COURSE_UNAVAILABLE' }.entries[0].params.dayOfWeek",
-                        equalTo(2))
-                .body("find { it.type == 'TEACHER_MAX_PER_DAY' }.params.maxPerDay", equalTo(5))
-                .body("find { it.type == 'TEACHER_MAX_PER_DAY' }.entries", hasSize(1))
-                .extract().response();
-        // The retired row was written, but the editor's list does not offer the type.
-        assertThat(visible.jsonPath().getList("type")).doesNotContain("COURSE_NOT_IN_EVENING");
-        assertThat(configRepository.findBySemesterId(semesterId))
-                .extracting(ConstraintConfig::getType)
-                .contains("COURSE_NOT_IN_EVENING");
-        assertThat(entryRepository.findBySemesterIdAndTypeOrderByIdAsc(
-                semesterId, "COURSE_NOT_IN_EVENING"))
-                .singleElement()
-                .satisfies(row -> assertThat(row.getParamsJson())
-                        .contains("\"courseId\":" + retiredCourse));
-    }
 
     @Test
     void templateRoundTripRestoresEveryEntry() {
@@ -363,8 +315,6 @@ class ConstraintEntriesIntegrationTest extends ApiIntegrationTest {
         long second = TestData.teacher(token, "草稿乙" + TestData.suffix());
         long chinese = TestData.course(token, "语文" + TestData.suffix());
         long math = TestData.course(token, "数学" + TestData.suffix());
-        long roomOne = TestData.room(token, "教室1" + TestData.suffix());
-        long roomTwo = TestData.room(token, "教室2" + TestData.suffix());
         save(token, semesterId, List.of(unavailable(
                 entry(first, 1, 1), entry(second, 1, 2), entry(first, 2, 1)))).then().statusCode(200);
         Map<Integer, Long> periods = periodIds(token, semesterId);
@@ -377,9 +327,9 @@ class ConstraintEntriesIntegrationTest extends ApiIntegrationTest {
         draft.setCreatedAt(java.time.Instant.now());
         long draftId = draftRepository.save(draft).getId();
         // Both teachers sit in a slot they are unavailable for; the third lesson is fine.
-        placeLesson(draftId, classId, chinese, first, periods.get(1), roomOne, 1);
-        placeLesson(draftId, classId, math, second, periods.get(2), roomTwo, 2);
-        placeLesson(draftId, classId, chinese, second, periods.get(3), roomOne, 3);
+        placeLesson(draftId, classId, chinese, first, periods.get(1), 1);
+        placeLesson(draftId, classId, math, second, periods.get(2), 2);
+        placeLesson(draftId, classId, chinese, second, periods.get(3), 3);
 
         Response validation = as(token)
                 .when().get("/api/timetable-drafts/" + draftId + "/validation")
@@ -434,12 +384,11 @@ class ConstraintEntriesIntegrationTest extends ApiIntegrationTest {
     }
 
     /**
-     * Ticket 11 pauses the seven retired types. Their rows are {@code enabled = false},
-     * which used to look like a per-entry override and made every legacy save fail with
-     * a "逐项控制/分组" message that no longer described anything (ticket 11 review).
+     * A paused row of a code the product no longer knows must not look like a per-entry
+     * override: a legacy save must not fail with a "逐项控制/分组" message.
      */
     @Test
-    void aPausedRowOfARetiredTypeDoesNotForceTheVersionParameter() {
+    void aPausedRowOfAnUnknownTypeDoesNotForceTheVersionParameter() {
         String token = adminToken();
         long semesterId = semesterWithPeriods(token);
         ConstraintEntry retired = new ConstraintEntry();
@@ -472,7 +421,7 @@ class ConstraintEntriesIntegrationTest extends ApiIntegrationTest {
     }
 
     private void placeLesson(long draftId, long classId, long courseId, long teacherId,
-                             long periodId, long roomId, int index) {
+                             long periodId, int index) {
         DraftLesson lesson = new DraftLesson();
         lesson.setDraftId(draftId);
         lesson.setAssignmentId(0L);
@@ -482,7 +431,6 @@ class ConstraintEntriesIntegrationTest extends ApiIntegrationTest {
         lesson.setAdminClassId(classId);
         lesson.setStudentCount(45);
         lesson.setPeriodId(periodId);
-        lesson.setRoomId(roomId);
         draftLessonRepository.save(lesson);
     }
 

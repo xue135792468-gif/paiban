@@ -47,7 +47,7 @@ class AdminSwapIntegrationTest extends ApiIntegrationTest {
                    long entryChineseId, long entryMathId, long entryEnglishId,
                    LocalDate wednesday, LocalDate friday, LocalDate nextThursday,
                    long wednesdayPeriodId, long fridayPeriodId, long thursdayPeriodId,
-                   long tuesdayPeriodId, long roomBId) {}
+                   long tuesdayPeriodId) {}
 
     private Fixture fixture(boolean blockCycle, boolean withThirdLesson) {
         return buildFixture(adminToken(), TestData.suffix(),
@@ -74,7 +74,7 @@ class AdminSwapIntegrationTest extends ApiIntegrationTest {
         semester.then().statusCode(200);
         long semesterId = semester.jsonPath().getLong("id");
         TestData.setCurrent(token, semesterId);
-        auth(token).body(Map.of("morningCount", 2, "afternoonCount", 0, "eveningCount", 0))
+        auth(token).body(Map.of("periodCount", 2, "days", List.of(1, 2, 3, 4, 5)))
                 .when().post("/api/semesters/" + semesterId + "/periods/default")
                 .then().statusCode(200);
         List<Map<String, Object>> periodRows = auth(token).when()
@@ -100,8 +100,6 @@ class AdminSwapIntegrationTest extends ApiIntegrationTest {
         long chineseId = TestData.course(token, "语文" + suffix);
         long mathId = TestData.course(token, "数学" + suffix);
         long englishId = TestData.course(token, "英语" + suffix);
-        long roomA = TestData.room(token, "教室A" + suffix);
-        long roomB = TestData.room(token, "教室B" + suffix);
 
         com.paiban.support.ScheduleFixture.assign(token, classAId, chineseId, teacherChineseId, 1);
         com.paiban.support.ScheduleFixture.assign(token, classAId, mathId, teacherMathId, 1);
@@ -115,13 +113,13 @@ class AdminSwapIntegrationTest extends ApiIntegrationTest {
 
         long draftId = solve(token, semesterId);
         List<Map<String, Object>> lessons = com.paiban.support.ScheduleFixture.lessons(token, draftId);
-        place(token, draftId, lessons, classAId, chineseId, wednesdayPeriodId, roomA);
-        place(token, draftId, lessons, classAId, mathId, fridayPeriodId, roomB);
+        place(token, draftId, lessons, classAId, chineseId, wednesdayPeriodId);
+        place(token, draftId, lessons, classAId, mathId, fridayPeriodId);
         if (withThirdLesson) {
-            place(token, draftId, lessons, classAId, englishId, periodByDayNo.get("3-2"), roomA);
+            place(token, draftId, lessons, classAId, englishId, periodByDayNo.get("3-2"));
         }
         if (blockCycle) {
-            place(token, draftId, lessons, classBId, mathId, wednesdayPeriodId, roomB);
+            place(token, draftId, lessons, classBId, mathId, wednesdayPeriodId);
         }
         auth(token).when().post("/api/timetable-drafts/" + draftId + "/publish")
                 .then().statusCode(200);
@@ -135,7 +133,7 @@ class AdminSwapIntegrationTest extends ApiIntegrationTest {
                 teacherChineseId, teacherMathId, teacherEnglishId,
                 entryChineseId, entryMathId, entryEnglishId,
                 wednesday, friday, monday.plusDays(3),
-                wednesdayPeriodId, fridayPeriodId, thursdayPeriodId, tuesdayPeriodId, roomB);
+                wednesdayPeriodId, fridayPeriodId, thursdayPeriodId, tuesdayPeriodId);
     }
 
     private static long entryByCourse(List<Map<String, Object>> entries, long courseId) {
@@ -186,12 +184,12 @@ class AdminSwapIntegrationTest extends ApiIntegrationTest {
     }
 
     private static void place(String token, long draftId, List<Map<String, Object>> lessons,
-                              long classId, long courseId, long periodId, long roomId) {
+                              long classId, long courseId, long periodId) {
         Map<String, Object> lesson = lessons.stream()
                 .filter(row -> ((Number) row.get("classId")).longValue() == classId
                         && ((Number) row.get("courseId")).longValue() == courseId)
                 .findFirst().orElseThrow();
-        auth(token).body(Map.of("periodId", periodId, "roomId", roomId, "force", true))
+        auth(token).body(Map.of("periodId", periodId, "force", true))
                 .when().patch("/api/timetable-drafts/" + draftId + "/lessons/"
                         + ((Number) lesson.get("id")).longValue())
                 .then().statusCode(200);
@@ -436,51 +434,6 @@ class AdminSwapIntegrationTest extends ApiIntegrationTest {
 
     // ------------------------------------------------ 提交审批：旧课表继续生效
 
-    @Test
-    void submitApprovalKeepsTheOldTimetableUntilTheApproverApprovesThePlan() {
-        Fixture fx = fixture(false, false);
-        String admin = adminToken();
-        long planId = firstPlanId(admin, fx);
-        long voucherId = preview(admin, fx, planId).jsonPath().getLong("voucherId");
-
-        long requestId = as(admin).body(Map.of("comment", "请审批"))
-                .when().post("/api/substitution-workbench/previews/" + voucherId + "/submit-approval-swap")
-                .then().statusCode(200)
-                .body("status", equalTo("PENDING_APPROVAL"))
-                .extract().jsonPath().getLong("requestId");
-
-        // 申请进待批队列：SWAP 类型、明确目标日期、操作者与管理口径都落在申请上。
-        as(admin).when().get("/api/substitution-requests/" + requestId)
-                .then().statusCode(200)
-                .body("status", equalTo("PENDING_APPROVAL"))
-                .body("type", equalTo("SWAP"))
-                .body("approvalMode", equalTo("approval"))
-                .body("targetPeriodId", equalTo((int) fx.fridayPeriodId()));
-
-        // 待批期间旧课表继续：没有生效行，周三第 1 节仍是语文。
-        assertThat(substitutionRows.count()).isZero();
-        as(admin).queryParam("date", fx.wednesday().toString())
-                .when().get("/api/timetable/class/" + fx.classAId())
-                .then().statusCode(200)
-                .body("find { it.id == " + fx.entryChineseId() + " }.periodNo", equalTo(1))
-                .body("find { it.id == " + fx.entryChineseId() + " }.substituted", equalTo(false));
-
-        // 审批人走普通批准入口批准整环方案（同一有效预览中的方案）。
-        as(admin).when().post("/api/substitution-plans/" + planId + "/approve")
-                .then().statusCode(200)
-                .body("status", equalTo("EFFECTIVE"));
-
-        // 生效后：周模板里数学移到周三第 1 节（移入），语文移到周五位（移出各显示一次）。
-        as(admin).queryParam("date", fx.wednesday().toString())
-                .when().get("/api/timetable/class/" + fx.classAId())
-                .then().statusCode(200)
-                .body("find { it.id == " + fx.entryMathId() + " }.dayOfWeek", equalTo(3))
-                .body("find { it.id == " + fx.entryMathId() + " }.periodNo", equalTo(1))
-                .body("find { it.id == " + fx.entryMathId() + " }.substituted", equalTo(true))
-                .body("find { it.id == " + fx.entryChineseId() + " }.dayOfWeek", equalTo(5))
-                .body("findAll { it.id == " + fx.entryMathId() + " }.size()", equalTo(1));
-    }
-
     // ------------------------------------------------ 亲自确认：整环原子生效
 
     @Test
@@ -518,7 +471,7 @@ class AdminSwapIntegrationTest extends ApiIntegrationTest {
         assertThat(saved.getOriginalTeacherId()).isEqualTo(fx.teacherChineseId());
         assertThat(saved.getTargetDate()).isEqualTo(fx.friday());
         assertThat(saved.getTargetPeriodId()).isEqualTo(fx.fridayPeriodId());
-        assertThat(saved.getApproverId()).isNotNull();
+        assertThat(saved.getOperatorUserId()).isNotNull();
 
         // 班级视图：调课日的周模板里，数学移到周三第 1 节、语文移到周五第 1 节，
         // 移出与移入各显示一次（跨日对照的读模型与票 01 实例语义一致）。
@@ -545,13 +498,6 @@ class AdminSwapIntegrationTest extends ApiIntegrationTest {
                 .body("find { it.id == " + fx.entryChineseId() + " }.dayOfWeek", equalTo(5));
         as(admin).queryParam("date", fx.wednesday().toString())
                 .when().get("/api/timetable/teacher/" + fx.teacherMathId())
-                .then().statusCode(200)
-                .body("find { it.id == " + fx.entryMathId() + " }.periodNo", equalTo(1))
-                .body("find { it.id == " + fx.entryMathId() + " }.dayOfWeek", equalTo(3));
-
-        // 教室视图：数学的教室（教室B）周三第 1 节出现数学课（教室跟课走）。
-        as(admin).queryParam("date", fx.wednesday().toString())
-                .when().get("/api/timetable/room/" + fx.roomBId())
                 .then().statusCode(200)
                 .body("find { it.id == " + fx.entryMathId() + " }.periodNo", equalTo(1))
                 .body("find { it.id == " + fx.entryMathId() + " }.dayOfWeek", equalTo(3));
@@ -624,9 +570,6 @@ class AdminSwapIntegrationTest extends ApiIntegrationTest {
                         "expectedSubstituteTeacherId", fx.teacherEnglishId()))
                 .when().post("/api/substitution-requests");
         cover.then().statusCode(200);
-        as(admin).body(Map.of("substituteTeacherId", fx.teacherEnglishId()))
-                .when().post("/api/substitution-requests/" + cover.jsonPath().getLong("id") + "/approve")
-                .then().statusCode(200);
 
         // 确认被拒绝：整单零生效（环的生效行一条都没有）。
         as(admin).body(Map.of())
@@ -722,13 +665,12 @@ class AdminSwapIntegrationTest extends ApiIntegrationTest {
     /** 一个只有「查看全部调代记录」权限的角色与账号（与票 03 的矩阵一致）。 */
     private String viewOnlyUser(String suffix) {
         var view = permissionRows.findByCode("substitution:view").orElseThrow();
-        var notification = permissionRows.findByCode("notification:view").orElseThrow();
+        // notification:view 已随通知中心页与查询接口一起退役，这里不再授予。
         var role = roleRows.findByCode("swapviewer_" + suffix)
                 .orElseGet(() -> roleRows.save(new com.paiban.identity.domain.Role(
                         "swapviewer_" + suffix, "仅查看")));
         role.getPermissions().clear();
         role.getPermissions().add(view);
-        role.getPermissions().add(notification);
         roleRows.save(role);
         String username = "swapviewer_" + suffix;
         createUser(adminToken(), username, "teacher123", username);

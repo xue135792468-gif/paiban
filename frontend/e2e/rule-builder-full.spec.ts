@@ -171,7 +171,10 @@ test.describe('排课规则：完整积木交互', () => {
     await pickOption(editor, 'rule-type', '教师 的 课 不排')
     await pickOption(editor, 'rule-teacher', teacherName)
     await pickOption(editor, 'rule-day', '周五')
-    await editor.getByTestId('rule-afternoon').click()
+    // 票 15：时段改成按节次勾选，「整个下午」= 第 5–8 节。
+    for (const periodNo of [5, 6, 7, 8]) {
+      await editor.getByTestId(`rule-period-${periodNo}`).click()
+    }
     await editor.getByTestId('rule-submit').click()
 
     await page.getByTestId('rule-new').click()
@@ -196,7 +199,7 @@ test.describe('排课规则：完整积木交互', () => {
     // 影响预览：教师规则至少报告这位教师和课节数。
     const teacherCard = page
       .getByTestId('rule-card')
-      .filter({ hasText: `${teacherName} 的 课 在 周五下午 不排` })
+      .filter({ hasText: `${teacherName} 的 课 在 周五第 5、6、7、8 节 不排` })
       .first()
     await teacherCard.getByTestId('rule-impact').click()
     await expect(page.getByTestId('rule-impact-summary')).toBeVisible()
@@ -218,7 +221,7 @@ test.describe('排课规则：完整积木交互', () => {
     // 停用原卡：只有这张卡的分组变成 enabled=false。
     const original = page
       .getByTestId('rule-card')
-      .filter({ hasText: `${teacherName} 的 课 在 周五下午 不排` })
+      .filter({ hasText: `${teacherName} 的 课 在 周五第 5、6、7、8 节 不排` })
       .first()
     await original.getByTestId('rule-toggle').click()
     await expect(original.getByTestId('rule-disabled-tag')).toBeVisible()
@@ -237,7 +240,7 @@ test.describe('排课规则：完整积木交互', () => {
     // 删除复制出来的卡：确认弹窗先展示影响，删除后另一张卡不受影响。
     const copies = page
       .getByTestId('rule-card')
-      .filter({ hasText: `${teacherName} 的 课 在 周五下午 不排` })
+      .filter({ hasText: `${teacherName} 的 课 在 周五第 5、6、7、8 节 不排` })
     // 票 04：删卡直接走服务端（进「最近删除」），保存按钮因此不再变脏。
     const deleted = page.waitForResponse(
       (response) =>

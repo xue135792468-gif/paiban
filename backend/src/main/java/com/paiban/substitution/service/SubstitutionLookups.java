@@ -16,7 +16,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.HexFormat;
-import java.util.Optional;
 
 /** Shared existence checks; kept out of the services so they cannot drift. */
 final class SubstitutionLookups {
@@ -74,8 +73,7 @@ final class SubstitutionLookups {
     static Long activeRequestFor(SubstitutionRequestRepository requests, Long entryId,
                                  LocalDate lessonDate) {
         return requests.findByEntryIdAndEffectiveDate(entryId, lessonDate).stream()
-                .filter(request -> SubstitutionRequest.SUBMITTED.equals(request.getStatus())
-                        || SubstitutionRequest.PENDING_APPROVAL.equals(request.getStatus()))
+                .filter(request -> SubstitutionRequest.SUBMITTED.equals(request.getStatus()))
                 .map(SubstitutionRequest::getId)
                 .findFirst()
                 .orElse(null);
@@ -94,31 +92,5 @@ final class SubstitutionLookups {
     static String teacherName(PlanSnapshot snapshot, long teacherId) {
         var view = snapshot.teacher(teacherId);
         return view == null ? null : view.name();
-    }
-
-    static String roomName(PlanSnapshot snapshot, long roomId) {
-        var view = snapshot.rooms().get(roomId);
-        return view == null ? null : view.name();
-    }
-
-    /**
-     * 授课实例（条目 + 授课日期）的当前生效行（票 07 修订链的基准）：
-     * 优先命中同日的 COVER 行（对当前教师的小修订），否则取落点正好是该日期的
-     * SWAP 行（实例被调到该日）。SWAP 行的 effectiveDate 是来源日，所以落点匹配
-     * 不能按 effectiveDate 查；实例仍在基线槽时返回空——此时没有基准申请。
-     */
-    static Optional<Substitution> currentInstanceRow(
-            SubstitutionRepository substitutions, Long entryId, LocalDate lessonDate) {
-        Optional<Substitution> cover = substitutions
-                .findFirstByEntryIdAndEffectiveDateAndStatus(entryId, lessonDate, Substitution.EFFECTIVE)
-                .filter(row -> !Substitution.TYPE_SWAP.equals(row.getType()));
-        if (cover.isPresent()) {
-            return cover;
-        }
-        return substitutions.findByEntryId(entryId).stream()
-                .filter(row -> Substitution.EFFECTIVE.equals(row.getStatus()))
-                .filter(row -> Substitution.TYPE_SWAP.equals(row.getType()))
-                .filter(row -> lessonDate.equals(row.getTargetLessonDate()))
-                .findFirst();
     }
 }

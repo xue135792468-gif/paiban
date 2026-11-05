@@ -3,11 +3,6 @@ package com.paiban.scheduling.service;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
-import com.paiban.foundation.domain.PeriodSection;
-import com.paiban.foundation.domain.Room;
-import com.paiban.foundation.domain.RoomRepository;
-import com.paiban.foundation.domain.Semester;
-import com.paiban.foundation.domain.SemesterRepository;
 import com.paiban.foundation.service.FoundationService;
 import com.paiban.foundation.web.FoundationDtos.ClassDto;
 import com.paiban.foundation.web.FoundationDtos.CourseDto;
@@ -18,8 +13,6 @@ import com.paiban.scheduling.service.SourceDraftSnapshot.SourceLesson;
 import com.paiban.scheduling.solver.ConstraintSettings;
 import com.paiban.scheduling.solver.Lesson;
 import com.paiban.scheduling.solver.PeriodSlot;
-import com.paiban.scheduling.solver.RoomRequirement;
-import com.paiban.scheduling.solver.RoomSlot;
 import com.paiban.scheduling.solver.TimetableSolution;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -38,9 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class TimetableProblemBuilder {
 
     private final PeriodRepository periodRepository;
-    private final RoomRepository roomRepository;
     private final AssignmentRepository assignmentRepository;
-    private final SemesterRepository semesterRepository;
     private final WarmStartSeedService warmStart;
     private final FoundationService foundation;
     private final SemesterBaselineQuery baselines;
@@ -50,16 +41,12 @@ public class TimetableProblemBuilder {
 
     public TimetableProblemBuilder(
             PeriodRepository periodRepository,
-            RoomRepository roomRepository,
             AssignmentRepository assignmentRepository,
-            SemesterRepository semesterRepository,
             WarmStartSeedService warmStart,
             FoundationService foundation,
             SemesterBaselineQuery baselines) {
         this.periodRepository = periodRepository;
-        this.roomRepository = roomRepository;
         this.assignmentRepository = assignmentRepository;
-        this.semesterRepository = semesterRepository;
         this.warmStart = warmStart;
         this.foundation = foundation;
         this.baselines = baselines;
@@ -71,12 +58,9 @@ public class TimetableProblemBuilder {
     /** The semester-wide facts both builders share, read once per problem. */
     private record Context(
             List<PeriodSlot> periodSlots,
-            List<RoomSlot> roomSlots,
-            Map<Long, RoomSlot> roomById,
             Map<Long, ClassDto> classes,
             Map<Long, CourseDto> courses,
             Map<Long, TeacherDto> teachers,
-            Map<Long, RoomSlot> fixedRooms,
             Map<Long, PeriodSlot> periodById) {}
 
     /**
@@ -120,11 +104,6 @@ public class TimetableProblemBuilder {
             CourseDto course = context.courses().get(assignment.getCourseId());
             TeacherDto teacher = context.teachers().get(assignment.getTeacherId());
             int studentCount = adminClass == null ? 45 : adminClass.studentCount();
-            String requiredRoomType = course == null ? null : course.requiredRoomType();
-            boolean specialRoom = RoomRequirement.isSpecial(requiredRoomType);
-            RoomSlot fixedRoom = specialRoom
-                    ? null
-                    : context.fixedRooms().get(assignment.getAdminClassId());
             if (!inScope(assignment.getAdminClassId(), context, gradeIds)) {
                 Deque<PeriodSlot> fixed = fixedPeriods.get(assignment.getId());
                 if (fixed == null || fixed.size() < assignment.getWeeklyLessons()) {
@@ -141,14 +120,9 @@ public class TimetableProblemBuilder {
                             assignment.getAdminClassId(),
                             adminClass == null ? null : adminClass.headTeacherId(),
                             teacher == null ? null : teacher.subject(),
-                            requiredRoomType,
                             course != null && course.allowConsecutive(),
                             studentCount,
                             index);
-                    lesson.setFixedRoom(fixedRoom);
-                    if (fixedRoom != null) {
-                        lesson.setRoom(fixedRoom);
-                    }
                     // A fixed fact, not a user lock: the period may not move, but the new
                     // draft does not inherit a "locked" marker the user never set.
                     lesson.setPeriod(slot);
@@ -168,14 +142,9 @@ public class TimetableProblemBuilder {
                         assignment.getAdminClassId(),
                         adminClass == null ? null : adminClass.headTeacherId(),
                         teacher == null ? null : teacher.subject(),
-                        requiredRoomType,
                         course != null && course.allowConsecutive(),
                         studentCount,
                         index);
-                lesson.setFixedRoom(fixedRoom);
-                if (fixedRoom != null) {
-                    lesson.setRoom(fixedRoom);
-                }
                 if (baselinePeriods != null && !baselinePeriods.isEmpty()) {
                     PeriodSlot proposed = baselinePeriods.poll();
                     if (!settings.classUnavailable(assignment.getAdminClassId(),
@@ -187,7 +156,7 @@ public class TimetableProblemBuilder {
             }
         }
         return new BuiltProblem(
-                new TimetableSolution(lessons, context.periodSlots(), context.roomSlots()),
+                new TimetableSolution(lessons, context.periodSlots()),
                 seed.source());
     }
 
@@ -223,11 +192,6 @@ public class TimetableProblemBuilder {
         for (Assignment assignment : assignments) {
             ClassDto adminClass = context.classes().get(assignment.getAdminClassId());
             CourseDto course = context.courses().get(assignment.getCourseId());
-            String requiredRoomType = course == null ? null : course.requiredRoomType();
-            boolean specialRoom = RoomRequirement.isSpecial(requiredRoomType);
-            RoomSlot fixedRoom = specialRoom
-                    ? null
-                    : context.fixedRooms().get(assignment.getAdminClassId());
             boolean scoped = inScope(assignment.getAdminClassId(), context, gradeIds);
             for (int index = 0; index < assignment.getWeeklyLessons(); index++) {
                 SourceLesson row = rows.get(lessonKey(assignment.getId(), index));
@@ -254,19 +218,9 @@ public class TimetableProblemBuilder {
                             assignment.getAdminClassId(),
                             adminClass == null ? null : adminClass.headTeacherId(),
                             teacher == null ? null : teacher.subject(),
-                            requiredRoomType,
                             course != null && course.allowConsecutive(),
                             row.studentCount(),
                             index);
-                    lesson.setFixedRoom(fixedRoom);
-                    if (fixedRoom != null) {
-                        lesson.setRoom(fixedRoom);
-                    } else if (row.roomId() != null) {
-                        RoomSlot sourceRoom = context.roomById().get(row.roomId());
-                        if (sourceRoom != null) {
-                            lesson.setRoom(sourceRoom);
-                        }
-                    }
                     lesson.setPeriod(slot);
                     lesson.setLockedPeriodId(slot.getId());
                     lesson.setLocked(row.locked());
@@ -283,19 +237,9 @@ public class TimetableProblemBuilder {
                         assignment.getAdminClassId(),
                         adminClass == null ? null : adminClass.headTeacherId(),
                         teacher == null ? null : teacher.subject(),
-                        requiredRoomType,
                         course != null && course.allowConsecutive(),
                         row.studentCount(),
                         index);
-                lesson.setFixedRoom(fixedRoom);
-                if (fixedRoom != null) {
-                    lesson.setRoom(fixedRoom);
-                } else if (row.roomId() != null) {
-                    RoomSlot sourceRoom = context.roomById().get(row.roomId());
-                    if (sourceRoom != null) {
-                        lesson.setRoom(sourceRoom);
-                    }
-                }
                 if (row.locked()) {
                     if (slot == null) {
                         throw new IllegalStateException(
@@ -315,7 +259,7 @@ public class TimetableProblemBuilder {
             }
         }
         return new BuiltProblem(
-                new TimetableSolution(lessons, context.periodSlots(), context.roomSlots()),
+                new TimetableSolution(lessons, context.periodSlots()),
                 "SOURCE_DRAFT");
     }
 
@@ -415,15 +359,9 @@ public class TimetableProblemBuilder {
 
         Map<Integer, Integer> firstPeriod = new HashMap<>();
         Map<Integer, Integer> lastPeriod = new HashMap<>();
-        Map<Integer, Integer> firstAfternoon = new HashMap<>();
         byDay.forEach((day, dayPeriods) -> {
             firstPeriod.put(day, dayPeriods.stream().mapToInt(Period::getPeriodNo).min().orElse(0));
             lastPeriod.put(day, dayPeriods.stream().mapToInt(Period::getPeriodNo).max().orElse(0));
-            dayPeriods.stream()
-                    .filter(period -> period.getSection() == PeriodSection.AFTERNOON)
-                    .mapToInt(Period::getPeriodNo)
-                    .min()
-                    .ifPresent(value -> firstAfternoon.put(day, value));
         });
 
         List<PeriodSlot> periodSlots = periods.stream()
@@ -431,65 +369,17 @@ public class TimetableProblemBuilder {
                         period.getId(),
                         period.getDayOfWeek(),
                         period.getPeriodNo(),
-                        period.getSection(),
                         period.getPeriodNo() == firstPeriod.get(period.getDayOfWeek()),
-                        period.getPeriodNo() == lastPeriod.get(period.getDayOfWeek()),
-                        firstAfternoon.getOrDefault(period.getDayOfWeek(), -1) == period.getPeriodNo()))
+                        period.getPeriodNo() == lastPeriod.get(period.getDayOfWeek())))
                 .sorted(Comparator.comparingInt(PeriodSlot::getDayOfWeek)
                         .thenComparingInt(PeriodSlot::getPeriodNo))
                 .toList();
 
-        List<RoomSlot> roomSlots = roomRepository.findAllByOrderByNameAsc().stream()
-                .map(room -> new RoomSlot(room.getId(), room.getName(), room.getType(), room.getCapacity()))
-                .toList();
-        Map<Long, RoomSlot> roomById = new HashMap<>();
-        roomSlots.forEach(room -> roomById.put(room.getId(), room));
-
         Map<Long, ClassDto> classes = foundation.classesById(semesterId);
         Map<Long, CourseDto> courses = foundation.coursesById();
         Map<Long, TeacherDto> teachers = foundation.teachersById();
-        Map<Long, RoomSlot> fixedRooms = fixedRooms(semesterId, classes, roomSlots);
         Map<Long, PeriodSlot> periodById = new HashMap<>();
         periodSlots.forEach(slot -> periodById.put(slot.getId(), slot));
-        return new Context(periodSlots, roomSlots, roomById, classes, courses, teachers,
-                fixedRooms, periodById);
-    }
-
-    /**
-     * Resolves each class's own ordinary classroom with the same deterministic name the
-     * room-fill action uses ({@code 学期-年级班名-固定教室}). The solver then keeps the
-     * lesson in that room instead of scattering a class over every interchangeable room.
-     * Bad data (missing, too small, shared room) yields no pin, so the room stays free
-     * rather than making the whole problem infeasible.
-     */
-    private Map<Long, RoomSlot> fixedRooms(
-            Long semesterId, Map<Long, ClassDto> classes, List<RoomSlot> roomSlots) {
-        Semester semester = semesterRepository.findById(semesterId).orElse(null);
-        if (semester == null) {
-            return Map.of();
-        }
-        Map<Long, RoomSlot> roomById = new HashMap<>();
-        roomSlots.forEach(room -> roomById.put(room.getId(), room));
-
-        Map<Long, RoomFillPlanner.ExistingRoom> planned = RoomFillPlanner.fixedRooms(
-                semester.getName(),
-                classes.values().stream()
-                        .map(adminClass -> new RoomFillPlanner.ClassInfo(
-                                adminClass.id(), adminClass.name(), adminClass.gradeName(),
-                                adminClass.studentCount()))
-                        .toList(),
-                roomSlots.stream()
-                        .map(room -> new RoomFillPlanner.ExistingRoom(
-                                room.getId(), room.getName(), room.getType(), room.getCapacity()))
-                        .toList());
-
-        Map<Long, RoomSlot> fixed = new HashMap<>();
-        planned.forEach((classId, room) -> {
-            RoomSlot slot = roomById.get(room.id());
-            if (slot != null) {
-                fixed.put(classId, slot);
-            }
-        });
-        return fixed;
+        return new Context(periodSlots, classes, courses, teachers, periodById);
     }
 }

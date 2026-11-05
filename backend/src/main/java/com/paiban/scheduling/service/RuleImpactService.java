@@ -6,8 +6,6 @@ import com.paiban.foundation.domain.Course;
 import com.paiban.foundation.domain.CourseRepository;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
-import com.paiban.foundation.domain.Room;
-import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.scheduling.constraint.ConstraintChecker;
@@ -84,7 +82,6 @@ public class RuleImpactService {
             ConstraintType.COURSE_MAX_PER_DAY,
             ConstraintType.SAME_COURSE_ONCE_PER_DAY,
             ConstraintType.COURSE_SPREAD,
-            ConstraintType.SPORT_NOT_FIRST_AFTERNOON,
             ConstraintType.PE_LAST_PERIOD_AVOID,
             ConstraintType.CONSECUTIVE_LESSONS,
             ConstraintType.MAIN_SUBJECT_MORNING);
@@ -117,7 +114,6 @@ public class RuleImpactService {
     private final AdminClassRepository adminClasses;
     private final TeacherRepository teachers;
     private final CourseRepository courses;
-    private final RoomRepository rooms;
     private final AssignmentRepository assignments;
 
     public RuleImpactService(
@@ -128,7 +124,6 @@ public class RuleImpactService {
             AdminClassRepository adminClasses,
             TeacherRepository teachers,
             CourseRepository courses,
-            RoomRepository rooms,
             AssignmentRepository assignments) {
         this.configs = configs;
         this.drafts = drafts;
@@ -137,7 +132,6 @@ public class RuleImpactService {
         this.adminClasses = adminClasses;
         this.teachers = teachers;
         this.courses = courses;
-        this.rooms = rooms;
         this.assignments = assignments;
     }
 
@@ -386,17 +380,11 @@ public class RuleImpactService {
         Map<Long, ConstraintContext.PeriodView> periodMap = new HashMap<>();
         periodRows.forEach(period -> periodMap.put(period.getId(),
                 new ConstraintContext.PeriodView(
-                        period.getId(), period.getDayOfWeek(), period.getPeriodNo(),
-                        period.getSection())));
-        Map<Long, ConstraintContext.RoomView> roomMap = new HashMap<>();
-        for (Room room : rooms.findAll()) {
-            roomMap.put(room.getId(), new ConstraintContext.RoomView(
-                    room.getId(), room.getName(), room.getType(), room.getCapacity()));
-        }
+                        period.getId(), period.getDayOfWeek(), period.getPeriodNo())));
         Map<Long, ConstraintContext.CourseView> courseMap = new HashMap<>();
         courseRows.forEach(course -> courseMap.put(course.getId(),
                 new ConstraintContext.CourseView(
-                        course.getId(), course.getName(), course.getRequiredRoomType())));
+                        course.getId(), course.getName())));
         Map<Long, ConstraintContext.TeacherView> teacherMap = new HashMap<>();
         teacherRows.forEach(teacher -> teacherMap.put(teacher.getId(),
                 new ConstraintContext.TeacherView(
@@ -405,11 +393,11 @@ public class RuleImpactService {
         classRows.forEach(item -> classMap.put(item.getId(), new ConstraintContext.ClassView(
                 item.getId(), item.getName(), item.getStudentCount(), item.getHeadTeacherId())));
         ConstraintContext context = new ConstraintContext(
-                periodMap, roomMap, courseMap, teacherMap, classMap, settings);
+                periodMap, courseMap, teacherMap, classMap, settings);
         List<LessonView> views = lessons.stream()
                 .map(lesson -> new LessonView(
                         lesson.getId(), lesson.getAdminClassId(), lesson.getCourseId(),
-                        lesson.getTeacherId(), lesson.getRoomId(), lesson.getPeriodId(),
+                        lesson.getTeacherId(), lesson.getPeriodId(),
                         lesson.getStudentCount()))
                 .toList();
 

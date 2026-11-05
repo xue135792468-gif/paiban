@@ -214,7 +214,7 @@ class WorkbookCommitRaceTest extends ApiIntegrationTest {
     private void generatePeriods(String admin, long semesterId) {
         as(admin)
                 .body(Map.of(
-                        "morningCount", 4, "afternoonCount", 4, "eveningCount", 0,
+                        "periodCount", 8,
                         "days", List.of(1, 2, 3, 4, 5)))
                 .when().post("/api/semesters/" + semesterId + "/periods/default")
                 .then().statusCode(200);

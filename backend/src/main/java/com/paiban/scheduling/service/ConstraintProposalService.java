@@ -314,12 +314,6 @@ public class ConstraintProposalService {
         if (request.periods() != null) {
             node.set("periods", mapper.valueToTree(request.periods()));
         }
-        if (request.section() != null) {
-            node.put("section", request.section());
-        }
-        if (request.sectionOrdinals() != null) {
-            node.set("sectionOrdinals", mapper.valueToTree(request.sectionOrdinals()));
-        }
         if (request.values() != null) {
             node.set("values", mapper.valueToTree(request.values()));
         }
@@ -456,24 +450,19 @@ public class ConstraintProposalService {
         teacherRefs.sort(java.util.Comparator.comparing(TeacherRef::id));
         List<CourseRef> courseRefs = new ArrayList<>();
         for (Course course : courses.findAll()) {
-            courseRefs.add(new CourseRef(course.getId(), course.getName(), course.getSubject(),
-                    course.getRequiredRoomType()));
+            courseRefs.add(new CourseRef(course.getId(), course.getName(), course.getSubject()));
         }
         courseRefs.sort(java.util.Comparator.comparing(CourseRef::id));
         List<ClassRef> classRefs = new ArrayList<>();
         for (AdminClass adminClass : adminClasses.findBySemesterIdOrderByGradeIdAscNameAsc(semesterId)) {
             classRefs.add(new ClassRef(adminClass.getId(), adminClass.getName()));
         }
-        Map<Integer, Map<com.paiban.foundation.domain.PeriodSection, List<Integer>>> timetable =
-                new TreeMap<>();
+        Map<Integer, List<Integer>> timetable = new TreeMap<>();
         for (Period period : periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(semesterId)) {
-            timetable
-                    .computeIfAbsent(period.getDayOfWeek(), key -> new LinkedHashMap<>())
-                    .computeIfAbsent(period.getSection(), key -> new ArrayList<>())
+            timetable.computeIfAbsent(period.getDayOfWeek(), key -> new ArrayList<>())
                     .add(period.getPeriodNo());
         }
-        timetable.values().forEach(sections -> sections.values()
-                .forEach(numbers -> numbers.sort(Integer::compareTo)));
+        timetable.values().forEach(numbers -> numbers.sort(Integer::compareTo));
         return new Context(teacherRefs, courseRefs, classRefs, timetable);
     }
 
@@ -486,19 +475,14 @@ public class ConstraintProposalService {
                 .toList());
         json.put("courses", context.courses().stream()
                 .map(course -> Map.of("name", course.name(),
-                        "subject", course.subject() == null ? "" : course.subject(),
-                        "requiredRoomType",
-                        course.requiredRoomType() == null ? "" : course.requiredRoomType()))
+                        "subject", course.subject() == null ? "" : course.subject()))
                 .toList());
         json.put("classes", context.classes().stream()
                 .map(adminClass -> Map.of("name", adminClass.name()))
                 .toList());
-        Map<String, Object> timetable = new LinkedHashMap<>();
-        context.timetable().forEach((day, sections) -> {
-            Map<String, List<Integer>> bySection = new LinkedHashMap<>();
-            sections.forEach((section, numbers) -> bySection.put(section.getLabel(), numbers));
-            timetable.put(String.valueOf(day), bySection);
-        });
+        Map<String, List<Integer>> timetable = new LinkedHashMap<>();
+        context.timetable().forEach((day, numbers) ->
+                timetable.put(String.valueOf(day), numbers));
         json.put("timetable", timetable);
         return json;
     }

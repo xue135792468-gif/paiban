@@ -53,8 +53,7 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
 
     private record World(long semesterId, List<Long> periods, long classA, long classB, long classC,
                          long classD, long classE, long chinese, long math, long teacherA,
-                         long teacherB, long room1, long room2, long room3, long room4,
-                         long room5, long room6) {}
+                         long teacherB) {}
 
     @Test
     void legalIntraClassSwapSavesBothLessonsTogether() {
@@ -62,18 +61,18 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
         World world = world(token);
         long draftId = draft(world);
         long a = lesson(world, draftId, 1L, world.classA(), world.chinese(),
-                world.teacherA(), world.periods().get(0), world.room1());
+                world.teacherA(), world.periods().get(0));
         long b = lesson(world, draftId, 2L, world.classA(), world.math(),
-                world.teacherB(), world.periods().get(1), world.room2());
+                world.teacherB(), world.periods().get(1));
         String fingerprint = as(token).when().get(DRAFT.formatted(draftId))
                 .then().statusCode(200).extract().jsonPath().getString("rulesFingerprint");
         assertThat(fingerprint).hasSize(64);
 
         as(token).body(request(0L, fingerprint, true, List.of(
-                        change(a, world.periods().get(1), null, null,
-                                world.periods().get(0), world.teacherA(), world.room1()),
-                        change(b, world.periods().get(0), null, null,
-                                world.periods().get(1), world.teacherB(), world.room2()))))
+                        change(a, world.periods().get(1), null,
+                                world.periods().get(0), world.teacherA()),
+                        change(b, world.periods().get(0), null,
+                                world.periods().get(1), world.teacherB()))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(200)
                 .body("saved", equalTo(true))
@@ -101,12 +100,12 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
         World world = world(token);
         long draftId = draft(world);
         long a = lesson(world, draftId, 1L, world.classA(), world.chinese(),
-                world.teacherA(), world.periods().get(0), world.room1());
+                world.teacherA(), world.periods().get(0));
         lesson(world, draftId, 2L, world.classB(), world.math(),
-                world.teacherA(), world.periods().get(1), world.room2());
+                world.teacherA(), world.periods().get(1));
 
         as(token).body(request(0L, null, false, List.of(
-                        change(a, world.periods().get(2), null, null, null, null, null))))
+                        change(a, world.periods().get(2), null, null, null))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(200)
                 .body("saved", equalTo(true))
@@ -115,7 +114,7 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
                 .isEqualTo(world.periods().get(2));
 
         as(token).body(request(1L, null, false, List.of(
-                        change(a, world.periods().get(1), null, null, null, null, null))))
+                        change(a, world.periods().get(1), null, null, null))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(200)
                 .body("saved", equalTo(false))
@@ -129,14 +128,14 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void lockedSourceOrTargetRejectsButARoomOnlyChangeIsAllowed() {
+    void lockedLessonsRejectPeriodAndTeacherChanges() {
         String token = adminToken();
         World world = world(token);
         long draftId = draft(world);
         long a = lesson(world, draftId, 1L, world.classA(), world.chinese(),
-                world.teacherA(), world.periods().get(0), world.room1());
+                world.teacherA(), world.periods().get(0));
         long b = lesson(world, draftId, 2L, world.classB(), world.math(),
-                world.teacherB(), world.periods().get(1), world.room2());
+                world.teacherB(), world.periods().get(1));
 
         as(token).body(Map.of("lessonIds", List.of(a, b), "locked", true, "expectedVersion", 0))
                 .when().put(LOCKS.formatted(draftId))
@@ -144,20 +143,20 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
                 .body("version", equalTo(1));
 
         as(token).body(request(1L, null, false, List.of(
-                        change(a, world.periods().get(3), null, null, null, null, null))))
+                        change(a, world.periods().get(3), null, null, null))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(409)
                 .body("message", containsString("已锁定"));
 
         as(token).body(request(1L, null, false, List.of(
-                        change(b, world.periods().get(3), null, null, null, null, null))))
+                        change(b, world.periods().get(3), null, null, null))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(409)
                 .body("message", containsString("已锁定"));
 
         as(token).body(request(1L, null, true, List.of(
-                        change(a, world.periods().get(0), null, world.room3(),
-                                world.periods().get(0), world.teacherA(), world.room1()))))
+                        change(a, world.periods().get(0), null,
+                                world.periods().get(0), world.teacherA()))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(200)
                 .body("saved", equalTo(true))
@@ -165,7 +164,6 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
 
         DraftLesson after = draftLessons.findById(a).orElseThrow();
         assertThat(after.getPeriodId()).isEqualTo(world.periods().get(0));
-        assertThat(after.getRoomId()).isEqualTo(world.room3());
         assertThat(after.isLocked()).isTrue();
     }
 
@@ -175,39 +173,39 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
         World world = world(token);
         long draftId = draft(world);
         long a = lesson(world, draftId, 1L, world.classA(), world.chinese(),
-                world.teacherA(), world.periods().get(0), world.room1());
+                world.teacherA(), world.periods().get(0));
         long otherDraftLesson = otherDraftLesson(world);
         long foreignSemester = TestData.semester(token);
         long foreignPeriod = firstPeriod(token, foreignSemester);
 
         as(token).body(request(0L, null, false, List.of(
-                        change(a, world.periods().get(2), null, null, null, null, null),
-                        change(999_999L, world.periods().get(2), null, null, null, null, null))))
+                        change(a, world.periods().get(2), null, null, null),
+                        change(999_999L, world.periods().get(2), null, null, null))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(400);
 
         as(token).body(request(0L, null, false, List.of(
-                        change(a, foreignPeriod, null, null, null, null, null))))
+                        change(a, foreignPeriod, null, null, null))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(400)
                 .body("message", containsString("不属于该学期"));
 
         as(token).body(request(0L, null, false, List.of(
-                        change(a, world.periods().get(2), null, null, null, null, null),
-                        change(a, world.periods().get(3), null, null, null, null, null))))
+                        change(a, world.periods().get(2), null, null, null),
+                        change(a, world.periods().get(3), null, null, null))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(400)
                 .body("message", containsString("重复"));
 
         as(token).body(request(0L, null, false, List.of(
-                        change(otherDraftLesson, world.periods().get(2), null, null,
-                                null, null, null))))
+                        change(otherDraftLesson, world.periods().get(2), null,
+                                null, null))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(400)
                 .body("message", containsString("非法课节"));
 
         as(token).body(request(0L, null, false, List.of(
-                        change(a, 999_999L, null, null, null, null, null))))
+                        change(a, 999_999L, null, null, null))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(400)
                 .body("message", containsString("作息时段不存在"));
@@ -227,29 +225,29 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
         World world = world(token);
         long draftId = draft(world);
         long a = lesson(world, draftId, 1L, world.classA(), world.chinese(),
-                world.teacherA(), world.periods().get(0), world.room1());
+                world.teacherA(), world.periods().get(0));
 
         as(token).body(request(0L, null, false, List.of(
-                        change(a, world.periods().get(2), null, null, null, null, null))))
+                        change(a, world.periods().get(2), null, null, null))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(200)
                 .body("version", equalTo(1));
 
         as(token).body(request(0L, null, false, List.of(
-                        change(a, world.periods().get(3), null, null, null, null, null))))
+                        change(a, world.periods().get(3), null, null, null))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(409)
                 .body("message", containsString("请刷新"));
 
         as(token).body(request(1L, null, true, List.of(
-                        change(a, world.periods().get(3), null, null,
-                                world.periods().get(0), world.teacherA(), world.room1()))))
+                        change(a, world.periods().get(3), null,
+                                world.periods().get(0), world.teacherA()))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(409)
                 .body("message", containsString("已被其他人修改"));
 
         as(token).body(request(1L, "not-the-current-fingerprint", false, List.of(
-                        change(a, world.periods().get(3), null, null, null, null, null))))
+                        change(a, world.periods().get(3), null, null, null))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(409)
                 .body("message", containsString("规则已变化"));
@@ -265,18 +263,18 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
         World world = world(token);
         long draftId = draft(world);
         long a = lesson(world, draftId, 1L, world.classA(), world.chinese(),
-                world.teacherA(), world.periods().get(0), world.room1());
+                world.teacherA(), world.periods().get(0));
         long b = lesson(world, draftId, 2L, world.classB(), world.math(),
-                world.teacherA(), world.periods().get(2), world.room2());
+                world.teacherA(), world.periods().get(2));
         long c = lesson(world, draftId, 3L, world.classC(), world.chinese(),
-                world.teacherB(), world.periods().get(3), world.room3());
+                world.teacherB(), world.periods().get(3));
         lesson(world, draftId, 4L, world.classD(), world.math(),
-                world.teacherB(), world.periods().get(4), world.room4());
+                world.teacherB(), world.periods().get(4));
         long e = lesson(world, draftId, 5L, world.classE(), world.chinese(),
-                world.teacherA(), world.periods().get(5), world.room5());
+                world.teacherA(), world.periods().get(5));
 
         // Force a pre-existing hard teacher conflict: a and b now share teacher a and slot 3.
-        as(token).body(Map.of("periodId", world.periods().get(2), "roomId", world.room1(),
+        as(token).body(Map.of("periodId", world.periods().get(2),
                         "force", true))
                 .when().patch(MOVE.formatted(draftId, a))
                 .then().statusCode(200)
@@ -284,8 +282,8 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
         assertThat(version(draftId)).isEqualTo(1);
 
         as(token).body(request(1L, null, true, List.of(
-                        change(a, world.periods().get(0), null, null,
-                                world.periods().get(2), world.teacherA(), world.room1()))))
+                        change(a, world.periods().get(0), null,
+                                world.periods().get(2), world.teacherA()))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(200)
                 .body("saved", equalTo(true))
@@ -293,7 +291,7 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
         assertThat(version(draftId)).isEqualTo(2);
 
         // Another pre-existing conflict: c is forced onto d's slot with the same teacher.
-        as(token).body(Map.of("periodId", world.periods().get(4), "roomId", world.room3(),
+        as(token).body(Map.of("periodId", world.periods().get(4),
                         "force", true))
                 .when().patch(MOVE.formatted(draftId, c))
                 .then().statusCode(200)
@@ -302,10 +300,10 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
 
         // Fix c, but move e into b's slot: a brand new conflict key appears.
         as(token).body(request(3L, null, true, List.of(
-                        change(c, world.periods().get(3), null, null,
-                                world.periods().get(4), world.teacherB(), world.room3()),
-                        change(e, world.periods().get(2), null, null,
-                                world.periods().get(5), world.teacherA(), world.room5()))))
+                        change(c, world.periods().get(3), null,
+                                world.periods().get(4), world.teacherB()),
+                        change(e, world.periods().get(2), null,
+                                world.periods().get(5), world.teacherA()))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(200)
                 .body("saved", equalTo(false))
@@ -325,31 +323,31 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
         World world = world(token);
         long draftId = draft(world);
         long a = lesson(world, draftId, 1L, world.classA(), world.chinese(),
-                world.teacherA(), world.periods().get(0), world.room1());
+                world.teacherA(), world.periods().get(0));
 
         setStatus(draftId, "PUBLISHED");
         as(token).body(request(0L, null, false, List.of(
-                        change(a, world.periods().get(2), null, null, null, null, null))))
+                        change(a, world.periods().get(2), null, null, null))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(400)
                 .body("message", containsString("课表已发布"));
 
         setStatus(draftId, "ARCHIVED");
         as(token).body(request(0L, null, false, List.of(
-                        change(a, world.periods().get(2), null, null, null, null, null))))
+                        change(a, world.periods().get(2), null, null, null))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(400)
                 .body("message", containsString("课表已归档"));
 
         long editableDraft = draft(world);
         long editableLesson = lesson(world, editableDraft, 1L, world.classA(), world.chinese(),
-                world.teacherA(), world.periods().get(0), world.room1());
+                world.teacherA(), world.periods().get(0));
         String username = "chg_" + TestData.suffix();
         createUser(token, username, "chg123", "teacher");
         String teacherToken = login(username, "chg123");
         as(teacherToken).body(request(0L, null, false, List.of(
-                        change(editableLesson, world.periods().get(2), null, null,
-                                null, null, null))))
+                        change(editableLesson, world.periods().get(2), null,
+                                null, null))))
                 .when().post(CHANGES.formatted(editableDraft))
                 .then().statusCode(403);
 
@@ -364,14 +362,14 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
         addSoftGapRule(world.semesterId());
         long draftId = draft(world);
         long a = lesson(world, draftId, 1L, world.classA(), world.chinese(),
-                world.teacherA(), world.periods().get(0), world.room1());
+                world.teacherA(), world.periods().get(0));
         long b = lesson(world, draftId, 2L, world.classA(), world.math(),
-                world.teacherB(), world.periods().get(1), world.room2());
+                world.teacherB(), world.periods().get(1));
         lesson(world, draftId, 3L, world.classB(), world.math(),
-                world.teacherA(), world.periods().get(2), world.room3());
+                world.teacherA(), world.periods().get(2));
 
         Response saved = as(token).body(request(0L, null, false, List.of(
-                        change(b, world.periods().get(3), null, null, null, null, null))))
+                        change(b, world.periods().get(3), null, null, null))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(200)
                 .body("saved", equalTo(true))
@@ -383,7 +381,7 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
                         - saved.jsonPath().getInt("softPenaltyBefore"));
 
         Response refused = as(token).body(request(1L, null, false, List.of(
-                        change(a, world.periods().get(2), null, null, null, null, null))))
+                        change(a, world.periods().get(2), null, null, null))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(200)
                 .body("saved", equalTo(false))
@@ -402,13 +400,13 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
         World world = world(token);
         long draftId = draft(world);
         long a = lesson(world, draftId, 1L, world.classA(), world.chinese(),
-                world.teacherA(), world.periods().get(0), world.room1());
+                world.teacherA(), world.periods().get(0));
         long b = lesson(world, draftId, 2L, world.classB(), world.math(),
-                world.teacherB(), world.periods().get(1), world.room2());
+                world.teacherB(), world.periods().get(1));
 
         as(token).body(request(0L, null, false, List.of(
-                        change(a, world.periods().get(3), null, null, null, null, null),
-                        change(b, 999_999L, null, null, null, null, null))))
+                        change(a, world.periods().get(3), null, null, null),
+                        change(b, 999_999L, null, null, null))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(400);
         assertThat(draftLessons.findById(a).orElseThrow().getPeriodId())
@@ -419,13 +417,13 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
 
         // Two clients both read version 0: the first writes, the second must be refused.
         as(token).body(request(0L, null, false, List.of(
-                        change(a, world.periods().get(3), null, null, null, null, null))))
+                        change(a, world.periods().get(3), null, null, null))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(200)
                 .body("version", equalTo(1));
 
         as(token).body(request(0L, null, false, List.of(
-                        change(b, world.periods().get(4), null, null, null, null, null))))
+                        change(b, world.periods().get(4), null, null, null))))
                 .when().post(CHANGES.formatted(draftId))
                 .then().statusCode(409);
 
@@ -458,13 +456,7 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
                 TestData.course(token, "变更语文" + suffix),
                 TestData.course(token, "变更数学" + suffix),
                 TestData.teacher(token, "变更语文老师" + suffix),
-                TestData.teacher(token, "变更数学老师" + suffix),
-                TestData.room(token, "变更房1" + suffix),
-                TestData.room(token, "变更房2" + suffix),
-                TestData.room(token, "变更房3" + suffix),
-                TestData.room(token, "变更房4" + suffix),
-                TestData.room(token, "变更房5" + suffix),
-                TestData.room(token, "变更房6" + suffix));
+                TestData.teacher(token, "变更数学老师" + suffix));
     }
 
     private long firstPeriod(String token, long semesterId) {
@@ -488,11 +480,11 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
     private long otherDraftLesson(World world) {
         long draftId = draft(world);
         return lesson(world, draftId, 900L, world.classA(), world.chinese(),
-                world.teacherA(), world.periods().get(0), world.room1());
+                world.teacherA(), world.periods().get(0));
     }
 
     private long lesson(World world, long draftId, long assignmentId, long classId, long courseId,
-                        long teacherId, Long periodId, Long roomId) {
+                        long teacherId, Long periodId) {
         DraftLesson lesson = new DraftLesson();
         lesson.setDraftId(draftId);
         lesson.setAssignmentId(assignmentId);
@@ -502,7 +494,6 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
         lesson.setAdminClassId(classId);
         lesson.setStudentCount(45);
         lesson.setPeriodId(periodId);
-        lesson.setRoomId(roomId);
         return draftLessons.save(lesson).getId();
     }
 
@@ -528,16 +519,14 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
     }
 
     private static Map<String, Object> change(
-            long lessonId, Long toPeriodId, Long toTeacherId, Long toRoomId,
-            Long expectedPeriodId, Long expectedTeacherId, Long expectedRoomId) {
+            long lessonId, Long toPeriodId, Long toTeacherId,
+            Long expectedPeriodId, Long expectedTeacherId) {
         Map<String, Object> change = new LinkedHashMap<>();
         change.put("lessonId", lessonId);
         change.put("toPeriodId", toPeriodId);
         change.put("toTeacherId", toTeacherId);
-        change.put("toRoomId", toRoomId);
         change.put("expectedPeriodId", expectedPeriodId);
         change.put("expectedTeacherId", expectedTeacherId);
-        change.put("expectedRoomId", expectedRoomId);
         return change;
     }
 

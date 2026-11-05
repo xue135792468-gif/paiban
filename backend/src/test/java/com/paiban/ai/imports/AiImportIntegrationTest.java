@@ -159,15 +159,14 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
 
         preview.then().statusCode(200)
                 .body("targetType", equalTo("timetable"))
-                .body("columns", hasSize(6))
+                .body("columns", hasSize(5))
                 .body("columns[0].field", equalTo("className"))
                 .body("rows", hasSize(1))
                 .body("rows[0].values.className", equalTo("一年级1班"))
                 .body("rows[0].values.dayOfWeek", equalTo("周一"))
                 .body("rows[0].values.periodNo", equalTo("1"))
                 .body("rows[0].values.courseName", equalTo("语文"))
-                .body("rows[0].values.teacherName", equalTo("张三"))
-                .body("rows[0].values.roomName", equalTo("101"));
+                .body("rows[0].values.teacherName", equalTo("张三"));
 
         String prompt = fake.lastRequest.messages().get(1).content();
         assertThat(prompt).contains("2026 春季课表").contains("原始网格").contains("每一行代表一节课");
@@ -1415,7 +1414,8 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         List<Map<String, Object>> rows = preview.jsonPath().getList("rows");
         @SuppressWarnings("unchecked")
         Map<String, Object> values = (Map<String, Object>) rows.get(0).get("values");
-        values.put("roomName", "202");
+        // 教室字段已随教室整套删除，编辑改在仍存在的任课教师字段上。
+        values.put("teacherName", "李四");
         as(admin).body(Map.of("rows", rows))
                 .when().put("/api/ai/import/sessions/" + sessionId + "/rows")
                 .then().statusCode(200)
@@ -1425,7 +1425,7 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
         as(admin).when().get("/api/ai/import/sessions/" + sessionId)
                 .then().statusCode(200)
                 .body("status", equalTo("EDITED"))
-                .body("rows[0].values.roomName", equalTo("202"));
+                .body("rows[0].values.teacherName", equalTo("李四"));
     }
 
     @Test
@@ -1494,11 +1494,6 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
                 .body("[0].id", equalTo((int) f.teacherId()))
                 .body("[0].name", equalTo("张三"));
 
-        as(admin).when().get("/api/ai/import/lookup?type=room&q=10")
-                .then().statusCode(200)
-                .body("$", hasSize(1))
-                .body("[0].id", equalTo((int) f.roomId()))
-                .body("[0].name", equalTo("101"));
     }
 
     @Test
@@ -1989,8 +1984,7 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
                 .body("lessons", hasSize(1))
                 .body("lessons[0].className", equalTo("一年级1班"))
                 .body("lessons[0].courseName", equalTo("语文"))
-                .body("lessons[0].teacherName", equalTo("张三"))
-                .body("lessons[0].roomName", equalTo("101"));
+                .body("lessons[0].teacherName", equalTo("张三"));
 
         AiImportLog stored = importLogs.findById(sessionId).orElseThrow();
         assertThat(stored.getStatus()).isEqualTo(AiImportLog.COMMITTED);
@@ -2362,19 +2356,18 @@ class AiImportIntegrationTest extends ApiIntegrationTest {
 
     // ------------------------------------------------------------------ helpers
 
-    private record TimetableFixture(long semesterId, long gradeId, long classId, long courseId, long teacherId, long roomId) {}
+    private record TimetableFixture(long semesterId, long gradeId, long classId, long courseId, long teacherId) {}
 
     private TimetableFixture timetableFixture(String token) {
         long semesterId = TestData.semester(token);
-        as(token).body(Map.of("morningCount", 4, "afternoonCount", 4, "eveningCount", 0))
+        as(token).body(Map.of("periodCount", 8, "days", List.of(1, 2, 3, 4, 5)))
                 .when().post("/api/semesters/" + semesterId + "/periods/default")
                 .then().statusCode(200);
         long gradeId = TestData.grade(token, semesterId, "一年级");
         long classId = TestData.adminClass(token, semesterId, gradeId, "一年级1班");
         long courseId = TestData.course(token, "语文");
         long teacherId = TestData.teacher(token, "张三");
-        long roomId = TestData.room(token, "101");
-        return new TimetableFixture(semesterId, gradeId, classId, courseId, teacherId, roomId);
+        return new TimetableFixture(semesterId, gradeId, classId, courseId, teacherId);
     }
 
     private List<String> courseNames(String token) {

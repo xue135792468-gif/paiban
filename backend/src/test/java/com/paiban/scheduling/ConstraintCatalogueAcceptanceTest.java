@@ -2,13 +2,11 @@ package com.paiban.scheduling;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.paiban.foundation.domain.PeriodSection;
 import com.paiban.scheduling.constraint.ConstraintChecker;
 import com.paiban.scheduling.constraint.ConstraintContext;
 import com.paiban.scheduling.constraint.ConstraintContext.ClassView;
 import com.paiban.scheduling.constraint.ConstraintContext.CourseView;
 import com.paiban.scheduling.constraint.ConstraintContext.PeriodView;
-import com.paiban.scheduling.constraint.ConstraintContext.RoomView;
 import com.paiban.scheduling.constraint.ConstraintContext.TeacherView;
 import com.paiban.scheduling.constraint.LessonView;
 import com.paiban.scheduling.domain.ConstraintType;
@@ -37,14 +35,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
- * Ticket 10/06, part A: the whole active 19-type catalogue proven to <em>take effect</em>.
+ * Ticket 10/06, part A: the whole active 18-type catalogue proven to <em>take effect</em>.
  *
  * <p>For every type this test saves a representative configuration through the public
  * REST API, builds a minimal draft that breaks exactly that rule, and asserts the
  * violation code on {@code GET /api/timetable-drafts/{id}/validation}. A hard rule must
  * also make publishing return 409, so "listed in the editor" is never mistaken for
  * "enforced"; a soft rule must instead raise the independent penalty and must not
- * appear as a conflict. The six single-switch types are additionally checked with the
+ * appear as a conflict. The single-switch types are additionally checked with the
  * switch off, because a switch that only ever reports a violation proves nothing.
  *
  * <p>This exists because on 2026-10-26 the day-level hard rules silently did nothing in
@@ -74,9 +72,7 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
 
     enum Class { A, B }
 
-    enum Room { NORMAL, LAB, SMALL }
-
-    record Lesson(int day, int periodNo, Course course, Teacher teacher, Class adminClass, Room room) {}
+    record Lesson(int day, int periodNo, Course course, Teacher teacher, Class adminClass) {}
 
     /**
      * One catalogue row: the configuration a school would save, the smallest timetable
@@ -91,95 +87,91 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
     static Stream<Arguments> catalogue() {
         return Stream.of(
                 Arguments.of(new Case("教师不冲突", "TEACHER_CONFLICT", true, true, 100, null,
-                        List.of(lesson(1, 1, Course.MATH, Teacher.MATH, Class.A, Room.NORMAL),
-                                lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.B, Room.LAB)),
+                        List.of(lesson(1, 1, Course.MATH, Teacher.MATH, Class.A),
+                                lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.B)),
                         "TEACHER_CONFLICT", false)),
                 Arguments.of(new Case("班级不冲突", "CLASS_CONFLICT", true, true, 100, null,
-                        List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL),
-                                lesson(1, 1, Course.MATH, Teacher.OTHER, Class.A, Room.LAB)),
+                        List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A),
+                                lesson(1, 1, Course.MATH, Teacher.OTHER, Class.A)),
                         "CLASS_CONFLICT", false)),
                 Arguments.of(new Case("班级空堂", "CLASS_GAP_MINIMIZED", true, true, 30, null,
-                        List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL),
-                                lesson(1, 3, Course.MATH, Teacher.OTHER, Class.A, Room.NORMAL)),
+                        List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A),
+                                lesson(1, 3, Course.MATH, Teacher.OTHER, Class.A)),
                         "CLASS_GAP_MINIMIZED", true)),
                 Arguments.of(new Case("班级不上课", "CLASS_UNAVAILABLE", false, true, 100,
                         List.of(params("classId", Class.A, "dayOfWeek", 1, "periodNo", 1)),
-                        List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL)),
+                        List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A)),
                         "CLASS_UNAVAILABLE", false)),
                 Arguments.of(new Case("教师禁排", "TEACHER_UNAVAILABLE", false, true, 100,
                         List.of(params("teacherId", Teacher.MATH, "dayOfWeek", 1, "periodNo", 2)),
-                        List.of(lesson(1, 2, Course.MATH, Teacher.MATH, Class.A, Room.NORMAL)),
+                        List.of(lesson(1, 2, Course.MATH, Teacher.MATH, Class.A)),
                         "TEACHER_UNAVAILABLE", false)),
                 Arguments.of(new Case("课程禁排时段", "COURSE_UNAVAILABLE", false, true, 100,
                         List.of(params("courseId", Course.CHINESE, "dayOfWeek", 1, "periodNo", 2)),
-                        List.of(lesson(1, 2, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL)),
+                        List.of(lesson(1, 2, Course.CHINESE, Teacher.MATH, Class.A)),
                         "COURSE_UNAVAILABLE", false)),
                 Arguments.of(new Case("同课程一天一节", "SAME_COURSE_ONCE_PER_DAY", false, true, 100,
                         List.of(params("courseId", Course.CHINESE)),
-                        List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL),
-                                lesson(1, 2, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL)),
+                        List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A),
+                                lesson(1, 2, Course.CHINESE, Teacher.MATH, Class.A)),
                         "SAME_COURSE_PER_DAY", false)),
-                Arguments.of(new Case("体育不在下午第一节", "SPORT_NOT_FIRST_AFTERNOON", false, true, 70,
-                        List.of(params("courseId", Course.SPORT)),
-                        List.of(lesson(1, 5, Course.SPORT, Teacher.OTHER, Class.A, Room.NORMAL)),
-                        "SPORT_NOT_FIRST_AFTERNOON", true)),
                 Arguments.of(new Case("连堂课", "CONSECUTIVE_LESSONS", false, true, 60,
                         List.of(params("courseId", Course.CHINESE, "minConsecutive", 2)),
-                        List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL),
-                                lesson(1, 3, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL)),
+                        List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A),
+                                lesson(1, 3, Course.CHINESE, Teacher.MATH, Class.A)),
                         "CONSECUTIVE_LESSONS", true)),
                 Arguments.of(new Case("课程分散", "COURSE_SPREAD", false, true, 50,
                         List.of(params()),
-                        List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL),
-                                lesson(1, 2, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL)),
+                        List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A),
+                                lesson(1, 2, Course.CHINESE, Teacher.MATH, Class.A)),
                         "COURSE_SPREAD", true)),
                 Arguments.of(new Case("主科上午", "MAIN_SUBJECT_MORNING", false, true, 55,
                         List.of(params("courseId", Course.CHINESE, "beforePeriodNo", 4)),
-                        List.of(lesson(1, 6, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL)),
+                        List.of(lesson(1, 6, Course.CHINESE, Teacher.MATH, Class.A)),
                         "MAIN_SUBJECT_MORNING", true)),
                 Arguments.of(new Case("教师偏好时段", "TEACHER_PREFERRED_SLOT", false, true, 40,
                         List.of(params("teacherId", Teacher.MATH, "dayOfWeek", 1, "periodNo", 1)),
-                        List.of(lesson(1, 2, Course.MATH, Teacher.MATH, Class.A, Room.NORMAL)),
+                        List.of(lesson(1, 2, Course.MATH, Teacher.MATH, Class.A)),
                         "TEACHER_PREFERRED_SLOT", true)),
                 Arguments.of(new Case("教师不排第一节", "TEACHER_NO_FIRST_PERIOD", false, true, 35,
                         List.of(params("teacherId", Teacher.MATH)),
-                        List.of(lesson(1, 1, Course.MATH, Teacher.MATH, Class.A, Room.NORMAL)),
+                        List.of(lesson(1, 1, Course.MATH, Teacher.MATH, Class.A)),
                         "TEACHER_NO_FIRST_PERIOD", true)),
                 Arguments.of(new Case("教师无课日", "TEACHER_DAY_OFF", false, true, 30,
                         List.of(params("teacherId", Teacher.MATH, "dayOfWeek", 1)),
-                        List.of(lesson(1, 3, Course.MATH, Teacher.MATH, Class.A, Room.NORMAL)),
+                        List.of(lesson(1, 3, Course.MATH, Teacher.MATH, Class.A)),
                         "TEACHER_DAY_OFF", true)),
                 Arguments.of(new Case("体育不在最后一节", "PE_LAST_PERIOD_AVOID", false, true, 35,
                         List.of(params("courseId", Course.SPORT)),
-                        List.of(lesson(1, 10, Course.SPORT, Teacher.OTHER, Class.A, Room.NORMAL)),
+                        List.of(lesson(1, 10, Course.SPORT, Teacher.OTHER, Class.A)),
                         "PE_LAST_PERIOD_AVOID", true)),
                 Arguments.of(new Case("教师单日上限", "TEACHER_MAX_PER_DAY", false, true, 60,
                         List.of(params("maxPerDay", 2), params("teacherId", Teacher.MATH, "maxPerDay", 1)),
-                        List.of(lesson(1, 1, Course.MATH, Teacher.MATH, Class.A, Room.NORMAL),
-                                lesson(1, 2, Course.MATH, Teacher.MATH, Class.A, Room.NORMAL)),
+                        List.of(lesson(1, 1, Course.MATH, Teacher.MATH, Class.A),
+                                lesson(1, 2, Course.MATH, Teacher.MATH, Class.A)),
                         "TEACHER_MAX_PER_DAY", true)),
                 Arguments.of(new Case("班级单日上限", "CLASS_MAX_PER_DAY", false, true, 50,
                         List.of(params("maxPerDay", 2), params("classId", Class.A, "maxPerDay", 1)),
-                        List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL),
-                                lesson(1, 2, Course.MATH, Teacher.OTHER, Class.A, Room.NORMAL)),
+                        List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A),
+                                lesson(1, 2, Course.MATH, Teacher.OTHER, Class.A)),
                         "CLASS_MAX_PER_DAY", true)),
                 Arguments.of(new Case("课程单日上限", "COURSE_MAX_PER_DAY", false, true, 50,
                         List.of(params("maxPerDay", 2), params("courseId", Course.CHINESE, "maxPerDay", 1)),
-                        List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL),
-                                lesson(1, 2, Course.CHINESE, Teacher.MATH, Class.A, Room.NORMAL)),
+                        List.of(lesson(1, 1, Course.CHINESE, Teacher.MATH, Class.A),
+                                lesson(1, 2, Course.CHINESE, Teacher.MATH, Class.A)),
                         "COURSE_MAX_PER_DAY", true)),
                 Arguments.of(new Case("教师连续上课上限", "TEACHER_MAX_CONSECUTIVE", false, true, 45,
                         List.of(params("maxConsecutive", 3),
                                 params("teacherId", Teacher.MATH, "maxConsecutive", 2)),
-                        List.of(lesson(1, 1, Course.MATH, Teacher.MATH, Class.A, Room.NORMAL),
-                                lesson(1, 2, Course.MATH, Teacher.MATH, Class.A, Room.NORMAL),
-                                lesson(1, 3, Course.MATH, Teacher.MATH, Class.A, Room.NORMAL)),
+                        List.of(lesson(1, 1, Course.MATH, Teacher.MATH, Class.A),
+                                lesson(1, 2, Course.MATH, Teacher.MATH, Class.A),
+                                lesson(1, 3, Course.MATH, Teacher.MATH, Class.A)),
                         "TEACHER_MAX_CONSECUTIVE", true)));
     }
 
     private static Lesson lesson(int day, int periodNo, Course course, Teacher teacher,
-                                 Class adminClass, Room room) {
-        return new Lesson(day, periodNo, course, teacher, adminClass, room);
+                                 Class adminClass) {
+        return new Lesson(day, periodNo, course, teacher, adminClass);
     }
 
     /** An entry whose object is a fixture alias, resolved to a real id at save time. */
@@ -282,7 +274,7 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
         Set<String> covered = catalogue()
                 .map(arguments -> ((Case) arguments.get()[0]).type())
                 .collect(Collectors.toSet());
-        assertThat(covered).hasSize(19);
+        assertThat(covered).hasSize(18);
         assertThat(covered).containsExactlyInAnyOrderElementsOf(
                 ConstraintType.activeValues().stream().map(Enum::name).toList());
     }
@@ -291,14 +283,12 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
 
     /**
      * One semester with 4 morning, 4 afternoon and 2 evening periods, two classes (A has
-     * a head teacher), three teachers with subjects, three courses including 体育, and
-     * three rooms — one deliberately too small for the 45-student class.
+     * a head teacher), three teachers with subjects and three courses including 体育.
      */
     private record World(long semesterId, long classA, long classB, long teacherMath, long teacherOther,
                          long teacherHead, long courseChinese, long courseMath, long courseSport,
-                         long roomNormal, long roomLab, long roomSmall,
                          Map<Integer, Long> periodIdBySlot, Map<Long, PeriodView> periods,
-                         Map<Long, RoomView> rooms, Map<Long, CourseView> courses,
+                         Map<Long, CourseView> courses,
                          Map<Long, TeacherView> teachers, Map<Long, ClassView> classes) {}
 
     private World prepare(String token) {
@@ -319,9 +309,6 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
         long courseMath = TestData.course(token, "数学" + suffix);
         long courseSport = TestData.course(token, "体育" + suffix);
 
-        long roomNormal = TestData.room(token, "普通教室" + suffix);
-        long roomLab = roomWith(token, "实验室" + suffix, 50, "LAB");
-        long roomSmall = roomWith(token, "小教室" + suffix, 10, "NORMAL");
 
         Map<Integer, Long> slotIds = new LinkedHashMap<>();
         Map<Long, PeriodView> periods = new LinkedHashMap<>();
@@ -333,19 +320,14 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
             int day = ((Number) row.get("dayOfWeek")).intValue();
             int periodNo = ((Number) row.get("periodNo")).intValue();
             slotIds.put(day * 100 + periodNo, id);
-            periods.put(id, new PeriodView(id, day, periodNo,
-                    PeriodSection.valueOf(String.valueOf(row.get("section")))));
+            periods.put(id, new PeriodView(id, day, periodNo));
         }
 
-        Map<Long, RoomView> rooms = new LinkedHashMap<>();
-        rooms.put(roomNormal, new RoomView(roomNormal, "普通教室", "NORMAL", 50));
-        rooms.put(roomLab, new RoomView(roomLab, "实验室", "LAB", 50));
-        rooms.put(roomSmall, new RoomView(roomSmall, "小教室", "NORMAL", 10));
 
         Map<Long, CourseView> courses = new LinkedHashMap<>();
-        courses.put(courseChinese, new CourseView(courseChinese, "语文", null));
-        courses.put(courseMath, new CourseView(courseMath, "数学", null));
-        courses.put(courseSport, new CourseView(courseSport, "体育", null));
+        courses.put(courseChinese, new CourseView(courseChinese, "语文"));
+        courses.put(courseMath, new CourseView(courseMath, "数学"));
+        courses.put(courseSport, new CourseView(courseSport, "体育"));
 
         Map<Long, TeacherView> teachers = new LinkedHashMap<>();
         teachers.put(teacherMath, new TeacherView(teacherMath, "张老师", "数学"));
@@ -357,8 +339,8 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
         classes.put(classB, new ClassView(classB, "高一2班", 45, null));
 
         return new World(semesterId, classA, classB, teacherMath, teacherOther, teacherHead,
-                courseChinese, courseMath, courseSport, roomNormal, roomLab, roomSmall,
-                slotIds, periods, rooms, courses, teachers, classes);
+                courseChinese, courseMath, courseSport,
+                slotIds, periods, courses, teachers, classes);
     }
 
     private long teacherWithSubject(String token, String name, String subject) {
@@ -369,13 +351,6 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
         return response.jsonPath().getLong("id");
     }
 
-    private long roomWith(String token, String name, int capacity, String type) {
-        Response response = as(token)
-                .body(Map.of("name", name, "capacity", capacity, "type", type))
-                .when().post("/api/rooms");
-        response.then().statusCode(200);
-        return response.jsonPath().getLong("id");
-    }
 
     private long classWithHeadTeacher(
             String token, long semesterId, long gradeId, String name, long headTeacherId) {
@@ -490,7 +465,7 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
     private long draft(World world, List<Lesson> lessons) {
         TimetableDraft draft = new TimetableDraft();
         draft.setSemesterId(world.semesterId());
-        draft.setName("24类验收" + TestData.suffix());
+        draft.setName("18类验收" + TestData.suffix());
         draft.setStatus("DRAFT");
         draft.setCreatedBy("test");
         draft.setCreatedAt(Instant.now());
@@ -506,7 +481,6 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
             row.setAdminClassId(lesson.adminClass() == Class.A ? world.classA() : world.classB());
             row.setStudentCount(45);
             row.setPeriodId(world.periodIdBySlot().get(lesson.day() * 100 + lesson.periodNo()));
-            row.setRoomId(roomId(world, lesson.room()));
             draftLessons.save(row);
         }
         return draftId;
@@ -528,14 +502,13 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
     /** The independent soft score, recomputed through the shared rule catalogue. */
     private int softPenalty(World world, List<Lesson> lessons) {
         ConstraintContext context = new ConstraintContext(
-                world.periods(), world.rooms(), world.courses(), world.teachers(), world.classes(),
+                world.periods(), world.courses(), world.teachers(), world.classes(),
                 constraintService.settings(world.semesterId()));
         List<LessonView> views = new ArrayList<>();
         int id = 1;
         for (Lesson lesson : lessons) {
             views.add(new LessonView(id++, lesson.adminClass() == Class.A ? world.classA() : world.classB(),
                     courseId(world, lesson.course()), teacherId(world, lesson.teacher()),
-                    roomId(world, lesson.room()),
                     world.periodIdBySlot().get(lesson.day() * 100 + lesson.periodNo()), 45));
         }
         return ConstraintChecker.softPenalty(context, views);
@@ -557,11 +530,4 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
         };
     }
 
-    private long roomId(World world, Room room) {
-        return switch (room) {
-            case NORMAL -> world.roomNormal();
-            case LAB -> world.roomLab();
-            case SMALL -> world.roomSmall();
-        };
-    }
 }

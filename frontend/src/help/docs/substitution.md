@@ -20,13 +20,13 @@
 
 只能调整今天及以后的日期；已经过去的日期不可选，已经上过的课也不能再改。
 
-> 账号需要同时具备「全校课表查看 + 提交调代 + 审批调代」权限才能用工作台；普通教师请用「我的调代」自助入口（也需要先在 **设置 → 账号**（`/settings/users`）里关联教师）。
+> 账号需要同时具备「全校课表查看 + 提交调代」权限才能用工作台；普通教师请用「我的调代」自助入口（也需要先在 **设置 → 账号**（`/settings/users`）里关联教师）。
 
 ## 生效
 
 <a id="approve"></a>
 
-- **代课**：默认直接生效；设置中心把「审批模式」打开后，改为由教务确认后生效。
+- **代课**：提交后直接生效；由教务确认代课教师。
 - **调课**：由教务生成方案并确认后生效。方案是「一单」，要么整单生效，要么整单不生效，不会出现「张老师换了、赵老师没换」的半截状态。
 
 方案有效期 30 分钟后失效。确认时如果课表已经变化（例如别人先占用了目标节次），系统会提示重新生成，旧方案不会生效。
@@ -91,28 +91,5 @@
 - 代课：原教师、代课教师、班主任收到通知，范围同上。
 
 通知范围在设置中心配置。管理员还可以维护一份「调代通知收件人」名单（按账号选择，例如校长、年级负责人），调课与代课生效时都会通知他们。启用钉钉时会同步推送，平台不可用时自动降级为站内通知。
-
-## 只读命令行核查
-
-<a id="cli"></a>
-
-运维和教务可以用离线 CLI 做 what-if 与事后核查。它不连数据库、不写业务数据，和后端共用同一套纯 Java 求解器与校验器。
-
-```bash
-# 生成候选方案（0 有解 / 2 无解 / 1 错误）
-scripts/substitution-cli.sh plan \
-  --snapshot snapshot.json --request request.json \
-  --window 7 --max-teachers 6 --preset min-impact --format json
-
-# 对比改动前/后的课表（0 通过 / 1 违规）
-scripts/substitution-cli.sh verify --before before.json --after after.json --format table
-
-# 用快照 + 方案校验
-scripts/substitution-cli.sh verify --snapshot snapshot.json --plan plan.json --kind SWAP
-```
-
-- JSON 输入输出都带 `schemaVersion: 1`；版本不兼容时返回可读错误、退出码 1。
-- `plan` 输出 `candidates`（最多 3 个）与 `diagnoses`；`verify` 输出 `issues`（约束码 + 说明）。
-- 快照包含节次、班级、课程、教师、基线课节、已生效调代与约束配置。
 
 下一步：[课表查看](/help/timetable) · [日常调代流程](/help/flow-substitution) · [设置中心](/help/settings)

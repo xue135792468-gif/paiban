@@ -4,11 +4,7 @@
       <div>
         <h2>课表</h2>
         <p class="subtitle">
-          {{
-            isJunior
-              ? '按行政班或教师查看课表。调代生效的课节会标注「调」或「代」。'
-              : '按行政班、教师或全校查看课表。调代生效的课节会标注「调」或「代」。'
-          }}
+          按行政班、教师或全校查看课表。调代生效的课节会标注「调」或「代」。
           <InfoTooltip field="timetable.substitutionMark" />
         </p>
       </div>
@@ -16,7 +12,7 @@
         <el-radio-group v-if="canViewAll || canViewClassScope" v-model="mode" @change="onModeChange">
           <el-radio-button v-if="canViewAll || headClasses.length > 0" value="class">行政班</el-radio-button>
           <el-radio-button value="teacher">教师</el-radio-button>
-          <el-radio-button v-if="canViewAll && !isJunior" value="school">全校</el-radio-button>
+          <el-radio-button v-if="canViewAll" value="school">全校</el-radio-button>
         </el-radio-group>
         <el-tag v-else effect="plain">我的课表</el-tag>
         <el-select
@@ -48,7 +44,6 @@
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item command="excel">导出 Excel</el-dropdown-item>
               <el-dropdown-item command="pdf">导出 PDF</el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -126,13 +121,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import { useAuthStore } from '@/stores/auth'
-import { useSettingsStore } from '@/stores/settings'
 import InfoTooltip from '@/components/InfoTooltip.vue'
 import { serverMessage } from '@/api/errors'
 import { today } from '@/components/substitution/types'
@@ -186,8 +180,6 @@ interface PublishInfo {
 }
 
 const auth = useAuthStore()
-const settings = useSettingsStore()
-const isJunior = computed(() => settings.schoolType === 'junior')
 const canExport = computed(() => auth.hasPermission('export:timetable'))
 const canViewAll = computed(() => auth.hasPermission('timetable:view'))
 const canViewClassScope = computed(() => auth.hasPermission('timetable:view:class'))
@@ -327,15 +319,6 @@ function onModeChange() {
   load()
 }
 
-// ADR-0018: junior mode has no school-wide view. The settings store resolves
-// asynchronously, so fall back whenever junior mode becomes active.
-watch(isJunior, (junior) => {
-  if (junior && mode.value === 'school') {
-    mode.value = 'class'
-    onModeChange()
-  }
-})
-
 async function load() {
   loading.value = true
   try {
@@ -375,7 +358,7 @@ async function exportFile(format: string) {
     const url = URL.createObjectURL(data)
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = `课表.${format === 'pdf' ? 'pdf' : 'xlsx'}`
+    anchor.download = '课表.pdf'
     anchor.click()
     URL.revokeObjectURL(url)
   } catch {

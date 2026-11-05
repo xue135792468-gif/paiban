@@ -63,8 +63,8 @@ const CATALOG: ConstraintTypeDef[] = [
     params: TEACHER_SLOT_PARAMS,
   }),
   typeDef({
-    code: 'COURSE_NOT_IN_EVENING',
-    name: '课程不排晚自习',
+    code: 'LEGACY_COURSE_RULE',
+    name: '课程禁排旧类型',
     defaultHard: true,
     defaultWeight: 60,
     params: COURSE_PARAMS,
@@ -86,7 +86,7 @@ const CATALOG: ConstraintTypeDef[] = [
     thresholdValueField: 'maxPerDay',
   }),
   typeDef({
-    code: 'TEACHER_MEETING_BLOCKED',
+    code: 'LEGACY_MEETING_RULE',
     name: '教研活动禁排',
     category: 'PREFERENCE',
     categoryLabel: '教师偏好',
@@ -115,7 +115,7 @@ const CONFIGS: ConstraintConfigDto[] = [
 
 function hydrated(configs: ConstraintConfigDto[] = CONFIGS) {
   const draft = useConstraintDraft()
-  draft.hydrate(CATALOG, configs, { isJunior: false })
+  draft.hydrate(CATALOG, configs)
   return draft
 }
 
@@ -127,7 +127,7 @@ describe('useConstraintDraft', () => {
         ? { ...param, name: 'classId', label: '行政班' } : param),
     })], [{ type: 'CLASS_UNAVAILABLE', hard: true, weight: 100, enabled: true, params: {},
       entries: [{ id: 1, params: { classId: 5, dayOfWeek: 3, periodNo: 8 }, groupKey: 'weekly' }],
-    }], { isJunior: false })
+    }])
     const card = draft.rows.value[0].entries[0]
     draft.setHard('CLASS_UNAVAILABLE', false)
     draft.setEntryHard('CLASS_UNAVAILABLE', card.key, false)
@@ -184,7 +184,7 @@ describe('useConstraintDraft', () => {
       CATALOG,
       [
         {
-          type: 'COURSE_NOT_IN_EVENING',
+          type: 'LEGACY_COURSE_RULE',
           params: { courseId: 3 },
           weight: 60,
           hard: true,
@@ -192,9 +192,8 @@ describe('useConstraintDraft', () => {
           entries: [],
         },
       ],
-      { isJunior: false },
     )
-    const row = draft.rows.value.find((item) => item.code === 'COURSE_NOT_IN_EVENING')!
+    const row = draft.rows.value.find((item) => item.code === 'LEGACY_COURSE_RULE')!
     expect(row.entries).toEqual([])
     expect(draft.counts.value.entries).toBe(0)
   })
@@ -299,7 +298,7 @@ describe('useConstraintDraft', () => {
   it('互斥条件在保存前就能拿到，输入不被改写', () => {
     const draft = hydrated([
       {
-        type: 'COURSE_NOT_IN_EVENING',
+        type: 'LEGACY_COURSE_RULE',
         params: { courseId: 9 },
         weight: 60,
         hard: true,
@@ -426,7 +425,7 @@ describe('useConstraintDraft', () => {
       }),
     ]
     const draft = useConstraintDraft()
-    draft.hydrate(catalog, [], { isJunior: false })
+    draft.hydrate(catalog, [])
     draft.addEntry('COURSE_UNAVAILABLE')
     const card = draft.rows.value[0].entries[0]
     expect(card.slots).toHaveLength(1)
@@ -497,7 +496,7 @@ describe('useConstraintDraft', () => {
     draft.updateEntryValue('TEACHER_UNAVAILABLE', added.key, 'teacherId', 3)
     draft.updateEntryValue('TEACHER_UNAVAILABLE', added.key, 'dayOfWeek', 5)
     draft.updateEntryValue('TEACHER_UNAVAILABLE', added.key, 'periodNo', 1)
-    draft.setEnabled('COURSE_NOT_IN_EVENING', true)
+    draft.setEnabled('LEGACY_COURSE_RULE', true)
 
     const groups = draft.groups.value
     expect(groups.reduce((sum, group) => sum + group.counts.enabledTypes, 0)).toBe(
@@ -519,7 +518,7 @@ describe('useConstraintDraft', () => {
 
   it('一类 20 条以上仍逐条计数，不截断也不合并', () => {
     const draft = useConstraintDraft()
-    draft.hydrate(CATALOG, [], { isJunior: false })
+    draft.hydrate(CATALOG, [])
     draft.select('TEACHER_UNAVAILABLE')
     for (let index = 0; index < 22; index += 1) {
       draft.addEntry('TEACHER_UNAVAILABLE')
@@ -603,7 +602,7 @@ describe('useConstraintDraft', () => {
         ],
       },
     ]
-    draft.hydrate(CATALOG, applied, { isJunior: false })
+    draft.hydrate(CATALOG, applied)
 
     expect(draft.counts.value).toEqual(before)
     expect(draft.dirty.value).toBe(false)

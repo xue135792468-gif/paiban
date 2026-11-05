@@ -22,8 +22,6 @@ public final class SwapQueryDtos {
      * One lesson that can be exchanged with the target lesson. {@code conflicts} is
      * empty when {@code available} is true; warnings flag checks that were skipped
      * because the data needed for them is missing (for example a blank teacher subject).
-     * {@code roomSwapRequired} means the exchange is only valid when the two rooms are
-     * exchanged as well, so the client must send {@code swapRooms=true}.
      */
     public record SwapCandidateDto(
             Long lessonId,
@@ -40,10 +38,7 @@ public final class SwapQueryDtos {
             Integer dayOfWeek,
             Integer periodNo,
             String periodLabel,
-            Long roomId,
-            String roomName,
             boolean available,
-            boolean roomSwapRequired,
             List<DraftValidator.Conflict> conflicts,
             List<String> warnings) {}
 
@@ -52,19 +47,17 @@ public final class SwapQueryDtos {
             List<SwapCandidateDto> intraClass,
             List<SwapCandidateDto> crossClass) {}
 
-    /** Result of moving the target lesson to one period; the room never changes. */
+    /** Result of moving the target lesson to one period. */
     public record MoveTargetDto(
             Long periodId,
             Integer dayOfWeek,
             Integer periodNo,
             String periodLabel,
-            String section,
             boolean available,
             int hardConflicts,
             List<DraftValidator.Conflict> conflicts) {}
 
     public record MoveTargetsResponse(
             Long lessonId,
-            Long roomId,
             List<MoveTargetDto> targets) {}
 }

@@ -22,7 +22,7 @@
           :loading="generating"
           @click="generatePeriods"
         >
-          一键生成默认作息（上午 4 + 下午 4，周一至周五）
+          一键生成默认作息（每天 8 节，周一至周五）
         </el-button>
       </div>
     </el-alert>

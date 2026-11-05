@@ -42,7 +42,7 @@
         <span>撤销{{ undoCount > 0 ? `（${undoCount}）` : '' }}</span>
       </el-button>
       <el-button :disabled="busy" @click="emit('refresh')">刷新</el-button>
-      <el-button v-if="!isJunior" @click="emit('compare')">比较草稿</el-button>
+      <el-button @click="emit('compare')">比较草稿</el-button>
       <el-button v-if="canEdit" @click="emit('rename')">重命名</el-button>
       <el-button
         v-if="canPublish && !published"
@@ -83,7 +83,6 @@ const props = withDefaults(
     canEdit: boolean
     canPublish: boolean
     publishable: boolean
-    isJunior: boolean
     /** Substitutions a withdrawal cancelled that still cover future dates, not re-done yet. */
     cancelledSubstitutions?: number
   }>(),

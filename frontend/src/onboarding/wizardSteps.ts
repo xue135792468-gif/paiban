@@ -26,7 +26,7 @@ export const WIZARD_STEPS: WizardStep[] = [
   {
     key: 'periods',
     title: '学期与作息表',
-    description: '创建本学期并配置每天几节课、上午/下午各几节。',
+    description: '创建本学期并配置每天几节课。',
     route: '/data/semesters',
     helpAnchor: 'periods',
   },

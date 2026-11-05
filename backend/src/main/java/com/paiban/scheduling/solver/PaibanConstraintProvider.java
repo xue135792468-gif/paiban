@@ -36,10 +36,8 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         List<Constraint> constraints = new ArrayList<>();
 
         // Structural constraints that are always on: every lesson must be placed and a
-        // class's ordinary lessons stay in the class's own classroom. (Room-related
-        // catalogue rules were retired in ticket 09.)
+        // locked lesson keeps its period.
         constraints.add(unassignedLesson(factory));
-        constraints.add(classFixedRoom(factory));
         constraints.add(lockedLessonPeriod(factory));
         constraints.add(classUnavailable(factory, s));
 
@@ -65,9 +63,6 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         addThreshold(factory, constraints, s, ConstraintType.TEACHER_MAX_PER_DAY, Lesson::getTeacherId);
         addThreshold(factory, constraints, s, ConstraintType.CLASS_MAX_PER_DAY, Lesson::getAdminClassId);
         addCourseThreshold(factory, constraints, s);
-        addProhibition(factory, constraints, s, ConstraintType.SPORT_NOT_FIRST_AFTERNOON,
-                lesson -> lesson.getPeriod().isFirstAfternoon(),
-                lesson -> sportControl(s, ConstraintType.SPORT_NOT_FIRST_AFTERNOON, lesson));
         addConsecutive(factory, constraints, s);
         addSpread(factory, constraints, s);
         addProhibition(factory, constraints, s, ConstraintType.MAIN_SUBJECT_MORNING,
@@ -168,14 +163,14 @@ public class PaibanConstraintProvider implements ConstraintProvider {
     /**
      * A hole must cost more than a single conflict. Timefold's {@code forEach} family
      * silently skips an entity while any planning variable is null, so a hole otherwise
-     * hides from the teacher/class/room penalties it would cause and becomes exactly as
+     * hides from the teacher/class penalties it would cause and becomes exactly as
      * cheap as one conflict — the solver then parks the last few lessons in "unassigned"
      * and keeps them there. Ten hard points make a complete schedule (even one with a
      * handful of conflicts to fix by hand) strictly preferable to leaving lessons out.
      */
     private Constraint unassignedLesson(ConstraintFactory f) {
         return f.forEachIncludingUnassigned(Lesson.class)
-                .filter(lesson -> lesson.getPeriod() == null || lesson.getRoom() == null)
+                .filter(lesson -> lesson.getPeriod() == null)
                 .penalize(HardSoftScore.ofHard(10))
                 .asConstraint("课节未排");
     }
@@ -198,21 +193,6 @@ public class PaibanConstraintProvider implements ConstraintProvider {
                 .filter((a, b) -> a.getPeriod() != null)
                 .penalize(penalty(s, ConstraintType.CLASS_CONFLICT))
                 .asConstraint(ConstraintType.CLASS_CONFLICT.getDisplayName());
-    }
-
-    /**
-     * A class's own classroom is an invariant, not a preference: with interchangeable
-     * rooms the solver otherwise scatters every class over the whole building.
-     */
-    private Constraint classFixedRoom(ConstraintFactory f) {
-        return f.forEachIncludingUnassigned(Lesson.class)
-                .filter(lesson -> lesson.getFixedRoom() != null
-                        && lesson.getPeriod() != null
-                        && !RoomRequirement.isSpecial(lesson.getRequiredRoomType())
-                        && (lesson.getRoom() == null
-                        || !lesson.getFixedRoom().getId().equals(lesson.getRoom().getId())))
-                .penalize(HardSoftScore.ONE_HARD)
-                .asConstraint("班级固定教室");
     }
 
     /**

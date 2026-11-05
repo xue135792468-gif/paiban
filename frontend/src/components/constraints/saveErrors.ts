@@ -3,7 +3,7 @@
  * and entry positions, e.g.
  * `教师禁排时段(TEACHER_UNAVAILABLE) 第2 条: 参数「教师」不能为空; 未知约束类型: X`.
  * Not every message carries the code — type-level errors are just
- * `课程不排晚自习: 参数「课程」不能为空` — so the catalogue is passed in to turn a
+ * `教师禁排时段: 参数「教师」不能为空` — so the catalogue is passed in to turn a
  * display name back into a code. Splitting the message here keeps the view free of
  * message parsing and lets the page put each error next to the row it belongs to.
  */

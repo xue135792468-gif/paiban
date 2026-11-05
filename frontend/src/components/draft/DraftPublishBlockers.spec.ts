@@ -53,9 +53,9 @@ describe('DraftPublishBlockers', () => {
     expect(rows[1].text()).toContain('有 2 节课引用的作息时段不属于当前学期')
   })
 
-  it('补教室动作不再出现在页面上', () => {
+  it('已下线动作不再出现在页面上', () => {
     const wrapper = mountBlockers([
-      blocker({ code: 'ASSIGN_ROOMS', message: '旧服务端仍返回补教室动作', action: 'ASSIGN_ROOMS' }),
+      blocker({ code: 'ASSIGN_ROOMS', message: '旧服务端仍返回已下线动作', action: 'ASSIGN_ROOMS' }),
     ])
 
     expect(wrapper.find('[data-testid=blocker-action-ASSIGN_ROOMS]').exists()).toBe(false)

@@ -17,13 +17,6 @@ export const routes: RouteRecordRaw[] = [
     meta: { public: true },
   },
   {
-    // Reached from the Feishu H5 container with a short-lived bind token.
-    path: '/bind',
-    name: 'feishu-bind',
-    component: () => import('@/views/FeishuBindView.vue'),
-    meta: { public: true },
-  },
-  {
     path: '/403',
     name: 'forbidden',
     component: () => import('@/views/ForbiddenView.vue'),
@@ -225,22 +218,7 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '排课规则（按类型）', permission: 'constraint:manage' },
       },
 
-      // AI 记录：票 07 要求 AI 的原始输出可追溯，票 01 只把它从一级导航移走。
-      // 同 rules/advanced，排在七项之后，让一级导航保持七项。
-      {
-        path: 'ai/history',
-        name: 'ai-history',
-        component: () => import('@/views/AiHistoryView.vue'),
-        meta: { title: 'AI 记录', permission: 'settings:manage' },
-      },
-
       // 系统页：保留路由，但不再出现在一级导航。
-      {
-        path: 'notifications',
-        name: 'notifications',
-        component: () => import('@/views/NotificationsView.vue'),
-        meta: { title: '通知中心', permission: 'notification:view' },
-      },
       {
         path: 'onboarding',
         name: 'onboarding',
@@ -259,9 +237,6 @@ export const routes: RouteRecordRaw[] = [
       { path: 'admin/grades', redirect: '/data/grades' },
       { path: 'admin/classes', redirect: '/data/classes' },
       { path: 'admin/assignments', redirect: '/data/assignments' },
-      // Rooms are retired from the product; the page itself stays in the tree until the
-      // room model is physically removed.
-      { path: 'admin/rooms', redirect: '/data/semesters' },
       {
         path: 'admin/ai-import',
         redirect: (to) => ({ path: '/data/import', query: to.query }),
@@ -288,7 +263,6 @@ export const routes: RouteRecordRaw[] = [
       { path: 'substitutions/workbench', redirect: '/substitution' },
       { path: 'admin/constraints', redirect: '/rules/advanced' },
       { path: 'admin/ai-providers', redirect: '/ai' },
-      { path: 'admin/ai-history', redirect: '/ai/history' },
       { path: 'admin/settings', redirect: '/settings/general' },
       { path: 'admin/users', redirect: '/settings/users' },
     ],

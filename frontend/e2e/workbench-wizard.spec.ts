@@ -73,9 +73,7 @@ async function seedWizardScenario(context: APIRequestContext): Promise<WizardSee
   })
   await apiCall(context, token, 'post', `/semesters/${semester.id}/set-current`)
   await apiCall(context, token, 'post', `/semesters/${semester.id}/periods/default`, {
-    morningCount: 2,
-    afternoonCount: 0,
-    eveningCount: 0,
+    periodCount: 2,
     days: [1, 2, 3, 4, 5],
   })
   const periodRows = await apiCall(context, token, 'get', `/semesters/${semester.id}/periods`)
@@ -128,16 +126,6 @@ async function seedWizardScenario(context: APIRequestContext): Promise<WizardSee
     subject: '英语',
     allowConsecutive: false,
   })
-  const roomA = await apiCall(context, token, 'post', '/rooms', {
-    name: `向导教室A${suffix}`,
-    capacity: 50,
-    type: 'NORMAL',
-  })
-  const roomB = await apiCall(context, token, 'post', '/rooms', {
-    name: `向导教室B${suffix}`,
-    capacity: 50,
-    type: 'NORMAL',
-  })
   await apiCall(context, token, 'post', '/assignments', {
     classId: class1.id,
     courseId: chinese.id,
@@ -171,16 +159,15 @@ async function seedWizardScenario(context: APIRequestContext): Promise<WizardSee
   if (class1Chinese.length !== 2 || class2Chinese.length !== 1 || class2English.length !== 1) {
     throw new Error('unexpected draft lessons for the wizard seed')
   }
-  const place = (lessonId: number, key: string, roomId: number) =>
+  const place = (lessonId: number, key: string) =>
     apiCall(context, token, 'patch', `/timetable-drafts/${draftId}/lessons/${lessonId}`, {
       periodId: periods[key],
-      roomId,
       force: true,
     })
-  await place(class1Chinese[0], '3-1', roomA.id)
-  await place(class1Chinese[1], '5-1', roomA.id)
-  await place(class2Chinese[0], '4-1', roomB.id)
-  await place(class2English[0], '3-1', roomB.id)
+  await place(class1Chinese[0], '3-1')
+  await place(class1Chinese[1], '5-1')
+  await place(class2Chinese[0], '4-1')
+  await place(class2English[0], '3-1')
   await publishDraft(context, draftId)
 
   const entries = await apiCall(context, token, 'get', `/timetable/class/${class1.id}`, undefined, {
@@ -242,9 +229,7 @@ async function seedPastWeekScenario(context: APIRequestContext): Promise<PastWee
   })
   await apiCall(context, token, 'post', `/semesters/${semester.id}/set-current`)
   await apiCall(context, token, 'post', `/semesters/${semester.id}/periods/default`, {
-    morningCount: 1,
-    afternoonCount: 0,
-    eveningCount: 0,
+    periodCount: 1,
     days: [1, 2, 3, 4, 5],
   })
   const periodRows = await apiCall(context, token, 'get', `/semesters/${semester.id}/periods`)
@@ -272,11 +257,6 @@ async function seedPastWeekScenario(context: APIRequestContext): Promise<PastWee
     subject: '语文',
     allowConsecutive: false,
   })
-  const room = await apiCall(context, token, 'post', '/rooms', {
-    name: `过去教室${suffix}`,
-    capacity: 50,
-    type: 'NORMAL',
-  })
   await apiCall(context, token, 'post', '/assignments', {
     classId: adminClass.id,
     courseId: course.id,
@@ -295,7 +275,6 @@ async function seedPastWeekScenario(context: APIRequestContext): Promise<PastWee
   for (let dayOfWeek = 1; dayOfWeek <= 5; dayOfWeek += 1) {
     await apiCall(context, token, 'patch', `/timetable-drafts/${draftId}/lessons/${lessonIds[dayOfWeek - 1]}`, {
       periodId: periods[`${dayOfWeek}-1`],
-      roomId: room.id,
       force: true,
     })
   }

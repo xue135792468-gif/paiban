@@ -3,7 +3,7 @@
  * "数学 每天最多 1 节" or "全校 周五第 7 节 不排，除了 九（2）班" into the
  * constraint rows the rest of the system already evaluates. There is no second
  * evaluator here — the output is exactly `constraint_config` / `constraint_entry`,
- * so the solver, draft validation, substitution and the read-only CLI keep reading
+ * so the solver, draft validation and substitution keep reading
  * one snapshot.
  *
  * <p>A <em>card</em> is the page's unit: one to three sentences, one shared enable
@@ -38,7 +38,6 @@ export type RuleType =
   | 'COURSE_SPREAD'
   | 'CLASS_GAP_MINIMIZED'
   | 'TEACHER_MAX_CONSECUTIVE'
-  | 'SPORT_NOT_FIRST_AFTERNOON'
   | 'PE_LAST_PERIOD_AVOID'
   | 'MAIN_SUBJECT_MORNING'
   | 'TEACHER_NO_FIRST_PERIOD'
@@ -56,14 +55,13 @@ export const CONSECUTIVE_LESSONS: RuleType = 'CONSECUTIVE_LESSONS'
 export const COURSE_SPREAD: RuleType = 'COURSE_SPREAD'
 export const CLASS_GAP_MINIMIZED: RuleType = 'CLASS_GAP_MINIMIZED'
 export const TEACHER_MAX_CONSECUTIVE: RuleType = 'TEACHER_MAX_CONSECUTIVE'
-export const SPORT_NOT_FIRST_AFTERNOON: RuleType = 'SPORT_NOT_FIRST_AFTERNOON'
 export const PE_LAST_PERIOD_AVOID: RuleType = 'PE_LAST_PERIOD_AVOID'
 export const MAIN_SUBJECT_MORNING: RuleType = 'MAIN_SUBJECT_MORNING'
 export const TEACHER_NO_FIRST_PERIOD: RuleType = 'TEACHER_NO_FIRST_PERIOD'
 export const TEACHER_DAY_OFF: RuleType = 'TEACHER_DAY_OFF'
 export const TEACHER_PREFERRED_SLOT: RuleType = 'TEACHER_PREFERRED_SLOT'
 
-/** The 17 types the sentence builder creates; the two system conflicts stay advanced-only. */
+/** The 16 types the sentence builder creates; the two system conflicts stay advanced-only. */
 export const RULE_TYPES: RuleType[] = [
   CLASS_UNAVAILABLE,
   TEACHER_UNAVAILABLE,
@@ -76,7 +74,6 @@ export const RULE_TYPES: RuleType[] = [
   COURSE_SPREAD,
   CLASS_GAP_MINIMIZED,
   TEACHER_MAX_CONSECUTIVE,
-  SPORT_NOT_FIRST_AFTERNOON,
   PE_LAST_PERIOD_AVOID,
   MAIN_SUBJECT_MORNING,
   TEACHER_NO_FIRST_PERIOD,
@@ -93,7 +90,6 @@ const KNOWN_ENTRY_BACKED = new Set<string>([
   'TEACHER_UNAVAILABLE',
   'COURSE_UNAVAILABLE',
   'SAME_COURSE_ONCE_PER_DAY',
-  'SPORT_NOT_FIRST_AFTERNOON',
   'CONSECUTIVE_LESSONS',
   'COURSE_SPREAD',
   'MAIN_SUBJECT_MORNING',
@@ -202,9 +198,6 @@ export const RULE_SPECS: Record<RuleType, RuleSpec> = {
     allowAnyTeacher: true,
     amount: { field: 'maxConsecutive', label: '最多连续节数', min: 1, max: 8, defaultValue: 3 }, defaultWeight: 45,
   }),
-  SPORT_NOT_FIRST_AFTERNOON: spec(SPORT_NOT_FIRST_AFTERNOON, 'PRESET', '体育 不在下午第一节', 'COURSE', {
-    course: 'OPTIONAL', coursePlaceholder: '体育类', defaultWeight: 70,
-  }),
   PE_LAST_PERIOD_AVOID: spec(PE_LAST_PERIOD_AVOID, 'PRESET', '体育 不在最后一节', 'COURSE', {
     course: 'OPTIONAL', coursePlaceholder: '体育类', defaultWeight: 35,
   }),
@@ -246,7 +239,7 @@ export const RULE_GROUPS: RuleGroupDef[] = [
     group: 'PRESET',
     label: '预设',
     types: [
-      SPORT_NOT_FIRST_AFTERNOON, PE_LAST_PERIOD_AVOID, MAIN_SUBJECT_MORNING,
+      PE_LAST_PERIOD_AVOID, MAIN_SUBJECT_MORNING,
       TEACHER_NO_FIRST_PERIOD, TEACHER_DAY_OFF, TEACHER_PREFERRED_SLOT,
     ],
   },
@@ -258,7 +251,6 @@ const WEEKDAYS = ['', '周一', '周二', '周三', '周四', '周五', '周六'
 export interface PeriodOption {
   dayOfWeek: number
   periodNo: number
-  section?: string | null
 }
 
 /** The values the form edits, without the card's storage identity. */
@@ -352,21 +344,8 @@ export function slotKey(dayOfWeek: number, periodNo: number): string {
   return `${dayOfWeek}-${periodNo}`
 }
 
-/** The afternoon periods of one weekday, read from the semester timetable. */
-export function afternoonPeriods(periods: PeriodOption[], dayOfWeek: number): number[] {
-  return normalizePeriods(
-    periods
-      .filter((period) => period.dayOfWeek === dayOfWeek && period.section === 'AFTERNOON')
-      .map((period) => period.periodNo),
-  )
-}
-
-/** "周五下午" when the selection is exactly the afternoon, otherwise "周五第 7 节". */
-export function timeLabel(
-  dayOfWeek: number | null,
-  periodNos: number[],
-  periods: PeriodOption[],
-): string {
+/** "周五第 7 节"; a day or period set still pending reads as such. */
+export function timeLabel(dayOfWeek: number | null, periodNos: number[]): string {
   if (dayOfWeek === null) {
     return '（请选择星期）'
   }
@@ -375,15 +354,7 @@ export function timeLabel(
   if (sorted.length === 0) {
     return `${label}（还没选节次）`
   }
-  const afternoon = afternoonPeriods(periods, dayOfWeek)
-  if (afternoon.length > 0 && sameNumbers(sorted, afternoon)) {
-    return `${label}下午`
-  }
   return `${label}第 ${sorted.join('、')} 节`
-}
-
-function sameNumbers(left: number[], right: number[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index])
 }
 
 type RuleShape = Pick<
@@ -392,7 +363,7 @@ type RuleShape = Pick<
 > & { type: RuleType | null; exceptionClassIds?: number[] }
 
 /** The sentence the card shows: "数学 每天最多 1 节" / "全校 的 课 在 周五第 7 节 不排". */
-export function describeRule(parts: RuleShape, names: RuleNames, periods: PeriodOption[]): string {
+export function describeRule(parts: RuleShape, names: RuleNames): string {
   if (!parts.type) {
     return '（请选择要求）'
   }
@@ -411,7 +382,7 @@ export function describeRule(parts: RuleShape, names: RuleNames, periods: Period
   const amount = parts.amount === null || parts.amount === undefined ? 'N' : String(parts.amount)
   const day = parts.dayOfWeek === null || parts.dayOfWeek === undefined
     ? '（请选择星期）' : weekdayLabel(parts.dayOfWeek)
-  const time = timeLabel(parts.dayOfWeek ?? null, parts.periodNos ?? [], periods)
+  const time = timeLabel(parts.dayOfWeek ?? null, parts.periodNos ?? [])
   const exceptions = parts.exceptionClassIds?.length
     ? `，除了 ${parts.exceptionClassIds.map((id) => names.klass(id)).join('、')}`
     : ''
@@ -440,8 +411,6 @@ export function describeRule(parts: RuleShape, names: RuleNames, periods: Period
       return '班级 不空堂'
     case TEACHER_MAX_CONSECUTIVE:
       return `${anyTeacher} 连续不超过 ${amount} 节`
-    case SPORT_NOT_FIRST_AFTERNOON:
-      return `${sport} 不在下午第一节`
     case PE_LAST_PERIOD_AVOID:
       return `${sport} 不在最后一节`
     case MAIN_SUBJECT_MORNING:
@@ -457,17 +426,13 @@ export function describeRule(parts: RuleShape, names: RuleNames, periods: Period
   }
 }
 
-export function describeSentence(
-  sentence: RuleSentence,
-  names: RuleNames,
-  periods: PeriodOption[],
-): string {
-  return describeRule(sentence, names, periods)
+export function describeSentence(sentence: RuleSentence, names: RuleNames): string {
+  return describeRule(sentence, names)
 }
 
 /** One card's sentences, joined for a compact card line. */
-export function describeCard(card: RuleCard, names: RuleNames, periods: PeriodOption[]): string {
-  return card.sentences.map((sentence) => describeSentence(sentence, names, periods)).join('；')
+export function describeCard(card: RuleCard, names: RuleNames): string {
+  return card.sentences.map((sentence) => describeSentence(sentence, names)).join('；')
 }
 
 /** The slots the requirement still needs before it can be saved. */
@@ -1376,19 +1341,14 @@ export const TARGET_LABELS: Record<RuleTargetGroup, string> = {
 }
 
 /** The list's free-text filter: object names, sentence wording and the bucket name. */
-export function cardMatches(
-  card: RuleCard,
-  query: string,
-  names: RuleNames,
-  periods: PeriodOption[],
-): boolean {
+export function cardMatches(card: RuleCard, query: string, names: RuleNames): boolean {
   const text = query.trim().toLowerCase()
   if (text === '') {
     return true
   }
   const haystack = [
     TARGET_LABELS[cardTarget(card)],
-    ...card.sentences.map((sentence) => describeSentence(sentence, names, periods)),
+    ...card.sentences.map((sentence) => describeSentence(sentence, names)),
   ].join(' ').toLowerCase()
   return haystack.includes(text)
 }

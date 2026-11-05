@@ -19,7 +19,7 @@ import org.springframework.test.context.ActiveProfiles;
 class FoundationIntegrationTest extends ApiIntegrationTest {
 
     @Test
-    void teacherRoomAndCourseCrud() {
+    void teacherAndCourseCrud() {
         String token = adminToken();
         String suffix = TestData.suffix();
 
@@ -29,52 +29,20 @@ class FoundationIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(200)
                 .body("name", equalTo("张老师改" + suffix));
 
-        long roomId = TestData.room(token, "实验室" + suffix);
-        as(token).body(Map.of("name", "实验室改" + suffix, "capacity", 60, "type", "LAB"))
-                .when().put("/api/rooms/" + roomId)
-                .then().statusCode(200)
-                .body("capacity", equalTo(60))
-                .body("type", equalTo("LAB"));
-
         long courseId = TestData.course(token, "体育" + suffix);
         as(token).body(Map.of(
                         "name", "体育改" + suffix,
                         "subject", "体育",
                         "allowConsecutive", false,
-                        "requireOutdoor", true,
-                        "requiredRoomType", "PLAYGROUND"))
+                        "color", "#AEC6CF"))
                 .when().put("/api/courses/" + courseId)
                 .then().statusCode(200)
-                .body("requireOutdoor", equalTo(true))
-                .body("requiredRoomType", equalTo("PLAYGROUND"));
+                .body("allowConsecutive", equalTo(false))
+                .body("color", equalTo("#AEC6CF"));
 
         as(token).when().get("/api/teachers")
                 .then().statusCode(200)
                 .body("name", hasItem("张老师改" + suffix));
-    }
-
-    @Test
-    void teacherFeishuBindingsCannotBeDuplicated() {
-        String token = adminToken();
-        String suffix = TestData.suffix();
-        long first = TestData.teacher(token, "张老师" + suffix);
-        long second = TestData.teacher(token, "李老师" + suffix);
-
-        as(token).body(Map.of("name", "张老师" + suffix, "feishuUserId", "fs-dup-" + suffix))
-                .when().put("/api/teachers/" + first)
-                .then().statusCode(200);
-
-        // Another teacher claiming the same UserID is a 409, not the unique-index 500.
-        as(token).body(Map.of("name", "李老师" + suffix, "feishuUserId", "fs-dup-" + suffix))
-                .when().put("/api/teachers/" + second)
-                .then().statusCode(409);
-
-        as(token).body(Map.of("name", "张老师" + suffix, "feishuOpenId", "ou-dup-" + suffix))
-                .when().put("/api/teachers/" + first)
-                .then().statusCode(200);
-        as(token).body(Map.of("name", "李老师" + suffix, "feishuOpenId", "ou-dup-" + suffix))
-                .when().put("/api/teachers/" + second)
-                .then().statusCode(409);
     }
 
     @Test

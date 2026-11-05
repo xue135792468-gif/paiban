@@ -1,6 +1,5 @@
 package com.paiban.foundation.web;
 
-import com.paiban.foundation.domain.PeriodSection;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -24,23 +23,27 @@ public final class SemesterDtos {
                             int dayOfWeek,
                             int periodNo,
                             String label,
-                            PeriodSection section,
                             LocalTime startTime,
                             LocalTime endTime) {}
 
     public record PeriodSlot(@NotNull Integer periodNo,
                              @NotBlank String label,
-                             @NotNull PeriodSection section,
                              @NotNull LocalTime startTime,
                              @NotNull LocalTime endTime,
                              @NotEmpty(message = "至少选择一个星期") List<Integer> days) {}
 
     public record SavePeriodsRequest(@NotEmpty List<@Valid PeriodSlot> slots) {}
 
+    /**
+     * 生成默认作息的请求。上午/下午/晚自习三个数量只作为「每天生成几节」的旧输入，
+     * 不再存储为硬分区（票 15：作息只保留节次与时间）；服务端按 1..N 顺序生成。
+     * {@code periodCount} 为票 15 后的简化入参，优先于三个分段计数；两者都兼容。
+     */
     public record GenerateDefaultPeriodsRequest(Integer morningCount,
-                                                Integer afternoonCount,
-                                                Integer eveningCount,
-                                                List<Integer> days) {}
+                                                 Integer afternoonCount,
+                                                 Integer eveningCount,
+                                                 Integer periodCount,
+                                                 List<Integer> days) {}
 
     public record CopyResultDto(int periods, int grades, int classes, int assignments) {}
 }

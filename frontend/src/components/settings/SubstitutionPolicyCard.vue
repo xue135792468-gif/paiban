@@ -2,17 +2,6 @@
   <el-card shadow="never">
     <template #header><span class="card-title">调代与通知</span></template>
     <el-form label-width="110px" class="form">
-      <el-form-item>
-        <template #label>
-          审批模式
-          <InfoTooltip field="substitution.approvalMode" />
-        </template>
-        <el-radio-group v-model="form['substitution.approval-mode']">
-          <el-radio-button value="approval">审批模式</el-radio-button>
-          <el-radio-button value="direct">直接生效</el-radio-button>
-        </el-radio-group>
-        <div class="hint">只影响代课；调课始终需要教务整单批准。</div>
-      </el-form-item>
       <el-form-item label="调课搜索窗口">
         <el-select v-model="form['substitution.search-window-days']" style="width: 160px">
           <el-option v-for="days in 30" :key="days" :label="`${days} 天`" :value="String(days)" />
@@ -45,7 +34,6 @@
 </template>
 
 <script setup lang="ts">
-import InfoTooltip from '@/components/InfoTooltip.vue'
 
 const form = defineModel<Record<string, string>>({ required: true })
 </script>

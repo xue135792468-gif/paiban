@@ -12,8 +12,6 @@ import com.paiban.foundation.domain.GradeRepository;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
 import com.paiban.foundation.domain.PeriodSlotKey;
-import com.paiban.foundation.domain.Room;
-import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.foundation.domain.Semester;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
@@ -38,7 +36,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Turns timetable-shaped import rows (class/day/period/course/teacher/room) into a
+ * Turns timetable-shaped import rows (class/day/period/course/teacher) into a
  * DRAFT timetable. Rows are matched to existing foundation data by name; anything
  * unmatched fails the whole batch with row-level errors, so a draft is only ever
  * created from data the user could see in the preview.
@@ -76,7 +74,6 @@ public class TimetableImportService {
     private final TeachingClassRepository teachingClasses;
     private final CourseRepository courses;
     private final TeacherRepository teachers;
-    private final RoomRepository rooms;
     private final PeriodRepository periods;
     private final AssignmentRepository assignments;
     private final TimetableDraftRepository drafts;
@@ -89,7 +86,6 @@ public class TimetableImportService {
             TeachingClassRepository teachingClasses,
             CourseRepository courses,
             TeacherRepository teachers,
-            RoomRepository rooms,
             PeriodRepository periods,
             AssignmentRepository assignments,
             TimetableDraftRepository drafts,
@@ -100,7 +96,6 @@ public class TimetableImportService {
         this.teachingClasses = teachingClasses;
         this.courses = courses;
         this.teachers = teachers;
-        this.rooms = rooms;
         this.periods = periods;
         this.assignments = assignments;
         this.drafts = drafts;
@@ -163,7 +158,6 @@ public class TimetableImportService {
             lesson.setAdminClassId(row.adminClass().getId());
             lesson.setStudentCount(row.adminClass().getStudentCount());
             lesson.setPeriodId(row.period().getId());
-            lesson.setRoomId(row.room() == null ? null : row.room().getId());
             lessons.add(lesson);
         }
         draftLessons.saveAll(lessons);
@@ -257,10 +251,6 @@ public class TimetableImportService {
         for (Teacher teacher : teachers.findAllByOrderByNameAsc()) {
             teacherByName.putIfAbsent(SlotText.normalizeName(teacher.getName()), teacher);
         }
-        Map<String, Room> roomByName = new LinkedHashMap<>();
-        for (Room room : rooms.findAllByOrderByNameAsc()) {
-            roomByName.putIfAbsent(SlotText.normalizeName(room.getName()), room);
-        }
         Map<String, Period> periodBySlot = new LinkedHashMap<>();
         Map<Integer, List<Period>> periodsByDay = new LinkedHashMap<>();
         for (Period period : periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(sid)) {
@@ -273,7 +263,6 @@ public class TimetableImportService {
         List<String> classCandidates = candidates(classByName.values().stream().map(AdminClass::getName).toList());
         List<String> courseCandidates = candidates(courseByName.values().stream().map(Course::getName).toList());
         List<String> teacherCandidates = candidates(teacherByName.values().stream().map(Teacher::getName).toList());
-        List<String> roomCandidates = candidates(roomByName.values().stream().map(Room::getName).toList());
         for (int i = 0; i < rows.size(); i++) {
             RowDto row = rows.get(i);
             int line = i + 1;
@@ -318,16 +307,6 @@ public class TimetableImportService {
                 }
             }
 
-            String roomName = value(row, "roomName");
-            Room room = null;
-            if (!roomName.isBlank()) {
-                room = roomByName.get(SlotText.normalizeName(roomName));
-                if (room == null) {
-                    errors.add(new RowErrorDto(line, "roomName", "系统中找不到教室：" + roomName, roomCandidates));
-                    failed = true;
-                }
-            }
-
             String dayText = value(row, "dayOfWeek");
             Integer day = null;
             if (dayText.isBlank()) {
@@ -366,7 +345,7 @@ public class TimetableImportService {
             }
 
             if (!failed) {
-                resolved.add(new ResolvedRow(adminClass, course, teacher, room, period));
+                resolved.add(new ResolvedRow(adminClass, course, teacher, period));
             }
         }
         return new Match(errors, resolved);
@@ -452,5 +431,5 @@ public class TimetableImportService {
 
     private record AssignmentKey(Long adminClassId, Long courseId) {}
 
-    private record ResolvedRow(AdminClass adminClass, Course course, Teacher teacher, Room room, Period period) {}
+    private record ResolvedRow(AdminClass adminClass, Course course, Teacher teacher, Period period) {}
 }

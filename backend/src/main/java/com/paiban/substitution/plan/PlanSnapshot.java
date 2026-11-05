@@ -4,7 +4,6 @@ import com.paiban.scheduling.constraint.ConstraintContext;
 import com.paiban.scheduling.constraint.ConstraintContext.ClassView;
 import com.paiban.scheduling.constraint.ConstraintContext.CourseView;
 import com.paiban.scheduling.constraint.ConstraintContext.PeriodView;
-import com.paiban.scheduling.constraint.ConstraintContext.RoomView;
 import com.paiban.scheduling.constraint.ConstraintContext.TeacherView;
 import com.paiban.scheduling.solver.ConstraintSettings;
 import java.nio.charset.StandardCharsets;
@@ -29,7 +28,6 @@ public record PlanSnapshot(long semesterId,
                            LocalDate semesterStart,
                            LocalDate semesterEnd,
                            Map<Long, PeriodView> periods,
-                           Map<Long, RoomView> rooms,
                            Map<Long, CourseView> courses,
                            Map<Long, TeacherView> teachers,
                            Map<Long, ClassView> classes,
@@ -47,7 +45,6 @@ public record PlanSnapshot(long semesterId,
                                  long classId,
                                  long courseId,
                                  long teacherId,
-                                 Long roomId,
                                  long periodId,
                                  int dayOfWeek,
                                  int periodNo) {}
@@ -66,7 +63,6 @@ public record PlanSnapshot(long semesterId,
                                       Long newPeriodId,
                                       Integer newDayOfWeek,
                                       Integer newPeriodNo,
-                                      Long newRoomId,
                                       Long substituteTeacherId,
                                       String type) {}
 
@@ -75,7 +71,6 @@ public record PlanSnapshot(long semesterId,
                                   long classId,
                                   long courseId,
                                   long teacherId,
-                                  Long roomId,
                                   long periodId,
                                   int dayOfWeek,
                                   int periodNo,
@@ -99,17 +94,10 @@ public record PlanSnapshot(long semesterId,
                     && lesson.periodId() == periodId
                     && lesson.entryId() != excludingEntryId);
         }
-
-        public boolean roomBusy(long roomId, long periodId, long excludingEntryId) {
-            return lessons.stream().anyMatch(lesson -> lesson.roomId() != null
-                    && lesson.roomId() == roomId
-                    && lesson.periodId() == periodId
-                    && lesson.entryId() != excludingEntryId);
-        }
     }
 
     public ConstraintContext context() {
-        return new ConstraintContext(periods, rooms, courses, teachers, classes, settings);
+        return new ConstraintContext(periods, courses, teachers, classes, settings);
     }
 
     public int studentCount(long classId) {
@@ -149,14 +137,11 @@ public record PlanSnapshot(long semesterId,
             }
             long teacherId = substitution != null && substitution.substituteTeacherId() != null
                     ? substitution.substituteTeacherId() : lesson.teacherId();
-            Long roomId = substitution != null && substitution.newRoomId() != null
-                    ? substitution.newRoomId() : lesson.roomId();
             lessons.add(new ScheduledLesson(
                     lesson.entryId(),
                     lesson.classId(),
                     lesson.courseId(),
                     teacherId,
-                    roomId,
                     periodId,
                     resolvedDay,
                     resolvedNo,
@@ -209,10 +194,6 @@ public record PlanSnapshot(long semesterId,
         return courses.get(courseId);
     }
 
-    public RoomView room(Long roomId) {
-        return roomId == null ? null : rooms.get(roomId);
-    }
-
     public TeacherView teacher(long teacherId) {
         return teachers.get(teacherId);
     }
@@ -227,13 +208,13 @@ public record PlanSnapshot(long semesterId,
         baseline.stream()
                 .sorted(Comparator.comparingLong(BaselineLesson::entryId))
                 .forEach(lesson -> lines.add("B|" + lesson.entryId() + "|" + lesson.classId() + "|"
-                        + lesson.courseId() + "|" + lesson.teacherId() + "|" + lesson.roomId() + "|"
+                        + lesson.courseId() + "|" + lesson.teacherId() + "|"
                         + lesson.periodId() + "|" + lesson.dayOfWeek() + "|" + lesson.periodNo()));
         substitutions.stream()
                 .sorted(Comparator.comparingLong(AppliedSubstitution::id))
                 .forEach(item -> lines.add("S|" + item.id() + "|" + item.entryId() + "|"
                         + item.effectiveDate() + "|" + item.newPeriodId() + "|" + item.newDayOfWeek()
-                        + "|" + item.newPeriodNo() + "|" + item.newRoomId() + "|"
+                        + "|" + item.newPeriodNo() + "|"
                         + item.substituteTeacherId() + "|" + item.type() + "|"
                         // 实例日期属于读模型输入：历史转换改写 lesson_date 后旧凭证必须失效
                         + item.lessonDate() + "|" + item.targetLessonDate()));
@@ -248,7 +229,7 @@ public record PlanSnapshot(long semesterId,
 
     /** Copies the reference data and lessons with a different baseline list. */
     public PlanSnapshot withBaseline(List<BaselineLesson> newBaseline) {
-        return new PlanSnapshot(semesterId, semesterStart, semesterEnd, periods, rooms, courses,
+        return new PlanSnapshot(semesterId, semesterStart, semesterEnd, periods, courses,
                 teachers, classes, newBaseline, substitutions, settings);
     }
 
@@ -271,7 +252,6 @@ public record PlanSnapshot(long semesterId,
                     lesson.classId(),
                     lesson.courseId(),
                     move.teacherId(),
-                    move.roomId(),
                     move.toPeriodId(),
                     target == null ? move.toDayOfWeek() : target.dayOfWeek(),
                     target == null ? move.toPeriodNo() : target.periodNo()));

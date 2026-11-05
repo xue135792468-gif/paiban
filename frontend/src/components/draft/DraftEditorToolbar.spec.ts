@@ -17,7 +17,6 @@ function mountToolbar(overrides: Record<string, unknown> = {}) {
       canEdit: true,
       canPublish: true,
       publishable: true,
-      isJunior: false,
       ...overrides,
     },
     global: { plugins: [ElementPlus] },

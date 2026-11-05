@@ -45,7 +45,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 /**
- * Ticket 11: migrates the stored 26-type constraint configuration onto the 19-type
+ * Ticket 11: migrates the stored legacy constraint configuration onto the current
  * catalogue without losing a single old row.
  *
  * <p>The classification is a static table, not scattered conditionals:

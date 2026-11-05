@@ -5,8 +5,8 @@ import CyclePlanPanel from './CyclePlanPanel.vue'
 import type { CyclePlan, DraftLesson, DraftPeriod } from './types'
 
 const periods: DraftPeriod[] = [
-  { id: 100, dayOfWeek: 1, periodNo: 1, label: '第1节', section: '', startTime: '', endTime: '' },
-  { id: 200, dayOfWeek: 1, periodNo: 2, label: '第2节', section: '', startTime: '', endTime: '' },
+  { id: 100, dayOfWeek: 1, periodNo: 1, label: '第1节', startTime: '', endTime: '' },
+  { id: 200, dayOfWeek: 1, periodNo: 2, label: '第2节', startTime: '', endTime: '' },
 ]
 
 function lesson(id: number, courseName: string, teacherName: string): DraftLesson {

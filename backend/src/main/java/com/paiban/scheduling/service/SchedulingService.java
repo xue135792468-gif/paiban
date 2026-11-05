@@ -21,13 +21,10 @@ import com.paiban.foundation.domain.Grade;
 import com.paiban.foundation.domain.GradeRepository;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
-import com.paiban.foundation.domain.Room;
-import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.foundation.service.SemesterService;
 import com.paiban.foundation.web.SemesterDtos.PeriodDto;
-import com.paiban.foundation.web.FoundationDtos.RoomDto;
 import com.paiban.scheduling.domain.AssignmentRepository;
 import com.paiban.scheduling.domain.ConstraintType;
 import com.paiban.scheduling.domain.DraftLesson;
@@ -84,7 +81,6 @@ public class SchedulingService {
     private final DraftLessonRepository draftLessons;
     private final AssignmentRepository assignments;
     private final PeriodRepository periods;
-    private final RoomRepository rooms;
     private final CourseRepository courses;
     private final TeacherRepository teachers;
     private final AdminClassRepository adminClasses;
@@ -111,7 +107,6 @@ public class SchedulingService {
             DraftLessonRepository draftLessons,
             AssignmentRepository assignments,
             PeriodRepository periods,
-            RoomRepository rooms,
             CourseRepository courses,
             TeacherRepository teachers,
             AdminClassRepository adminClasses,
@@ -134,7 +129,6 @@ public class SchedulingService {
         this.draftLessons = draftLessons;
         this.assignments = assignments;
         this.periods = periods;
-        this.rooms = rooms;
         this.courses = courses;
         this.teachers = teachers;
         this.adminClasses = adminClasses;
@@ -175,13 +169,6 @@ public class SchedulingService {
             }
             if (periods.countBySemesterId(resolved) == 0) {
                 throw ApiException.badRequest("请先配置作息表再提交排课");
-            }
-            // Rooms are optional for publishing, but the solver still needs a non-empty
-            // room value range: Timefold skips an entity with any null planning variable
-            // in forEach, so a null room would hide teacher/class conflicts and leave the
-            // whole draft stacked in one slot. Removed together with the room model.
-            if (rooms.count() == 0) {
-                throw ApiException.badRequest("请先配置教室再提交排课");
             }
             // Necessary condition only: an obvious shortage is explained before a job
             // is created. Assignments, drafts and published baselines stay untouched.
@@ -469,7 +456,6 @@ public class SchedulingService {
             row.setAdminClassId(lesson.getAdminClassId());
             row.setStudentCount(lesson.getStudentCount());
             row.setPeriodId(lesson.getPeriod() == null ? null : lesson.getPeriod().getId());
-            row.setRoomId(lesson.getRoom() == null ? null : lesson.getRoom().getId());
             row.setLocked(lesson.isLocked());
             rows.add(row);
         }
@@ -556,8 +542,6 @@ public class SchedulingService {
         Map<Long, Period> periodMap = new HashMap<>();
         periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(draft.getSemesterId())
                 .forEach(period -> periodMap.put(period.getId(), period));
-        Map<Long, Room> roomMap = new HashMap<>();
-        rooms.findAll().forEach(room -> roomMap.put(room.getId(), room));
         Map<Long, Course> courseMap = new HashMap<>();
         courses.findAll().forEach(course -> courseMap.put(course.getId(), course));
         Map<Long, Teacher> teacherMap = new HashMap<>();
@@ -569,7 +553,6 @@ public class SchedulingService {
         List<DraftLessonDto> lessons = rows.stream()
                 .map(row -> {
                     Period period = row.getPeriodId() == null ? null : periodMap.get(row.getPeriodId());
-                    Room room = row.getRoomId() == null ? null : roomMap.get(row.getRoomId());
                     Course course = courseMap.get(row.getCourseId());
                     Teacher teacher = teacherMap.get(row.getTeacherId());
                     AdminClass adminClass = classMap.get(row.getAdminClassId());
@@ -587,10 +570,7 @@ public class SchedulingService {
                             row.getPeriodId(),
                             period == null ? null : period.getDayOfWeek(),
                             period == null ? null : period.getPeriodNo(),
-                            period == null ? null : period.getSection().name(),
                             period == null ? null : "周" + period.getDayOfWeek() + "第" + period.getPeriodNo() + "节",
-                            row.getRoomId(),
-                            room == null ? null : room.getName(),
                             row.isLocked());
                 })
                 .toList();
@@ -602,13 +582,8 @@ public class SchedulingService {
                         period.getDayOfWeek(),
                         period.getPeriodNo(),
                         period.getLabel(),
-                        period.getSection(),
                         period.getStartTime(),
                         period.getEndTime()))
-                .toList();
-        List<RoomDto> roomDtos = rooms.findAllByOrderByNameAsc().stream()
-                .map(room -> new RoomDto(
-                        room.getId(), room.getName(), room.getCapacity(), room.getType(), room.getBuilding()))
                 .toList();
         ConstraintSettings settings = constraints.settings(draft.getSemesterId());
         List<BlockedSlotDto> blockedSlots = new ArrayList<>();
@@ -623,7 +598,7 @@ public class SchedulingService {
         }
         long lockedCount = rows.stream().filter(DraftLesson::isLocked).count();
         return new DraftDetailDto(
-                toDto(draft, rows.size(), lockedCount), lessons, periodDtos, roomDtos, blockedSlots,
+                toDto(draft, rows.size(), lockedCount), lessons, periodDtos, blockedSlots,
                 settings.fingerprint());
     }
 
@@ -673,10 +648,11 @@ public class SchedulingService {
      * Deletes a draft into the 7-day recycle bin (ticket 04). Only a DRAFT can be
      * deleted: a published timetable must be withdrawn first and an archived one is
      * history. The lessons are kept on purpose, so a restore brings back exactly the
-     * same timetable — including the locks the user confirmed dropping.
+     * same timetable — including the locks (ticket 15: a locked lesson no longer
+     * blocks deleting the draft).
      */
     @Transactional
-    public void deleteDraft(Long draftId, boolean unlockLocked, Integer expectedLockedCount, String actor) {
+    public void deleteDraft(Long draftId, String actor) {
         TimetableDraft existing = drafts.findById(draftId)
                 .filter(draft -> draft.getDeletedAt() == null)
                 .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
@@ -687,23 +663,6 @@ public class SchedulingService {
         }
         TimetableDraft draft = guard.lockEditable(draftId, null);
         int locked = (int) draftLessons.countByDraftIdAndLockedTrue(draftId);
-        // The default stays conservative: a plain DELETE never touches a locked lesson.
-        // Only the explicit "unlock and delete" confirmation may drop them, and the
-        // count the user saw has to match the count still in the draft.
-        if (locked > 0 && !unlockLocked) {
-            throw ApiException.conflict("草稿含 " + locked + " 节锁定课节，请先解锁后再删除");
-        }
-        // An explicit unlock-and-delete always has to carry the count the user saw.
-        // Comparing it even when nothing is locked now (locked == 0) closes the race
-        // where someone else unlocked the draft between the dialog and the request.
-        if (unlockLocked) {
-            if (expectedLockedCount == null) {
-                throw ApiException.badRequest("删除含锁草稿需要确认锁定数量");
-            }
-            if (expectedLockedCount != locked) {
-                throw ApiException.conflict("锁定状态已变化，请刷新后重试");
-            }
-        }
         int lessonCount = (int) draftLessons.countByDraftId(draftId);
         draft.setDeletedAt(java.time.Instant.now());
         drafts.save(draft);
@@ -725,8 +684,8 @@ public class SchedulingService {
     }
 
     @Transactional(readOnly = true)
-    public DraftValidator.ValidationResult validateMove(Long draftId, Long lessonId, Long periodId, Long roomId) {
-        return validator.validateMove(draftId, lessonId, periodId, roomId);
+    public DraftValidator.ValidationResult validateMove(Long draftId, Long lessonId, Long periodId) {
+        return validator.validateMove(draftId, lessonId, periodId);
     }
 
     @Transactional(readOnly = true)
@@ -741,7 +700,7 @@ public class SchedulingService {
 
     @Transactional
     public MoveResult moveLesson(
-            Long draftId, Long lessonId, Long periodId, Long roomId, boolean force, Long expectedVersion) {
+            Long draftId, Long lessonId, Long periodId, boolean force, Long expectedVersion) {
         TimetableDraft draft = guard.lockEditable(draftId, expectedVersion);
         DraftLesson lesson = draftLessons.findById(lessonId)
                 .orElseThrow(() -> ApiException.notFound("课节不存在: " + lessonId));
@@ -758,7 +717,7 @@ public class SchedulingService {
                 throw ApiException.badRequest("作息时段不属于该学期");
             }
         }
-        DraftValidator.ValidationResult result = validator.validateMove(draftId, lessonId, periodId, roomId);
+        DraftValidator.ValidationResult result = validator.validateMove(draftId, lessonId, periodId);
         boolean unavailable = result.conflicts().stream()
                 .anyMatch(conflict ->
                         ConstraintType.CLASS_UNAVAILABLE.name().equals(conflict.type()));
@@ -766,38 +725,10 @@ public class SchedulingService {
             return new MoveResult(false, false, result.hardConflicts(), result.conflicts(), draft.getVersion());
         }
         lesson.setPeriodId(periodId);
-        lesson.setRoomId(roomId);
         guard.bump(draft);
         // The stored score is the solver's last result; a manual move does not rewrite it.
         // The current publish verdict comes from the draft validation endpoint instead.
         return new MoveResult(true, result.valid(), result.hardConflicts(), result.conflicts(), draft.getVersion());
-    }
-
-    /**
-     * The write path for the explicit "fill fixed rooms" action (ticket 07): assigns a
-     * room only to lessons whose {@code roomId} is still empty, so a value a person
-     * entered by hand survives. The caller owns the transaction and the all-or-nothing
-     * decision. Locks fix period and teacher only, so a locked lesson can still get a room.
-     */
-    @Transactional
-    public int fillMissingRooms(Long draftId, Map<Long, Long> roomIdByLesson) {
-        TimetableDraft draft = guard.lockEditable(draftId, null);
-        int assigned = 0;
-        for (Map.Entry<Long, Long> entry : roomIdByLesson.entrySet()) {
-            DraftLesson lesson = draftLessons.findById(entry.getKey())
-                    .orElseThrow(() -> ApiException.notFound("课节不存在: " + entry.getKey()));
-            if (!lesson.getDraftId().equals(draftId)) {
-                throw ApiException.badRequest("课节不属于该草稿");
-            }
-            if (lesson.getRoomId() == null) {
-                lesson.setRoomId(entry.getValue());
-                assigned++;
-            }
-        }
-        if (assigned > 0) {
-            guard.bump(draft);
-        }
-        return assigned;
     }
 
     private TimetableDraft requireDraft(Long draftId) {

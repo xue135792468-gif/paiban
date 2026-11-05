@@ -6,7 +6,6 @@ import {
   describeItem,
   keyOf,
   proposedItems,
-  sectionLabel,
   timeRange,
   type MissingPeriodItem,
   type MissingPeriodsPlan,
@@ -18,7 +17,6 @@ function proposed(overrides: Partial<MissingPeriodItem> = {}): MissingPeriodItem
     periodNo: 9,
     status: 'PROPOSED',
     label: '第9节',
-    section: 'AFTERNOON',
     startTime: '17:40:00',
     endTime: '18:25:00',
     reason: null,
@@ -32,7 +30,6 @@ function manual(overrides: Partial<MissingPeriodItem> = {}): MissingPeriodItem {
     periodNo: 9,
     status: 'MANUAL',
     label: '第9节',
-    section: null,
     startTime: null,
     endTime: null,
     reason: '没有可参照的作息时间，请到作息管理手工设置',
@@ -52,8 +49,6 @@ describe('作息缺节展示', () => {
   it('星期与时段用中文展示', () => {
     expect(dayLabel(1)).toBe('周一')
     expect(dayLabel(7)).toBe('周日')
-    expect(sectionLabel('AFTERNOON')).toBe('下午')
-    expect(sectionLabel(null)).toBe('—')
   })
 
   it('只把可推算项列为可确认，人工项不在其中', () => {
@@ -79,6 +74,6 @@ describe('作息缺节展示', () => {
   })
 
   it('确认对话框里逐项写清星期、节次与起止时间', () => {
-    expect(describeItem(proposed())).toBe('周一 第9节 下午 17:40–18:25')
+    expect(describeItem(proposed())).toBe('周一 第9节 17:40–18:25')
   })
 })

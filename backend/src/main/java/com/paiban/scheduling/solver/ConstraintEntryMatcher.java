@@ -2,7 +2,6 @@ package com.paiban.scheduling.solver;
 
 import java.util.Map;
 import java.util.Objects;
-import org.springframework.util.StringUtils;
 
 /**
  * The one place that decides whether a configured constraint entry matches a lesson,
@@ -84,17 +83,4 @@ public final class ConstraintEntryMatcher {
         return teacher(entry, teacherId) && day(entry, dayOfWeek);
     }
 
-    /** The entry also carries the room type its course must use. */
-    public static boolean courseWithRoomType(Map<String, Object> entry, Long courseId) {
-        return course(entry, courseId) && ConstraintParams.roomType(entry) != null;
-    }
-
-    /** A blank subject means every teacher; otherwise the teacher's subject must match. */
-    public static boolean meetingSubject(Map<String, Object> entry, String teacherSubject) {
-        String subject = ConstraintParams.subject(entry);
-        if (!StringUtils.hasText(subject)) {
-            return true;
-        }
-        return teacherSubject != null && subject.equalsIgnoreCase(teacherSubject);
-    }
 }

@@ -42,7 +42,6 @@ function mountPanel(props: Record<string, unknown>, rowValue: TypeDraft) {
     props: {
       row: rowValue,
       canManage: true,
-      isJunior: false,
       teachers: [
         { id: 1, name: '张伟' },
         { id: 2, name: '李娜' },
@@ -94,16 +93,6 @@ describe('ConstraintTypePanel', () => {
     expect(soft.get('[data-testid="constraint-weight"]').text()).toContain('权重 60')
   })
 
-  it('初中模式只保留必须/尽量，且不显示权重', () => {
-    const wrapper = mountPanel(
-      { isJunior: true },
-      row({ code: 'X', params: COURSE_PARAMS, hard: false, weight: 60 }),
-    )
-    const group = wrapper.get('[data-testid="constraint-hard-group"]')
-    expect(group.text()).toContain('必须')
-    expect(group.text()).toContain('尽量')
-    expect(wrapper.text()).not.toContain('权重')
-  })
 
   it('类型级控制：开关与软硬都交给页面回写', async () => {
     const wrapper = mountPanel({}, row({ code: 'X', params: COURSE_PARAMS, hard: false }))
@@ -141,7 +130,7 @@ describe('ConstraintTypePanel', () => {
   it('其余目标型也是条目列表，不再用单值表单', () => {
     const wrapper = mountPanel(
       {},
-      row({ code: 'COURSE_NOT_IN_EVENING', name: '课程不排晚自习', params: COURSE_PARAMS }),
+      row({ code: 'LEGACY_COURSE_RULE', name: '课程禁排旧类型', params: COURSE_PARAMS }),
     )
     expect(wrapper.find('[data-testid="constraint-entry-list"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="constraint-param-form"]').exists()).toBe(false)

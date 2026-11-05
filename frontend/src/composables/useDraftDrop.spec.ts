@@ -19,7 +19,6 @@ function lesson(id: number, periodId: number | null, overrides: Partial<DraftLes
     periodId,
     dayOfWeek: 1,
     periodNo: id,
-    roomId: 5,
     locked: false,
     ...overrides,
   }
@@ -40,7 +39,6 @@ function detail(lessons: DraftLesson[]): DraftDetail {
     },
     lessons,
     periods: [],
-    rooms: [],
     rulesFingerprint: 'fp-1',
   }
 }

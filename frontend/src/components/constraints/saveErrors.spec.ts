@@ -3,7 +3,7 @@ import { parseSaveErrors, type NamedType } from './saveErrors'
 
 const TYPES: NamedType[] = [
   { code: 'TEACHER_UNAVAILABLE', name: '教师禁排时段' },
-  { code: 'COURSE_NOT_IN_EVENING', name: '课程不排晚自习' },
+  { code: 'LEGACY_COURSE_RULE', name: '课程禁排旧类型' },
   { code: 'TEACHER_CONFLICT', name: '教师不冲突' },
 ]
 
@@ -15,7 +15,7 @@ describe('保存错误定位', () => {
         '教师禁排时段(TEACHER_UNAVAILABLE) 第2 条: 参数「教师」不能为空',
         '教师禁排时段(TEACHER_UNAVAILABLE) 第2 条: 与第1 条完全相同，重复条目已拒绝',
         // 类型级 legacy 错误只带显示名，不带类型码。
-        '课程不排晚自习: 参数「课程」不能为空',
+        '课程禁排旧类型: 参数「课程」不能为空',
         '未知约束类型: BOGUS',
       ].join('; '),
       TYPES,
@@ -27,7 +27,7 @@ describe('保存错误定位', () => {
         2: ['参数「教师」不能为空', '与第1 条完全相同，重复条目已拒绝'],
       },
     })
-    expect(report.byType).toEqual({ COURSE_NOT_IN_EVENING: ['参数「课程」不能为空'] })
+    expect(report.byType).toEqual({ LEGACY_COURSE_RULE: ['参数「课程」不能为空'] })
   })
 
   it('同一类型多条错误都保留，顺序与后端一致', () => {
@@ -51,8 +51,8 @@ describe('保存错误定位', () => {
     })
     expect(parseSaveErrors('')).toEqual({ general: [], byType: {}, byEntry: {}, codes: [] })
     // 没有目录时无法把显示名换算成类型码，整句原样保留。
-    expect(parseSaveErrors('课程不排晚自习: 参数「课程」不能为空').general).toEqual([
-      '课程不排晚自习: 参数「课程」不能为空',
+    expect(parseSaveErrors('课程禁排旧类型: 参数「课程」不能为空').general).toEqual([
+      '课程禁排旧类型: 参数「课程」不能为空',
     ])
   })
 

@@ -57,7 +57,7 @@ class ClassCapacityIntegrationTest extends ApiIntegrationTest {
         Fixture fixture = fixtureWith39Lessons(token);
         List<Map<String, Object>> configs = List.of(
                 conflict("TEACHER_CONFLICT"), conflict("CLASS_CONFLICT"),
-                conflict("ROOM_CONFLICT"), ban(fixture.classId(), 1, 1, 1, 2));
+                conflict("CLASS_GAP_MINIMIZED"), ban(fixture.classId(), 1, 1, 1, 2));
 
         as(token).queryParam("semesterId", fixture.semesterId())
                 .body(Map.of("configs", configs)).post("/api/constraints/preview")
@@ -148,7 +148,6 @@ class ClassCapacityIntegrationTest extends ApiIntegrationTest {
         long grade = TestData.grade(token, semester, "容量年级" + suffix);
         String className = "容量班" + suffix;
         long classId = TestData.adminClass(token, semester, grade, className);
-        TestData.room(token, "容量教室" + suffix);
         long firstCourse = TestData.course(token, "容量甲" + suffix);
         long secondCourse = TestData.course(token, "容量乙" + suffix);
         assign(token, classId, firstCourse, TestData.teacher(token, "容量甲师" + suffix), 20);
@@ -171,7 +170,7 @@ class ClassCapacityIntegrationTest extends ApiIntegrationTest {
         List<Map<String, Object>> configs = new ArrayList<>();
         configs.add(conflict("TEACHER_CONFLICT"));
         configs.add(conflict("CLASS_CONFLICT"));
-        configs.add(conflict("ROOM_CONFLICT"));
+        configs.add(conflict("CLASS_GAP_MINIMIZED"));
         configs.add(ban(fixture.classId(), dayPeriods));
         as(token).queryParam("semesterId", fixture.semesterId())
                 .queryParam("baseVersion", version(token, fixture.semesterId()))

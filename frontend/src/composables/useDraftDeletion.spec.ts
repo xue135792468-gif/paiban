@@ -9,43 +9,22 @@ function setup() {
 }
 
 describe('deleteDraftWithConfirmation', () => {
-  it('锁定草稿要求确认解锁数量，并在请求里带上该数量', async () => {
+  it('确认后直接删除草稿，不再询问解锁', async () => {
     const { client, confirm, notify, deleteFn } = setup()
 
     const outcome = await deleteDraftWithConfirmation(
-      { id: 7, name: '锁定草稿', lockedCount: 1 },
+      { id: 7, name: '草稿' },
       { client, confirm, notify },
     )
 
     expect(outcome).toBe('deleted')
     const [message, title, options] = confirm.mock.calls[0]
-    expect(message).toContain('含 1 节锁定课节')
-    expect(message).toContain('一并移除')
+    expect(message).toContain('草稿')
     expect(message).toContain('最近删除')
     expect(title).toBe('删除草稿')
-    expect(options).toMatchObject({ confirmButtonText: '解锁并删除', type: 'warning' })
-    expect(deleteFn).toHaveBeenCalledWith('/timetable-drafts/7', {
-      params: { unlockLocked: true, expectedLockedCount: 1 },
-    })
-    expect(notify.success).toHaveBeenCalledWith('草稿已删除')
-  })
-
-  it('无锁草稿沿用普通删除确认，并显式上报 0 个锁定', async () => {
-    const { client, confirm, notify, deleteFn } = setup()
-
-    const outcome = await deleteDraftWithConfirmation(
-      { id: 8, name: '普通草稿', lockedCount: 0 },
-      { client, confirm, notify },
-    )
-
-    expect(outcome).toBe('deleted')
-    const [message, , options] = confirm.mock.calls[0]
-    expect(message).toContain('普通草稿')
-    expect(message).toContain('最近删除')
     expect(options).toMatchObject({ confirmButtonText: '确定删除', type: 'warning' })
-    expect(deleteFn).toHaveBeenCalledWith('/timetable-drafts/8', {
-      params: { unlockLocked: false, expectedLockedCount: 0 },
-    })
+    expect(deleteFn).toHaveBeenCalledWith('/timetable-drafts/7')
+    expect(notify.success).toHaveBeenCalledWith('草稿已删除')
   })
 
   it('取消确认时不发请求', async () => {
@@ -53,7 +32,7 @@ describe('deleteDraftWithConfirmation', () => {
     confirm.mockRejectedValue('cancel')
 
     const outcome = await deleteDraftWithConfirmation(
-      { id: 9, name: '草稿', lockedCount: 0 },
+      { id: 9, name: '草稿' },
       { client, confirm, notify },
     )
 
@@ -64,14 +43,14 @@ describe('deleteDraftWithConfirmation', () => {
 
   it('服务端拒绝时上报其消息并返回 failed', async () => {
     const { client, confirm, notify, deleteFn } = setup()
-    deleteFn.mockRejectedValue({ response: { data: { message: '锁定状态已变化，请刷新后重试' } } })
+    deleteFn.mockRejectedValue({ response: { data: { message: '草稿不存在' } } })
 
     const outcome = await deleteDraftWithConfirmation(
-      { id: 10, name: '草稿', lockedCount: 2 },
+      { id: 10, name: '草稿' },
       { client, confirm, notify },
     )
 
     expect(outcome).toBe('failed')
-    expect(notify.error).toHaveBeenCalledWith('锁定状态已变化，请刷新后重试')
+    expect(notify.error).toHaveBeenCalledWith('草稿不存在')
   })
 })

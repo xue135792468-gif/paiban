@@ -28,15 +28,9 @@ test.describe.serial('约束配置：模板完整套用与跨学期引用', () =
   let target: { semesterId: number; classId: number; className: string }
   let sourceClassName: string
 
-  /** The template area is part of the senior-school view (ADR-0018). */
-  async function setSchoolType(type: 'junior' | 'senior') {
-    await apiCall(api, token, 'put', '/settings', { 'school.type': type })
-  }
-
   test.beforeAll(async () => {
     api = await newContext()
     token = await apiLogin(api)
-    await setSchoolType('senior')
     seed = await seedConstraintScenario(api)
     const [first, second] = seed.teachers
     await apiCall(api, token, 'put', `/constraints?semesterId=${seed.semesterId}`, {
@@ -137,9 +131,7 @@ test.describe.serial('约束配置：模板完整套用与跨学期引用', () =
       endDate: '2026-07-10',
     })
     await apiCall(api, token, 'post', `/semesters/${semester.id}/periods/default`, {
-      morningCount: 4,
-      afternoonCount: 4,
-      eveningCount: 2,
+      periodCount: 10,
       days: [1, 2, 3, 4, 5],
     })
     const targetGrade = await apiCall(api, token, 'post', `/grades?semesterId=${semester.id}`, {
@@ -156,7 +148,6 @@ test.describe.serial('约束配置：模板完整套用与跨学期引用', () =
   })
 
   test.afterAll(async () => {
-    await setSchoolType('junior').catch(() => undefined)
     await api.dispose()
   })
 

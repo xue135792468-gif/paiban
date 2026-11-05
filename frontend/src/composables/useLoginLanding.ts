@@ -3,9 +3,9 @@ import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 
 /**
- * Landing rules shared by every way into the app (password, DingTalk, Feishu login
- * and Feishu binding): honour a redirect target, but on the home page show the
- * first-run onboarding wizard to administrators who can manage it.
+ * Landing rules shared by every way into the app (password and DingTalk login):
+ * honour a redirect target, but on the home page show the first-run onboarding
+ * wizard to administrators who can manage it.
  */
 export function useLoginLanding() {
   const route = useRoute()

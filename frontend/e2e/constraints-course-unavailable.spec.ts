@@ -116,8 +116,10 @@ test.describe.serial('约束配置：课程禁排时段与逐项控制', () => {
     await expect(card).toBeVisible()
 
     // Per-requirement control: this one prefers instead of forbids.
+    // 卡片生效文案的用词是「软约束」（类型默认是硬约束），这里断言它确实从硬翻成软。
     await pickOption(card, 'constraint-entry-hard', '尽量')
-    await expect(card.getByTestId('constraint-entry-effective')).toContainText('尽量')
+    await expect(card.getByTestId('constraint-entry-effective')).toContainText('软约束')
+    await expect(card.getByTestId('constraint-entry-effective')).not.toContainText('硬约束')
 
     // The slider only appears for an effective soft requirement.
     await expect(card.getByTestId('constraint-entry-weight-override')).toBeVisible()

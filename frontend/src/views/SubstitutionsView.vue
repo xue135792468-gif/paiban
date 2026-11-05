@@ -14,9 +14,6 @@
         <SubstitutionMineTable ref="mineRef" :requests="myRequests" />
       </el-tab-pane>
 
-      <el-tab-pane v-if="canApprove" label="待审批" name="pending">
-        <SubstitutionPendingPanel :requests="pendingRequests" :teachers="teachers" @refresh="onPendingRefresh" />
-      </el-tab-pane>
 
       <el-tab-pane v-if="canViewRecords" label="调代记录" name="records">
         <SubstitutionRecordsPanel
@@ -25,10 +22,6 @@
           :teachers="teachers"
           :can-view-all="canViewAllRecords"
         />
-      </el-tab-pane>
-
-      <el-tab-pane v-if="canViewRecords" label="历史转换" name="conversion">
-        <SubstitutionConversionPanel />
       </el-tab-pane>
     </el-tabs>
   </div>
@@ -41,14 +34,11 @@ import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import SubstitutionRequestForm from '@/components/substitution/SubstitutionRequestForm.vue'
 import SubstitutionMineTable from '@/components/substitution/SubstitutionMineTable.vue'
-import SubstitutionPendingPanel from '@/components/substitution/SubstitutionPendingPanel.vue'
 import SubstitutionRecordsPanel from '@/components/substitution/SubstitutionRecordsPanel.vue'
-import SubstitutionConversionPanel from '@/components/substitution/SubstitutionConversionPanel.vue'
 import type { RequestRow, Teacher } from '@/components/substitution/types'
 
 const auth = useAuthStore()
 const route = useRoute()
-const canApprove = computed(() => auth.hasPermission('substitution:approve'))
 const canViewRecords = computed(() =>
   auth.hasAnyPermission(['substitution:view', 'substitution:view:class']),
 )
@@ -56,7 +46,7 @@ const canViewAllRecords = computed(() => auth.hasPermission('substitution:view')
 const myTeacherId = computed(() => auth.user?.teacherId ?? null)
 
 /** The draft page's "re-process substitutions" prompt links straight to the records tab. */
-const TABS = ['mine', 'pending', 'records', 'conversion']
+const TABS = ['mine', 'records']
 const requestedTab = typeof route.query.tab === 'string' ? route.query.tab : ''
 const activeTab = ref(TABS.includes(requestedTab) ? requestedTab : 'mine')
 const teachers = ref<Teacher[]>([])
@@ -67,7 +57,6 @@ const classOptions = computed(() =>
     : classes.value.filter((item) => item.headTeacherId === auth.user?.teacherId),
 )
 const myRequests = ref<RequestRow[]>([])
-const pendingRequests = ref<RequestRow[]>([])
 const mineRef = ref<InstanceType<typeof SubstitutionMineTable> | null>(null)
 const recordsRef = ref<InstanceType<typeof SubstitutionRecordsPanel> | null>(null)
 
@@ -76,18 +65,10 @@ async function loadMine() {
   myRequests.value = data
 }
 
-async function loadPending() {
-  if (!canApprove.value) return
-  const { data } = await http.get('/substitution-requests/pending')
-  pendingRequests.value = data
-}
 
-async function onPendingRefresh() {
-  await Promise.all([loadPending(), recordsRef.value?.reload()])
-}
 
 async function reloadAll() {
-  await Promise.all([loadMine(), loadPending(), recordsRef.value?.reload()])
+  await Promise.all([loadMine(), recordsRef.value?.reload()])
 }
 
 onMounted(async () => {
@@ -97,7 +78,7 @@ onMounted(async () => {
   ])
   teachers.value = teacherRes.data
   classes.value = classRes.data.filter((item: { active?: boolean }) => item.active !== false)
-  await Promise.all([loadMine(), loadPending()])
+  await loadMine()
   const requestId = Number(route.query.requestId)
   if (requestId) {
     await nextTick()

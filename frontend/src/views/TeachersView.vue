@@ -56,20 +56,10 @@
         <el-table-column label="平台绑定" min-width="150">
           <template #default="{ row }">
             <div class="binding-tags">
-              <el-tag
-                v-if="row.bindingStatus === 'dingtalk' || row.bindingStatus === 'both'"
-                size="small"
-              >
+              <el-tag v-if="row.bindingStatus === 'dingtalk'" size="small">
                 钉钉
               </el-tag>
-              <el-tag
-                v-if="row.bindingStatus === 'feishu' || row.bindingStatus === 'both'"
-                size="small"
-                type="success"
-              >
-                飞书
-              </el-tag>
-              <el-tag v-if="!row.bindingStatus || row.bindingStatus === 'none'" size="small" type="info">
+              <el-tag v-else size="small" type="info">
                 未绑定
               </el-tag>
             </div>
@@ -122,12 +112,6 @@
         <el-form-item label="钉钉 UserID">
           <el-input v-model="form.dingtalkUserId" placeholder="留空表示清除绑定" />
         </el-form-item>
-        <el-form-item label="飞书 UserID">
-          <el-input v-model="form.feishuUserId" placeholder="留空表示清除绑定" />
-        </el-form-item>
-        <el-form-item label="飞书 OpenID">
-          <el-input v-model="form.feishuOpenId" placeholder="留空表示清除绑定" />
-        </el-form-item>
         <el-form-item label="状态" prop="active">
           <el-switch
             v-model="form.active"
@@ -171,9 +155,7 @@ interface Teacher {
   subject?: string | null
   active: boolean
   dingtalkUserId?: string | null
-  feishuUserId?: string | null
-  feishuOpenId?: string | null
-  bindingStatus?: 'both' | 'dingtalk' | 'feishu' | 'none'
+  bindingStatus?: 'dingtalk' | 'none'
 }
 
 const auth = useAuthStore()
@@ -194,8 +176,6 @@ const defaultForm = {
   subject: '',
   active: true,
   dingtalkUserId: '',
-  feishuUserId: '',
-  feishuOpenId: '',
 }
 
 const form = reactive({ ...defaultForm })
@@ -233,8 +213,6 @@ function openEdit(row: Teacher) {
     subject: row.subject ?? '',
     active: row.active ?? true,
     dingtalkUserId: row.dingtalkUserId ?? '',
-    feishuUserId: row.feishuUserId ?? '',
-    feishuOpenId: row.feishuOpenId ?? '',
   })
   dialogVisible.value = true
   formRef.value?.clearValidate()
@@ -254,8 +232,6 @@ async function submit() {
       active: form.active,
       // Empty string clears a binding; the backend treats an omitted field as unchanged.
       dingtalkUserId: form.dingtalkUserId.trim(),
-      feishuUserId: form.feishuUserId.trim(),
-      feishuOpenId: form.feishuOpenId.trim(),
     }
     if (editingId.value) {
       await http.put(`/teachers/${editingId.value}`, payload)

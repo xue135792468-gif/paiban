@@ -78,9 +78,8 @@ class SettingsPolicyTest {
         values.forEach((key, value) -> when(repository.findById(key))
                 .thenReturn(Optional.of(new AppSetting(key, value))));
         return new SettingsService(repository,
-                "approval", "minimal",
-                false, "", "", "", "dingtalk",
-                false, "", "", "", "", "feishu",
+                "minimal", false,
+                "", "", "", "dingtalk",
                 "");
     }
 }

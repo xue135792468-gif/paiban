@@ -26,6 +26,6 @@ public class SwapController {
     @PreAuthorize("hasAuthority('" + Permissions.TIMETABLE_EDIT + "')")
     public SwapResult swap(@PathVariable Long id, @Valid @RequestBody SwapRequest request) {
         return service.swap(id, request.lessonId(), request.targetLessonId(),
-                Boolean.TRUE.equals(request.swapRooms()), request.expectedVersion());
+                request.expectedVersion());
     }
 }

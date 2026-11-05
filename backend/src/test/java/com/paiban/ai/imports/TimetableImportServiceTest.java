@@ -10,7 +10,6 @@ import com.paiban.ai.imports.ImportDtos.RowDto;
 import com.paiban.foundation.domain.AdminClassRepository;
 import com.paiban.foundation.domain.CourseRepository;
 import com.paiban.foundation.domain.PeriodRepository;
-import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.foundation.domain.TeachingClassRepository;
 import com.paiban.scheduling.domain.Assignment;
@@ -62,34 +61,29 @@ class TimetableImportServiceTest extends ApiIntegrationTest {
     @Autowired
     private TeacherRepository teachers;
 
-    @Autowired
-    private RoomRepository rooms;
-
-    private record Fixture(long semesterId, long classId, long courseId, long teacherId, long roomId) {}
+    private record Fixture(long semesterId, long classId, long courseId, long teacherId) {}
 
     private Fixture fixture() {
         String token = adminToken();
         long semesterId = TestData.semester(token);
-        as(token).body(Map.of("morningCount", 4, "afternoonCount", 4, "eveningCount", 0))
+        as(token).body(Map.of("periodCount", 8, "days", List.of(1, 2, 3, 4, 5)))
                 .when().post("/api/semesters/" + semesterId + "/periods/default")
                 .then().statusCode(200);
         long gradeId = TestData.grade(token, semesterId, "一年级");
         long classId = TestData.adminClass(token, semesterId, gradeId, "一年级1班");
         long courseId = TestData.course(token, "语文");
         long teacherId = TestData.teacher(token, "张三");
-        long roomId = TestData.room(token, "101");
-        return new Fixture(semesterId, classId, courseId, teacherId, roomId);
+        return new Fixture(semesterId, classId, courseId, teacherId);
     }
 
     private static RowDto row(
-            String className, String day, String period, String course, String teacher, String room) {
+            String className, String day, String period, String course, String teacher, String ignoredRoom) {
         Map<String, String> values = new LinkedHashMap<>();
         values.put("className", className);
         values.put("dayOfWeek", day);
         values.put("periodNo", period);
         values.put("courseName", course);
         values.put("teacherName", teacher);
-        values.put("roomName", room);
         return new RowDto(values, Map.of(), List.of());
     }
 
@@ -137,7 +131,6 @@ class TimetableImportServiceTest extends ApiIntegrationTest {
             assertThat(lesson.getAdminClassId()).isEqualTo(f.classId());
             assertThat(lesson.getCourseId()).isEqualTo(f.courseId());
             assertThat(lesson.getTeacherId()).isEqualTo(f.teacherId());
-            assertThat(lesson.getRoomId()).isEqualTo(f.roomId());
             assertThat(lesson.getStudentCount()).isEqualTo(45);
             assertThat(lesson.getPeriodId()).isNotNull();
         });
@@ -162,22 +155,21 @@ class TimetableImportServiceTest extends ApiIntegrationTest {
                         row("一年级1班", "周一", "第九节", "语文", "张三", "101"),
                         row("一年级1班", "周一", "第1节", "不存在课", "张三", "101"),
                         row("一年级1班", "周一", "第1节", "语文", "不存在师", "101"),
-                        row("一年级1班", "周一", "第1节", "语文", "张三", "不存在室")),
+                        row("一年级1班", "周一", "第1节", "语文", "张三", null)),
                 null,
                 "admin");
 
         assertThat(result.draftId()).isNull();
         assertThat(result.imported()).isZero();
         assertThat(result.errors()).extracting(ImportDtos.RowErrorDto::row)
-                .containsExactly(2, 3, 4, 5, 6, 7);
+                .containsExactly(2, 3, 4, 5, 6);
         assertThat(result.errors()).extracting(ImportDtos.RowErrorDto::field)
-                .containsExactly("className", "dayOfWeek", "periodNo", "courseName", "teacherName", "roomName");
+                .containsExactly("className", "dayOfWeek", "periodNo", "courseName", "teacherName");
         assertThat(result.errors().get(0).candidates()).contains("一年级1班");
         assertThat(result.errors().get(1).candidates()).contains("周一", "周五");
         assertThat(result.errors().get(2).candidates()).contains("第1节", "第8节");
         assertThat(result.errors().get(3).candidates()).contains("语文");
         assertThat(result.errors().get(4).candidates()).contains("张三");
-        assertThat(result.errors().get(5).candidates()).contains("101");
 
         assertThat(drafts.count()).isZero();
         assertThat(draftLessons.count()).isZero();

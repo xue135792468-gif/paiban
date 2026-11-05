@@ -41,21 +41,20 @@ class PeriodReferenceIntegrityTest extends ApiIntegrationTest {
 
     private record Fixture(String token, long semesterId, long draftId, long periodId) {}
 
-    /** One semester with two morning periods (10 slots) and one imported lesson at 周一第 1 节. */
+    /** One semester with two periods (10 slots) and one imported lesson at 周一第 1 节. */
     private Fixture fixture() {
         String token = adminToken();
         long semesterId = TestData.semester(token);
-        as(token).body(Map.of("morningCount", 2, "afternoonCount", 0, "eveningCount", 0))
+        as(token).body(Map.of("periodCount", 2))
                 .when().post("/api/semesters/" + semesterId + "/periods/default")
                 .then().statusCode(200).body("$", hasSize(10));
         long gradeId = TestData.grade(token, semesterId, "一年级");
         TestData.adminClass(token, semesterId, gradeId, "一年级1班");
         TestData.course(token, "语文");
         TestData.teacher(token, "张三");
-        TestData.room(token, "101");
 
         TimetableImportService.Result imported = importService.importRows(
-                List.of(row("一年级1班", "周一", "第1节", "语文", "张三", "101")), null, "admin");
+                List.of(row("一年级1班", "周一", "第1节", "语文", "张三")), null, "admin");
         assertThat(imported.errors()).isEmpty();
         long draftId = imported.draftId();
         long periodId = as(token).get("/api/timetable-drafts/" + draftId)
@@ -64,14 +63,13 @@ class PeriodReferenceIntegrityTest extends ApiIntegrationTest {
         return new Fixture(token, semesterId, draftId, periodId);
     }
 
-    private static RowDto row(String className, String day, String period, String course, String teacher, String room) {
+    private static RowDto row(String className, String day, String period, String course, String teacher) {
         Map<String, String> values = new LinkedHashMap<>();
         values.put("className", className);
         values.put("dayOfWeek", day);
         values.put("periodNo", period);
         values.put("courseName", course);
         values.put("teacherName", teacher);
-        values.put("roomName", room);
         return new RowDto(values, Map.of(), List.of());
     }
 
@@ -79,7 +77,6 @@ class PeriodReferenceIntegrityTest extends ApiIntegrationTest {
         return Map.of(
                 "periodNo", periodNo,
                 "label", label,
-                "section", "MORNING",
                 "startTime", start,
                 "endTime", end,
                 "days", List.of(1, 2, 3, 4, 5));
@@ -170,7 +167,7 @@ class PeriodReferenceIntegrityTest extends ApiIntegrationTest {
                 slot(2, "上午第2节", "09:05", "09:50")))
                 .then().statusCode(409);
 
-        as(f.token()).body(Map.of("morningCount", 2, "afternoonCount", 0, "eveningCount", 0))
+        as(f.token()).body(Map.of("periodCount", 2))
                 .when().post("/api/semesters/" + f.semesterId() + "/periods/default")
                 .then().statusCode(409);
     }

@@ -21,8 +21,6 @@ paiban:
   security:
     jwt-secret: ${PAIBAN_JWT_SECRET:paiban-local-development-secret-key-change-me-please-0123456789}
     jwt-expiration-minutes: 480
-  substitution:
-    approval-mode: approval
   notification:
     scope: minimal
   ai:
@@ -47,15 +45,6 @@ paiban:
       agent-id: ""
       sync-strategy: dingtalk
       fake: false
-    feishu:
-      enabled: false
-      app-id: ""
-      app-secret: ""
-      verification-token: ""
-      encrypt-key: ""
-      sync-strategy: feishu
-      fake: false
-      sync-on-startup: true
   export:
     school-logo-path: ""
     pdf-font-path: ""
@@ -131,7 +120,3 @@ paiban:
     dingtalk:
       enabled: false
       fake: true
-    feishu:
-      enabled: false
-      fake: true
-      sync-on-startup: false

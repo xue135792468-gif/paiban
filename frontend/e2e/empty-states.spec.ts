@@ -34,7 +34,7 @@ async function stubSemester(page: Page) {
 }
 
 async function stubEmptyFoundation(page: Page) {
-  for (const path of ['grades', 'classes', 'teachers', 'rooms', 'courses', 'assignments']) {
+  for (const path of ['grades', 'classes', 'teachers', 'courses', 'assignments']) {
     await stubJson(page, `**/api/${path}**`, [])
   }
 }
@@ -176,7 +176,7 @@ test('排课草稿、排课历史与约束列表为空时显示引导', async ({
   )
 })
 
-test('调代待审批与调代记录为空时显示引导', async ({ page }) => {
+test('调代申请与调代记录为空时显示引导', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
   await stubSemester(page)
   await stubJson(page, '**/api/substitution-requests**', [])
@@ -191,13 +191,6 @@ test('调代待审批与调代记录为空时显示引导', async ({ page }) => 
     title: '还没有调代申请',
     href: '/help/substitution#apply',
   })
-
-  await page.getByRole('tab', { name: '待审批' }).click()
-  const pending = await expectGuide(page, {
-    title: '没有待审批的申请',
-    href: '/help/substitution#approve',
-  })
-  await expect(pending.getByRole('button')).toHaveCount(0)
 
   await page.getByRole('tab', { name: '调代记录' }).click()
   await expectGuide(page, {

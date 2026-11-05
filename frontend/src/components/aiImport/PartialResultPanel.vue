@@ -124,18 +124,13 @@ const FIELD_ORDER = [
   'teacherName',
 ]
 
-/** Room values may still arrive from an old workbook, but they are not shown. */
-const HIDDEN_FIELDS = new Set(['roomName'])
-
 const columns = computed(() => {
   const present = new Set<string>()
   for (const row of props.rows) {
     Object.keys(row.values ?? {}).forEach((field) => present.add(field))
   }
   const ordered = FIELD_ORDER.filter((field) => present.has(field))
-  const rest = [...present].filter(
-    (field) => !FIELD_ORDER.includes(field) && !HIDDEN_FIELDS.has(field),
-  )
+  const rest = [...present].filter((field) => !FIELD_ORDER.includes(field))
   return [...ordered, ...rest].map((field) => ({ field, label: fieldLabel(field) }))
 })
 </script>

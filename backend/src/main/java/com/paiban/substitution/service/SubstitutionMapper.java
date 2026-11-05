@@ -6,11 +6,8 @@ import com.paiban.foundation.domain.Course;
 import com.paiban.foundation.domain.CourseRepository;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
-import com.paiban.foundation.domain.Room;
-import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
-import com.paiban.identity.service.UserService;
 import com.paiban.substitution.domain.Substitution;
 import com.paiban.substitution.domain.SubstitutionPlan;
 import com.paiban.substitution.domain.SubstitutionPlanMove;
@@ -45,9 +42,7 @@ public class SubstitutionMapper {
     private final AdminClassRepository adminClasses;
     private final CourseRepository courses;
     private final TeacherRepository teachers;
-    private final RoomRepository rooms;
     private final PeriodRepository periods;
-    private final UserService users;
 
     public SubstitutionMapper(
             SubstitutionRepository substitutions,
@@ -57,9 +52,7 @@ public class SubstitutionMapper {
             AdminClassRepository adminClasses,
             CourseRepository courses,
             TeacherRepository teachers,
-            RoomRepository rooms,
-            PeriodRepository periods,
-            UserService users) {
+            PeriodRepository periods) {
         this.substitutions = substitutions;
         this.requests = requests;
         this.planMoves = planMoves;
@@ -67,9 +60,7 @@ public class SubstitutionMapper {
         this.adminClasses = adminClasses;
         this.courses = courses;
         this.teachers = teachers;
-        this.rooms = rooms;
         this.periods = periods;
-        this.users = users;
     }
 
     public SubstitutionRequestDto toDto(SubstitutionRequest request) {
@@ -86,8 +77,6 @@ public class SubstitutionMapper {
                         .orElse(request.getExpectedSubstituteTeacherId());
         String substituteTeacher = substituteId == null ? null : teachers.findById(substituteId)
                 .map(Teacher::getName).orElse(null);
-        String approver = request.getApproverId() == null ? null : users.get(request.getApproverId())
-                .getDisplayName();
         String targetPeriodLabel = request.getTargetPeriodId() == null ? null
                 : periods.findById(request.getTargetPeriodId())
                         .map(period -> label(period.getDayOfWeek(), period.getPeriodNo()))
@@ -114,13 +103,7 @@ public class SubstitutionMapper {
                 typeOf(request),
                 request.getReason(),
                 request.getStatus(),
-                request.getApprovalMode(),
-                approver,
-                request.getApprovedAt(),
-                request.getApprovalComment(),
-                request.getCreatedAt(),
-                request.getRevisesRequestId(),
-                request.getRevisionKind());
+                request.getCreatedAt());
     }
 
     public SubstitutionRecordDto toRecordDto(Substitution substitution) {
@@ -141,9 +124,6 @@ public class SubstitutionMapper {
                 .map(Teacher::getName).orElse(null);
         String substitute = teachers.findById(substitution.getSubstituteTeacherId())
                 .map(Teacher::getName).orElse(null);
-        Long roomId = substitution.getNewRoomId() != null ? substitution.getNewRoomId()
-                : entry == null ? null : entry.getRoomId();
-        String roomName = roomId == null ? null : rooms.findById(roomId).map(Room::getName).orElse(null);
         int fromDay = entry != null ? entry.getDayOfWeek()
                 : request != null ? request.getDayOfWeek() : 0;
         int fromNo = entry != null ? entry.getPeriodNo()
@@ -166,8 +146,6 @@ public class SubstitutionMapper {
                 original,
                 substitution.getSubstituteTeacherId(),
                 substitute,
-                roomId,
-                roomName,
                 substitution.getStatus(),
                 substitution.getCreatedAt(),
                 fromDay,
@@ -194,12 +172,9 @@ public class SubstitutionMapper {
                 .map(AdminClass::getName).orElse(null);
         String courseName = courses.findById(move.getCourseId()).map(Course::getName).orElse(null);
         String teacherName = teachers.findById(move.getTeacherId()).map(Teacher::getName).orElse(null);
-        String roomName = move.getRoomId() == null ? null
-                : rooms.findById(move.getRoomId()).map(Room::getName).orElse(null);
         return new PlanMoveDto(
                 move.getId(), move.getEntryId(), move.getClassId(), className,
                 move.getCourseId(), courseName, move.getTeacherId(), teacherName,
-                move.getRoomId(), roomName,
                 move.getFromPeriodId(), move.getFromDayOfWeek(), move.getFromPeriodNo(),
                 label(move.getFromDayOfWeek(), move.getFromPeriodNo()), move.getFromDate(),
                 move.getToPeriodId(), move.getToDayOfWeek(), move.getToPeriodNo(),
@@ -214,7 +189,6 @@ public class SubstitutionMapper {
         entity.setClassId(move.classId());
         entity.setCourseId(move.courseId());
         entity.setTeacherId(move.teacherId());
-        entity.setRoomId(move.roomId());
         entity.setFromPeriodId(move.fromPeriodId());
         entity.setFromDayOfWeek(move.fromDayOfWeek());
         entity.setFromPeriodNo(move.fromPeriodNo());
@@ -230,7 +204,7 @@ public class SubstitutionMapper {
     public PlanMove toPlanMove(SubstitutionPlanMove entity) {
         return new PlanMove(
                 entity.getEntryId(), entity.getClassId(), entity.getCourseId(), entity.getTeacherId(),
-                entity.getRoomId(), entity.getFromPeriodId(), entity.getFromDayOfWeek(),
+                entity.getFromPeriodId(), entity.getFromDayOfWeek(),
                 entity.getFromPeriodNo(), entity.getFromDate(), entity.getToPeriodId(),
                 entity.getToDayOfWeek(), entity.getToPeriodNo(), entity.getToDate(), entity.getMoveOrder());
     }

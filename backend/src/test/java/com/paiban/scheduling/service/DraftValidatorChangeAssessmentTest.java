@@ -11,9 +11,6 @@ import com.paiban.foundation.domain.Course;
 import com.paiban.foundation.domain.CourseRepository;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
-import com.paiban.foundation.domain.PeriodSection;
-import com.paiban.foundation.domain.Room;
-import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.scheduling.domain.ConstraintConfig;
@@ -64,11 +61,6 @@ class DraftValidatorChangeAssessmentTest {
     private static final long TEACHER_2 = 402L;
     private static final long TEACHER_4 = 404L;
 
-    private static final long ROOM_1 = 501L;
-    private static final long ROOM_2 = 502L;
-    private static final long ROOM_3 = 503L;
-    private static final long ROOM_4 = 504L;
-    private static final long ROOM_5 = 505L;
 
     private static final long LESSON_1 = 601L;
     private static final long LESSON_2 = 602L;
@@ -88,7 +80,6 @@ class DraftValidatorChangeAssessmentTest {
         TimetableDraftRepository drafts = mock(TimetableDraftRepository.class);
         draftLessons = mock(DraftLessonRepository.class);
         PeriodRepository periods = mock(PeriodRepository.class);
-        RoomRepository rooms = mock(RoomRepository.class);
         CourseRepository courses = mock(CourseRepository.class);
         TeacherRepository teachers = mock(TeacherRepository.class);
         AdminClassRepository adminClasses = mock(AdminClassRepository.class);
@@ -104,9 +95,6 @@ class DraftValidatorChangeAssessmentTest {
         when(periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(SEMESTER_ID)).thenReturn(List.of(
                 period(P1, 1), period(P2, 2), period(P3, 3), period(P4, 4),
                 period(P5, 5), period(P6, 6), periodOn(P7, 2, 1)));
-        when(rooms.findAll()).thenReturn(List.of(
-                room(ROOM_1, "教室1"), room(ROOM_2, "教室2"), room(ROOM_3, "教室3"),
-                room(ROOM_4, "教室4"), room(ROOM_5, "教室5")));
         when(courses.findAll()).thenReturn(List.of(
                 course(CHINESE, "语文"), course(MATH, "数学")));
         when(teachers.findAll()).thenReturn(List.of(
@@ -117,22 +105,22 @@ class DraftValidatorChangeAssessmentTest {
                 adminClass(CLASS_3, "高一3班"), adminClass(CLASS_5, "高一5班")));
 
         validator = new DraftValidator(
-                drafts, draftLessons, periods, rooms, courses, teachers, adminClasses,
+                drafts, draftLessons, periods, courses, teachers, adminClasses,
                 constraintService, baselines);
     }
 
     @Test
     void repairingOneOfTheOldConflictsIsAllowedWithoutNewOnes() {
         useLessons(
-                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1, ROOM_1),
-                lesson(LESSON_2, MATH, TEACHER_2, CLASS_1, P1, ROOM_2),
-                lesson(LESSON_3, CHINESE, TEACHER_1, CLASS_2, P1, ROOM_3),
-                lesson(LESSON_4, MATH, TEACHER_4, CLASS_3, P1, ROOM_1));
+                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1),
+                lesson(LESSON_2, MATH, TEACHER_2, CLASS_1, P1),
+                lesson(LESSON_3, CHINESE, TEACHER_1, CLASS_2, P1),
+                lesson(LESSON_4, MATH, TEACHER_4, CLASS_3, P1));
 
         ChangeAssessment assessment = validator.assessChanges(DRAFT_ID, List.of(
-                new LessonChange(LESSON_2, P2, ROOM_2, TEACHER_2)));
+                new LessonChange(LESSON_2, P2, TEACHER_2)));
 
-        // Room conflicts are retired from the product (ticket 09), so the two old
+        // Room conflicts are retired from the product, so the two old
         // conflicts are the class clash on P1 and the teacher clash on P1.
         assertThat(assessment.before()).hasSize(2);
         assertThat(assessment.allowed()).isTrue();
@@ -143,15 +131,15 @@ class DraftValidatorChangeAssessmentTest {
     @Test
     void repairingOneConflictWhileIntroducingAnotherIsRefused() {
         useLessons(
-                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1, ROOM_1),
-                lesson(LESSON_2, MATH, TEACHER_2, CLASS_1, P1, ROOM_2),
-                lesson(LESSON_3, CHINESE, TEACHER_1, CLASS_2, P1, ROOM_3),
-                lesson(LESSON_4, MATH, TEACHER_4, CLASS_3, P1, ROOM_1),
-                lesson(LESSON_5, MATH, TEACHER_1, CLASS_5, P4, ROOM_5));
+                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1),
+                lesson(LESSON_2, MATH, TEACHER_2, CLASS_1, P1),
+                lesson(LESSON_3, CHINESE, TEACHER_1, CLASS_2, P1),
+                lesson(LESSON_4, MATH, TEACHER_4, CLASS_3, P1),
+                lesson(LESSON_5, MATH, TEACHER_1, CLASS_5, P4));
 
         ChangeAssessment assessment = validator.assessChanges(DRAFT_ID, List.of(
-                new LessonChange(LESSON_2, P2, ROOM_2, TEACHER_2),
-                new LessonChange(LESSON_3, P4, ROOM_3, TEACHER_1)));
+                new LessonChange(LESSON_2, P2, TEACHER_2),
+                new LessonChange(LESSON_3, P4, TEACHER_1)));
 
         assertThat(assessment.allowed()).isFalse();
         assertThat(assessment.added()).hasSize(1);
@@ -163,12 +151,12 @@ class DraftValidatorChangeAssessmentTest {
     void oneAggregateHitBecomingTwoIsAnAggravationAndTwoBecomingOneIsAllowed() {
         useConsecutiveSettings();
         useLessons(
-                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1, ROOM_1),
-                lesson(LESSON_2, CHINESE, TEACHER_1, CLASS_1, P2, ROOM_1),
-                lesson(LESSON_3, CHINESE, TEACHER_1, CLASS_1, P5, ROOM_1));
+                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1),
+                lesson(LESSON_2, CHINESE, TEACHER_1, CLASS_1, P2),
+                lesson(LESSON_3, CHINESE, TEACHER_1, CLASS_1, P5));
 
         ChangeAssessment worsened = validator.assessChanges(DRAFT_ID, List.of(
-                new LessonChange(LESSON_2, P3, ROOM_1, TEACHER_1)));
+                new LessonChange(LESSON_2, P3, TEACHER_1)));
         assertThat(worsened.before()).hasSize(1);
         assertThat(worsened.after()).hasSize(2);
         assertThat(worsened.added()).hasSize(1);
@@ -177,11 +165,11 @@ class DraftValidatorChangeAssessmentTest {
                 .isEqualTo("CONSECUTIVE_LESSONS|" + CLASS_1 + "-" + CHINESE + "-1");
 
         useLessons(
-                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1, ROOM_1),
-                lesson(LESSON_2, CHINESE, TEACHER_1, CLASS_1, P3, ROOM_1),
-                lesson(LESSON_3, CHINESE, TEACHER_1, CLASS_1, P5, ROOM_1));
+                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1),
+                lesson(LESSON_2, CHINESE, TEACHER_1, CLASS_1, P3),
+                lesson(LESSON_3, CHINESE, TEACHER_1, CLASS_1, P5));
         ChangeAssessment improved = validator.assessChanges(DRAFT_ID, List.of(
-                new LessonChange(LESSON_2, P2, ROOM_1, TEACHER_1)));
+                new LessonChange(LESSON_2, P2, TEACHER_1)));
         assertThat(improved.before()).hasSize(2);
         assertThat(improved.after()).hasSize(1);
         assertThat(improved.allowed()).isTrue();
@@ -192,12 +180,12 @@ class DraftValidatorChangeAssessmentTest {
     void growingAnAggregateBucketFromTwoToThreeIsRefusedEvenThoughItIsStillOneRow() {
         useSameCourseSettings();
         useLessons(
-                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1, ROOM_1),
-                lesson(LESSON_2, CHINESE, TEACHER_2, CLASS_1, P2, ROOM_2),
-                lesson(LESSON_3, CHINESE, TEACHER_4, CLASS_1, P7, ROOM_3));
+                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1),
+                lesson(LESSON_2, CHINESE, TEACHER_2, CLASS_1, P2),
+                lesson(LESSON_3, CHINESE, TEACHER_4, CLASS_1, P7));
 
         ChangeAssessment assessment = validator.assessChanges(DRAFT_ID, List.of(
-                new LessonChange(LESSON_3, P3, ROOM_3, TEACHER_4)));
+                new LessonChange(LESSON_3, P3, TEACHER_4)));
 
         assertThat(assessment.before()).hasSize(1);
         assertThat(assessment.before().get(0).weight()).isEqualTo(2);
@@ -210,13 +198,13 @@ class DraftValidatorChangeAssessmentTest {
     @Test
     void movingAPairConflictToADifferentCounterpartIsANewFactAndIsRefused() {
         useLessons(
-                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1, ROOM_1),
-                lesson(LESSON_2, MATH, TEACHER_1, CLASS_2, P1, ROOM_2),
-                lesson(LESSON_3, CHINESE, TEACHER_1, CLASS_3, P2, ROOM_3));
+                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1),
+                lesson(LESSON_2, MATH, TEACHER_1, CLASS_2, P1),
+                lesson(LESSON_3, CHINESE, TEACHER_1, CLASS_3, P2));
 
         // Before: lesson 1 conflicts with lesson 2. After: it conflicts with lesson 3.
         ChangeAssessment assessment = validator.assessChanges(DRAFT_ID, List.of(
-                new LessonChange(LESSON_1, P2, ROOM_1, TEACHER_1)));
+                new LessonChange(LESSON_1, P2, TEACHER_1)));
 
         assertThat(assessment.before()).hasSize(1);
         assertThat(assessment.after()).hasSize(1);
@@ -228,12 +216,12 @@ class DraftValidatorChangeAssessmentTest {
     @Test
     void swapIsJudgedAfterBothLessonsHaveMoved() {
         useLessons(
-                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1, ROOM_1),
-                lesson(LESSON_2, MATH, TEACHER_2, CLASS_1, P2, ROOM_2));
+                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1),
+                lesson(LESSON_2, MATH, TEACHER_2, CLASS_1, P2));
 
         ChangeAssessment assessment = validator.assessChanges(DRAFT_ID, List.of(
-                new LessonChange(LESSON_1, P2, ROOM_1, TEACHER_1),
-                new LessonChange(LESSON_2, P1, ROOM_2, TEACHER_2)));
+                new LessonChange(LESSON_1, P2, TEACHER_1),
+                new LessonChange(LESSON_2, P1, TEACHER_2)));
 
         assertThat(assessment.before()).isEmpty();
         assertThat(assessment.after()).isEmpty();
@@ -245,11 +233,11 @@ class DraftValidatorChangeAssessmentTest {
     void messageAndCountingTextDoNotChangeTheStableKey() {
         useSameCourseSettings();
         useLessons(
-                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1, ROOM_1),
-                lesson(LESSON_2, CHINESE, TEACHER_1, CLASS_1, P2, ROOM_1));
+                lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1),
+                lesson(LESSON_2, CHINESE, TEACHER_1, CLASS_1, P2));
 
         ChangeAssessment assessment = validator.assessChanges(DRAFT_ID, List.of(
-                new LessonChange(LESSON_2, P3, ROOM_1, TEACHER_1)));
+                new LessonChange(LESSON_2, P3, TEACHER_1)));
 
         assertThat(assessment.before()).hasSize(1);
         assertThat(assessment.remaining()).hasSize(1);
@@ -307,7 +295,7 @@ class DraftValidatorChangeAssessmentTest {
     }
 
     private static DraftLesson lesson(
-            long id, long courseId, long teacherId, long classId, Long periodId, Long roomId) {
+            long id, long courseId, long teacherId, long classId, Long periodId) {
         DraftLesson lesson = new DraftLesson();
         lesson.setId(id);
         lesson.setDraftId(DRAFT_ID);
@@ -318,7 +306,6 @@ class DraftValidatorChangeAssessmentTest {
         lesson.setAdminClassId(classId);
         lesson.setStudentCount(45);
         lesson.setPeriodId(periodId);
-        lesson.setRoomId(roomId);
         return lesson;
     }
 
@@ -333,18 +320,9 @@ class DraftValidatorChangeAssessmentTest {
         period.setDayOfWeek(dayOfWeek);
         period.setPeriodNo(periodNo);
         period.setLabel("第" + periodNo + "节");
-        period.setSection(PeriodSection.MORNING);
         return period;
     }
 
-    private static Room room(long id, String name) {
-        Room room = new Room();
-        room.setId(id);
-        room.setName(name);
-        room.setCapacity(50);
-        room.setType("NORMAL");
-        return room;
-    }
 
     private static Course course(long id, String name) {
         Course course = new Course();

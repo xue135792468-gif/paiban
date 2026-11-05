@@ -35,10 +35,10 @@ class ConstraintIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void presetCatalogueHasExactlyNineteenConstraintsWithSchemas() {
+    void presetCatalogueHasExactlyEighteenConstraintsWithSchemas() {
         as(adminToken()).when().get("/api/constraint-types")
                 .then().statusCode(200)
-                .body("size()", equalTo(19))
+                .body("size()", equalTo(18))
                 // Since ticket 10/04 a threshold declares its scope object first, so the
                 // same form can express a global default and per-object exceptions.
                 .body("find { it.code == 'TEACHER_MAX_PER_DAY' }.params[0].name", equalTo("teacherId"))
@@ -60,7 +60,7 @@ class ConstraintIntegrationTest extends ApiIntegrationTest {
                 Map.of("type", "TEACHER_CONFLICT", "params", Map.of(), "weight", 100, "hard", true, "enabled", true),
                 Map.of("type", "TEACHER_MAX_PER_DAY", "params", Map.of("maxPerDay", 4), "weight", 70,
                         "hard", false, "enabled", true),
-                Map.of("type", "SPORT_NOT_FIRST_AFTERNOON", "params", Map.of(), "weight", 80,
+                Map.of("type", "CLASS_GAP_MINIMIZED", "params", Map.of(), "weight", 30,
                         "hard", false, "enabled", true));
 
         as(token).queryParam("semesterId", semesterId)

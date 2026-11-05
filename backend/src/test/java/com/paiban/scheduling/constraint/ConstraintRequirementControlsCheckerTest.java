@@ -26,7 +26,6 @@ class ConstraintRequirementControlsCheckerTest {
 
     private static final long TEACHER_1 = 11L;
     private static final long TEACHER_2 = 12L;
-    private static final long ROOM_1 = 21L;
     private static final long COURSE_1 = 31L;
     private static final long COURSE_2 = 32L;
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -116,9 +115,8 @@ class ConstraintRequirementControlsCheckerTest {
                 .teacher(TEACHER_1, "张老师", "语文")
                 .course(COURSE_1, "体育", null)
                 .course(COURSE_2, "数学", null)
-                .room(ROOM_1, "教室1", "NORMAL", 50)
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 1)
-                .lesson(PlanFixtures.CLASS_2, COURSE_2, TEACHER_1, ROOM_1, 1, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, null, 1, 1)
+                .lesson(PlanFixtures.CLASS_2, COURSE_2, TEACHER_1, null, 1, 1)
                 .build();
 
         assertThat(ConstraintChecker.checkHard(snapshot.context(), viewsOn(snapshot)))
@@ -145,16 +143,15 @@ class ConstraintRequirementControlsCheckerTest {
                 .teacher(TEACHER_2, "李老师", "数学")
                 .course(COURSE_1, "语文", null)
                 .course(COURSE_2, "数学", null)
-                .room(ROOM_1, "教室1", "NORMAL", 50)
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 1)
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 2)
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 3)
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 4)
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 5)
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 6)
-                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2, ROOM_1, 1, 1)
-                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2, ROOM_1, 1, 2)
-                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2, ROOM_1, 1, 3)
+                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, null, 1, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, null, 1, 2)
+                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, null, 1, 3)
+                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, null, 1, 4)
+                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, null, 1, 5)
+                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, null, 1, 6)
+                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2, null, 1, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2, null, 1, 2)
+                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2, null, 1, 3)
                 .build();
 
         List<ConstraintViolation> hard = ConstraintChecker.checkHard(
@@ -197,8 +194,7 @@ class ConstraintRequirementControlsCheckerTest {
                 .adminClass(PlanFixtures.CLASS_1, "高一1班", 45, null)
                 .teacher(teacherId, "张老师", "语文")
                 .course(courseId, "语文", null)
-                .room(ROOM_1, "教室1", "NORMAL", 50)
-                .lesson(PlanFixtures.CLASS_1, courseId, teacherId, ROOM_1, day, periodNo)
+                .lesson(PlanFixtures.CLASS_1, courseId, teacherId, null, day, periodNo)
                 .build();
     }
 
@@ -207,7 +203,7 @@ class ConstraintRequirementControlsCheckerTest {
         for (int day = 1; day <= 5; day++) {
             snapshot.scheduleOn(PlanFixtures.date(day)).lessons().stream()
                     .map(lesson -> new LessonView(lesson.entryId(), lesson.classId(),
-                            lesson.courseId(), lesson.teacherId(), lesson.roomId(),
+                            lesson.courseId(), lesson.teacherId(),
                             lesson.periodId(), lesson.studentCount()))
                     .forEach(views::add);
         }

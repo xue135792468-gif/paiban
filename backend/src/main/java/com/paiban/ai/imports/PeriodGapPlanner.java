@@ -1,6 +1,5 @@
 package com.paiban.ai.imports;
 
-import com.paiban.foundation.domain.PeriodSection;
 import java.time.Duration;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -43,7 +42,7 @@ public final class PeriodGapPlanner {
 
     /** One existing period, as many days as the semester has them. */
     public record Existing(
-            int dayOfWeek, int periodNo, String label, PeriodSection section,
+            int dayOfWeek, int periodNo, String label,
             LocalTime startTime, LocalTime endTime) {}
 
     /** One (day, periodNo) the file references and the semester does not have. */
@@ -51,7 +50,7 @@ public final class PeriodGapPlanner {
 
     /** The planner's answer for one slot: a time to confirm, or a reason for a human. */
     public record Plan(
-            int dayOfWeek, int periodNo, Status status, String label, PeriodSection section,
+            int dayOfWeek, int periodNo, Status status, String label,
             LocalTime startTime, LocalTime endTime, String reason) {}
 
     private static final String NO_REFERENCE = "没有可参照的作息时间，请到作息管理手工设置";
@@ -61,8 +60,6 @@ public final class PeriodGapPlanner {
     private static final String NO_GAP_REFERENCE = "没有可参照的课间间隔，请到作息管理手工设置";
     private static final String INVALID_PERIOD = "既有第 %d 节的起止时间无效，请先修正作息";
     private static final String DOES_NOT_FIT = "第 %d 节放不进第 %d 节与第 %d 节之间的空档";
-    private static final String SECTION_BOUNDARY =
-            "第 %d 节落在%s与%s之间，跨时段边界，需人工确认";
     private static final String MIDNIGHT = "推算结果跨午夜，需人工设置";
 
     private PeriodGapPlanner() {}
@@ -88,7 +85,7 @@ public final class PeriodGapPlanner {
             // follows the 第9节 proposed in this same round instead of the old 第8节.
             if (plan.status() == Status.PROPOSED) {
                 day.add(new Existing(slot.dayOfWeek(), slot.periodNo(), plan.label(),
-                        plan.section(), plan.startTime(), plan.endTime()));
+                        plan.startTime(), plan.endTime()));
                 day.sort(Comparator.comparingInt(Existing::periodNo));
             }
             plans.add(plan);
@@ -132,10 +129,6 @@ public final class PeriodGapPlanner {
         if (next != null && next.startTime().isBefore(previous.endTime())) {
             return manual(slot, NEGATIVE_GAP);
         }
-        if (next != null && next.section() != previous.section()) {
-            return manual(slot, SECTION_BOUNDARY.formatted(
-                    slot.periodNo(), previous.section().getLabel(), next.section().getLabel()));
-        }
         GapResult gap = gapAfter(day, all, slot, previous, next);
         if (gap.conflicting()) {
             return manual(slot, CONFLICTING_GAPS.formatted(slot.periodNo()));
@@ -158,7 +151,7 @@ public final class PeriodGapPlanner {
             return manual(slot, DOES_NOT_FIT.formatted(
                     slot.periodNo(), previous.periodNo(), next.periodNo()));
         }
-        return proposed(slot, previous.section(), start, end);
+        return proposed(slot, start, end);
     }
 
     private static Plan beforeNext(
@@ -185,7 +178,7 @@ public final class PeriodGapPlanner {
         if (start == null) {
             return manual(slot, MIDNIGHT);
         }
-        return proposed(slot, next.section(), start, end);
+        return proposed(slot, start, end);
     }
 
     /** A day with no periods borrows another day's identical period number, if they agree. */
@@ -198,13 +191,12 @@ public final class PeriodGapPlanner {
         }
         Existing reference = sameNumber.get(0);
         boolean agree = sameNumber.stream().allMatch(period ->
-                period.section() == reference.section()
-                        && period.startTime().equals(reference.startTime())
+                period.startTime().equals(reference.startTime())
                         && period.endTime().equals(reference.endTime()));
         if (!agree) {
             return manual(slot, CONFLICTING_REFERENCE.formatted(slot.periodNo()));
         }
-        return proposed(slot, reference.section(), reference.startTime(), reference.endTime());
+        return proposed(slot, reference.startTime(), reference.endTime());
     }
 
     /**
@@ -280,14 +272,14 @@ public final class PeriodGapPlanner {
         }
     }
 
-    private static Plan proposed(Slot slot, PeriodSection section, LocalTime start, LocalTime end) {
+    private static Plan proposed(Slot slot, LocalTime start, LocalTime end) {
         return new Plan(slot.dayOfWeek(), slot.periodNo(), Status.PROPOSED, labelOf(slot.periodNo()),
-                section, start, end, null);
+                start, end, null);
     }
 
     private static Plan manual(Slot slot, String reason) {
         return new Plan(slot.dayOfWeek(), slot.periodNo(), Status.MANUAL, labelOf(slot.periodNo()),
-                null, null, null, reason);
+                null, null, reason);
     }
 
     public static String labelOf(int periodNo) {

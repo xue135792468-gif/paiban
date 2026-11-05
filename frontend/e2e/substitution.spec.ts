@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator } from '@playwright/test'
 import {
   apiCall,
   apiLogin,
@@ -12,12 +12,12 @@ import {
   uiLogin,
 } from './helpers'
 
-// 种子学期锚在未来的周一（批准受开课截止约束），日期一律由 dateFor 派生。
+// 种子学期锚在未来的周一（调代受开课截止约束），日期一律由 dateFor 派生。
 function dateForWeekday(dayOfWeek: number) {
   return dateFor(dayOfWeek)
 }
 
-test('场景 2：教师提交调代 → 教务审批 → 通知与课表叠加', async ({ page }) => {
+test('场景 2：教师提交代课直接生效 → 统计与课表叠加', async ({ page }) => {
   const api = await newContext()
   const seed = await seedSchool(api)
   await solveAndPublish(api, seed)
@@ -54,23 +54,31 @@ test('场景 2：教师提交调代 → 教务审批 → 通知与课表叠加',
   await dateInput.fill(effectiveDate)
   await dateInput.press('Tab')
 
-  await page.locator('.el-form-item', { hasText: '课节' }).locator('.el-select').click()
-  await page.locator('.el-select-dropdown:visible .el-select-dropdown__item').first().click()
+  /**
+   * Element Plus 的 popper 是 teleport 到 body 的：选完一个下拉后它还要播收起的
+   * 过渡动画，此时 `.el-select-dropdown:visible` 仍会先匹配到那张正在消失的旧面板
+   * （里面的首项是 is-selected），点它会一直重试到超时。所以每次都等旧面板真正
+   * 隐藏，再取 `.last()`（刚打开的那张），并用元素自身 click 绕过稳定性检查。
+   */
+  async function pickFirstOption(select: Locator) {
+    await select.click()
+    const dropdown = page.locator('.el-select-dropdown:visible').last()
+    const option = dropdown.locator('.el-select-dropdown__item').first()
+    await expect(option).toBeVisible()
+    await option.evaluate((element) => (element as HTMLElement).click())
+    await expect(dropdown).toBeHidden()
+  }
+
+  await pickFirstOption(page.locator('.el-form-item', { hasText: '我的课节' }).locator('.el-select'))
+
+  // 代课现在直接生效：提交时必须指定代课教师（后端要求），选中另一位教师。
+  await pickFirstOption(
+    page.locator('.el-form-item', { hasText: '期望代课' }).locator('.el-select'),
+  )
 
   await page.getByPlaceholder('如：家中有事，需要请假半天').fill('家中有事，需要请假')
   await page.getByRole('button', { name: '提交申请' }).click()
-  await expect(page.getByText(/申请已提交|调代已直接生效/)).toBeVisible()
-
-  await page.evaluate(() => localStorage.clear())
-  await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/substitution/requests')
-  await page.getByRole('tab', { name: '待审批' }).click()
-  await expect(page.getByRole('button', { name: '批准' }).first()).toBeVisible()
-  await page.getByRole('button', { name: '批准' }).first().click()
-  await page.locator('.el-dialog .el-form-item', { hasText: '代课教师' }).locator('.el-select').click()
-  await page.locator('.el-select-dropdown:visible .el-select-dropdown__item').first().click()
-  await page.getByRole('button', { name: '确认批准' }).click()
-  await expect(page.getByText('已批准，代课已生效')).toBeVisible()
+  await expect(page.getByText('调代已直接生效')).toBeVisible()
 
   // A cover is counted separately from a swap: the original teacher was covered
   // once, and is not credited with any swap participation.
@@ -79,25 +87,18 @@ test('场景 2：教师提交调代 → 教务审批 → 通知与课表叠加',
   expect(stats.substitutedOut).toBe(1)
   expect(stats.swapParticipation).toBe(0)
 
+  // 管理员视角的调代记录里这一单直接标「已生效」。
+  await page.evaluate(() => localStorage.clear())
+  await uiLogin(page, 'admin', 'admin123')
   await page.goto('/substitution/requests')
   await page.getByRole('tab', { name: '调代记录' }).click()
   await expect(page.getByText('已生效').first()).toBeVisible()
 
-  await page.evaluate(() => localStorage.clear())
-  await uiLogin(page, seed.username, seed.password)
-
-  await page.goto('/')
-  await expect(page.locator('.bell-badge sup').first()).toBeVisible()
-  await page.locator('.bell-badge button').click()
-  await expect(page.getByText('调代申请已批准').first()).toBeVisible()
-  await page.keyboard.press('Escape')
-
-  await page.goto('/notifications')
-  await expect(page.getByText('调代申请已批准').first()).toBeVisible()
-
   // 一次性调代只影响所指授课日期（ADR-0030）。
   // 申请者（被代教师）视角：授课日这节课被代课人接走，课表少一节；
   // 下周同一槽位恢复常规，课回到课表且全程不出现「代」标记。
+  await page.evaluate(() => localStorage.clear())
+  await uiLogin(page, seed.username, seed.password)
   await page.goto('/workbench/timetable')
   await page.getByPlaceholder('选择日期').fill(effectiveDate)
   await page.getByPlaceholder('选择日期').press('Enter')

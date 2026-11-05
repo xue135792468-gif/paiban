@@ -26,7 +26,7 @@
         :rows="3"
         maxlength="2000"
         show-word-limit
-        placeholder="例如：王老师周三下午不排课；体育课不排上午第1、2节；所有老师每天最多上4节"
+        placeholder="例如：王老师周三第 3 节不排课；体育课不排第 1、2 节；所有老师每天最多上4节"
         data-testid="constraint-ai-input"
       />
       <div class="ai-actions">

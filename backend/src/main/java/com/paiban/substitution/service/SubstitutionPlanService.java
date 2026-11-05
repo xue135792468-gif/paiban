@@ -98,7 +98,7 @@ public class SubstitutionPlanService {
         if (!Substitution.TYPE_SWAP.equals(SubstitutionMapper.typeOf(request))) {
             throw ApiException.badRequest("只有调课申请可以生成置换方案");
         }
-        if (!SubstitutionRequest.PENDING_APPROVAL.equals(request.getStatus())) {
+        if (SubstitutionRequest.EFFECTIVE.equals(request.getStatus())) {
             throw ApiException.conflict("该申请当前状态为 " + request.getStatus() + "，不能生成方案");
         }
         PlanSnapshot snapshot = snapshots.build(request.getSemesterId());
@@ -205,19 +205,19 @@ public class SubstitutionPlanService {
     }
 
     @Transactional
-    public SubstitutionRequestDto approvePlan(Long planId, String username, String comment) {
+    public SubstitutionRequestDto confirmPlan(Long planId, String username, String comment) {
         SubstitutionPlan plan = plans.findById(planId)
                 .orElseThrow(() -> ApiException.notFound("调课方案不存在: " + planId));
-        // 票 05：管理端预览方案在选定前没有申请；没有申请的方案不能直接批准。
+        // 票 05：管理端预览方案在选定前没有申请；没有申请的方案不能直接生效。
         if (plan.getRequestId() == null) {
-            throw ApiException.conflict("该方案还没有关联调课申请，不能直接批准");
+            throw ApiException.conflict("该方案还没有关联调课申请，不能直接生效");
         }
         SubstitutionRequest request = SubstitutionLookups.requireRequest(requests, plan.getRequestId());
         if (!SubstitutionPlan.PROPOSED.equals(plan.getStatus())) {
-            throw ApiException.conflict("该方案当前状态为 " + plan.getStatus() + "，不能批准");
+            throw ApiException.conflict("该方案当前状态为 " + plan.getStatus() + "，不能生效");
         }
-        if (!SubstitutionRequest.PENDING_APPROVAL.equals(request.getStatus())) {
-            throw ApiException.conflict("该申请当前状态为 " + request.getStatus() + "，不能批准方案");
+        if (SubstitutionRequest.EFFECTIVE.equals(request.getStatus())) {
+            throw ApiException.conflict("该申请当前状态为 " + request.getStatus() + "，不能生效方案");
         }
         if (clock.instant().isAfter(plan.getExpiresAt())) {
             audits.expirePlan(planId, SubstitutionPlan.EXPIRED, username,
@@ -234,25 +234,17 @@ public class SubstitutionPlanService {
         }
         List<SubstitutionPlanMove> moveEntities = planMoves.findByPlanIdOrderByMoveOrderAsc(planId);
         List<PlanMove> moves = moveEntities.stream().map(mapper::toPlanMove).toList();
-        boolean revision = request.getRevisesRequestId() != null;
-        if (revision) {
-            // 修订调课（票 07）的基准复核：来源实例的当前生效行必须仍属于基准申请。
-            requireBaseRowIntact(request);
-        }
-        // 规格第 6 节：批准一律受开课截止约束（首次调课与修订调课同规则；首次时
-        // 「当前安排」= 基线安排，即每个移动的来源日槽位）。都在学期行锁之后
-        // 实时读时钟，排队跨点即整单拒绝。
+        // 规格第 6 节：生效一律受开课截止约束；都在学期行锁之后实时读时钟，
+        // 排队跨点即整单拒绝。
         requireBeforeEarliestLessonStart(moves);
-        if (revision) {
-            LessonFreeze.frozenTouchReason(moves,
-                    periodId -> SubstitutionLookups.periodStart(periods, periodId), clock.instant())
-                    .ifPresent(reason -> {
-                        audits.planFailure(planId, SubstitutionPlan.REJECTED, username,
-                                "SUBSTITUTION_PLAN_FROZEN", reason, true,
-                                request.getRequesterTeacherId());
-                        throw ApiException.conflict(reason);
-                    });
-        }
+        LessonFreeze.frozenTouchReason(moves,
+                periodId -> SubstitutionLookups.periodStart(periods, periodId), clock.instant())
+                .ifPresent(reason -> {
+                    audits.planFailure(planId, SubstitutionPlan.REJECTED, username,
+                            "SUBSTITUTION_PLAN_FROZEN", reason, true,
+                            request.getRequesterTeacherId());
+                    throw ApiException.conflict(reason);
+                });
         PlanVerifier.Result verification = PlanVerifier.verify(
                 snapshot, moves, PlanVerifier.Kind.SWAP, plan.getSoftPenalty());
         if (!verification.passed()) {
@@ -267,71 +259,30 @@ public class SubstitutionPlanService {
         }
 
         Instant now = clock.instant();
-        AppUser approver = users.getByUsername(username);
-        if (revision) {
-            // 修订生效（票 07）：本次涉及的每个实例的全部生效行退出当前有效安排，
-            // 再写净差行（基线来源日 → 新落点）。恢复基线的环成员净差为零、不写行。
-            // 全部发生在同一事务里：失败整单回滚，上一版安排继续生效。
-            Map<Long, LocalDate> baselineDates = new LinkedHashMap<>();
-            for (PlanMove move : moves) {
-                baselineDates.computeIfAbsent(move.entryId(), entryId ->
-                        RevisionPolicy.baselineSourceDate(
-                                substitutions.findByEntryId(entryId).stream()
-                                        .filter(row -> Substitution.EFFECTIVE.equals(row.getStatus()))
-                                        .filter(row -> Substitution.TYPE_SWAP.equals(row.getType()))
-                                        .toList(),
-                                move));
-            }
-            effects.supersedeEffectiveRowsOfEntries(
-                    moves.stream().map(PlanMove::entryId).collect(Collectors.toSet()));
-            for (PlanMove move : moves) {
-                LocalDate baselineDate = baselineDates.get(move.entryId());
-                if (RevisionPolicy.restoresBaseline(move, baselineDate,
-                        baselinePeriodId(move.entryId()))) {
-                    continue;
-                }
-                effects.createSwapSubstitution(request, plan.getId(), move, baselineDate, now);
-            }
-        } else {
-            for (PlanMove move : moves) {
-                effects.createSwapSubstitution(request, plan.getId(), move, now);
-            }
+        // 同一实例的旧生效行退出「当前有效安排」（行保留，仅状态迁移），
+        // 新方案整体生效后读模型只装载 EFFECTIVE 行。
+        effects.retireEffectiveRowsOfEntries(
+                moves.stream().map(PlanMove::entryId).collect(Collectors.toSet()));
+        for (PlanMove move : moves) {
+            effects.createSwapSubstitution(request, plan.getId(), move, now);
         }
         request.setStatus(SubstitutionRequest.EFFECTIVE);
-        request.setApproverId(approver.getId());
-        request.setApprovedAt(now);
-        request.setApprovalComment(comment);
         request.setUpdatedAt(now);
-        effects.recordHistory(request.getId(), SubstitutionRequest.PENDING_APPROVAL,
+        effects.recordHistory(request.getId(), SubstitutionRequest.SUBMITTED,
                 SubstitutionRequest.EFFECTIVE, username, comment);
         plan.setStatus(SubstitutionPlan.APPROVED);
         plan.setApprovedAt(now);
         plan.setApprovedBy(username);
         auditLogs.save(new AuditLog(
-                username, "SUBSTITUTION_PLAN_APPROVED", "SUBSTITUTION_PLAN",
+                username, "SUBSTITUTION_PLAN_EFFECTIVE", "SUBSTITUTION_PLAN",
                 "request=" + request.getId() + ", plan=" + plan.getId()
-                        + (revision ? ", revises=" + request.getRevisesRequestId() : "")
                         + ", moves=" + moves.size() + ", teachers=" + plan.getImpactTeachers(),
                 moves.size(), 0));
         effects.notifySwap(request, moves);
         return mapper.toDto(request);
     }
 
-    /**
-     * 修订调课的基准复核（票 07）：来源实例的当前生效行必须仍属于基准申请。
-     * 快照哈希已保证整份课表未变，这里再钉住基准，防止任何旁路；
-     * 基准被别的修订抢先替代时明确冲突，上一有效安排保持完整。
-     */
-    private void requireBaseRowIntact(SubstitutionRequest request) {
-        Substitution current = SubstitutionLookups.currentInstanceRow(
-                substitutions, request.getEntryId(), request.getEffectiveDate()).orElse(null);
-        if (current == null
-                || !request.getRevisesRequestId().equals(current.getRequestId())) {
-            throw ApiException.conflict("该修订指向的当前安排已变化，请重新预览");
-        }
-    }
-
-    /** 修订调课批准的开课截止复核：环内所有被改变实例「当前与拟生效」时刻的最小值。 */
+    /** 置换环生效的开课截止复核：环内所有被改变实例「当前与拟生效」时刻的最小值。 */
     private void requireBeforeEarliestLessonStart(List<PlanMove> moves) {
         List<ChangedSlot> slots = new ArrayList<>();
         for (PlanMove move : moves) {
@@ -342,12 +293,5 @@ public class SubstitutionPlanService {
         }
         new DeadlineChecker(clock::instant).requireBeforeDeadline(
                 LessonDeadline.earliest(slots), "置换环内最早的课节");
-    }
-
-    /** 实例的基线课节：基线条目的周槽位，净差为零（恢复基线）的判定基准。 */
-    private Long baselinePeriodId(Long entryId) {
-        return entries.findById(entryId)
-                .map(entry -> entry.getPeriodId())
-                .orElse(null);
     }
 }

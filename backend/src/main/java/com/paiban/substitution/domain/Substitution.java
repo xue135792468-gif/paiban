@@ -22,12 +22,6 @@ public class Substitution {
 
     public static final String EFFECTIVE = "EFFECTIVE";
     public static final String CANCELLED = "CANCELLED";
-    /**
-     * 被后续修订替代（票 04）：行保留、可追溯，只是退出「当前有效安排」——
-     * 读模型只装载 EFFECTIVE 行，因此替代关系是原子的版本切换；历史事实
-     * 仍由本行与 substitution_history 完整保留，绝不删除或改写内容。
-     */
-    public static final String SUPERSEDED = "SUPERSEDED";
     public static final String TYPE_SWAP = "SWAP";
     public static final String TYPE_COVER = "COVER";
 
@@ -67,9 +61,6 @@ public class Substitution {
 
     @Column(name = "substitute_teacher_id", nullable = false)
     private Long substituteTeacherId;
-
-    @Column(name = "new_room_id")
-    private Long newRoomId;
 
     @Column(name = "new_period_id")
     private Long newPeriodId;

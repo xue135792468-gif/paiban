@@ -24,14 +24,14 @@
           data-testid="constraint-hard-group"
           @update:model-value="(value: string | number | boolean | undefined) => emit('set-hard', Boolean(value))"
         >
-          <el-radio-button :value="true">{{ isJunior ? '必须' : '硬约束' }}</el-radio-button>
-          <el-radio-button :value="false">{{ isJunior ? '尽量' : '软约束' }}</el-radio-button>
+          <el-radio-button :value="true">硬约束</el-radio-button>
+          <el-radio-button :value="false">软约束</el-radio-button>
         </el-radio-group>
         <span v-else data-testid="constraint-hard-only">必须留空</span>
         <InfoTooltip field="constraint.hard" />
 
         <!-- 硬约束的权重没有意义：ADR-0028 把硬/软与权重留在类型级，只在软约束上显示权重。 -->
-        <div v-if="!row.hardOnly && !isJunior && !row.hard" class="weight-box" data-testid="constraint-weight">
+        <div v-if="!row.hardOnly && !row.hard" class="weight-box" data-testid="constraint-weight">
           <span class="weight-label">
             权重 {{ row.weight }}
             <InfoTooltip field="constraint.weight" />
@@ -72,7 +72,6 @@
       <ConstraintEntryList
         :row="row"
         :editable="canManage"
-        :is-junior="isJunior"
         :teachers="teachers"
         :courses="courses"
         :classes="objectOptions.classId"
@@ -128,7 +127,6 @@ import type { ObjectOptions, OptionItem, TypeDraft } from './types'
 const props = defineProps<{
   row: TypeDraft
   canManage: boolean
-  isJunior: boolean
   teachers: OptionItem[]
   courses: OptionItem[]
   /** The weekdays and period numbers the semester actually has. */

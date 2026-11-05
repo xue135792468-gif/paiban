@@ -156,7 +156,7 @@ export interface CreateItemPayload {
   studentCount?: number
 }
 
-export type LookupType = 'class' | 'course' | 'teacher' | 'room'
+export type LookupType = 'class' | 'course' | 'teacher'
 
 const FIELD_LABELS: Record<string, string> = {
   className: '班级',
@@ -164,14 +164,12 @@ const FIELD_LABELS: Record<string, string> = {
   periodNo: '节次',
   courseName: '课程',
   teacherName: '教师',
-  roomName: '教室',
 }
 
 const LOOKUP_TYPES: Record<string, LookupType> = {
   className: 'class',
   courseName: 'course',
   teacherName: 'teacher',
-  roomName: 'room',
 }
 
 const DAY_DIGITS = '一二三四五六七'
@@ -343,9 +341,6 @@ export function buildTimetableGridFor(
       dayOfWeek: day,
       periodNo,
       periodLabel: periodNo == null ? '' : `第${periodNo}节`,
-      section: '',
-      roomId: null,
-      roomName: text(values.roomName),
       locked: false,
     })
 
@@ -361,7 +356,6 @@ export function buildTimetableGridFor(
         dayOfWeek: day,
         periodNo,
         label: `第${periodNo}节`,
-        section: '',
         startTime: '',
         endTime: '',
       })
@@ -409,15 +403,12 @@ export interface MappingGroup {
   gradeCandidates: string[]
 }
 
-/** Fields the product no longer asks the user to resolve. */
-const HIDDEN_MAPPING_FIELDS = new Set(['roomName'])
-
 /** Collapses issues so the same unmatched value is resolved once, not once per row. */
 export function mappingGroups(issues: PreviewIssue[]): MappingGroup[] {
   const groups = new Map<string, MappingGroup>()
   for (const issue of issues) {
     // Row 0 is a page-level blocker (e.g. no current semester), not a name to map.
-    if (issue.row === 0 || HIDDEN_MAPPING_FIELDS.has(issue.field)) continue
+    if (issue.row === 0) continue
     const key = `${issue.field}\u0000${issue.value}`
     let group = groups.get(key)
     if (!group) {

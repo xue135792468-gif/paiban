@@ -53,8 +53,7 @@ class SourceDraftOptimizationIntegrationTest extends ApiIntegrationTest {
     private TeachingClassRepository teachingClasses;
 
     private record World(long semesterId, List<Long> periods, long classA, long classB,
-                         long chinese, long math, long teacherA, long teacherB, long teacherC,
-                         long room1, long room2, long room3) {}
+                         long chinese, long math, long teacherA, long teacherB, long teacherC) {}
 
     @Test
     void explicitSourceKeepsTheLockAndLeavesTheOriginalDraftUntouched() {
@@ -64,12 +63,10 @@ class SourceDraftOptimizationIntegrationTest extends ApiIntegrationTest {
                 world.teacherA(), 3);
 
         long draftA = draft(world.semesterId(), "草稿A");
-        seedRows(draftA, assignmentId, world.classA(), world.chinese(), world.teacherA(),
-                world.room1(), List.of(world.periods().get(0), world.periods().get(1),
+        seedRows(draftA, assignmentId, world.classA(), world.chinese(), world.teacherA(), List.of(world.periods().get(0), world.periods().get(1),
                         world.periods().get(2)));
         long draftB = draft(world.semesterId(), "草稿B");
-        seedRows(draftB, assignmentId, world.classA(), world.chinese(), world.teacherA(),
-                world.room1(), List.of(world.periods().get(3), world.periods().get(4),
+        seedRows(draftB, assignmentId, world.classA(), world.chinese(), world.teacherA(), List.of(world.periods().get(3), world.periods().get(4),
                         world.periods().get(5)));
         lock(token, draftB, List.of(rowId(draftB, assignmentId, 1)));
 
@@ -111,8 +108,7 @@ class SourceDraftOptimizationIntegrationTest extends ApiIntegrationTest {
         long assignmentId = assignment(world.semesterId(), world.classA(), world.chinese(),
                 world.teacherA(), 3);
         long source = draft(world.semesterId(), "来源");
-        seedRows(source, assignmentId, world.classA(), world.chinese(), world.teacherA(),
-                world.room1(), List.of(world.periods().get(0), world.periods().get(1),
+        seedRows(source, assignmentId, world.classA(), world.chinese(), world.teacherA(), List.of(world.periods().get(0), world.periods().get(1),
                         world.periods().get(2)));
         lock(token, source, List.of(rowId(source, assignmentId, 2)));
 
@@ -136,8 +132,7 @@ class SourceDraftOptimizationIntegrationTest extends ApiIntegrationTest {
         long assignmentId = assignment(world.semesterId(), world.classA(), world.chinese(),
                 world.teacherA(), 3);
         long completeDraft = draft(world.semesterId(), "完整草稿");
-        seedRows(completeDraft, assignmentId, world.classA(), world.chinese(), world.teacherA(),
-                world.room1(), List.of(world.periods().get(0), world.periods().get(1),
+        seedRows(completeDraft, assignmentId, world.classA(), world.chinese(), world.teacherA(), List.of(world.periods().get(0), world.periods().get(1),
                         world.periods().get(2)));
 
         long jobId = startJob(token, world.semesterId(), null, 5);
@@ -157,8 +152,7 @@ class SourceDraftOptimizationIntegrationTest extends ApiIntegrationTest {
         long assignmentId = assignment(world.semesterId(), world.classA(), world.chinese(),
                 world.teacherA(), 3);
         long source = draft(world.semesterId(), "换过老师");
-        seedRows(source, assignmentId, world.classA(), world.chinese(), world.teacherC(),
-                world.room1(), List.of(world.periods().get(0), world.periods().get(1),
+        seedRows(source, assignmentId, world.classA(), world.chinese(), world.teacherC(), List.of(world.periods().get(0), world.periods().get(1),
                         world.periods().get(2)));
         lock(token, source, List.of(rowId(source, assignmentId, 0)));
 
@@ -193,8 +187,7 @@ class SourceDraftOptimizationIntegrationTest extends ApiIntegrationTest {
         expectStartFailure(token, world.semesterId(), empty, 400, "没有课节");
 
         long partial = draft(world.semesterId(), "只有两节");
-        seedRows(partial, assignmentId, world.classA(), world.chinese(), world.teacherA(),
-                world.room1(), List.of(world.periods().get(0), world.periods().get(1)));
+        seedRows(partial, assignmentId, world.classA(), world.chinese(), world.teacherA(), List.of(world.periods().get(0), world.periods().get(1)));
         expectStartFailure(token, world.semesterId(), partial, 400, "来源草稿与授课任务不一致");
 
         assertThat(jobs.count()).isZero();
@@ -207,8 +200,7 @@ class SourceDraftOptimizationIntegrationTest extends ApiIntegrationTest {
         long assignmentId = assignment(world.semesterId(), world.classA(), world.chinese(),
                 world.teacherA(), 3);
         long source = draft(world.semesterId(), "全锁");
-        seedRows(source, assignmentId, world.classA(), world.chinese(), world.teacherA(),
-                world.room1(), List.of(world.periods().get(0), world.periods().get(1),
+        seedRows(source, assignmentId, world.classA(), world.chinese(), world.teacherA(), List.of(world.periods().get(0), world.periods().get(1),
                         world.periods().get(2)));
         lock(token, source, List.of(
                 rowId(source, assignmentId, 0),
@@ -238,12 +230,9 @@ class SourceDraftOptimizationIntegrationTest extends ApiIntegrationTest {
                 world.teacherB(), 1);
 
         long source = draft(world.semesterId(), "锁死的冲突");
-        seedRows(source, lockedA, world.classA(), world.chinese(), world.teacherA(),
-                world.room1(), List.of(world.periods().get(0)));
-        seedRows(source, lockedB, world.classB(), world.math(), world.teacherA(),
-                world.room2(), List.of(world.periods().get(0)));
-        seedRows(source, free, world.classA(), world.math(), world.teacherB(),
-                world.room3(), List.of(world.periods().get(1)));
+        seedRows(source, lockedA, world.classA(), world.chinese(), world.teacherA(), List.of(world.periods().get(0)));
+        seedRows(source, lockedB, world.classB(), world.math(), world.teacherA(), List.of(world.periods().get(0)));
+        seedRows(source, free, world.classA(), world.math(), world.teacherB(), List.of(world.periods().get(1)));
         lock(token, source, List.of(
                 rowId(source, lockedA, 0), rowId(source, lockedB, 0)));
 
@@ -269,8 +258,7 @@ class SourceDraftOptimizationIntegrationTest extends ApiIntegrationTest {
         long assignmentId = assignment(world.semesterId(), world.classA(), world.chinese(),
                 world.teacherA(), 3);
         long source = draft(world.semesterId(), "取消来源");
-        seedRows(source, assignmentId, world.classA(), world.chinese(), world.teacherA(),
-                world.room1(), List.of(world.periods().get(0), world.periods().get(1),
+        seedRows(source, assignmentId, world.classA(), world.chinese(), world.teacherA(), List.of(world.periods().get(0), world.periods().get(1),
                         world.periods().get(2)));
 
         long jobId = startJob(token, world.semesterId(), source, 60);
@@ -311,10 +299,7 @@ class SourceDraftOptimizationIntegrationTest extends ApiIntegrationTest {
         long teacherB = TestData.teacher(token, "来源乙" + suffix);
         long teacherC = TestData.teacher(token, "来源丙" + suffix);
         return new World(semesterId, periods, classA, classB, chinese, math,
-                teacherA, teacherB, teacherC,
-                TestData.room(token, "来源房1" + suffix),
-                TestData.room(token, "来源房2" + suffix),
-                TestData.room(token, "来源房3" + suffix));
+                teacherA, teacherB, teacherC);
     }
 
     private long assignment(long semesterId, long classId, long courseId, long teacherId, int weekly) {
@@ -352,7 +337,7 @@ class SourceDraftOptimizationIntegrationTest extends ApiIntegrationTest {
     }
 
     private void seedRows(long draftId, long assignmentId, long classId, long courseId,
-                          long teacherId, long roomId, List<Long> periodIds) {
+                          long teacherId, List<Long> periodIds) {
         List<DraftLesson> rows = new ArrayList<>();
         for (int index = 0; index < periodIds.size(); index++) {
             DraftLesson row = new DraftLesson();
@@ -364,7 +349,6 @@ class SourceDraftOptimizationIntegrationTest extends ApiIntegrationTest {
             row.setAdminClassId(classId);
             row.setStudentCount(45);
             row.setPeriodId(periodIds.get(index));
-            row.setRoomId(roomId);
             rows.add(row);
         }
         draftLessons.saveAll(rows);

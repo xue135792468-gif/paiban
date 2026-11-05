@@ -182,7 +182,7 @@ test.describe.serial('约束配置：阈值全局默认与对象例外', () => {
   })
 
   test('四类阈值各有自己的对象选择器（人工复核用，不作断言）', async ({ page }) => {
-    // 票 09/11 退役了「晚自习最多 N 节」，阈值只剩四类。
+    // 票 15 后阈值只剩四类。
     const types: Array<[string, string]> = [
       ['TEACHER_MAX_PER_DAY', '教师一天最多 N 节'],
       ['CLASS_MAX_PER_DAY', '班级一天最多 N 节'],

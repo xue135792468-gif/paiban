@@ -22,8 +22,6 @@ class ConstraintCheckerTest {
 
     private static final long TEACHER_1 = 11L;
     private static final long TEACHER_2 = 12L;
-    private static final long ROOM_1 = 21L;
-    private static final long ROOM_2 = 22L;
     private static final long COURSE_1 = 31L;
     private static final long COURSE_2 = 32L;
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -31,8 +29,8 @@ class ConstraintCheckerTest {
     @Test
     void teacherCannotBeInTwoClassesAtTheSameTime() {
         PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 1)
-                .lesson(PlanFixtures.CLASS_2, COURSE_2, TEACHER_1, ROOM_2, 1, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1,  0L, 1, 1)
+                .lesson(PlanFixtures.CLASS_2, COURSE_2, TEACHER_1,  0L, 1, 1)
                 .build();
 
         List<ConstraintViolation> violations = ConstraintChecker.checkHard(
@@ -44,8 +42,8 @@ class ConstraintCheckerTest {
     @Test
     void classCannotHaveTwoCoursesInTheSameSlot() {
         PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 1)
-                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2, ROOM_2, 1, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1,  0L, 1, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2,  0L, 1, 1)
                 .build();
 
         List<ConstraintViolation> violations = ConstraintChecker.checkHard(
@@ -54,42 +52,6 @@ class ConstraintCheckerTest {
         assertThat(violations).extracting(ConstraintViolation::code).contains("CLASS_CONFLICT");
     }
 
-    /**
-     * Ticket 09: retired types never produce a violation or a penalty even when the
-     * stored configuration is enabled and hard. The snapshot drops them before the
-     * checker ever looks at a lesson.
-     */
-    @Test
-    void retiredTypesNeverProduceViolations() {
-        ConstraintSettings settings = ConstraintSettings.from(
-                List.of(
-                        config(ConstraintType.ROOM_CONFLICT, true, 100, true),
-                        config(ConstraintType.ROOM_CAPACITY_FIT, true, 100, true),
-                        config(ConstraintType.COURSE_REQUIRED_ROOM_TYPE, true, 100, true),
-                        config(ConstraintType.COURSE_NOT_IN_EVENING, true, 100, true),
-                        config(ConstraintType.EVENING_MAX, true, 100, true),
-                        config(ConstraintType.TEACHER_MEETING_BLOCKED, true, 100, true),
-                        config(ConstraintType.HEAD_TEACHER_FIRST_PERIOD, false, 100, true)),
-                List.of(),
-                MAPPER);
-        // Two classes in the same room, a sport course in an evening slot, and enough
-        // lessons to trip every retired rule if it were still registered.
-        PlanSnapshot snapshot = base().periodsPerDay(10)
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 1)
-                .lesson(PlanFixtures.CLASS_2, COURSE_2, TEACHER_2, ROOM_1, 1, 1)
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_2, 1, 9)
-                .build();
-
-        List<ConstraintViolation> violations = ConstraintChecker.checkHard(
-                context(settings, snapshot), viewsOn(snapshot, 1));
-
-        assertThat(violations).extracting(ConstraintViolation::code)
-                .doesNotContain("ROOM_CONFLICT", "ROOM_CAPACITY", "ROOM_TYPE",
-                        "COURSE_NOT_IN_EVENING", "EVENING_MAX", "TEACHER_MEETING",
-                        "HEAD_TEACHER_FIRST_PERIOD");
-        assertThat(ConstraintChecker.softPenalty(context(settings, snapshot), viewsOn(snapshot, 1)))
-                .isZero();
-    }
 
     /**
      * 票03：空堂软扣分按「真实存在的作息里、首末课程之间未占的每一格」累计。
@@ -100,12 +62,12 @@ class ConstraintCheckerTest {
     void classGapSoftPenaltyCountsEveryRealEmptyPeriod() {
         ConstraintSettings soft = settingsWith(ConstraintType.CLASS_GAP_MINIMIZED, false, 40);
         PlanSnapshot oneGap = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 1)
-                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2, ROOM_2, 1, 3)
+                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1,  0L, 1, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2,  0L, 1, 3)
                 .build();
         PlanSnapshot threeGaps = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 1)
-                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2, ROOM_2, 1, 5)
+                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1,  0L, 1, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2,  0L, 1, 5)
                 .build();
 
         assertThat(ConstraintChecker.softPenalty(context(soft, oneGap), viewsOn(oneGap, 1)))
@@ -124,8 +86,8 @@ class ConstraintCheckerTest {
         ConstraintSettings soft = settingsWith(ConstraintType.CLASS_GAP_MINIMIZED, false, 40);
         ConstraintSettings hard = settingsWith(ConstraintType.CLASS_GAP_MINIMIZED, true, 40);
         PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 1)
-                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2, ROOM_2, 1, 3)
+                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1,  0L, 1, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2,  0L, 1, 3)
                 .build();
 
         assertThat(ConstraintChecker.softPenalty(
@@ -145,13 +107,13 @@ class ConstraintCheckerTest {
     void classGapSoftPenaltySumsAcrossClassesAndDays() {
         ConstraintSettings soft = settingsWith(ConstraintType.CLASS_GAP_MINIMIZED, false, 40);
         PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 1)
-                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2, ROOM_2, 1, 3)
-                .lesson(PlanFixtures.CLASS_2, COURSE_1, TEACHER_1, ROOM_1, 1, 1)
-                .lesson(PlanFixtures.CLASS_2, COURSE_2, TEACHER_2, ROOM_2, 1, 3)
-                .lesson(PlanFixtures.CLASS_2, COURSE_1, TEACHER_1, ROOM_1, 1, 5)
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 2, 1)
-                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2, ROOM_2, 2, 3)
+                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1,  0L, 1, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2,  0L, 1, 3)
+                .lesson(PlanFixtures.CLASS_2, COURSE_1, TEACHER_1,  0L, 1, 1)
+                .lesson(PlanFixtures.CLASS_2, COURSE_2, TEACHER_2,  0L, 1, 3)
+                .lesson(PlanFixtures.CLASS_2, COURSE_1, TEACHER_1,  0L, 1, 5)
+                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1,  0L, 2, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2,  0L, 2, 3)
                 .build();
         List<LessonView> views = new ArrayList<>(viewsOn(snapshot, 1));
         views.addAll(viewsOn(snapshot, 2));
@@ -165,8 +127,8 @@ class ConstraintCheckerTest {
         ConstraintSettings soft = settingsWith(ConstraintType.CLASS_GAP_MINIMIZED, false, 40);
         // 周一第 3、5 节：只有第 4 节算内部空堂，第 1、2 节和 6..8 节都不计入。
         PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 3)
-                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2, ROOM_2, 1, 5)
+                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1,  0L, 1, 3)
+                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2,  0L, 1, 5)
                 .build();
 
         assertThat(ConstraintChecker.softPenalty(context(soft, snapshot), viewsOn(snapshot, 1)))
@@ -180,21 +142,19 @@ class ConstraintCheckerTest {
                 .teacher(TEACHER_1, "张老师", "语文")
                 .teacher(TEACHER_2, "李老师", "数学")
                 .course(COURSE_1, "语文", null)
-                .course(COURSE_2, "数学", null)
-                .room(ROOM_1, "教室1", "NORMAL", 50)
-                .room(ROOM_2, "教室2", "NORMAL", 50);
+                .course(COURSE_2, "数学", null);
     }
 
     private static List<LessonView> viewsOn(PlanSnapshot snapshot, int dayOfWeek) {
         return snapshot.scheduleOn(PlanFixtures.date(dayOfWeek)).lessons().stream()
                 .map(lesson -> new LessonView(lesson.entryId(), lesson.classId(), lesson.courseId(),
-                        lesson.teacherId(), lesson.roomId(), lesson.periodId(), lesson.studentCount()))
+                        lesson.teacherId(), lesson.periodId(), lesson.studentCount()))
                 .toList();
     }
 
     /** The same reference data under a second rule set: settings live in the context. */
     private static ConstraintContext context(ConstraintSettings settings, PlanSnapshot snapshot) {
-        return new ConstraintContext(snapshot.periods(), snapshot.rooms(), snapshot.courses(),
+        return new ConstraintContext(snapshot.periods(), snapshot.courses(),
                 snapshot.teachers(), snapshot.classes(), settings);
     }
 
@@ -203,7 +163,7 @@ class ConstraintCheckerTest {
             ConstraintSettings settings, PlanSnapshot snapshot, int dayOfWeek, int periodNo) {
         Map<Long, ConstraintContext.PeriodView> periods = new HashMap<>(snapshot.periods());
         periods.remove(PlanFixtures.periodId(dayOfWeek, periodNo));
-        return new ConstraintContext(periods, snapshot.rooms(), snapshot.courses(),
+        return new ConstraintContext(periods, snapshot.courses(),
                 snapshot.teachers(), snapshot.classes(), settings);
     }
 

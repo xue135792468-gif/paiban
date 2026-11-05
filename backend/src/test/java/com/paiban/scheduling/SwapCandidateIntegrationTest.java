@@ -9,8 +9,6 @@ import com.paiban.foundation.domain.Course;
 import com.paiban.foundation.domain.CourseRepository;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
-import com.paiban.foundation.domain.Room;
-import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.scheduling.domain.DraftLesson;
@@ -57,12 +55,9 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
     @Autowired
     private TeacherRepository teachers;
 
-    @Autowired
-    private RoomRepository rooms;
-
     private record World(long semesterId, long gradeId, long classA, long classB, long classC,
                          long draftId, List<Long> periodIds, Map<String, Long> courses,
-                         Map<String, Long> teachers, Map<String, Long> rooms) {
+                         Map<String, Long> teachers) {
 
         long period(int index) {
             return periodIds.get(index);
@@ -74,10 +69,6 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
 
         long teacher(String name) {
             return teachers.get(name);
-        }
-
-        long room(String name) {
-            return rooms.get(name);
         }
     }
 
@@ -109,11 +100,6 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
         teachers.put("陈老师", teacher(token, "陈老师", "数学"));
         teachers.put("赵老师", teacher(token, "赵老师", "英语"));
 
-        Map<String, Long> rooms = new LinkedHashMap<>();
-        rooms.put("教室1", TestData.room(token, "教室1"));
-        rooms.put("教室2", TestData.room(token, "教室2"));
-        rooms.put("教室3", TestData.room(token, "教室3"));
-
         TimetableDraft draft = new TimetableDraft();
         draft.setSemesterId(semesterId);
         draft.setName("换课查询测试");
@@ -121,7 +107,7 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
         draft.setCreatedBy("test");
         draft.setCreatedAt(Instant.now());
         long draftId = drafts.save(draft).getId();
-        return new World(semesterId, gradeId, classA, classB, classC, draftId, periodIds, courses, teachers, rooms);
+        return new World(semesterId, gradeId, classA, classB, classC, draftId, periodIds, courses, teachers);
     }
 
     private long course(String token, String name, String subject) {
@@ -136,12 +122,12 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(200).extract().jsonPath().getLong("id");
     }
 
-    private long place(World world, long classId, String course, String teacher, int periodIndex, String room) {
-        return place(world, classId, world.course(course), world.teacher(teacher), periodIndex, room);
+    private long place(World world, long classId, String course, String teacher, int periodIndex) {
+        return place(world, classId, world.course(course), world.teacher(teacher), periodIndex);
     }
 
     private long place(
-            World world, long classId, long courseId, long teacherId, int periodIndex, String room) {
+            World world, long classId, long courseId, long teacherId, int periodIndex) {
         DraftLesson lesson = new DraftLesson();
         lesson.setDraftId(world.draftId());
         // V45: (draft, assignment, lesson index) is unique, so hand-built rows get their own id.
@@ -152,7 +138,6 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
         lesson.setAdminClassId(classId);
         lesson.setStudentCount(45);
         lesson.setPeriodId(world.period(periodIndex));
-        lesson.setRoomId(world.room(room));
         return draftLessons.save(lesson).getId();
     }
 
@@ -170,9 +155,9 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
     void intraClassCandidatesListSameClassLessonsWithTheirDetails() {
         String token = adminToken();
         World world = world(token);
-        long target = place(world, world.classA(), "语文", "张老师", 0, "教室1");
-        long math = place(world, world.classA(), "数学", "李老师", 1, "教室2");
-        place(world, world.classB(), "数学", "陈老师", 2, "教室1");
+        long target = place(world, world.classA(), "语文", "张老师", 0);
+        long math = place(world, world.classA(), "数学", "李老师", 1);
+        place(world, world.classB(), "数学", "陈老师", 2);
 
         Response response = candidates(token, world, target);
 
@@ -186,22 +171,20 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
         assertThat(candidate.get("courseName")).isEqualTo("数学");
         assertThat(((Number) candidate.get("periodId")).longValue()).isEqualTo(world.period(1));
         assertThat(candidate.get("periodLabel")).isEqualTo("周1第2节");
-        assertThat(candidate.get("roomName")).isEqualTo("教室2");
         assertThat(candidate.get("available")).isEqualTo(true);
-        assertThat(candidate.get("roomSwapRequired")).isEqualTo(false);
         assertThat((List<?>) candidate.get("conflicts")).isEmpty();
         assertThat(response.jsonPath().getList("crossClass")).isEmpty();
     }
 
     @Test
-    void roomsNoLongerBlockAnIntraClassSwap() {
+    void intraClassSwapIsPlainWithoutRoomRules() {
         String token = adminToken();
         World world = world(token);
-        long target = place(world, world.classA(), "语文", "张老师", 0, "教室1");
-        long candidate = place(world, world.classA(), "数学", "李老师", 1, "教室2");
+        long target = place(world, world.classA(), "语文", "张老师", 0);
+        long candidate = place(world, world.classA(), "数学", "李老师", 1);
         // 教室1 is occupied at the candidate's period, which used to require a room
         // exchange. Ticket 09 retired the room-conflict rule, so the swap is plain.
-        place(world, world.classB(), "语文阅读", "王老师", 1, "教室1");
+        place(world, world.classB(), "语文阅读", "王老师", 1);
 
         Response response = candidates(token, world, target);
 
@@ -210,13 +193,11 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
         Map<String, Object> row = intra.get(0);
         assertThat(((Number) row.get("lessonId")).longValue()).isEqualTo(candidate);
         assertThat(row.get("available")).isEqualTo(true);
-        assertThat(row.get("roomSwapRequired")).isEqualTo(false);
         assertThat((List<?>) row.get("conflicts")).isEmpty();
 
         as(token).body(Map.of(
                         "lessonId", target,
-                        "targetLessonId", candidate,
-                        "swapRooms", true))
+                        "targetLessonId", candidate))
                 .when().post("/api/timetable-drafts/" + world.draftId() + "/swap")
                 .then().statusCode(200)
                 .body("saved", equalTo(true))
@@ -224,20 +205,16 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
 
         assertThat(draftLessons.findById(target).orElseThrow().getPeriodId())
                 .isEqualTo(world.period(1));
-        assertThat(draftLessons.findById(target).orElseThrow().getRoomId())
-                .isEqualTo(world.room("教室2"));
         assertThat(draftLessons.findById(candidate).orElseThrow().getPeriodId())
                 .isEqualTo(world.period(0));
-        assertThat(draftLessons.findById(candidate).orElseThrow().getRoomId())
-                .isEqualTo(world.room("教室1"));
     }
 
     @Test
     void crossClassCandidatesSkipTheSameTeacher() {
         String token = adminToken();
         World world = world(token);
-        long target = place(world, world.classA(), "语文", "张老师", 0, "教室1");
-        place(world, world.classB(), "语文", "张老师", 2, "教室2");
+        long target = place(world, world.classA(), "语文", "张老师", 0);
+        place(world, world.classB(), "语文", "张老师", 2);
 
         Response response = candidates(token, world, target, true);
 
@@ -252,8 +229,8 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
         long physicsLower = course(token, "物理B", "physics");
         long teacherUpper = teacher(token, "周老师", "PHYSICS");
         long teacherLower = teacher(token, "吴老师", " physics ");
-        long target = place(world, world.classA(), physicsUpper, teacherUpper, 0, "教室1");
-        long candidate = place(world, world.classB(), physicsLower, teacherLower, 2, "教室2");
+        long target = place(world, world.classA(), physicsUpper, teacherUpper, 0);
+        long candidate = place(world, world.classB(), physicsLower, teacherLower, 2);
 
         Response response = candidates(token, world, target);
 
@@ -270,10 +247,10 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
     void crossClassCandidatesRequireTheSameSubjectAndADifferentClass() {
         String token = adminToken();
         World world = world(token);
-        long target = place(world, world.classA(), "语文", "张老师", 0, "教室1");
-        place(world, world.classA(), "数学", "李老师", 1, "教室2");
-        long reading = place(world, world.classB(), "语文阅读", "王老师", 2, "教室1");
-        place(world, world.classC(), "数学", "陈老师", 3, "教室3");
+        long target = place(world, world.classA(), "语文", "张老师", 0);
+        place(world, world.classA(), "数学", "李老师", 1);
+        long reading = place(world, world.classB(), "语文阅读", "王老师", 2);
+        place(world, world.classC(), "数学", "陈老师", 3);
 
         Response response = candidates(token, world, target);
 
@@ -287,7 +264,6 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
         assertThat(candidate.get("courseName")).isEqualTo("语文阅读");
         assertThat(candidate.get("subject")).isEqualTo("语文");
         assertThat(((Number) candidate.get("periodId")).longValue()).isEqualTo(world.period(2));
-        assertThat(candidate.get("roomName")).isEqualTo("教室1");
         assertThat(candidate.get("available")).isEqualTo(true);
         assertThat((List<?>) candidate.get("conflicts")).isEmpty();
         assertThat((List<?>) candidate.get("warnings")).isEmpty();
@@ -299,10 +275,10 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
     void unavailableCandidatesAppearOnlyWhenRequestedWithReasons() {
         String token = adminToken();
         World world = world(token);
-        long target = place(world, world.classA(), "语文", "张老师", 0, "教室1");
-        long blocked = place(world, world.classA(), "数学", "李老师", 1, "教室2");
-        place(world, world.classC(), "数学", "李老师", 0, "教室3");
-        long mismatched = place(world, world.classB(), "语文", "赵老师", 2, "教室1");
+        long target = place(world, world.classA(), "语文", "张老师", 0);
+        long blocked = place(world, world.classA(), "数学", "李老师", 1);
+        place(world, world.classC(), "数学", "李老师", 0);
+        long mismatched = place(world, world.classB(), "语文", "赵老师", 2);
 
         Response defaults = candidates(token, world, target);
         assertThat(defaults.jsonPath().getList("intraClass")).isEmpty();
@@ -339,14 +315,14 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
     void candidatesCanBeFilteredByTypeCourseGradeClassAndTeacher() {
         String token = adminToken();
         World world = world(token);
-        long target = place(world, world.classA(), "语文", "张老师", 0, "教室1");
-        long math = place(world, world.classA(), "数学", "李老师", 1, "教室2");
-        long reading = place(world, world.classA(), "语文阅读", "王老师", 2, "教室1");
-        long otherClassReading = place(world, world.classB(), "语文阅读", "王老师", 3, "教室2");
-        long otherClassChinese = place(world, world.classC(), "语文", "王老师", 4, "教室3");
+        long target = place(world, world.classA(), "语文", "张老师", 0);
+        long math = place(world, world.classA(), "数学", "李老师", 1);
+        long reading = place(world, world.classA(), "语文阅读", "王老师", 2);
+        long otherClassReading = place(world, world.classB(), "语文阅读", "王老师", 3);
+        long otherClassChinese = place(world, world.classC(), "语文", "王老师", 4);
         long otherGrade = TestData.grade(token, world.semesterId(), "高二");
         long otherGradeClass = TestData.adminClass(token, world.semesterId(), otherGrade, "高二1班");
-        long otherGradeChinese = place(world, otherGradeClass, "语文", "王老师", 5, "教室1");
+        long otherGradeChinese = place(world, otherGradeClass, "语文", "王老师", 5);
 
         String url = "/api/timetable-drafts/" + world.draftId() + "/lessons/" + target + "/swap-candidates";
         Response intraOnly = as(token).queryParam("type", "INTRA_CLASS").when().get(url)
@@ -384,18 +360,17 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void moveTargetsValidateClassConflictsButNoLongerRooms() {
+    void moveTargetsValidateClassConflicts() {
         String token = adminToken();
         World world = world(token);
-        long target = place(world, world.classA(), "语文", "张老师", 0, "教室1");
-        place(world, world.classA(), "数学", "李老师", 1, "教室2");
-        place(world, world.classB(), "数学", "陈老师", 2, "教室1");
+        long target = place(world, world.classA(), "语文", "张老师", 0);
+        place(world, world.classA(), "数学", "李老师", 1);
+        place(world, world.classB(), "数学", "陈老师", 2);
 
         Response response = as(token).when()
                 .get("/api/timetable-drafts/" + world.draftId() + "/lessons/" + target + "/move-targets")
                 .then().statusCode(200).extract().response();
 
-        assertThat(((Number) response.jsonPath().get("roomId")).longValue()).isEqualTo(world.room("教室1"));
         List<Map<String, Object>> targets = response.jsonPath().getList("targets");
         assertThat(targets).hasSize(world.periodIds().size());
         assertThat(targets.stream().map(row -> ((Number) row.get("periodId")).longValue()).toList())
@@ -471,15 +446,6 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
         }
         teacherRows = teachers.saveAll(teacherRows);
 
-        List<Room> roomRows = new ArrayList<>();
-        for (int index = 0; index < 40; index++) {
-            Room room = new Room();
-            room.setName("教室" + index);
-            room.setCapacity(50);
-            room.setType("NORMAL");
-            roomRows.add(room);
-        }
-        roomRows = rooms.saveAll(roomRows);
 
         TimetableDraft draft = new TimetableDraft();
         draft.setSemesterId(semesterId);
@@ -505,7 +471,6 @@ class SwapCandidateIntegrationTest extends ApiIntegrationTest {
                     lesson.setAdminClassId(classRows.get(classIndex).getId());
                     lesson.setStudentCount(45);
                     lesson.setPeriodId(periodList.get(subjectIndex * 4 + repeat).getId());
-                    lesson.setRoomId(roomRows.get(classIndex).getId());
                     rows.add(lesson);
                 }
             }

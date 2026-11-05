@@ -44,7 +44,7 @@ test('单班每周留空：设置与刷新、排课、拖入拒绝和发布校�
     const source = before.lessons[0]
     await page.locator(`.lesson[data-lesson-id="${source.id}"]`).dragTo(blockedCell)
     const rejected = await apiCall(api, token, 'patch', `/timetable-drafts/${draftId}/lessons/${source.id}`, {
-      periodId: blocked.periodId, roomId: source.roomId,
+      periodId: blocked.periodId,
     })
     expect(rejected.saved).toBe(false)
     expect(rejected.conflicts.map((item: { type: string }) => item.type)).toContain('CLASS_UNAVAILABLE')
@@ -128,7 +128,7 @@ test('容量不足：40个位置39节课留空2个，允许保存但拒绝开始
     const seed = await seedSchool(api)
     const token = await apiLogin(api)
     await apiCall(api, token, 'post', `/semesters/${seed.semesterId}/periods/default`, {
-      morningCount: 4, afternoonCount: 4, eveningCount: 0, days: [1, 2, 3, 4, 5],
+      periodCount: 8, days: [1, 2, 3, 4, 5],
     })
     const assignment = (await apiCall(api, token, 'get', `/assignments?semesterId=${seed.semesterId}`))[0]
     await apiCall(api, token, 'put', `/assignments/${assignment.id}`, {

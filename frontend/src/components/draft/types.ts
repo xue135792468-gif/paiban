@@ -23,13 +23,6 @@ export interface Draft {
   lockedCount?: number | null
 }
 
-export interface DraftRoom {
-  id: number
-  name: string
-  capacity: number
-  type: string
-}
-
 export interface DraftConflict {
   type: string
   message: string
@@ -71,10 +64,7 @@ export interface DraftLesson {
   periodId?: number | null
   dayOfWeek?: number | null
   periodNo?: number | null
-  section?: string
   periodLabel?: string
-  roomId?: number | null
-  roomName?: string
   /** Locks pin both the period and the teacher; the server enforces them. */
   locked: boolean
 }
@@ -84,7 +74,6 @@ export interface DraftPeriod {
   dayOfWeek: number
   periodNo: number
   label: string
-  section: string
   startTime: string
   endTime: string
 }
@@ -131,11 +120,7 @@ export interface SwapCandidate {
   dayOfWeek?: number
   periodNo?: number
   periodLabel?: string
-  roomId?: number | null
-  roomName?: string
   available: boolean
-  /** True when the exchange only validates if both rooms are exchanged too. */
-  roomSwapRequired?: boolean
   conflicts: DraftConflict[]
   warnings: string[]
 }
@@ -161,7 +146,6 @@ export interface DraftDetail {
   draft: Draft
   lessons: DraftLesson[]
   periods: DraftPeriod[]
-  rooms: DraftRoom[]
   blockedSlots?: BlockedClassSlot[]
   rulesFingerprint: string
 }
@@ -171,10 +155,8 @@ export interface DraftChangeItem {
   lessonId: number
   toPeriodId: number | null
   toTeacherId?: number | null
-  toRoomId?: number | null
   expectedPeriodId: number | null
   expectedTeacherId: number
-  expectedRoomId: number | null
 }
 
 /** Result of POST /changes and POST /cycle-plans/apply. */

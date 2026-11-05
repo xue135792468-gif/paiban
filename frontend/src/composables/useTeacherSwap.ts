@@ -48,7 +48,6 @@ export function useTeacherSwap(options: TeacherSwapOptions) {
   const failed = ref(false)
   const previewVisible = ref(false)
   const previewCandidate = ref<SwapCandidate | null>(null)
-  const swapRooms = ref(false)
   const submitting = ref(false)
 
   let requestSeq = 0
@@ -230,9 +229,6 @@ export function useTeacherSwap(options: TeacherSwapOptions) {
   function openPreview(candidate: SwapCandidate): boolean {
     if (!candidate.available) return false
     previewCandidate.value = candidate
-    // A candidate that only validates with the rooms exchanged must pre-select it,
-    // exactly like the class-view candidate drawer does.
-    swapRooms.value = candidate.roomSwapRequired === true
     previewVisible.value = true
     return true
   }
@@ -244,12 +240,7 @@ export function useTeacherSwap(options: TeacherSwapOptions) {
     submitting.value = true
     try {
       const version = options.getVersion?.() ?? null
-      const outcome = await options.adjust.swap(
-        lesson,
-        candidate,
-        swapRooms.value,
-        version ?? undefined,
-      )
+      const outcome = await options.adjust.swap(lesson, candidate, version ?? undefined)
       if (outcome.warnings.length > 0) {
         notify.warning(outcome.warnings.join('；'))
       }
@@ -283,7 +274,6 @@ export function useTeacherSwap(options: TeacherSwapOptions) {
     gridLessons,
     previewVisible,
     previewCandidate,
-    swapRooms,
     submitting,
     enter,
     toggle,

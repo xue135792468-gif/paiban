@@ -23,7 +23,6 @@ import com.paiban.substitution.plan.PlanMove;
 import com.paiban.substitution.plan.PlanSnapshot;
 import com.paiban.substitution.plan.PlanVerifier;
 import com.paiban.substitution.service.LessonDeadline.ChangedSlot;
-import com.paiban.substitution.web.SubstitutionDtos.DecisionRequest;
 import com.paiban.substitution.web.SubstitutionWorkbenchDtos.CandidateDto;
 import com.paiban.substitution.web.SubstitutionWorkbenchDtos.CandidateListDto;
 import com.paiban.substitution.web.SubstitutionWorkbenchDtos.ChangeItemDto;
@@ -77,7 +76,6 @@ public class AdminSubstitutionService {
     private final SemesterService semesters;
     private final UserService users;
     private final PlanSnapshotFactory snapshots;
-    private final SubstitutionRequestService requestService;
     private final SubstitutionEffects effects;
     private final AuditLogRepository auditLogs;
     private final java.time.Clock clock;
@@ -93,7 +91,6 @@ public class AdminSubstitutionService {
             SemesterService semesters,
             UserService users,
             PlanSnapshotFactory snapshots,
-            SubstitutionRequestService requestService,
             SubstitutionEffects effects,
             AuditLogRepository auditLogs,
             java.time.Clock clock) {
@@ -107,7 +104,6 @@ public class AdminSubstitutionService {
         this.semesters = semesters;
         this.users = users;
         this.snapshots = snapshots;
-        this.requestService = requestService;
         this.effects = effects;
         this.auditLogs = auditLogs;
         this.clock = clock;
@@ -208,16 +204,11 @@ public class AdminSubstitutionService {
             throw ApiException.badRequest("代课教师已停用，请选择启用中的教师");
         }
 
-        // 锁定状态检查：旧格式只读（提示转换状态）、已有待处理单先挡下。
-        // 已有生效代课的实例走修订链（票 04）：预览产出「修订」而非冲突。
+        // 锁定状态检查：旧格式只读；已有生效安排可以再次调整（旧行退出 + 新行生效），
+        // 只是不能与另一个人未处理完的申请并行修改。
         if (instance.legacyLocked()) {
             throw ApiException.conflict(instance.legacyMessage());
         }
-        var baseRow = currentCoverRow(instance);
-        Long revisesRequestId = baseRow.map(Substitution::getRequestId).orElse(null);
-        String revisionKind = baseRow.isPresent()
-                ? RevisionPolicy.revisionKind(body.substituteTeacherId(), instance.entry().getTeacherId())
-                : null;
         Long raced = SubstitutionLookups.activeRequestFor(requests, body.entryId(), body.lessonDate());
         if (raced != null) {
             throw ApiException.conflict("该课节已有待处理的申请（#" + raced + "），请先处理该单");
@@ -229,7 +220,7 @@ public class AdminSubstitutionService {
 
         PlanMove move = new PlanMove(
                 current.entryId(), current.classId(), current.courseId(),
-                body.substituteTeacherId(), current.roomId(),
+                body.substituteTeacherId(),
                 current.periodId(), current.dayOfWeek(), current.periodNo(), body.lessonDate(),
                 current.periodId(), current.dayOfWeek(), current.periodNo(), body.lessonDate(), 0);
         PlanVerifier.Result verification = PlanVerifier.verify(
@@ -246,8 +237,6 @@ public class AdminSubstitutionService {
         voucher.setLessonDate(body.lessonDate());
         voucher.setSubstituteTeacherId(body.substituteTeacherId());
         voucher.setPreviousTeacherId(current.teacherId());
-        voucher.setRevisesRequestId(revisesRequestId);
-        voucher.setRevisionKind(revisionKind);
         voucher.setOperatorUserId(user.getId());
         voucher.setSnapshotHash(snapshot.snapshotHash());
         voucher.setReason(body.reason());
@@ -278,31 +267,17 @@ public class AdminSubstitutionService {
                         body.substituteTeacherId(), substituteView.name())),
                 issues,
                 true,
-                true,
-                revisesRequestId,
-                revisionKind);
+                true);
     }
 
     // ----------------------------------------------------------- submit / confirm
 
-    /** 管理员代发：提交审批进待批队列，旧安排继续生效，不发已生效通知。 */
-    @Transactional
-    public WorkbenchActionResult submitApproval(Long voucherId, String username, String comment) {
-        return consumeVoucher(voucherId, username,
-                SubstitutionPreview.ACTION_SUBMIT_APPROVAL, comment, false);
-    }
-
     /**
-     * 管理员亲自确认：在同一事务里创建待批申请，然后走与普通批准完全相同的
-     * approve 路径（busy 检查、学期行锁、校验器、生效行、审计与通知）。
+     * 管理员直接确认：同一事务内复核截止、快照哈希与独立校验，然后写申请、
+     * 生效行、历史、审计与通知。失败整单回滚，凭证不被消费。
      */
     @Transactional
-    public WorkbenchActionResult confirm(Long voucherId, String username, String comment) {
-        return consumeVoucher(voucherId, username, SubstitutionPreview.ACTION_CONFIRM, comment, true);
-    }
-
-    private WorkbenchActionResult consumeVoucher(
-            Long voucherId, String username, String action, String comment, boolean effectiveNow) {
+    public WorkbenchActionResult confirmDirect(Long voucherId, String username, String comment) {
         AppUser user = users.getByUsername(username);
         requireManager(user);
         SubstitutionPreview voucher = previews.findById(voucherId)
@@ -310,14 +285,14 @@ public class AdminSubstitutionService {
         if (!voucher.getOperatorUserId().equals(user.getId())) {
             throw ApiException.forbidden("预览凭证绑定操作者，不能使用他人的预览");
         }
-        String actionHash = SubstitutionLookups.actionHash(action, comment);
+        String actionHash = SubstitutionLookups.actionHash(SubstitutionPreview.ACTION_CONFIRM, comment);
 
         // 幂等：相同动作 + 相同参数的重试返回第一次结果；参数改变返回冲突。
-        var replayed = voucher.replay(action, actionHash);
+        var replayed = voucher.replay(SubstitutionPreview.ACTION_CONFIRM, actionHash);
         if (replayed.isPresent()) {
             return WorkbenchActionResult.fromJson(replayed.get());
         }
-        if (voucher.conflictsWith(action, actionHash)) {
+        if (voucher.conflictsWith(SubstitutionPreview.ACTION_CONFIRM, actionHash)) {
             throw ApiException.conflict("该预览凭证已用于其他操作，如需调整请重新预览");
         }
         if (!SubstitutionPreview.ACTIVE.equals(voucher.getStatus())) {
@@ -325,11 +300,9 @@ public class AdminSubstitutionService {
         }
 
         Instance instance = loadInstance(voucher.getEntryId(), voucher.getLessonDate());
-        if (effectiveNow) {
-            // 确认路径：先拿学期行锁（可能要等其他管理员提交），拿到锁后再重读时钟、
-            // 重建快照——排队期间课表可能已被别人改动，一切复核都以锁后状态为准。
-            instance.lockSemester();
-        }
+        // 先拿学期行锁，拿到锁后再重读时钟、重建快照——排队期间课表可能已被别人改动，
+        // 一切复核都以锁后状态为准。
+        instance.lockSemester();
         new DeadlineChecker(clock::instant)
                 .requireBeforeDeadline(voucher.getDeadlineAt(), instance.lessonLabel());
         PlanSnapshot snapshot = snapshots.build(instance.semesterId());
@@ -341,21 +314,6 @@ public class AdminSubstitutionService {
         if (instance.legacyLocked()) {
             throw ApiException.conflict(instance.legacyMessage());
         }
-        var currentRow = currentCoverRow(instance);
-        if (currentRow.isPresent()) {
-            // 实例已有生效代课：只放行「修订基准仍然一致」的修订凭证。
-            // 快照哈希校验已保证整个课表未变，这里再钉住基准申请，防止任何旁路。
-            Substitution base = currentRow.get();
-            if (voucher.getRevisesRequestId() == null
-                    || !voucher.getRevisesRequestId().equals(base.getRequestId())) {
-                previews.markExpiredIfActive(voucher.getId());
-                throw ApiException.conflict("该课节的当前安排已变化，旧预览不能生效，请重新预览");
-            }
-        } else if (voucher.getRevisesRequestId() != null) {
-            // 修订的基准已消失（数据被重新发布等）：不能盲替，回到重新预览。
-            previews.markExpiredIfActive(voucher.getId());
-            throw ApiException.conflict("该修订的基准安排已不存在，请重新预览");
-        }
         Long raced = SubstitutionLookups.activeRequestFor(
                 requests, voucher.getEntryId(), voucher.getLessonDate());
         if (raced != null) {
@@ -363,37 +321,43 @@ public class AdminSubstitutionService {
             throw ApiException.conflict("该课节已有待处理的申请（#" + raced + "），请先处理该单");
         }
 
-        SubstitutionRequest request = createDispatchRequest(user, voucher, instance);
-        WorkbenchActionResult result;
-        if (effectiveNow) {
-            // 与普通批准完全同路径：busy/重复生效检查、校验器、生效行、历史与通知都在 approve 里，
-            // 全部发生在当前事务内；失败则整单回滚、凭证不被消费。
-            requestService.approve(request.getId(), username,
-                    new DecisionRequest(voucher.getSubstituteTeacherId(), comment, null, null));
-            SubstitutionRequest effective = SubstitutionLookups.requireRequest(requests, request.getId());
-            // 调整后教师如实记录在申请上（批准结果可能与最初期望一致，此处统一落库）。
-            effective.setFinalTeacherId(voucher.getSubstituteTeacherId());
-            effective.setExpectedSubstituteTeacherId(voucher.getSubstituteTeacherId());
-            effective.setUpdatedAt(clock.instant());
-            requests.save(effective);
-            auditLogs.save(new AuditLog(
-                    username, "SUBSTITUTION_ADMIN_CONFIRMED", "SUBSTITUTION",
-                    auditDetail(user, effective, voucher), 1, 0));
-            result = new WorkbenchActionResult(request.getId(), SubstitutionRequest.EFFECTIVE, false);
-        } else {
-            auditLogs.save(new AuditLog(
-                    username, "SUBSTITUTION_ADMIN_DISPATCHED", "SUBSTITUTION",
-                    auditDetail(user, request, voucher), 1, 0));
-            result = new WorkbenchActionResult(request.getId(), SubstitutionRequest.PENDING_APPROVAL, false);
+        PlanSnapshot.ScheduledLesson current = instance.current();
+        PlanMove move = new PlanMove(
+                current.entryId(), current.classId(), current.courseId(),
+                voucher.getSubstituteTeacherId(),
+                current.periodId(), current.dayOfWeek(), current.periodNo(), voucher.getLessonDate(),
+                current.periodId(), current.dayOfWeek(), current.periodNo(), voucher.getLessonDate(), 0);
+        PlanVerifier.Result verification = PlanVerifier.verify(
+                snapshot, List.of(move), PlanVerifier.Kind.COVER, -1);
+        if (!verification.passed()) {
+            String detail = verification.issues().stream()
+                    .limit(5)
+                    .map(issue -> issue.code() + ": " + issue.message())
+                    .collect(java.util.stream.Collectors.joining("；"));
+            previews.markExpiredIfActive(voucher.getId());
+            throw ApiException.conflict("代课未通过校验，整单不生效：" + detail);
         }
-        voucher.consume(action, actionHash, result.toJson(), clock.instant());
+
+        SubstitutionRequest request = createDispatchRequest(user, voucher, instance, comment);
+        // 再次调整：该实例上一条生效行退出（CANCELLED），新行接管当前安排；
+        // 同一实例同一时刻只留一条 EFFECTIVE，不写修订链。
+        effects.retireEffectiveRowAt(voucher.getEntryId(), voucher.getLessonDate());
+        Substitution substitution = effects.createCoverSubstitution(
+                request, voucher.getSubstituteTeacherId(), current);
+        effects.notifyEffective(request, substitution);
+        auditLogs.save(new AuditLog(
+                username, "SUBSTITUTION_ADMIN_CONFIRMED", "SUBSTITUTION",
+                auditDetail(user, request, voucher), 1, 0));
+        WorkbenchActionResult result = new WorkbenchActionResult(
+                request.getId(), SubstitutionRequest.EFFECTIVE, false);
+        voucher.consume(SubstitutionPreview.ACTION_CONFIRM, actionHash, result.toJson(), clock.instant());
         previews.save(voucher);
         return result;
     }
 
     /** 代发申请的公共部分：代发对象 = 基线原任课教师；操作者、调整前教师如实记录。 */
     private SubstitutionRequest createDispatchRequest(
-            AppUser operator, SubstitutionPreview voucher, Instance instance) {
+            AppUser operator, SubstitutionPreview voucher, Instance instance, String comment) {
         PlanSnapshot.ScheduledLesson current = instance.current();
         TimetableEntry entry = instance.entry();
         SubstitutionRequest request = new SubstitutionRequest();
@@ -412,12 +376,8 @@ public class AdminSubstitutionService {
         request.setPeriodNo(current.periodNo());
         request.setReason(voucher.getReason());
         request.setExpectedSubstituteTeacherId(voucher.getSubstituteTeacherId());
+        request.setFinalTeacherId(voucher.getSubstituteTeacherId());
         request.setType(Substitution.TYPE_COVER);
-        // 修订链（票 04）：修订申请记录前驱与类型；首次代课两者皆为空。
-        request.setRevisesRequestId(voucher.getRevisesRequestId());
-        request.setRevisionKind(voucher.getRevisionKind());
-        // 管理员的提交审批与亲自确认都不依赖全局教师自助模式：前者始终待批，后者显式批准。
-        request.setApprovalMode("approval");
         request.setStatus(SubstitutionRequest.SUBMITTED);
         Instant now = clock.instant();
         request.setCreatedAt(now);
@@ -425,12 +385,12 @@ public class AdminSubstitutionService {
         SubstitutionRequest saved = requests.save(request);
         effects.recordHistory(saved.getId(), null, SubstitutionRequest.SUBMITTED,
                 operator.getUsername(), null);
-        saved.setStatus(SubstitutionRequest.PENDING_APPROVAL);
+        saved.setStatus(SubstitutionRequest.EFFECTIVE);
         saved.setUpdatedAt(now);
-        SubstitutionRequest pending = requests.save(saved);
+        SubstitutionRequest effective = requests.save(saved);
         effects.recordHistory(saved.getId(), SubstitutionRequest.SUBMITTED,
-                SubstitutionRequest.PENDING_APPROVAL, operator.getUsername(), null);
-        return pending;
+                SubstitutionRequest.EFFECTIVE, operator.getUsername(), comment);
+        return effective;
     }
 
     private String auditDetail(AppUser operator, SubstitutionRequest request, SubstitutionPreview voucher) {
@@ -470,17 +430,6 @@ public class AdminSubstitutionService {
         return new Instance(entry, semester.getId(), lessonDate, snapshot, current, this);
     }
 
-    /**
-     * 该实例当天的新格式生效行（票 04/07 修订链的基准）：同日 COVER 行优先，
-     * 否则落点命中该日期的 SWAP 行（票 07：原先调课后的实例仍可再代课——
-     * 预览产出以 SWAP 申请为基准的修订，而不是冲突）。SWAP 来源日实例当天已被
-     * 移走（装载即失败），不会出现在这里。
-     */
-    private java.util.Optional<Substitution> currentCoverRow(Instance instance) {
-        return SubstitutionLookups.currentInstanceRow(
-                substitutions, instance.entryId(), instance.lessonDate());
-    }
-
     private void requireManager(AppUser user) {
         if (!users.hasAllPermissions(user, MANAGER_PERMISSIONS)) {
             throw ApiException.forbidden("管理调代工作台需要「全校课表查看 + 提交调代 + 审批调代」权限");
@@ -503,7 +452,6 @@ public class AdminSubstitutionService {
                     SubstitutionLookups.className(snapshot, lesson.classId()),
                     teacherId,
                     SubstitutionLookups.teacherName(snapshot, teacherId),
-                    lesson.roomId() == null ? null : SubstitutionLookups.roomName(snapshot, lesson.roomId()),
                     isSource));
         }
         cells.sort(Comparator.comparingInt(GridCellDto::periodNo));
@@ -514,7 +462,6 @@ public class AdminSubstitutionService {
                                      PlanSnapshot.ScheduledLesson current,
                                      Long substituteTeacherId, String substituteTeacherName) {
         String label = SubstitutionMapper.label(current.dayOfWeek(), current.periodNo());
-        String room = current.roomId() == null ? null : SubstitutionLookups.roomName(snapshot, current.roomId());
         return new ChangeItemDto(
                 current.entryId(),
                 current.classId(),
@@ -528,8 +475,6 @@ public class AdminSubstitutionService {
                 SubstitutionLookups.teacherName(snapshot, current.teacherId()),
                 substituteTeacherId,
                 substituteTeacherName,
-                room,
-                room,
                 "TEACHER_CHANGED");
     }
 

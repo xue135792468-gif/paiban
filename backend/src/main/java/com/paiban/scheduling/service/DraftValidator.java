@@ -4,7 +4,6 @@ import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.AdminClassRepository;
 import com.paiban.foundation.domain.CourseRepository;
 import com.paiban.foundation.domain.PeriodRepository;
-import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.scheduling.constraint.ConstraintChecker;
 import com.paiban.scheduling.constraint.ConstraintContext;
@@ -32,7 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
  * Millisecond conflict checking for manual adjustments. Returns human readable
  * reasons ("张老师此时在 3 班有数学课") instead of a bare score. The rule
  * definitions live in {@link ConstraintChecker} so the published-timetable
- * verifier uses exactly the same 24 rules.
+ * verifier uses exactly the same 18 rules.
  *
  * <p>{@link #validateDraft} goes one step further than a local check: it also reports
  * the {@link DraftPublishReadiness} blockers, which is the same judgement
@@ -50,8 +49,8 @@ public class DraftValidator {
      * {@code publishable} and {@code blockers} are additive.
      *
      * <p>{@code valid} answers "is this draft complete enough to be a timetable?" — no
-     * scheduling conflict, no unscheduled lesson, no dangling period and no lesson without
-     * a room. It deliberately says nothing about the already-published state
+     * scheduling conflict, no unscheduled lesson and no dangling period. It deliberately
+     * says nothing about the already-published state
      * ({@code DRAFT_PUBLISHED}, {@code SEMESTER_ALREADY_PUBLISHED}): those are terminal
      * states, not defects of the content, so they only show up in {@code publishable} and
      * {@code blockers}. Otherwise the very draft that was just published would read back as
@@ -73,7 +72,6 @@ public class DraftValidator {
     private final TimetableDraftRepository drafts;
     private final DraftLessonRepository draftLessons;
     private final PeriodRepository periods;
-    private final RoomRepository rooms;
     private final CourseRepository courses;
     private final TeacherRepository teachers;
     private final AdminClassRepository adminClasses;
@@ -84,7 +82,6 @@ public class DraftValidator {
             TimetableDraftRepository drafts,
             DraftLessonRepository draftLessons,
             PeriodRepository periods,
-            RoomRepository rooms,
             CourseRepository courses,
             TeacherRepository teachers,
             AdminClassRepository adminClasses,
@@ -93,7 +90,6 @@ public class DraftValidator {
         this.drafts = drafts;
         this.draftLessons = draftLessons;
         this.periods = periods;
-        this.rooms = rooms;
         this.courses = courses;
         this.teachers = teachers;
         this.adminClasses = adminClasses;
@@ -102,19 +98,18 @@ public class DraftValidator {
     }
 
     /**
-     * Single-lesson special case of {@link #validateMoves}. Period and room are
-     * assigned unconditionally, including nulls, so the existing endpoint keeps its
-     * exact behaviour.
+     * Single-lesson special case of {@link #validateMoves}. Period is assigned
+     * unconditionally, including nulls, so the existing endpoint keeps its exact
+     * behaviour.
      */
     @Transactional(readOnly = true)
-    public ValidationResult validateMove(Long draftId, Long lessonId, Long periodId, Long roomId) {
+    public ValidationResult validateMove(Long draftId, Long lessonId, Long periodId) {
         Snapshot snapshot = snapshot(draftId);
         L moved = snapshot.lessons.stream()
                 .filter(lesson -> lesson.id.equals(lessonId))
                 .findFirst()
                 .orElseThrow(() -> ApiException.notFound("课节不存在: " + lessonId));
         moved.periodId = periodId;
-        moved.roomId = roomId;
         return resultOf(snapshot, checkAffected(snapshot, Set.of(moved.id)));
     }
 
@@ -128,9 +123,9 @@ public class DraftValidator {
     /**
      * A change that assigns every mutable attribute unconditionally, nulls included.
      * Unlike {@link LessonOverride}, an explicit null clears the field, which is what
-     * an exact swap (including a room being handed over as null) needs.
+     * an exact swap needs.
      */
-    public record LessonChange(Long lessonId, Long periodId, Long roomId, Long teacherId) {}
+    public record LessonChange(Long lessonId, Long periodId, Long teacherId) {}
 
     @Transactional(readOnly = true)
     public ValidationResult validateChanges(Long draftId, List<LessonChange> changes) {
@@ -177,7 +172,7 @@ public class DraftValidator {
      * them is what keeps the planner free of a persistence context.
      */
     public record PlanLesson(Long id, Long assignmentId, int lessonIndex, Long classId,
-                             Long courseId, Long teacherId, Long periodId, Long roomId,
+                             Long courseId, Long teacherId, Long periodId,
                              int studentCount, boolean locked) {}
 
     /**
@@ -284,75 +279,15 @@ public class DraftValidator {
                 continue;
             }
             lesson.periodId = change.periodId();
-            lesson.roomId = change.roomId();
             lesson.teacherId = change.teacherId();
         }
-    }
-
-    /**
-     * A room that does not exist yet, used by a preview that must judge the change
-     * before anything is written. Its id is a negative placeholder.
-     */
-    public record PlannedRoom(long placeholderId, String name, String type, int capacity) {}
-
-    /**
-     * Before and after the same whole-draft judgement. {@code added} holds only the
-     * conflicts the change introduces: pre-existing ones stay visible but never block
-     * a change on their own.
-     */
-    public record ChangeImpact(
-            List<Conflict> before,
-            List<Conflict> after,
-            List<Conflict> added,
-            List<DraftPublishReadiness.Blocker> remainingBlockers) {}
-
-    /**
-     * Impact of filling empty rooms only. Unlike {@link #validateChanges}, nothing but
-     * the room is assigned, so a preview cannot accidentally clear a period or teacher.
-     * Planned rooms are judged through their name, type and capacity before they exist.
-     */
-    @Transactional(readOnly = true)
-    public ChangeImpact previewRoomAssignment(
-            Long draftId, Map<Long, Long> roomIdByLesson, List<PlannedRoom> plannedRooms) {
-        Snapshot snapshot = snapshot(draftId);
-        List<Conflict> before = checkAffected(snapshot, null);
-        Snapshot after = snapshot.withPlannedRooms(plannedRooms);
-        for (L lesson : after.lessons) {
-            Long roomId = roomIdByLesson.get(lesson.id);
-            if (roomId != null) {
-                lesson.roomId = roomId;
-            }
-        }
-        List<Conflict> afterConflicts = checkAffected(after, null);
-        return new ChangeImpact(
-                before,
-                afterConflicts,
-                addedConflicts(before, afterConflicts),
-                DraftPublishReadiness.blockers(factsOf(after, afterConflicts.size())));
-    }
-
-    /** Multiset difference by code, lesson and message: what the change newly breaks. */
-    private List<Conflict> addedConflicts(List<Conflict> before, List<Conflict> after) {
-        Map<String, Integer> remaining = new HashMap<>();
-        before.forEach(conflict -> remaining.merge(keyOf(conflict), 1, Integer::sum));
-        List<Conflict> added = new ArrayList<>();
-        for (Conflict conflict : after) {
-            String key = keyOf(conflict);
-            Integer count = remaining.get(key);
-            if (count == null || count == 0) {
-                added.add(conflict);
-            } else {
-                remaining.put(key, count - 1);
-            }
-        }
-        return added;
     }
 
     /**
      * Teacher-centred hard-conflict diagnostics for a finished draft: which teacher blocks
      * publishing, how many hard facts name them, the human-readable reasons, and the
      * grades/classes they teach in this draft. Only teacher-owned rule codes are counted
-     * (class/room facts are not attributed to a teacher), and the list is capped at five
+     * (class facts are not attributed to a teacher), and the list is capped at five
      * so the job card stays readable.
      */
     public record TeacherDiagnostic(Long teacherId, String teacherName, int hardCount,
@@ -458,14 +393,9 @@ public class DraftValidator {
         return code != null && code.startsWith("TEACHER_");
     }
 
-    private static String keyOf(Conflict conflict) {
-        return conflict.type() + "|" + conflict.lessonId() + "|" + conflict.message();
-    }
-
     /**
-     * Whole-draft check: the 24 conflict rules plus every publishing precondition, from
-     * the one judgement publishing itself uses ({@link DraftPublishReadiness}). Rooms are
-     * not a publishing precondition: a lesson without a room is valid and publishable.
+     * Whole-draft check: the 18 conflict rules plus every publishing precondition, from
+     * the one judgement publishing itself uses ({@link DraftPublishReadiness}).
      *
      * <p>{@code valid} and {@code publishable} both come from this one list, differing only
      * in that the two terminal-state blockers ({@code DRAFT_PUBLISHED},
@@ -520,8 +450,8 @@ public class DraftValidator {
     /**
      * Evaluates independent override scenarios against one snapshot. Each scenario
      * starts from a fresh copy of the lessons, so it never sees another scenario's
-     * changes. The snapshot itself (periods, rooms, courses, teachers, classes and
-     * constraint settings) is built once; this is what the drag preview and the swap
+     * changes. The snapshot itself (periods, courses, teachers, classes and constraint
+     * settings) is built once; this is what the drag preview and the swap
      * candidate list need, where one request asks "what if" for many targets.
      */
     @Transactional(readOnly = true)
@@ -537,8 +467,8 @@ public class DraftValidator {
 
     /**
      * Same as {@link #validateScenarios}, but each scenario is an exact change list
-     * (an explicit null clears a field). Swap candidates need this because exchanging
-     * rooms may hand a lesson a null room, which {@link LessonOverride} cannot express.
+     * (an explicit null clears a field). Swap candidates need this because a swap may
+     * hand a lesson a null period or teacher, which {@link LessonOverride} cannot express.
      */
     @Transactional(readOnly = true)
     public List<ValidationResult> validateChangeScenarios(Long draftId, List<List<LessonChange>> scenarios) {
@@ -562,7 +492,6 @@ public class DraftValidator {
                 throw ApiException.notFound("课节不存在: " + change.lessonId());
             }
             lesson.periodId = change.periodId();
-            lesson.roomId = change.roomId();
             lesson.teacherId = change.teacherId();
             affected.add(lesson.id);
         }
@@ -581,9 +510,6 @@ public class DraftValidator {
             }
             if (override.periodId() != null) {
                 lesson.periodId = override.periodId();
-            }
-            if (override.roomId() != null) {
-                lesson.roomId = override.roomId();
             }
             if (override.teacherId() != null) {
                 lesson.teacherId = override.teacherId();
@@ -619,16 +545,10 @@ public class DraftValidator {
         periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(draft.getSemesterId())
                 .forEach(period -> periodMap.put(period.getId(),
                         new ConstraintContext.PeriodView(
-                                period.getId(), period.getDayOfWeek(), period.getPeriodNo(),
-                                period.getSection())));
-        Map<Long, ConstraintContext.RoomView> roomMap = new HashMap<>();
-        rooms.findAll().forEach(room -> roomMap.put(room.getId(),
-                new ConstraintContext.RoomView(
-                        room.getId(), room.getName(), room.getType(), room.getCapacity())));
+                                period.getId(), period.getDayOfWeek(), period.getPeriodNo())));
         Map<Long, ConstraintContext.CourseView> courseMap = new HashMap<>();
         courses.findAll().forEach(course -> courseMap.put(course.getId(),
-                new ConstraintContext.CourseView(
-                        course.getId(), course.getName(), course.getRequiredRoomType())));
+                new ConstraintContext.CourseView(course.getId(), course.getName())));
         Map<Long, ConstraintContext.TeacherView> teacherMap = new HashMap<>();
         teachers.findAll().forEach(teacher -> teacherMap.put(teacher.getId(),
                 new ConstraintContext.TeacherView(
@@ -645,7 +565,7 @@ public class DraftValidator {
         // rows the solver and the substitution verifier read.
         ConstraintSettings settings = constraints.settings(draft.getSemesterId());
         ConstraintContext context =
-                new ConstraintContext(periodMap, roomMap, courseMap, teacherMap, classMap, settings);
+                new ConstraintContext(periodMap, courseMap, teacherMap, classMap, settings);
         List<L> copies = lessons.stream().map(L::of).toList();
         return new Snapshot(draft, copies, context);
     }
@@ -655,25 +575,6 @@ public class DraftValidator {
         /** Same reference data, independent lesson copies, for scenario evaluation. */
         Snapshot withFreshLessons() {
             return new Snapshot(draft, lessons.stream().map(L::copy).toList(), context);
-        }
-
-        /**
-         * Independent lesson copies plus the rooms a preview is about to create, so the
-         * rules can judge assignments to rooms that do not exist yet.
-         */
-        Snapshot withPlannedRooms(List<PlannedRoom> plannedRooms) {
-            if (plannedRooms == null || plannedRooms.isEmpty()) {
-                return withFreshLessons();
-            }
-            Map<Long, ConstraintContext.RoomView> roomMap = new HashMap<>(context.rooms());
-            for (PlannedRoom room : plannedRooms) {
-                roomMap.put(room.placeholderId(), new ConstraintContext.RoomView(
-                        room.placeholderId(), room.name(), room.type(), room.capacity()));
-            }
-            ConstraintContext widened = new ConstraintContext(
-                    context.periods(), Map.copyOf(roomMap), context.courses(),
-                    context.teachers(), context.classes(), context.settings());
-            return new Snapshot(draft, lessons.stream().map(L::copy).toList(), widened);
         }
     }
 
@@ -685,7 +586,6 @@ public class DraftValidator {
         private Long teacherId;
         private Long classId;
         private Long periodId;
-        private Long roomId;
         private int studentCount;
         private boolean locked;
 
@@ -698,7 +598,6 @@ public class DraftValidator {
             copy.teacherId = lesson.getTeacherId();
             copy.classId = lesson.getAdminClassId();
             copy.periodId = lesson.getPeriodId();
-            copy.roomId = lesson.getRoomId();
             copy.studentCount = lesson.getStudentCount();
             copy.locked = lesson.isLocked();
             return copy;
@@ -713,7 +612,6 @@ public class DraftValidator {
             copy.teacherId = lesson.teacherId();
             copy.classId = lesson.classId();
             copy.periodId = lesson.periodId();
-            copy.roomId = lesson.roomId();
             copy.studentCount = lesson.studentCount();
             copy.locked = lesson.locked();
             return copy;
@@ -721,11 +619,11 @@ public class DraftValidator {
 
         PlanLesson toPlanLesson() {
             return new PlanLesson(id, assignmentId, lessonIndex, classId, courseId, teacherId,
-                    periodId, roomId, studentCount, locked);
+                    periodId, studentCount, locked);
         }
 
         LessonView toView() {
-            return new LessonView(id, classId, courseId, teacherId, roomId, periodId, studentCount);
+            return new LessonView(id, classId, courseId, teacherId, periodId, studentCount);
         }
 
         L copy() {
@@ -737,7 +635,6 @@ public class DraftValidator {
             copy.teacherId = teacherId;
             copy.classId = classId;
             copy.periodId = periodId;
-            copy.roomId = roomId;
             copy.studentCount = studentCount;
             copy.locked = locked;
             return copy;

@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.paiban.foundation.domain.PeriodSection;
 import com.paiban.scheduling.domain.ConstraintType;
 import com.paiban.scheduling.service.ConstraintProposalNormalizer.ClassRef;
 import com.paiban.scheduling.service.ConstraintProposalNormalizer.Context;
@@ -27,7 +26,7 @@ class ConstraintProposalParserTest {
     @Test
     void readsThePlainEnvelope() {
         List<JsonNode> rows = parser.parse("""
-                {"proposals":[{"type":"COURSE_NOT_IN_EVENING"},{"type":"COURSE_SPREAD"}]}""");
+                {"proposals":[{"type":"COURSE_UNAVAILABLE"},{"type":"COURSE_SPREAD"}]}""");
         assertThat(rows).hasSize(2);
     }
 
@@ -52,7 +51,7 @@ class ConstraintProposalParserTest {
     void acceptsOneObjectPerLine() {
         List<JsonNode> rows = parser.parse("""
                 {"type":"COURSE_SPREAD"}
-                {"type":"COURSE_NOT_IN_EVENING"}""");
+                {"type":"COURSE_UNAVAILABLE"}""");
         assertThat(rows).hasSize(2);
     }
 
@@ -87,7 +86,7 @@ class ConstraintProposalParserTest {
                 "TEACHER_CONFLICT", "CLASS_CONFLICT",
                 "TEACHER_UNAVAILABLE", "COURSE_UNAVAILABLE", "SAME_COURSE_ONCE_PER_DAY",
                 "TEACHER_MAX_PER_DAY", "CLASS_MAX_PER_DAY", "COURSE_MAX_PER_DAY",
-                "SPORT_NOT_FIRST_AFTERNOON", "CONSECUTIVE_LESSONS", "COURSE_SPREAD",
+                "CONSECUTIVE_LESSONS", "COURSE_SPREAD",
                 "MAIN_SUBJECT_MORNING", "TEACHER_PREFERRED_SLOT", "TEACHER_MAX_CONSECUTIVE",
                 "TEACHER_NO_FIRST_PERIOD", "TEACHER_DAY_OFF", "CLASS_GAP_MINIMIZED",
                 "PE_LAST_PERIOD_AVOID"));
@@ -153,14 +152,11 @@ class ConstraintProposalParserTest {
     }
 
     private static Context context() {
-        Map<PeriodSection, List<Integer>> day = Map.of(
-                PeriodSection.MORNING, List.of(1, 2, 3, 4),
-                PeriodSection.AFTERNOON, List.of(5, 6, 7),
-                PeriodSection.EVENING, List.of(8, 9));
+        List<Integer> day = List.of(1, 2, 3, 4, 5, 6, 7, 8, 9);
         return new Context(
                 List.of(new TeacherRef(11, "张伟", "数学"), new TeacherRef(12, "李娜", "语文")),
-                List.of(new CourseRef(21, "数学", "数学", "NORMAL"),
-                        new CourseRef(22, "化学", "化学", "LAB")),
+                List.of(new CourseRef(21, "数学", "数学"),
+                        new CourseRef(22, "化学", "化学")),
                 List.of(new ClassRef(31, "高一(1)班"), new ClassRef(32, "高一(2)班")),
                 Map.of(1, day, 3, day));
     }

@@ -67,7 +67,6 @@ public final class PlanVerifier {
             }
             if (now.periodId() == lesson.periodId()
                     && Objects.equals(now.teacherId(), lesson.teacherId())
-                    && Objects.equals(now.roomId(), lesson.roomId())
                     && now.courseId() == lesson.courseId()) {
                 continue;
             }
@@ -75,7 +74,7 @@ public final class PlanVerifier {
             LocalDate fromDate = dateFor(before, lesson.dayOfWeek());
             LocalDate toDate = dateFor(after, now.dayOfWeek());
             moves.add(new PlanMove(
-                    lesson.entryId(), lesson.classId(), lesson.courseId(), now.teacherId(), now.roomId(),
+                    lesson.entryId(), lesson.classId(), lesson.courseId(), now.teacherId(),
                     lesson.periodId(), lesson.dayOfWeek(), lesson.periodNo(), fromDate,
                     now.periodId(), now.dayOfWeek(), now.periodNo(), toDate, moves.size()));
         }
@@ -170,7 +169,7 @@ public final class PlanVerifier {
         for (PlanMove move : moves) {
             if (move.toDate().equals(date)) {
                 changed.add(new ScheduledLesson(
-                        move.entryId(), move.classId(), move.courseId(), move.teacherId(), move.roomId(),
+                        move.entryId(), move.classId(), move.courseId(), move.teacherId(),
                         move.toPeriodId(), move.toDayOfWeek(), move.toPeriodNo(),
                         snapshot.studentCount(move.classId())));
             }
@@ -317,8 +316,7 @@ public final class PlanVerifier {
                 ScheduledLesson now = afterByEntry.get(lesson.entryId());
                 if (now == null
                         || now.periodId() != lesson.periodId()
-                        || !Objects.equals(now.teacherId(), lesson.teacherId())
-                        || !Objects.equals(now.roomId(), lesson.roomId())) {
+                        || !Objects.equals(now.teacherId(), lesson.teacherId())) {
                     issues.add(new Issue("UNPLANNED_CHANGE",
                             "方案之外的课节发生了变化", lesson.entryId(), lesson.periodId()));
                 }
@@ -329,7 +327,7 @@ public final class PlanVerifier {
     private static List<LessonView> views(List<ScheduledLesson> lessons) {
         return lessons.stream()
                 .map(lesson -> new LessonView(lesson.entryId(), lesson.classId(), lesson.courseId(),
-                        lesson.teacherId(), lesson.roomId(), lesson.periodId(), lesson.studentCount()))
+                        lesson.teacherId(), lesson.periodId(), lesson.studentCount()))
                 .toList();
     }
 }

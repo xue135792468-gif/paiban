@@ -12,9 +12,6 @@ import com.paiban.foundation.domain.Course;
 import com.paiban.foundation.domain.CourseRepository;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
-import com.paiban.foundation.domain.PeriodSection;
-import com.paiban.foundation.domain.Room;
-import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.foundation.domain.Semester;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
@@ -42,7 +39,6 @@ class PlanSnapshotFactoryTest {
     private static final long TEACHER = 3L;
     private static final long SUBSTITUTE = 4L;
     private static final long COURSE = 5L;
-    private static final long ROOM = 6L;
     private static final long PERIOD_1 = 101L;
     private static final long PERIOD_2 = 102L;
     private static final long ENTRY = 7L;
@@ -92,7 +88,6 @@ class PlanSnapshotFactoryTest {
     private PlanSnapshotFactory factory(SettingsService settings) {
         SemesterService semesters = mock(SemesterService.class);
         PeriodRepository periods = mock(PeriodRepository.class);
-        RoomRepository rooms = mock(RoomRepository.class);
         CourseRepository courses = mock(CourseRepository.class);
         TeacherRepository teachers = mock(TeacherRepository.class);
         AdminClassRepository adminClasses = mock(AdminClassRepository.class);
@@ -108,12 +103,6 @@ class PlanSnapshotFactoryTest {
 
         when(periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(SEMESTER))
                 .thenReturn(List.of(period(PERIOD_1, 1), period(PERIOD_2, 2)));
-        Room room = new Room();
-        room.setId(ROOM);
-        room.setName("教室1");
-        room.setType("NORMAL");
-        room.setCapacity(50);
-        when(rooms.findAll()).thenReturn(List.of(room));
         Course course = new Course();
         course.setId(COURSE);
         course.setName("语文");
@@ -141,7 +130,6 @@ class PlanSnapshotFactoryTest {
         entry.setAdminClassId(CLASS);
         entry.setCourseId(COURSE);
         entry.setTeacherId(TEACHER);
-        entry.setRoomId(ROOM);
         entry.setPeriodId(PERIOD_1);
         entry.setDayOfWeek(1);
         entry.setPeriodNo(1);
@@ -155,7 +143,6 @@ class PlanSnapshotFactoryTest {
         substitution.setNewPeriodId(PERIOD_2);
         substitution.setNewDayOfWeek(1);
         substitution.setNewPeriodNo(2);
-        substitution.setNewRoomId(ROOM);
         substitution.setSubstituteTeacherId(SUBSTITUTE);
         substitution.setStatus(Substitution.EFFECTIVE);
         substitution.setType(Substitution.TYPE_SWAP);
@@ -165,7 +152,7 @@ class PlanSnapshotFactoryTest {
         when(constraints.settings(SEMESTER))
                 .thenReturn(com.paiban.scheduling.solver.ConstraintSettings.defaults());
 
-        return new PlanSnapshotFactory(semesters, periods, rooms, courses, teachers, adminClasses,
+        return new PlanSnapshotFactory(semesters, periods, courses, teachers, adminClasses,
                 entries, substitutions, constraints, settings, new ExchangePolicyService(settings));
     }
 
@@ -176,7 +163,6 @@ class PlanSnapshotFactoryTest {
         period.setDayOfWeek(1);
         period.setPeriodNo(periodNo);
         period.setLabel("第" + periodNo + "节");
-        period.setSection(PeriodSection.MORNING);
         return period;
     }
 }

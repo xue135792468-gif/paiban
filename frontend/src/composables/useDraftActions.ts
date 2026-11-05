@@ -79,15 +79,9 @@ export function useDraftActions(options: DraftActionsOptions) {
     const outcome = await deleteDraftWithConfirmation({
       id: options.draftId,
       name: draft?.name ?? '当前草稿',
-      lockedCount: draft?.lockedCount ?? 0,
     })
     if (outcome === 'deleted') {
       router.push('/admin/scheduling')
-    } else if (outcome === 'failed') {
-      // A 409 means locks changed since the dialog was opened; refresh so the
-      // next attempt shows the current count and can be confirmed again. The
-      // original error is already surfaced, so a reload failure must not escape.
-      await Promise.resolve(options.reload()).catch(() => undefined)
     }
   }
 

@@ -34,7 +34,6 @@ function relocate(lesson: DraftLesson, periodId: number, periods: DraftPeriod[])
     periodId,
     dayOfWeek: period.dayOfWeek,
     periodNo: period.periodNo,
-    section: period.section,
     periodLabel: periodLabel(period),
   }
 }
@@ -48,7 +47,6 @@ export function buildSwapPreview(
   source: DraftLesson,
   candidate: SwapCandidate,
   periods: DraftPeriod[],
-  swapRooms: boolean,
 ): SwapPreview {
   const type = swapTypeOf(source, candidate)
   const sourcePeriod = source.periodId ?? null
@@ -62,17 +60,13 @@ export function buildSwapPreview(
       if (type === 'CROSS_CLASS') {
         return { ...lesson, teacherId: candidate.teacherId, teacherName: candidate.teacherName }
       }
-      const moved = relocate(lesson, candidatePeriod, periods)
-      return swapRooms
-        ? { ...moved, roomId: candidate.roomId ?? null, roomName: candidate.roomName }
-        : moved
+      return relocate(lesson, candidatePeriod, periods)
     }
     if (lesson.id === candidate.lessonId) {
       if (type === 'CROSS_CLASS') {
         return { ...lesson, teacherId: source.teacherId, teacherName: source.teacherName }
       }
-      const moved = relocate(lesson, sourcePeriod, periods)
-      return swapRooms ? { ...moved, roomId: source.roomId ?? null, roomName: source.roomName } : moved
+      return relocate(lesson, sourcePeriod, periods)
     }
     return lesson
   })

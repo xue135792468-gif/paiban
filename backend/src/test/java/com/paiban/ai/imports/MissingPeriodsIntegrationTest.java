@@ -101,13 +101,14 @@ class MissingPeriodsIntegrationTest extends ApiIntegrationTest {
                 .body("items[0].periodNo", equalTo(9))
                 .body("items[0].status", equalTo("PROPOSED"))
                 .body("items[0].label", equalTo("第9节"))
-                .body("items[0].section", equalTo("AFTERNOON"))
-                .body("items[0].startTime", equalTo("17:40:00"))
-                .body("items[0].endTime", equalTo("18:25:00"))
+                // 默认作息从 08:00 起每 55 分钟一节（45 分钟课 + 10 分钟课间），
+                // 第 9 节 = 08:00 + 8×55 = 15:20，第 10 节 = 16:15。
+                .body("items[0].startTime", equalTo("15:20:00"))
+                .body("items[0].endTime", equalTo("16:05:00"))
                 .body("items[1].periodNo", equalTo(10))
-                .body("items[1].startTime", equalTo("18:35:00"))
+                .body("items[1].startTime", equalTo("16:15:00"))
                 .body("items[2].dayOfWeek", equalTo(2))
-                .body("items[2].startTime", equalTo("17:40:00"));
+                .body("items[2].startTime", equalTo("15:20:00"));
     }
 
     @Test
@@ -128,8 +129,8 @@ class MissingPeriodsIntegrationTest extends ApiIntegrationTest {
         Period added = periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(f.semesterId()).stream()
                 .filter(period -> period.getDayOfWeek() == 1 && period.getPeriodNo() == 9)
                 .findFirst().orElseThrow();
-        assertThat(added.getStartTime()).isEqualTo(LocalTime.of(17, 40));
-        assertThat(added.getEndTime()).isEqualTo(LocalTime.of(18, 25));
+        assertThat(added.getStartTime()).isEqualTo(LocalTime.of(15, 20));
+        assertThat(added.getEndTime()).isEqualTo(LocalTime.of(16, 5));
 
         // The blocker the commit used to hit is gone: the draft is created now.
         as(f.token()).when().post("/api/ai/import/sessions/" + f.sessionId() + "/commit")
@@ -174,14 +175,13 @@ class MissingPeriodsIntegrationTest extends ApiIntegrationTest {
     void aPublishedSemesterExplainsWhyItCannotBeFilled() throws Exception {
         String token = adminToken();
         long semesterId = TestData.semester(token);
-        as(token).body(Map.of("morningCount", 2, "afternoonCount", 0, "eveningCount", 0))
+        as(token).body(Map.of("periodCount", 2, "days", List.of(1, 2, 3, 4, 5)))
                 .when().post("/api/semesters/" + semesterId + "/periods/default")
                 .then().statusCode(200);
         long gradeId = TestData.grade(token, semesterId, "一年级");
         TestData.adminClass(token, semesterId, gradeId, "一年级1班");
         TestData.course(token, "语文");
         TestData.teacher(token, "张三");
-        TestData.room(token, "101");
         TimetableImportService.Result imported = timetableImports.importRows(
                 List.of(row("一年级1班", "周一", "第1节", "语文", "张三", "101")), null, "admin");
         assertThat(imported.errors()).isEmpty();
@@ -274,7 +274,7 @@ class MissingPeriodsIntegrationTest extends ApiIntegrationTest {
         String token = adminToken();
         long semesterId = TestData.semester(token);
         as(token).body(Map.of(
-                        "morningCount", 4, "afternoonCount", 4, "eveningCount", 0,
+                        "periodCount", 8,
                         "days", List.of(1, 2, 3, 4, 5)))
                 .when().post("/api/semesters/" + semesterId + "/periods/default")
                 .then().statusCode(200);
@@ -296,7 +296,7 @@ class MissingPeriodsIntegrationTest extends ApiIntegrationTest {
         String token = adminToken();
         long semesterId = TestData.semester(token);
         as(token).body(Map.of(
-                        "morningCount", 4, "afternoonCount", 4, "eveningCount", 0,
+                        "periodCount", 8,
                         "days", List.of(1, 2, 3, 4, 5)))
                 .when().post("/api/semesters/" + semesterId + "/periods/default")
                 .then().statusCode(200);
@@ -352,7 +352,6 @@ class MissingPeriodsIntegrationTest extends ApiIntegrationTest {
             slots.add(Map.of(
                     "periodNo", i + 1,
                     "label", "第" + (i + 1) + "节",
-                    "section", i < 4 ? "MORNING" : "AFTERNOON",
                     "startTime", times[i][0],
                     "endTime", times[i][1],
                     "days", List.of(1, 2, 3, 4, 5)));

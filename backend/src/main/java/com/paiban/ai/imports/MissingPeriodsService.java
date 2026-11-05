@@ -131,7 +131,7 @@ public class MissingPeriodsService {
                     || !plan.endTime().equals(item.endTime())) {
                 throw ApiException.conflict(STALE_PLAN);
             }
-            toCreate.add(new PeriodSlot(plan.periodNo(), plan.label(), plan.section(),
+            toCreate.add(new PeriodSlot(plan.periodNo(), plan.label(),
                     plan.startTime(), plan.endTime(), List.of(plan.dayOfWeek())));
         }
         if (!toCreate.isEmpty()) {
@@ -148,7 +148,7 @@ public class MissingPeriodsService {
         for (Period period : current) {
             existing.add(key(period.getDayOfWeek(), period.getPeriodNo()));
             anchors.add(new Existing(period.getDayOfWeek(), period.getPeriodNo(), period.getLabel(),
-                    period.getSection(), period.getStartTime(), period.getEndTime()));
+                    period.getStartTime(), period.getEndTime()));
         }
         List<MissingPeriodDto> items = PeriodGapPlanner
                 .plan(anchors, missingSlots(rows, existing)).stream()
@@ -160,7 +160,7 @@ public class MissingPeriodsService {
     private Map<String, Plan> proposedPlans(List<PeriodDto> existing, List<Slot> gaps) {
         List<Existing> anchors = existing.stream()
                 .map(period -> new Existing(period.dayOfWeek(), period.periodNo(), period.label(),
-                        period.section(), period.startTime(), period.endTime()))
+                        period.startTime(), period.endTime()))
                 .toList();
         Map<String, Plan> proposed = new LinkedHashMap<>();
         for (Plan plan : PeriodGapPlanner.plan(anchors, gaps)) {
@@ -217,7 +217,6 @@ public class MissingPeriodsService {
         boolean proposed = plan.status() == Status.PROPOSED;
         return new MissingPeriodDto(
                 plan.dayOfWeek(), plan.periodNo(), plan.status().name(), plan.label(),
-                proposed ? plan.section() : null,
                 proposed ? plan.startTime() : null,
                 proposed ? plan.endTime() : null,
                 plan.reason());
@@ -225,7 +224,7 @@ public class MissingPeriodsService {
 
     private static MissingPeriodDto manual(Plan plan, String reason) {
         return new MissingPeriodDto(plan.dayOfWeek(), plan.periodNo(), Status.MANUAL.name(),
-                plan.label(), null, null, null, reason);
+                plan.label(), null, null, reason);
     }
 
     private static Map<String, PeriodDto> byKey(List<PeriodDto> periods) {

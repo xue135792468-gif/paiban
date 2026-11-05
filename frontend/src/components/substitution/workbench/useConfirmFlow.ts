@@ -16,7 +16,7 @@ import type {
  * 票 02：第③步（核对并提交）的数据编排。
  *
  * 进入步骤 3 的请求（previews / swap-plans + swap-previews）、方案页签切换、
- * 跨科勾选门、提交审批 / 亲自确认、错误与重新生成，全部收在这个组合式函数里；
+ * 跨科勾选门、亲自确认、错误与重新生成，全部收在这个组合式函数里；
  * View 只持步骤状态并向 ConfirmStep 传 flow。所有请求序号守卫：旧响应不得覆盖新状态。
  */
 
@@ -180,18 +180,6 @@ export function useConfirmFlow(input: ConfirmFlowInput) {
     return ''
   })
 
-  /** 修订横幅（票 04/07）：按修订类型给标签；首次代课/新调课没有基准申请时不显示。 */
-  const revisionText = computed(() => {
-    const preview = coverPreview.value ?? swapPreview.value
-    if (!preview?.revisesRequestId) return ''
-    const labels: Record<string, string> = {
-      CHANGE_SUBSTITUTE: '更换代课人',
-      RESTORE_BASELINE: '恢复基线',
-      RESCHEDULE_REVISION: '再次调整已调课',
-    }
-    const label = preview.revisionKind ? labels[preview.revisionKind] : undefined
-    return `这是对已生效申请 #${preview.revisesRequestId} 的再次调整${label ? `（${label}）` : ''}`
-  })
 
   /** 跨科门：仅代课且预览判 different subject（科目取步骤 2 候选，缺省写「所派教师」）。 */
   const crossSubject = computed(() => {
@@ -266,18 +254,9 @@ export function useConfirmFlow(input: ConfirmFlowInput) {
     return []
   })
 
-  const canSubmitApproval = computed(() => coverPreview.value?.canSubmitApproval ?? swapPreview.value?.canSubmitApproval ?? false)
   const canConfirm = computed(() => coverPreview.value?.canConfirm ?? swapPreview.value?.canConfirm ?? false)
 
   // 加载中/错误态一律禁用提交：错误必须先在错误条点「重新生成」，加载中不许踩旧凭证。
-  const submitDisabled = computed(
-    () =>
-      loading.value ||
-      busy.value ||
-      !!error.value ||
-      (crossSubject.value && !crossSubjectAck.value) ||
-      !canSubmitApproval.value,
-  )
   const confirmDisabled = computed(
     () =>
       loading.value ||
@@ -287,13 +266,13 @@ export function useConfirmFlow(input: ConfirmFlowInput) {
       !canConfirm.value,
   )
 
-  const resultTitle = computed(() => (result.value?.effective ? '已生效' : '已提交审批'))
+  const resultTitle = computed(() => '已生效')
   const resultText = computed(() => {
     const done = result.value
     if (!done) return ''
     return done.effective
       ? `课表已更新，相关老师会收到通知（申请 #${done.requestId}）。`
-      : `申请已进入待批队列，审批通过前课表维持原样（申请 #${done.requestId}）。`
+      : `申请已提交（申请 #${done.requestId}）。`
   })
 
   async function loadPlanPreview(planId: number, seq: number): Promise<void> {
@@ -386,8 +365,8 @@ export function useConfirmFlow(input: ConfirmFlowInput) {
     }
   }
 
-  /** 提交审批（代发）或亲自确认生效；失败留在第③步显示错误条。 */
-  async function consume(kind: 'submit' | 'confirm'): Promise<void> {
+  /** 亲自确认生效；失败留在第③步显示错误条。 */
+  async function consume(): Promise<void> {
     const preview = coverPreview.value ?? swapPreview.value
     if (!preview || busy.value || loading.value) return
     // 捕获当前流程序号：提交/确认在途时若流程被推进（重新生成/返回上一步），
@@ -397,10 +376,7 @@ export function useConfirmFlow(input: ConfirmFlowInput) {
     error.value = ''
     try {
       const suffix = coverPreview.value ? '' : '-swap'
-      const path =
-        kind === 'submit'
-          ? `/substitution-workbench/previews/${preview.voucherId}/submit-approval${suffix}`
-          : `/substitution-workbench/previews/${preview.voucherId}/confirm${suffix}`
+      const path = `/substitution-workbench/previews/${preview.voucherId}/confirm${suffix}`
       const { data } = await http.post<WorkbenchActionResult>(path)
       if (seq !== loadSeq) return
       result.value = { requestId: data.requestId, effective: data.status === 'EFFECTIVE' }
@@ -412,8 +388,7 @@ export function useConfirmFlow(input: ConfirmFlowInput) {
     }
   }
 
-  const submitApproval = () => consume('submit')
-  const confirmEffective = () => consume('confirm')
+  const confirmEffective = () => consume()
 
   /** 返回上一步 / 取消：凭证弃用，零请求零写入。 */
   function invalidate(): void {
@@ -451,21 +426,18 @@ export function useConfirmFlow(input: ConfirmFlowInput) {
     visual,
     conclusion,
     scope,
-    revisionText,
     crossSubject,
     crossSubjectText,
     issues,
     diffRows,
     restText,
     people,
-    submitDisabled,
     confirmDisabled,
     result,
     resultTitle,
     resultText,
     generate,
     selectPlan,
-    submitApproval,
     confirmEffective,
     invalidate,
     reset,

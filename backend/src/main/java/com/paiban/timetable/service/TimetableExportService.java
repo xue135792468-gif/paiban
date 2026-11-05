@@ -19,8 +19,6 @@ import com.paiban.foundation.domain.Course;
 import com.paiban.foundation.domain.CourseRepository;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
-import com.paiban.foundation.domain.Room;
-import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.foundation.service.SemesterService;
@@ -70,7 +68,6 @@ public class TimetableExportService {
     private final AdminClassRepository adminClasses;
     private final CourseRepository courses;
     private final TeacherRepository teachers;
-    private final RoomRepository rooms;
     private final PeriodRepository periods;
     private final String pdfFontPath;
 
@@ -81,7 +78,6 @@ public class TimetableExportService {
             AdminClassRepository adminClasses,
             CourseRepository courses,
             TeacherRepository teachers,
-            RoomRepository rooms,
             PeriodRepository periods,
             @Value("${paiban.export.pdf-font-path:}") String pdfFontPath) {
         this.views = views;
@@ -90,7 +86,6 @@ public class TimetableExportService {
         this.adminClasses = adminClasses;
         this.courses = courses;
         this.teachers = teachers;
-        this.rooms = rooms;
         this.periods = periods;
         this.pdfFontPath = pdfFontPath;
     }
@@ -344,12 +339,6 @@ public class TimetableExportService {
                         .orElseThrow(() -> ApiException.notFound("教师不存在: " + id));
                 yield List.of(buildGrid(teacher.getName() + " 课表", days, rows,
                         views.teacherView(id, view, date)));
-            }
-            case "room" -> {
-                Room room = rooms.findById(id)
-                        .orElseThrow(() -> ApiException.notFound("教室不存在: " + id));
-                yield List.of(buildGrid(room.getName() + " 占用表", days, rows,
-                        views.roomView(id, view, date)));
             }
             case "school" -> {
                 List<Grid> result = new ArrayList<>();

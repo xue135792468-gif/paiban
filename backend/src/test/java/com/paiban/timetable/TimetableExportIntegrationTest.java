@@ -88,7 +88,7 @@ class TimetableExportIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void teacherAndRoomExportsWork() throws Exception {
+    void teacherExportsWork() throws Exception {
         String token = adminToken();
         ScheduleFixture.Result fixture = ScheduleFixture.published(token, 5);
 
@@ -114,8 +114,6 @@ class TimetableExportIntegrationTest extends ApiIntegrationTest {
             assertThat(hasLesson).isTrue();
         }
 
-        as(token).when().get("/api/timetable/room/" + fixture.roomId() + "/export/pdf")
-                .then().statusCode(200);
     }
 
     @Test

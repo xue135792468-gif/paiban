@@ -7,8 +7,6 @@ import com.paiban.foundation.domain.Course;
 import com.paiban.foundation.domain.CourseRepository;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
-import com.paiban.foundation.domain.Room;
-import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.foundation.service.SemesterService;
@@ -45,7 +43,6 @@ public class TimetableViewService {
 
     private final TimetableEntryRepository entries;
     private final PeriodRepository periods;
-    private final RoomRepository rooms;
     private final CourseRepository courses;
     private final TeacherRepository teachers;
     private final AdminClassRepository adminClasses;
@@ -58,7 +55,6 @@ public class TimetableViewService {
     public TimetableViewService(
             TimetableEntryRepository entries,
             PeriodRepository periods,
-            RoomRepository rooms,
             CourseRepository courses,
             TeacherRepository teachers,
             AdminClassRepository adminClasses,
@@ -69,7 +65,6 @@ public class TimetableViewService {
             UserService users) {
         this.entries = entries;
         this.periods = periods;
-        this.rooms = rooms;
         this.courses = courses;
         this.teachers = teachers;
         this.adminClasses = adminClasses;
@@ -104,20 +99,6 @@ public class TimetableViewService {
         return enrich(entries.findBySemesterId(semesterId), semesterId).stream()
                 .map(dto -> apply(dto, overlay.get(dto.id()), semesterId))
                 .filter(dto -> teacherId.equals(dto.teacherId()))
-                .toList();
-    }
-
-    @Transactional(readOnly = true)
-    public List<TimetableEntryDto> roomView(Long roomId, String view, LocalDate date) {
-        Long semesterId = semesters.requireCurrent().getId();
-        if (!hasActivePublish(semesterId)) {
-            return List.of();
-        }
-        Map<Long, Substitution> overlay = overlayMap(semesterId, view, date);
-        // 与 teacherView 同理：叠加后再按「当天有效教室」过滤，换出/换入各算一次。
-        return enrich(entries.findBySemesterId(semesterId), semesterId).stream()
-                .map(dto -> apply(dto, overlay.get(dto.id()), semesterId))
-                .filter(dto -> Objects.equals(roomId, dto.roomId()))
                 .toList();
     }
 
@@ -228,18 +209,10 @@ public class TimetableViewService {
             return dto;
         }
         Teacher substitute = teachers.findById(substitution.getSubstituteTeacherId()).orElse(null);
-        Room room = substitution.getNewRoomId() == null
-                ? (dto.roomId() == null ? null : rooms.findById(dto.roomId()).orElse(null))
-                : rooms.findById(substitution.getNewRoomId()).orElse(null);
         Long periodId = substitution.getNewPeriodId() != null ? substitution.getNewPeriodId() : dto.periodId();
         int dayOfWeek = substitution.getNewDayOfWeek() != null ? substitution.getNewDayOfWeek() : dto.dayOfWeek();
         int periodNo = substitution.getNewPeriodNo() != null ? substitution.getNewPeriodNo() : dto.periodNo();
-        String section = dto.section();
         String periodLabel = "周" + dayOfWeek + "第" + periodNo + "节";
-        if (substitution.getNewPeriodId() != null) {
-            Period period = periods.findById(substitution.getNewPeriodId()).orElse(null);
-            section = period == null ? section : period.getSection().name();
-        }
         return new TimetableEntryDto(
                 dto.id(),
                 dto.classId(),
@@ -248,12 +221,9 @@ public class TimetableViewService {
                 dto.courseName(),
                 substitution.getSubstituteTeacherId(),
                 substitute == null ? dto.teacherName() : substitute.getName(),
-                room == null ? null : room.getId(),
-                room == null ? null : room.getName(),
                 periodId,
                 dayOfWeek,
                 periodNo,
-                section,
                 periodLabel,
                 true,
                 substitution.getType() == null
@@ -277,8 +247,6 @@ public class TimetableViewService {
         courses.findAll().forEach(course -> courseMap.put(course.getId(), course));
         Map<Long, Teacher> teacherMap = new HashMap<>();
         teachers.findAll().forEach(teacher -> teacherMap.put(teacher.getId(), teacher));
-        Map<Long, Room> roomMap = new HashMap<>();
-        rooms.findAll().forEach(room -> roomMap.put(room.getId(), room));
         Map<Long, Period> periodMap = new HashMap<>();
         periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(semesterId)
                 .forEach(period -> periodMap.put(period.getId(), period));
@@ -288,7 +256,6 @@ public class TimetableViewService {
             AdminClass adminClass = classMap.get(entry.getAdminClassId());
             Course course = courseMap.get(entry.getCourseId());
             Teacher teacher = teacherMap.get(entry.getTeacherId());
-            Room room = entry.getRoomId() == null ? null : roomMap.get(entry.getRoomId());
             Period period = periodMap.get(entry.getPeriodId());
             result.add(new TimetableEntryDto(
                     entry.getId(),
@@ -298,12 +265,9 @@ public class TimetableViewService {
                     course == null ? null : course.getName(),
                     entry.getTeacherId(),
                     teacher == null ? null : teacher.getName(),
-                    entry.getRoomId(),
-                    room == null ? null : room.getName(),
                     entry.getPeriodId(),
                     entry.getDayOfWeek(),
                     entry.getPeriodNo(),
-                    period == null ? null : period.getSection().name(),
                     "周" + entry.getDayOfWeek() + "第" + entry.getPeriodNo() + "节",
                     false,
                     null,

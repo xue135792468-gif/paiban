@@ -4,7 +4,6 @@ import com.paiban.common.event.SemesterCreatedEvent;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
-import com.paiban.foundation.domain.PeriodSection;
 import com.paiban.foundation.domain.PeriodSlotKey;
 import com.paiban.foundation.domain.Semester;
 import com.paiban.foundation.domain.SemesterRepository;
@@ -126,7 +125,7 @@ public class SemesterService {
     /**
      * Replaces the semester's period table, keeping the identity of every slot that
      * stays. A slot is "the same slot" when (dayOfWeek, periodNo) is unchanged: its row
-     * keeps its id and only label/section/times may change, so drafts that point at it
+     * keeps its id and only label/times may change, so drafts that point at it
      * stay valid. Slots that disappear are only removed when no draft lesson uses them;
      * otherwise the whole request is refused so the caller never loses work silently.
      */
@@ -165,7 +164,6 @@ public class SemesterService {
                 period.setDayOfWeek(day);
                 period.setPeriodNo(slot.periodNo());
                 period.setLabel(slot.label());
-                period.setSection(slot.section());
                 period.setStartTime(slot.startTime());
                 period.setEndTime(slot.endTime());
                 saved.add(period);
@@ -224,7 +222,6 @@ public class SemesterService {
                 period.setDayOfWeek(day);
                 period.setPeriodNo(slot.periodNo());
                 period.setLabel(slot.label());
-                period.setSection(slot.section());
                 period.setStartTime(slot.startTime());
                 period.setEndTime(slot.endTime());
                 appended.add(period);
@@ -254,45 +251,65 @@ public class SemesterService {
                 .orElseThrow(() -> ApiException.notFound("学期不存在: " + semesterId));
     }
 
+    /**
+     * 生成默认作息。票 15 删除 PeriodSection 后不再存储上午/下午/晚自习硬分区，
+     * 作息只保留「第几节 + 开始/结束时间」；三个分段计数仅用于决定每天节数与各段
+     * 起始时间（8:00 / 14:00 / 19:00），保持与旧版一致的真实作息时间。
+     * {@code periodCount} 为票 15 后的简化入参，按 8:00 起每 55 分钟顺序生成。
+     */
     @Transactional
     public List<PeriodDto> generateDefaultPeriods(Long semesterId, GenerateDefaultPeriodsRequest request) {
         require(semesterId);
-        int morning = request == null || request.morningCount() == null ? 4 : request.morningCount();
-        int afternoon = request == null || request.afternoonCount() == null ? 4 : request.afternoonCount();
-        int evening = request == null || request.eveningCount() == null ? 2 : request.eveningCount();
         List<Integer> days = request == null || request.days() == null || request.days().isEmpty()
                 ? List.of(1, 2, 3, 4, 5)
                 : request.days();
-        if (morning < 0 || afternoon < 0 || evening < 0) {
-            throw ApiException.badRequest("节次数不能为负数");
-        }
-        if (morning + afternoon + evening == 0) {
-            throw ApiException.badRequest("至少需要一节课");
-        }
 
         List<PeriodSlot> slots = new ArrayList<>();
-        int periodNo = 1;
-        LocalTime cursor = LocalTime.of(8, 0);
-        for (int i = 0; i < morning; i++) {
-            slots.add(slot(periodNo++, "上午第" + (i + 1) + "节", PeriodSection.MORNING, cursor, 45, days));
-            cursor = cursor.plusMinutes(55);
+        if (request != null && request.periodCount() != null && request.periodCount() >= 1) {
+            LocalTime cursor = LocalTime.of(8, 0);
+            for (int i = 1; i <= request.periodCount(); i++) {
+                slots.add(slot(i, "第" + i + "节", cursor, 45, days));
+                cursor = cursor.plusMinutes(55);
+            }
+        } else {
+            int morning = request == null ? 4 : nullToZero(request.morningCount());
+            int afternoon = request == null ? 4 : nullToZero(request.afternoonCount());
+            int evening = request == null ? 2 : nullToZero(request.eveningCount());
+            if (morning + afternoon + evening < 1) {
+                morning = 4;
+                afternoon = 4;
+                evening = 2;
+            }
+            int periodNo = 1;
+            periodNo = appendSection(slots, periodNo, morning, LocalTime.of(8, 0), days);
+            periodNo = appendSection(slots, periodNo, afternoon, LocalTime.of(14, 0), days);
+            appendSection(slots, periodNo, evening, LocalTime.of(19, 0), days);
         }
-        cursor = LocalTime.of(14, 0);
-        for (int i = 0; i < afternoon; i++) {
-            slots.add(slot(periodNo++, "下午第" + (i + 1) + "节", PeriodSection.AFTERNOON, cursor, 45, days));
-            cursor = cursor.plusMinutes(55);
-        }
-        cursor = LocalTime.of(19, 0);
-        for (int i = 0; i < evening; i++) {
-            slots.add(slot(periodNo++, "晚自习第" + (i + 1) + "节", PeriodSection.EVENING, cursor, 45, days));
-            cursor = cursor.plusMinutes(55);
+        if (slots.isEmpty()) {
+            throw ApiException.badRequest("至少需要一节课");
         }
         return replacePeriods(semesterId, slots);
     }
 
+    /** 只生成节次与时间，不写入任何分区字段。 */
+    private int appendSection(List<PeriodSlot> slots, int periodNo, int count,
+                              LocalTime start, List<Integer> days) {
+        LocalTime cursor = start;
+        for (int i = 0; i < count; i++) {
+            int no = periodNo++;
+            slots.add(slot(no, "第" + no + "节", cursor, 45, days));
+            cursor = cursor.plusMinutes(55);
+        }
+        return periodNo;
+    }
+
+    private int nullToZero(Integer value) {
+        return value == null ? 0 : value;
+    }
+
     private PeriodSlot slot(
-            int periodNo, String label, PeriodSection section, LocalTime start, int duration, List<Integer> days) {
-        return new PeriodSlot(periodNo, label, section, start, start.plusMinutes(duration), days);
+            int periodNo, String label, LocalTime start, int duration, List<Integer> days) {
+        return new PeriodSlot(periodNo, label, start, start.plusMinutes(duration), days);
     }
 
     private void validateSlots(List<PeriodSlot> slots) {
@@ -338,7 +355,6 @@ public class SemesterService {
                 period.getDayOfWeek(),
                 period.getPeriodNo(),
                 period.getLabel(),
-                period.getSection(),
                 period.getStartTime(),
                 period.getEndTime());
     }

@@ -4,7 +4,7 @@ import type { DraftLesson } from '@/components/draft/types'
 
 interface PatchCall {
   url: string
-  body: { periodId: number | null; roomId: number | null; expectedVersion?: number }
+  body: { periodId: number | null; expectedVersion?: number }
 }
 
 interface PostCall {
@@ -27,7 +27,7 @@ function fakeClient(
   const client: DraftAdjustClient = {
     get: vi.fn(async (url: string, config?: GetCall['config']) => {
       gets.push({ url, config })
-      return { data: { lessonId: 1, roomId: null, targets: [], intraClass: [], crossClass: [] } }
+      return { data: { lessonId: 1, targets: [], intraClass: [], crossClass: [] } }
     }),
     patch: vi.fn(async (url: string, body: PatchCall['body']) => {
       calls.push({ url, body })
@@ -63,8 +63,8 @@ describe('useDraftAdjust', () => {
     }))
     const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
 
-    await adjust.swap({ id: 11 }, { lessonId: 12 }, false)
-    await adjust.swap({ id: 13 }, { lessonId: 14 }, false)
+    await adjust.swap({ id: 11 }, { lessonId: 12 })
+    await adjust.swap({ id: 13 }, { lessonId: 14 })
     expect((await adjust.undo()).undone).toBe(true)
     expect(posts[2].body).toMatchObject({ expectedVersion: 3 })
     expect((await adjust.undo()).undone).toBe(true)
@@ -80,11 +80,11 @@ describe('useDraftAdjust', () => {
     )
     const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
 
-    await adjust.move({ id: 11, periodId: 100, roomId: 5 }, { periodId: 200 })
+    await adjust.move({ id: 11, periodId: 100 }, { periodId: 200 })
     await adjust.undo()
     expect(calls[1].body.expectedVersion).toBe(5)
 
-    await adjust.swap({ id: 11 }, { lessonId: 12 }, false)
+    await adjust.swap({ id: 11 }, { lessonId: 12 })
     await adjust.undo()
     expect(posts[1].body).toMatchObject({ expectedVersion: 9 })
   })
@@ -93,15 +93,15 @@ describe('useDraftAdjust', () => {
     const { client, calls } = fakeClient()
     const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
 
-    await adjust.move({ id: 11, periodId: 100, roomId: 5 }, { periodId: 200 })
+    await adjust.move({ id: 11, periodId: 100 }, { periodId: 200 })
     expect(adjust.undoCount.value).toBe(1)
 
     const outcome = await adjust.undo()
 
     expect(outcome.undone).toBe(true)
     expect(calls).toEqual([
-      { url: '/timetable-drafts/7/lessons/11', body: { periodId: 200, roomId: 5 } },
-      { url: '/timetable-drafts/7/lessons/11', body: { periodId: 100, roomId: 5 } },
+      { url: '/timetable-drafts/7/lessons/11', body: { periodId: 200 } },
+      { url: '/timetable-drafts/7/lessons/11', body: { periodId: 100 } },
     ])
     expect(adjust.canUndo.value).toBe(false)
   })
@@ -111,7 +111,7 @@ describe('useDraftAdjust', () => {
     const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
 
     for (let index = 1; index <= 25; index += 1) {
-      await adjust.move({ id: index, periodId: index * 10, roomId: null }, { periodId: index * 10 + 1 })
+      await adjust.move({ id: index, periodId: index * 10 }, { periodId: index * 10 + 1 })
     }
 
     expect(adjust.undoCount.value).toBe(20)
@@ -132,7 +132,7 @@ describe('useDraftAdjust', () => {
     const { client } = fakeClient(async () => ({ data: { saved: false, conflicts: [conflict] } }))
     const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
 
-    const outcome = await adjust.move({ id: 11, periodId: 100, roomId: null }, { periodId: 200 })
+    const outcome = await adjust.move({ id: 11, periodId: 100 }, { periodId: 200 })
 
     expect(outcome.saved).toBe(false)
     expect(outcome.conflicts).toEqual([conflict])
@@ -151,7 +151,7 @@ describe('useDraftAdjust', () => {
     })
     const adjust = useDraftAdjust(7, { client, notify })
 
-    await adjust.move({ id: 11, periodId: 100, roomId: null }, { periodId: 200 })
+    await adjust.move({ id: 11, periodId: 100 }, { periodId: 200 })
     const outcome = await adjust.undo()
 
     expect(outcome.undone).toBe(false)
@@ -169,7 +169,7 @@ describe('useDraftAdjust', () => {
     })
     const adjust = useDraftAdjust(7, { client, notify })
 
-    await adjust.move({ id: 11, periodId: 100, roomId: null }, { periodId: 200 })
+    await adjust.move({ id: 11, periodId: 100 }, { periodId: 200 })
     const outcome = await adjust.undo()
 
     expect(outcome.undone).toBe(false)
@@ -183,7 +183,6 @@ describe('useDraftAdjust', () => {
       get: vi.fn(async () => ({
         data: {
           lessonId: 11,
-          roomId: 5,
           targets: [
             { periodId: 100, available: true, conflicts: [] },
             { periodId: 200, available: false, conflicts: [conflict] },
@@ -205,15 +204,15 @@ describe('useDraftAdjust', () => {
     const { client, calls } = fakeClient()
     const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
 
-    await adjust.move({ id: 11, periodId: null, roomId: null }, { periodId: 200 })
+    await adjust.move({ id: 11, periodId: null }, { periodId: 200 })
     expect(adjust.undoCount.value).toBe(1)
 
     const outcome = await adjust.undo()
 
     expect(outcome.undone).toBe(true)
     expect(calls).toEqual([
-      { url: '/timetable-drafts/7/lessons/11', body: { periodId: 200, roomId: null } },
-      { url: '/timetable-drafts/7/lessons/11', body: { periodId: null, roomId: null } },
+      { url: '/timetable-drafts/7/lessons/11', body: { periodId: 200 } },
+      { url: '/timetable-drafts/7/lessons/11', body: { periodId: null } },
     ])
     expect(adjust.canUndo.value).toBe(false)
   })
@@ -222,10 +221,10 @@ describe('useDraftAdjust', () => {
     const { client, posts } = fakeClient()
     const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
 
-    const outcome = await adjust.swap({ id: 11 }, { lessonId: 12 }, true)
+    const outcome = await adjust.swap({ id: 11 }, { lessonId: 12 })
 
     expect(posts).toEqual([
-      { url: '/timetable-drafts/7/swap', body: { lessonId: 11, targetLessonId: 12, swapRooms: true } },
+      { url: '/timetable-drafts/7/swap', body: { lessonId: 11, targetLessonId: 12 } },
     ])
     expect(outcome.saved).toBe(true)
     expect(outcome.type).toBe('INTRA_CLASS')
@@ -234,7 +233,6 @@ describe('useDraftAdjust', () => {
       kind: 'swap',
       lessonId: 11,
       targetLessonId: 12,
-      swapRooms: true,
     })
   })
 
@@ -242,14 +240,14 @@ describe('useDraftAdjust', () => {
     const { client, posts } = fakeClient()
     const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
 
-    await adjust.swap({ id: 11 }, { lessonId: 12 }, false)
+    await adjust.swap({ id: 11 }, { lessonId: 12 })
     const outcome = await adjust.undo()
 
     expect(outcome.undone).toBe(true)
     expect(posts).toHaveLength(2)
     expect(posts[1]).toEqual({
       url: '/timetable-drafts/7/swap',
-      body: { lessonId: 11, targetLessonId: 12, swapRooms: false },
+      body: { lessonId: 11, targetLessonId: 12 },
     })
     expect(adjust.canUndo.value).toBe(false)
   })
@@ -272,7 +270,7 @@ describe('useDraftAdjust', () => {
     })
     const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
 
-    const outcome = await adjust.swap({ id: 11 }, { lessonId: 12 }, false)
+    const outcome = await adjust.swap({ id: 11 }, { lessonId: 12 })
 
     expect(outcome.saved).toBe(false)
     expect(outcome.conflicts).toEqual([conflict])
@@ -284,8 +282,8 @@ describe('useDraftAdjust', () => {
     const { client, calls, posts } = fakeClient()
     const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
 
-    await adjust.move({ id: 11, periodId: 100, roomId: null }, { periodId: 200 })
-    await adjust.swap({ id: 11 }, { lessonId: 12 }, false)
+    await adjust.move({ id: 11, periodId: 100 }, { periodId: 200 })
+    await adjust.swap({ id: 11 }, { lessonId: 12 })
 
     expect(adjust.undoStack.value.map((entry) => entry.kind)).toEqual(['move', 'swap'])
 
@@ -295,7 +293,7 @@ describe('useDraftAdjust', () => {
 
     await adjust.undo()
     expect(calls).toHaveLength(2)
-    expect(calls[1].body).toEqual({ periodId: 100, roomId: null })
+    expect(calls[1].body).toEqual({ periodId: 100 })
   })
 
   it('keeps the swap entry when the undo swap is rejected', async () => {
@@ -319,7 +317,7 @@ describe('useDraftAdjust', () => {
     })
     const adjust = useDraftAdjust(7, { client, notify })
 
-    await adjust.swap({ id: 11 }, { lessonId: 12 }, false)
+    await adjust.swap({ id: 11 }, { lessonId: 12 })
     const outcome = await adjust.undo()
 
     expect(outcome.undone).toBe(false)
@@ -371,7 +369,6 @@ function draftLesson(overrides: Partial<DraftLesson> & { id: number }): DraftLes
     classId: 3,
     studentCount: 40,
     periodId: 100,
-    roomId: 5,
     locked: false,
     ...overrides,
   }
@@ -387,7 +384,7 @@ describe('useDraftAdjust atomic change sets', () => {
     const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
 
     const outcome = await adjust.moveTo(
-      { id: 11, periodId: 100, roomId: 5, teacherId: 9 },
+      { id: 11, periodId: 100, teacherId: 9 },
       200,
       4,
       'fp-1',
@@ -403,10 +400,8 @@ describe('useDraftAdjust atomic change sets', () => {
               lessonId: 11,
               toPeriodId: 200,
               toTeacherId: null,
-              toRoomId: null,
               expectedPeriodId: 100,
               expectedTeacherId: 9,
-              expectedRoomId: 5,
             },
           ],
           expectedVersion: 4,
@@ -424,10 +419,8 @@ describe('useDraftAdjust atomic change sets', () => {
             lessonId: 11,
             toPeriodId: 100,
             toTeacherId: 9,
-            toRoomId: 5,
             expectedPeriodId: 200,
             expectedTeacherId: 9,
-            expectedRoomId: 5,
           },
         ],
       },
@@ -443,8 +436,8 @@ describe('useDraftAdjust atomic change sets', () => {
     const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
 
     await adjust.swapLessons(
-      { id: 11, periodId: 100, roomId: 5, teacherId: 9 },
-      { id: 12, periodId: 200, roomId: 6, teacherId: 10 },
+      { id: 11, periodId: 100, teacherId: 9 },
+      { id: 12, periodId: 200, teacherId: 10 },
       5,
       'fp-2',
     )
@@ -455,19 +448,15 @@ describe('useDraftAdjust atomic change sets', () => {
           lessonId: 11,
           toPeriodId: 200,
           toTeacherId: null,
-          toRoomId: null,
           expectedPeriodId: 100,
           expectedTeacherId: 9,
-          expectedRoomId: 5,
         },
         {
           lessonId: 12,
           toPeriodId: 100,
           toTeacherId: null,
-          toRoomId: null,
           expectedPeriodId: 200,
           expectedTeacherId: 10,
-          expectedRoomId: 6,
         },
       ],
       expectedVersion: 5,
@@ -486,8 +475,8 @@ describe('useDraftAdjust atomic change sets', () => {
     })
     const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
     const lessons = [
-      draftLesson({ id: 11, periodId: 200, roomId: 5, teacherId: 9 }),
-      draftLesson({ id: 12, periodId: 300, roomId: 6, teacherId: 10 }),
+      draftLesson({ id: 11, periodId: 200, teacherId: 9 }),
+      draftLesson({ id: 12, periodId: 300, teacherId: 10 }),
     ]
     const plan = {
       token: 'tok-1',
@@ -520,19 +509,15 @@ describe('useDraftAdjust atomic change sets', () => {
             lessonId: 11,
             toPeriodId: 100,
             toTeacherId: 9,
-            toRoomId: 5,
             expectedPeriodId: 200,
             expectedTeacherId: 9,
-            expectedRoomId: 5,
           },
           {
             lessonId: 12,
             toPeriodId: 200,
             toTeacherId: 10,
-            toRoomId: 6,
             expectedPeriodId: 300,
             expectedTeacherId: 10,
-            expectedRoomId: 6,
           },
         ],
       },
@@ -547,7 +532,7 @@ describe('useDraftAdjust atomic change sets', () => {
     })
     const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
 
-    await adjust.moveTo({ id: 11, periodId: 100, roomId: 5, teacherId: 9 }, 200, 4, 'fp-1')
+    await adjust.moveTo({ id: 11, periodId: 100, teacherId: 9 }, 200, 4, 'fp-1')
     const outcome = await adjust.undo({ expectedVersion: 5, rulesFingerprint: 'fp-current' })
 
     expect(outcome.undone).toBe(true)
@@ -559,10 +544,8 @@ describe('useDraftAdjust atomic change sets', () => {
             lessonId: 11,
             toPeriodId: 100,
             toTeacherId: 9,
-            toRoomId: 5,
             expectedPeriodId: 200,
             expectedTeacherId: 9,
-            expectedRoomId: 5,
           },
         ],
         expectedVersion: 5,
@@ -584,7 +567,7 @@ describe('useDraftAdjust atomic change sets', () => {
     })
     const adjust = useDraftAdjust(7, { client, notify })
 
-    await adjust.moveTo({ id: 11, periodId: 100, roomId: 5, teacherId: 9 }, 200, 4, 'fp-1')
+    await adjust.moveTo({ id: 11, periodId: 100, teacherId: 9 }, 200, 4, 'fp-1')
     const outcome = await adjust.undo({ expectedVersion: 5, rulesFingerprint: 'fp-1' })
 
     expect(outcome.undone).toBe(false)
@@ -608,7 +591,7 @@ describe('useDraftAdjust atomic change sets', () => {
     const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
 
     const outcome = await adjust.moveTo(
-      { id: 11, periodId: 100, roomId: 5, teacherId: 9 },
+      { id: 11, periodId: 100, teacherId: 9 },
       200,
       4,
       'fp-1',
@@ -629,7 +612,7 @@ describe('useDraftAdjust atomic change sets', () => {
 
     for (let index = 1; index <= 25; index += 1) {
       await adjust.moveTo(
-        { id: index, periodId: index * 10, roomId: null, teacherId: 9 },
+        { id: index, periodId: index * 10, teacherId: 9 },
         index * 10 + 1,
         4,
         'fp',
@@ -676,7 +659,7 @@ describe('useDraftAdjust stale-safe legacy writes', () => {
     })
     const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
 
-    const outcome = await adjust.swap({ id: 11 }, { lessonId: 12 }, false, 7)
+    const outcome = await adjust.swap({ id: 11 }, { lessonId: 12 }, 7)
 
     expect(outcome.saved).toBe(true)
     expect(posts).toEqual([
@@ -685,7 +668,6 @@ describe('useDraftAdjust stale-safe legacy writes', () => {
         body: {
           lessonId: 11,
           targetLessonId: 12,
-          swapRooms: false,
           expectedVersion: 7,
         },
       },
@@ -697,14 +679,14 @@ describe('useDraftAdjust stale-safe legacy writes', () => {
     const adjust = useDraftAdjust(7, { client, notify: fakeNotify() })
 
     await adjust.move(
-      { id: 11, periodId: 100, roomId: 5, teacherId: 9 },
+      { id: 11, periodId: 100, teacherId: 9 },
       { periodId: 200 },
       7,
     )
 
     expect(calls[0]).toEqual({
       url: '/timetable-drafts/7/lessons/11',
-      body: { periodId: 200, roomId: 5, expectedVersion: 7 },
+      body: { periodId: 200, expectedVersion: 7 },
     })
   })
 
@@ -716,7 +698,7 @@ describe('useDraftAdjust stale-safe legacy writes', () => {
     })
     const adjust = useDraftAdjust(7, { client, notify })
 
-    const outcome = await adjust.swap({ id: 11 }, { lessonId: 12 }, false, 7)
+    const outcome = await adjust.swap({ id: 11 }, { lessonId: 12 }, 7)
 
     expect(outcome.saved).toBe(false)
     expect(outcome.error).toBe('课表已被其他人修改，请刷新后重试')

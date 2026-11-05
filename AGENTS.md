@@ -7,30 +7,29 @@
 - `.scratch/HANDOFF.md` — **接手进度先读这份**：线上状态、红线、待办票与推进路线
 - `README.md` — 启动、测试、部署与实现说明
 - `CODING_STANDARDS.md` — 评审时的判断标准（审计、事务、权限、测试、前端拆分）
-- `docs/adr/` — 33 份决策记录，改行为前先找对应 ADR
+- `docs/adr/` — 31 份决策记录（历史记录，一律保留不改写）；改行为前先找对应 ADR
 - `GLOSSARY.md` — 领域术语：行政班、授课任务、基线、调代
 - `.scratch/phase1-mvp/` — 一期规格、15 张票据与 PR 记录
 - `.scratch/phase2-ai/` — 二期规格、6 张票据、跨票据接口契约
-- `.scratch/phase3-feishu/` — 三期规格、5 张票据、飞书集成契约
+- `.scratch/phase3-feishu/` — 三期飞书集成规格与票据（历史归档，功能已在票 15 删除）
 - `.scratch/phase4-onboarding/` — 四期规格、5 张票据、引导与帮助中心契约（`frontend/src/onboarding`、`frontend/src/help`）
 - `.scratch/workbook-background/` — 整本工作簿后台解析规格与 3 张已实现票据（票 02 遗留）
-- `.scratch/auto-schedule-publishable/` — 自动排课固定教室与达到发布标准的规格、票据与复审遗留
+- `.scratch/auto-schedule-publishable/` — 自动排课达到发布标准的规格、票据与复审遗留（历史归档；其中的固定教室方案已在票 15 删除）
 - `docs/runbooks/deploy.md` — 部署跑册：备份、后台构建（该机 sshd 会掐掉前台长命令）、`up -d` 与验收判定
-- `docs/runbooks/constraint-eval.md` — 真实模型评测：一次性容器、UTC 进度查询、绑定/开关/缓存刷新
 
 ## 后端模块（backend/src/main/java/com/paiban）
 
 | 目录 | 职责 |
 |---|---|
 | `identity/` | 登录、JWT、RBAC；权限判断走 `UserService.hasPermission` |
-| `foundation/` | 学期/作息、年级/班级/教师/教室/课程、Excel 导入 |
+| `foundation/` | 学期/作息、年级/班级/教师/课程、Excel 导入 |
 | `scheduling/` | 授课任务、约束、Timefold 求解、草稿；任务生命周期在 `service/SchedulingService.java` |
-| `timetable/` | 基线发布（发布后只读）、四视角视图、导出 |
-| `substitution/` | 调代申请/审批、置换环方案与独立校验、只读 CLI；纯求解器在 `substitution/plan` |
-| `notification/` | 模板、站内通知、钉钉降级 |
+| `timetable/` | 基线发布（发布后只读）、班级/教师/全校三视角视图、导出 |
+| `substitution/` | 调代直接生效、置换环方案与独立校验、操作日志；纯求解器在 `substitution/plan` |
+| `notification/` | 外发通知模板与钉钉通道（站内通知页已下线，表保留） |
 | `integration/` | 钉钉（可选，关闭后系统完整可用） |
 | `onboarding/` | 初始化向导 |
-| `ai/` | 供应商/模型/任务分配、统一网关与策略、`ai_call_log`；`ai/imports/` 是三通道导入管道，`ai/history/` 是操作历史与导出 |
+| `ai/` | 供应商/模型/任务分配、统一网关与策略、`ai_call_log`；`ai/imports/` 是三通道导入管道，`ai_import_log.batches_json` 存批次数据 |
 
 求解器只有一条线程（`common/config/AsyncConfig.java`），同一时刻只跑一个任务；取消与排队逻辑都绑在这个约束上。
 

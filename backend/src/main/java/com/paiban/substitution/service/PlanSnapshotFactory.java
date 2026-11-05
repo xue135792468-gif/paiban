@@ -7,14 +7,12 @@ import com.paiban.common.settings.SettingsService;
 import com.paiban.foundation.domain.AdminClassRepository;
 import com.paiban.foundation.domain.CourseRepository;
 import com.paiban.foundation.domain.PeriodRepository;
-import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.foundation.domain.Semester;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.foundation.service.SemesterService;
 import com.paiban.scheduling.constraint.ConstraintContext.ClassView;
 import com.paiban.scheduling.constraint.ConstraintContext.CourseView;
 import com.paiban.scheduling.constraint.ConstraintContext.PeriodView;
-import com.paiban.scheduling.constraint.ConstraintContext.RoomView;
 import com.paiban.scheduling.constraint.ConstraintContext.TeacherView;
 import com.paiban.scheduling.service.ConstraintService;
 import com.paiban.scheduling.solver.ConstraintSettings;
@@ -41,7 +39,6 @@ public class PlanSnapshotFactory {
 
     private final SemesterService semesters;
     private final PeriodRepository periods;
-    private final RoomRepository rooms;
     private final CourseRepository courses;
     private final TeacherRepository teachers;
     private final AdminClassRepository adminClasses;
@@ -54,7 +51,6 @@ public class PlanSnapshotFactory {
     public PlanSnapshotFactory(
             SemesterService semesters,
             PeriodRepository periods,
-            RoomRepository rooms,
             CourseRepository courses,
             TeacherRepository teachers,
             AdminClassRepository adminClasses,
@@ -65,7 +61,6 @@ public class PlanSnapshotFactory {
             ExchangePolicyService exchangePolicy) {
         this.semesters = semesters;
         this.periods = periods;
-        this.rooms = rooms;
         this.courses = courses;
         this.teachers = teachers;
         this.adminClasses = adminClasses;
@@ -82,13 +77,10 @@ public class PlanSnapshotFactory {
         Map<Long, PeriodView> periodMap = new HashMap<>();
         periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(semesterId)
                 .forEach(period -> periodMap.put(period.getId(), new PeriodView(
-                        period.getId(), period.getDayOfWeek(), period.getPeriodNo(), period.getSection())));
-        Map<Long, RoomView> roomMap = new HashMap<>();
-        rooms.findAll().forEach(room -> roomMap.put(room.getId(), new RoomView(
-                room.getId(), room.getName(), room.getType(), room.getCapacity())));
+                        period.getId(), period.getDayOfWeek(), period.getPeriodNo())));
         Map<Long, CourseView> courseMap = new HashMap<>();
         courses.findAll().forEach(course -> courseMap.put(course.getId(), new CourseView(
-                course.getId(), course.getName(), course.getRequiredRoomType())));
+                course.getId(), course.getName())));
         Map<Long, TeacherView> teacherMap = new HashMap<>();
         teachers.findAll().forEach(teacher -> teacherMap.put(teacher.getId(), new TeacherView(
                 teacher.getId(), teacher.getName(), teacher.getSubject())));
@@ -101,7 +93,7 @@ public class PlanSnapshotFactory {
         List<BaselineLesson> baseline = entries.findBySemesterId(semesterId).stream()
                 .map(entry -> new BaselineLesson(
                         entry.getId(), entry.getAdminClassId(), entry.getCourseId(), entry.getTeacherId(),
-                        entry.getRoomId(), entry.getPeriodId(), entry.getDayOfWeek(), entry.getPeriodNo()))
+                        entry.getPeriodId(), entry.getDayOfWeek(), entry.getPeriodNo()))
                 .toList();
         List<AppliedSubstitution> applied = substitutions
                 .findBySemesterIdAndStatus(semesterId, Substitution.EFFECTIVE).stream()
@@ -109,14 +101,14 @@ public class PlanSnapshotFactory {
                         item.getId(), item.getEntryId(), item.getEffectiveDate(),
                         item.getLessonDate(), item.getTargetLessonDate(), item.getCreatedAt(),
                         item.getNewPeriodId(), item.getNewDayOfWeek(), item.getNewPeriodNo(),
-                        item.getNewRoomId(), item.getSubstituteTeacherId(), item.getType()))
+                        item.getSubstituteTeacherId(), item.getType()))
                 .toList();
         // The same settings snapshot the solver and the draft check use, so the
         // planner, the verifier and the CLI judge a plan by one rule set.
         ConstraintSettings settingsData = constraints.settings(semesterId);
         return new PlanSnapshot(
                 semesterId, semester.getStartDate(), semester.getEndDate(),
-                periodMap, roomMap, courseMap, teacherMap, classMap,
+                periodMap, courseMap, teacherMap, classMap,
                 baseline, applied, settingsData);
     }
 

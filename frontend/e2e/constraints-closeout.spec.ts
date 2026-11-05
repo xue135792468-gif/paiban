@@ -54,14 +54,11 @@ test.describe.serial('约束配置：收尾页面状态与证据', () => {
   test.beforeAll(async () => {
     api = await newContext()
     token = await apiLogin(api)
-    // 模板区与权重是中学段视图（ADR-0018）；收尾用例都按启用它的视图执行。
-    await apiCall(api, token, 'put', '/settings', { 'school.type': 'senior' })
     seed = await seedConstraintScenario(api)
     await saveEntries()
   })
 
   test.afterAll(async () => {
-    await apiCall(api, token, 'put', '/settings', { 'school.type': 'junior' }).catch(() => undefined)
     await api.dispose()
   })
 
@@ -106,7 +103,7 @@ test.describe.serial('约束配置：收尾页面状态与证据', () => {
     await expect(groups.nth(2)).toContainText('教师偏好')
     await expect(page.getByTestId('constraint-nav')).not.toContainText('资源类')
 
-    await expect(page.getByTestId('constraint-summary-enabled')).toContainText(/已启用 \d+ \/ 19 类/)
+    await expect(page.getByTestId('constraint-summary-enabled')).toContainText(/已启用 \d+ \/ 18 类/)
     await expect(summaryEntries(page)).toContainText('具体条目 3 条')
     // 顶部条目数＝左侧每类条目数之和，两者出自同一份草稿状态。
     expect(await navEntryTotal(page)).toBe(3)

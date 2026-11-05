@@ -3,7 +3,7 @@
     <div class="toolbar">
       <div>
         <h2>课程管理</h2>
-        <p class="subtitle">维护学校开设的课程科目，设定是否允许连堂、是否需要室外场地。</p>
+        <p class="subtitle">维护学校开设的课程科目与颜色，设定是否允许连堂。</p>
       </div>
       <div class="toolbar-actions">
         <el-button v-if="auth.hasPermission('foundation:manage')" @click="importVisible = true">
@@ -42,13 +42,6 @@
           <template #default="{ row }">
             <el-tag :type="row.allowConsecutive ? 'success' : 'info'" size="small">
               {{ row.allowConsecutive ? '允许' : '禁止' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="requireOutdoor" label="需要室外" width="110">
-          <template #default="{ row }">
-            <el-tag :type="row.requireOutdoor ? 'warning' : 'info'" size="small">
-              {{ row.requireOutdoor ? '室外' : '室内' }}
             </el-tag>
           </template>
         </el-table-column>
@@ -106,13 +99,6 @@
             inactive-text="禁止连堂"
           />
         </el-form-item>
-        <el-form-item label="场地设置" prop="requireOutdoor">
-          <el-switch
-            v-model="form.requireOutdoor"
-            active-text="需要室外场地"
-            inactive-text="室内课程"
-          />
-        </el-form-item>
         <el-form-item label="课表颜色" prop="color">
           <div class="color-input-wrapper">
             <span
@@ -160,8 +146,6 @@ interface Course {
   name: string
   subject?: string | null
   allowConsecutive: boolean
-  requireOutdoor: boolean
-  requiredRoomType?: string | null
   color?: string | null
   active?: boolean
 }
@@ -193,8 +177,6 @@ const defaultForm = {
   name: '',
   subject: '',
   allowConsecutive: false,
-  requireOutdoor: false,
-  requiredRoomType: '',
   color: '#4F6EF7',
 }
 
@@ -229,8 +211,6 @@ function openEdit(row: Course) {
     name: row.name,
     subject: row.subject ?? '',
     allowConsecutive: Boolean(row.allowConsecutive),
-    requireOutdoor: Boolean(row.requireOutdoor),
-    requiredRoomType: row.requiredRoomType ?? '',
     color: row.color ?? '#4F6EF7',
   })
   dialogVisible.value = true
@@ -246,8 +226,6 @@ async function submit() {
       name: form.name.trim(),
       subject: form.subject.trim() || null,
       allowConsecutive: form.allowConsecutive,
-      requireOutdoor: form.requireOutdoor,
-      requiredRoomType: form.requiredRoomType || null,
       color: form.color.trim() || null,
     }
     if (editingId.value) {

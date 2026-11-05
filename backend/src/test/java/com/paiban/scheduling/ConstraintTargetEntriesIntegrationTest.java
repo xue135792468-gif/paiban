@@ -51,7 +51,7 @@ class ConstraintTargetEntriesIntegrationTest extends ApiIntegrationTest {
 
         saved.then().statusCode(200);
         List<Map<String, Object>> configs = saved.jsonPath().getList("$");
-        assertThat(configs).hasSize(12);
+        assertThat(configs).hasSize(8);
         for (Map<String, Object> config : configs) {
             assertThat(config.get("type")).as("every target type answered").isNotNull();
             assertThat((List<?>) config.get("entries"))
@@ -68,31 +68,9 @@ class ConstraintTargetEntriesIntegrationTest extends ApiIntegrationTest {
                 .body("find { it.type == 'TEACHER_NO_FIRST_PERIOD' }.entries", hasSize(2));
         assertThat(entryRepository.findBySemesterId(semesterId))
                 .filteredOn(entry -> !"TEACHER_CONFLICT".equals(entry.getType()))
-                .hasSize(24);
+                .hasSize(16);
     }
 
-    @Test
-    void sameCourseWithTwoRoomTypesIsRejectedAndNothingChanges() {
-        String token = adminToken();
-        long semesterId = semesterWithPeriods(token);
-        long playground = TestData.course(token, "体育" + TestData.suffix());
-        save(token, semesterId, List.of(config("COURSE_REQUIRED_ROOM_TYPE", true, 100,
-                List.of(Map.of("courseId", playground, "roomType", "PLAYGROUND"))))).then().statusCode(200);
-        String before = constraintsJson(token, semesterId);
-
-        Response rejected = save(token, semesterId, List.of(config("COURSE_REQUIRED_ROOM_TYPE", true, 100,
-                List.of(Map.of("courseId", playground, "roomType", "PLAYGROUND"),
-                        Map.of("courseId", playground, "roomType", "LAB")))));
-
-        rejected.then().statusCode(400);
-        assertThat(rejected.asString())
-                .contains("COURSE_REQUIRED_ROOM_TYPE")
-                .contains("第2 条")
-                .contains("教室类型")
-                .contains("不一致");
-        assertThat(constraintsJson(token, semesterId)).isEqualTo(before);
-        assertThat(entryRepository.findBySemesterId(semesterId)).hasSize(1);
-    }
 
     @Test
     void contradictoryScalarEntriesForTheSameCourseAreRejected() {
@@ -118,8 +96,6 @@ class ConstraintTargetEntriesIntegrationTest extends ApiIntegrationTest {
         long semesterId = semesterWithPeriods(token);
         World world = world(token);
 
-        save(token, semesterId, List.of(config("COURSE_NOT_IN_EVENING", true, 100,
-                List.of(Map.of("courseId", 9_999_999L))))).then().statusCode(400);
         save(token, semesterId, List.of(config("TEACHER_PREFERRED_SLOT", false, 40,
                 List.of(Map.of("teacherId", 9_999_999L, "dayOfWeek", 1, "periodNo", 1)))))
                 .then().statusCode(400);
@@ -171,7 +147,6 @@ class ConstraintTargetEntriesIntegrationTest extends ApiIntegrationTest {
         long semesterId = semesterWithPeriods(token);
 
         save(token, semesterId, List.of(
-                legacy("SPORT_NOT_FIRST_AFTERNOON", false, 70, Map.of()),
                 legacy("COURSE_SPREAD", false, 50, Map.of()),
                 legacy("SAME_COURSE_ONCE_PER_DAY", true, 100, Map.of()),
                 legacy("PE_LAST_PERIOD_AVOID", false, 35, Map.of())))
@@ -179,20 +154,11 @@ class ConstraintTargetEntriesIntegrationTest extends ApiIntegrationTest {
 
         Response reloaded = as(token).queryParam("semesterId", semesterId)
                 .when().get("/api/constraints").then().statusCode(200).extract().response();
-        for (String type : List.of("SPORT_NOT_FIRST_AFTERNOON",
-                "COURSE_SPREAD", "SAME_COURSE_ONCE_PER_DAY", "PE_LAST_PERIOD_AVOID")) {
+        for (String type : List.of("COURSE_SPREAD", "SAME_COURSE_ONCE_PER_DAY", "PE_LAST_PERIOD_AVOID")) {
             List<Map<String, Object>> entries =
                     reloaded.jsonPath().getList("find { it.type == '" + type + "' }.entries");
             assertThat(entries).as(type + " keeps one entry").hasSize(1);
-        }
-        // The blank target is the explicit "every course / sport class" entry, not a
-        // dropped configuration: the pre-existing front-end sends `params: {}` for it.
-        assertThat(reloaded.jsonPath()
-                .getMap("find { it.type == 'SPORT_NOT_FIRST_AFTERNOON' }.entries[0].params"))
-                .isEmpty();
-        assertThat(constraintService.settings(semesterId)
-                .entries(ConstraintType.SPORT_NOT_FIRST_AFTERNOON)).hasSize(1);
-    }
+        }    }
 
     @Test
     void templateKeepsEveryEntryOfEveryTargetType() {
@@ -205,7 +171,7 @@ class ConstraintTargetEntriesIntegrationTest extends ApiIntegrationTest {
                 .body(Map.of("name", "目标型条目-" + TestData.suffix()))
                 .when().post("/api/constraint-templates")
                 .then().statusCode(200)
-                .body("configCount", equalTo(12))
+                .body("configCount", equalTo(8))
                 .extract().jsonPath().getLong("id");
 
         long target = semesterWithPeriods(token);
@@ -214,7 +180,7 @@ class ConstraintTargetEntriesIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(200).extract().response();
 
         List<Map<String, Object>> configs = applied.jsonPath().getList("$");
-        assertThat(configs).hasSize(12);
+        assertThat(configs).hasSize(8);
         for (Map<String, Object> config : configs) {
             assertThat((List<?>) config.get("entries"))
                     .as("template restores both entries of " + config.get("type"))
@@ -242,17 +208,7 @@ class ConstraintTargetEntriesIntegrationTest extends ApiIntegrationTest {
         long course1 = world.firstCourse();
         long course2 = world.secondCourse();
         List<Map<String, Object>> configs = new ArrayList<>();
-        configs.add(config("TEACHER_MEETING_BLOCKED", true, 100, List.of(
-                Map.of("dayOfWeek", 1, "periodNo", 1),
-                Map.of("dayOfWeek", 1, "periodNo", 2))));
-        configs.add(config("COURSE_REQUIRED_ROOM_TYPE", true, 100, List.of(
-                Map.of("courseId", course1, "roomType", "LAB"),
-                Map.of("courseId", course2, "roomType", "PLAYGROUND"))));
-        configs.add(config("COURSE_NOT_IN_EVENING", true, 100, List.of(
-                Map.of("courseId", course1), Map.of("courseId", course2))));
         configs.add(config("SAME_COURSE_ONCE_PER_DAY", true, 100, List.of(
-                Map.of(), Map.of("courseId", course1))));
-        configs.add(config("SPORT_NOT_FIRST_AFTERNOON", false, 70, List.of(
                 Map.of(), Map.of("courseId", course1))));
         configs.add(config("CONSECUTIVE_LESSONS", false, 60, List.of(
                 Map.of("courseId", course1, "minConsecutive", 2),

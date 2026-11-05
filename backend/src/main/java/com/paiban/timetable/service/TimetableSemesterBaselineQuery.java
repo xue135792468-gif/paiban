@@ -5,11 +5,7 @@ import com.paiban.timetable.domain.TimetableEntry;
 import com.paiban.timetable.domain.TimetableEntryRepository;
 import com.paiban.timetable.domain.TimetablePublish;
 import com.paiban.timetable.domain.TimetablePublishRepository;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /** Answers the scheduling module's baseline question from the publish records it owns. */
@@ -48,20 +44,5 @@ public class TimetableSemesterBaselineQuery implements SemesterBaselineQuery {
                         entry.getTeacherId(),
                         entry.getPeriodId()))
                 .toList());
-    }
-
-    @Override
-    public Map<Long, Set<Long>> publishedRoomOccupants(Long semesterId) {
-        if (!hasPublishedBaseline(semesterId)) {
-            return Map.of();
-        }
-        Map<Long, Set<Long>> occupants = new HashMap<>();
-        for (TimetableEntry entry : entries.findBySemesterId(semesterId)) {
-            if (entry.getRoomId() != null && entry.getAdminClassId() != null) {
-                occupants.computeIfAbsent(entry.getRoomId(), key -> new HashSet<>())
-                        .add(entry.getAdminClassId());
-            }
-        }
-        return occupants;
     }
 }

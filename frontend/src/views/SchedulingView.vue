@@ -644,13 +644,11 @@ async function handleDeleteDraft(row: DraftItem) {
   const outcome = await deleteDraftWithConfirmation({
     id: row.id,
     name: row.name,
-    lockedCount: row.lockedCount,
   })
   if (outcome === 'cancelled') return
   if (outcome === 'deleted' && activeJob.value?.draftId === row.id) {
     activeJob.value = null
   }
-  // A failed delete may be a stale lock count; reloading shows the current one.
   await loadDrafts()
 }
 

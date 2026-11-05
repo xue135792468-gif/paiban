@@ -6,7 +6,6 @@ import com.paiban.substitution.service.SubstitutionQueryService;
 import com.paiban.substitution.service.SubstitutionRecommendationService;
 import com.paiban.substitution.service.SubstitutionRequestService;
 import com.paiban.substitution.web.SubstitutionDtos.CreateSubstitutionRequest;
-import com.paiban.substitution.web.SubstitutionDtos.DecisionRequest;
 import com.paiban.substitution.web.SubstitutionDtos.GeneratePlansResponse;
 import com.paiban.substitution.web.SubstitutionDtos.HistoryDto;
 import com.paiban.substitution.web.SubstitutionDtos.RecommendationResponse;
@@ -69,12 +68,6 @@ public class SubstitutionController {
         return requests.list(principal.getName(), semesterId, status, mine || !canApprove);
     }
 
-    @GetMapping("/substitution-requests/pending")
-    @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_APPROVE + "')")
-    public List<SubstitutionRequestDto> pending(Principal principal) {
-        return requests.pending(principal.getName());
-    }
-
     @GetMapping("/substitution-requests/{id}")
     public SubstitutionRequestDto detail(@PathVariable Long id, Principal principal) {
         return requests.detail(principal.getName(), id);
@@ -83,24 +76,6 @@ public class SubstitutionController {
     @GetMapping("/substitution-requests/{id}/history")
     public List<HistoryDto> history(@PathVariable Long id, Principal principal) {
         return requests.history(principal.getName(), id);
-    }
-
-    @PostMapping("/substitution-requests/{id}/approve")
-    @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_APPROVE + "')")
-    public SubstitutionRequestDto approve(
-            @PathVariable Long id,
-            @RequestBody(required = false) DecisionRequest decision,
-            Principal principal) {
-        return requests.approve(id, principal.getName(), decision);
-    }
-
-    @PostMapping("/substitution-requests/{id}/reject")
-    @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_APPROVE + "')")
-    public SubstitutionRequestDto reject(
-            @PathVariable Long id,
-            @RequestBody(required = false) Map<String, String> body,
-            Principal principal) {
-        return requests.reject(id, principal.getName(), body == null ? null : body.get("comment"));
     }
 
     @PostMapping("/substitution-requests/{id}/recommend")
@@ -130,16 +105,6 @@ public class SubstitutionController {
     @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_SUBMIT + "')")
     public List<SubstitutionPlanDto> plans(@PathVariable Long id, Principal principal) {
         return plans.plansFor(id, principal.getName());
-    }
-
-    /** Approve one whole plan: every move becomes effective, or none does. */
-    @PostMapping("/substitution-plans/{id}/approve")
-    @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_APPROVE + "')")
-    public SubstitutionRequestDto approvePlan(
-            @PathVariable Long id,
-            @RequestBody(required = false) Map<String, String> body,
-            Principal principal) {
-        return plans.approvePlan(id, principal.getName(), body == null ? null : body.get("comment"));
     }
 
     @GetMapping("/substitutions")

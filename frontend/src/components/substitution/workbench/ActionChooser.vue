@@ -32,10 +32,10 @@
             <h3>选择代课老师</h3>
 
             <div v-if="candidateList?.legacyLocked" class="callout" data-testid="legacy-locked">
-              <div class="cw"><span class="ic">!</span><span>该课节当前生效的是旧格式调代记录（历史数据），需先完成历史转换，管理端暂不能修改。</span></div>
+              <div class="cw"><span class="ic">!</span><span>该课节当前生效的是旧格式调代记录（历史数据），管理端暂不能修改。</span></div>
             </div>
             <div v-else-if="candidateList?.activeRequestId" class="callout" data-testid="active-request-alert">
-              <div class="cw"><span class="ic">!</span><span>该课节已有待处理的申请（#{{ candidateList.activeRequestId }}），请先在待审批中处理该单。</span></div>
+              <div class="cw"><span class="ic">!</span><span>该课节已有待处理的申请（#{{ candidateList.activeRequestId }}），请先处理该申请。</span></div>
             </div>
 
             <template v-else>

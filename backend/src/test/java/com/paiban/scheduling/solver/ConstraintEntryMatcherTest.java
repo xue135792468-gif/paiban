@@ -10,7 +10,7 @@ class ConstraintEntryMatcherTest {
     @Test
     void courseMatchingDistinguishesStrictAllAndSport() {
         Map<String, Object> course = Map.of("courseId", 7L, "dayOfWeek", 3, "periodNo", 1,
-                "roomType", "LAB", "subject", "语文");
+                "subject", "语文");
 
         assertThat(ConstraintEntryMatcher.course(course, 7L)).isTrue();
         assertThat(ConstraintEntryMatcher.course(course, 8L)).isFalse();
@@ -19,8 +19,6 @@ class ConstraintEntryMatcherTest {
         assertThat(ConstraintEntryMatcher.courseOrSport(Map.of(), 7L, true)).isTrue();
         assertThat(ConstraintEntryMatcher.courseOrSport(Map.of(), 7L, false)).isFalse();
         assertThat(ConstraintEntryMatcher.courseOrSport(course, 7L, false)).isTrue();
-        assertThat(ConstraintEntryMatcher.courseWithRoomType(course, 7L)).isTrue();
-        assertThat(ConstraintEntryMatcher.courseWithRoomType(Map.of("courseId", 7L), 7L)).isFalse();
     }
 
     @Test
@@ -36,11 +34,4 @@ class ConstraintEntryMatcherTest {
         assertThat(ConstraintEntryMatcher.dayOff(entry, 11L, 4)).isFalse();
     }
 
-    @Test
-    void blankMeetingSubjectMeansEveryTeacher() {
-        assertThat(ConstraintEntryMatcher.meetingSubject(Map.of(), "语文")).isTrue();
-        assertThat(ConstraintEntryMatcher.meetingSubject(Map.of("subject", "语文"), "语文")).isTrue();
-        assertThat(ConstraintEntryMatcher.meetingSubject(Map.of("subject", "语文"), "数学")).isFalse();
-        assertThat(ConstraintEntryMatcher.meetingSubject(Map.of("subject", "语文"), null)).isFalse();
-    }
 }

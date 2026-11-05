@@ -312,8 +312,7 @@ class SubstitutionRecommendationServiceTest {
         request.setDayOfWeek(dayOfWeek);
         request.setPeriodNo(periodNo);
         request.setReason("家中有事");
-        request.setStatus(SubstitutionRequest.PENDING_APPROVAL);
-        request.setApprovalMode("approval");
+        request.setStatus(SubstitutionRequest.SUBMITTED);
         return request;
     }
 

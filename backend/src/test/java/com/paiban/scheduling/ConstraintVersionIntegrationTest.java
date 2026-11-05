@@ -51,7 +51,7 @@ class ConstraintVersionIntegrationTest extends ApiIntegrationTest {
         save(token, semesterId, 1L, List.of(switchConfig("CLASS_CONFLICT"))).then().statusCode(200);
         String before = stateBody(token, semesterId);
 
-        Response refused = save(token, semesterId, 1L, List.of(switchConfig("ROOM_CONFLICT")));
+        Response refused = save(token, semesterId, 1L, List.of(switchConfig("CLASS_GAP_MINIMIZED")));
 
         refused.then().statusCode(409)
                 .body("version", equalTo(2))
@@ -100,8 +100,7 @@ class ConstraintVersionIntegrationTest extends ApiIntegrationTest {
         try {
             Callable<Integer> first = concurrentSave(
                     token, semesterId, base, barrier, "CLASS_CONFLICT");
-            // Both branches must be catalogue types that the editor still shows:
-            // ROOM_CONFLICT is retired (ticket 09) and would leave zero visible configs.
+            // Both branches must be catalogue types that the editor still shows.
             Callable<Integer> second = concurrentSave(
                     token, semesterId, base, barrier, "TEACHER_CONFLICT");
             Future<Integer> a = pool.submit(first);

@@ -7,7 +7,6 @@ import type { Component } from 'vue'
 import ClassesView from './ClassesView.vue'
 import CoursesView from './CoursesView.vue'
 import GradesView from './GradesView.vue'
-import RoomsView from './RoomsView.vue'
 import TeachersView from './TeachersView.vue'
 import { useAuthStore } from '@/stores/auth'
 
@@ -21,7 +20,6 @@ const VIEWS: Array<{ component: Component; title: string; createLabel: string }>
   { component: GradesView, title: '还没有年级数据', createLabel: '新建年级' },
   { component: ClassesView, title: '还没有行政班数据', createLabel: '新建行政班' },
   { component: TeachersView, title: '还没有教师数据', createLabel: '新建教师' },
-  { component: RoomsView, title: '还没有教室数据', createLabel: '新建教室' },
   { component: CoursesView, title: '还没有课程数据', createLabel: '新建课程' },
 ]
 

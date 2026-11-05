@@ -116,10 +116,8 @@ describe('product trim routing', () => {
       ['/substitutions/workbench', '/substitution'],
       ['/admin/constraints', '/rules/advanced'],
       ['/admin/ai-providers', '/ai'],
-      ['/admin/ai-history', '/ai/history'],
       ['/admin/settings', '/settings/general'],
       ['/admin/users', '/settings/users'],
-      ['/admin/rooms', '/data/semesters'],
     ]
 
     const router = makeRouter()
@@ -133,7 +131,6 @@ describe('product trim routing', () => {
     const router = makeRouter()
 
     for (const path of [
-      '/notifications',
       '/help',
       '/help/foundation',
       '/onboarding',

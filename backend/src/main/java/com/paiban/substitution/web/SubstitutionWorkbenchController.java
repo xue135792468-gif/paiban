@@ -62,24 +62,14 @@ public class SubstitutionWorkbenchController {
         return service.preview(principal.getName(), request);
     }
 
-    /** 消费凭证（代发）：提交审批进待批队列，旧安排继续生效。 */
-    @PostMapping("/substitution-workbench/previews/{id}/submit-approval")
-    @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_SUBMIT + "')")
-    public WorkbenchActionResult submitApproval(
-            @PathVariable Long id,
-            @RequestBody(required = false) ConsumeRequest body,
-            Principal principal) {
-        return service.submitApproval(id, principal.getName(), body == null ? null : body.comment());
-    }
-
-    /** 消费凭证（亲自确认）：与普通批准完全相同的校验、审计与写入事务。 */
+    /** 消费凭证（直接确认）：校验、审计与写入在同一事务，失败零写入。 */
     @PostMapping("/substitution-workbench/previews/{id}/confirm")
     @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_SUBMIT + "')")
     public WorkbenchActionResult confirm(
             @PathVariable Long id,
             @RequestBody(required = false) ConsumeRequest body,
             Principal principal) {
-        return service.confirm(id, principal.getName(), body == null ? null : body.comment());
+        return service.confirmDirect(id, principal.getName(), body == null ? null : body.comment());
     }
 
     // ---------------------- 票 05：管理员同班调课（明确目标日期的置换环） ----------------------
@@ -125,23 +115,13 @@ public class SubstitutionWorkbenchController {
         return swapService.compare(id, principal.getName(), view, teacherId, date);
     }
 
-    /** 消费 SWAP 凭证（代发）：整环方案随申请进待批队列，旧课表继续。 */
-    @PostMapping("/substitution-workbench/previews/{id}/submit-approval-swap")
-    @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_SUBMIT + "')")
-    public WorkbenchActionResult submitSwapApproval(
-            @PathVariable Long id,
-            @RequestBody(required = false) ConsumeRequest body,
-            Principal principal) {
-        return swapService.submitApproval(id, principal.getName(), body == null ? null : body.comment());
-    }
-
-    /** 消费 SWAP 凭证（亲自确认）：整环走 approvePlan 同路径，失败整单零生效。 */
+    /** 消费 SWAP 凭证（直接确认）：整环校验与生效同事务，失败整单零生效。 */
     @PostMapping("/substitution-workbench/previews/{id}/confirm-swap")
     @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_SUBMIT + "')")
     public WorkbenchActionResult confirmSwap(
             @PathVariable Long id,
             @RequestBody(required = false) ConsumeRequest body,
             Principal principal) {
-        return swapService.confirm(id, principal.getName(), body == null ? null : body.comment());
+        return swapService.confirmDirect(id, principal.getName(), body == null ? null : body.comment());
     }
 }

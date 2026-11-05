@@ -29,11 +29,7 @@ public abstract class ApiIntegrationTest {
      * instead of relying on defaults or on what the previous test left behind.
      */
     protected void resetIntegrationSettings() {
-        settingsService.put(SettingsService.ACTIVE_PLATFORM, SettingsService.PLATFORM_NONE);
-        settingsService.put(SettingsService.FEISHU_ENABLED, "false");
         settingsService.put(SettingsService.DINGTALK_ENABLED, "false");
-        settingsService.put(SettingsService.FEISHU_APP_ID, "");
-        settingsService.put(SettingsService.FEISHU_APP_SECRET, "");
         settingsService.put(SettingsService.DINGTALK_APP_KEY, "");
         settingsService.put(SettingsService.DINGTALK_APP_SECRET, "");
     }

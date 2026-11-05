@@ -26,7 +26,6 @@ public final class Permissions {
     public static final String SUBSTITUTION_VIEW = "substitution:view";
     public static final String SUBSTITUTION_VIEW_OWN = "substitution:view:own";
     public static final String SUBSTITUTION_VIEW_CLASS = "substitution:view:class";
-    public static final String NOTIFICATION_VIEW = "notification:view";
     public static final String SETTINGS_MANAGE = "settings:manage";
     public static final String INTEGRATION_MANAGE = "integration:manage";
     public static final String ONBOARDING_MANAGE = "onboarding:manage";

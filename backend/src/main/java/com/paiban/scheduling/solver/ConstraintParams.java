@@ -13,8 +13,6 @@ public final class ConstraintParams {
     public static final String TEACHER_ID = "teacherId";
     public static final String DAY_OF_WEEK = "dayOfWeek";
     public static final String PERIOD_NO = "periodNo";
-    public static final String ROOM_TYPE = "roomType";
-    public static final String SUBJECT = "subject";
 
     private ConstraintParams() {}
 
@@ -32,15 +30,5 @@ public final class ConstraintParams {
 
     public static Integer periodNo(Map<String, Object> entry) {
         return ConstraintSettings.intValue(entry.get(PERIOD_NO));
-    }
-
-    public static String roomType(Map<String, Object> entry) {
-        Object value = entry.get(ROOM_TYPE);
-        return value == null ? null : value.toString();
-    }
-
-    public static String subject(Map<String, Object> entry) {
-        Object value = entry.get(SUBJECT);
-        return value == null ? null : value.toString();
     }
 }

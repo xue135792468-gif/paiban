@@ -106,7 +106,7 @@ public class SubstitutionRecommendationService {
     public RecommendationResponse recommend(Long requestId) {
         SubstitutionRequest request = requests.findById(requestId)
                 .orElseThrow(() -> ApiException.notFound("调代申请不存在: " + requestId));
-        if (!SubstitutionRequest.PENDING_APPROVAL.equals(request.getStatus())) {
+        if (SubstitutionRequest.EFFECTIVE.equals(request.getStatus())) {
             throw ApiException.conflict("该申请当前状态为 " + request.getStatus() + "，不能生成代课推荐");
         }
 

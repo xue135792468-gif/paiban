@@ -30,9 +30,7 @@ async function seedRecipeScenario(api: APIRequestContext): Promise<RecipeSeed> {
   })
   await apiCall(api, token, 'post', `/semesters/${semester.id}/set-current`)
   await apiCall(api, token, 'post', `/semesters/${semester.id}/periods/default`, {
-    morningCount: 8,
-    afternoonCount: 0,
-    eveningCount: 0,
+    periodCount: 8,
     days: [1, 2, 3, 4, 5],
   })
   const grade = await apiCall(api, token, 'post', `/grades?semesterId=${semester.id}`, {

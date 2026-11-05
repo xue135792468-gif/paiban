@@ -72,12 +72,17 @@ class ConstraintProposalIntegrationTest extends ApiIntegrationTest {
         gateway.reset();
     }
 
+    /**
+     * Morning/afternoon/evening sections were removed from the product, so the model may
+     * no longer name them: the server refuses the proposal and asks for concrete period
+     * numbers instead of guessing "afternoon".
+     */
     @Test
-    void c01ExpandsTheWholeAfternoonFromTheRealTimetable() {
+    void c01RejectsTheRetiredAfternoonSectionAndAsksForConcretePeriods() {
         String token = adminToken();
         long semesterId = semesterWithPeriods(token);
         String teacherName = "王明" + TestData.suffix();
-        long teacher = TestData.teacher(token, teacherName);
+        TestData.teacher(token, teacherName);
         gateway.respond = ok("""
                 {"proposals":[{"sourceText":"王老师周三下午不排课。","type":"TEACHER_UNAVAILABLE",
                 "strength":"HARD","status":"READY","teacherName":"%s","days":[3],
@@ -88,30 +93,24 @@ class ConstraintProposalIntegrationTest extends ApiIntegrationTest {
         run.then().statusCode(200)
                 .body("status", equalTo("SUCCEEDED"))
                 .body("proposals", hasSize(1))
-                .body("proposals[0].status", equalTo("READY"))
-                .body("proposals[0].effectiveHard", equalTo(true))
-                .body("proposals[0].entries", hasSize(4));
-        List<Integer> periods = run.jsonPath().getList("proposals[0].entries.params.periodNo", Integer.class);
-        assertThat(periods).containsExactly(5, 6, 7, 8);
-        List<Map<String, Object>> entries = run.jsonPath().getList("proposals[0].entries");
-        assertThat(entries).allMatch(entry -> ((Number) ((Map<?, ?>) entry.get("params"))
-                .get("teacherId")).longValue() == teacher);
-        assertThat(entries.stream().map(entry -> entry.get("groupKey")).distinct().count())
-                .isEqualTo(1);
+                .body("proposals[0].status", equalTo("INVALID"))
+                .body("proposals[0].reason", containsString("请直接给出节次"))
+                .body("proposals[0].entries", hasSize(0));
+        assertThat(run.jsonPath().getString("proposals[0].type")).isEqualTo("TEACHER_UNAVAILABLE");
     }
 
     @Test
-    void c21ExpandsEveryTeachingDayAndTheNamedMorningPeriods() {
+    void c21ExpandsEveryTeachingDayForTheNamedPeriods() {
         String token = adminToken();
         long semesterId = semesterWithPeriods(token);
         String courseName = "体育" + TestData.suffix();
         long course = TestData.course(token, courseName);
         gateway.respond = ok("""
-                {"proposals":[{"sourceText":"体育课不排上午第1、2节。","type":"COURSE_UNAVAILABLE",
+                {"proposals":[{"sourceText":"体育课不排第1、2节。","type":"COURSE_UNAVAILABLE",
                 "strength":"HARD","status":"READY","courseName":"%s","allDays":true,
-                "section":"MORNING","sectionOrdinals":[1,2]}]}""".formatted(courseName));
+                "periods":[1,2]}]}""".formatted(courseName));
 
-        Response run = generate(token, semesterId, "run-c21", "体育课不排上午第1、2节。");
+        Response run = generate(token, semesterId, "run-c21", "体育课不排第1、2节。");
 
         run.then().statusCode(200)
                 .body("proposals[0].entries", hasSize(10));
@@ -163,12 +162,12 @@ class ConstraintProposalIntegrationTest extends ApiIntegrationTest {
                 {"proposals":[
                   {"sourceText":"张老师周三下午不排","type":"TEACHER_UNAVAILABLE",
                    "strength":"HARD","status":"READY","teacherName":"张老师","days":[3],
-                   "section":"AFTERNOON"},
+                   "periods":[5]},
                   {"sourceText":"体育不排最后一节","type":"PE_LAST_PERIOD_AVOID",
                    "strength":"HARD","status":"READY","courseName":"%s"}
                 ]}""".formatted(courseName));
 
-        Response run = generate(token, semesterId, "run-c16", "张老师周三下午不排，体育不排晚自习。");
+        Response run = generate(token, semesterId, "run-c16", "张老师周三下午不排，体育不排最后一节。");
 
         run.then().statusCode(200)
                 .body("proposals", hasSize(2))
@@ -232,7 +231,7 @@ class ConstraintProposalIntegrationTest extends ApiIntegrationTest {
         gateway.respond = ok("""
                 {"proposals":[{"sourceText":"王老师周三下午不排","type":"TEACHER_UNAVAILABLE",
                 "strength":"HARD","status":"READY","teacherName":"%s","days":[3],
-                "section":"AFTERNOON"}]}""".formatted(teacherName));
+                "periods":[5]}]}""".formatted(teacherName));
 
         Response first = generate(token, semesterId, "same-run", "王老师周三下午不排课");
         Response second = generate(token, semesterId, "same-run", "王老师周三下午不排课");
@@ -282,7 +281,7 @@ class ConstraintProposalIntegrationTest extends ApiIntegrationTest {
         gateway.respond = ok("""
                 {"proposals":[{"sourceText":"王老师周三下午不排","type":"TEACHER_UNAVAILABLE",
                 "strength":"HARD","status":"READY","teacherName":"%s","days":[3],
-                "section":"AFTERNOON"}]}""".formatted(teacherName));
+                "periods":[5]}]}""".formatted(teacherName));
 
         ExecutorService pool = Executors.newSingleThreadExecutor();
         try {
@@ -376,7 +375,7 @@ class ConstraintProposalIntegrationTest extends ApiIntegrationTest {
         gateway.respond = ok("""
                 {"proposals":[{"sourceText":"张老师周三下午不排","type":"TEACHER_UNAVAILABLE",
                 "strength":"HARD","status":"READY","teacherName":"张老师","days":[3],
-                "section":"AFTERNOON"}]}""");
+                "periods":[5,6,7,8]}]}""");
 
         Response run = generate(token, semesterId, "run-resolve", "张老师周三下午不排");
         long runId = run.jsonPath().getLong("id");

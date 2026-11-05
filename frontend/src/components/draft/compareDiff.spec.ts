@@ -17,7 +17,6 @@ function lesson(overrides: Partial<DraftLesson> = {}): DraftLesson {
     dayOfWeek: 1,
     periodNo: 1,
     periodLabel: '周一第1节',
-    roomId: 1,
     locked: false,
     ...overrides,
   }

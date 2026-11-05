@@ -136,7 +136,7 @@ public class WorkbookPlanner {
                 - unknown：看不出用途
 
                 列映射 columns 的键：
-                - 课表：className、dayOfWeek、periodNo、courseName、teacherName、roomName
+                - 课表：className、dayOfWeek、periodNo、courseName、teacherName
                 - 教师：name、employeeNo、phone、email、subject
                 - 课程：name、subject
                 值写工作表的列名；没有表头时写列序号（从 1 开始，例如 "2"）。
@@ -451,7 +451,7 @@ public class WorkbookPlanner {
     private boolean relevant(String field, SheetCategory category) {
         return switch (category) {
             case TIMETABLE -> List.of(
-                    "className", "dayOfWeek", "periodNo", "courseName", "teacherName", "roomName")
+                    "className", "dayOfWeek", "periodNo", "courseName", "teacherName")
                     .contains(field);
             case TEACHER -> List.of("name", "employeeNo", "phone", "email", "subject").contains(field);
             case COURSE -> List.of("name", "subject").contains(field);

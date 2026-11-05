@@ -16,7 +16,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * Ticket 10/04: the five threshold types read one entry per scope — a global
+ * Ticket 10/04: the threshold types read one entry per scope — a global
  * default (no object) plus per-object exceptions — and every evaluation entry
  * point resolves the value through the same policy:
  *
@@ -36,19 +36,17 @@ class ConstraintScopedThresholdsCheckerTest {
     private static final long CLASS_2 = PlanFixtures.CLASS_2;
     private static final long COURSE_CHINESE = 31L;
     private static final long COURSE_MATH = 32L;
-    private static final long ROOM = 21L;
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Test
-    void registryMarksTheFiveThresholdsAsEntryBacked() {
+    void registryMarksTheFourThresholdsAsEntryBacked() {
         assertThat(List.of(ConstraintType.values()).stream()
                 .filter(ConstraintType::isEntryBacked)
                 .toList())
-                .hasSize(20)
+                .hasSize(15)
                 .contains(ConstraintType.TEACHER_MAX_PER_DAY,
                         ConstraintType.CLASS_MAX_PER_DAY,
                         ConstraintType.COURSE_MAX_PER_DAY,
-                        ConstraintType.EVENING_MAX,
                         ConstraintType.TEACHER_MAX_CONSECUTIVE,
                         ConstraintType.CLASS_UNAVAILABLE)
                 .doesNotContain(ConstraintType.TEACHER_CONFLICT,
@@ -61,8 +59,6 @@ class ConstraintScopedThresholdsCheckerTest {
         assertThat(ConstraintType.TEACHER_MAX_CONSECUTIVE.thresholdScope().objectField())
                 .isEqualTo("teacherId");
         assertThat(ConstraintType.CLASS_MAX_PER_DAY.thresholdScope().objectField())
-                .isEqualTo("classId");
-        assertThat(ConstraintType.EVENING_MAX.thresholdScope().objectField())
                 .isEqualTo("classId");
         assertThat(ConstraintType.COURSE_MAX_PER_DAY.thresholdScope().objectField())
                 .isEqualTo("courseId");
@@ -81,15 +77,15 @@ class ConstraintScopedThresholdsCheckerTest {
                 Map.of("teacherId", TEACHER_A, "maxPerDay", 3));
 
         PlanSnapshot snapshot = base()
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 1)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 2)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 3)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 4)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 1)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 2)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 3)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 4)
                 // TEACHER_B is not listed: four lessons are still inside the global 6.
-                .lesson(CLASS_2, COURSE_MATH, TEACHER_B, ROOM, 2, 1)
-                .lesson(CLASS_2, COURSE_MATH, TEACHER_B, ROOM, 2, 2)
-                .lesson(CLASS_2, COURSE_MATH, TEACHER_B, ROOM, 2, 3)
-                .lesson(CLASS_2, COURSE_MATH, TEACHER_B, ROOM, 2, 4)
+                .lesson(CLASS_2, COURSE_MATH, TEACHER_B,  0L, 2, 1)
+                .lesson(CLASS_2, COURSE_MATH, TEACHER_B,  0L, 2, 2)
+                .lesson(CLASS_2, COURSE_MATH, TEACHER_B,  0L, 2, 3)
+                .lesson(CLASS_2, COURSE_MATH, TEACHER_B,  0L, 2, 4)
                 .build();
 
         List<String> rows = codes(violations(settings, snapshot), "TEACHER_MAX_PER_DAY");
@@ -105,10 +101,10 @@ class ConstraintScopedThresholdsCheckerTest {
         ConstraintSettings globalOnly = threshold(ConstraintType.TEACHER_MAX_PER_DAY, true, 60,
                 Map.of("maxPerDay", 6));
         PlanSnapshot fourLessons = base()
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 1)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 2)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 3)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 4)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 1)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 2)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 3)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 4)
                 .build();
 
         assertThat(codes(violations(withException, fourLessons), "TEACHER_MAX_PER_DAY")).hasSize(1);
@@ -120,14 +116,14 @@ class ConstraintScopedThresholdsCheckerTest {
         ConstraintSettings settings = threshold(ConstraintType.TEACHER_MAX_PER_DAY, true, 60,
                 Map.of("teacherId", TEACHER_A, "maxPerDay", 3));
         PlanSnapshot snapshot = base()
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 1)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 2)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 3)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 4)
-                .lesson(CLASS_2, COURSE_MATH, TEACHER_B, ROOM, 2, 1)
-                .lesson(CLASS_2, COURSE_MATH, TEACHER_B, ROOM, 2, 2)
-                .lesson(CLASS_2, COURSE_MATH, TEACHER_B, ROOM, 2, 3)
-                .lesson(CLASS_2, COURSE_MATH, TEACHER_B, ROOM, 2, 4)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 1)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 2)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 3)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 4)
+                .lesson(CLASS_2, COURSE_MATH, TEACHER_B,  0L, 2, 1)
+                .lesson(CLASS_2, COURSE_MATH, TEACHER_B,  0L, 2, 2)
+                .lesson(CLASS_2, COURSE_MATH, TEACHER_B,  0L, 2, 3)
+                .lesson(CLASS_2, COURSE_MATH, TEACHER_B,  0L, 2, 4)
                 .build();
 
         assertThat(codes(violations(settings, snapshot), "TEACHER_MAX_PER_DAY")).hasSize(1);
@@ -142,14 +138,14 @@ class ConstraintScopedThresholdsCheckerTest {
                 Map.of("classId", CLASS_1, "maxPerDay", 2));
 
         PlanSnapshot snapshot = base()
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 3, 1)
-                .lesson(CLASS_1, COURSE_MATH, TEACHER_A, ROOM, 3, 2)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_B, ROOM, 3, 3)
-                .lesson(CLASS_2, COURSE_CHINESE, TEACHER_A, ROOM, 3, 1)
-                .lesson(CLASS_2, COURSE_MATH, TEACHER_B, ROOM, 3, 2)
-                .lesson(CLASS_2, COURSE_CHINESE, TEACHER_B, ROOM, 3, 3)
-                .lesson(CLASS_2, COURSE_MATH, TEACHER_A, ROOM, 3, 4)
-                .lesson(CLASS_2, COURSE_CHINESE, TEACHER_A, ROOM, 3, 5)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 3, 1)
+                .lesson(CLASS_1, COURSE_MATH, TEACHER_A,  0L, 3, 2)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_B,  0L, 3, 3)
+                .lesson(CLASS_2, COURSE_CHINESE, TEACHER_A,  0L, 3, 1)
+                .lesson(CLASS_2, COURSE_MATH, TEACHER_B,  0L, 3, 2)
+                .lesson(CLASS_2, COURSE_CHINESE, TEACHER_B,  0L, 3, 3)
+                .lesson(CLASS_2, COURSE_MATH, TEACHER_A,  0L, 3, 4)
+                .lesson(CLASS_2, COURSE_CHINESE, TEACHER_A,  0L, 3, 5)
                 .build();
 
         List<String> rows = codes(violations(settings, snapshot), "CLASS_MAX_PER_DAY");
@@ -166,14 +162,14 @@ class ConstraintScopedThresholdsCheckerTest {
 
         PlanSnapshot snapshot = base()
                 // Maths twice in class 1: over the exception's 1.
-                .lesson(CLASS_1, COURSE_MATH, TEACHER_A, ROOM, 4, 1)
-                .lesson(CLASS_1, COURSE_MATH, TEACHER_B, ROOM, 4, 2)
+                .lesson(CLASS_1, COURSE_MATH, TEACHER_A,  0L, 4, 1)
+                .lesson(CLASS_1, COURSE_MATH, TEACHER_B,  0L, 4, 2)
                 // Maths twice in class 2: the same course exception applies per class.
-                .lesson(CLASS_2, COURSE_MATH, TEACHER_A, ROOM, 4, 1)
-                .lesson(CLASS_2, COURSE_MATH, TEACHER_B, ROOM, 4, 2)
+                .lesson(CLASS_2, COURSE_MATH, TEACHER_A,  0L, 4, 1)
+                .lesson(CLASS_2, COURSE_MATH, TEACHER_B,  0L, 4, 2)
                 // Chinese twice in class 1: inside the global 2.
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_B, ROOM, 4, 3)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 4, 4)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_B,  0L, 4, 3)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 4, 4)
                 .build();
 
         List<String> rows = codes(violations(settings, snapshot), "COURSE_MAX_PER_DAY");
@@ -189,13 +185,13 @@ class ConstraintScopedThresholdsCheckerTest {
 
         PlanSnapshot snapshot = base()
                 // Three in a row for A, over its exception's 2.
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 1)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 2)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 3)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 1)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 2)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 3)
                 // Three in a row for B, inside the global 3.
-                .lesson(CLASS_2, COURSE_MATH, TEACHER_B, ROOM, 2, 1)
-                .lesson(CLASS_2, COURSE_MATH, TEACHER_B, ROOM, 2, 2)
-                .lesson(CLASS_2, COURSE_MATH, TEACHER_B, ROOM, 2, 3)
+                .lesson(CLASS_2, COURSE_MATH, TEACHER_B,  0L, 2, 1)
+                .lesson(CLASS_2, COURSE_MATH, TEACHER_B,  0L, 2, 2)
+                .lesson(CLASS_2, COURSE_MATH, TEACHER_B,  0L, 2, 3)
                 .build();
 
         List<String> rows = codes(violations(settings, snapshot), "TEACHER_MAX_CONSECUTIVE");
@@ -214,10 +210,10 @@ class ConstraintScopedThresholdsCheckerTest {
                                 Map.of("teacherId", TEACHER_A, "maxPerDay", 1))),
                 MAPPER);
         PlanSnapshot fourLessons = base()
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 1)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 2)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 3)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 4)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 1)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 2)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 3)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 4)
                 .build();
 
         assertThat(violations(settings, fourLessons)).isEmpty();
@@ -232,10 +228,10 @@ class ConstraintScopedThresholdsCheckerTest {
                 Map.of("teacherId", TEACHER_B, "maxPerDay", 5),
                 Map.of("teacherId", TEACHER_A, "maxPerDay", 3));
         PlanSnapshot fourForA = base()
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 1)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 2)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 3)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 4)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 1)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 2)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 3)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 4)
                 .build();
 
         // Three entries, one exceeded bucket, excess 1: exactly one weight.
@@ -251,8 +247,8 @@ class ConstraintScopedThresholdsCheckerTest {
                 List.of(config(ConstraintType.TEACHER_MAX_PER_DAY, true, 60,
                         Map.of("maxPerDay", 1))), MAPPER);
         PlanSnapshot twoLessons = base()
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 1)
-                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A, ROOM, 2, 2)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 1)
+                .lesson(CLASS_1, COURSE_CHINESE, TEACHER_A,  0L, 2, 2)
                 .build();
 
         assertThat(violations(legacyOnly, twoLessons)).isEmpty();
@@ -267,8 +263,7 @@ class ConstraintScopedThresholdsCheckerTest {
                 .teacher(TEACHER_A, "张老师", "语文")
                 .teacher(TEACHER_B, "李老师", "数学")
                 .course(COURSE_CHINESE, "语文", null)
-                .course(COURSE_MATH, "数学", null)
-                .room(ROOM, "教室1", "NORMAL", 50);
+                .course(COURSE_MATH, "数学", null);
     }
 
     /** One enabled threshold type plus explicit entries (global first, then exceptions). */
@@ -285,7 +280,7 @@ class ConstraintScopedThresholdsCheckerTest {
 
     /** The same reference data under a second rule set: settings live in the context. */
     private static ConstraintContext context(ConstraintSettings settings, PlanSnapshot snapshot) {
-        return new ConstraintContext(snapshot.periods(), snapshot.rooms(), snapshot.courses(),
+        return new ConstraintContext(snapshot.periods(), snapshot.courses(),
                 snapshot.teachers(), snapshot.classes(), settings);
     }
 
@@ -303,7 +298,7 @@ class ConstraintScopedThresholdsCheckerTest {
             }
             for (PlanSnapshot.ScheduledLesson lesson : schedule.lessons()) {
                 views.add(new LessonView(lesson.entryId(), lesson.classId(), lesson.courseId(),
-                        lesson.teacherId(), lesson.roomId(), lesson.periodId(), lesson.studentCount()));
+                        lesson.teacherId(), lesson.periodId(), lesson.studentCount()));
             }
         }
         return views;

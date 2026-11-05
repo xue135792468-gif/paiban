@@ -18,7 +18,7 @@ import { capture } from './screenshots'
  * 四个用例串行、共用同一学期：每个用例保存后都刷新，像真实教务反复编辑的顺序。
  */
 test.describe.serial('约束配置：目标型约束多条目', () => {
-  // 票 09/11 后目录只剩 19 类：这里用到的都是保留类型。
+  // 票 15 后目录只剩 18 类：这里用到的都是保留类型。
   const COURSE_UNAVAILABLE = '[data-type="COURSE_UNAVAILABLE"]'
   const ONCE_PER_DAY = '[data-type="SAME_COURSE_ONCE_PER_DAY"]'
   const PREFERRED_SLOT = '[data-type="TEACHER_PREFERRED_SLOT"]'
@@ -275,13 +275,12 @@ test.describe.serial('约束配置：目标型约束多条目', () => {
     expect(saved?.entries ?? []).toHaveLength(0)
   })
 
-  test('十二类目标型逐一打开并截图（人工复核用，不作断言）', async ({ page }) => {
+  test('目标型逐一打开并截图（人工复核用，不作断言）', async ({ page }) => {
     const types: Array<[string, string]> = [
       ['CLASS_UNAVAILABLE', '每周不上课时段'],
       ['TEACHER_UNAVAILABLE', '教师禁排时段'],
       ['COURSE_UNAVAILABLE', '课程禁排时段'],
       ['SAME_COURSE_ONCE_PER_DAY', '同一课程一天最多一节'],
-      ['SPORT_NOT_FIRST_AFTERNOON', '体育不在下午第一节'],
       ['CONSECUTIVE_LESSONS', '连堂课连排'],
       ['COURSE_SPREAD', '同一课程分散到不同天'],
       ['MAIN_SUBJECT_MORNING', '主科尽量排上午'],
@@ -295,7 +294,6 @@ test.describe.serial('约束配置：目标型约束多条目', () => {
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
     for (const [code, title] of types) {
       const navItem = page.locator(`[data-type="${code}"]`)
-      // 初中模式会隐藏部分高级规则（ADR-0018），没有入口的类别跳过截图。
       if ((await navItem.count()) === 0) {
         continue
       }

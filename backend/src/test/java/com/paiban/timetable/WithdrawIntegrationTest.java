@@ -115,7 +115,7 @@ class WithdrawIntegrationTest extends ApiIntegrationTest {
 
     /** An approved request that has not produced an overlay row yet. */
     private SubstitutionRequest seedApproved(long semesterId, Slot slot, LocalDate effectiveDate) {
-        return seedRequest(semesterId, slot, effectiveDate, SubstitutionRequest.APPROVED);
+        return seedRequest(semesterId, slot, effectiveDate, SubstitutionRequest.EFFECTIVE);
     }
 
     private SubstitutionRequest seedRequest(long semesterId, Slot slot, LocalDate effectiveDate,
@@ -132,7 +132,6 @@ class WithdrawIntegrationTest extends ApiIntegrationTest {
         request.setPeriodNo(slot.periodNo());
         request.setType(Substitution.TYPE_COVER);
         request.setStatus(status);
-        request.setApprovalMode("approval");
         substitutionRequests.save(request);
         return request;
     }
@@ -402,7 +401,7 @@ class WithdrawIntegrationTest extends ApiIntegrationTest {
         assertThat(substitutionHistory.findByRequestIdOrderByCreatedAtAsc(request.getId()))
                 .singleElement()
                 .satisfies(item -> {
-                    assertThat(item.getFromStatus()).isEqualTo(SubstitutionRequest.APPROVED);
+                    assertThat(item.getFromStatus()).isEqualTo(SubstitutionRequest.EFFECTIVE);
                     assertThat(item.getToStatus()).isEqualTo(SubstitutionRequest.CANCELLED);
                     assertThat(item.getActor()).isEqualTo("admin");
                 });

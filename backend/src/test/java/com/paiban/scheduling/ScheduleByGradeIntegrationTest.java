@@ -61,7 +61,6 @@ class ScheduleByGradeIntegrationTest extends ApiIntegrationTest {
         long sharedTeacher = TestData.teacher(token, "共享教师" + suffix);
         long courseA = TestData.course(token, "语文" + suffix);
         long courseB = TestData.course(token, "数学" + suffix);
-        TestData.room(token, "教室" + suffix);
 
         long assignmentA = assignment(token, classA, courseA, sharedTeacher, 2);
         long assignmentB = assignment(token, classB, courseB, sharedTeacher, 2);

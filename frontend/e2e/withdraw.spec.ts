@@ -15,20 +15,6 @@ import {
  * 调代行保留在历史里（entry_id 被置空、未来行变已取消）。
  */
 
-// 本文件会把全校的调代模式写成「审批」这一行设置；跑完复位成服务端默认值
-// （application.yml 里 paiban.substitution.approval-mode 的默认就是 approval），
-// 免得留下一行测试专用的显式设置影响后面的用例。
-test.afterAll(async () => {
-  try {
-    const api = await newContext()
-    const token = await apiLogin(api)
-    await apiCall(api, token, 'put', '/settings', {
-      'substitution.approval-mode': 'approval',
-    })
-  } catch {
-    // 清理失败不该把通过的用例变成失败。
-  }
-})
 test('发布 → 撤回（提示未来调代）→ 编辑 → 重新发布，历史仍在', async ({ page }) => {
   const api = await newContext()
   const seed = await seedSchool(api)
@@ -36,24 +22,19 @@ test('发布 → 撤回（提示未来调代）→ 编辑 → 重新发布，历
   const token = await apiLogin(api)
 
   // 先造一条未来日期的生效调代，撤回确认框必须点名它。
+  // 调代现在直接生效：教师指定代课人提交后立刻是 EFFECTIVE。
   const entries = await classEntries(api, seed.classId)
   const entry = entries.find((item) => item.dayOfWeek != null && item.id != null)
   expect(entry).toBeTruthy()
   const effectiveDate = dateFor(entry!.dayOfWeek)
   const teacherToken = await apiLogin(api, seed.username, seed.password)
-  await apiCall(api, token, 'put', '/settings', {
-    'substitution.approval-mode': 'approval',
-  })
   const request = await apiCall(api, teacherToken, 'post', '/substitution-requests', {
     entryId: entry!.id,
     effectiveDate,
     reason: '撤回 e2e：临时有事',
+    expectedSubstituteTeacherId: seed.substituteTeacherId,
   })
-  const approved = await apiCall(api, token, 'post', `/substitution-requests/${request.id}/approve`, {
-    substituteTeacherId: seed.substituteTeacherId,
-    comment: '同意',
-  })
-  expect(approved.status).toBe('EFFECTIVE')
+  expect(request.status).toBe('EFFECTIVE')
 
   await uiLogin(page, 'admin', 'admin123')
   await page.goto(`/workbench/drafts/${draftId}`)
@@ -73,7 +54,6 @@ test('发布 → 撤回（提示未来调代）→ 编辑 → 重新发布，历
   const lesson = detail.lessons[0]
   await apiCall(api, token, 'patch', `/timetable-drafts/${draftId}/lessons/${lesson.id}`, {
     periodId: lesson.periodId,
-    roomId: lesson.roomId,
     force: true,
   })
 

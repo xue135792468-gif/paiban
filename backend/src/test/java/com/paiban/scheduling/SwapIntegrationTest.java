@@ -32,16 +32,16 @@ class SwapIntegrationTest extends ApiIntegrationTest {
 
     private record Base(long semesterId, long draftId, long classA, long classB,
                         long courseA, long courseB, long teacherA, long teacherB,
-                        long roomA, long roomB, long period1, long period2) {}
+                        long period1, long period2) {}
 
     @Test
-    void intraClassSwapExchangesPeriodsAndOptionallyRooms() {
+    void intraClassSwapExchangesPeriods() {
         String token = adminToken();
         Base base = base(token, "语文", "语文");
         long sourceId = lesson(base, base.courseA(), base.teacherA(), base.classA(),
-                base.period1(), base.roomA());
+                base.period1());
         long targetId = lesson(base, base.courseB(), base.teacherB(), base.classA(),
-                base.period2(), base.roomB());
+                base.period2());
         TimetableDraft draft = drafts.findById(base.draftId()).orElseThrow();
         draft.setScoreHard(3);
         drafts.save(draft);
@@ -62,26 +62,9 @@ class SwapIntegrationTest extends ApiIntegrationTest {
         DraftLesson afterTarget = draftLessons.findById(targetId).orElseThrow();
         assertThat(afterSource.getPeriodId()).isEqualTo(base.period2());
         assertThat(afterTarget.getPeriodId()).isEqualTo(base.period1());
-        assertThat(afterSource.getRoomId()).isEqualTo(base.roomA());
-        assertThat(afterTarget.getRoomId()).isEqualTo(base.roomB());
         // The stored solver score is not touched by a manual swap any more; the current
         // verdict comes from the validation endpoint (ticket 01, contract section 2).
         assertThat(drafts.findById(base.draftId()).orElseThrow().getScoreHard()).isEqualTo(3);
-
-        as(token).body(Map.of(
-                        "lessonId", sourceId,
-                        "targetLessonId", targetId,
-                        "swapRooms", true))
-                .when().post("/api/timetable-drafts/" + base.draftId() + "/swap")
-                .then().statusCode(200)
-                .body("saved", equalTo(true));
-
-        afterSource = draftLessons.findById(sourceId).orElseThrow();
-        afterTarget = draftLessons.findById(targetId).orElseThrow();
-        assertThat(afterSource.getPeriodId()).isEqualTo(base.period1());
-        assertThat(afterTarget.getPeriodId()).isEqualTo(base.period2());
-        assertThat(afterSource.getRoomId()).isEqualTo(base.roomB());
-        assertThat(afterTarget.getRoomId()).isEqualTo(base.roomA());
     }
 
     @Test
@@ -89,9 +72,9 @@ class SwapIntegrationTest extends ApiIntegrationTest {
         String token = adminToken();
         Base base = base(token, "语文", "语文");
         long sourceId = lesson(base, base.courseA(), base.teacherA(), base.classA(),
-                base.period1(), base.roomA());
+                base.period1());
         long targetId = lesson(base, base.courseB(), base.teacherB(), base.classB(),
-                base.period2(), base.roomB());
+                base.period2());
 
         as(token).body(Map.of("lessonId", sourceId, "targetLessonId", targetId))
                 .when().post("/api/timetable-drafts/" + base.draftId() + "/swap")
@@ -106,13 +89,11 @@ class SwapIntegrationTest extends ApiIntegrationTest {
         DraftLesson afterTarget = draftLessons.findById(targetId).orElseThrow();
         assertThat(afterSource.getTeacherId()).isEqualTo(base.teacherB());
         assertThat(afterSource.getPeriodId()).isEqualTo(base.period1());
-        assertThat(afterSource.getRoomId()).isEqualTo(base.roomA());
         assertThat(afterSource.getCourseId()).isEqualTo(base.courseA());
         assertThat(afterSource.getAdminClassId()).isEqualTo(base.classA());
         assertThat(afterSource.getStudentCount()).isEqualTo(45);
         assertThat(afterTarget.getTeacherId()).isEqualTo(base.teacherA());
         assertThat(afterTarget.getPeriodId()).isEqualTo(base.period2());
-        assertThat(afterTarget.getRoomId()).isEqualTo(base.roomB());
         assertThat(afterTarget.getCourseId()).isEqualTo(base.courseB());
         assertThat(afterTarget.getAdminClassId()).isEqualTo(base.classB());
         assertThat(afterTarget.getStudentCount()).isEqualTo(45);
@@ -123,12 +104,11 @@ class SwapIntegrationTest extends ApiIntegrationTest {
         String token = adminToken();
         Base base = base(token, "语文", "语文");
         long sourceId = lesson(base, base.courseA(), base.teacherA(), base.classA(),
-                base.period1(), base.roomA());
+                base.period1());
         long targetId = lesson(base, base.courseB(), base.teacherB(), base.classA(),
-                base.period2(), base.roomB());
-        long roomC = TestData.room(token, "教室C" + TestData.suffix());
+                base.period2());
         long blockerId = lesson(base, base.courseB(), base.teacherA(), base.classB(),
-                base.period2(), roomC);
+                base.period2());
 
         Response response = as(token)
                 .body(Map.of("lessonId", sourceId, "targetLessonId", targetId))
@@ -155,9 +135,9 @@ class SwapIntegrationTest extends ApiIntegrationTest {
         String token = adminToken();
         Base base = base(token, "数学", "数学");
         long sourceId = lesson(base, base.courseA(), base.teacherA(), base.classA(),
-                base.period1(), base.roomA());
+                base.period1());
         long targetId = lesson(base, base.courseB(), base.teacherB(), base.classB(),
-                base.period2(), base.roomB());
+                base.period2());
 
         Response response = as(token)
                 .body(Map.of("lessonId", sourceId, "targetLessonId", targetId))
@@ -180,9 +160,9 @@ class SwapIntegrationTest extends ApiIntegrationTest {
         String token = adminToken();
         Base base = base(token, "语文", "数学");
         long sourceId = lesson(base, base.courseA(), base.teacherA(), base.classA(),
-                base.period1(), base.roomA());
+                base.period1());
         long targetId = lesson(base, base.courseB(), base.teacherB(), base.classB(),
-                base.period2(), base.roomB());
+                base.period2());
 
         Response response = as(token)
                 .body(Map.of("lessonId", sourceId, "targetLessonId", targetId))
@@ -204,9 +184,9 @@ class SwapIntegrationTest extends ApiIntegrationTest {
         String token = adminToken();
         Base base = base(token, "语文", null);
         long sourceId = lesson(base, base.courseA(), base.teacherA(), base.classA(),
-                base.period1(), base.roomA());
+                base.period1());
         long targetId = lesson(base, base.courseB(), base.teacherB(), base.classB(),
-                base.period2(), base.roomB());
+                base.period2());
 
         Response response = as(token)
                 .body(Map.of("lessonId", sourceId, "targetLessonId", targetId))
@@ -228,9 +208,9 @@ class SwapIntegrationTest extends ApiIntegrationTest {
         String token = adminToken();
         Base base = base(token, "语文", "语文");
         long sourceId = lesson(base, base.courseA(), base.teacherA(), base.classA(),
-                base.period1(), base.roomA());
+                base.period1());
         long targetId = lesson(base, base.courseB(), base.teacherB(), base.classA(),
-                base.period2(), base.roomB());
+                base.period2());
         String username = "swap_" + TestData.suffix();
         createUser(token, username, "swap123", "teacher");
         String teacherToken = login(username, "swap123");
@@ -250,9 +230,9 @@ class SwapIntegrationTest extends ApiIntegrationTest {
         String token = adminToken();
         Base base = base(token, "语文", "语文");
         long sourceId = lesson(base, base.courseA(), base.teacherA(), base.classA(),
-                base.period1(), base.roomA());
+                base.period1());
         long targetId = lesson(base, base.courseB(), base.teacherB(), base.classB(),
-                base.period2(), base.roomB());
+                base.period2());
 
         as(token).body(Map.of("lessonId", sourceId, "targetLessonId", targetId))
                 .when().post("/api/timetable-drafts/" + base.draftId() + "/swap")
@@ -273,61 +253,16 @@ class SwapIntegrationTest extends ApiIntegrationTest {
         assertThat(((Number) sourceEntry.get("courseId")).longValue()).isEqualTo(base.courseA());
     }
 
-    @Test
-    void swapRoomsExchangesAnUnassignedRoom() {
-        String token = adminToken();
-        Base base = base(token, "语文", "语文");
-        long sourceId = lesson(base, base.courseA(), base.teacherA(), base.classA(),
-                base.period1(), base.roomA());
-        long targetId = lesson(base, base.courseB(), base.teacherB(), base.classA(),
-                base.period2(), null);
 
-        as(token).body(Map.of(
-                        "lessonId", sourceId,
-                        "targetLessonId", targetId,
-                        "swapRooms", true))
-                .when().post("/api/timetable-drafts/" + base.draftId() + "/swap")
-                .then().statusCode(200)
-                .body("saved", equalTo(true));
-
-        assertThat(draftLessons.findById(sourceId).orElseThrow().getRoomId()).isNull();
-        assertThat(draftLessons.findById(targetId).orElseThrow().getRoomId()).isEqualTo(base.roomA());
-        assertThat(draftLessons.findById(sourceId).orElseThrow().getPeriodId()).isEqualTo(base.period2());
-        assertThat(draftLessons.findById(targetId).orElseThrow().getPeriodId()).isEqualTo(base.period1());
-    }
-
-    @Test
-    void swapRoomsDoesNotReportAConflictForTheRoomBeingGivenUp() {
-        String token = adminToken();
-        Base base = base(token, "语文", "语文");
-        long sourceId = lesson(base, base.courseA(), base.teacherA(), base.classA(),
-                base.period1(), base.roomA());
-        long targetId = lesson(base, base.courseB(), base.teacherB(), base.classA(),
-                base.period2(), null);
-        long otherTeacher = teacher(token, "王老师" + TestData.suffix(), "语文");
-        lesson(base, base.courseB(), otherTeacher, base.classB(), base.period2(), base.roomA());
-
-        as(token).body(Map.of(
-                        "lessonId", sourceId,
-                        "targetLessonId", targetId,
-                        "swapRooms", true))
-                .when().post("/api/timetable-drafts/" + base.draftId() + "/swap")
-                .then().statusCode(200)
-                .body("saved", equalTo(true))
-                .body("conflicts", hasSize(0));
-
-        assertThat(draftLessons.findById(sourceId).orElseThrow().getRoomId()).isNull();
-        assertThat(draftLessons.findById(targetId).orElseThrow().getRoomId()).isEqualTo(base.roomA());
-    }
 
     @Test
     void publishedDraftRejectsSwapAndPointsAtTheSubstitutionFlow() {
         String token = adminToken();
         Base base = base(token, "语文", "语文");
         long sourceId = lesson(base, base.courseA(), base.teacherA(), base.classA(),
-                base.period1(), base.roomA());
+                base.period1());
         long targetId = lesson(base, base.courseB(), base.teacherB(), base.classA(),
-                base.period2(), base.roomB());
+                base.period2());
         as(token).when().post("/api/timetable-drafts/" + base.draftId() + "/publish")
                 .then().statusCode(200);
 
@@ -347,7 +282,7 @@ class SwapIntegrationTest extends ApiIntegrationTest {
         String token = adminToken();
         Base base = base(token, "语文", "语文");
         long sourceId = lesson(base, base.courseA(), base.teacherA(), base.classA(),
-                base.period1(), base.roomA());
+                base.period1());
         long unassignedId = unassignedLesson(base, base.courseB(), base.teacherB(), base.classA());
 
         as(token).body(Map.of("lessonId", sourceId, "targetLessonId", unassignedId))
@@ -370,9 +305,9 @@ class SwapIntegrationTest extends ApiIntegrationTest {
         String token = adminToken();
         Base base = base(token, "语文", "语文");
         long sourceId = lesson(base, base.courseA(), base.teacherA(), base.classA(),
-                base.period1(), base.roomA());
+                base.period1());
         long targetId = lesson(base, base.courseB(), base.teacherA(), base.classB(),
-                base.period2(), base.roomB());
+                base.period2());
 
         as(token).body(Map.of("lessonId", sourceId, "targetLessonId", targetId))
                 .when().post("/api/timetable-drafts/" + base.draftId() + "/swap")
@@ -390,9 +325,9 @@ class SwapIntegrationTest extends ApiIntegrationTest {
         String token = adminToken();
         Base base = base(token, "Math", "Math", "math", "MATH");
         long sourceId = lesson(base, base.courseA(), base.teacherA(), base.classA(),
-                base.period1(), base.roomA());
+                base.period1());
         long targetId = lesson(base, base.courseB(), base.teacherB(), base.classB(),
-                base.period2(), base.roomB());
+                base.period2());
 
         as(token).body(Map.of("lessonId", sourceId, "targetLessonId", targetId))
                 .when().post("/api/timetable-drafts/" + base.draftId() + "/swap")
@@ -432,8 +367,6 @@ class SwapIntegrationTest extends ApiIntegrationTest {
         long courseB = course(token, "阅读" + suffix, courseBSubject);
         long teacherA = teacher(token, "张老师" + suffix, teacherASubject);
         long teacherB = teacher(token, "李老师" + suffix, teacherBSubject);
-        long roomA = TestData.room(token, "教室A" + suffix);
-        long roomB = TestData.room(token, "教室B" + suffix);
 
         TimetableDraft draft = new TimetableDraft();
         draft.setSemesterId(semesterId);
@@ -442,12 +375,12 @@ class SwapIntegrationTest extends ApiIntegrationTest {
         long draftId = drafts.save(draft).getId();
 
         return new Base(semesterId, draftId, classA, classB, courseA, courseB,
-                teacherA, teacherB, roomA, roomB,
+                teacherA, teacherB,
                 periodIds.get(0).longValue(), periodIds.get(1).longValue());
     }
 
     private long lesson(
-            Base base, long courseId, long teacherId, long classId, long periodId, Long roomId) {
+            Base base, long courseId, long teacherId, long classId, long periodId) {
         DraftLesson lesson = new DraftLesson();
         lesson.setDraftId(base.draftId());
         // Identity is (draft, assignment, lesson index): V45 makes it unique per draft,
@@ -459,7 +392,6 @@ class SwapIntegrationTest extends ApiIntegrationTest {
         lesson.setAdminClassId(classId);
         lesson.setStudentCount(45);
         lesson.setPeriodId(periodId);
-        lesson.setRoomId(roomId);
         return draftLessons.save(lesson).getId();
     }
 

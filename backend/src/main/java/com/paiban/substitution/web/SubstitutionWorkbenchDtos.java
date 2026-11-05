@@ -54,10 +54,9 @@ public final class SubstitutionWorkbenchDtos {
                               String className,
                               Long teacherId,
                               String teacherName,
-                              String roomName,
                               boolean changed) {}
 
-    /** 变化清单逐项：课程、班级、调整前后实际日期/节次、教师及教室。 */
+    /** 变化清单逐项：课程、班级、调整前后实际日期/节次与教师。 */
     public record ChangeItemDto(Long entryId,
                                 Long classId,
                                 String className,
@@ -70,15 +69,9 @@ public final class SubstitutionWorkbenchDtos {
                                 String teacherNameBefore,
                                 Long teacherIdAfter,
                                 String teacherNameAfter,
-                                String roomNameBefore,
-                                String roomNameAfter,
                                 String changeKind) {}
 
-    /** 预览结果：凭证 + 权威截止时间 + 左右对照 + 完整变化清单 + 提示性校验问题。
-     *
-     * <p>修订预览（票 04）：revisesRequestId 指向被再次调整的已生效申请，
-     * revisionKind = CHANGE_SUBSTITUTE（换代课人）或 RESTORE_BASELINE（恢复基线）；
-     * 首次代课两者为空。 */
+    /** 预览结果：凭证 + 权威截止时间 + 左右对照 + 完整变化清单 + 提示性校验问题。 */
     public record PreviewResponse(Long voucherId,
                                   Instant deadlineAt,
                                   Instant expiresAt,
@@ -96,9 +89,7 @@ public final class SubstitutionWorkbenchDtos {
                                   List<ChangeItemDto> changes,
                                   List<String> issues,
                                   boolean canSubmitApproval,
-                                  boolean canConfirm,
-                                  Long revisesRequestId,
-                                  String revisionKind) {}
+                                  boolean canConfirm) {}
 
     /** 两种消费动作的统一结果；幂等重放时返回第一次存储的结果并标记 replayed。 */
     public record WorkbenchActionResult(Long requestId, String status, boolean replayed) {
@@ -182,7 +173,7 @@ public final class SubstitutionWorkbenchDtos {
                                     List<GridCellDto> left,
                                     List<GridCellDto> right) {}
 
-    /** 变化清单逐项：课程、班级、前后实际日期/节次、教师与教室（SWAP 教师跟课走）。 */
+    /** 变化清单逐项：课程、班级、前后实际日期/节次与教师（SWAP 教师跟课走）。 */
     public record SwapChangeItemDto(Long entryId,
                                     Long classId,
                                     String className,
@@ -194,7 +185,6 @@ public final class SubstitutionWorkbenchDtos {
                                     String toLabel,
                                     Long teacherId,
                                     String teacherName,
-                                    String roomName,
                                     String changeKind) {}
 
     /** SWAP 预览结果：凭证 + 环内最小开课截止 + 逐日左右对照 + 完整变化清单。 */
@@ -215,11 +205,7 @@ public final class SubstitutionWorkbenchDtos {
                                       List<SwapChangeItemDto> changes,
                                       List<String> issues,
                                       boolean canSubmitApproval,
-                                      boolean canConfirm,
-                                      /** 修订链（票 07）：预览绑定的基准申请；首次新调课为空。 */
-                                      Long revisesRequestId,
-                                      /** RESCHEDULE（新调课）或 RESCHEDULE_REVISION（修订调课）。 */
-                                      String revisionKind) {}
+                                      boolean canConfirm) {}
 
     /** 切换视角（班级/教师）后的单日左右对照；日期与视角两侧联动。 */
     public record SwapCompareResponse(LocalDate date,

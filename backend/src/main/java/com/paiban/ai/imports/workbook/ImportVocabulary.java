@@ -16,7 +16,6 @@ public final class ImportVocabulary {
         PERIOD("periodNo", "节次"),
         COURSE("courseName", "课程"),
         TEACHER("teacherName", "教师"),
-        ROOM("roomName", "教室"),
         NAME("name", "姓名"),
         EMPLOYEE_NO("employeeNo", "工号"),
         PHONE("phone", "电话"),
@@ -66,9 +65,6 @@ public final class ImportVocabulary {
         }
         if (contains(value, "教师", "老师", "任课")) {
             return Field.TEACHER;
-        }
-        if (contains(value, "教室", "场地", "地点")) {
-            return Field.ROOM;
         }
         if (contains(value, "姓名") || value.equals("名字")) {
             return Field.NAME;

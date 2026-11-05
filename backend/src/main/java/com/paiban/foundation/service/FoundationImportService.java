@@ -7,13 +7,11 @@ import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.AdminClassRepository;
 import com.paiban.foundation.domain.CourseRepository;
 import com.paiban.foundation.domain.GradeRepository;
-import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.foundation.web.FoundationDtos.SaveClassRequest;
 import com.paiban.foundation.web.FoundationDtos.SaveCourseRequest;
 import com.paiban.foundation.web.FoundationDtos.SaveGradeRequest;
-import com.paiban.foundation.web.FoundationDtos.SaveRoomRequest;
 import com.paiban.foundation.web.FoundationDtos.SaveTeacherRequest;
 import com.paiban.foundation.web.ImportDtos.ImportError;
 import com.paiban.foundation.web.ImportDtos.ImportReport;
@@ -35,7 +33,7 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class FoundationImportService {
 
-    public static final List<String> ENTITIES = List.of("teachers", "rooms", "courses", "grades", "classes");
+    public static final List<String> ENTITIES = List.of("teachers", "courses", "grades", "classes");
 
     private record Column(String header, boolean required, int maxLength) {}
 
@@ -58,17 +56,10 @@ public class FoundationImportService {
                 new Column("手机号", false, 30),
                 new Column("邮箱", false, 120),
                 new Column("学科", false, 100))));
-        SPECS.put("rooms", new Spec("rooms", "教室", List.of(
-                new Column("教室名称", true, 100),
-                new Column("容量", false, 10),
-                new Column("类型", false, 50),
-                new Column("楼栋", false, 100))));
         SPECS.put("courses", new Spec("courses", "课程", List.of(
                 new Column("课程名称", true, 100),
                 new Column("学科", false, 100),
                 new Column("是否允许连堂", false, 10),
-                new Column("是否必须室外", false, 10),
-                new Column("所需教室类型", false, 50),
                 new Column("颜色", false, 20))));
         SPECS.put("grades", new Spec("grades", "年级", List.of(
                 new Column("年级名称", true, 100),
@@ -82,7 +73,6 @@ public class FoundationImportService {
 
     private final FoundationService foundation;
     private final TeacherRepository teachers;
-    private final RoomRepository rooms;
     private final CourseRepository courses;
     private final GradeRepository grades;
     private final AdminClassRepository adminClasses;
@@ -90,13 +80,11 @@ public class FoundationImportService {
     public FoundationImportService(
             FoundationService foundation,
             TeacherRepository teachers,
-            RoomRepository rooms,
             CourseRepository courses,
             GradeRepository grades,
             AdminClassRepository adminClasses) {
         this.foundation = foundation;
         this.teachers = teachers;
-        this.rooms = rooms;
         this.courses = courses;
         this.grades = grades;
         this.adminClasses = adminClasses;
@@ -223,7 +211,6 @@ public class FoundationImportService {
 
         switch (spec.entity()) {
             case "teachers" -> normalizeTeacher(row.rowNumber(), values, seenKeys, errors);
-            case "rooms" -> normalizeRoom(row.rowNumber(), values, seenKeys, errors);
             case "courses" -> normalizeCourse(row.rowNumber(), values, seenKeys, errors);
             case "grades" -> normalizeGrade(row.rowNumber(), values, semesterId, seenKeys, errors);
             case "classes" -> normalizeClass(row.rowNumber(), values, semesterId, seenKeys, errors);
@@ -248,36 +235,6 @@ public class FoundationImportService {
         }
     }
 
-    private void normalizeRoom(int row, Map<String, String> v, Set<String> seen, List<ImportError> errors) {
-        String name = v.get("教室名称");
-        if (!name.isEmpty() && !seen.add("room:" + name)) {
-            errors.add(new ImportError(row, "教室名称", "文件内教室名称重复"));
-        }
-        if (!name.isEmpty() && rooms.findByName(name).isPresent()) {
-            errors.add(new ImportError(row, "教室名称", "教室名称已存在"));
-        }
-        String capacity = v.get("容量");
-        if (!capacity.isEmpty()) {
-            try {
-                int parsed = Integer.parseInt(capacity);
-                if (parsed <= 0) {
-                    errors.add(new ImportError(row, "容量", "容量必须为正整数"));
-                }
-            } catch (NumberFormatException ex) {
-                errors.add(new ImportError(row, "容量", "容量必须是整数"));
-            }
-        }
-        String type = v.get("类型");
-        if (!type.isEmpty()) {
-            String normalized = normalizeRoomType(type);
-            if (normalized == null) {
-                errors.add(new ImportError(row, "类型", "未知教室类型: " + type));
-            } else {
-                v.put("类型", normalized);
-            }
-        }
-    }
-
     private void normalizeCourse(int row, Map<String, String> v, Set<String> seen, List<ImportError> errors) {
         String name = v.get("课程名称");
         if (!name.isEmpty() && !seen.add("course:" + name)) {
@@ -287,16 +244,6 @@ public class FoundationImportService {
             errors.add(new ImportError(row, "课程名称", "课程名称已存在"));
         }
         v.put("是否允许连堂", String.valueOf(parseBoolean(row, "是否允许连堂", v.get("是否允许连堂"), errors)));
-        v.put("是否必须室外", String.valueOf(parseBoolean(row, "是否必须室外", v.get("是否必须室外"), errors)));
-        String roomType = v.get("所需教室类型");
-        if (!roomType.isEmpty()) {
-            String normalized = normalizeRoomType(roomType);
-            if (normalized == null) {
-                errors.add(new ImportError(row, "所需教室类型", "未知教室类型: " + roomType));
-            } else {
-                v.put("所需教室类型", normalized);
-            }
-        }
     }
 
     private void normalizeGrade(
@@ -351,18 +298,11 @@ public class FoundationImportService {
         switch (entity) {
             case "teachers" -> foundation.createTeacher(new SaveTeacherRequest(
                     row.get("姓名"), row.get("工号"), row.get("手机号"), row.get("邮箱"), row.get("学科"), true,
-                    null, null, null));
-            case "rooms" -> foundation.createRoom(new SaveRoomRequest(
-                    row.get("教室名称"),
-                    intOrNull(row.get("容量")),
-                    row.get("类型").isEmpty() ? "NORMAL" : row.get("类型"),
-                    row.get("楼栋")));
+                    null));
             case "courses" -> foundation.createCourse(new SaveCourseRequest(
                     row.get("课程名称"),
                     row.get("学科"),
                     Boolean.parseBoolean(row.get("是否允许连堂")),
-                    Boolean.parseBoolean(row.get("是否必须室外")),
-                    row.get("所需教室类型").isEmpty() ? null : row.get("所需教室类型"),
                     row.get("颜色")));
             case "grades" -> foundation.createGrade(
                     semesterId, new SaveGradeRequest(row.get("年级名称"), intOrNull(row.get("排序"))));
@@ -399,17 +339,6 @@ public class FoundationImportService {
                 errors.add(new ImportError(row, field, "只能填写 是/否"));
                 yield false;
             }
-        };
-    }
-
-    private String normalizeRoomType(String value) {
-        return switch (value.trim().toUpperCase()) {
-            case "NORMAL", "普通教室" -> "NORMAL";
-            case "LAB", "实验室" -> "LAB";
-            case "PLAYGROUND", "操场", "室外" -> "PLAYGROUND";
-            case "MULTIMEDIA", "多媒体" -> "MULTIMEDIA";
-            case "OTHER", "其他" -> "OTHER";
-            default -> null;
         };
     }
 

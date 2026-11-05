@@ -15,14 +15,6 @@ export const DAY_OPTIONS = [
   { value: 7, label: '周日' },
 ]
 
-export const ROOM_TYPE_OPTIONS = [
-  { value: 'NORMAL', label: '普通教室' },
-  { value: 'LAB', label: '实验室' },
-  { value: 'PLAYGROUND', label: '操场' },
-  { value: 'MULTIMEDIA', label: '多媒体' },
-  { value: 'OTHER', label: '其他' },
-]
-
 export type SelectValue = string | number | boolean | Record<string, any> | null | undefined
 
 export function hasValue(value: unknown): boolean {
@@ -72,11 +64,6 @@ export function dayLabel(dayOfWeek: unknown): string {
   return option?.label ?? `星期${dayOfWeek}`
 }
 
-export function roomTypeLabel(code: unknown): string {
-  const option = ROOM_TYPE_OPTIONS.find((item) => item.value === String(code))
-  return option?.label ?? String(code)
-}
-
 /**
  * `data-testid` suffix for one parameter inside an entry card. The E2E specs pick
  * fields by this name, so it is derived here once instead of in each component.
@@ -88,7 +75,6 @@ const FIELD_IDS: Record<string, string> = {
   subject: 'subject',
   dayOfWeek: 'day',
   periodNo: 'period',
-  roomType: 'room-type',
   minConsecutive: 'min-consecutive',
   beforePeriodNo: 'before-period',
   maxPerDay: 'max-per-day',

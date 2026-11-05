@@ -66,8 +66,7 @@ class DraftCyclePlanIntegrationTest extends ApiIntegrationTest {
 
     private record World(long semesterId, List<Long> periods, long classA, long classB, long classC,
                          long chinese, long math, long english, long teacherA, long teacherB,
-                         long teacherC, long room1, long room2, long room3, long room4,
-                         long room5, long room6) {}
+                         long teacherC) {}
 
     private record Scenario(long draftId, long source, long target, long intermediate,
                             long blocker) {}
@@ -109,7 +108,7 @@ class DraftCyclePlanIntegrationTest extends ApiIntegrationTest {
         // context, not a cross-class target: the same-class occupant still drives
         // the swap and the 3-cycle must be found.
         lesson(world, scenario.draftId(), 5L, world.classC(), world.chinese(),
-                world.teacherC(), world.periods().get(1), world.room5());
+                world.teacherC(), world.periods().get(1));
 
         String planToken = searchToken(token, scenario.draftId(), scenario.source(),
                 world.periods().get(1), scenario.target(), 0L);
@@ -190,7 +189,7 @@ class DraftCyclePlanIntegrationTest extends ApiIntegrationTest {
         Scenario moved = threeLessonCycle(world);
         String movedToken = searchToken(token, moved.draftId(), moved.source(),
                 world.periods().get(1), moved.target(), 0L);
-        as(token).body(Map.of("periodId", world.periods().get(5), "roomId", world.room6()))
+        as(token).body(Map.of("periodId", world.periods().get(5)))
                 .when().patch(MOVE.formatted(moved.draftId(), moved.blocker()))
                 .then().statusCode(200);
         as(token).body(Map.of("token", movedToken, "expectedVersion", 0))
@@ -314,9 +313,9 @@ class DraftCyclePlanIntegrationTest extends ApiIntegrationTest {
         // Landing on another class's lesson is never reinterpreted as an exchange.
         long crossDraft = draft(world);
         long crossSource = lesson(world, crossDraft, 10L, world.classA(), world.chinese(),
-                world.teacherA(), world.periods().get(0), world.room1());
+                world.teacherA(), world.periods().get(0));
         lesson(world, crossDraft, 11L, world.classB(), world.math(),
-                world.teacherB(), world.periods().get(1), world.room2());
+                world.teacherB(), world.periods().get(1));
         as(token).body(searchRequest(crossSource, world.periods().get(1), null, 0L, null))
                 .when().post(SEARCH.formatted(crossDraft))
                 .then().statusCode(409)
@@ -325,11 +324,11 @@ class DraftCyclePlanIntegrationTest extends ApiIntegrationTest {
         // Two of this class's lessons on one slot: ambiguous, do not guess.
         long ambiguousDraft = draft(world);
         long ambiguousSource = lesson(world, ambiguousDraft, 20L, world.classA(), world.chinese(),
-                world.teacherA(), world.periods().get(0), world.room1());
+                world.teacherA(), world.periods().get(0));
         lesson(world, ambiguousDraft, 21L, world.classA(), world.math(),
-                world.teacherB(), world.periods().get(1), world.room2());
+                world.teacherB(), world.periods().get(1));
         lesson(world, ambiguousDraft, 22L, world.classA(), world.english(),
-                world.teacherC(), world.periods().get(1), world.room3());
+                world.teacherC(), world.periods().get(1));
         as(token).body(searchRequest(ambiguousSource, world.periods().get(1), null, 0L, null))
                 .when().post(SEARCH.formatted(ambiguousDraft))
                 .then().statusCode(409)
@@ -346,7 +345,7 @@ class DraftCyclePlanIntegrationTest extends ApiIntegrationTest {
         // Empty landing slot is an instruction for the move endpoint, not a search.
         long emptyDraft = draft(world);
         long emptySource = lesson(world, emptyDraft, 30L, world.classA(), world.chinese(),
-                world.teacherA(), world.periods().get(0), world.room1());
+                world.teacherA(), world.periods().get(0));
         as(token).body(searchRequest(emptySource, world.periods().get(2), null, 0L, null))
                 .when().post(SEARCH.formatted(emptyDraft))
                 .then().statusCode(200)
@@ -477,27 +476,21 @@ class DraftCyclePlanIntegrationTest extends ApiIntegrationTest {
                 TestData.course(token, "换位英语" + suffix),
                 TestData.teacher(token, "换位甲老师" + suffix),
                 TestData.teacher(token, "换位乙老师" + suffix),
-                TestData.teacher(token, "换位丙老师" + suffix),
-                TestData.room(token, "换位房1" + suffix),
-                TestData.room(token, "换位房2" + suffix),
-                TestData.room(token, "换位房3" + suffix),
-                TestData.room(token, "换位房4" + suffix),
-                TestData.room(token, "换位房5" + suffix),
-                TestData.room(token, "换位房6" + suffix));
+                TestData.teacher(token, "换位丙老师" + suffix));
     }
 
     private Scenario threeLessonCycle(World world) {
         long draftId = draft(world);
         long source = lesson(world, draftId, 1L, world.classA(), world.chinese(),
-                world.teacherA(), world.periods().get(0), world.room1());
+                world.teacherA(), world.periods().get(0));
         long target = lesson(world, draftId, 2L, world.classA(), world.math(),
-                world.teacherB(), world.periods().get(1), world.room2());
+                world.teacherB(), world.periods().get(1));
         long intermediate = lesson(world, draftId, 3L, world.classA(), world.english(),
-                world.teacherC(), world.periods().get(2), world.room3());
+                world.teacherC(), world.periods().get(2));
         // Another class shares the source slot with the target lesson's teacher, so the
         // direct swap is illegal while the three-lesson cycle is legal.
         long blocker = lesson(world, draftId, 4L, world.classB(), world.math(),
-                world.teacherB(), world.periods().get(0), world.room4());
+                world.teacherB(), world.periods().get(0));
         return new Scenario(draftId, source, target, intermediate, blocker);
     }
 
@@ -511,7 +504,7 @@ class DraftCyclePlanIntegrationTest extends ApiIntegrationTest {
     }
 
     private long lesson(World world, long draftId, long assignmentId, long classId, long courseId,
-                        long teacherId, Long periodId, Long roomId) {
+                        long teacherId, Long periodId) {
         DraftLesson lesson = new DraftLesson();
         lesson.setDraftId(draftId);
         lesson.setAssignmentId(assignmentId);
@@ -521,7 +514,6 @@ class DraftCyclePlanIntegrationTest extends ApiIntegrationTest {
         lesson.setAdminClassId(classId);
         lesson.setStudentCount(45);
         lesson.setPeriodId(periodId);
-        lesson.setRoomId(roomId);
         return draftLessons.save(lesson).getId();
     }
 

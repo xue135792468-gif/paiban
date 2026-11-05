@@ -29,7 +29,6 @@ function timetableRow(overrides: Record<string, string> = {}): PreviewRow {
     periodNo: '1',
     courseName: '语文',
     teacherName: '张三',
-    roomName: '101',
     ...overrides,
   })
 }
@@ -46,7 +45,7 @@ function issue(overrides: Partial<PreviewIssue> = {}): PreviewIssue {
 }
 
 describe('课表预览网格映射', () => {
-  it('把预览行映射成网格课节，保留课程、教师、教室和合成 id', () => {
+  it('把预览行映射成网格课节，保留课程、教师和合成 id', () => {
     const grid = buildTimetableGrid(
       [
         timetableRow({ dayOfWeek: '周一', periodNo: '1' }),
@@ -61,7 +60,6 @@ describe('课表预览网格映射', () => {
       className: '一年级1班',
       courseName: '语文',
       teacherName: '张三',
-      roomName: '101',
       dayOfWeek: 1,
       periodNo: 1,
       periodLabel: '第1节',
@@ -243,11 +241,6 @@ describe('映射步骤状态', () => {
     expect(gradeStatusOf({ inferredGrade: '高一', gradeCandidates: ['七年级'] })).toBe('new')
   })
 
-  it('教室列不再进入映射步骤', () => {
-    const groups = mappingGroups([issue({ row: 1, field: 'roomName', value: '101' })])
-
-    expect(groups).toEqual([])
-  })
 
   it('节次问题不是实体映射，而是行编辑', () => {
     const groups = mappingGroups([issue({ field: 'periodNo', value: '第九节', candidates: ['第1节'] })])
@@ -282,7 +275,7 @@ describe('映射步骤状态', () => {
     expect(lookupType('className')).toBe('class')
     expect(lookupType('courseName')).toBe('course')
     expect(lookupType('teacherName')).toBe('teacher')
-    expect(lookupType('roomName')).toBe('room')
+    expect(lookupType('unknownField')).toBeNull()
     expect(lookupType('periodNo')).toBeNull()
     expect(fieldLabel('dayOfWeek')).toBe('星期')
     expect(fieldLabel('unknown')).toBe('unknown')
@@ -292,7 +285,6 @@ describe('映射步骤状态', () => {
     expect(createRequiresGrade('className')).toBe(true)
     expect(createRequiresGrade('courseName')).toBe(false)
     expect(createRequiresGrade('teacherName')).toBe(false)
-    expect(createRequiresGrade('roomName')).toBe(false)
   })
 
   it('疑似教师值的行号映射成网格课节 id', () => {

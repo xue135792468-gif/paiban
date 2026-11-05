@@ -24,25 +24,10 @@ public enum ConstraintType {
             "指定行政班每周这些课节必须留空，原有周课时安排到其他位置",
             List.of(Param.idOptional("classId", "行政班（留空表示全校）"), Param.day("dayOfWeek", "星期"),
                     Param.period("periodNo", "第几节"))),
-    ROOM_CONFLICT("教室不冲突", Category.RESOURCE, true, 100,
-            "同一教室在同一课节只能被一节课占用", List.of()),
-    ROOM_CAPACITY_FIT("教室容量足够", Category.RESOURCE, true, 100,
-            "教室容量不得小于班级人数", List.of()),
-
     TEACHER_UNAVAILABLE("教师禁排时段", Category.PREFERENCE, true, 100,
             "指定教师在某个课节不排课（如周三下午教研）",
             List.of(Param.id("teacherId", "教师"), Param.day("dayOfWeek", "星期"),
                     Param.period("periodNo", "第几节"))),
-    TEACHER_MEETING_BLOCKED("教研活动禁排", Category.PREFERENCE, true, 100,
-            "指定学科教师在某课节统一参加教研，不排课",
-            List.of(Param.textOptional("subject", "学科（留空表示全部）"),
-                    Param.day("dayOfWeek", "星期"), Param.period("periodNo", "第几节"))),
-    COURSE_REQUIRED_ROOM_TYPE("课程指定教室类型", Category.RESOURCE, true, 100,
-            "课程必须安排在指定类型的教室（如体育在操场）",
-            List.of(Param.id("courseId", "课程"), Param.roomType("roomType", "教室类型"))),
-    COURSE_NOT_IN_EVENING("课程不排晚自习", Category.PEDAGOGY, true, 100,
-            "指定课程不安排在晚自习时段",
-            List.of(Param.id("courseId", "课程"))),
     COURSE_UNAVAILABLE("课程禁排时段", Category.PEDAGOGY, true, 100,
             "指定课程在某些课节不排课（如体育不排上午第1、2节）",
             List.of(Param.id("courseId", "课程"), Param.day("dayOfWeek", "星期"),
@@ -63,14 +48,7 @@ public enum ConstraintType {
             "限制同一班级某课程的单日节数",
             List.of(Param.idOptional("courseId", "课程（留空表示全局默认）"),
                     Param.integer("maxPerDay", "每天最多节数", 1, 8, 2))),
-    EVENING_MAX("晚自习最多 N 节", Category.PEDAGOGY, false, 40,
-            "限制每天晚自习的课程节数",
-            List.of(Param.idOptional("classId", "行政班（留空表示全局默认）"),
-                    Param.integer("maxPerDay", "每天最多节数", 0, 6, 2))),
 
-    SPORT_NOT_FIRST_AFTERNOON("体育不在下午第一节", Category.PEDAGOGY, false, 70,
-            "体育课避免安排在午休后的第一节",
-            List.of(Param.idOptional("courseId", "课程（留空表示体育类）"))),
     CONSECUTIVE_LESSONS("连堂课连排", Category.PEDAGOGY, false, 60,
             "允许连堂的课程尽量安排在相邻课节",
             List.of(Param.id("courseId", "课程"), Param.integer("minConsecutive", "连排节数", 2, 4, 2))),
@@ -100,27 +78,15 @@ public enum ConstraintType {
             List.of()),
     PE_LAST_PERIOD_AVOID("体育不在最后一节", Category.PEDAGOGY, false, 35,
             "体育课避免安排在当天最后一节",
-            List.of(Param.idOptional("courseId", "课程（留空表示体育类）"))),
-    HEAD_TEACHER_FIRST_PERIOD("班主任课优先第一节", Category.PREFERENCE, false, 20,
-            "班主任所带课程尽量安排在本班第一节",
-            List.of());
+            List.of(Param.idOptional("courseId", "课程（留空表示体育类）")));
 
     /**
-     * Types the product no longer offers (ticket 09). They stay as constants so old
-     * {@code constraint_config}/{@code constraint_entry} rows still deserialize, but
-     * they are excluded from the catalogue, from
-     * {@link com.paiban.scheduling.solver.ConstraintSettings} and from every
-     * solver/checker path. Removing the constants would make {@code valueOf} fail and
-     * silently erase old configurations.
+     * Types the product no longer offers. The set is empty after the room and
+     * evening/timetable-shape rules were removed from the product; the mechanism stays
+     * so a future retirement can still hide a constant from the catalogue while old
+     * {@code constraint_config}/{@code constraint_entry} rows stay readable.
      */
-    private static final Set<ConstraintType> RETIRED = EnumSet.of(
-            ROOM_CONFLICT,
-            ROOM_CAPACITY_FIT,
-            COURSE_REQUIRED_ROOM_TYPE,
-            COURSE_NOT_IN_EVENING,
-            EVENING_MAX,
-            TEACHER_MEETING_BLOCKED,
-            HEAD_TEACHER_FIRST_PERIOD);
+    private static final Set<ConstraintType> RETIRED = EnumSet.noneOf(ConstraintType.class);
 
     /**
      * The single registry that decides which types read their configuration from
@@ -128,19 +94,15 @@ public enum ConstraintType {
      * during evaluation (V26/V27/V28 migrated the old single value into one entry row),
      * so "no rows" means "not configured".
      *
-     * <p>Ticket 10/04 added the five thresholds: one entry per scope, i.e. a global
-     * default (no object field) plus per-object exceptions. The six single-switch
-     * types never join it.
+     * <p>Ticket 10/04 added the four thresholds: one entry per scope, i.e. a global
+     * default (no object field) plus per-object exceptions. The single-switch types
+     * never join it.
      */
     private static final Set<ConstraintType> ENTRY_BACKED = EnumSet.of(
             CLASS_UNAVAILABLE,
             TEACHER_UNAVAILABLE,
-            TEACHER_MEETING_BLOCKED,
-            COURSE_REQUIRED_ROOM_TYPE,
-            COURSE_NOT_IN_EVENING,
             COURSE_UNAVAILABLE,
             SAME_COURSE_ONCE_PER_DAY,
-            SPORT_NOT_FIRST_AFTERNOON,
             CONSECUTIVE_LESSONS,
             COURSE_SPREAD,
             MAIN_SUBJECT_MORNING,
@@ -151,7 +113,6 @@ public enum ConstraintType {
             TEACHER_MAX_PER_DAY,
             CLASS_MAX_PER_DAY,
             COURSE_MAX_PER_DAY,
-            EVENING_MAX,
             TEACHER_MAX_CONSECUTIVE);
 
     /**
@@ -163,7 +124,6 @@ public enum ConstraintType {
     private static final Set<ConstraintType> SLOT_GROUPED = EnumSet.of(
             CLASS_UNAVAILABLE,
             TEACHER_UNAVAILABLE,
-            TEACHER_MEETING_BLOCKED,
             TEACHER_PREFERRED_SLOT,
             COURSE_UNAVAILABLE);
 
@@ -179,7 +139,6 @@ public enum ConstraintType {
             TEACHER_MAX_PER_DAY, new ThresholdScope("teacherId", "maxPerDay"),
             CLASS_MAX_PER_DAY, new ThresholdScope("classId", "maxPerDay"),
             COURSE_MAX_PER_DAY, new ThresholdScope("courseId", "maxPerDay"),
-            EVENING_MAX, new ThresholdScope("classId", "maxPerDay"),
             TEACHER_MAX_CONSECUTIVE, new ThresholdScope("teacherId", "maxConsecutive"));
 
     public enum Category {
@@ -200,7 +159,7 @@ public enum ConstraintType {
     }
 
     public enum ParamType {
-        ID, INT, DAY, PERIOD, TEXT, ROOM_TYPE
+        ID, INT, DAY, PERIOD, TEXT
     }
 
     public record Param(String name,
@@ -234,11 +193,6 @@ public enum ConstraintType {
 
         public static Param textOptional(String name, String label) {
             return new Param(name, label, ParamType.TEXT, false, null, null, null, List.of());
-        }
-
-        public static Param roomType(String name, String label) {
-            return new Param(name, label, ParamType.ROOM_TYPE, true, null, null, "NORMAL",
-                    List.of("NORMAL", "LAB", "PLAYGROUND", "MULTIMEDIA", "OTHER"));
         }
     }
 

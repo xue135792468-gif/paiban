@@ -9,8 +9,6 @@ import com.paiban.foundation.domain.Course;
 import com.paiban.foundation.domain.CourseRepository;
 import com.paiban.foundation.domain.Grade;
 import com.paiban.foundation.domain.GradeRepository;
-import com.paiban.foundation.domain.Room;
-import com.paiban.foundation.domain.RoomRepository;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.foundation.domain.TeachingClass;
@@ -19,11 +17,9 @@ import com.paiban.foundation.web.FoundationDtos.AuditLogDto;
 import com.paiban.foundation.web.FoundationDtos.ClassDto;
 import com.paiban.foundation.web.FoundationDtos.CourseDto;
 import com.paiban.foundation.web.FoundationDtos.GradeDto;
-import com.paiban.foundation.web.FoundationDtos.RoomDto;
 import com.paiban.foundation.web.FoundationDtos.SaveClassRequest;
 import com.paiban.foundation.web.FoundationDtos.SaveCourseRequest;
 import com.paiban.foundation.web.FoundationDtos.SaveGradeRequest;
-import com.paiban.foundation.web.FoundationDtos.SaveRoomRequest;
 import com.paiban.foundation.web.FoundationDtos.SaveTeacherRequest;
 import com.paiban.foundation.web.FoundationDtos.TeacherDto;
 import java.time.Instant;
@@ -38,7 +34,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class FoundationService {
 
     private final TeacherRepository teachers;
-    private final RoomRepository rooms;
     private final CourseRepository courses;
     private final GradeRepository grades;
     private final AdminClassRepository classes;
@@ -48,7 +43,6 @@ public class FoundationService {
 
     public FoundationService(
             TeacherRepository teachers,
-            RoomRepository rooms,
             CourseRepository courses,
             GradeRepository grades,
             AdminClassRepository classes,
@@ -56,7 +50,6 @@ public class FoundationService {
             AuditLogRepository auditLogs,
             SemesterService semesters) {
         this.teachers = teachers;
-        this.rooms = rooms;
         this.courses = courses;
         this.grades = grades;
         this.classes = classes;
@@ -103,22 +96,6 @@ public class FoundationService {
                         throw ApiException.conflict("工号已存在: " + request.employeeNo());
                     });
         }
-        // The database has unique indexes on the Feishu ids; check first so an
-        // administrator editing bindings gets a 409 instead of a 500.
-        if (request.feishuUserId() != null && !request.feishuUserId().isBlank()) {
-            teachers.findByFeishuUserId(request.feishuUserId())
-                    .filter(existing -> !existing.getId().equals(teacher.getId()))
-                    .ifPresent(existing -> {
-                        throw ApiException.conflict("飞书 UserID 已被其他教师绑定");
-                    });
-        }
-        if (request.feishuOpenId() != null && !request.feishuOpenId().isBlank()) {
-            teachers.findByFeishuOpenId(request.feishuOpenId())
-                    .filter(existing -> !existing.getId().equals(teacher.getId()))
-                    .ifPresent(existing -> {
-                        throw ApiException.conflict("飞书 OpenID 已被其他教师绑定");
-                    });
-        }
         teacher.setName(request.name());
         teacher.setEmployeeNo(blankToNull(request.employeeNo()));
         teacher.setPhone(blankToNull(request.phone()));
@@ -129,59 +106,9 @@ public class FoundationService {
         if (request.dingtalkUserId() != null) {
             teacher.setDingtalkUserId(blankToNull(request.dingtalkUserId()));
         }
-        if (request.feishuUserId() != null) {
-            teacher.setFeishuUserId(blankToNull(request.feishuUserId()));
-        }
-        if (request.feishuOpenId() != null) {
-            teacher.setFeishuOpenId(blankToNull(request.feishuOpenId()));
-        }
         if (request.active() != null) {
             teacher.setActive(request.active());
         }
-    }
-
-    // ---------- rooms ----------
-
-    @Transactional(readOnly = true)
-    public List<RoomDto> listRooms() {
-        return rooms.findAllByOrderByNameAsc().stream().map(this::toDto).toList();
-    }
-
-    @Transactional
-    public RoomDto createRoom(SaveRoomRequest request) {
-        if (rooms.findByName(request.name()).isPresent()) {
-            throw ApiException.conflict("教室名称已存在: " + request.name());
-        }
-        Room room = new Room();
-        apply(room, request);
-        room.setCreatedAt(Instant.now());
-        return toDto(rooms.save(room));
-    }
-
-    @Transactional
-    public RoomDto updateRoom(Long id, SaveRoomRequest request) {
-        Room room = rooms.findById(id).orElseThrow(() -> ApiException.notFound("教室不存在: " + id));
-        rooms.findByName(request.name())
-                .filter(existing -> !existing.getId().equals(id))
-                .ifPresent(existing -> {
-                    throw ApiException.conflict("教室名称已存在: " + request.name());
-                });
-        apply(room, request);
-        return toDto(room);
-    }
-
-    @Transactional
-    public void deleteRoom(Long id) {
-        rooms.delete(rooms.findById(id).orElseThrow(() -> ApiException.notFound("教室不存在: " + id)));
-    }
-
-    private void apply(Room room, SaveRoomRequest request) {
-        room.setName(request.name());
-        if (request.capacity() != null) {
-            room.setCapacity(request.capacity());
-        }
-        room.setType(request.type() == null || request.type().isBlank() ? "NORMAL" : request.type());
-        room.setBuilding(blankToNull(request.building()));
     }
 
     // ---------- courses ----------
@@ -220,10 +147,6 @@ public class FoundationService {
         if (request.allowConsecutive() != null) {
             course.setAllowConsecutive(request.allowConsecutive());
         }
-        if (request.requireOutdoor() != null) {
-            course.setRequireOutdoor(request.requireOutdoor());
-        }
-        course.setRequiredRoomType(blankToNull(request.requiredRoomType()));
         course.setColor(blankToNull(request.color()));
     }
 
@@ -438,28 +361,17 @@ public class FoundationService {
         return new TeacherDto(
                 teacher.getId(), teacher.getName(), teacher.getEmployeeNo(), teacher.getPhone(),
                 teacher.getEmail(), teacher.getSubject(), teacher.isActive(),
-                teacher.getDingtalkUserId(), teacher.getFeishuUserId(), teacher.getFeishuOpenId(),
-                bindingStatus(teacher));
+                teacher.getDingtalkUserId(), bindingStatus(teacher));
     }
 
     private static String bindingStatus(Teacher teacher) {
-        boolean dingtalk = teacher.getDingtalkUserId() != null;
-        boolean feishu = teacher.getFeishuUserId() != null || teacher.getFeishuOpenId() != null;
-        if (dingtalk && feishu) {
-            return "both";
-        }
-        return dingtalk ? "dingtalk" : feishu ? "feishu" : "none";
-    }
-
-    private RoomDto toDto(Room room) {
-        return new RoomDto(room.getId(), room.getName(), room.getCapacity(), room.getType(), room.getBuilding());
+        return teacher.getDingtalkUserId() != null ? "dingtalk" : "none";
     }
 
     private CourseDto toDto(Course course) {
         return new CourseDto(
                 course.getId(), course.getName(), course.getSubject(), course.isAllowConsecutive(),
-                course.isRequireOutdoor(), course.getRequiredRoomType(), course.getColor(),
-                course.isActive());
+                course.getColor(), course.isActive());
     }
 
     private GradeDto toDto(Grade grade) {

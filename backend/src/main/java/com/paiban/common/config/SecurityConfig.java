@@ -81,9 +81,6 @@ public class SecurityConfig {
                                     "/api/auth/login",
                                     "/api/auth/dingtalk",
                                     "/api/auth/dingtalk/config",
-                                    "/api/auth/feishu",
-                                    "/api/auth/feishu/config",
-                                    "/api/auth/feishu/bind",
                                     "/api/health",
                                     "/actuator/**")
                             .permitAll()
@@ -94,7 +91,6 @@ public class SecurityConfig {
                         auth.requestMatchers("/h2-console/**").permitAll();
                     }
                     auth.requestMatchers("/api/integrations/dingtalk/event").permitAll()
-                            .requestMatchers("/api/integrations/feishu/event").permitAll()
                             .anyRequest().authenticated();
                 })
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

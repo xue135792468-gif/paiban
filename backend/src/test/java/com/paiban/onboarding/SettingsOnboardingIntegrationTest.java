@@ -38,7 +38,7 @@ class SettingsOnboardingIntegrationTest extends ApiIntegrationTest {
         Map<String, String> initial = as(token).when().get("/api/settings")
                 .then().statusCode(200).extract().jsonPath().getMap("$");
         assertThat(initial).containsKeys(
-                "substitution.approval-mode", "notification.scope", "ai.features.substitute-recommendation");
+                "school.name", "notification.scope", "ai.features.substitute-recommendation");
         assertThat(initial.get("ai.features.substitute-recommendation")).isEqualTo("false");
 
         Map<String, String> updated = as(token).body(Map.of(

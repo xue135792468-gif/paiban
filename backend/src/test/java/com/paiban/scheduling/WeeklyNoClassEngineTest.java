@@ -17,7 +17,6 @@ import com.paiban.scheduling.solver.ConstraintSettingsHolder;
 import com.paiban.scheduling.solver.Lesson;
 import com.paiban.scheduling.solver.PaibanConstraintProvider;
 import com.paiban.scheduling.solver.PeriodSlot;
-import com.paiban.scheduling.solver.RoomSlot;
 import com.paiban.scheduling.solver.TimetableSolution;
 import com.paiban.substitution.plan.PlanFixtures;
 import com.paiban.substitution.plan.PlanMove;
@@ -69,17 +68,17 @@ class WeeklyNoClassEngineTest {
     @Test
     void searchAndIndependentVerifierRejectMovingIntoTheUnavailableSlot() throws Exception {
         PlanFixtures.Builder builder = base(settings(false));
-        long a = builder.addLesson(1, 1, 1, 1L, 1, 1);
-        long b = builder.addLesson(1, 2, 2, 2L, 1, 2);
+        long a = builder.addLesson(1, 1, 1, 1, 1);
+        long b = builder.addLesson(1, 2, 2, 1, 2);
         PlanSnapshot snapshot = builder.build();
         var result = SwapPlanner.plan(snapshot, new SwapPlanner.Request(1, a,
                 PlanFixtures.MONDAY, 102), SwapPlanner.Options.of(1, 2, ExchangeRankingPreset.MIN_IMPACT));
         assertThat(result.candidates()).isEmpty();
         assertThat(result.diagnoses()).extracting(d -> d.code()).contains("CLASS_UNAVAILABLE");
         var moves = List.of(
-                new PlanMove(a, 1, 1, 1, 1L, 101, 1, 1, PlanFixtures.MONDAY,
+                new PlanMove(a, 1, 1, 1, 101, 1, 1, PlanFixtures.MONDAY,
                         102, 1, 2, PlanFixtures.MONDAY, 0),
-                new PlanMove(b, 1, 2, 2, 2L, 102, 1, 2, PlanFixtures.MONDAY,
+                new PlanMove(b, 1, 2, 2, 102, 1, 2, PlanFixtures.MONDAY,
                         101, 1, 1, PlanFixtures.MONDAY, 1));
         var verification = PlanVerifier.verify(snapshot, moves, PlanVerifier.Kind.SWAP, -1);
         assertThat(verification.passed()).isFalse();
@@ -111,7 +110,6 @@ class WeeklyNoClassEngineTest {
     private static PlanFixtures.Builder base(ConstraintSettings settings) {
         PlanFixtures.Builder builder = PlanFixtures.builder().days(1).periodsPerDay(3).settings(settings)
                 .adminClass(1, "A班", 40, null).adminClass(2, "B班", 40, null)
-                .room(1, "A教室", "NORMAL", 50).room(2, "B教室", "NORMAL", 50)
                 .course(1, "C1", null).course(2, "C2", null);
         for (int id = 1; id <= 4; id++) builder.teacher(id, "T" + id, "S");
         return builder;
@@ -119,24 +117,21 @@ class WeeklyNoClassEngineTest {
 
     private static List<LessonView> views(PlanSnapshot snapshot) {
         return snapshot.baseline().stream().map(row -> new LessonView(row.entryId(), row.classId(),
-                row.courseId(), row.teacherId(), row.roomId(), row.periodId(), 40)).toList();
+                row.courseId(), row.teacherId(), row.periodId(), 40)).toList();
     }
 
     private static HardSoftScore score(PlanSnapshot snapshot) {
         ConstraintSettingsHolder.set(snapshot.settings());
         Map<Long, PeriodSlot> periods = new HashMap<>();
         snapshot.periods().values().forEach(p -> periods.put(p.id(), new PeriodSlot(p.id(), p.dayOfWeek(),
-                p.periodNo(), p.section(), p.periodNo() == 1, p.periodNo() == 3, false)));
-        Map<Long, RoomSlot> rooms = new HashMap<>();
-        snapshot.rooms().values().forEach(r -> rooms.put(r.id(), new RoomSlot(r.id(), r.name(), r.type(), r.capacity())));
+                p.periodNo(), p.periodNo() == 1, p.periodNo() == 3)));
         List<Lesson> lessons = snapshot.baseline().stream().map(row -> {
             Lesson lesson = new Lesson(row.entryId(), row.entryId(), row.courseId(), "C" + row.courseId(),
-                    row.teacherId(), row.classId(), null, "S", null, false, 40, 0);
+                    row.teacherId(), row.classId(), null, "S", false, 40, 0);
             lesson.setPeriod(periods.get(row.periodId()));
-            lesson.setRoom(rooms.get(row.roomId()));
             return lesson;
         }).toList();
-        TimetableSolution solution = new TimetableSolution(lessons, List.copyOf(periods.values()), List.copyOf(rooms.values()));
+        TimetableSolution solution = new TimetableSolution(lessons, List.copyOf(periods.values()));
         var config = new SolverConfig().withSolutionClass(TimetableSolution.class)
                 .withEntityClasses(Lesson.class).withConstraintProviderClass(PaibanConstraintProvider.class);
         ScoreManager.create(SolverFactory.create(config)).updateScore(solution);

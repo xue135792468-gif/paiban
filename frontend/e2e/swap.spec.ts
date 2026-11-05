@@ -73,9 +73,7 @@ async function seedSwapSchool(api: APIRequestContext): Promise<SwapSeed> {
   })
   await apiCall(api, token, 'post', `/semesters/${semester.id}/set-current`)
   await apiCall(api, token, 'post', `/semesters/${semester.id}/periods/default`, {
-    morningCount: 4,
-    afternoonCount: 4,
-    eveningCount: 0,
+    periodCount: 8,
     days: [1, 2, 3, 4, 5],
   })
 
@@ -133,12 +131,6 @@ async function seedSwapSchool(api: APIRequestContext): Promise<SwapSeed> {
     name: chineseAName,
     subject: '语文',
     allowConsecutive: false,
-  })
-
-  await apiCall(api, token, 'post', '/rooms', {
-    name: `教室-${suffix}`,
-    capacity: 50,
-    type: 'NORMAL',
   })
 
   await apiCall(api, token, 'post', '/assignments', {
@@ -354,7 +346,6 @@ test('场景 2c：不同科目的跨班换课被服务端拒绝且原因可读',
   const result = await apiCall(api, token, 'post', `/timetable-drafts/${draftId}/swap`, {
     lessonId: chinese.id,
     targetLessonId: mathB.id,
-    swapRooms: false,
   })
 
   expect(result.saved).toBe(false)
@@ -398,7 +389,7 @@ test('场景 2d：已发布课表的换课入口不可用', async ({ page }) => 
   const chinese = lessonOf(detail, seed.classAId, seed.chineseAId)
   const swapResponse = await api.post(`${API}/timetable-drafts/${draftId}/swap`, {
     headers: { Authorization: `Bearer ${token}` },
-    data: { lessonId: math.id, targetLessonId: chinese.id, swapRooms: false },
+    data: { lessonId: math.id, targetLessonId: chinese.id },
   })
   expect(swapResponse.status()).toBe(400)
   expect((await swapResponse.json()).message).toContain('课表已发布')

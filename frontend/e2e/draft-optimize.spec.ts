@@ -1,7 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import {
   API,
-  apiCall,
   apiLogin,
   draftDetail,
   lockLessons,
@@ -29,29 +28,6 @@ interface JobView {
   draftId: number | null
   sourceDraftId: number | null
 }
-
-/**
- * The draft comparison is a senior-mode feature (junior mode hides it), and a fresh
- * e2e database defaults to junior. Set senior for this file and restore afterwards
- * so later specs keep the default they assume.
- */
-async function setSchoolType(type: 'junior' | 'senior'): Promise<void> {
-  const api = await newContext()
-  try {
-    const token = await apiLogin(api)
-    await apiCall(api, token, 'put', '/settings', { 'school.type': type })
-  } finally {
-    await api.dispose()
-  }
-}
-
-test.beforeAll(async () => {
-  await setSchoolType('senior')
-})
-
-test.afterAll(async () => {
-  await setSchoolType('junior')
-})
 
 async function listJobs(api: APIRequestContext, semesterId: number): Promise<JobView[]> {
   const token = await apiLogin(api)

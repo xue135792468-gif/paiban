@@ -17,8 +17,6 @@ export interface Entry {
   dayOfWeek: number
   substituted: boolean
   /** 工作台需要的补充字段；教师自助表单不会用到。 */
-  roomName?: string | null
-  room?: string | null
   periodLabel?: string | null
   lessonDate?: string | null
   targetLessonDate?: string | null
@@ -48,8 +46,6 @@ export interface RequestRow {
   type: 'SWAP' | 'COVER'
   reason?: string
   status: string
-  approvalMode: string
-  approvalComment?: string
   createdAt: string
 }
 
@@ -64,7 +60,6 @@ export interface RecordRow {
   courseName: string
   originalTeacherName: string
   substituteTeacherName: string
-  roomName?: string
   status: string
   fromPeriodLabel: string
   toPeriodLabel: string
@@ -76,7 +71,6 @@ export interface PlanMove {
   className: string
   courseName: string
   teacherName: string
-  roomName?: string
   fromPeriodLabel: string
   toPeriodLabel: string
   fromDate: string
@@ -147,11 +141,7 @@ export interface Recommendation {
 
 const STATUS_LABELS: Record<string, string> = {
   SUBMITTED: '已提交',
-  PENDING_APPROVAL: '待审批',
-  APPROVED: '已批准',
-  REJECTED: '已驳回',
   EFFECTIVE: '已生效',
-  SUPERSEDED: '已被替代',
   CANCELLED: '已取消',
   PROPOSED: '待选择',
   EXPIRED: '已过期',
@@ -162,10 +152,9 @@ export function statusLabel(status: string) {
 }
 
 export function statusType(status: string): 'success' | 'danger' | 'warning' | 'info' {
-  if (status === 'EFFECTIVE' || status === 'APPROVED') return 'success'
-  if (status === 'REJECTED' || status === 'EXPIRED') return 'danger'
-  if (status === 'PENDING_APPROVAL' || status === 'PROPOSED') return 'warning'
-  if (status === 'SUPERSEDED') return 'info'
+  if (status === 'EFFECTIVE') return 'success'
+  if (status === 'EXPIRED') return 'danger'
+  if (status === 'PROPOSED') return 'warning'
   return 'info'
 }
 
@@ -198,120 +187,3 @@ export function isPastDate(dateIso: string): boolean {
 }
 
 // ---------------------------------------------------------------------
-// 历史调代日期转换（票 02）：预检报告、转换状态与确认批次
-// ---------------------------------------------------------------------
-
-export interface ConversionLesson {
-  substitutionId?: number | null
-  teacherId: number
-  teacherName?: string | null
-  roomId?: number | null
-  roomName?: string | null
-  dayOfWeek: number
-  periodNo: number
-  periodLabel: string
-  className?: string | null
-  courseName?: string | null
-}
-
-/** 某一天该条目转换前后的差异；before/after 为 null 表示该日无课。 */
-export interface ConversionAffectedDate {
-  date: string
-  restoredToBaseline: boolean
-  before: ConversionLesson | null
-  after: ConversionLesson | null
-}
-
-export interface ConversionItem {
-  substitutionId: number
-  requestId?: number | null
-  planId?: number | null
-  entryId: number
-  type: 'SWAP' | 'COVER'
-  status: 'CONVERTIBLE' | 'BLOCKED' | 'ALREADY_CONVERTED'
-  basis?: string | null
-  effectiveDate?: string | null
-  lessonDate?: string | null
-  targetLessonDate?: string | null
-  blockerCode?: string | null
-  blockerReason?: string | null
-  className?: string | null
-  courseName?: string | null
-  originalTeacherName?: string | null
-  substituteTeacherName?: string | null
-  fromPeriodLabel?: string | null
-  affectedDates: ConversionAffectedDate[]
-}
-
-export interface ConversionSummary {
-  totalRows: number
-  convertible: number
-  blocked: number
-  alreadyConverted: number
-  changes: number
-}
-
-export interface ConversionReport {
-  semesterId: number
-  generatedAt: string
-  summary: ConversionSummary
-  items: ConversionItem[]
-}
-
-export interface ConversionItemRecord {
-  substitutionId: number
-  entryId: number
-  type: string
-  lessonDateBefore?: string | null
-  targetLessonDateBefore?: string | null
-  lessonDateAfter?: string | null
-  targetLessonDateAfter?: string | null
-  basis?: string | null
-}
-
-export interface ConversionBatch {
-  id: number
-  status: 'CONVERTED' | 'FAILED'
-  legacyTotal: number
-  convertedCount: number
-  blockedCount: number
-  confirmedBy: string
-  confirmedAt: string
-  confirmationComment?: string | null
-  failureReason?: string | null
-  createdAt: string
-  items: ConversionItemRecord[]
-}
-
-export interface ConversionStatusInfo {
-  semesterId: number
-  legacyRowCount: number
-  convertibleCount: number
-  blockedCount: number
-  converted: boolean
-  canConfirm: boolean
-  conversions: ConversionBatch[]
-}
-
-export const CONVERSION_ITEM_STATUS_LABELS: Record<string, string> = {
-  CONVERTIBLE: '可转换',
-  BLOCKED: '阻塞',
-  ALREADY_CONVERTED: '已转换',
-}
-
-export const CONVERSION_BLOCKER_LABELS: Record<string, string> = {
-  MISSING_REQUEST: '缺失来源申请',
-  MISSING_MOVE: '无对应方案移动',
-  AMBIGUOUS_MOVE: '方案移动歧义',
-  VERSION_CONFLICT: '版本冲突',
-  UNKNOWN_TYPE: '无法唯一解释',
-}
-
-export function conversionItemStatusLabel(status: string) {
-  return CONVERSION_ITEM_STATUS_LABELS[status] ?? status
-}
-
-export function conversionBlockerLabel(code?: string | null) {
-  if (!code) return ''
-  return CONVERSION_BLOCKER_LABELS[code] ?? code
-}

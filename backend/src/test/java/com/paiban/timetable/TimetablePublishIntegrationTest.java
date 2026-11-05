@@ -41,16 +41,10 @@ class TimetablePublishIntegrationTest extends ApiIntegrationTest {
         List<Map<String, Object>> classEntries = as(token)
                 .when().get("/api/timetable/class/" + fixture.classId())
                 .then().statusCode(200).extract().jsonPath().getList("$");
-        long usedRoomId = ((Number) classEntries.get(0).get("roomId")).longValue();
-
         as(token).when().get("/api/timetable/teacher/" + fixture.teacherId())
                 .then().statusCode(200)
                 .body("$", hasSize(greaterThan(0)))
                 .body("teacherId", org.hamcrest.Matchers.everyItem(equalTo((int) fixture.teacherId())));
-
-        as(token).when().get("/api/timetable/room/" + usedRoomId)
-                .then().statusCode(200)
-                .body("$", hasSize(greaterThan(0)));
 
         as(token).when().get("/api/timetable/school")
                 .then().statusCode(200)
@@ -79,17 +73,6 @@ class TimetablePublishIntegrationTest extends ApiIntegrationTest {
 
         assertThat(baseline).hasSameSizeAs(latest);
         assertThat(baseline.get(0).get("id")).isEqualTo(latest.get(0).get("id"));
-    }
-
-    @Test
-    void publishNotifiesStaff() {
-        String token = adminToken();
-        ScheduleFixture.Result fixture = ScheduleFixture.solved(token, 5);
-        publish(token, fixture.draftId());
-
-        as(token).when().get("/api/notifications/recent")
-                .then().statusCode(200)
-                .body("title", org.hamcrest.Matchers.hasItem("课表已发布"));
     }
 
     @Test
@@ -147,9 +130,6 @@ class TimetablePublishIntegrationTest extends ApiIntegrationTest {
 
         Map<String, Object> move = new java.util.HashMap<>();
         move.put("periodId", ((Number) sameClassOther.get("periodId")).longValue());
-        if (first.get("roomId") != null) {
-            move.put("roomId", first.get("roomId"));
-        }
         move.put("force", true);
         as(token).body(move)
                 .when().patch("/api/timetable-drafts/" + fixture.draftId() + "/lessons/"

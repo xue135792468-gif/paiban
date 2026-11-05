@@ -21,7 +21,7 @@ describe('weekly requirement identity after a page reload', () => {
       })),
     }]
     const draft = useConstraintDraft()
-    draft.hydrate([type], saved, { isJunior: false })
+    draft.hydrate([type], saved)
     draft.addEntry(type.code)
     const row = draft.rows.value[0]!
     const added = row.entries.at(-1)!
@@ -39,7 +39,7 @@ describe('weekly requirement identity after a page reload', () => {
     expect(new Set(savedEntries.map((entry) => entry.groupKey)).size).toBe(4)
 
     const reloaded = useConstraintDraft()
-    reloaded.hydrate([type], payload as ConstraintConfigDto[], { isJunior: false })
+    reloaded.hydrate([type], payload as ConstraintConfigDto[])
     expect(reloaded.rows.value[0]!.entries).toHaveLength(4)
     expect(new Set(reloaded.rows.value[0]!.entries.map((entry) => entry.groupKey)).size).toBe(4)
     // The fourth requirement keeps its own slot and class after the round trip.

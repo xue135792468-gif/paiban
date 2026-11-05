@@ -32,7 +32,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * Ticket 01: locks are persisted, survive a reload, and every draft write entry point
  * honours them. The version on the draft is the shared optimistic protocol used by
- * moving, swapping, room filling and deleting.
+ * moving, swapping and deleting.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -64,8 +64,7 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
     private record World(long semesterId, List<Long> periods, long classA, long classB,
                          long chinese, long math, long english,
                          long teacherA, long teacherB, long mathTeacherA, long mathTeacherB,
-                         long englishTeacherA, long englishTeacherB,
-                         long room1, long room2, long room3, long room4, long room5, long room6) {}
+                         long englishTeacherA, long englishTeacherB) {}
 
     private record Seeded(long draftId, long chineseA, long mathA, long englishA,
                           long chineseB, long mathB, long englishB) {}
@@ -125,7 +124,7 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
         World world = world(token);
         Seeded seeded = seedMainDraft(world);
         long unassigned = lesson(world, seeded.draftId(), 101L, world.classA(),
-                world.chinese(), world.teacherA(), null, world.room1());
+                world.chinese(), world.teacherA(), null);
         long otherDraftLesson = seedOtherDraft(world);
 
         String username = "lock_" + TestData.suffix();
@@ -201,7 +200,7 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
 
         long freeForClassA = world.periods().get(3);
 
-        as(token).body(Map.of("periodId", freeForClassA, "roomId", world.room1()))
+        as(token).body(Map.of("periodId", freeForClassA))
                 .when().patch(MOVE.formatted(seeded.draftId(), seeded.chineseA()))
                 .then().statusCode(409)
                 .body("message", containsString("已锁定"));
@@ -218,17 +217,14 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(409)
                 .body("message", containsString("已锁定"));
 
-        as(token).when().delete(DRAFT.formatted(seeded.draftId()))
-                .then().statusCode(409)
-                .body("message", containsString("草稿含 1 节锁定课节"));
-        assertThat(drafts.findById(seeded.draftId())).isPresent();
-
+        // 票 15：锁只影响自动排课/换课找方案，不限制删除草稿。
+        // 这里先解锁是为了继续验证下面的移动/换位，但删除本身已允许含锁。
         as(token).body(Map.of("lessonIds", List.of(seeded.chineseA()), "locked", false, "expectedVersion", 1))
                 .when().put(LOCKS.formatted(seeded.draftId()))
                 .then().statusCode(200)
                 .body("version", equalTo(2));
 
-        as(token).body(Map.of("periodId", freeForClassA, "roomId", world.room1()))
+        as(token).body(Map.of("periodId", freeForClassA))
                 .when().patch(MOVE.formatted(seeded.draftId(), seeded.chineseA()))
                 .then().statusCode(200)
                 .body("saved", equalTo(true))
@@ -246,78 +242,19 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void deletingALockedDraftWithoutConfirmationKeepsTheDraftAndItsLesson() {
+    void aLockedDraftCanBeDeletedWithoutAnyConfirmation() {
         String token = adminToken();
         World world = world(token);
         Seeded seeded = seedMainDraft(world);
         lockOne(token, seeded);
 
-        as(token).when().delete(DRAFT.formatted(seeded.draftId()))
-                .then().statusCode(409)
-                .body("message", containsString("草稿含 1 节锁定课节"));
+        // 票 15：含锁草稿不再需要「解锁并删除」确认，一次 DELETE 直接进回收站。
+        as(token).when().delete(DRAFT.formatted(seeded.draftId())).then().statusCode(200);
 
-        assertThat(drafts.findById(seeded.draftId())).isPresent();
-        assertThat(draftLessons.findById(seeded.chineseA())).isPresent();
-    }
-
-    @Test
-    void confirmedDeleteRejectsAStaleLockedCount() {
-        String token = adminToken();
-        World world = world(token);
-        Seeded seeded = seedMainDraft(world);
-        lockOne(token, seeded);
-
-        as(token).when().delete(DRAFT.formatted(seeded.draftId()) + "?unlockLocked=true&expectedLockedCount=0")
-                .then().statusCode(409)
-                .body("message", containsString("锁定状态已变化"));
-
-        assertThat(drafts.findById(seeded.draftId())).isPresent();
-        assertThat(draftLessons.findById(seeded.chineseA()).orElseThrow().isLocked()).isTrue();
-    }
-
-    @Test
-    void confirmedDeleteRequiresTheExpectedLockedCount() {
-        String token = adminToken();
-        World world = world(token);
-        Seeded seeded = seedMainDraft(world);
-        lockOne(token, seeded);
-
-        as(token).when().delete(DRAFT.formatted(seeded.draftId()) + "?unlockLocked=true")
-                .then().statusCode(400)
-                .body("message", containsString("删除含锁草稿需要确认锁定数量"));
-
-        assertThat(drafts.findById(seeded.draftId())).isPresent();
-        assertThat(draftLessons.findById(seeded.chineseA()).orElseThrow().isLocked()).isTrue();
-    }
-
-    @Test
-    void confirmedDeleteRejectsAStaleCountEvenWhenNothingIsLocked() {
-        String token = adminToken();
-        World world = world(token);
-        Seeded seeded = seedMainDraft(world);
-
-        as(token).when().delete(DRAFT.formatted(seeded.draftId()) + "?unlockLocked=true&expectedLockedCount=1")
-                .then().statusCode(409)
-                .body("message", containsString("锁定状态已变化"));
-
-        assertThat(drafts.findById(seeded.draftId())).isPresent();
-    }
-
-    @Test
-    void confirmedDeleteRecyclesTheDraftAndKeepsItsLessons() {
-        String token = adminToken();
-        World world = world(token);
-        Seeded seeded = seedMainDraft(world);
-        lockOne(token, seeded);
-
-        as(token).when().delete(DRAFT.formatted(seeded.draftId()) + "?unlockLocked=true&expectedLockedCount=1")
-                .then().statusCode(200);
-
-        // Ticket 04: deletion is soft — the row, its lessons and its locks stay for the
-        // 7-day recycle bin, so a restore returns the very same timetable.
+        // Ticket 04：删除仍是软删除，课节与锁都留着，7 天内可原样恢复。
         assertThat(drafts.findById(seeded.draftId())).isPresent();
         assertThat(drafts.findById(seeded.draftId()).orElseThrow().getDeletedAt()).isNotNull();
-        assertThat(draftLessons.findById(seeded.chineseA())).isPresent();
+        assertThat(draftLessons.findById(seeded.chineseA()).orElseThrow().isLocked()).isTrue();
         assertThat(auditLogs.findTop100ByOrderByCreatedAtDesc())
                 .anySatisfy(log -> {
                     assertThat(log.getAction()).isEqualTo("DELETE_TIMETABLE_DRAFT");
@@ -338,40 +275,6 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
                 .hasValueSatisfying(row -> assertThat(row.getDeletedAt()).isNotNull());
     }
 
-    @Test
-    void listAndDetailExposeTheLockedCountForTheDeleteConfirmation() {
-        String token = adminToken();
-        World world = world(token);
-        Seeded seeded = seedMainDraft(world);
-        lockOne(token, seeded);
-
-        assertThat(listedLockedCount(token, world.semesterId(), seeded.draftId())).isEqualTo(1);
-        assertThat(detailLockedCount(token, seeded.draftId())).isEqualTo(1);
-
-        as(token).body(Map.of("lessonIds", List.of(seeded.chineseA()), "locked", false, "expectedVersion", 1))
-                .when().put(LOCKS.formatted(seeded.draftId()))
-                .then().statusCode(200);
-
-        assertThat(listedLockedCount(token, world.semesterId(), seeded.draftId())).isZero();
-        assertThat(detailLockedCount(token, seeded.draftId())).isZero();
-    }
-
-    private long listedLockedCount(String token, long semesterId, long draftId) {
-        List<Map<String, Object>> rows = as(token)
-                .when().get("/api/timetable-drafts?semesterId=" + semesterId)
-                .then().statusCode(200).extract().jsonPath().getList("$");
-        Map<String, Object> row = rows.stream()
-                .filter(item -> ((Number) item.get("id")).longValue() == draftId)
-                .findFirst()
-                .orElseThrow();
-        return ((Number) row.get("lockedCount")).longValue();
-    }
-
-    private long detailLockedCount(String token, long draftId) {
-        return as(token).when().get(DRAFT.formatted(draftId))
-                .then().statusCode(200).extract().jsonPath().getLong("draft.lockedCount");
-    }
-
     private void lockOne(String token, Seeded seeded) {
         as(token).body(Map.of("lessonIds", List.of(seeded.chineseA()), "locked", true, "expectedVersion", 0))
                 .when().put(LOCKS.formatted(seeded.draftId()))
@@ -385,7 +288,7 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
         Seeded seeded = seedMainDraft(world);
         as(token).when().post(DRAFT.formatted(seeded.draftId()) + "/publish").then().statusCode(200);
 
-        as(token).body(Map.of("periodId", world.periods().get(3), "roomId", world.room1()))
+        as(token).body(Map.of("periodId", world.periods().get(3)))
                 .when().patch(MOVE.formatted(seeded.draftId(), seeded.chineseA()))
                 .then().statusCode(400)
                 .body("message", containsString("课表已发布"));
@@ -394,33 +297,6 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
                 .isEqualTo(world.periods().get(0));
     }
 
-    @Test
-    void roomFillStillFillsARoomOnALockedLesson() {
-        String token = adminToken();
-        World world = world(token);
-        long draftId = draft(world);
-        long first = lesson(world, draftId, 201L, world.classA(),
-                world.chinese(), world.teacherA(), world.periods().get(0), null);
-        long second = lesson(world, draftId, 202L, world.classA(),
-                world.math(), world.mathTeacherA(), world.periods().get(1), null);
-
-        as(token).body(Map.of("lessonIds", List.of(first), "locked", true, "expectedVersion", 0))
-                .when().put(LOCKS.formatted(draftId))
-                .then().statusCode(200)
-                .body("version", equalTo(1));
-
-        as(token).when().post(DRAFT.formatted(draftId) + "/room-fill")
-                .then().statusCode(200)
-                .body("applied", equalTo(true))
-                .body("assignedLessons", equalTo(2));
-
-        List<Map<String, Object>> lessons = lessonsOf(token, draftId);
-        assertThat(lesson(lessons, first).get("roomId")).isNotNull();
-        assertThat(lesson(lessons, first).get("locked")).isEqualTo(true);
-        assertThat(lesson(lessons, second).get("roomId")).isNotNull();
-        assertThat(as(token).when().get(DRAFT.formatted(draftId))
-                .then().statusCode(200).extract().jsonPath().getLong("draft.version")).isEqualTo(2);
-    }
 
     @Test
     void staleVersionIsRejectedAndVersionOnlyMovesOnRealWrites() {
@@ -535,10 +411,7 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
         long englishTeacherA = TestData.teacher(token, "锁测英语甲" + suffix);
         long englishTeacherB = TestData.teacher(token, "锁测英语乙" + suffix);
         return new World(semesterId, periods, classA, classB, chinese, math, english,
-                teacherA, teacherB, mathTeacherA, mathTeacherB, englishTeacherA, englishTeacherB,
-                TestData.room(token, "锁测房1" + suffix), TestData.room(token, "锁测房2" + suffix),
-                TestData.room(token, "锁测房3" + suffix), TestData.room(token, "锁测房4" + suffix),
-                TestData.room(token, "锁测房5" + suffix), TestData.room(token, "锁测房6" + suffix));
+                teacherA, teacherB, mathTeacherA, mathTeacherB, englishTeacherA, englishTeacherB);
     }
 
     private long draft(World world) {
@@ -555,27 +428,27 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
         return new Seeded(
                 draftId,
                 lesson(world, draftId, 1L, world.classA(), world.chinese(), world.teacherA(),
-                        world.periods().get(0), world.room1()),
+                        world.periods().get(0)),
                 lesson(world, draftId, 2L, world.classA(), world.math(), world.mathTeacherA(),
-                        world.periods().get(1), world.room2()),
+                        world.periods().get(1)),
                 lesson(world, draftId, 3L, world.classA(), world.english(), world.englishTeacherA(),
-                        world.periods().get(2), world.room3()),
+                        world.periods().get(2)),
                 lesson(world, draftId, 4L, world.classB(), world.chinese(), world.teacherB(),
-                        world.periods().get(3), world.room4()),
+                        world.periods().get(3)),
                 lesson(world, draftId, 5L, world.classB(), world.math(), world.mathTeacherB(),
-                        world.periods().get(4), world.room5()),
+                        world.periods().get(4)),
                 lesson(world, draftId, 6L, world.classB(), world.english(), world.englishTeacherB(),
-                        world.periods().get(5), world.room6()));
+                        world.periods().get(5)));
     }
 
     private long seedOtherDraft(World world) {
         long draftId = draft(world);
         return lesson(world, draftId, 301L, world.classA(), world.chinese(), world.teacherA(),
-                world.periods().get(0), world.room1());
+                world.periods().get(0));
     }
 
     private long lesson(World world, long draftId, long assignmentId, long classId,
-                        long courseId, long teacherId, Long periodId, Long roomId) {
+                        long courseId, long teacherId, Long periodId) {
         DraftLesson lesson = new DraftLesson();
         lesson.setDraftId(draftId);
         lesson.setAssignmentId(assignmentId);
@@ -585,7 +458,6 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
         lesson.setAdminClassId(classId);
         lesson.setStudentCount(45);
         lesson.setPeriodId(periodId);
-        lesson.setRoomId(roomId);
         return draftLessons.save(lesson).getId();
     }
 

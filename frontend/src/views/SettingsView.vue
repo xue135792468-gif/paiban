@@ -14,17 +14,6 @@
         <el-form-item label="学校名称">
           <el-input v-model="form['school.name']" placeholder="用于课表导出与 PDF 页眉" />
         </el-form-item>
-        <el-form-item>
-          <template #label>
-            学校类型
-            <InfoTooltip field="settings.schoolType" />
-          </template>
-          <el-radio-group v-model="form['school.type']">
-            <el-radio-button value="junior">初中</el-radio-button>
-            <el-radio-button value="senior">高中</el-radio-button>
-          </el-radio-group>
-          <div class="hint">初中模式会隐藏权重、模板、多草稿对比等高级功能。</div>
-        </el-form-item>
         <el-form-item label="学校 Logo">
           <div class="logo-row">
             <el-upload :auto-upload="false" :show-file-list="false" accept="image/png,image/jpeg" :on-change="uploadLogo">
@@ -40,7 +29,6 @@
     </el-card>
     <SubstitutionPolicyCard v-model="form" />
     <SubstitutionRecipientsCard />
-    <ImPlatformCard @switched="reloadIntegrations" />
 
     <el-card id="dingtalk-integration" shadow="never">
       <template #header>
@@ -87,73 +75,11 @@
           :logs="logs"
           @save="saveDingtalk"
           @preview="previewSync"
-          @cleared="reloadIntegrations"
+          @cleared="reloadDingtalk"
         />
       </el-form>
       <el-alert v-if="syncResult" :title="syncResult.message" :type="syncResult.success ? 'success' : 'error'" :closable="false" show-icon class="sync-result" />
       <DingTalkSyncPreview v-if="syncPreview" :preview="syncPreview" :confirming="confirming" @confirm="confirmSync" />
-    </el-card>
-
-    <el-card id="feishu-integration" shadow="never">
-      <template #header>
-        <div class="card-head">
-          <span class="card-title">飞书集成</span>
-          <el-tag :type="feishu.enabled ? 'success' : 'info'" size="small">
-            {{ feishu.enabled ? '已启用' : '未启用' }}
-          </el-tag>
-        </div>
-      </template>
-      <el-form label-width="110px" class="form">
-        <el-form-item label="启用集成">
-          <el-switch v-model="feishu.enabled" />
-          <span class="hint inline">关闭后飞书免登、组织同步与通知停用，系统完整可用。</span>
-        </el-form-item>
-        <el-form-item label="App ID">
-          <el-input v-model="feishu.appId" placeholder="飞书企业自建应用 App ID" />
-        </el-form-item>
-        <el-form-item label="App Secret">
-          <el-input
-            v-model="feishu.appSecret"
-            type="password"
-            show-password
-            :placeholder="feishu.hasSecret ? '已配置，不修改请留空' : '请输入 App Secret'"
-          />
-        </el-form-item>
-        <el-form-item label="验证 Token">
-          <el-input
-            v-model="feishu.verificationToken"
-            :placeholder="
-              feishu.verificationTokenConfigured
-                ? '已配置，不修改请留空'
-                : '用于校验 /integrations/feishu/event 回调（X-Feishu-Token）'
-            "
-          />
-        </el-form-item>
-        <el-form-item v-if="!isJunior" label="同步策略">
-          <el-select v-model="feishu.syncStrategy" style="width: 220px">
-            <el-option label="飞书为准（覆盖本地）" value="feishu" />
-            <el-option label="本地为准（只补空字段）" value="local" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" :loading="savingFeishu" @click="saveFeishu">保存飞书配置</el-button>
-          <el-button :loading="syncingFeishu" :disabled="!feishu.enabled" @click="syncFeishu">
-            立即同步教职工
-          </el-button>
-        </el-form-item>
-      </el-form>
-      <el-alert v-if="feishuSyncResult" :title="feishuSyncResult.message" :type="feishuSyncResult.success ? 'success' : 'error'" :closable="false" show-icon class="sync-result" />
-      <el-collapse class="logs">
-        <el-collapse-item title="同步日志" name="feishu-logs">
-          <el-table v-loading="loadingFeishuLogs" :data="feishuLogs" size="small" border>
-            <el-table-column prop="createdAt" label="时间" width="180">
-              <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
-            </el-table-column>
-            <el-table-column prop="detail" label="详情" />
-            <el-table-column prop="successRows" label="成功" width="80" />
-          </el-table>
-        </el-collapse-item>
-      </el-collapse>
     </el-card>
 
     <el-card shadow="never">
@@ -241,11 +167,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
+import { ElMessage, type UploadFile } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { http } from '@/api/http'
-import { useSettingsStore } from '@/stores/settings'
-import ImPlatformCard from '@/components/ImPlatformCard.vue'
 import InfoTooltip from '@/components/InfoTooltip.vue'
 import SubstitutionPolicyCard from '@/components/settings/SubstitutionPolicyCard.vue'
 import SubstitutionRecipientsCard from '@/components/settings/SubstitutionRecipientsCard.vue'
@@ -255,7 +179,6 @@ import { resetTour, startTour } from '@/onboarding/tour'
 import { serverMessage } from '@/api/errors'
 import type {
   DingTalkConfig,
-  FeishuConfig,
   SyncConfirmRequest,
   SyncPreview,
   SyncResult,
@@ -269,8 +192,6 @@ interface SyncLog {
 }
 
 const form = ref<Record<string, string>>({})
-const settings = useSettingsStore()
-const isJunior = computed(() => settings.schoolType === 'junior')
 const dingtalk = reactive<DingTalkConfig>({
   enabled: false,
   appKey: '',
@@ -283,26 +204,12 @@ const dingtalk = reactive<DingTalkConfig>({
 const logs = ref<SyncLog[]>([])
 const syncResult = ref<SyncResult | null>(null)
 const syncPreview = ref<SyncPreview | null>(null)
-const feishu = reactive<FeishuConfig>({
-  enabled: false,
-  appId: '',
-  appSecret: '',
-  hasSecret: false,
-  syncStrategy: 'feishu',
-  verificationToken: '',
-  verificationTokenConfigured: false,
-})
-const feishuLogs = ref<SyncLog[]>([])
-const feishuSyncResult = ref<SyncResult | null>(null)
 const saving = ref(false)
 const savingDingtalk = ref(false)
 const previewing = ref(false)
 const confirming = ref(false)
-const savingFeishu = ref(false)
-const syncingFeishu = ref(false)
 const uploading = ref(false)
 const loadingLogs = ref(false)
-const loadingFeishuLogs = ref(false)
 const router = useRouter()
 
 const logoName = computed(() => {
@@ -319,10 +226,6 @@ function setConfidenceThreshold(value: number | undefined) {
 function reopenTour() {
   resetTour()
   startTour('basic')
-}
-
-function formatTime(value: string) {
-  return value ? value.replace('T', ' ').slice(0, 16) : ''
 }
 
 async function loadSettings() {
@@ -348,63 +251,21 @@ async function loadLogs() {
   }
 }
 
-async function loadFeishu() {
-  const { data } = await http.get('/integrations/feishu/config')
-  Object.assign(feishu, data)
-  feishu.appSecret = ''
-  feishu.verificationToken = ''
-}
-
-async function loadFeishuLogs() {
-  loadingFeishuLogs.value = true
-  try {
-    const { data } = await http.get('/integrations/feishu/logs')
-    feishuLogs.value = data
-  } finally {
-    loadingFeishuLogs.value = false
-  }
-}
-
-/** A platform switch flips both integrations, so every integration card reloads. */
-async function reloadIntegrations() {
-  await Promise.all([
-    loadSettings(),
-    loadDingtalk(),
-    loadLogs(),
-    loadFeishu(),
-    loadFeishuLogs(),
-  ])
+/** A cleared DingTalk config must refresh both its form and its operation log. */
+async function reloadDingtalk() {
+  await Promise.all([loadDingtalk(), loadLogs()])
 }
 
 async function saveSettings() {
-  const typeChanged = (form.value['school.type'] ?? 'junior') !== settings.schoolType
-  if (typeChanged) {
-    try {
-      await ElMessageBox.confirm(
-        '切换后将刷新页面，初中模式将隐藏高级功能',
-        '切换学校类型',
-        { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' },
-      )
-    } catch {
-      return
-    }
-  }
-
   saving.value = true
   try {
-    // Read-only settings: the logo is written by the upload endpoint, and the
-    // active IM platform only by PUT /integrations/platform.
+    // Read-only setting: the logo is written by the upload endpoint.
     const payload = { ...form.value }
     delete payload['school.logo-path']
-    delete payload['integration.active-platform']
     const { data } = await http.put('/settings', payload)
     Object.keys(data).forEach((key) => {
       form.value[key] = data[key]
     })
-    if (typeChanged) {
-      location.reload()
-      return
-    }
     ElMessage.success('设置已保存并立即生效')
   } catch (e: any) {
     ElMessage.error(serverMessage(e, '保存失败'))
@@ -470,46 +331,6 @@ async function confirmSync(request: SyncConfirmRequest) {
   }
 }
 
-async function saveFeishu() {
-  savingFeishu.value = true
-  try {
-    const payload: Record<string, unknown> = {
-      enabled: feishu.enabled,
-      appId: feishu.appId,
-      syncStrategy: feishu.syncStrategy,
-    }
-    if (feishu.appSecret) payload.appSecret = feishu.appSecret
-    if (feishu.verificationToken) payload.verificationToken = feishu.verificationToken
-    const { data } = await http.put('/integrations/feishu/config', payload)
-    Object.assign(feishu, data)
-    feishu.appSecret = ''
-    feishu.verificationToken = ''
-    ElMessage.success('飞书配置已保存')
-  } catch (e: any) {
-    ElMessage.error(serverMessage(e, '保存失败'))
-  } finally {
-    savingFeishu.value = false
-  }
-}
-
-async function syncFeishu() {
-  syncingFeishu.value = true
-  try {
-    const { data } = await http.post<SyncResult>('/integrations/feishu/sync')
-    feishuSyncResult.value = data
-    if (data.success) {
-      ElMessage.success(data.message)
-    } else {
-      ElMessage.error(data.message)
-    }
-    await loadFeishuLogs()
-  } catch (e: any) {
-    ElMessage.error(serverMessage(e, '同步失败'))
-  } finally {
-    syncingFeishu.value = false
-  }
-}
-
 async function uploadLogo(upload: UploadFile) {
   if (!upload.raw) return
   uploading.value = true
@@ -529,7 +350,7 @@ async function uploadLogo(upload: UploadFile) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadSettings(), loadDingtalk(), loadLogs(), loadFeishu(), loadFeishuLogs()])
+  await Promise.all([loadSettings(), loadDingtalk(), loadLogs()])
 })
 </script>
 
@@ -584,9 +405,6 @@ h2 {
 }
 .sync-result {
   margin-bottom: 12px;
-}
-.logs {
-  margin-top: 8px;
 }
 .ai-row {
   display: flex;

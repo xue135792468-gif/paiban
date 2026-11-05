@@ -113,12 +113,6 @@
             <button type="button" class="bt" data-testid="wizard-back-3" :disabled="flow.busy" @click="onBack3">上一步</button>
             <div class="fr">
               <div class="bc">
-                <button type="button" class="bt" data-testid="submit-approval" :disabled="flow.submitDisabled" @click="flow.submitApproval()">
-                  提交审批
-                </button>
-                <span class="cap">先进待批，暂不生效</span>
-              </div>
-              <div class="bc">
                 <button type="button" class="bt primary" data-testid="personal-confirm" :disabled="flow.confirmDisabled" @click="flow.confirmEffective()">
                   亲自确认生效
                 </button>
@@ -435,7 +429,7 @@ async function onLessonDrop(payload: { source: Entry; target: Entry | null; targ
   if (slot) targetPeriodId.value = slot.periodId
 }
 
-/** 「恢复基线」走同一 previews 端点（revisionKind=RESTORE_BASELINE 随响应回来）。 */
+/** 「恢复基线」走同一 previews 端点。 */
 function onRestoreBaseline(teacherId: number) {
   flow.startRestoreBaseline(teacherId)
   step.value = 3

@@ -31,10 +31,6 @@ const COURSE_REQUIRED_PARAMS: ParamDef[] = [
   { name: 'courseId', label: '课程', type: 'ID', required: true },
 ]
 
-const ROOM_TYPE_PARAMS: ParamDef[] = [
-  { name: 'courseId', label: '课程', type: 'ID', required: true },
-  { name: 'roomType', label: '教室类型', type: 'ROOM_TYPE', required: true },
-]
 
 const CONSECUTIVE_PARAMS: ParamDef[] = [
   { name: 'courseId', label: '课程', type: 'ID', required: true },
@@ -102,9 +98,6 @@ describe('条目摘要：十二类各一句话', () => {
     expect(formatEntrySummary(COURSE_OPTIONAL_PARAMS, {}, ctx)).toBe('全部课程')
     expect(formatEntrySummary(SPORT_PARAMS, {}, ctx)).toBe('体育类')
     expect(formatEntrySummary(SPORT_PARAMS, { courseId: 4 }, ctx)).toBe('语文')
-    expect(formatEntrySummary(ROOM_TYPE_PARAMS, { courseId: 9, roomType: 'LAB' }, ctx)).toBe(
-      '数学 · 实验室',
-    )
     expect(
       formatEntrySummary(CONSECUTIVE_PARAMS, { courseId: 9, minConsecutive: 2 }, ctx),
     ).toBe('数学 · 连排2节')

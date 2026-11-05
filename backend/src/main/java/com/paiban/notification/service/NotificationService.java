@@ -12,11 +12,8 @@ import com.paiban.notification.channel.CompositeNotificationChannel;
 import com.paiban.notification.channel.NotificationChannel;
 import com.paiban.notification.domain.Notification;
 import com.paiban.notification.domain.NotificationRepository;
-import com.paiban.notification.web.NotificationDtos.NotificationDto;
-import com.paiban.notification.web.NotificationDtos.NotificationPage;
 import com.paiban.substitution.domain.Substitution;
 import com.paiban.substitution.domain.SubstitutionRequest;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -24,8 +21,6 @@ import java.util.Map;
 import java.util.Set;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.event.EventListener;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.thymeleaf.TemplateEngine;
@@ -80,12 +75,7 @@ public class NotificationService {
     @Transactional
     public void substitutionEffective(
             SubstitutionRequest request, Substitution substitution, Map<String, Object> variables) {
-        // 修订（票 04）：通知「调整前后受影响教师的并集」——被解除安排的调整前教师
-        // 也必须收到通知，文案明确本次前后变化与被取代的申请；首次代课维持原模板。
-        boolean revision = request.getRevisesRequestId() != null;
-        Long releasedTeacherId = revision && request.getPreviousTeacherId() != null
-                ? request.getPreviousTeacherId()
-                : request.getOriginalTeacherId();
+        Long releasedTeacherId = request.getOriginalTeacherId();
         List<Long> originalUsers = userIds(users.usersByTeacherId(releasedTeacherId));
         List<Long> substituteUsers = userIds(users.usersByTeacherId(substitution.getSubstituteTeacherId()));
         String scope = settings.notificationScope();
@@ -101,31 +91,10 @@ public class NotificationService {
         adminUsers.addAll(settings.substitutionRecipientUserIds());
 
         String link = "/substitutions?requestId=" + request.getId();
-        if (revision) {
-            // 班主任/管理员的通知同样呈现本次修订的前后变化（前教师 → 新教师），
-            // 而不是相对基线的净差；被取代的申请号用于追溯。
-            Map<String, Object> revisionVariables = new java.util.HashMap<>(variables);
-            revisionVariables.put("originalTeacher", revisionVariables.get("previousTeacher"));
-            revisionVariables.put("revisesRequestId", request.getRevisesRequestId());
-            notify(NotificationTemplates.SUBSTITUTION_REVISION_RELEASED,
-                    originalUsers, revisionVariables, link);
-            notify(NotificationTemplates.SUBSTITUTION_REVISION_ASSIGNED,
-                    substituteUsers, revisionVariables, link);
-        } else {
-            notify(NotificationTemplates.SUBSTITUTION_EFFECTIVE_ORIGINAL, originalUsers, variables, link);
-            notify(NotificationTemplates.SUBSTITUTION_EFFECTIVE_SUBSTITUTE, substituteUsers, variables, link);
-        }
+        notify(NotificationTemplates.SUBSTITUTION_EFFECTIVE_ORIGINAL, originalUsers, variables, link);
+        notify(NotificationTemplates.SUBSTITUTION_EFFECTIVE_SUBSTITUTE, substituteUsers, variables, link);
         notify(NotificationTemplates.SUBSTITUTION_EFFECTIVE_HEAD_TEACHER, headTeacherUsers, variables, link);
         notify(NotificationTemplates.SUBSTITUTION_EFFECTIVE_ADMIN, adminUsers, variables, link);
-    }
-
-    @Transactional
-    public void substitutionRejected(SubstitutionRequest request, Map<String, Object> variables) {
-        notify(
-                NotificationTemplates.SUBSTITUTION_REJECTED,
-                userIds(users.usersByTeacherId(request.getOriginalTeacherId())),
-                variables,
-                "/substitutions?requestId=" + request.getId());
     }
 
     /**
@@ -191,66 +160,7 @@ public class NotificationService {
                 "/timetable");
     }
 
-    @Transactional(readOnly = true)
-    public NotificationPage page(String username, int page, int size) {
-        AppUser user = users.getByUsername(username);
-        Page<Notification> result = notifications.findByRecipientUserIdOrderByCreatedAtDesc(
-                user.getId(), PageRequest.of(Math.max(0, page), Math.min(100, Math.max(1, size))));
-        return new NotificationPage(
-                result.getContent().stream().map(this::toDto).toList(),
-                result.getTotalElements(),
-                result.getNumber(),
-                result.getSize());
-    }
-
-    @Transactional(readOnly = true)
-    public List<NotificationDto> recent(String username) {
-        AppUser user = users.getByUsername(username);
-        return notifications.findTop10ByRecipientUserIdOrderByCreatedAtDesc(user.getId()).stream()
-                .map(this::toDto)
-                .toList();
-    }
-
-    @Transactional(readOnly = true)
-    public long unreadCount(String username) {
-        AppUser user = users.getByUsername(username);
-        return notifications.countByRecipientUserIdAndReadFalse(user.getId());
-    }
-
-    @Transactional
-    public void markRead(String username, Long notificationId) {
-        AppUser user = users.getByUsername(username);
-        Notification notification = notifications.findById(notificationId)
-                .orElseThrow(() -> ApiException.notFound("通知不存在: " + notificationId));
-        if (!notification.getRecipientUserId().equals(user.getId())) {
-            throw ApiException.forbidden("不能操作他人的通知");
-        }
-        notification.setRead(true);
-        notification.setReadAt(Instant.now());
-    }
-
-    @Transactional
-    public void markAllRead(String username) {
-        AppUser user = users.getByUsername(username);
-        notifications.findByRecipientUserIdAndReadFalse(user.getId()).forEach(notification -> {
-            notification.setRead(true);
-            notification.setReadAt(Instant.now());
-        });
-    }
-
     private List<Long> userIds(List<AppUser> source) {
         return source.stream().map(AppUser::getId).toList();
-    }
-
-    private NotificationDto toDto(Notification notification) {
-        return new NotificationDto(
-                notification.getId(),
-                notification.getTemplateCode(),
-                notification.getTitle(),
-                notification.getContent(),
-                notification.getLink(),
-                notification.isRead(),
-                notification.getCreatedAt(),
-                notification.getReadAt());
     }
 }

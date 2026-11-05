@@ -86,7 +86,6 @@ public class SemesterCopyService {
                     new PeriodSlot(
                             period.getPeriodNo(),
                             period.getLabel(),
-                            period.getSection(),
                             period.getStartTime(),
                             period.getEndTime(),
                             new ArrayList<>()));
@@ -96,7 +95,6 @@ public class SemesterCopyService {
                 .map(slot -> new PeriodSlot(
                         slot.periodNo(),
                         slot.label(),
-                        slot.section(),
                         slot.startTime(),
                         slot.endTime(),
                         days.get(slot.periodNo()).stream().sorted().toList()))

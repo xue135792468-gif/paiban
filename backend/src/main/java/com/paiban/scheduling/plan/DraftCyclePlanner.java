@@ -39,7 +39,7 @@ import java.util.Set;
  */
 public final class DraftCyclePlanner {
 
-    /** One lesson's period movement; teacher, room, class and course stay with it. */
+    /** One lesson's period movement; teacher, class and course stay with it. */
     public record Move(Long lessonId, Long fromPeriodId, Long toPeriodId) {}
 
     /** One independently verified plan. {@code cycleLength} is the number of moved lessons. */
@@ -255,7 +255,7 @@ public final class DraftCyclePlanner {
          * Necessary conditions only. A slot is rejected when a lesson of this class that
          * is not moving would stay behind, when the class cannot attend that slot at all,
          * or — only while the matching rule is hard — when a staying lesson would share
-         * the displaced lesson's teacher or room. Soft conflicts are deliberately not
+         * the displaced lesson's teacher. Soft conflicts are deliberately not
          * pruned: they belong to the final whole-table soft score. The independent
          * verifier still has the final word.
          */
@@ -276,16 +276,11 @@ public final class DraftCyclePlanner {
                 return false;
             }
             boolean teacherHard = isHard(ConstraintType.TEACHER_CONFLICT);
-            boolean roomHard = isHard(ConstraintType.ROOM_CONFLICT);
             for (PlanLesson occupant : occupants) {
                 if (moving.contains(occupant.id())) {
                     continue;
                 }
                 if (teacherHard && Objects.equals(occupant.teacherId(), displaced.teacherId())) {
-                    return false;
-                }
-                if (roomHard && displaced.roomId() != null
-                        && Objects.equals(occupant.roomId(), displaced.roomId())) {
                     return false;
                 }
             }
@@ -327,7 +322,7 @@ public final class DraftCyclePlanner {
                     return false;
                 }
                 changes.add(new LessonChange(
-                        move.lessonId(), move.toPeriodId(), lesson.roomId(), lesson.teacherId()));
+                        move.lessonId(), move.toPeriodId(), lesson.teacherId()));
             }
             ChangeAssessment assessment = verifier.verify(snapshot, changes);
             if (!assessment.added().isEmpty()) {

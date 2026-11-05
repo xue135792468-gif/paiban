@@ -112,10 +112,9 @@ class RuleImpactIntegrationTest extends ApiIntegrationTest {
         long classB = TestData.adminClass(token, semesterId, grade, "草稿二班" + TestData.suffix());
         long course = TestData.course(token, "草稿课程" + TestData.suffix());
         long teacher = TestData.teacher(token, "草稿教师" + TestData.suffix());
-        long room = TestData.room(token, "草稿教室" + TestData.suffix());
         long draftId = draft(semesterId, "影响预览草稿" + TestData.suffix());
-        placeLesson(draftId, classA, course, teacher, periods.get("1-2"), room, 1);
-        placeLesson(draftId, classB, course, teacher, periods.get("1-5"), room, 2);
+        placeLesson(draftId, classA, course, teacher, periods.get("1-2"), 1);
+        placeLesson(draftId, classB, course, teacher, periods.get("1-5"), 2);
 
         Response impact = impact(token, semesterId, List.of(schoolUnavailable(1, 2)));
 
@@ -230,7 +229,7 @@ class RuleImpactIntegrationTest extends ApiIntegrationTest {
     }
 
     private void placeLesson(long draftId, long classId, long courseId, long teacherId,
-                             Long periodId, long roomId, int index) {
+                             Long periodId, int index) {
         DraftLesson lesson = new DraftLesson();
         lesson.setDraftId(draftId);
         lesson.setAssignmentId(0L);
@@ -240,7 +239,6 @@ class RuleImpactIntegrationTest extends ApiIntegrationTest {
         lesson.setAdminClassId(classId);
         lesson.setStudentCount(45);
         lesson.setPeriodId(periodId);
-        lesson.setRoomId(roomId);
         draftLessons.save(lesson);
     }
 

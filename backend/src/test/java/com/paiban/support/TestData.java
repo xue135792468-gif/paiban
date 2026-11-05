@@ -61,14 +61,6 @@ public final class TestData {
         return response.jsonPath().getLong("id");
     }
 
-    public static long room(String token, String name) {
-        Response response = RestAssuredHolder.given(token)
-                .body(Map.of("name", name, "capacity", 50, "type", "NORMAL"))
-                .when().post("/api/rooms");
-        response.then().statusCode(200);
-        return response.jsonPath().getLong("id");
-    }
-
     public static long course(String token, String name) {
         Response response = RestAssuredHolder.given(token)
                 .body(Map.of("name", name, "subject", name, "allowConsecutive", false))

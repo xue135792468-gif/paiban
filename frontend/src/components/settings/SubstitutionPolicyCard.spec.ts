@@ -7,7 +7,6 @@ function mountCard() {
   return mount(SubstitutionPolicyCard, {
     props: {
       modelValue: {
-        'substitution.approval-mode': 'approval',
         'substitution.search-window-days': '7',
         'substitution.max-plan-teachers': '6',
         'substitution.ranking-preset': 'min-impact',

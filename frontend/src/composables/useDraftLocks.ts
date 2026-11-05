@@ -156,7 +156,7 @@ export function useDraftLocks(options: DraftLocksOptions) {
     }
 
     if (!canUseClassScope.value) {
-      throw new Error('教师/教室视角只能按所选锁定，请切换到「按行政班」')
+      throw new Error('教师视角只能按所选锁定，请切换到「按行政班」')
     }
     const classId = currentClassId.value
     if (classId == null) throw new Error('请先选择行政班')

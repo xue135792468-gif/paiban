@@ -13,12 +13,10 @@ import {
   COURSE_SPREAD,
   COURSE_UNAVAILABLE,
   MAIN_SUBJECT_MORNING,
-  PE_LAST_PERIOD_AVOID,
   RULE_GROUPS,
   RULE_SPECS,
   RULE_TYPES,
   SAME_COURSE_ONCE_PER_DAY,
-  SPORT_NOT_FIRST_AFTERNOON,
   TEACHER_DAY_OFF,
   TEACHER_MAX_CONSECUTIVE,
   TEACHER_MAX_PER_DAY,
@@ -40,7 +38,6 @@ import {
   toggleCard,
   unrepresentedGroupCount,
   type CardSentenceInput,
-  type PeriodOption,
   type RuleCard,
   type RuleNames,
 } from './compiler'
@@ -105,16 +102,6 @@ function inputsOf(card: RuleCard): CardSentenceInput[] {
   }))
 }
 
-const periods: PeriodOption[] = [1, 2, 3, 4, 5].flatMap((day) => [
-  { dayOfWeek: day, periodNo: 1, section: 'MORNING' },
-  { dayOfWeek: day, periodNo: 2, section: 'MORNING' },
-  { dayOfWeek: day, periodNo: 3, section: 'MORNING' },
-  { dayOfWeek: day, periodNo: 4, section: 'MORNING' },
-  { dayOfWeek: day, periodNo: 5, section: 'AFTERNOON' },
-  { dayOfWeek: day, periodNo: 6, section: 'AFTERNOON' },
-  { dayOfWeek: day, periodNo: 7, section: 'AFTERNOON' },
-  { dayOfWeek: day, periodNo: 8, section: 'AFTERNOON' },
-])
 
 const names: RuleNames = {
   teacher: (id) => (id === 7 ? '王老师' : `教师${id}`),
@@ -122,11 +109,11 @@ const names: RuleNames = {
   klass: (id) => (id === 3 ? '八年级1班' : `班级${id}`),
 }
 
-describe('rule compiler: 17 createable types', () => {
-  it('offers exactly the 17 types, grouped by sentence shape', () => {
-    expect(RULE_TYPES).toHaveLength(17)
+describe('rule compiler: 16 createable types', () => {
+  it('offers exactly the 16 types, grouped by sentence shape', () => {
+    expect(RULE_TYPES).toHaveLength(16)
     expect(RULE_GROUPS.flatMap((group) => group.types)).toEqual(RULE_TYPES)
-    expect(new Set(RULE_TYPES).size).toBe(17)
+    expect(new Set(RULE_TYPES).size).toBe(16)
     expect(RULE_SPECS[CLASS_GAP_MINIMIZED].hardOnly).toBe(false)
     expect(RULE_SPECS[CLASS_UNAVAILABLE].hardOnly).toBe(true)
   })
@@ -258,17 +245,6 @@ describe('rule compiler: 17 createable types', () => {
     }))[0].params).toEqual({ maxConsecutive: 3 })
   })
 
-  it('compiles 体育 不在下午第一节 / 最后一节', () => {
-    expect(entriesOf(compileRule({
-      type: SPORT_NOT_FIRST_AFTERNOON, courseId: 9, strength: 'SOFT',
-    }))[0].params).toEqual({ courseId: 9 })
-    expect(entriesOf(compileRule({
-      type: PE_LAST_PERIOD_AVOID, courseId: 9, strength: 'SOFT',
-    }))[0].params).toEqual({ courseId: 9 })
-    expect(entriesOf(compileRule({
-      type: PE_LAST_PERIOD_AVOID, strength: 'SOFT',
-    }))[0].params).toEqual({})
-  })
 
   it('compiles 主科上午 with the cut-off period', () => {
     expect(entriesOf(compileRule({
@@ -337,8 +313,8 @@ describe('state to cards', () => {
     ])
 
     expect(cards).toHaveLength(2)
-    expect(describeCard(cards[0], names, periods)).toBe('王老师 的 课 在 周五下午 不排')
-    expect(describeCard(cards[1], names, periods)).toBe('全校 的 课 在 周五第 7 节 不排')
+    expect(describeCard(cards[0], names)).toBe('王老师 的 课 在 周五第 5、6、7、8 节 不排')
+    expect(describeCard(cards[1], names)).toBe('全校 的 课 在 周五第 7 节 不排')
     expect(cards[0].sentences[0].entryIds)
       .toEqual({ '5-5': 105, '5-6': 106, '5-7': 107, '5-8': 108 })
   })
@@ -351,10 +327,10 @@ describe('state to cards', () => {
       config('CLASS_GAP_MINIMIZED', [], { hard: true, weight: 30 }),
     ])
 
-    expect(describeCard(cards[0], names, periods)).toBe('数学 每天最多 1 节')
-    expect(describeCard(cards[1], names, periods)).toBe('数学 连堂 2 节')
-    expect(describeCard(cards[2], names, periods)).toBe('数学 不在最后一节')
-    expect(describeCard(cards[3], names, periods)).toBe('班级 不空堂')
+    expect(describeCard(cards[0], names)).toBe('数学 每天最多 1 节')
+    expect(describeCard(cards[1], names)).toBe('数学 连堂 2 节')
+    expect(describeCard(cards[2], names)).toBe('数学 不在最后一节')
+    expect(describeCard(cards[3], names)).toBe('班级 不空堂')
     expect(cards[3].sentences[0].type).toBe('CLASS_GAP_MINIMIZED')
   })
 
@@ -376,7 +352,7 @@ describe('state to cards', () => {
 
 describe('merging into the whole semester configuration', () => {
   const entryBackedTypes = new Set([
-    'COURSE_NOT_IN_EVENING',
+    'LEGACY_COURSE_RULE',
     'TEACHER_UNAVAILABLE',
     'CLASS_UNAVAILABLE',
     'COURSE_MAX_PER_DAY',
@@ -384,7 +360,7 @@ describe('merging into the whole semester configuration', () => {
   ])
 
   const existing = [
-    config('COURSE_NOT_IN_EVENING', [entry(1, { courseId: 9 })], { weight: 80, hard: true }),
+    config('LEGACY_COURSE_RULE', [entry(1, { courseId: 9 })], { weight: 80, hard: true }),
     config('TEACHER_UNAVAILABLE', [
       entry(10, { teacherId: 7, dayOfWeek: 5, periodNo: 5 }, { groupKey: 'pt-wang' }),
       entry(11, { teacherId: 7, dayOfWeek: 5, periodNo: 6 }, { groupKey: 'pt-wang' }),
@@ -402,7 +378,7 @@ describe('merging into the whole semester configuration', () => {
 
     const merged = configsFromCards(existing, cards, { entryBackedTypes })
 
-    const course = merged.find((item) => item.type === 'COURSE_NOT_IN_EVENING')
+    const course = merged.find((item) => item.type === 'LEGACY_COURSE_RULE')
     expect(course?.entries).toHaveLength(1)
     expect(course?.entries?.[0].id).toBe(1)
     expect(course?.weight).toBe(80)
@@ -485,7 +461,7 @@ describe('merging into the whole semester configuration', () => {
   it('counts other rules only for types the catalogue still offers', () => {
     const configs = [
       config('TEACHER_CONFLICT', []),
-      config('COURSE_NOT_IN_EVENING', [entry(1, { courseId: 9 })]),
+      config('LEGACY_COURSE_RULE', [entry(1, { courseId: 9 })]),
     ]
     const active = new Set(['TEACHER_CONFLICT', 'CLASS_CONFLICT'])
     expect(otherRuleCount(configs)).toBe(2)
@@ -538,7 +514,7 @@ describe('cards: multiple sentences and exceptions', () => {
     const sentence = cards[0].sentences[0]
     expect(sentence.classId).toBeNull()
     expect(sentence.exceptionClassIds).toEqual([2])
-    expect(describeCard(cards[0], names, periods))
+    expect(describeCard(cards[0], names))
       .toBe('全校 的 课 在 周一第 3 节 不排，除了 班级2')
     expect(sentence.entryIds).toEqual({ '1:1-3': 1, '3:1-3': 2 })
   })
@@ -667,10 +643,10 @@ describe('grouping and search', () => {
   })
 
   it('filters by object name, sentence wording and bucket label', () => {
-    expect(cardMatches(teacher, '王老师', names, periods)).toBe(true)
-    expect(cardMatches(teacher, '周五', names, periods)).toBe(false)
-    expect(cardMatches(course, '数学', names, periods)).toBe(true)
-    expect(cardMatches(school, '全校', names, periods)).toBe(true)
-    expect(cardMatches(school, '九', names, periods)).toBe(false)
+    expect(cardMatches(teacher, '王老师', names)).toBe(true)
+    expect(cardMatches(teacher, '周五', names)).toBe(false)
+    expect(cardMatches(course, '数学', names)).toBe(true)
+    expect(cardMatches(school, '全校', names)).toBe(true)
+    expect(cardMatches(school, '九', names)).toBe(false)
   })
 })

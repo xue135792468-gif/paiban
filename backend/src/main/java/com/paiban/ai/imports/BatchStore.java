@@ -272,7 +272,7 @@ final class BatchStore {
     private String rowKey(RowDto row) {
         return String.join("\u0001",
                 value(row, "className"), value(row, "dayOfWeek"), value(row, "periodNo"),
-                value(row, "courseName"), value(row, "teacherName"), value(row, "roomName"));
+                value(row, "courseName"), value(row, "teacherName"));
     }
 
     private String value(RowDto row, String field) {

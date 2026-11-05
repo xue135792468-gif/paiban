@@ -20,7 +20,6 @@ function plan(overrides: Partial<MissingPeriodsPlan> = {}): MissingPeriodsPlan {
         periodNo: 9,
         status: 'PROPOSED',
         label: '第9节',
-        section: 'AFTERNOON',
         startTime: '17:40:00',
         endTime: '18:25:00',
         reason: null,
@@ -30,7 +29,6 @@ function plan(overrides: Partial<MissingPeriodsPlan> = {}): MissingPeriodsPlan {
         periodNo: 9,
         status: 'PROPOSED',
         label: '第9节',
-        section: 'AFTERNOON',
         startTime: '17:40:00',
         endTime: '18:25:00',
         reason: null,
@@ -40,7 +38,6 @@ function plan(overrides: Partial<MissingPeriodsPlan> = {}): MissingPeriodsPlan {
         periodNo: 9,
         status: 'MANUAL',
         label: '第9节',
-        section: null,
         startTime: null,
         endTime: null,
         reason: '没有可参照的作息时间，请到作息管理手工设置',
@@ -75,7 +72,6 @@ describe('MissingPeriodsPanel', () => {
     const table = wrapper.get('[data-testid=missing-periods-table]').text()
     expect(table).toContain('周一')
     expect(table).toContain('第9节')
-    expect(table).toContain('下午')
     expect(table).toContain('17:40–18:25')
     expect(table).toContain('可自动补')
     expect(table).toContain('需人工')
@@ -119,7 +115,6 @@ describe('MissingPeriodsPanel', () => {
           periodNo: 9,
           status: 'MANUAL',
           label: '第9节',
-          section: null,
           startTime: null,
           endTime: null,
           reason: '没有可参照的作息时间，请到作息管理手工设置',

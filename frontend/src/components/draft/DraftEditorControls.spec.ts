@@ -70,7 +70,7 @@ describe('DraftEditorControls', () => {
     expect(second.emitted('unlock-single')?.[0]?.[0]).toMatchObject({ id: 1 })
   })
 
-  it('教师视角提示按天/全班需切到行政班，且不再提供按教室视角', () => {
+  it('教师视角提示按天/全班需切到行政班', () => {
     const wrapper = mountControls({
       selectionMode: true,
       canUseClassScope: false,

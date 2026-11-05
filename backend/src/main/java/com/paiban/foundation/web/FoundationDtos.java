@@ -12,7 +12,7 @@ public final class FoundationDtos {
 
     public record TeacherDto(Long id, String name, String employeeNo, String phone, String email,
                              String subject, boolean active, String dingtalkUserId,
-                             String feishuUserId, String feishuOpenId, String bindingStatus) {}
+                             String bindingStatus) {}
 
     public record TeacherOptionDto(Long id, String name) {}
 
@@ -22,26 +22,14 @@ public final class FoundationDtos {
                                      @Size(max = 120) String email,
                                      @Size(max = 100) String subject,
                                      Boolean active,
-                                     @Size(max = 100) String dingtalkUserId,
-                                     @Size(max = 100) String feishuUserId,
-                                     @Size(max = 100) String feishuOpenId) {}
-
-    public record RoomDto(Long id, String name, int capacity, String type, String building) {}
-
-    public record SaveRoomRequest(@NotBlank(message = "教室名称不能为空") @Size(max = 100) String name,
-                                  @Positive Integer capacity,
-                                  String type,
-                                  @Size(max = 100) String building) {}
+                                     @Size(max = 100) String dingtalkUserId) {}
 
     public record CourseDto(Long id, String name, String subject, boolean allowConsecutive,
-                            boolean requireOutdoor, String requiredRoomType, String color,
-                            boolean active) {}
+                            String color, boolean active) {}
 
     public record SaveCourseRequest(@NotBlank(message = "课程名称不能为空") @Size(max = 100) String name,
                                     @Size(max = 100) String subject,
                                     Boolean allowConsecutive,
-                                    Boolean requireOutdoor,
-                                    String requiredRoomType,
                                     @Size(max = 20) String color) {}
 
     public record GradeDto(Long id, String name, int sortOrder, boolean active) {}

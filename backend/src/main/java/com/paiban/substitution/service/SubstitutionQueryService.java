@@ -38,11 +38,11 @@ public class SubstitutionQueryService {
     private final SubstitutionMapper mapper;
 
     /**
-     * 记录/导出展示的历史状态集合：当前生效 + 已被后续修订替代 + 因撤回基线而取消
-     * （规格第 7 节；票 14 撤回后保留的调代行必须还能在历史里看到）。
+     * 记录/导出展示的历史状态集合：当前生效 + 因再次调整或撤回基线而取消
+     * （规格第 7 节；撤回后保留的调代行必须还能在历史里看到）。
      */
     private static final List<String> HISTORY_STATUSES =
-            List.of(Substitution.EFFECTIVE, Substitution.SUPERSEDED, Substitution.CANCELLED);
+            List.of(Substitution.EFFECTIVE, Substitution.CANCELLED);
 
     public SubstitutionQueryService(
             SubstitutionRepository substitutions,
@@ -118,7 +118,7 @@ public class SubstitutionQueryService {
         List<SubstitutionRecordDto> rows = records(
                 semesterId, teacherId, classId, dateFrom, dateTo, type, status);
         StringBuilder csv = new StringBuilder("\uFEFF");
-        csv.append("类型,生效日期,行政班,课程,原教师,代课教师,教室,原节次,目标节次,方案ID,状态\n");
+        csv.append("类型,生效日期,行政班,课程,原教师,代课教师,原节次,目标节次,方案ID,状态\n");
         for (SubstitutionRecordDto row : rows) {
             boolean swap = Substitution.TYPE_SWAP.equals(row.type());
             csv.append(csvCell(swap ? "调课" : "代课")).append(',')
@@ -127,7 +127,6 @@ public class SubstitutionQueryService {
                     .append(csvCell(row.courseName())).append(',')
                     .append(csvCell(row.originalTeacherName())).append(',')
                     .append(csvCell(swap ? "" : row.substituteTeacherName())).append(',')
-                    .append(csvCell(row.roomName())).append(',')
                     .append(csvCell(row.fromPeriodLabel())).append(',')
                     .append(csvCell(row.toPeriodLabel())).append(',')
                     .append(row.planId() == null ? "" : row.planId()).append(',')

@@ -10,10 +10,6 @@ const SAME_COURSE_PARAMS: ParamDef[] = [
   { name: 'courseId', label: '课程（留空表示全部）', type: 'ID', required: false },
 ]
 
-const ROOM_TYPE_PARAMS: ParamDef[] = [
-  { name: 'courseId', label: '课程', type: 'ID', required: true },
-  { name: 'roomType', label: '教室类型', type: 'ROOM_TYPE', required: true },
-]
 
 const CONSECUTIVE_PARAMS: ParamDef[] = [
   { name: 'courseId', label: '课程', type: 'ID', required: true },
@@ -63,7 +59,6 @@ function mountList(rowValue: TypeDraft, entryErrors: Record<number, string[]> = 
     props: {
       row: rowValue,
       editable: true,
-        isJunior: false,
       teachers: TEACHERS,
       courses: COURSES,
       entryErrors,
@@ -74,32 +69,13 @@ function mountList(rowValue: TypeDraft, entryErrors: Record<number, string[]> = 
 
 describe('ConstraintEntryList', () => {
   it('空列表说明「未配置」，不会自动补一条规则', () => {
-    const wrapper = mountList(row({ code: 'COURSE_NOT_IN_EVENING', params: COURSE_PARAMS }))
+    const wrapper = mountList(row({ code: 'LEGACY_COURSE_RULE', params: COURSE_PARAMS }))
     expect(wrapper.get('[data-testid="constraint-entry-empty"]').text()).toBe(
       '空列表＝该类型未配置（不会自动补一条规则）',
     )
     expect(wrapper.findAll('[data-testid="constraint-entry"]')).toHaveLength(0)
   })
 
-  it('每条卡片一行摘要，条件字段按目录渲染', () => {
-    const wrapper = mountList(
-      row({
-        code: 'COURSE_REQUIRED_ROOM_TYPE',
-        name: '课程指定教室类型',
-        params: ROOM_TYPE_PARAMS,
-        entries: [entry('e1', { courseId: 9, roomType: 'LAB' })],
-      }),
-    )
-    const card = wrapper.get('[data-testid="constraint-entry"]')
-    expect(card.get('[data-testid="constraint-entry-summary"]').text()).toBe('数学 · 实验室')
-    expect(card.find('[data-testid="constraint-entry-course"]').exists()).toBe(true)
-    expect(card.find('[data-testid="constraint-entry-room-type"]').exists()).toBe(true)
-    // 必填对象没有「全部」入口，控件也不会因为空值被禁用。
-    expect(card.find('[data-testid="constraint-entry-all-target"]').exists()).toBe(false)
-    expect(
-      card.get('[data-testid="constraint-entry-course"] input').attributes('disabled'),
-    ).toBeUndefined()
-  })
 
   it('可空课程给出显式的「适用于全部课程」勾选，勾上后课程下拉不可用', async () => {
     const wrapper = mountList(
@@ -189,7 +165,7 @@ describe('ConstraintEntryList', () => {
   })
 
   it('添加条目按钮把事件交给页面', async () => {
-    const wrapper = mountList(row({ code: 'COURSE_NOT_IN_EVENING', params: COURSE_PARAMS }))
+    const wrapper = mountList(row({ code: 'LEGACY_COURSE_RULE', params: COURSE_PARAMS }))
     await wrapper.get('[data-testid="constraint-entry-add"]').trigger('click')
     expect(wrapper.emitted('add')).toBeTruthy()
   })

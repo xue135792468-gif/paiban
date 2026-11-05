@@ -48,7 +48,6 @@ export interface GridCell {
   className?: string | null
   teacherId: number
   teacherName?: string | null
-  roomName?: string | null
   changed: boolean
 }
 
@@ -65,8 +64,6 @@ export interface ChangeItem {
   teacherNameBefore?: string | null
   teacherIdAfter: number
   teacherNameAfter?: string | null
-  roomNameBefore?: string | null
-  roomNameAfter?: string | null
   changeKind: string
 }
 
@@ -87,11 +84,7 @@ export interface PreviewResponse {
   right: GridCell[]
   changes: ChangeItem[]
   issues: string[]
-  canSubmitApproval: boolean
   canConfirm: boolean
-  /** 修订预览（票 04）：被再次调整的已生效申请与修订类型；首次代课为空。 */
-  revisesRequestId?: number | null
-  revisionKind?: 'CHANGE_SUBSTITUTE' | 'RESTORE_BASELINE' | null
 }
 
 export interface WorkbenchActionResult {
@@ -139,8 +132,6 @@ export interface SwapPlanMove {
   courseName?: string | null
   teacherId: number
   teacherName?: string | null
-  roomId?: number | null
-  roomName?: string | null
   fromPeriodId: number
   fromDayOfWeek: number
   fromPeriodNo: number
@@ -212,7 +203,6 @@ export interface SwapChangeItem {
   toLabel: string
   teacherId: number
   teacherName?: string | null
-  roomName?: string | null
   changeKind: string
 }
 
@@ -233,10 +223,5 @@ export interface SwapPreviewResponse {
   days: SwapDayCompare[]
   changes: SwapChangeItem[]
   issues: string[]
-  canSubmitApproval: boolean
   canConfirm: boolean
-  /** 修订链（票 07）：预览绑定的基准申请；首次新调课为空。 */
-  revisesRequestId?: number | null
-  /** RESCHEDULE（首次新调课）或 RESCHEDULE_REVISION（修订调课）。 */
-  revisionKind?: string | null
 }

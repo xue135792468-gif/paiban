@@ -77,7 +77,7 @@ function row(overrides: Partial<TypeDraft> & { code: string }): TypeDraft {
 describe('重复条目提示', () => {
   it('两条卡片完全相同：后一条指向先出现的那条', () => {
     const draftRow = row({
-      code: 'COURSE_NOT_IN_EVENING',
+      code: 'LEGACY_COURSE_RULE',
       params: COURSE_PARAMS,
       entries: [entry('e1', { courseId: 9 }), entry('e2', { courseId: 9 })],
     })
@@ -145,7 +145,7 @@ describe('保存前必填提示', () => {
           entry('e2', { teacherId: 1 }, [{ key: 's2', id: null, dayOfWeek: 4, periodNo: null }]),
         ],
       }),
-      row({ code: 'COURSE_NOT_IN_EVENING', name: '课程不排晚自习', params: COURSE_PARAMS, entries: [] }),
+      row({ code: 'LEGACY_COURSE_RULE', name: '课程禁排旧类型', params: COURSE_PARAMS, entries: [] }),
     ]
     expect(missingParamWarnings(rows)).toEqual(['「教师禁排时段」第2条第1个时段的「第几节」'])
   })
