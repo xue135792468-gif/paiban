@@ -69,6 +69,16 @@
 - 复审后定向重跑：`FullChainAcceptanceTest`(1) + `TrimMigrationDataPreservationTest`(3) = **4 项，0 失败 / 0 错误，BUILD SUCCESS**。
 
 ### 边界 / 遗留
-- 未连生产数据库、未备份或删除线上数据、未把 V55 执行到任何真实库、未部署、未 push。
-- 真实 PostgreSQL 上的**存量数据保全**与 V55 生产执行需上线前按 `docs/runbooks/deploy.md`（先 `pg_dump` 备份并 `gzip -t` 验证）在临时库复核；本机因无 Docker 判为跳过。
+- 本机验收阶段未连生产、未部署、未 push；这些已在 2026-11-05 后续会话推进（见下「后续补测」）。
 - 未改 `.scratch/HANDOFF.md`；未改任何业务代码 / Flyway 迁移 / 前端源码。提交只 stage 本任务路径。
+- **生产库本身仍为 Flyway v47、V55 未在生产执行、未部署**，需用户确认上线窗口后按 `docs/runbooks/deploy.md` 执行。
+
+### 后续补测（2026-11-05，用户要求「没 Docker 的测试去云服务器上测」）
+- `git push origin main`：`50ac999..34b2754` 成功；CI run `42046237373` 的 `deploy-scripts` / `frontend` / **`backend`（含 `-Dtestcontainers=true` 真跑 `PostgresContainerIT`）** 均 ✅，`e2e` 进行中。本地与 `origin/main` 一致。
+- **真实 PostgreSQL 存量数据保全补测通过**：在 Lightsail 用生产库副本建临时库 `paiban_migtest_20261105T144622Z`，`flyway/flyway:10` 在 **PostgreSQL 16.15** 上从 **v47 跑 8 步到 v55**（`Successfully applied 8 migrations`，退出码 0，`flyway_schema_history` 有成功 V55 记录）。
+  - 备份 `paiban-migtest-source-20261105T144622Z.sql.gz`（141531 B，`gzip -t` 通过）；日志 `~/ops/paiban-migtest-20261105T144622Z.log`；脚本 `.scratch/product-trim/hold/server-migtest.sh`。
+  - 行数/主体：`timetable_entry` **1092→1092**（主体行亦 1092→1092）、`draft_lesson` 1638→1638、`ai_import_log` 6→6、`ai_call_log` 39→39、`constraint_config` 6→6、`constraint_entry` 0→0、`substitution`/`substitution_request` 0→0、`notification` 10→10、`notification_log` 2→2、`timetable_publish` 2→2、`timetable_draft` 3→3；`recent_deletion`/`import_recipe` 由不存在→存在（V48/V49 新建）。
+  - 旧列 `room_id`/`section`/`required_room_type` 存在数 **3→0**；3 张应删表残留 **0**；7 张红线表仍在 **7**；`deadline_at`/`locked` **1/1** 保留。
+  - **生产库 v47 零写入**，临时库由 trap 自动删除；未部署、未重建镜像、未 `up -d`。
+  - 首次实跑暴露并修复两处脚本问题（Flyway TCP 用真实 `POSTGRES_PASSWORD`、v47 尚无的两张新表标记 NEW），首次失败时临时库已自动清理。
+- 结论：票 16 第 10 项在**真实 PostgreSQL 16 的真实生产数据副本**上同样成立；详见 `hold/16-acceptance-report.md` 第九、十节。

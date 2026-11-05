@@ -50,7 +50,8 @@
 
 - `V55__trim_legacy_columns_and_tables.sql` 全文要点：17 个 `DROP COLUMN`、3 个 `DROP TABLE`（`room` / `substitution_conversion_item` / `substitution_conversion`）、4 个 `DROP INDEX`、2 个 `DROP CONSTRAINT`、**0 条 DELETE**。
 - 保留清单（迁移文件头注释）：`notification` / `notification_log`、`ai_call_log` / `ai_import_log`、`recent_deletion` / `import_recipe` / `timetable_publish`、`substitution_request.operator_user_id`、`substitution_preview.deadline_at`、`substitution_plan.approved_at / approved_by`、`substitution_plan_move` 业务列、`draft_lesson.locked`、`constraint_config` / `constraint_entry` 的旧规则行、`notification_log.platform`。
-- 本机无 Docker、无原生 PostgreSQL、WSL 无发行版；`verify.sh --full` 的后端与 E2E 跑在 H2(PostgreSQL 模式)，全量 Flyway 已执行到 **V55**（`TrimMigrationDataPreservationTest` 另在独立 UUID 库上做 V54→V55 分段迁移）。真实 PostgreSQL 的**迁移可执行性**由 CI `-Dtestcontainers=true` 的 `PostgresContainerIT` 覆盖（空库跑全量迁移、断言表存在），本机判为跳过；真实 PG 上的「存量数据保全」不在本次本机验收范围，需上线前按 `docs/runbooks/deploy.md` 备份后在临时库复核。
+- 本机无 Docker、无原生 PostgreSQL、WSL 无发行版；`verify.sh --full` 的后端与 E2E 跑在 H2(PostgreSQL 模式)，全量 Flyway 已执行到 **V55**（`TrimMigrationDataPreservationTest` 另在独立 UUID 库上做 V54→V55 分段迁移）。真实 PostgreSQL 的**迁移可执行性**由 CI `-Dtestcontainers=true` 的 `PostgresContainerIT` 覆盖（空库跑全量迁移、断言表存在），本机判为跳过。
+- **真实 PG 存量数据保全已于 2026-11-05 在云服务器补测通过**，见第九节（生产库副本、临时库、零写入生产）。
 - 验收口径：不要求被票 15 删掉的旧列还在，只要求行数/主体不丢。
 
 ## 五、定向复跑数字（`scripts/verify-ticket16.sh`，`==> ticket16: ok`）
@@ -88,9 +89,48 @@ VERIFY_EXIT=0
 - **Spec**：(a) 5 项 / (b) 3 项 / (c) 4 项。已修：报告证据路径错误（`SubstitutionWorkbenchView.vue` 正确路径为 `frontend/src/views/`）、报告称 FCT 覆盖「换课」但无 swap 断言（改为如实描述）、第 9/11 项当时留「待填」（现全部回填真实数字）。判定为误报/保留：第 1 项物理文件已单独实跑（脚本默认跳过是 CI 设计，已补提示）；「恢复基线」口径已在第一节显式写明，不新增独立 undo 端点；第 10 项额外验「旧列已删」是票 15 删除范围的反证，与「不丢失」互补且不要求旧列还在；MII 断言修正是 gate 打开后真实失败的过时断言，属必要修复。
 - 复审后定向重跑：`FullChainAcceptanceTest`(1) + `TrimMigrationDataPreservationTest`(3) = **4 项，0 失败 / 0 错误**，`BUILD SUCCESS`。
 
-## 八、边界
+## 八、边界（截至本机验收）
 
-- 未连生产数据库、未备份/删线上数据、未执行 V55 到任何真实库、未部署、未 push。
+- 本机验收阶段：未连生产数据库、未备份/删线上数据、未执行 V55 到任何真实库、未部署、未 push。
 - 未改 `.scratch/HANDOFF.md`（第 11 项要求数字只记本票）。
 - 未改任何业务代码 / Flyway 迁移 / 前端源码；改动仅：3 个新增测试/脚本、1 个测试断言修正、2 个文档。
-- 本机真实 PostgreSQL 存量数据保全与 V55 生产执行仍待上线前按部署跑册复核（有备份前提下）。
+- 上述「未部署 / 未 push / V55 未上真实库」已在 2026-11-05 后续会话部分推进：push 完成、CI 已触发、真实 PG 临时库演练通过；**生产库本身仍为 v47、未部署、V55 未在生产执行**（见第九节）。
+
+## 九、2026-11-05 后续补测：云服务器真实 PostgreSQL 存量数据保全
+
+用户要求「把本机没有 Docker 所以没做的测试去云服务器上测」。做法：在 Lightsail 生产机上，用**生产库的完整副本**建临时库，在副本上跑 V48–V55，逐表比对行数/主体，验完删库。脚本 `scripts/verify-ticket16.sh` 的同伴 `~/ops/server-migtest.sh`（本仓库副本：`.scratch/product-trim/hold/server-migtest.sh`）。
+
+**安全边界**：生产库只被 `pg_dump` 与只读 `select` 访问；所有写在临时库 `paiban_migtest_<UTC>`；不部署、不重建镜像、不 `up -d`；远程步骤合并为单次 SSH（OPS.md 红线）。
+
+**前置事实**（`state-snapshot.sh` + 单次只读 SSH）：四容器 healthy、restart=0；生产 Flyway **v47**；内存可用 642 MB、load 0.15；`flyway/flyway:10` 镜像已在本地；服务器工作副本已 `git pull --ff-only` 到 `34b2754`（最高迁移 V55）；postgres 在 `paiban_paiban-internal` 网络、容器名可 DNS 解析。
+
+**执行结果**（日志 `~/ops/paiban-migtest-20261105T144622Z.log`，`MIGTEST PASS`）：
+
+| 检查 | 结果 |
+|---|---|
+| 源备份 | `paiban-migtest-source-20261105T144622Z.sql.gz`，141531 字节，`gzip -t` 通过 |
+| Flyway | PostgreSQL **16.15**，`Successfully applied 8 migrations ... now at version v55`，退出码 0；`flyway_schema_history` 有 `version='55' and success=true` 记录 1 条 |
+| 已发布课表 `timetable_entry` | **1092 → 1092**（主体行 course+class+day 非空同样 1092 → 1092） |
+| 调代 `substitution` / `substitution_request` | 0 → 0 / 0 → 0 |
+| 规则 `constraint_config` / `constraint_entry` | 6 → 6 / 0 → 0 |
+| 导入会话 `ai_import_log` | 6 → 6 |
+| 其它主体 | `ai_call_log` 39→39、`notification` 10→10、`notification_log` 2→2、`timetable_publish` 2→2、`timetable_draft` 3→3、`draft_lesson` 1638→1638 |
+| V48/V49 新表 | `recent_deletion` / `import_recipe` 由「不存在」→「存在且 0 行」 |
+| 旧列 | `room_id` / `section` / `required_room_type` 存在数 **3 → 0** |
+| 3 张应删表 | 残留 **0**（room / substitution_conversion / substitution_conversion_item） |
+| 7 张红线表 | 仍在 **7** |
+| `deadline_at` / `locked` | **1 / 1**（保留） |
+| 生产库 | 版本仍 **v47**、零写入；临时库由 trap 自动删除 |
+
+**结论**：票 16 第 10 项「旧已发布课表、调代记录、规则、导入会话迁移后不丢失」在**真实 PostgreSQL 16 的真实生产数据副本**上同样成立，按「行数/主体不丢」验收通过。本机 H2 结论与 CI 空库迁移结论都得到真机印证。
+
+**过程中修复的两个脚本问题**（首次实跑暴露，已修后重跑通过）：① Flyway 容器走 TCP 被 `pg_hba` 的 `scram-sha-256` 拒绝 → 改为从 postgres 容器读取真实 `POSTGRES_PASSWORD`（不打印、不写死）；② `recent_deletion` / `import_recipe` 在 v47 生产库里尚不存在 → 改为标记为 NEW、只要求迁移后存在。首次失败的那次已自动清理临时库、生产库零改动。
+
+**仍未做**：V55 **在生产库执行**、镜像重建与 `up -d`、四容器/两处 health 验收、真机冒烟 —— 这些属于部署，需用户确认上线窗口后按 `docs/runbooks/deploy.md` 执行。
+
+## 十、push 与 CI（2026-11-05）
+
+- `git push origin main` → `50ac999..34b2754 main -> main` 成功（推送前确认 `gh auth status` 含 `workflow` scope、本次改动不含 `.github/workflows/`）。
+- CI run `42046237373`：`deploy-scripts` ✅、`frontend` ✅、**`backend` ✅（`-Dtestcontainers=true` 真跑 `PostgresContainerIT`）**、`e2e` 进行中（约 18 分钟）。历史范例：PR #27 四 job 全绿。
+- 本地 `main` 与 `origin/main` 已一致（`git log origin/main..HEAD` 为空）。
+
