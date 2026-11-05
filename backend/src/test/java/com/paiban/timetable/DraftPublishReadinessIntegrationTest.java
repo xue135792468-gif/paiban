@@ -1,7 +1,6 @@
 package com.paiban.timetable;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThan;
 
@@ -23,8 +22,8 @@ import org.springframework.test.context.ActiveProfiles;
 
 /**
  * The whole-draft check and publishing must answer the same question the same way.
- * Ticket 13: a draft whose lessons all lack a room used to report {@code valid=true}
- * and then fail publishing with 400.
+ * Rooms are no longer part of that question: a lesson without a room is valid and
+ * publishable, and the stored baseline keeps its empty {@code room_id}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -37,32 +36,26 @@ class DraftPublishReadinessIntegrationTest extends ApiIntegrationTest {
     private DraftLessonRepository draftLessons;
 
     @Test
-    void draftWithoutRoomsIsNeitherValidNorPublishable() {
+    void draftWithoutRoomsIsValidAndPublishable() {
         String token = adminToken();
         long draftId = ScheduleFixture.solved(token, 5).draftId();
         List<Map<String, Object>> lessons = ScheduleFixture.lessons(token, draftId);
         clearRooms(token, draftId, lessons);
 
         Response validation = validation(token, draftId);
-        assertThat(validation.jsonPath().getBoolean("valid")).isFalse();
-        assertThat(validation.jsonPath().getBoolean("publishable")).isFalse();
-        // Missing rooms are a resource gap, not a scheduling conflict.
+        assertThat(validation.jsonPath().getBoolean("valid")).isTrue();
+        assertThat(validation.jsonPath().getBoolean("publishable")).isTrue();
         assertThat(validation.jsonPath().getInt("hardConflicts")).isZero();
         assertThat(validation.jsonPath().getList("conflicts")).isEmpty();
-
-        Map<String, Object> missingRooms = blocker(validation, "MISSING_ROOMS");
-        assertThat(count(missingRooms)).isEqualTo(lessons.size());
-        assertThat((String) missingRooms.get("message")).contains(String.valueOf(lessons.size()));
-        assertThat((String) missingRooms.get("action")).isNotBlank();
-        assertThat(blocker(validation, "UNSCHEDULED_LESSONS")).isNull();
+        assertThat(validation.jsonPath().getList("blockers")).isEmpty();
 
         as(token).when().post("/api/timetable-drafts/" + draftId + "/publish")
-                .then().statusCode(400)
-                .body("message", containsString(String.valueOf(lessons.size())));
+                .then().statusCode(200)
+                .body("entryCount", greaterThan(0));
     }
 
     @Test
-    void assigningRoomsMakesTheDraftValidAndPublishable()  {
+    void roomsCanStillBeAssignedButNoLongerGatePublishing()  {
         String token = adminToken();
         long draftId = ScheduleFixture.solved(token, 5).draftId();
         List<Map<String, Object>> lessons = ScheduleFixture.lessons(token, draftId);
@@ -198,11 +191,6 @@ class DraftPublishReadinessIntegrationTest extends ApiIntegrationTest {
                 .filter(item -> code.equals(item.get("code")))
                 .findFirst()
                 .orElse(null);
-    }
-
-    private static int count(Map<String, Object> blocker) {
-        assertThat(blocker).as("blocker present").isNotNull();
-        return ((Number) blocker.get("count")).intValue();
     }
 
     /** Seeds a draft (and optionally copies lessons) without going through the solver. */

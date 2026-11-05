@@ -80,6 +80,26 @@ class SubstitutionCliTest {
     }
 
     @Test
+    void retiredCatalogueTypesInOldSnapshotsAreIgnored() throws Exception {
+        var snapshot = MAPPER.readTree(Path.of(DIR, "snapshot.json").toFile());
+        var constraints = (com.fasterxml.jackson.databind.node.ArrayNode) snapshot.get("constraints");
+        var retired = constraints.addObject();
+        retired.put("type", "COURSE_REQUIRED_ROOM_TYPE").put("enabled", true).put("hard", true);
+        retired.putObject("params").put("courseId", 1).put("roomType", "PLAYGROUND");
+        Path file = Files.createTempFile(Path.of("target"), "retired-cli-", ".json");
+        try {
+            MAPPER.writeValue(file.toFile(), snapshot);
+            // If the retired room rule were evaluated, course 1 in a NORMAL room would
+            // block every move; skipping it keeps the ordinary three-move plan.
+            Run run = run("plan", "--snapshot", file.toString(), "--request", DIR + "request.json");
+            assertThat(run.code()).isZero();
+            assertThat(MAPPER.readTree(run.out()).get("candidates").get(0).get("moves")).hasSize(3);
+        } finally {
+            Files.deleteIfExists(file);
+        }
+    }
+
+    @Test
     void planProducesThreeMovesAndExitsZero() throws Exception {
         Run run = run("plan", "--snapshot", DIR + "snapshot.json", "--request", DIR + "request.json");
 

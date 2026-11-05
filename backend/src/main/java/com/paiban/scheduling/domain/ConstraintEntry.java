@@ -57,4 +57,8 @@ public class ConstraintEntry {
     /** Stable identity of a multi-row requirement; null means this row is its own. */
     @Column(name = "group_key", length = 64)
     private String groupKey;
+
+    /** Soft delete (ticket 04): a deleted row is kept until the 7-day restore window ends. */
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
 }

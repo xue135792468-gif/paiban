@@ -169,10 +169,8 @@ class ConstraintTargetEntriesIntegrationTest extends ApiIntegrationTest {
     void legacyParamsRequestsStillBecomeOneEntry() {
         String token = adminToken();
         long semesterId = semesterWithPeriods(token);
-        World world = world(token);
 
         save(token, semesterId, List.of(
-                legacy("COURSE_NOT_IN_EVENING", true, 100, Map.of("courseId", world.firstCourse())),
                 legacy("SPORT_NOT_FIRST_AFTERNOON", false, 70, Map.of()),
                 legacy("COURSE_SPREAD", false, 50, Map.of()),
                 legacy("SAME_COURSE_ONCE_PER_DAY", true, 100, Map.of()),
@@ -181,7 +179,7 @@ class ConstraintTargetEntriesIntegrationTest extends ApiIntegrationTest {
 
         Response reloaded = as(token).queryParam("semesterId", semesterId)
                 .when().get("/api/constraints").then().statusCode(200).extract().response();
-        for (String type : List.of("COURSE_NOT_IN_EVENING", "SPORT_NOT_FIRST_AFTERNOON",
+        for (String type : List.of("SPORT_NOT_FIRST_AFTERNOON",
                 "COURSE_SPREAD", "SAME_COURSE_ONCE_PER_DAY", "PE_LAST_PERIOD_AVOID")) {
             List<Map<String, Object>> entries =
                     reloaded.jsonPath().getList("find { it.type == '" + type + "' }.entries");
@@ -192,9 +190,6 @@ class ConstraintTargetEntriesIntegrationTest extends ApiIntegrationTest {
         assertThat(reloaded.jsonPath()
                 .getMap("find { it.type == 'SPORT_NOT_FIRST_AFTERNOON' }.entries[0].params"))
                 .isEmpty();
-        assertThat(reloaded.jsonPath()
-                .getLong("find { it.type == 'COURSE_NOT_IN_EVENING' }.entries[0].params.courseId"))
-                .isEqualTo(world.firstCourse());
         assertThat(constraintService.settings(semesterId)
                 .entries(ConstraintType.SPORT_NOT_FIRST_AFTERNOON)).hasSize(1);
     }

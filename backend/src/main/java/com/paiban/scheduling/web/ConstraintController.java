@@ -2,12 +2,16 @@ package com.paiban.scheduling.web;
 
 import com.paiban.identity.domain.Permissions;
 import com.paiban.scheduling.service.ConstraintService;
+import com.paiban.scheduling.service.RuleImpactService;
+import com.paiban.scheduling.service.RuleLifecycleService;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintConfigDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintPreviewDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintPreviewRequest;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintSaveAuditDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintStateDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintTypeDto;
+import com.paiban.scheduling.web.ConstraintDtos.RuleImpactDto;
+import com.paiban.scheduling.web.ConstraintDtos.RuleImpactRequest;
 import com.paiban.scheduling.web.ConstraintDtos.SaveConstraintsRequest;
 import com.paiban.scheduling.web.ConstraintDtos.SaveTemplateRequest;
 import com.paiban.scheduling.web.ConstraintDtos.TemplateApplyPreview;
@@ -15,6 +19,7 @@ import com.paiban.scheduling.web.ConstraintDtos.TemplateApplyRequest;
 import com.paiban.scheduling.web.ConstraintDtos.TemplateDto;
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.Map;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -32,9 +37,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class ConstraintController {
 
     private final ConstraintService service;
+    private final RuleImpactService impact;
+    private final RuleLifecycleService rules;
 
-    public ConstraintController(ConstraintService service) {
+    public ConstraintController(
+            ConstraintService service, RuleImpactService impact, RuleLifecycleService rules) {
         this.service = service;
+        this.impact = impact;
+        this.rules = rules;
     }
 
     @GetMapping("/constraint-types")
@@ -44,7 +54,7 @@ public class ConstraintController {
 
     @GetMapping("/constraints")
     public List<ConstraintConfigDto> list(@RequestParam(required = false) Long semesterId) {
-        return service.list(semesterId);
+        return service.visibleList(semesterId);
     }
 
     /**
@@ -89,6 +99,19 @@ public class ConstraintController {
     }
 
     /**
+     * The rule page's "what would this touch?" dry run: affected classes, teachers and
+     * slots, the lessons of the newest draft inside that scope, and the hard conflicts
+     * of the shared checker. Nothing is written.
+     */
+    @PostMapping("/rules/impact")
+    @PreAuthorize("hasAuthority('" + Permissions.CONSTRAINT_MANAGE + "')")
+    public RuleImpactDto impact(@Valid @RequestBody RuleImpactRequest request) {
+        return impact.impact(
+                request.semesterId(),
+                request.configs() == null ? List.of() : request.configs());
+    }
+
+    /**
      * Saved effective configurations with the proposal decisions that produced them.
      * {@code scope=all} needs the settings administrator; the default is "mine".
      */
@@ -100,6 +123,21 @@ public class ConstraintController {
             Authentication authentication) {
         return service.audits(semesterId, "all".equalsIgnoreCase(scope),
                 authentication == null ? null : authentication.getName());
+    }
+
+    /**
+     * Deletes one rule card (ticket 04). {@code cardKey} is the card id (the group-key
+     * prefix); leaving it out deletes the whole type row, which is what the switch cards
+     * and the advanced page use. The rows are paused and soft-deleted, so the 7-day
+     * recycle bin can revive exactly this card without touching the others.
+     */
+    @DeleteMapping("/rules/{configId}")
+    @PreAuthorize("hasAuthority('" + Permissions.CONSTRAINT_MANAGE + "')")
+    public Map<String, Object> deleteRule(
+            @PathVariable Long configId,
+            @RequestParam(required = false) String cardKey,
+            @RequestParam(required = false) List<Long> entryIds) {
+        return rules.delete(configId, cardKey, entryIds);
     }
 
     @GetMapping("/constraint-templates")

@@ -299,11 +299,11 @@ async function onDeleteTemplate() {
   }
   const name = selected.value?.name ?? '所选模板'
   try {
-    await ElMessageBox.confirm(`确定要删除模板「${name}」吗？此操作不可撤销。`, '删除模板', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
+    await ElMessageBox.confirm(
+      `确定要删除模板「${name}」吗？删除后会进入「最近删除」，7 天内可以恢复。`,
+      '删除模板',
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' },
+    )
   } catch {
     return
   }

@@ -102,7 +102,7 @@ test('从当前草稿继续优化：原稿保留、锁继承、比较自动配�
   expect(postRequests).toHaveLength(1)
 
   await page.getByTestId('optimization-open-draft').click()
-  await expect(page).not.toHaveURL(new RegExp(`/admin/drafts/${seed.draftId}$`))
+  await expect(page).not.toHaveURL(new RegExp(`/workbench/drafts/${seed.draftId}$`))
   await expect(page.locator('.grid-card .cell').first()).toBeVisible()
   const newDraftId = Number(new URL(page.url()).pathname.split('/').pop())
   expect(newDraftId).not.toBe(seed.draftId)
@@ -128,7 +128,7 @@ test('从当前草稿继续优化：原稿保留、锁继承、比较自动配�
   await expect(page.locator('.grid-card .lesson[data-locked="true"]')).toHaveCount(1)
 
   // The comparison is paired A=source/B=new straight from the query.
-  await page.goto(`/admin/drafts/${newDraftId}?compare=${seed.draftId}`)
+  await page.goto(`/workbench/drafts/${newDraftId}?compare=${seed.draftId}`)
   const diff = page.getByTestId('compare-diff')
   await expect(diff).toBeVisible()
   await expect(diff).toContainText('未锁课节变化')
@@ -179,7 +179,7 @@ test('运行中刷新带 ?job= 只恢复轮询，不重复启动任务', async (
 
     const jobsBefore = await listJobs(api, seed.semesterId)
     await openDraft(page, seed.draftId)
-    await page.goto(`/admin/drafts/${seed.draftId}?job=${created.id}`)
+    await page.goto(`/workbench/drafts/${seed.draftId}?job=${created.id}`)
 
     await expect(page.getByTestId('optimization-job-panel')).toBeVisible()
     await expect(page.getByTestId('optimization-status')).toContainText(/运行中|排队中/)

@@ -70,7 +70,7 @@ describe('DraftEditorControls', () => {
     expect(second.emitted('unlock-single')?.[0]?.[0]).toMatchObject({ id: 1 })
   })
 
-  it('教师/教室视角提示按天/全班需切到行政班', () => {
+  it('教师视角提示按天/全班需切到行政班，且不再提供按教室视角', () => {
     const wrapper = mountControls({
       selectionMode: true,
       canUseClassScope: false,
@@ -78,6 +78,7 @@ describe('DraftEditorControls', () => {
     })
 
     expect(wrapper.text()).toContain('按天/全班需切到「按行政班」')
+    expect(wrapper.text()).not.toContain('按教室')
   })
 
   it('草稿不可编辑时禁用锁定入口', () => {

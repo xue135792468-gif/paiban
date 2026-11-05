@@ -132,17 +132,6 @@ class ConstraintEntriesCheckerTest {
     }
 
     @Test
-    void courseNotInEveningReadsItsEntry() {
-        ConstraintSettings entries = settings(
-                config(ConstraintType.COURSE_NOT_IN_EVENING, true, 100, Map.of()),
-                entry(ConstraintType.COURSE_NOT_IN_EVENING, Map.of("courseId", COURSE_1)));
-
-        List<String> verdict = verdictForNightLesson(entries);
-        assertThat(verdict).hasSize(1);
-        assertThat(verdict.get(0)).startsWith("COURSE_NOT_IN_EVENING@");
-    }
-
-    @Test
     void teacherMaxPerDayReadsItsGlobalEntryOnly() {
         // Since ticket 10/04 the thresholds are entry-backed too: V28 moved the legacy
         // `params_json` value into a global entry, so on its own it is "not configured"
@@ -161,18 +150,6 @@ class ConstraintEntriesCheckerTest {
     }
 
     // ------------------------------------------------------------------ helpers
-
-    private static List<String> verdictForNightLesson(ConstraintSettings settings) {
-        PlanSnapshot snapshot = PlanFixtures.builder()
-                .settings(settings)
-                .adminClass(PlanFixtures.CLASS_1, "高一1班", 45, null)
-                .teacher(TEACHER_1, "张老师", "语文")
-                .course(COURSE_1, "语文", null)
-                .room(ROOM_1, "教室1", "NORMAL", 50)
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 8)
-                .build();
-        return verdict(settings, snapshot);
-    }
 
     private static List<String> verdictForTwoLessonsADay(ConstraintSettings settings) {
         PlanSnapshot snapshot = PlanFixtures.builder()

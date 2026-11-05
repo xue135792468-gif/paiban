@@ -18,10 +18,11 @@ import { capture } from './screenshots'
  * 四个用例串行、共用同一学期：每个用例保存后都刷新，像真实教务反复编辑的顺序。
  */
 test.describe.serial('约束配置：目标型约束多条目', () => {
-  const NOT_IN_EVENING = '[data-type="COURSE_NOT_IN_EVENING"]'
+  // 票 09/11 后目录只剩 19 类：这里用到的都是保留类型。
+  const COURSE_UNAVAILABLE = '[data-type="COURSE_UNAVAILABLE"]'
   const ONCE_PER_DAY = '[data-type="SAME_COURSE_ONCE_PER_DAY"]'
   const PREFERRED_SLOT = '[data-type="TEACHER_PREFERRED_SLOT"]'
-  const ROOM_TYPE = '[data-type="COURSE_REQUIRED_ROOM_TYPE"]'
+  const CONSECUTIVE = '[data-type="CONSECUTIVE_LESSONS"]'
 
   let api: APIRequestContext
   let seed: ConstraintSeed
@@ -40,7 +41,7 @@ test.describe.serial('约束配置：目标型约束多条目', () => {
   }
 
   async function openType(page: Page, selector: string, title: string) {
-    await page.goto('/admin/constraints')
+    await page.goto('/rules/advanced')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
     await page.locator(selector).click()
     await expect(page.getByTestId('constraint-panel-title')).toContainText(title)
@@ -99,49 +100,63 @@ test.describe.serial('约束配置：目标型约束多条目', () => {
     return configs.find((item: any) => item.type === type)
   }
 
-  test('两门课程各加一条「不排晚自习」，保存后两条都在且重复保存不增删', async ({ page }) => {
+  test('两门课程各加一条「课程禁排时段」，保存后两条都在且重复保存不增删', async ({ page }) => {
     const [math, chinese] = seed.courses
 
     await uiLogin(page, 'admin', 'admin123')
-    await openType(page, NOT_IN_EVENING, '课程不排晚自习')
+    await openType(page, COURSE_UNAVAILABLE, '课程禁排时段')
     await enableType(page)
 
     const first = await addCard(page)
     await pickOption(first, 'constraint-entry-course', math.name)
-    await expect(first.getByTestId('constraint-entry-summary')).toHaveText(math.name)
+    // 时段型条目：一条卡片 = 一个目标 + 若干（星期, 节次）行。
+    const firstSlot = first.getByTestId('constraint-entry-slot')
+    await expect(firstSlot).toHaveCount(1)
+    await pickOption(firstSlot.nth(0), 'constraint-entry-slot-day', '周一')
+    await pickOption(firstSlot.nth(0), 'constraint-entry-slot-period', '第1节')
+    await expect(first.getByTestId('constraint-entry-summary')).toHaveText(
+      `${math.name} · 周一第1节`,
+    )
 
     const second = await addCard(page)
     await pickOption(second, 'constraint-entry-course', chinese.name)
-    await expect(second.getByTestId('constraint-entry-summary')).toHaveText(chinese.name)
+    const secondSlot = second.getByTestId('constraint-entry-slot')
+    await pickOption(secondSlot.nth(0), 'constraint-entry-slot-day', '周三')
+    await pickOption(secondSlot.nth(0), 'constraint-entry-slot-period', '第2节')
+    await expect(second.getByTestId('constraint-entry-summary')).toHaveText(
+      `${chinese.name} · 周三第2节`,
+    )
 
     await expect(entryCards(page)).toHaveCount(2)
-    await expectEntryCount(page, NOT_IN_EVENING, 2)
+    await expectEntryCount(page, COURSE_UNAVAILABLE, 2)
 
     await saveAndWait(page)
 
-    const saved = await configOf('COURSE_NOT_IN_EVENING')
+    const saved = await configOf('COURSE_UNAVAILABLE')
     expect(saved.enabled).toBe(true)
     expect(saved.entries).toHaveLength(2)
     expect(saved.entries.map((entry: any) => entry.params.courseId)).toEqual([
       math.id,
       chinese.id,
     ])
+    expect(saved.entries.map((entry: any) => entry.params.dayOfWeek)).toEqual([1, 3])
+    expect(saved.entries.map((entry: any) => entry.params.periodNo)).toEqual([1, 2])
 
     // 刷新后两条都在，且没有任何未保存改动。
     await page.reload()
-    await page.locator(NOT_IN_EVENING).click()
+    await page.locator(COURSE_UNAVAILABLE).click()
     await expect(entryCards(page)).toHaveCount(2)
     await expect(entryCards(page).nth(0).getByTestId('constraint-entry-summary')).toHaveText(
-      math.name,
+      `${math.name} · 周一第1节`,
     )
     await expect(entryCards(page).nth(1).getByTestId('constraint-entry-summary')).toHaveText(
-      chinese.name,
+      `${chinese.name} · 周三第2节`,
     )
     await expect(page.getByTestId('constraint-unsaved')).toHaveCount(0)
 
     // 幂等：原样再保存一次，条目数量不变。
     await saveAndWait(page)
-    const again = await configOf('COURSE_NOT_IN_EVENING')
+    const again = await configOf('COURSE_UNAVAILABLE')
     expect(again.entries).toHaveLength(2)
   })
 
@@ -219,29 +234,33 @@ test.describe.serial('约束配置：目标型约束多条目', () => {
     ).toHaveCount(2)
   })
 
-  test('同一课程两个教室类型：保存被拒，错误落在对应条目，不产生部分写入', async ({ page }) => {
+  test('同一课程两个连排节数：保存被拒，错误落在对应条目，不产生部分写入', async ({ page }) => {
     const [math] = seed.courses
 
     await uiLogin(page, 'admin', 'admin123')
-    await openType(page, ROOM_TYPE, '课程指定教室类型')
+    await openType(page, CONSECUTIVE, '连堂课连排')
     await enableType(page)
 
     const first = await addCard(page)
     await pickOption(first, 'constraint-entry-course', math.name)
-    await pickOption(first, 'constraint-entry-room-type', '实验室')
+    await first.getByTestId('constraint-entry-min-consecutive').locator('input').fill('2')
+    await first.getByTestId('constraint-entry-min-consecutive').locator('input').blur()
+    await expect(first.getByTestId('constraint-entry-summary')).toContainText(`${math.name} · 连排2节`)
 
     const second = await addCard(page)
     await pickOption(second, 'constraint-entry-course', math.name)
-    await pickOption(second, 'constraint-entry-room-type', '普通教室')
+    await second.getByTestId('constraint-entry-min-consecutive').locator('input').fill('3')
+    await second.getByTestId('constraint-entry-min-consecutive').locator('input').blur()
+    await expect(second.getByTestId('constraint-entry-summary')).toContainText(`${math.name} · 连排3节`)
 
     await page.getByTestId('constraint-save').click()
 
     // 保存前预检给出明确提示，并且没有发出请求：输入原样保留。
     const precheck = page.getByTestId('constraint-precheck-error')
     await expect(precheck).toBeVisible()
-    await expect(precheck).toContainText('课程指定教室类型')
-    await expect(precheck).toContainText(math.name)
-    await expect(precheck).toContainText('教室类型')
+    await expect(precheck).toContainText('连堂课连排')
+    await expect(precheck).toContainText(`课程「${math.name}」`)
+    await expect(precheck).toContainText('连排节数')
     await expect(page.getByTestId('constraint-unsaved')).toBeVisible()
     await expect(entryCards(page)).toHaveCount(2)
     // 冲突也落在两张卡片上，用户知道该改哪一条。
@@ -249,18 +268,18 @@ test.describe.serial('约束配置：目标型约束多条目', () => {
       `课程「${math.name}」`,
     )
     await expect(entryCards(page).nth(1).getByTestId('constraint-entry-conflict')).toContainText(
-      '教室类型',
+      '同一目标不能并存',
     )
 
-    const saved = await configOf('COURSE_REQUIRED_ROOM_TYPE')
+    const saved = await configOf('CONSECUTIVE_LESSONS')
     expect(saved?.entries ?? []).toHaveLength(0)
   })
 
   test('十二类目标型逐一打开并截图（人工复核用，不作断言）', async ({ page }) => {
     const types: Array<[string, string]> = [
-      ['TEACHER_MEETING_BLOCKED', '教研活动禁排'],
-      ['COURSE_REQUIRED_ROOM_TYPE', '课程指定教室类型'],
-      ['COURSE_NOT_IN_EVENING', '课程不排晚自习'],
+      ['CLASS_UNAVAILABLE', '每周不上课时段'],
+      ['TEACHER_UNAVAILABLE', '教师禁排时段'],
+      ['COURSE_UNAVAILABLE', '课程禁排时段'],
       ['SAME_COURSE_ONCE_PER_DAY', '同一课程一天最多一节'],
       ['SPORT_NOT_FIRST_AFTERNOON', '体育不在下午第一节'],
       ['CONSECUTIVE_LESSONS', '连堂课连排'],
@@ -272,11 +291,11 @@ test.describe.serial('约束配置：目标型约束多条目', () => {
       ['PE_LAST_PERIOD_AVOID', '体育不在最后一节'],
     ]
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/admin/constraints')
+    await page.goto('/rules/advanced')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
     for (const [code, title] of types) {
       const navItem = page.locator(`[data-type="${code}"]`)
-      // 初中模式隐藏教研活动禁排（ADR-0018），那一类没有入口可截。
+      // 初中模式会隐藏部分高级规则（ADR-0018），没有入口的类别跳过截图。
       if ((await navItem.count()) === 0) {
         continue
       }

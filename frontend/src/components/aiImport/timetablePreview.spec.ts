@@ -243,6 +243,12 @@ describe('映射步骤状态', () => {
     expect(gradeStatusOf({ inferredGrade: '高一', gradeCandidates: ['七年级'] })).toBe('new')
   })
 
+  it('教室列不再进入映射步骤', () => {
+    const groups = mappingGroups([issue({ row: 1, field: 'roomName', value: '101' })])
+
+    expect(groups).toEqual([])
+  })
+
   it('节次问题不是实体映射，而是行编辑', () => {
     const groups = mappingGroups([issue({ field: 'periodNo', value: '第九节', candidates: ['第1节'] })])
 

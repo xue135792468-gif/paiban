@@ -64,6 +64,19 @@ export async function apiCall(
   return text ? JSON.parse(text) : null
 }
 
+/**
+ * Removes every live import recipe. Import specs share one in-memory H2 database
+ * for the whole Playwright run, so a recipe saved by another spec would otherwise
+ * make the next upload match it. Each spec starts from an empty recipe library.
+ */
+export async function clearImportRecipes(context: APIRequestContext): Promise<void> {
+  const token = await apiLogin(context)
+  const recipes = (await apiCall(context, token, 'get', '/import-recipes')) ?? []
+  for (const recipe of recipes) {
+    await apiCall(context, token, 'delete', `/import-recipes/${recipe.id}`)
+  }
+}
+
 export interface SeedResult {
   semesterId: number
   classId: number
@@ -958,7 +971,7 @@ export function lessonCard(page: Page, lessonId: number): Locator {
 /** 管理员登录 → 打开草稿详情 → 等网格首格渲染。 */
 export async function openDraft(page: Page, draftId: number): Promise<void> {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto(`/admin/drafts/${draftId}`)
+  await page.goto(`/workbench/drafts/${draftId}`)
   await expect(page.locator('.grid-card .cell').first()).toBeVisible()
 }
 

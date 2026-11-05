@@ -206,14 +206,17 @@ class PeriodReferenceIntegrityTest extends ApiIntegrationTest {
     }
 
     @Test
-    void deletingASemesterStillRemovesItsDraftsAndPeriods() {
+    void deletingASemesterHidesItAndKeepsItsDraftsForRestore() {
         Fixture f = fixture();
         TestData.semester(f.token()); // makes another semester current, so the fixture one may be deleted
         assertThat(draftLessons.count()).isEqualTo(1);
 
-        as(f.token()).when().delete("/api/semesters/" + f.semesterId()).then().statusCode(200);
+        as(f.token()).when().delete("/api/semesters/" + f.semesterId() + "?mode=CASCADE")
+                .then().statusCode(200);
 
-        assertThat(draftLessons.count()).isZero();
+        // Ticket 03/11: semester deletion is soft; assignments are removed with the
+        // explicit CASCADE mode, while its drafts stay in the database for a restore.
         as(f.token()).get("/api/semesters/" + f.semesterId()).then().statusCode(404);
+        assertThat(draftLessons.count()).isEqualTo(1);
     }
 }

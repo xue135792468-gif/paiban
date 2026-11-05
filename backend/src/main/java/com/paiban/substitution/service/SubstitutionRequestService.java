@@ -431,8 +431,11 @@ public class SubstitutionRequestService {
 
     private void verifyCoverOrReject(String username, SubstitutionRequest request, Long substituteTeacherId,
                                      Long newRoomId, Long newPeriodId) {
-        TimetableEntry entry = entries.findById(request.getEntryId())
-                .orElseThrow(() -> ApiException.notFound("课节不存在: " + request.getEntryId()));
+        TimetableEntry entry = request.getEntryId() == null ? null
+                : entries.findById(request.getEntryId()).orElse(null);
+        if (entry == null) {
+            throw ApiException.conflict("课表已撤回，该调代申请对应的课节已失效，请重新提交");
+        }
         Period targetPeriod = newPeriodId == null
                 ? periods.findById(request.getPeriodId()).orElse(null)
                 : periods.findById(newPeriodId).orElse(null);

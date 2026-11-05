@@ -75,8 +75,14 @@ class PlanVerifierTest {
                 .contains("SOFT_SCORE_MISMATCH");
     }
 
+    /**
+     * The room model is retired from the product (ticket 09 dropped ROOM_CONFLICT,
+     * ticket 02 stopped requiring rooms to publish): a leftover roomId is display data,
+     * so two lessons sharing a room no longer fails the plan. This pins the new
+     * contract; the teacher/class invariants above still fail a plan on their own.
+     */
     @Test
-    void rejectsWhenTheTargetRoomIsAlreadyOccupied() {
+    void allowsWhenTheTargetRoomIsAlreadyOccupied() {
         PlanFixtures.Builder builder = PlanFixtures.builder()
                 .adminClass(CLASS_1, "高一1班", 45, null)
                 .adminClass(2L, "高一2班", 45, null)
@@ -104,9 +110,9 @@ class PlanVerifierTest {
         PlanVerifier.Result verification = PlanVerifier.verify(
                 snapshot, tampered, PlanVerifier.Kind.SWAP, -1);
 
-        assertThat(verification.passed()).isFalse();
+        assertThat(verification.passed()).isTrue();
         assertThat(verification.issues()).extracting(PlanVerifier.Issue::code)
-                .contains("ROOM_DOUBLE_BOOKED");
+                .doesNotContain("ROOM_DOUBLE_BOOKED");
     }
 
     @Test

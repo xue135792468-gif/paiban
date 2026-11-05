@@ -34,10 +34,43 @@ public final class TimetableDtos {
                                     /** 调课落点实例日期；仅 SWAP 且被调走时有值。 */
                                     LocalDate targetLessonDate) {}
 
-    public record PublishResultDto(Long draftId, int entryCount, Instant publishedAt, Long publishId) {}
+    /**
+     * {@code cancelledSubstitutions} is the number of future overlay rows a withdrawal
+     * cancelled and that nothing has re-done yet; the page turns it into a "re-process
+     * substitutions" prompt after the success toast.
+     */
+    public record PublishResultDto(Long draftId,
+                                   int entryCount,
+                                   Instant publishedAt,
+                                   Long publishId,
+                                   int cancelledSubstitutions) {}
 
-    public record PublishInfoDto(Long semesterId, Long draftId, String draftName, String publishedBy,
-                                 Instant publishedAt) {}
+    /**
+     * {@code published} is the product answer ("is there a live baseline?"); the
+     * timestamps and status let the UI show the last withdrawn publish as history.
+     */
+    public record PublishInfoDto(boolean published,
+                                 Long semesterId,
+                                 Long publishId,
+                                 Long draftId,
+                                 String draftName,
+                                 String publishedBy,
+                                 Instant publishedAt,
+                                 Instant withdrawnAt,
+                                 String status) {}
+
+    /** What withdrawing would change, shown before the admin confirms. */
+    public record WithdrawPreviewDto(boolean published,
+                                     Long draftId,
+                                     Long publishId,
+                                     int futureSubstitutions,
+                                     long allSubstitutions) {}
+
+    public record WithdrawResultDto(Long draftId,
+                                    Long publishId,
+                                    Instant withdrawnAt,
+                                    int cancelledSubstitutions,
+                                    int removedEntries) {}
 
     public record SchoolTimetableDto(List<Long> classIds, List<TimetableEntryDto> entries) {}
 }

@@ -164,7 +164,7 @@ class ConstraintProposalIntegrationTest extends ApiIntegrationTest {
                   {"sourceText":"张老师周三下午不排","type":"TEACHER_UNAVAILABLE",
                    "strength":"HARD","status":"READY","teacherName":"张老师","days":[3],
                    "section":"AFTERNOON"},
-                  {"sourceText":"体育不排晚自习","type":"COURSE_NOT_IN_EVENING",
+                  {"sourceText":"体育不排最后一节","type":"PE_LAST_PERIOD_AVOID",
                    "strength":"HARD","status":"READY","courseName":"%s"}
                 ]}""".formatted(courseName));
 

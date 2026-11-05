@@ -55,7 +55,10 @@ const canViewRecords = computed(() =>
 const canViewAllRecords = computed(() => auth.hasPermission('substitution:view'))
 const myTeacherId = computed(() => auth.user?.teacherId ?? null)
 
-const activeTab = ref('mine')
+/** The draft page's "re-process substitutions" prompt links straight to the records tab. */
+const TABS = ['mine', 'pending', 'records', 'conversion']
+const requestedTab = typeof route.query.tab === 'string' ? route.query.tab : ''
+const activeTab = ref(TABS.includes(requestedTab) ? requestedTab : 'mine')
 const teachers = ref<Teacher[]>([])
 const classes = ref<Array<{ id: number; name: string; headTeacherId?: number | null }>>([])
 const classOptions = computed(() =>
@@ -93,7 +96,7 @@ onMounted(async () => {
     http.get('/classes'),
   ])
   teachers.value = teacherRes.data
-  classes.value = classRes.data
+  classes.value = classRes.data.filter((item: { active?: boolean }) => item.active !== false)
   await Promise.all([loadMine(), loadPending()])
   const requestId = Number(route.query.requestId)
   if (requestId) {

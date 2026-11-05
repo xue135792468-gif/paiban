@@ -100,6 +100,7 @@ class DraftCyclePlannerTest {
         draft.setId(DRAFT_ID);
         draft.setSemesterId(SEMESTER_ID);
         when(drafts.findById(DRAFT_ID)).thenReturn(Optional.of(draft));
+        when(drafts.findByIdAndDeletedAtIsNull(DRAFT_ID)).thenReturn(Optional.of(draft));
 
         when(periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(SEMESTER_ID)).thenReturn(List.of(
                 period(P1, 1, 1), period(P2, 1, 2), period(P3, 1, 3),

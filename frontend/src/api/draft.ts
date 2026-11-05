@@ -1,4 +1,5 @@
 import { http } from './http'
+import { activeOnly } from '@/utils/activeOptions'
 import type {
   CyclePlanSearch,
   DraftChangeItem,
@@ -24,8 +25,9 @@ export async function getValidation(draftId: number): Promise<DraftValidation> {
 }
 
 export async function listCourses(): Promise<Array<{ id: number; color?: string }>> {
-  const { data } = await http.get('/courses')
-  return data
+  const { data } = await http.get<Array<{ id: number; color?: string; active?: boolean }>>('/courses')
+  // Disabled courses stay in the management list but never in a picker.
+  return activeOnly(data)
 }
 
 export async function applyChanges(

@@ -20,6 +20,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import org.mockito.Mockito;
 
+import java.time.ZoneId;
+
 /**
  * 修订与恢复基线的开课截止三分边界（票 04，规格第 6 节）：本单截止 =
  * 本次改变实例「当前安排与拟生效安排」开课时刻的最小值；COVER 槽位不变，
@@ -47,6 +49,7 @@ class SubstitutionRevisionDeadlineIntegrationTest extends ApiIntegrationTest {
     void fixClock() {
         now.set(JUST_BEFORE);
         Mockito.when(clock.instant()).thenAnswer(invocation -> now.get());
+        Mockito.when(clock.getZone()).thenReturn(ZoneId.of("Asia/Shanghai"));
     }
 
     @Test

@@ -2,19 +2,18 @@ import { describe, expect, it } from 'vitest'
 import { HELP_DOCS, HELP_GROUPS, findDoc, searchDocs } from './docs'
 import { HELP_SLUGS } from './links'
 
-/** Anchors promised to other tickets by design-contract.md §1. */
+/** Anchors promised to other tickets by design-contract.md §1 (教室 retired in product-trim). */
 const REQUIRED_ANCHORS: Record<string, string[]> = {
-  foundation: ['grades', 'classes', 'teachers', 'rooms', 'courses', 'import'],
+  foundation: ['grades', 'classes', 'teachers', 'courses', 'import'],
   scheduling: ['constraints', 'assignments', 'run', 'draft', 'publish'],
   substitution: ['apply', 'approve', 'notify'],
   timetable: ['views', 'export', 'substitution-mark'],
-  settings: ['school-type', 'ai', 'platform'],
+  settings: ['school-type', 'ai'],
   'flow-term-start': [
     'school',
     'periods',
     'grades',
     'teachers',
-    'rooms',
     'courses',
     'assignments',
     'constraints',
@@ -55,24 +54,27 @@ describe('HELP_DOCS', () => {
 
   it('links to routes that exist in the router', () => {
     const known = [
-      '/admin/semesters',
-      '/admin/grades',
-      '/admin/classes',
-      '/admin/teachers',
-      '/admin/rooms',
-      '/admin/courses',
-      '/admin/assignments',
-      '/admin/constraints',
-      '/admin/ai-import',
-      '/admin/scheduling',
-      '/timetable',
-      '/substitutions',
-      '/substitutions/workbench',
+      '/workbench',
+      '/workbench/timetable',
+      '/workbench/drafts',
+      '/substitution',
+      '/rules',
+      '/rules/advanced',
+      '/data/semesters',
+      '/data/grades',
+      '/data/classes',
+      '/data/teachers',
+      '/data/courses',
+      '/data/assignments',
+      '/data/import',
+      '/data/import/manual',
+      '/data/recipes',
+      '/ai',
+      '/ai/history',
+      '/settings/general',
+      '/settings/users',
+      '/settings/recycle-bin',
       '/notifications',
-      '/admin/settings',
-      '/admin/ai-providers',
-      '/admin/ai-history',
-      '/admin/users',
       '/onboarding',
     ]
     for (const doc of HELP_DOCS) {

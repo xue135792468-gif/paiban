@@ -1,7 +1,12 @@
 package com.paiban.foundation.web;
 
+import com.paiban.common.deletion.DeleteMode;
+import com.paiban.common.deletion.EntityType;
 import com.paiban.identity.domain.Permissions;
+import com.paiban.foundation.service.LifecycleService;
 import com.paiban.foundation.service.SemesterService;
+import com.paiban.foundation.web.LifecycleDtos.DeleteImpactDto;
+import com.paiban.foundation.web.LifecycleDtos.DeleteResultDto;
 import com.paiban.foundation.web.SemesterDtos.GenerateDefaultPeriodsRequest;
 import com.paiban.foundation.web.SemesterDtos.PeriodDto;
 import com.paiban.foundation.web.SemesterDtos.SemesterDto;
@@ -19,6 +24,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -26,9 +32,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class SemesterController {
 
     private final SemesterService service;
+    private final LifecycleService lifecycle;
 
-    public SemesterController(SemesterService service) {
+    public SemesterController(SemesterService service, LifecycleService lifecycle) {
         this.service = service;
+        this.lifecycle = lifecycle;
     }
 
     @GetMapping
@@ -59,10 +67,29 @@ public class SemesterController {
         return service.update(id, request);
     }
 
+    @GetMapping("/{id}/delete-impact")
+    @PreAuthorize("hasAuthority('" + Permissions.SEMESTER_MANAGE + "')")
+    public DeleteImpactDto deleteImpact(@PathVariable Long id) {
+        return lifecycle.impact(EntityType.SEMESTER, id);
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('" + Permissions.SEMESTER_MANAGE + "')")
-    public void delete(@PathVariable Long id) {
-        service.delete(id);
+    public DeleteResultDto delete(
+            @PathVariable Long id, @RequestParam(required = false) String mode) {
+        return lifecycle.delete(EntityType.SEMESTER, id, DeleteMode.parse(mode));
+    }
+
+    @PostMapping("/{id}/disable")
+    @PreAuthorize("hasAuthority('" + Permissions.SEMESTER_MANAGE + "')")
+    public void disable(@PathVariable Long id) {
+        lifecycle.disable(EntityType.SEMESTER, id);
+    }
+
+    @PostMapping("/{id}/enable")
+    @PreAuthorize("hasAuthority('" + Permissions.SEMESTER_MANAGE + "')")
+    public void enable(@PathVariable Long id) {
+        lifecycle.enable(EntityType.SEMESTER, id);
     }
 
     @PostMapping("/{id}/set-current")

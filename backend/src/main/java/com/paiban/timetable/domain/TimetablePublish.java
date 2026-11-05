@@ -18,6 +18,15 @@ import lombok.Setter;
 @NoArgsConstructor
 public class TimetablePublish {
 
+    /**
+     * The semester's current baseline. At most one row per semester carries this status:
+     * {@code TimetablePublishService#publish} demotes earlier ACTIVE rows to WITHDRAWN in
+     * the same transaction, because H2 and Postgres disagree on partial unique indexes.
+     */
+    public static final String ACTIVE = "ACTIVE";
+    /** Withdrawn back to a draft; the row and its timestamps stay as history. */
+    public static final String WITHDRAWN = "WITHDRAWN";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -33,4 +42,13 @@ public class TimetablePublish {
 
     @Column(name = "published_at", nullable = false)
     private Instant publishedAt = Instant.now();
+
+    @Column(nullable = false, length = 16)
+    private String status = ACTIVE;
+
+    @Column(name = "withdrawn_at")
+    private Instant withdrawnAt;
+
+    @Column(name = "withdrawn_by", length = 64)
+    private String withdrawnBy;
 }

@@ -66,7 +66,7 @@ test('基础数据与授课任务列表为空时显示引导', async ({ page }) 
   await stubSemester(page)
   await stubEmptyFoundation(page)
 
-  await page.goto('/admin/grades')
+  await page.goto('/data/grades')
   let root = await expectGuide(page, {
     title: '还没有年级数据',
     button: '新建年级',
@@ -76,7 +76,7 @@ test('基础数据与授课任务列表为空时显示引导', async ({ page }) 
   await expect(page.locator('.el-dialog:visible')).toContainText('新建年级')
   await page.keyboard.press('Escape')
 
-  await page.goto('/admin/classes')
+  await page.goto('/data/classes')
   root = await expectGuide(page, {
     title: '还没有行政班数据',
     button: '新建行政班',
@@ -86,7 +86,7 @@ test('基础数据与授课任务列表为空时显示引导', async ({ page }) 
   await expect(page.locator('.el-dialog:visible')).toContainText('新建行政班')
   await page.keyboard.press('Escape')
 
-  await page.goto('/admin/teachers')
+  await page.goto('/data/teachers')
   root = await expectGuide(page, {
     title: '还没有教师数据',
     button: '新建教师',
@@ -96,17 +96,7 @@ test('基础数据与授课任务列表为空时显示引导', async ({ page }) 
   await expect(page.locator('.el-dialog:visible')).toContainText('新建教师')
   await page.keyboard.press('Escape')
 
-  await page.goto('/admin/rooms')
-  root = await expectGuide(page, {
-    title: '还没有教室数据',
-    button: '新建教室',
-    href: '/help/foundation#rooms',
-  })
-  await root.getByRole('button', { name: '新建教室' }).click()
-  await expect(page.locator('.el-dialog:visible')).toContainText('新建教室')
-  await page.keyboard.press('Escape')
-
-  await page.goto('/admin/courses')
+  await page.goto('/data/courses')
   root = await expectGuide(page, {
     title: '还没有课程数据',
     button: '新建课程',
@@ -116,7 +106,7 @@ test('基础数据与授课任务列表为空时显示引导', async ({ page }) 
   await expect(page.locator('.el-dialog:visible')).toContainText('新建课程')
   await page.keyboard.press('Escape')
 
-  await page.goto('/admin/assignments')
+  await page.goto('/data/assignments')
   root = await expectGuide(page, {
     title: '还没有授课任务',
     button: '新建授课任务',
@@ -132,11 +122,11 @@ test('无学期时引导去学期页', async ({ page }) => {
   await stubEmptyFoundation(page)
 
   const cases = [
-    { path: '/admin/grades', href: '/help/foundation#grades' },
-    { path: '/admin/classes', href: '/help/foundation#classes' },
-    { path: '/admin/assignments', href: '/help/scheduling#assignments' },
-    { path: '/admin/constraints', href: '/help/scheduling#constraints' },
-    { path: '/admin/scheduling', href: '/help/scheduling#run' },
+    { path: '/data/grades', href: '/help/foundation#grades' },
+    { path: '/data/classes', href: '/help/foundation#classes' },
+    { path: '/data/assignments', href: '/help/scheduling#assignments' },
+    { path: '/rules/advanced', href: '/help/scheduling#constraints' },
+    { path: '/workbench', href: '/help/scheduling#run' },
   ]
 
   for (const item of cases) {
@@ -147,7 +137,7 @@ test('无学期时引导去学期页', async ({ page }) => {
       href: item.href,
     })
     await root.getByRole('button', { name: '去创建学期' }).click()
-    await expect(page).toHaveURL(/\/admin\/semesters$/)
+    await expect(page).toHaveURL(/\/data\/semesters$/)
   }
 })
 
@@ -160,7 +150,7 @@ test('排课草稿、排课历史与约束列表为空时显示引导', async ({
   await stubJson(page, '**/api/constraint-types', [])
   await stubJson(page, '**/api/constraints**', [])
 
-  await page.goto('/admin/scheduling')
+  await page.goto('/workbench')
   for (const item of [
     { title: '还没有课表草稿', href: '/help/scheduling#draft' },
     { title: '还没有排课历史', href: '/help/scheduling#run' },
@@ -175,7 +165,7 @@ test('排课草稿、排课历史与约束列表为空时显示引导', async ({
     )
   }
 
-  await page.goto('/admin/constraints')
+  await page.goto('/rules/advanced')
   const constraints = page
     .locator('[data-testid="empty-state-guide"]:visible')
     .filter({ has: page.getByRole('heading', { name: '还没有可配置的约束' }) })
@@ -194,7 +184,7 @@ test('调代待审批与调代记录为空时显示引导', async ({ page }) => 
   await stubJson(page, '**/api/classes**', [])
   await stubJson(page, '**/api/teachers**', [])
 
-  await page.goto('/substitutions')
+  await page.goto('/substitution/requests')
 
   // 默认的「我的调代」页签：我的申请为空时也要有引导。
   await expectGuide(page, {
@@ -216,17 +206,17 @@ test('调代待审批与调代记录为空时显示引导', async ({ page }) => 
   })
 })
 
-test('课表无发布数据时引导去自动排课', async ({ page }) => {
+test('课表无发布数据时引导去课表工作台', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
   await stubNoSemester(page)
   await stubEmptyFoundation(page)
 
-  await page.goto('/timetable')
+  await page.goto('/workbench/timetable')
   const root = await expectGuide(page, {
     title: '暂无课表数据',
-    button: '去自动排课',
+    button: '去课表工作台',
     href: '/help/timetable#views',
   })
-  await root.getByRole('button', { name: '去自动排课' }).click()
-  await expect(page).toHaveURL(/\/admin\/scheduling$/)
+  await root.getByRole('button', { name: '去课表工作台' }).click()
+  await expect(page).toHaveURL(/\/workbench$/)
 })

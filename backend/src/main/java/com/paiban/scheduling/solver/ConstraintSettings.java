@@ -81,9 +81,7 @@ public final class ConstraintSettings {
         Map<ConstraintType, Rule> rules = new EnumMap<>(ConstraintType.class);
         for (ConstraintType type : List.of(
                 ConstraintType.TEACHER_CONFLICT,
-                ConstraintType.CLASS_CONFLICT,
-                ConstraintType.ROOM_CONFLICT,
-                ConstraintType.ROOM_CAPACITY_FIT)) {
+                ConstraintType.CLASS_CONFLICT)) {
             rules.put(type, new Rule(true, 100, List.of()));
         }
         return new ConstraintSettings(rules);
@@ -106,13 +104,18 @@ public final class ConstraintSettings {
         Map<String, List<ConstraintEntry>> entriesByType = groupEntries(entries);
         Map<ConstraintType, Rule> rules = new EnumMap<>(ConstraintType.class);
         for (ConstraintConfig config : configs) {
-            if (!config.isEnabled()) {
+            if (!config.isEnabled() || config.getDeletedAt() != null) {
                 continue;
             }
             ConstraintType type;
             try {
                 type = ConstraintType.valueOf(config.getType());
             } catch (IllegalArgumentException ex) {
+                continue;
+            }
+            // A retired type stays in the database so old data remains readable, but it
+            // must never influence evaluation or the fingerprint (ticket 09).
+            if (type.isRetired()) {
                 continue;
             }
             List<EntryRule> active = activeEntries(type, config, entriesByType, mapper);
@@ -146,7 +149,9 @@ public final class ConstraintSettings {
                 Comparator.nullsLast(Comparator.naturalOrder())));
         List<EntryRule> active = new ArrayList<>();
         for (ConstraintEntry row : rows) {
-            if (!row.isEnabled()) {
+            // A deleted row is in the recycle bin, not paused: it must not be evaluated
+            // or change the fingerprint, exactly like a row that was never saved.
+            if (!row.isEnabled() || row.getDeletedAt() != null) {
                 continue;
             }
             Map<String, Object> params = readParams(row.getParamsJson(), mapper);

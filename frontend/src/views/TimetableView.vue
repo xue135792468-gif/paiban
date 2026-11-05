@@ -6,8 +6,8 @@
         <p class="subtitle">
           {{
             isJunior
-              ? '按行政班、教师或教室查看课表。调代生效的课节会标注「调」或「代」。'
-              : '按行政班、教师、教室或全校查看课表。调代生效的课节会标注「调」或「代」。'
+              ? '按行政班或教师查看课表。调代生效的课节会标注「调」或「代」。'
+              : '按行政班、教师或全校查看课表。调代生效的课节会标注「调」或「代」。'
           }}
           <InfoTooltip field="timetable.substitutionMark" />
         </p>
@@ -16,7 +16,6 @@
         <el-radio-group v-if="canViewAll || canViewClassScope" v-model="mode" @change="onModeChange">
           <el-radio-button v-if="canViewAll || headClasses.length > 0" value="class">行政班</el-radio-button>
           <el-radio-button value="teacher">教师</el-radio-button>
-          <el-radio-button v-if="canViewAll" value="room">教室</el-radio-button>
           <el-radio-button v-if="canViewAll && !isJunior" value="school">全校</el-radio-button>
         </el-radio-group>
         <el-tag v-else effect="plain">我的课表</el-tag>
@@ -59,7 +58,7 @@
 
     <el-alert
       v-if="published === null"
-      title="当前学期还没有发布课表，以下内容可能为空。请先在「自动排课」中发布。"
+      title="当前学期还没有发布课表，可在「课表工作台」发布后再查看。"
       type="warning"
       :closable="false"
       show-icon
@@ -71,8 +70,8 @@
         v-if="!hasData"
         title="暂无课表数据"
         :description="emptyDescription"
-        :button-text="showSchedulingGuide ? '去自动排课' : undefined"
-        :button-to="showSchedulingGuide ? '/admin/scheduling' : undefined"
+        :button-text="showSchedulingGuide ? '去课表工作台' : undefined"
+        :button-to="showSchedulingGuide ? '/workbench' : undefined"
         help-slug="timetable"
         help-anchor="views"
       />
@@ -146,8 +145,6 @@ interface Entry {
   courseName?: string
   teacherId: number
   teacherName?: string
-  roomId?: number
-  roomName?: string
   periodId: number
   dayOfWeek: number
   periodNo: number
@@ -180,9 +177,12 @@ interface Course {
 }
 
 interface PublishInfo {
-  draftId: number
-  draftName: string
-  publishedAt: string
+  published: boolean
+  draftId?: number | null
+  draftName?: string | null
+  publishedAt?: string | null
+  withdrawnAt?: string | null
+  status?: string | null
 }
 
 const auth = useAuthStore()
@@ -195,7 +195,7 @@ const headClasses = computed(() =>
   classes.value.filter((item) => item.headTeacherId != null && item.headTeacherId === auth.user?.teacherId),
 )
 
-const mode = ref<'class' | 'teacher' | 'room' | 'school'>('class')
+const mode = ref<'class' | 'teacher' | 'school'>('class')
 const view = ref<'latest' | 'baseline'>('latest')
 const date = ref<string>(today())
 const targetId = ref<number | null>(null)
@@ -203,7 +203,6 @@ const entries = ref<Entry[]>([])
 const periods = ref<Period[]>([])
 const classes = ref<Option[]>([])
 const teachers = ref<Option[]>([])
-const rooms = ref<Option[]>([])
 const courses = ref<Course[]>([])
 const published = ref<PublishInfo | null | undefined>(undefined)
 const loading = ref(false)
@@ -231,8 +230,7 @@ const periodRows = computed(() => {
 
 const targets = computed(() => {
   if (mode.value === 'class') return canViewAll.value ? classes.value : headClasses.value
-  if (mode.value === 'teacher') return teachers.value
-  return rooms.value
+  return teachers.value
 })
 
 const hasData = computed(() => (mode.value === 'school' ? schoolGroups.value.length > 0 : entries.value.length > 0))
@@ -246,7 +244,7 @@ const showSchedulingGuide = computed(
 
 const emptyDescription = computed(() =>
   !published.value
-    ? '当前学期还没有发布课表。请先在「自动排课」中生成并发布课表；如基础数据尚未录入，可从初始化向导开始。'
+    ? '当前学期还没有发布课表，可在「课表工作台」发布后再查看；如基础数据尚未录入，可从初始化向导开始。'
     : '当前查看对象在所选日期没有课节，试试切换查看对象或日期。',
 )
 
@@ -386,16 +384,14 @@ async function exportFile(format: string) {
 }
 
 onMounted(async () => {
-  const [classRes, teacherRes, roomRes, courseRes, currentRes] = await Promise.all([
+  const [classRes, teacherRes, courseRes, currentRes] = await Promise.all([
     http.get('/classes'),
     http.get('/teachers/options'),
-    http.get('/rooms'),
     http.get('/courses'),
     http.get('/semesters/current'),
   ])
   classes.value = classRes.data
   teachers.value = teacherRes.data
-  rooms.value = roomRes.data
   courses.value = courseRes.data
   if (currentRes.status !== 204 && currentRes.data) {
     const semesterId = currentRes.data.id
@@ -404,7 +400,7 @@ onMounted(async () => {
       http.get('/timetable/publish-info'),
     ])
     periods.value = periodRes.data
-    published.value = publishRes.data ?? null
+    published.value = publishRes.data?.published ? publishRes.data : null
   }
   targetId.value = targets.value.length > 0 ? targets.value[0].id : null
   if (!canViewAll.value) {

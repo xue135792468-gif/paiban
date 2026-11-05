@@ -28,7 +28,7 @@ test('场景 2：教师提交调代 → 教务审批 → 通知与课表叠加',
   const effectiveDate = dateForWeekday(entry!.dayOfWeek)
 
   await uiLogin(page, seed.username, seed.password)
-  await page.goto('/substitutions')
+  await page.goto('/substitution/requests')
   const dateInput = page.getByRole('combobox', { name: '请假日期' })
 
   // 自助表单的日期选择器禁止过去日期：今天可选、昨天置灰。
@@ -63,7 +63,7 @@ test('场景 2：教师提交调代 → 教务审批 → 通知与课表叠加',
 
   await page.evaluate(() => localStorage.clear())
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/substitutions')
+  await page.goto('/substitution/requests')
   await page.getByRole('tab', { name: '待审批' }).click()
   await expect(page.getByRole('button', { name: '批准' }).first()).toBeVisible()
   await page.getByRole('button', { name: '批准' }).first().click()
@@ -79,7 +79,7 @@ test('场景 2：教师提交调代 → 教务审批 → 通知与课表叠加',
   expect(stats.substitutedOut).toBe(1)
   expect(stats.swapParticipation).toBe(0)
 
-  await page.goto('/substitutions')
+  await page.goto('/substitution/requests')
   await page.getByRole('tab', { name: '调代记录' }).click()
   await expect(page.getByText('已生效').first()).toBeVisible()
 
@@ -98,7 +98,7 @@ test('场景 2：教师提交调代 → 教务审批 → 通知与课表叠加',
   // 一次性调代只影响所指授课日期（ADR-0030）。
   // 申请者（被代教师）视角：授课日这节课被代课人接走，课表少一节；
   // 下周同一槽位恢复常规，课回到课表且全程不出现「代」标记。
-  await page.goto('/timetable')
+  await page.goto('/workbench/timetable')
   await page.getByPlaceholder('选择日期').fill(effectiveDate)
   await page.getByPlaceholder('选择日期').press('Enter')
   // The seeded teacher owns the baseline entries; one is covered on this week.
@@ -119,7 +119,7 @@ test('场景 2：教师提交调代 → 教务审批 → 通知与课表叠加',
   // 管理员的班级课表对同一实例给出一致结果：授课日出现「代」，下周恢复基线。
   await page.evaluate(() => localStorage.clear())
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/timetable')
+  await page.goto('/workbench/timetable')
   await page.getByPlaceholder('选择日期').fill(effectiveDate)
   await page.getByPlaceholder('选择日期').press('Enter')
   await expect(page.locator('.lesson .el-tag', { hasText: '代' }).first()).toBeVisible()

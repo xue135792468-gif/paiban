@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.util.StringUtils;
 import org.springframework.web.ErrorResponseException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,6 +65,15 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Spring refuses an oversized multipart body before any controller runs (the servlet
+     * limit is 20MB). Without this handler that refusal reaches the user as a bare 500.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleTooLarge(MaxUploadSizeExceededException ex) {
+        return body(HttpStatus.BAD_REQUEST, "文件不能超过 20MB，请拆分或压缩后再上传");
+    }
+
+    /**
      * Two writers based on the same configuration version: the loser of the real race
      * must not see a generic 500. Nothing of its transaction was written.
      */
@@ -79,6 +90,15 @@ public class GlobalExceptionHandler {
         String detail = ex.getBody() == null ? null : ex.getBody().getDetail();
         return body(status, StringUtils.hasText(detail)
                 ? detail : status.getReasonPhrase());
+    }
+
+    /**
+     * A static resource miss is a 404. Recipe samples deliberately resolve to "missing"
+     * so they are never served from {@code /uploads}; that must not become a 500.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNoResource(NoResourceFoundException ex) {
+        return body(HttpStatus.NOT_FOUND, "资源不存在");
     }
 
     @ExceptionHandler(IllegalStateException.class)

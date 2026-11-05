@@ -23,6 +23,7 @@ import { capture } from './screenshots'
 test.describe.serial('约束配置：收尾页面状态与证据', () => {
   const TEACHER_UNAVAILABLE = '[data-type="TEACHER_UNAVAILABLE"]'
   const TEACHER_MAX = '[data-type="TEACHER_MAX_PER_DAY"]'
+  const ONCE_PER_DAY = '[data-type="SAME_COURSE_ONCE_PER_DAY"]'
   const templateName = `收尾模板-${Math.random().toString(36).slice(2, 8)}`
 
   let api: APIRequestContext
@@ -91,16 +92,21 @@ test.describe.serial('约束配置：收尾页面状态与证据', () => {
     return page.locator('.el-message-box:visible')
   }
 
-  test('默认页：左侧四组导航 + 顶部三个计数 + 右侧面板，计数同源', async ({ page }) => {
+  test('默认页：左侧三组导航 + 顶部三个计数 + 右侧面板，计数同源', async ({ page }) => {
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/admin/constraints')
+    await page.goto('/rules/advanced')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
 
     // 分组体现在左侧导航的分区标题上（变体 B），不再有折叠卡片。
-    await expect(page.getByTestId('constraint-nav-group')).toHaveCount(4)
-    await expect(page.getByTestId('constraint-nav-group').first()).toContainText('冲突类')
+    // 票 09/11 把资源类（RESOURCE）整组退役，只剩冲突类 / 教学规律 / 教师偏好三组。
+    const groups = page.getByTestId('constraint-nav-group')
+    await expect(groups).toHaveCount(3)
+    await expect(groups.nth(0)).toContainText('冲突类')
+    await expect(groups.nth(1)).toContainText('教学规律')
+    await expect(groups.nth(2)).toContainText('教师偏好')
+    await expect(page.getByTestId('constraint-nav')).not.toContainText('资源类')
 
-    await expect(page.getByTestId('constraint-summary-enabled')).toContainText(/已启用 \d+ \/ 26 类/)
+    await expect(page.getByTestId('constraint-summary-enabled')).toContainText(/已启用 \d+ \/ 19 类/)
     await expect(summaryEntries(page)).toContainText('具体条目 3 条')
     // 顶部条目数＝左侧每类条目数之和，两者出自同一份草稿状态。
     expect(await navEntryTotal(page)).toBe(3)
@@ -133,7 +139,7 @@ test.describe.serial('约束配置：收尾页面状态与证据', () => {
     })
 
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/admin/constraints')
+    await page.goto('/rules/advanced')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
     await page.locator(TEACHER_UNAVAILABLE).click()
 
@@ -161,7 +167,7 @@ test.describe.serial('约束配置：收尾页面状态与证据', () => {
     ])
 
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/admin/constraints')
+    await page.goto('/rules/advanced')
     await page.locator(TEACHER_MAX).click()
 
     await expect(
@@ -181,7 +187,7 @@ test.describe.serial('约束配置：收尾页面状态与证据', () => {
     await saveEntries()
 
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/admin/constraints')
+    await page.goto('/rules/advanced')
     await expect(summaryEntries(page)).toContainText('具体条目 3 条')
 
     await page.getByTestId('constraint-template-save').click()
@@ -223,41 +229,25 @@ test.describe.serial('约束配置：收尾页面状态与证据', () => {
   })
 
   test('保存失败定位：重复条目落在第 2 条，导航红点提示', async ({ page }) => {
-    const [first] = seed.teachers
-
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/admin/constraints')
-    await page.locator(TEACHER_UNAVAILABLE).click()
-    await expect(entryCards(page)).toHaveCount(3)
+    await page.goto('/rules/advanced')
+    await expect(page.getByTestId('constraint-nav')).toBeVisible()
+    // 分组型条目（教师/课程禁排）每条自带 groupKey，服务端会当成两条不同的要求；
+    // 这里用非分组的「同一课程一天最多一节」，重复才真的会被整次保存拒收。
+    await page.locator(ONCE_PER_DAY).click()
+    await expect(page.getByTestId('constraint-panel-title')).toContainText('同一课程一天最多一节')
+    await expect(page.getByTestId('constraint-entry-empty')).toBeVisible()
 
-    // 复制第一条：页面在保存前就认出重复，类型在左侧亮红点。
+    // 两张「适用于全部课程」的卡片：页面在保存前就认出重复，类型在左侧亮红点。
     await page.getByTestId('constraint-entry-add').click()
-    const card = entryCards(page).nth(3)
-    await expect(card).toBeVisible()
-    const teacherTrigger = card.getByTestId('constraint-entry-teacher')
-    await teacherTrigger.click()
-    const dropdown = page.locator('.el-select-dropdown:visible .el-select-dropdown__item')
-    await dropdown.filter({ hasText: first.name }).first().click()
-    const slot = card.getByTestId('constraint-entry-slot').first()
-    await slot.getByTestId('constraint-entry-slot-day').click()
-    await page
-      .locator('.el-select-dropdown:visible .el-select-dropdown__item')
-      .filter({ hasText: '周一' })
-      .first()
-      .click()
-    await slot.getByTestId('constraint-entry-slot-period').click()
-    await page
-      .locator('.el-select-dropdown:visible')
-      .last()
-      .locator('.el-select-dropdown__item')
-      .filter({ hasText: '第1节' })
-      .first()
-      .click()
-
+    await page.getByTestId('constraint-entry-add').click()
+    const cards = entryCards(page)
+    await expect(cards).toHaveCount(2)
+    const card = cards.nth(1)
     await expect(card.getByTestId('constraint-entry-duplicate')).toContainText('与第 1 条完全相同')
-    // 新增：冲突在保存前就让左侧该类型亮起红点。
+    // 冲突在保存前就让左侧该类型亮起红点。
     await expect(
-      page.locator(`${TEACHER_UNAVAILABLE} [data-testid="constraint-nav-dot"]`),
+      page.locator(`${ONCE_PER_DAY} [data-testid="constraint-nav-dot"]`),
     ).toHaveAttribute('data-state', 'error')
 
     await page.getByTestId('constraint-save').click()

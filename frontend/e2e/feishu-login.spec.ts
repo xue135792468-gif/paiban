@@ -38,6 +38,14 @@ test('飞书免登：注入 window.tt 后自动登录并进入系统', async ({ 
     await page.waitForURL((url) => !url.pathname.startsWith('/login'))
     await expect(page.getByText(displayName).first()).toBeVisible()
   } finally {
+    // Clear the binding before the soft delete: a leftover fs-001 row would make a
+    // later spec's fake Feishu login resolve to this deleted teacher instead of its own.
+    await apiCall(api, token, 'put', `/teachers/${teacher.id}`, {
+      name: displayName,
+      employeeNo: `FS-${suffix}`,
+      feishuUserId: '',
+      feishuOpenId: '',
+    }).catch(() => undefined)
     await apiCall(api, token, 'delete', `/teachers/${teacher.id}`).catch(() => undefined)
     await api.dispose()
   }

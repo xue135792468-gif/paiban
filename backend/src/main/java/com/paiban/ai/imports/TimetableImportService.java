@@ -205,7 +205,7 @@ public class TimetableImportService {
                         teachingClass.getAdminClassId(), teachingClass.getId());
             }
             java.util.Set<String> existing = new java.util.HashSet<>();
-            for (Assignment assignment : assignments.findBySemesterId(sid)) {
+            for (Assignment assignment : assignments.findBySemesterIdAndDeletedAtIsNull(sid)) {
                 existing.add(assignment.getTeachingClassId() + "|" + assignment.getCourseId());
             }
             for (AssignmentKey key : groups.keySet()) {

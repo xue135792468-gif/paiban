@@ -1,0 +1,501 @@
+<template>
+  <div class="manual-import" data-testid="manual-import">
+    <header class="head">
+      <div>
+        <h2>手动选列导入</h2>
+        <p class="subtitle">
+          上传 Excel / CSV，自己指定班级、星期、节次、课程、教师对应的列，预览后生成草稿。
+          整个过程不调用 AI。
+        </p>
+      </div>
+      <router-link to="/data/import" class="back">去 AI 导入</router-link>
+    </header>
+
+    <el-card shadow="never" class="block">
+      <template #header><span class="card-title">1. 选择文件</span></template>
+      <div class="upload">
+        <input
+          ref="fileInput"
+          type="file"
+          accept=".xlsx,.xls,.csv"
+          data-testid="manual-file"
+          @change="onFileChange"
+        >
+        <span v-if="file" class="file-name">{{ file.name }}</span>
+        <el-button v-if="inspecting" size="small" loading>正在识别工作表…</el-button>
+      </div>
+      <p class="hint">支持 Excel 与 CSV；复合键「班级|星期|节次」可以用任意分隔符。</p>
+    </el-card>
+
+    <el-card v-if="inspect" shadow="never" class="block">
+      <template #header>
+        <div class="card-head">
+          <span class="card-title">2. 选择工作表与列</span>
+          <el-button size="small" :loading="previewing" data-testid="manual-preview-button" @click="runPreview">
+            预览
+          </el-button>
+        </div>
+      </template>
+      <ManualImportMapper v-if="mapping" v-model="mapping" :sheets="inspect.sheets" />
+
+      <ManualAiSuggestion
+        v-if="showAiSection"
+        :available="aiAvailable"
+        :suggesting="aiSuggesting"
+        :result="aiSuggestion"
+        :headers="currentHeaders"
+        @suggest="runAiSuggest"
+        @adopt="adoptAiSuggestion"
+      />
+    </el-card>
+
+    <el-card v-if="preview" shadow="never" class="block">
+      <template #header>
+        <div class="card-head">
+          <span class="card-title">3. 预览与入库</span>
+          <el-tag v-if="preview.recipeMatch.kind !== 'NONE'" size="small" type="success" effect="plain">
+            {{ preview.recipeMatch.kind === 'EXACT' ? '已套用配方' : '配方相近' }}
+          </el-tag>
+        </div>
+      </template>
+
+      <ManualImportPreview :preview="preview" />
+
+      <el-alert
+        v-if="commitResult?.errors.length"
+        type="error"
+        show-icon
+        :closable="false"
+        class="result"
+        data-testid="manual-commit-errors"
+      >
+        <p>有 {{ commitResult.errors.length }} 行无法入库，草稿没有生成：</p>
+        <ul>
+          <li v-for="(error, index) in commitResult.errors.slice(0, 10)" :key="index">
+            第 {{ error.row }} 行：{{ error.message }}
+          </li>
+        </ul>
+      </el-alert>
+
+      <el-alert
+        v-if="commitResult?.draftId"
+        type="success"
+        show-icon
+        :closable="false"
+        class="result"
+        data-testid="manual-commit-result"
+      >
+        已生成草稿「{{ draftName || '导入课表' }}」：写入 {{ commitResult.imported }} 节，跳过
+        {{ commitResult.skippedEmpty }} 个空槽。
+        <router-link :to="{ name: 'draft-editor', params: { id: commitResult.draftId } }">
+          打开草稿
+        </router-link>
+        <span v-if="commitResult.appliedRule">，已生成规则「{{ commitResult.appliedRule.text }}」。</span>
+      </el-alert>
+
+      <ManualCommitPanel
+        v-model:semester-id="semesterId"
+        v-model:draft-name="draftName"
+        v-model:apply-rule="applyRule"
+        v-model:teacher-mappings="teacherMappings"
+        v-model:kept-placeholders="keptPlaceholders"
+        :preview="preview"
+        :semesters="semesters"
+        :teachers="teachers"
+        :pending-teachers="pendingTeachers"
+        :committing="committing"
+        @commit="runCommit"
+      />
+
+      <div v-if="canSaveRecipe" class="save-recipe" data-testid="manual-save-recipe">
+        <el-button type="primary" plain data-testid="open-save-recipe" @click="openRecipeDialog">
+          保存为配方
+        </el-button>
+        <span class="hint">{{ saveRecipeHint }}</span>
+      </div>
+      <el-alert
+        v-if="savedRecipe"
+        type="success"
+        show-icon
+        :closable="false"
+        class="result"
+        data-testid="recipe-saved"
+      >
+        已保存配方「{{ savedRecipe.name }}」，样例测试通过，下次上传同格式文件会自动套用。
+      </el-alert>
+
+      <RecipeSaveDialog
+        v-model="recipeDialog"
+        v-model:name="recipeName"
+        v-model:sample-file="recipeSampleFile"
+        :preview="preview"
+        :mapping="mapping"
+        :ai-source="aiSource"
+        :fallback-file="file"
+        @saved="onRecipeSaved"
+      />
+    </el-card>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import { http } from '@/api/http'
+import { serverMessage } from '@/api/errors'
+import {
+  commitManualImport,
+  inspectManualImport,
+  mappingFromSuggestion,
+  matchImportRecipe,
+  previewManualImport,
+  suggestImportColumns,
+  type AiRecipeSuggestionResult,
+  type ImportRecipe,
+  type ManualCommitResult,
+  type ManualInspect,
+  type ManualMapping,
+  type ManualPreview,
+  type RecipeMatch,
+} from '@/api/imports'
+import ManualImportMapper from '@/components/manualImport/ManualImportMapper.vue'
+import ManualImportPreview from '@/components/manualImport/ManualImportPreview.vue'
+import ManualCommitPanel from '@/components/manualImport/ManualCommitPanel.vue'
+import RecipeSaveDialog from '@/components/manualImport/RecipeSaveDialog.vue'
+import { activeOnly } from '@/utils/activeOptions'
+import ManualAiSuggestion from '@/components/manualImport/ManualAiSuggestion.vue'
+
+interface SemesterOption {
+  id: number
+  name: string
+  current?: boolean
+}
+
+interface TeacherOption {
+  id: number
+  name: string
+  active?: boolean
+}
+
+const fileInput = ref<HTMLInputElement | null>(null)
+const file = ref<File | null>(null)
+const inspect = ref<ManualInspect | null>(null)
+const mapping = ref<ManualMapping | null>(null)
+const preview = ref<ManualPreview | null>(null)
+const commitResult = ref<ManualCommitResult | null>(null)
+const inspecting = ref(false)
+const previewing = ref(false)
+const committing = ref(false)
+const recipeDialog = ref(false)
+const savedRecipe = ref<ImportRecipe | null>(null)
+const recipeName = ref('')
+const recipeSampleFile = ref<File | null>(null)
+const semesters = ref<SemesterOption[]>([])
+const teachers = ref<TeacherOption[]>([])
+const semesterId = ref<number | null>(null)
+const draftName = ref('')
+const applyRule = ref(true)
+const teacherMappings = ref<Record<string, string>>({})
+/** 占位教师里用户明确“保留并创建”的那些。 */
+const keptPlaceholders = ref<string[]>([])
+const recipeMatch = ref<RecipeMatch | null>(null)
+const aiAvailable = ref(false)
+const aiSuggesting = ref(false)
+const aiSuggestion = ref<AiRecipeSuggestionResult | null>(null)
+const aiAdopted = ref(false)
+
+/**
+ * 占位教师逐个都要有答案：映射到已有教师，或明确保留。没选完就不让入库——
+ * 这正是“不静默创建”的实现位置。后端只把“会被创建”的占位名放进 pendingTeachers。
+ */
+const pendingTeachers = computed(() =>
+  (preview.value?.pendingTeachers ?? []).filter(
+    (name) => !teacherMappings.value[name] && !keptPlaceholders.value.includes(name),
+  ),
+)
+
+/**
+ * 保存配方入口：预览出来就能存（服务端会用样例文件重跑一遍）。已套用配方的旧规则
+ * 会藏起按钮，导致“相似配方手工改完后存不了”，所以这里只在保存成功后收起。
+ */
+const canSaveRecipe = computed(
+  () => !!preview.value && !savedRecipe.value && !(commitResult.value && !commitResult.value.draftId),
+)
+const saveRecipeHint = computed(() => {
+  const match = preview.value?.recipeMatch
+  if (match && match.kind === 'SIMILAR') {
+    return '这次改了列映射？保存同名配方即可更新它，换个名字就是另存。'
+  }
+  return '保存后，下次上传同格式文件会自动套用。'
+})
+
+function openRecipeDialog() {
+  recipeName.value = preview.value?.recipeMatch?.recipeName ?? recipeName.value
+  recipeDialog.value = true
+}
+
+/** 弹窗保存成功：换成本页那张“已保存配方”的提示。 */
+function onRecipeSaved(recipe: ImportRecipe) {
+  savedRecipe.value = recipe
+}
+
+const currentHeaders = computed(
+  () => inspect.value?.sheets.find((sheet) => sheet.name === mapping.value?.sheetName)?.headers ?? [],
+)
+
+const noRecipe = computed(() => recipeMatch.value === null || recipeMatch.value.kind === 'NONE')
+const showAiSection = computed(
+  () => !!inspect.value && !!mapping.value && noRecipe.value,
+)
+
+/** Ticket 07 provenance, attached to the recipe snapshot only when AI was adopted. */
+const aiSource = computed(() => {
+  const result = aiSuggestion.value
+  if (!aiAdopted.value || !result?.suggestion) return {}
+  return {
+    aiSuggested: true,
+    aiRawResponse: result.raw,
+    aiSuggestedMapping: mappingFromSuggestion(result.suggestion),
+  }
+})
+
+onMounted(async () => {
+  await Promise.all([loadSemesters(), loadTeachers(), loadAiStatus()])
+})
+
+/** AI is optional: an unconfigured provider only hides the suggestion entry. */
+async function loadAiStatus() {
+  try {
+    const { data } = await http.get<{ tasks?: Record<string, { configured?: boolean }> }>(
+      '/ai/status',
+    )
+    aiAvailable.value = Boolean(data?.tasks?.data_import?.configured)
+  } catch {
+    aiAvailable.value = false
+  }
+}
+
+async function loadSemesters() {
+  try {
+    const { data } = await http.get<SemesterOption[]>('/semesters')
+    semesters.value = data
+    const current = data.find((item) => item.current) ?? data[0]
+    semesterId.value = current?.id ?? null
+  } catch (error) {
+    ElMessage.error(serverMessage(error, '加载学期失败'))
+  }
+}
+
+async function loadTeachers() {
+  try {
+    const { data } = await http.get<TeacherOption[]>('/teachers')
+    teachers.value = activeOnly(data ?? [])
+  } catch (error) {
+    ElMessage.error(serverMessage(error, '加载教师列表失败'))
+  }
+}
+
+async function onFileChange(event: Event) {
+  const target = event.target as HTMLInputElement
+  const selected = target.files?.[0] ?? null
+  resetWorkflow()
+  file.value = selected
+  if (!selected) return
+  inspecting.value = true
+  try {
+    const result = await inspectManualImport(selected)
+    inspect.value = result
+    const first = result.sheets[0]
+    mapping.value = first ? { ...first.suggestedMapping, sheetName: first.name } : null
+    recipeMatch.value = await matchImportRecipe(selected).catch(() => ({
+      kind: 'NONE' as const,
+      differences: [],
+    }))
+    const match = recipeMatch.value
+    if (match && match.mapping && match.kind !== 'NONE') {
+      mapping.value = { ...match.mapping }
+      await runPreview()
+    }
+  } catch (error) {
+    ElMessage.error(serverMessage(error, '识别工作表失败'))
+  } finally {
+    inspecting.value = false
+  }
+}
+
+function resetWorkflow() {
+  inspect.value = null
+  mapping.value = null
+  preview.value = null
+  commitResult.value = null
+  savedRecipe.value = null
+  recipeName.value = ''
+  recipeSampleFile.value = null
+  recipeDialog.value = false
+  teacherMappings.value = {}
+  keptPlaceholders.value = []
+  applyRule.value = true
+  draftName.value = ''
+  recipeMatch.value = null
+  aiSuggestion.value = null
+  aiAdopted.value = false
+}
+
+/** Asks the model for a mapping; failures warn once and leave the manual form as is. */
+async function runAiSuggest() {
+  if (!file.value || !mapping.value) return
+  aiSuggesting.value = true
+  aiSuggestion.value = null
+  aiAdopted.value = false
+  try {
+    const result = await suggestImportColumns(
+      file.value,
+      mapping.value.sheetName,
+      mapping.value.headerRow ?? null,
+    )
+    if (!result.available) {
+      aiAvailable.value = false
+      ElMessage.warning(result.explanation || 'AI 未配置，可手动选列')
+      return
+    }
+    if (!result.success || !result.suggestion) {
+      ElMessage.warning(result.error || 'AI 没能识别这个表格，请手动选列')
+      return
+    }
+    aiSuggestion.value = result
+  } catch (error) {
+    ElMessage.warning(serverMessage(error, 'AI 暂时不可用，请手动选列'))
+  } finally {
+    aiSuggesting.value = false
+  }
+}
+
+/** Fills the existing mapper with the proposal; the user can still edit every field. */
+function adoptAiSuggestion() {
+  const suggestion = aiSuggestion.value?.suggestion
+  if (!suggestion) return
+  mapping.value = mappingFromSuggestion(suggestion)
+  aiAdopted.value = true
+  ElMessage.success('已填入 AI 建议的列映射，可修改后预览')
+}
+
+async function runPreview() {  if (!file.value || !mapping.value) return
+  previewing.value = true
+  commitResult.value = null
+  savedRecipe.value = null
+  try {
+    preview.value = await previewManualImport(file.value, mapping.value, semesterId.value)
+    teacherMappings.value = {}
+    keptPlaceholders.value = []
+    applyRule.value = !!preview.value.suggestedRule
+    if (!draftName.value) {
+      draftName.value = `手动导入 ${new Date().toLocaleDateString()}`
+    }
+  } catch (error) {
+    ElMessage.error(serverMessage(error, '预览失败'))
+  } finally {
+    previewing.value = false
+  }
+}
+
+async function runCommit() {
+  if (!file.value || !mapping.value) return
+  if (pendingTeachers.value.length) {
+    ElMessage.warning(`还有 ${pendingTeachers.value.length} 个占位教师没有选择`)
+    return
+  }
+  committing.value = true
+  commitResult.value = null
+  try {
+    commitResult.value = await commitManualImport(file.value, mapping.value, {
+      semesterId: semesterId.value,
+      draftName: draftName.value,
+      teacherNameMappings: teacherMappings.value,
+      keepPlaceholderTeachers: keptPlaceholders.value.length > 0,
+      applySuggestedRule: applyRule.value,
+    })
+    if (commitResult.value.draftId) {
+      ElMessage.success(`已写入 ${commitResult.value.imported} 节`)
+    } else {
+      ElMessage.error(`有 ${commitResult.value.errors.length} 行无法入库`)
+    }
+  } catch (error) {
+    ElMessage.error(serverMessage(error, '入库失败'))
+  } finally {
+    committing.value = false
+  }
+}
+</script>
+
+<style scoped>
+.manual-import {
+  display: grid;
+  gap: 14px;
+}
+.head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.subtitle {
+  margin: 6px 0 0;
+  color: var(--paiban-muted);
+  font-size: 13px;
+}
+.back {
+  font-size: 13px;
+  color: var(--paiban-primary);
+  text-decoration: none;
+}
+.block {
+  border: 1px solid #eef0f5;
+}
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.card-title {
+  font-weight: 600;
+}
+.upload {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.file-name {
+  font-size: 13px;
+  color: var(--paiban-ink);
+}
+.hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--paiban-muted);
+}
+.result {
+  margin-top: 12px;
+}
+.save-recipe {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed #e5e7ef;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--paiban-muted);
+  min-width: 240px;
+}
+</style>

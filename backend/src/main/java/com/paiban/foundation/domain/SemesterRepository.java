@@ -10,6 +10,9 @@ public interface SemesterRepository extends JpaRepository<Semester, Long> {
 
     List<Semester> findAllByOrderByStartDateDesc();
 
+    /** The semester picker hides soft-deleted semesters; the current one is never deleted. */
+    List<Semester> findAllByDeletedAtIsNullOrderByStartDateDesc();
+
     boolean existsByName(String name);
 
     /**

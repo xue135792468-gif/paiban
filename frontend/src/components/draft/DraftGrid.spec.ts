@@ -123,12 +123,13 @@ describe('DraftGrid', () => {
     expect(lessons[1].classes()).not.toContain('conflict')
   })
 
-  it('课表页面不显示教室，导入预览仍保留教室', () => {
-    const hidden = mountGrid({ lessons: [lesson(1, 1, 1)], showRoom: false })
-    expect(hidden.get('.lesson').text()).not.toContain('101')
+  it('卡片只显示课程与教师，旧数据的教室字段不渲染', () => {
+    const wrapper = mountGrid({ lessons: [lesson(1, 1, 1)] })
 
-    const shown = mountGrid({ lessons: [lesson(1, 1, 1)] })
-    expect(shown.get('.lesson').text()).toContain('101')
+    const text = wrapper.get('.lesson').text()
+    expect(text).toContain('课程1')
+    expect(text).toContain('教师1')
+    expect(text).not.toContain('101')
   })
 
   it('作息没有起止时间时不显示时间占位', () => {
@@ -257,5 +258,52 @@ describe('DraftGrid', () => {
 
     expect(normal.emitted('lesson-activate')?.[0]?.[0]).toMatchObject({ id: 1 })
     expect(normal.emitted('toggle-select')).toBeUndefined()
+  })
+
+  it('教师视图的课卡显示班级、课程与教师', () => {
+    const wrapper = mountGrid({
+      lessons: [lesson(1, 1, 1, { className: '高一1班' })],
+      showClassName: true,
+    })
+
+    const text = wrapper.get('.lesson').text()
+    expect(text).toContain('高一1班')
+    expect(text).toContain('课程1')
+    expect(text).toContain('教师1')
+  })
+
+  it('换课模式：绿格标出对方班级/课程/教师，灰格与空格带具体原因', () => {
+    const wrapper = mountGrid({
+      periods: [period(1, 1), period(2, 1), period(1, 2), period(2, 2)],
+      lessons: [
+        lesson(1, 1, 1, { classId: 1, className: '高一1班' }),
+        lesson(2, 1, 1, { classId: 2, className: '高一2班' }),
+        lesson(3, 2, 1, { classId: 1, className: '高一1班' }),
+      ],
+      showClassName: true,
+      swapTargets: {
+        1: { status: 'swappable', reason: '和高一1班的语文互换，李老师' },
+        2: { status: 'foreign', reason: '不同班，只能同班换课' },
+        3: { status: 'blocked', reason: '李老师 此时在 高一2班 有 英语课' },
+      },
+    })
+
+    const cells = wrapper.findAll('.cell')
+    expect(cells[0].classes()).toContain('swap-swappable')
+    expect(cells[0].attributes('data-swap-state')).toBe('swappable')
+    expect(cells[0].attributes('title')).toBe('和高一1班的语文互换，李老师')
+    expect(cells[0].text()).toContain('高一1班')
+    expect(cells[0].text()).toContain('教师1')
+
+    expect(cells[1].classes()).toContain('swap-blocked')
+    expect(cells[1].attributes('title')).toBe('李老师 此时在 高一2班 有 英语课')
+
+    expect(cells[2].classes()).toContain('swap-blocked')
+    expect(cells[2].attributes('title')).toBe('没有可换的课')
+    expect(cells[3].attributes('title')).toBe('没有可换的课')
+
+    const foreignCard = wrapper.findAll('.lesson')[1]
+    expect(foreignCard.classes()).toContain('swap-foreign')
+    expect(foreignCard.attributes('title')).toBe('不同班，只能同班换课')
   })
 })

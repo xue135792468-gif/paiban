@@ -130,7 +130,8 @@ class SettingsOnboardingIntegrationTest extends ApiIntegrationTest {
         String token = adminToken();
         as(token).when().get("/api/onboarding/status")
                 .then().statusCode(200)
-                .body("hints", hasSize(9))
+                // The room hint was removed with the room model (ticket 02); 8 hints remain.
+                .body("hints", hasSize(8))
                 .body("hints.key", hasItem("semester"))
                 .body("hints.key", hasItem("periods"))
                 .body("hints.key", hasItem("classes"))

@@ -78,19 +78,19 @@
         <el-table-column prop="active" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="row.active ? 'success' : 'info'">
-              {{ row.active ? '在职' : '离职' }}
+              {{ row.active ? '正常' : '已停用' }}
             </el-tag>
           </template>
         </el-table-column>
         <el-table-column
           v-if="auth.hasPermission('foundation:manage')"
           label="操作"
-          width="160"
+          width="220"
           fixed="right"
         >
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="danger" @click="remove(row)">删除</el-button>
+            <LifecycleCell entity-type="teacher" :row="row" @updated="load" />
           </template>
         </el-table-column>
       </el-table>
@@ -131,8 +131,8 @@
         <el-form-item label="状态" prop="active">
           <el-switch
             v-model="form.active"
-            active-text="在职"
-            inactive-text="离职"
+            active-text="正常"
+            inactive-text="已停用"
           />
         </el-form-item>
       </el-form>
@@ -153,12 +153,13 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Download, Upload } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ImportDialog from '@/components/ImportDialog.vue'
+import LifecycleCell from '@/components/lifecycle/LifecycleCell.vue'
 import { serverMessage } from '@/api/errors'
 
 interface Teacher {
@@ -272,22 +273,6 @@ async function submit() {
   }
 }
 
-async function remove(row: Teacher) {
-  try {
-    await ElMessageBox.confirm(`确定要删除教师“${row.name}”吗？`, '删除确认', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-    await http.delete(`/teachers/${row.id}`)
-    ElMessage.success('删除成功')
-    await load()
-  } catch (e: any) {
-    if (e !== 'cancel') {
-      ElMessage.error(serverMessage(e, '删除失败'))
-    }
-  }
-}
 
 async function handleExport() {
   exporting.value = true

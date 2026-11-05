@@ -49,6 +49,10 @@ public class Teacher {
     @Column(nullable = false)
     private boolean active = true;
 
+    /** 软删除标记：行仍在库中，删除/恢复只切换这个字段。 */
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 }

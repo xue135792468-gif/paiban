@@ -18,7 +18,8 @@ public final class AssignmentDtos {
                                 Long teacherId,
                                 String teacherName,
                                 int weeklyLessons,
-                                Long teachingClassId) {}
+                                Long teachingClassId,
+                                boolean active) {}
 
     public record SaveAssignmentRequest(@NotNull(message = "班级不能为空") Long classId,
                                         @NotNull(message = "课程不能为空") Long courseId,

@@ -1,5 +1,6 @@
 package com.paiban.scheduling.service;
 
+import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
 import com.paiban.foundation.domain.PeriodSection;
@@ -20,12 +21,15 @@ import com.paiban.scheduling.solver.PeriodSlot;
 import com.paiban.scheduling.solver.RoomRequirement;
 import com.paiban.scheduling.solver.RoomSlot;
 import com.paiban.scheduling.solver.TimetableSolution;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,6 +43,10 @@ public class TimetableProblemBuilder {
     private final SemesterRepository semesterRepository;
     private final WarmStartSeedService warmStart;
     private final FoundationService foundation;
+    private final SemesterBaselineQuery baselines;
+
+    private static final String MISSING_OTHER_GRADE_SCHEDULE =
+            "其他年级还没有已排课表，无法保持不动；请选择全部年级，或先导入/发布其他年级";
 
     public TimetableProblemBuilder(
             PeriodRepository periodRepository,
@@ -46,13 +54,15 @@ public class TimetableProblemBuilder {
             AssignmentRepository assignmentRepository,
             SemesterRepository semesterRepository,
             WarmStartSeedService warmStart,
-            FoundationService foundation) {
+            FoundationService foundation,
+            SemesterBaselineQuery baselines) {
         this.periodRepository = periodRepository;
         this.roomRepository = roomRepository;
         this.assignmentRepository = assignmentRepository;
         this.semesterRepository = semesterRepository;
         this.warmStart = warmStart;
         this.foundation = foundation;
+        this.baselines = baselines;
     }
 
     /** The solver problem plus where its warm start came from: BASELINE, DRAFT, NONE or SOURCE_DRAFT. */
@@ -82,11 +92,26 @@ public class TimetableProblemBuilder {
 
     @Transactional(readOnly = true)
     public BuiltProblem buildWithWarmStart(Long semesterId, ConstraintSettings settings) {
+        return buildWithWarmStart(semesterId, settings, null);
+    }
+
+    /**
+     * Builds the default warm-start problem. When {@code gradeIds} is non-null only the
+     * selected grades stay movable; every other grade's lessons are added as fixed facts
+     * with their published period pinned by {@code lockedPeriodId}. Keeping those lessons
+     * in the same problem is what makes shared-teacher daily/consecutive totals count
+     * across grades instead of per grade.
+     */
+    @Transactional(readOnly = true)
+    public BuiltProblem buildWithWarmStart(
+            Long semesterId, ConstraintSettings settings, Set<Long> gradeIds) {
         Context context = context(semesterId);
-        List<Assignment> assignments = assignmentRepository.findBySemesterId(semesterId);
+        List<Assignment> assignments = assignmentRepository.findBySemesterIdAndDeletedAtIsNull(semesterId);
         WarmStartSeedService.WarmStartSeed seed =
                 warmStart.seed(semesterId, context.periodById(), assignments);
         Map<AssignmentKey, Deque<PeriodSlot>> warmPeriods = seed.periods();
+        Map<Long, Deque<PeriodSlot>> fixedPeriods =
+                fixedPeriodsFromBaseline(semesterId, assignments, context, gradeIds);
 
         List<Lesson> lessons = new ArrayList<>();
         long lessonId = 1;
@@ -100,6 +125,38 @@ public class TimetableProblemBuilder {
             RoomSlot fixedRoom = specialRoom
                     ? null
                     : context.fixedRooms().get(assignment.getAdminClassId());
+            if (!inScope(assignment.getAdminClassId(), context, gradeIds)) {
+                Deque<PeriodSlot> fixed = fixedPeriods.get(assignment.getId());
+                if (fixed == null || fixed.size() < assignment.getWeeklyLessons()) {
+                    throw ApiException.conflict(MISSING_OTHER_GRADE_SCHEDULE);
+                }
+                for (int index = 0; index < assignment.getWeeklyLessons(); index++) {
+                    PeriodSlot slot = fixed.poll();
+                    Lesson lesson = new Lesson(
+                            lessonId++,
+                            assignment.getId(),
+                            assignment.getCourseId(),
+                            course == null ? null : course.name(),
+                            assignment.getTeacherId(),
+                            assignment.getAdminClassId(),
+                            adminClass == null ? null : adminClass.headTeacherId(),
+                            teacher == null ? null : teacher.subject(),
+                            requiredRoomType,
+                            course != null && course.allowConsecutive(),
+                            studentCount,
+                            index);
+                    lesson.setFixedRoom(fixedRoom);
+                    if (fixedRoom != null) {
+                        lesson.setRoom(fixedRoom);
+                    }
+                    // A fixed fact, not a user lock: the period may not move, but the new
+                    // draft does not inherit a "locked" marker the user never set.
+                    lesson.setPeriod(slot);
+                    lesson.setLockedPeriodId(slot.getId());
+                    lessons.add(lesson);
+                }
+                continue;
+            }
             Deque<PeriodSlot> baselinePeriods = warmPeriods.get(AssignmentKey.of(assignment));
             for (int index = 0; index < assignment.getWeeklyLessons(); index++) {
                 Lesson lesson = new Lesson(
@@ -144,8 +201,20 @@ public class TimetableProblemBuilder {
     @Transactional(readOnly = true)
     public BuiltProblem buildFromSource(
             Long semesterId, ConstraintSettings settings, SourceDraftSnapshot snapshot) {
+        return buildFromSource(semesterId, settings, snapshot, null);
+    }
+
+    /**
+     * Builds from the frozen source draft. Selected grades keep the source teacher and
+     * locks; unselected grades are added as fixed facts using the source period, so the
+     * new draft still contains the whole school and shared-teacher totals stay correct.
+     */
+    @Transactional(readOnly = true)
+    public BuiltProblem buildFromSource(
+            Long semesterId, ConstraintSettings settings, SourceDraftSnapshot snapshot,
+            Set<Long> gradeIds) {
         Context context = context(semesterId);
-        List<Assignment> assignments = assignmentRepository.findBySemesterId(semesterId);
+        List<Assignment> assignments = assignmentRepository.findBySemesterIdAndDeletedAtIsNull(semesterId);
         Map<String, SourceLesson> rows = new HashMap<>();
         snapshot.lessons().forEach(row -> rows.put(lessonKey(row.assignmentId(), row.lessonIndex()), row));
 
@@ -159,6 +228,7 @@ public class TimetableProblemBuilder {
             RoomSlot fixedRoom = specialRoom
                     ? null
                     : context.fixedRooms().get(assignment.getAdminClassId());
+            boolean scoped = inScope(assignment.getAdminClassId(), context, gradeIds);
             for (int index = 0; index < assignment.getWeeklyLessons(); index++) {
                 SourceLesson row = rows.get(lessonKey(assignment.getId(), index));
                 if (row == null) {
@@ -166,6 +236,42 @@ public class TimetableProblemBuilder {
                     // dropping a lesson and losing its lock.
                     throw new IllegalStateException(
                             "来源草稿缺少授课任务的课节: " + assignment.getId() + "/" + index);
+                }
+                PeriodSlot slot = row.periodId() == null
+                        ? null
+                        : context.periodById().get(row.periodId());
+                if (!scoped) {
+                    if (slot == null) {
+                        throw ApiException.conflict(MISSING_OTHER_GRADE_SCHEDULE);
+                    }
+                    TeacherDto teacher = context.teachers().get(assignment.getTeacherId());
+                    Lesson lesson = new Lesson(
+                            lessonId++,
+                            assignment.getId(),
+                            assignment.getCourseId(),
+                            course == null ? null : course.name(),
+                            assignment.getTeacherId(),
+                            assignment.getAdminClassId(),
+                            adminClass == null ? null : adminClass.headTeacherId(),
+                            teacher == null ? null : teacher.subject(),
+                            requiredRoomType,
+                            course != null && course.allowConsecutive(),
+                            row.studentCount(),
+                            index);
+                    lesson.setFixedRoom(fixedRoom);
+                    if (fixedRoom != null) {
+                        lesson.setRoom(fixedRoom);
+                    } else if (row.roomId() != null) {
+                        RoomSlot sourceRoom = context.roomById().get(row.roomId());
+                        if (sourceRoom != null) {
+                            lesson.setRoom(sourceRoom);
+                        }
+                    }
+                    lesson.setPeriod(slot);
+                    lesson.setLockedPeriodId(slot.getId());
+                    lesson.setLocked(row.locked());
+                    lessons.add(lesson);
+                    continue;
                 }
                 TeacherDto teacher = context.teachers().get(row.teacherId());
                 Lesson lesson = new Lesson(
@@ -190,9 +296,6 @@ public class TimetableProblemBuilder {
                         lesson.setRoom(sourceRoom);
                     }
                 }
-                PeriodSlot slot = row.periodId() == null
-                        ? null
-                        : context.periodById().get(row.periodId());
                 if (row.locked()) {
                     if (slot == null) {
                         throw new IllegalStateException(
@@ -214,6 +317,91 @@ public class TimetableProblemBuilder {
         return new BuiltProblem(
                 new TimetableSolution(lessons, context.periodSlots(), context.roomSlots()),
                 "SOURCE_DRAFT");
+    }
+
+    /**
+     * Start-time precondition for a grade-scoped job: every assignment outside the scope
+     * must already have a period in the source snapshot or the published baseline. Without
+     * one there is no truthful "keep it unchanged" value, so the request is refused before
+     * a job row is created instead of silently dropping those lessons from the problem.
+     */
+    @Transactional(readOnly = true)
+    public void requireScopedSource(
+            Long semesterId, Set<Long> gradeIds, SourceDraftSnapshot snapshot) {
+        if (gradeIds == null || gradeIds.isEmpty()) {
+            return;
+        }
+        Context context = context(semesterId);
+        List<Assignment> assignments = assignmentRepository.findBySemesterIdAndDeletedAtIsNull(semesterId);
+        if (snapshot != null) {
+            // The captured source covers every assignment, but an unlocked lesson may
+            // still have no period (an incomplete import). Such a lesson has nothing to
+            // keep, so refuse now instead of failing the async run later.
+            Map<String, SourceLesson> rows = new HashMap<>();
+            snapshot.lessons().forEach(row ->
+                    rows.put(lessonKey(row.assignmentId(), row.lessonIndex()), row));
+            for (Assignment assignment : assignments) {
+                if (inScope(assignment.getAdminClassId(), context, gradeIds)) {
+                    continue;
+                }
+                for (int index = 0; index < assignment.getWeeklyLessons(); index++) {
+                    SourceLesson row = rows.get(lessonKey(assignment.getId(), index));
+                    if (row == null || row.periodId() == null
+                            || !context.periodById().containsKey(row.periodId())) {
+                        throw ApiException.conflict(MISSING_OTHER_GRADE_SCHEDULE);
+                    }
+                }
+            }
+            return;
+        }
+        fixedPeriodsFromBaseline(semesterId, assignments, context, gradeIds);
+    }
+
+    /** True when this class's grade is inside the requested scope; null scope means all. */
+    private static boolean inScope(Long adminClassId, Context context, Set<Long> gradeIds) {
+        if (gradeIds == null) {
+            return true;
+        }
+        ClassDto adminClass = context.classes().get(adminClassId);
+        return adminClass != null && gradeIds.contains(adminClass.gradeId());
+    }
+
+    /**
+     * One period queue per unselected assignment, taken from the published baseline in
+     * period-id order. Missing coverage is a 409: a grade-scoped solve must never quietly
+     * drop another grade's lessons, because that would hide a shared teacher's load.
+     */
+    private Map<Long, Deque<PeriodSlot>> fixedPeriodsFromBaseline(
+            Long semesterId, List<Assignment> assignments, Context context, Set<Long> gradeIds) {
+        if (gradeIds == null) {
+            return Map.of();
+        }
+        Map<AssignmentKey, Deque<PeriodSlot>> byKey = new LinkedHashMap<>();
+        baselines.publishedLessons(semesterId).stream()
+                .sorted(Comparator.comparing(SemesterBaselineQuery.PublishedLesson::periodId))
+                .forEach(row -> {
+                    PeriodSlot slot = context.periodById().get(row.periodId());
+                    if (slot == null) {
+                        return;
+                    }
+                    byKey.computeIfAbsent(
+                                    new AssignmentKey(
+                                            row.adminClassId(), row.courseId(), row.teacherId()),
+                                    key -> new ArrayDeque<>())
+                            .add(slot);
+                });
+        Map<Long, Deque<PeriodSlot>> fixed = new LinkedHashMap<>();
+        for (Assignment assignment : assignments) {
+            if (inScope(assignment.getAdminClassId(), context, gradeIds)) {
+                continue;
+            }
+            Deque<PeriodSlot> periods = byKey.get(AssignmentKey.of(assignment));
+            if (periods == null || periods.size() < assignment.getWeeklyLessons()) {
+                throw ApiException.conflict(MISSING_OTHER_GRADE_SCHEDULE);
+            }
+            fixed.put(assignment.getId(), periods);
+        }
+        return fixed;
     }
 
     private static String lessonKey(Long assignmentId, int lessonIndex) {

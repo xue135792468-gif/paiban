@@ -16,6 +16,9 @@ import {
  */
 test.describe.serial('约束配置：教师禁排多条条目', () => {
   const TEACHER_UNAVAILABLE = '[data-type="TEACHER_UNAVAILABLE"]'
+  // 非分组型条目：两张一模一样的卡片由服务端按整次请求拒收（分组型每条自带 groupKey，
+  // 服务端会把它们看成两条不同的要求）。
+  const ONCE_PER_DAY = '[data-type="SAME_COURSE_ONCE_PER_DAY"]'
 
   let api: APIRequestContext
   let seed: ConstraintSeed
@@ -34,7 +37,7 @@ test.describe.serial('约束配置：教师禁排多条条目', () => {
   }
 
   async function openTeacherUnavailable(page: Page) {
-    await page.goto('/admin/constraints')
+    await page.goto('/rules/advanced')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
     await page.locator(TEACHER_UNAVAILABLE).click()
     await expect(page.getByTestId('constraint-panel-title')).toContainText('教师禁排时段')
@@ -152,7 +155,7 @@ test.describe.serial('约束配置：教师禁排多条条目', () => {
 
   test('顶部「具体条目」与左侧「条目数」始终一致，开关型不计数', async ({ page }) => {
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/admin/constraints')
+    await page.goto('/rules/advanced')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
 
     // 已启用的开关型（教师/班级/教室不冲突）算类型、不算条目。首帧可能还没 hydrate
@@ -175,7 +178,7 @@ test.describe.serial('约束配置：教师禁排多条条目', () => {
     expect(navEntriesOf(await navCounts())).toBe(1)
 
     const enabledText = await page.getByTestId('constraint-summary-enabled').innerText()
-    expect(enabledText).toMatch(/已启用 \d+ \/ 26 类/)
+    expect(enabledText).toMatch(/已启用 \d+ \/ 19 类/)
 
     // 开关型在左侧标注「开关」而不是 0 条。
     await expect(
@@ -184,18 +187,23 @@ test.describe.serial('约束配置：教师禁排多条条目', () => {
   })
 
   test('重复条目保存被拒：错误落在第 2 条，输入原样保留', async ({ page }) => {
-    const [, second] = seed.teachers
-
     await uiLogin(page, 'admin', 'admin123')
-    await openTeacherUnavailable(page)
-    await expect(entryCards(page)).toHaveCount(1)
+    await page.goto('/rules/advanced')
+    await expect(page.getByTestId('constraint-nav')).toBeVisible()
+    await page.locator(ONCE_PER_DAY).click()
+    await expect(page.getByTestId('constraint-panel-title')).toContainText('同一课程一天最多一节')
+    await enableType(page)
 
-    // 第一条是测试 2 留下的「李娜 · 周四第5节」，再录一条一模一样的。
-    await addEntry(page, second.name, '周四', '5')
+    // 两张「适用于全部课程」的卡片参数完全相同：页面先认出重复，服务端也会拒收整次保存。
+    await page.getByTestId('constraint-entry-add').click()
+    await page.getByTestId('constraint-entry-add').click()
     await expect(entryCards(page)).toHaveCount(2)
     await expect(entryCards(page).nth(1).getByTestId('constraint-entry-duplicate')).toContainText(
       '与第 1 条完全相同',
     )
+    await expect(
+      page.locator(`${ONCE_PER_DAY} [data-testid="constraint-nav-dot"]`),
+    ).toHaveAttribute('data-state', 'error')
 
     await page.getByTestId('constraint-save').click()
     await expect(page.getByTestId('constraint-save-error')).toBeVisible()
@@ -203,8 +211,8 @@ test.describe.serial('约束配置：教师禁排多条条目', () => {
     await expect(entryCards(page).nth(1).getByTestId('constraint-entry-error')).toContainText(
       '重复条目已拒绝',
     )
+    // 输入原样保留，没有部分写入。
     await expect(entryCards(page)).toHaveCount(2)
     await expect(page.getByTestId('constraint-unsaved')).toBeVisible()
-    await expectCounts(page, 2)
   })
 })

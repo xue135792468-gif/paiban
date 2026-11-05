@@ -23,7 +23,8 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * The single implementation of the 25 preset rules. The draft validator and the
+ * The single implementation of the 19 active preset rules (7 types were retired in
+ * ticket 09). The draft validator and the
  * published-timetable verifier both call this class; neither owns a copy of the rule
  * definitions.
  *
@@ -131,39 +132,8 @@ public final class ConstraintChecker {
                     lesson.id(), true));
         }
         CourseView course = lesson.courseId() == null ? null : ctx.courses().get(lesson.courseId());
-        RoomView room = lesson.roomId() == null ? null : ctx.rooms().get(lesson.roomId());
         String courseName = course == null ? "课程" : course.name();
         ConstraintSettings settings = ctx.settings();
-
-        Control capacity = settings.control(ConstraintType.ROOM_CAPACITY_FIT);
-        if (capacity != null && capacity.hard()
-                && room != null && room.capacity() < lesson.studentCount()) {
-            out.add(new ConstraintViolation("ROOM_CAPACITY",
-                    "教室「" + room.name() + "」容量 " + room.capacity()
-                            + " 小于班级人数 " + lesson.studentCount(),
-                    lesson.id(), true));
-        }
-
-        // The course's own required room type is master data and stays a hard invariant;
-        // a configured requirement replaces that value and brings its own control.
-        String requiredRoomType = course == null ? null : course.requiredRoomType();
-        Control roomTypeControl = new Control(true, 100);
-        if (lesson.courseId() != null) {
-            Control configured = settings.match(ConstraintType.COURSE_REQUIRED_ROOM_TYPE,
-                    entry -> ConstraintEntryMatcher.courseWithRoomType(entry, lesson.courseId()));
-            String configuredType = settings.courseText(
-                    ConstraintType.COURSE_REQUIRED_ROOM_TYPE, lesson.courseId(), "roomType");
-            if (configured != null && configuredType != null) {
-                requiredRoomType = configuredType;
-                roomTypeControl = configured;
-            }
-        }
-        if (requiredRoomType != null && StringUtils.hasText(requiredRoomType)
-                && (room == null || !requiredRoomType.equals(room.type()))) {
-            addIfHard(out, "ROOM_TYPE",
-                    courseName + " 需要安排在「" + roomTypeLabel(requiredRoomType) + "」类型的教室",
-                    lesson.id(), roomTypeControl);
-        }
 
         Control unavailable = settings.match(ConstraintType.TEACHER_UNAVAILABLE,
                 entry -> ConstraintEntryMatcher.teacherSlot(

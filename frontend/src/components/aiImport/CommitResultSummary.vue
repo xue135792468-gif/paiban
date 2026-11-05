@@ -49,7 +49,7 @@ const router = useRouter()
 
 function openDraft() {
   if (props.draftId) {
-    router.push(`/admin/drafts/${props.draftId}`)
+    router.push(`/workbench/drafts/${props.draftId}`)
   }
 }
 </script>

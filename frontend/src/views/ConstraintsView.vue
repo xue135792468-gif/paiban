@@ -29,6 +29,14 @@
       </div>
     </div>
 
+    <!-- 迁移会停用旧类型并推进配置版本：重新拉取，别拿旧版本去保存。 -->
+    <ConstraintMigrationCard
+      v-if="semesterId && canManage"
+      :semester-id="semesterId"
+      :can-manage="canManage"
+      @migrated="loadConstraints"
+    />
+
     <div v-if="semesters.length > 0 && canManage && !isJunior" class="sub-toolbar">
       <ConstraintTemplateBar
         :semester-id="semesterId"
@@ -208,6 +216,7 @@ import ConstraintSummaryBar from '@/components/constraints/ConstraintSummaryBar.
 import ConstraintTypeNav from '@/components/constraints/ConstraintTypeNav.vue'
 import ConstraintTypePanel from '@/components/constraints/ConstraintTypePanel.vue'
 import ConstraintTemplateBar from '@/components/constraints/ConstraintTemplateBar.vue'
+import ConstraintMigrationCard from '@/components/constraints/ConstraintMigrationCard.vue'
 import ConstraintCollaborationAlerts from '@/components/constraints/ConstraintCollaborationAlerts.vue'
 import ConstraintAiPanel from '@/components/constraints/ConstraintAiPanel.vue'
 import { useConstraintDraft } from '@/components/constraints/useConstraintDraft'
@@ -224,11 +233,13 @@ import type {
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import { serverMessage } from '@/api/errors'
+import { activeOnly } from '@/utils/activeOptions'
 
 interface Semester {
   id: number
   name: string
   current: boolean
+  active?: boolean
 }
 
 interface ConstraintState {
@@ -399,7 +410,7 @@ async function loadSemesters() {
       http.get<Semester[]>('/semesters'),
       http.get<Semester>('/semesters/current', { validateStatus: (status) => status < 500 }),
     ])
-    semesters.value = listRes.data ?? []
+    semesters.value = activeOnly(listRes.data ?? [])
 
     let targetId: number | null = null
     if (currentRes.status === 200 && currentRes.data?.id) {
@@ -424,8 +435,8 @@ async function loadTeachersAndCourses() {
       http.get<OptionItem[]>('/teachers/options'),
       http.get<OptionItem[]>('/courses'),
     ])
-    teachers.value = teacherRes.data ?? []
-    courses.value = courseRes.data ?? []
+    teachers.value = activeOnly(teacherRes.data ?? [])
+    courses.value = activeOnly(courseRes.data ?? [])
   } catch (e: any) {
     ElMessage.error(serverMessage(e, '加载教师或课程数据失败'))
   }
@@ -444,7 +455,7 @@ async function loadClasses() {
     const { data } = await http.get<OptionItem[]>('/classes', {
       params: { semesterId: semesterId.value },
     })
-    classes.value = (data ?? []).map((item) => ({ id: item.id, name: item.name }))
+    classes.value = activeOnly(data ?? []).map((item) => ({ id: item.id, name: item.name }))
   } catch (e: any) {
     ElMessage.error(serverMessage(e, '加载班级数据失败'))
   }

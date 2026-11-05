@@ -54,121 +54,41 @@ class ConstraintCheckerTest {
         assertThat(violations).extracting(ConstraintViolation::code).contains("CLASS_CONFLICT");
     }
 
+    /**
+     * Ticket 09: retired types never produce a violation or a penalty even when the
+     * stored configuration is enabled and hard. The snapshot drops them before the
+     * checker ever looks at a lesson.
+     */
     @Test
-    void roomCannotBeUsedByTwoClassesAtTheSameTime() {
-        PlanSnapshot snapshot = base()
+    void retiredTypesNeverProduceViolations() {
+        ConstraintSettings settings = ConstraintSettings.from(
+                List.of(
+                        config(ConstraintType.ROOM_CONFLICT, true, 100, true),
+                        config(ConstraintType.ROOM_CAPACITY_FIT, true, 100, true),
+                        config(ConstraintType.COURSE_REQUIRED_ROOM_TYPE, true, 100, true),
+                        config(ConstraintType.COURSE_NOT_IN_EVENING, true, 100, true),
+                        config(ConstraintType.EVENING_MAX, true, 100, true),
+                        config(ConstraintType.TEACHER_MEETING_BLOCKED, true, 100, true),
+                        config(ConstraintType.HEAD_TEACHER_FIRST_PERIOD, false, 100, true)),
+                List.of(),
+                MAPPER);
+        // Two classes in the same room, a sport course in an evening slot, and enough
+        // lessons to trip every retired rule if it were still registered.
+        PlanSnapshot snapshot = base().periodsPerDay(10)
                 .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 1)
                 .lesson(PlanFixtures.CLASS_2, COURSE_2, TEACHER_2, ROOM_1, 1, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_2, 1, 9)
                 .build();
 
         List<ConstraintViolation> violations = ConstraintChecker.checkHard(
-                snapshot.context(), viewsOn(snapshot, 1));
+                context(settings, snapshot), viewsOn(snapshot, 1));
 
-        assertThat(violations).extracting(ConstraintViolation::code).contains("ROOM_CONFLICT");
-    }
-
-    @Test
-    void courseRequiresTheConfiguredRoomType() {
-        PlanSnapshot snapshot = PlanFixtures.builder()
-                .settings(settings(
-                        ConstraintType.TEACHER_CONFLICT,
-                        ConstraintType.CLASS_CONFLICT,
-                        ConstraintType.ROOM_CONFLICT,
-                        ConstraintType.COURSE_REQUIRED_ROOM_TYPE))
-                .adminClass(PlanFixtures.CLASS_1, "高一1班", 45, null)
-                .teacher(TEACHER_1, "张老师", "化学")
-                .course(COURSE_1, "化学实验", "LAB")
-                .room(ROOM_1, "普通教室", "NORMAL", 50)
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 1)
-                .build();
-
-        List<ConstraintViolation> violations = ConstraintChecker.checkHard(
-                snapshot.context(), viewsOn(snapshot, 1));
-
-        assertThat(violations).extracting(ConstraintViolation::code).contains("ROOM_TYPE");
-    }
-
-    @Test
-    void eveningMaxDoesNotCountDaytimeLessons() {
-        ConstraintSettings eveningCap = settingsWith(
-                ConstraintType.EVENING_MAX, true, 40, Map.of("maxPerDay", 0));
-        // One morning and one afternoon lesson: neither belongs to the evening section.
-        PlanSnapshot snapshot = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 1)
-                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2, ROOM_2, 1, 6)
-                .build();
-
-        assertThat(ConstraintChecker.checkHard(context(eveningCap, snapshot), viewsOn(snapshot, 1)))
-                .extracting(ConstraintViolation::code)
-                .doesNotContain("EVENING_MAX");
-    }
-
-    @Test
-    void eveningMaxCountsEveningLessons() {
-        ConstraintSettings eveningCap = settingsWith(
-                ConstraintType.EVENING_MAX, true, 40, Map.of("maxPerDay", 1));
-        PlanSnapshot snapshot = base().periodsPerDay(10)
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 9)
-                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2, ROOM_2, 1, 10)
-                .build();
-
-        assertThat(ConstraintChecker.checkHard(context(eveningCap, snapshot), viewsOn(snapshot, 1)))
-                .extracting(ConstraintViolation::code)
-                .contains("EVENING_MAX");
-    }
-
-    @Test
-    void eveningMaxClassExceptionReplacesTheGlobalCap() {
-        ConstraintSettings eveningCap = settingsWith(
-                ConstraintType.EVENING_MAX, true, 40,
-                Map.of("maxPerDay", 2),
-                Map.of("classId", PlanFixtures.CLASS_2, "maxPerDay", 1));
-        // Class 1 has two evening lessons, inside its global cap of 2; class 2 has two,
-        // over its exception of 1. The exception must replace the global value.
-        PlanSnapshot snapshot = base().periodsPerDay(10)
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 9)
-                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_1, ROOM_1, 1, 10)
-                .lesson(PlanFixtures.CLASS_2, COURSE_1, TEACHER_2, ROOM_2, 1, 9)
-                .lesson(PlanFixtures.CLASS_2, COURSE_2, TEACHER_2, ROOM_2, 1, 10)
-                .build();
-
-        List<ConstraintViolation> violations = ConstraintChecker.checkHard(
-                context(eveningCap, snapshot), viewsOn(snapshot, 1));
-        assertThat(violations).extracting(ConstraintViolation::code).contains("EVENING_MAX");
-        assertThat(violations).hasSize(1);
-        assertThat(violations.get(0).message()).contains("高一2班");
-    }
-
-    @Test
-    void eveningMaxDisabledSilencesTheCap() {
-        ConstraintSettings cancelled = ConstraintSettings.from(
-                List.of(config(ConstraintType.EVENING_MAX, true, 40, false)),
-                List.of(entry(ConstraintType.EVENING_MAX, Map.of("maxPerDay", 0))), MAPPER);
-        PlanSnapshot snapshot = base().periodsPerDay(10)
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 9)
-                .build();
-
-        assertThat(ConstraintChecker.checkHard(context(cancelled, snapshot), viewsOn(snapshot, 1)))
-                .extracting(ConstraintViolation::code)
-                .doesNotContain("EVENING_MAX");
-    }
-
-    @Test
-    void eveningMaxSoftControlIsScoredNotBlocked() {
-        ConstraintSettings softCap = settingsWith(
-                ConstraintType.EVENING_MAX, false, 40, Map.of("maxPerDay", 0));
-        PlanSnapshot daytime = base()
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 1)
-                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2, ROOM_2, 1, 6)
-                .build();
-        PlanSnapshot withEvening = base().periodsPerDay(10)
-                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, ROOM_1, 1, 9)
-                .build();
-
-        assertThat(ConstraintChecker.softPenalty(context(softCap, daytime), viewsOn(daytime, 1)))
+        assertThat(violations).extracting(ConstraintViolation::code)
+                .doesNotContain("ROOM_CONFLICT", "ROOM_CAPACITY", "ROOM_TYPE",
+                        "COURSE_NOT_IN_EVENING", "EVENING_MAX", "TEACHER_MEETING",
+                        "HEAD_TEACHER_FIRST_PERIOD");
+        assertThat(ConstraintChecker.softPenalty(context(settings, snapshot), viewsOn(snapshot, 1)))
                 .isZero();
-        assertThat(ConstraintChecker.softPenalty(context(softCap, withEvening), viewsOn(withEvening, 1)))
-                .isEqualTo(40);
     }
 
     /**

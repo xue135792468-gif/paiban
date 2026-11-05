@@ -5,10 +5,10 @@
         <span class="logo-mark">排</span>
         <span class="logo-text">排课系统</span>
       </div>
-      <el-menu :default-active="route.path" router class="menu" data-testid="layout-menu">
+      <el-menu :default-active="activeMenu" router class="menu" data-testid="layout-menu">
         <template v-for="group in visibleGroups" :key="group.title">
           <div class="group-title">{{ group.title }}</div>
-          <el-menu-item v-for="item in group.items" :key="item.path" :index="item.path" :data-tour="item.path">
+          <el-menu-item v-for="item in group.items" :key="item.path" :index="item.target" :data-tour="item.path">
             <el-icon><component :is="item.icon" /></el-icon>
             <span>{{ item.label }}</span>
           </el-menu-item>
@@ -20,6 +20,10 @@
       <el-header class="header" data-testid="layout-header">
         <div class="page-title">{{ route.meta.title ?? '' }}</div>
         <div class="header-right">
+          <el-button circle text aria-label="帮助" data-testid="help-button" @click="helpOpen = true">
+            <el-icon><QuestionFilled /></el-icon>
+          </el-button>
+
           <el-popover v-if="canSeeNotifications" placement="bottom-end" :width="340" trigger="click">
             <template #reference>
               <el-badge :value="unread" :hidden="unread === 0" :max="99" class="bell-badge">
@@ -64,6 +68,22 @@
         <router-view />
       </el-main>
     </el-container>
+
+    <el-drawer v-model="helpOpen" title="帮助" direction="rtl" size="360px" data-testid="help-drawer">
+      <div v-for="group in helpGroups" :key="group.title" class="help-group">
+        <div class="help-group-title">{{ group.title }}</div>
+        <button
+          v-for="doc in group.docs"
+          :key="doc.slug"
+          type="button"
+          class="help-doc"
+          @click="openHelp(doc.slug)"
+        >
+          <span class="help-doc-title">{{ doc.title }}</span>
+          <span class="help-doc-summary">{{ doc.summary }}</span>
+        </button>
+      </div>
+    </el-drawer>
   </el-container>
 </template>
 
@@ -71,45 +91,14 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-  Bell,
-  Calendar,
-  ChatDotRound,
-  Platform,
-  Cpu,
-  DataLine,
-  Document,
-  Guide,
-  List,
-  MagicStick,
-  OfficeBuilding,
-  QuestionFilled,
-  Reading,
-  School,
-  Setting,
-  Tickets,
-  Timer,
-  User,
-} from '@element-plus/icons-vue'
+import { Bell, QuestionFilled } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
-import { WORKBENCH_MANAGER_PERMISSIONS } from '@/constants/permissions'
+import { HELP_GROUPS } from '@/help/docs'
+import { helpLink, type HelpSlug } from '@/help/links'
+import { MENU_GROUPS, visibleMenuGroups } from '@/layouts/navigation'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import { hasSeenTour, startTour, type TourStage } from '@/onboarding/tour'
-
-interface MenuItem {
-  label: string
-  path: string
-  icon: unknown
-  permission?: string
-  permissions?: string[]
-  allPermissions?: string[]
-}
-
-interface MenuGroup {
-  title: string
-  items: MenuItem[]
-}
 
 interface NotificationItem {
   id: number
@@ -125,74 +114,41 @@ const settings = useSettingsStore()
 const route = useRoute()
 const router = useRouter()
 
-const groups: MenuGroup[] = [
-  {
-    title: '概览',
-    items: [{ label: '工作台', path: '/', icon: DataLine }],
-  },
-  {
-    title: '教务',
-    items: [
-      { label: '学期与作息', path: '/admin/semesters', icon: Calendar, permission: 'semester:manage' },
-      { label: '教师', path: '/admin/teachers', icon: User, permission: 'foundation:manage' },
-      { label: '教室', path: '/admin/rooms', icon: OfficeBuilding, permission: 'foundation:manage' },
-      { label: '课程', path: '/admin/courses', icon: Reading, permission: 'foundation:manage' },
-      { label: '年级', path: '/admin/grades', icon: School, permission: 'foundation:manage' },
-      { label: '行政班', path: '/admin/classes', icon: Tickets, permission: 'foundation:manage' },
-      {
-        label: '授课任务',
-        path: '/admin/assignments',
-        icon: List,
-        permissions: ['assignment:manage', 'assignment:view:own'],
-      },
-      { label: '约束配置', path: '/admin/constraints', icon: Document, permission: 'constraint:manage' },
-      { label: 'AI 数据导入', path: '/admin/ai-import', icon: MagicStick, permission: 'foundation:manage' },
-      { label: '自动排课', path: '/admin/scheduling', icon: Timer, permission: 'scheduling:run' },
-    ],
-  },
-  {
-    title: '课表',
-    items: [{ label: '课表查看', path: '/timetable', icon: Calendar }],
-  },
-  {
-    title: '调代',
-    items: [
-      { label: '调代课', path: '/substitutions', icon: ChatDotRound, permission: 'substitution:submit' },
-      {
-        label: '调代工作台',
-        path: '/substitutions/workbench',
-        icon: Platform,
-        allPermissions: [...WORKBENCH_MANAGER_PERMISSIONS],
-      },
-    ],
-  },
-  {
-    title: '系统',
-    items: [
-      { label: '通知中心', path: '/notifications', icon: Bell, permission: 'notification:view' },
-      { label: '设置中心', path: '/admin/settings', icon: Setting, permission: 'settings:manage' },
-      { label: 'AI 供应商', path: '/admin/ai-providers', icon: Cpu, permission: 'settings:manage' },
-      { label: 'AI 操作历史', path: '/admin/ai-history', icon: Document, permission: 'settings:manage' },
-      { label: '初始化向导', path: '/onboarding', icon: Guide, permission: 'onboarding:manage' },
-      { label: '用户管理', path: '/admin/users', icon: User, permission: 'user:manage' },
-      { label: '帮助中心', path: '/help', icon: QuestionFilled },
-    ],
-  },
-]
+const groups = MENU_GROUPS
 
 const visibleGroups = computed(() =>
-  groups
-    .map((group) => ({
-      ...group,
-      items: group.items.filter(
-        (item) =>
-          (!item.permission || auth.hasPermission(item.permission)) &&
-          (!item.permissions || auth.hasAnyPermission(item.permissions)) &&
-          (!item.allPermissions || auth.hasAllPermissions(item.allPermissions)),
-      ),
-    }))
-    .filter((group) => group.items.length > 0),
+  visibleMenuGroups({
+    has: (permission: string) => auth.hasPermission(permission),
+    hasAny: (permissions: string[]) => auth.hasAnyPermission(permissions),
+    hasAll: (permissions: string[]) => auth.hasAllPermissions(permissions),
+  }, groups),
 )
+
+/**
+ * Highlight the owning top-level entry for nested pages (drafts, schedule editor, ...).
+ * Matched on the stable entry path, but returned as the item's resolved target so
+ * `el-menu` can find the index it actually rendered.
+ */
+const activeMenu = computed(() => {
+  const path = route.path
+  if (path === '/') return '/'
+  for (const group of visibleGroups.value) {
+    for (const item of group.items) {
+      if (item.path !== '/' && (path === item.path || path.startsWith(`${item.path}/`))) {
+        return item.target
+      }
+    }
+  }
+  return path
+})
+
+const helpOpen = ref(false)
+const helpGroups = HELP_GROUPS
+
+function openHelp(slug: HelpSlug) {
+  helpOpen.value = false
+  void router.push(helpLink(slug))
+}
 
 const initials = computed(() => (auth.displayName || '?').slice(0, 1))
 const roleLabel = computed(() => {
@@ -254,23 +210,23 @@ function scheduleTour(stage: TourStage) {
   if (!auth.isLoggedIn || !auth.hasPermission('onboarding:manage')) return
   if (hasSeenTour(stage)) return
   if (stage === 'basic' && route.path !== '/') return
-  if (stage === 'advanced' && (route.path !== '/admin/scheduling' || !hasSeenTour('basic'))) return
+  if (stage === 'advanced' && (route.path !== '/workbench' || !hasSeenTour('basic'))) return
 
   if (tourTimer) window.clearTimeout(tourTimer)
   tourTimer = window.setTimeout(() => {
     tourTimer = undefined
-    if (stage === 'basic' ? route.path !== '/' : route.path !== '/admin/scheduling') return
+    if (stage === 'basic' ? route.path !== '/' : route.path !== '/workbench') return
     if (hasSeenTour(stage) || !auth.hasPermission('onboarding:manage')) return
     startTour(stage)
   }, TOUR_DELAY_MS)
 }
 
-// Basic tour on the home page; the advanced one the first time scheduling is opened.
+// Basic tour on the home page; the advanced one the first time the workbench is opened.
 watch(
   () => route.path,
   (path) => {
     if (path === '/') scheduleTour('basic')
-    else if (path === '/admin/scheduling') scheduleTour('advanced')
+    else if (path === '/workbench') scheduleTour('advanced')
   },
   { immediate: true },
 )
@@ -442,6 +398,40 @@ onUnmounted(() => {
   font-size: 11px;
   color: #9ca3af;
   margin-top: 4px;
+}
+.help-group + .help-group {
+  margin-top: 20px;
+}
+.help-group-title {
+  font-size: 12px;
+  color: #9aa1b1;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+.help-doc {
+  display: block;
+  width: 100%;
+  padding: 10px 8px;
+  border: none;
+  border-bottom: 1px dashed #f1f2f6;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.help-doc:hover {
+  background: #f8faff;
+}
+.help-doc-title {
+  display: block;
+  font-size: 14px;
+  color: var(--paiban-ink);
+}
+.help-doc-summary {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--paiban-muted);
+  line-height: 1.5;
 }
 /* 窄屏（≤900px）：左侧导航让位，内容独占整行（调代工作台等宽内容页的 320px 验收依赖）。 */
 @media (max-width: 900px) {

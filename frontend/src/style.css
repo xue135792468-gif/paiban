@@ -29,3 +29,22 @@ a {
   color: var(--paiban-primary);
   text-decoration: none;
 }
+
+/* Shared page shell used by the top-level layouts (workbench / substitution / data / settings). */
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.page-head h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.page-subtitle {
+  margin: 6px 0 0;
+  color: var(--paiban-muted);
+  font-size: 13px;
+}

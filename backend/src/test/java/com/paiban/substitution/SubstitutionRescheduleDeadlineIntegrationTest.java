@@ -21,6 +21,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import org.mockito.Mockito;
 
+import java.time.ZoneId;
+
 /**
  * 票 07 的开课截止与冻结规则（规格第 6 节，固定服务端时钟）：
  * <ul>
@@ -55,6 +57,7 @@ class SubstitutionRescheduleDeadlineIntegrationTest extends ApiIntegrationTest {
     void fixClock() {
         now.set(SUNDAY_NIGHT);
         Mockito.when(clock.instant()).thenAnswer(invocation -> now.get());
+        Mockito.when(clock.getZone()).thenReturn(ZoneId.of("Asia/Shanghai"));
     }
 
     private SubstitutionRescheduleIntegrationTest.Fixture fx() {

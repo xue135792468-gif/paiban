@@ -31,7 +31,7 @@ test.describe.serial('约束配置：两人同时保存', () => {
     const context = await browser.newContext()
     const page = await context.newPage()
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/admin/constraints')
+    await page.goto('/rules/advanced')
     await expect(page.getByTestId('constraint-nav')).toBeVisible()
     return page
   }

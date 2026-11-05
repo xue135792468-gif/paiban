@@ -48,4 +48,8 @@ public class AiModel {
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
+
+    /** Soft delete (ticket 04): deleted models leave the provider list and routing. */
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
 }

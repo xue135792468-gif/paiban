@@ -310,7 +310,8 @@ public class SubstitutionConversionService {
 
     private Loaded load(Long semesterId) {
         List<Substitution> rows = substitutions.findBySemesterIdAndStatus(semesterId, Substitution.EFFECTIVE);
-        Set<Long> entryIds = rows.stream().map(Substitution::getEntryId).collect(Collectors.toSet());
+        Set<Long> entryIds = rows.stream().map(Substitution::getEntryId)
+                .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
         Map<Long, TimetableEntry> entryById = entries.findAllById(entryIds).stream()
                 .collect(Collectors.toMap(TimetableEntry::getId, entry -> entry, (left, right) -> left));
         Set<Long> requestIds = rows.stream().map(Substitution::getRequestId).collect(Collectors.toSet());

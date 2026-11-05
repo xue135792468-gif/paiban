@@ -112,15 +112,17 @@ public class AiConfigResolver {
 
     private AiTarget load(AiTaskType taskType) {
         AiTaskConfig config = taskConfigs.findByTaskType(taskType).orElse(null);
-        if (config == null || config.getProviderId() == null || config.getModelId() == null) {
+        if (config == null || !config.isEnabled()
+                || config.getProviderId() == null || config.getModelId() == null) {
             return UNRESOLVED;
         }
         AiProvider provider = providers.findById(config.getProviderId()).orElse(null);
-        if (provider == null || !provider.isEnabled()) {
+        if (provider == null || !provider.isEnabled() || provider.getDeletedAt() != null) {
             return UNRESOLVED;
         }
         AiModel model = models.findById(config.getModelId()).orElse(null);
-        if (model == null || !model.isEnabled() || !provider.getId().equals(model.getProviderId())) {
+        if (model == null || !model.isEnabled() || model.getDeletedAt() != null
+                || !provider.getId().equals(model.getProviderId())) {
             return UNRESOLVED;
         }
         return new AiTarget(provider, model, decrypt(provider));

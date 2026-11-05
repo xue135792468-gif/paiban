@@ -168,7 +168,7 @@ test('按天与全班批量锁定数量准确；教师视角的范围项禁用',
   await selectTeacher(page, seed.mathTeacherName)
   await page.getByTestId('scope-menu').click()
   await expect(
-    page.getByText('教师/教室视角只能按所选锁定，请切换到「按行政班」'),
+    page.getByText('教师视角只能按所选锁定，请切换到「按行政班」'),
   ).toBeVisible()
   await expect(
     page.locator('.el-dropdown-menu:visible .el-dropdown-menu__item').filter({ hasText: '锁定周一' }),
@@ -296,7 +296,9 @@ test('含锁定课节的草稿删除要求确认，确认后锁定随草稿一�
   const box = page.locator('.el-message-box:visible')
   await expect(box).toContainText('含 1 节锁定课节')
   await expect(box).toContainText('一并移除')
-  await expect(box).toContainText('无法恢复')
+  // 票 04：草稿是软删除，删除后可在「最近删除」恢复 7 天（不再是「不可恢复」）。
+  await expect(box).toContainText('最近删除')
+  await expect(box).toContainText('7 天')
 
   await box.getByRole('button', { name: '取消' }).click()
   await expect(page.locator('.el-message-box:visible')).toHaveCount(0)
@@ -307,7 +309,7 @@ test('含锁定课节的草稿删除要求确认，确认后锁定随草稿一�
   await page.getByRole('button', { name: '删除', exact: true }).click()
   const confirmBox = page.locator('.el-message-box:visible')
   await confirmBox.getByRole('button', { name: '解锁并删除' }).click()
-  await expect(page).toHaveURL(/\/admin\/scheduling/)
+  await expect(page).toHaveURL(/\/workbench$/)
 
   const token = await apiLogin(api)
   const gone = await api.get(`${API}/timetable-drafts/${seed.draftId}`, {
@@ -324,7 +326,7 @@ test('排课列表页删除含锁草稿也走确认，取消保留、确认后�
   expect(draftName).not.toBe('')
 
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/admin/scheduling')
+  await page.goto('/workbench')
   const row = page
     .locator('.el-table__row')
     .filter({ hasText: draftName })

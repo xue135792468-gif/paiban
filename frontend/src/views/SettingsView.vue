@@ -79,25 +79,19 @@
             placeholder="用于校验 /integrations/dingtalk/event 回调（X-DingTalk-Token）"
           />
         </el-form-item>
-        <el-form-item>
-          <el-button type="primary" :loading="savingDingtalk" @click="saveDingtalk">保存钉钉配置</el-button>
-          <el-button :loading="previewing" :disabled="!dingtalk.enabled" @click="previewSync">预演同步</el-button>
-          <span class="hint inline">只补齐空字段，冲突与疑似同名在预演中确认</span>
-        </el-form-item>
+        <DingtalkIntegrationActions
+          :saving="savingDingtalk"
+          :previewing="previewing"
+          :enabled="dingtalk.enabled"
+          :loading-logs="loadingLogs"
+          :logs="logs"
+          @save="saveDingtalk"
+          @preview="previewSync"
+          @cleared="reloadIntegrations"
+        />
       </el-form>
       <el-alert v-if="syncResult" :title="syncResult.message" :type="syncResult.success ? 'success' : 'error'" :closable="false" show-icon class="sync-result" />
       <DingTalkSyncPreview v-if="syncPreview" :preview="syncPreview" :confirming="confirming" @confirm="confirmSync" />
-      <el-collapse class="logs">
-        <el-collapse-item title="同步日志" name="logs">
-          <el-table v-loading="loadingLogs" :data="logs" size="small" border>
-            <el-table-column prop="createdAt" label="时间" width="180">
-              <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
-            </el-table-column>
-            <el-table-column prop="detail" label="详情" />
-            <el-table-column prop="successRows" label="成功" width="80" />
-          </el-table>
-        </el-collapse-item>
-      </el-collapse>
     </el-card>
 
     <el-card id="feishu-integration" shadow="never">
@@ -256,6 +250,7 @@ import InfoTooltip from '@/components/InfoTooltip.vue'
 import SubstitutionPolicyCard from '@/components/settings/SubstitutionPolicyCard.vue'
 import SubstitutionRecipientsCard from '@/components/settings/SubstitutionRecipientsCard.vue'
 import DingTalkSyncPreview from '@/components/DingTalkSyncPreview.vue'
+import DingtalkIntegrationActions from '@/components/settings/DingtalkIntegrationActions.vue'
 import { resetTour, startTour } from '@/onboarding/tour'
 import { serverMessage } from '@/api/errors'
 import type {

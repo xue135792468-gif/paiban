@@ -3,6 +3,9 @@ package com.paiban.scheduling.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.paiban.common.deletion.DeletionRestoreHandler;
+import com.paiban.common.deletion.RecentDeletion;
+import com.paiban.common.deletion.RecentDeletionWriter;
 import com.paiban.common.web.ApiException;
 import com.paiban.scheduling.domain.ConstraintTemplate;
 import com.paiban.scheduling.domain.ConstraintTemplateRepository;
@@ -31,7 +34,10 @@ import org.springframework.transaction.annotation.Transactional;
  * reporting the same refusals.
  */
 @Service
-public class ConstraintTemplateService {
+public class ConstraintTemplateService implements DeletionRestoreHandler {
+
+    static final String ENTITY_TYPE = "CONSTRAINT_TEMPLATE";
+    private static final String KIND_LABEL = "规则模板";
 
     /**
      * {@code constraint_template.configs_json} is VARCHAR(65535) since V29 (ticket 10/05:
@@ -44,14 +50,17 @@ public class ConstraintTemplateService {
     private final ConstraintTemplateRepository templates;
     private final ConstraintConfigService configService;
     private final ObjectMapper objectMapper;
+    private final RecentDeletionWriter deletionWriter;
 
     public ConstraintTemplateService(
             ConstraintTemplateRepository templates,
             ConstraintConfigService configService,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            RecentDeletionWriter deletionWriter) {
         this.templates = templates;
         this.configService = configService;
         this.objectMapper = objectMapper;
+        this.deletionWriter = deletionWriter;
     }
 
     @Transactional
@@ -66,6 +75,9 @@ public class ConstraintTemplateService {
         ConstraintTemplate template = templates.findByName(name).orElseGet(ConstraintTemplate::new);
         template.setName(name);
         template.setConfigsJson(json);
+        // Saving a name that is in the recycle bin revives that row instead of failing
+        // on the unique name — one place decides whether a template is alive.
+        template.setDeletedAt(null);
         if (template.getCreatedAt() == null) {
             template.setCreatedAt(Instant.now());
         }
@@ -75,6 +87,7 @@ public class ConstraintTemplateService {
     @Transactional(readOnly = true)
     public List<TemplateDto> listTemplates() {
         return templates.findAllByOrderByCreatedAtDesc().stream()
+                .filter(template -> template.getDeletedAt() == null)
                 .map(template -> {
                     List<ConstraintConfigRequest> snapshot = readSnapshot(template);
                     return toDto(template, snapshot.size(), entryCountOf(snapshot));
@@ -160,12 +173,38 @@ public class ConstraintTemplateService {
                 planning.references(), planning.errors());
     }
 
+    /**
+     * Soft delete (ticket 04): the row and its snapshot stay, so the 7-day recycle bin
+     * can bring the template back with the same content.
+     */
     @Transactional
     public void deleteTemplate(Long id) {
-        if (!templates.existsById(id)) {
-            throw ApiException.notFound("约束模板不存在: " + id);
-        }
-        templates.deleteById(id);
+        ConstraintTemplate template = templates.findById(id)
+                .filter(row -> row.getDeletedAt() == null)
+                .orElseThrow(() -> ApiException.notFound("约束模板不存在: " + id));
+        template.setDeletedAt(Instant.now());
+        templates.save(template);
+        deletionWriter.record(
+                ENTITY_TYPE, template.getId(), template.getName(), KIND_LABEL,
+                template.getConfigsJson());
+    }
+
+    @Override
+    public boolean supports(String entityType) {
+        return ENTITY_TYPE.equalsIgnoreCase(entityType);
+    }
+
+    @Override
+    public void restore(Long entityId) {
+        ConstraintTemplate template = templates.findById(entityId)
+                .orElseThrow(() -> ApiException.notFound("约束模板不存在: " + entityId));
+        template.setDeletedAt(null);
+        templates.save(template);
+    }
+
+    @Override
+    public void restore(RecentDeletion deletion) {
+        restore(deletion.getEntityId());
     }
 
     private TemplateDto toDto(ConstraintTemplate template, int configCount, int entryCount) {
@@ -235,6 +274,9 @@ public class ConstraintTemplateService {
 
     private ConstraintTemplate requireTemplate(Long templateId) {
         return templates.findById(templateId)
+                // A deleted template is in the recycle bin: it cannot be applied until
+                // it is restored, and "not found" is what the page already handles.
+                .filter(template -> template.getDeletedAt() == null)
                 .orElseThrow(() -> ApiException.notFound("约束模板不存在: " + templateId));
     }
 

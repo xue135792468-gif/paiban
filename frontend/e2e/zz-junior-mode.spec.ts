@@ -28,7 +28,7 @@ test.describe('初中模式', () => {
     await setSchoolType('senior')
 
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/admin/settings')
+    await page.goto('/settings/general')
     await expect(page.getByText('学校类型')).toBeVisible()
 
     const juniorRadio = page.locator('.el-radio-button', { hasText: '初中' })
@@ -48,9 +48,9 @@ test.describe('初中模式', () => {
     await expect(page.getByText('同步策略')).toHaveCount(0)
     await expect(juniorRadio.locator('input')).toBeChecked()
 
-    // 约束配置：无类型级权重滑块、无模板区，改为必须/尽量两档；教研活动禁排
-    // 在本轮修订后保留入口（ADR-0018），逐项重要程度仍按需在条目上展开。
-    await page.goto('/admin/constraints')
+    // 约束配置：无类型级权重滑块、无模板区，改为必须/尽量两档；保留的偏好类规则
+    // 仍有入口（票 09/11 之后「教研活动禁排」已退役，改用「课程禁排时段」验证）。
+    await page.goto('/rules/advanced')
     await expect(page.locator('.constraint-card').first()).toBeVisible()
     // 留空规则始终为硬约束；不要假定默认选中的类型支持“尽量”。
     await page.locator('[data-type="CLASS_UNAVAILABLE"]').click()
@@ -62,15 +62,15 @@ test.describe('初中模式', () => {
     await expect(page.getByText('权重')).toHaveCount(0)
     await expect(page.getByText('存为模板')).toHaveCount(0)
     await expect(page.getByText('应用模板')).toHaveCount(0)
-    await expect(page.getByText('教研活动禁排')).toBeVisible()
+    await expect(page.getByText('课程禁排时段')).toBeVisible()
 
     // 课表：全校视角隐藏。
-    await page.goto('/timetable')
+    await page.goto('/workbench/timetable')
     await expect(page.getByText('全校', { exact: true })).toHaveCount(0)
     await expect(page.locator('.actions .el-radio-button', { hasText: '行政班' })).toBeVisible()
 
     // 草稿编辑：比较草稿入口隐藏。
-    await page.goto(`/admin/drafts/${draftId}`)
+    await page.goto(`/workbench/drafts/${draftId}`)
     await expect(page.getByRole('button', { name: '刷新' })).toBeVisible()
     await expect(page.getByRole('button', { name: '比较草稿' })).toHaveCount(0)
     await expect(page.getByText('并排比较草稿')).toHaveCount(0)

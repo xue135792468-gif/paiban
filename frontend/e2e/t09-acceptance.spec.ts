@@ -85,7 +85,7 @@ test('班主任只能看到自己授权班级的调代记录', async ({ page }) 
   })
 
   await uiLogin(page, username, 'teacher123')
-  await page.goto('/substitutions')
+  await page.goto('/substitution/requests')
   await page.getByRole('tab', { name: '调代记录' }).click()
 
   // 班级筛选默认锁在自己的班；下拉里看不到未授权班级。
@@ -104,7 +104,7 @@ test('关键页面留档截图：工作台、预览对照、历史转换面板�
   await uiLogin(page, 'admin', 'admin123')
 
   // 1) 管理员调代工作台：三步向导步骤 1（教师搜索 + 实际日期课表）。
-  await page.goto('/substitutions/workbench')
+  await page.goto('/substitution')
   await expect(page.getByTestId('teacher-select')).toBeVisible()
   await expect(page.getByTestId('wizard-stepper')).toBeVisible()
   await pickOption(page.locator('.picker-card'), 'teacher-select', seed.teacherName)
@@ -127,7 +127,7 @@ test('关键页面留档截图：工作台、预览对照、历史转换面板�
   await capture(page, 't09-02-preview-compare')
 
   // 3) 历史转换面板（票 02）。
-  await page.goto('/substitutions')
+  await page.goto('/substitution/requests')
   await page.getByRole('tab', { name: '历史转换' }).click()
   await expect(page.getByRole('button', { name: '生成预检报告' })).toBeVisible()
   await capture(page, 't09-03-conversion-panel')

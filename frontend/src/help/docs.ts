@@ -30,12 +30,12 @@ const bodies = import.meta.glob('./docs/*.md', {
 const META: Record<HelpSlug, { title: string; summary: string; group: HelpGroupTitle }> = {
   foundation: {
     title: '基础数据',
-    summary: '年级、行政班、教师、教室、课程与批量导入',
+    summary: '年级、行政班、教师、课程、授课任务与批量导入',
     group: '功能模块',
   },
   scheduling: {
     title: '排课',
-    summary: '约束配置、提交排课、草稿微调与发布',
+    summary: '提交排课、草稿微调与发布',
     group: '功能模块',
   },
   'manual-adjust': {
@@ -45,17 +45,17 @@ const META: Record<HelpSlug, { title: string; summary: string; group: HelpGroupT
   },
   substitution: {
     title: '调代',
-    summary: '调代申请、审批与通知',
+    summary: '选课、代课与调课、记录与通知',
     group: '功能模块',
   },
   timetable: {
     title: '课表查看',
-    summary: '四视角切换、调代标记与导出',
+    summary: '行政班 / 教师 / 全校三视图、调代标记与导出',
     group: '功能模块',
   },
   settings: {
     title: '设置',
-    summary: '学校类型、AI 供应商与平台切换',
+    summary: '学校信息、调代与通知、AI 助手入口',
     group: '功能模块',
   },
   'ai-import': {

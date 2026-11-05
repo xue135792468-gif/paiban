@@ -304,7 +304,7 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void confirmedDeleteRemovesTheDraftAndItsLockedLessons() {
+    void confirmedDeleteRecyclesTheDraftAndKeepsItsLessons() {
         String token = adminToken();
         World world = world(token);
         Seeded seeded = seedMainDraft(world);
@@ -313,15 +313,15 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
         as(token).when().delete(DRAFT.formatted(seeded.draftId()) + "?unlockLocked=true&expectedLockedCount=1")
                 .then().statusCode(200);
 
-        assertThat(drafts.findById(seeded.draftId())).isEmpty();
-        assertThat(draftLessons.findById(seeded.chineseA())).isEmpty();
+        // Ticket 04: deletion is soft — the row, its lessons and its locks stay for the
+        // 7-day recycle bin, so a restore returns the very same timetable.
+        assertThat(drafts.findById(seeded.draftId())).isPresent();
+        assertThat(drafts.findById(seeded.draftId()).orElseThrow().getDeletedAt()).isNotNull();
+        assertThat(draftLessons.findById(seeded.chineseA())).isPresent();
         assertThat(auditLogs.findTop100ByOrderByCreatedAtDesc())
                 .anySatisfy(log -> {
-                    assertThat(log.getAction()).isEqualTo("DRAFT_DELETE");
+                    assertThat(log.getAction()).isEqualTo("DELETE_TIMETABLE_DRAFT");
                     assertThat(log.getEntityType()).isEqualTo("TIMETABLE_DRAFT");
-                    assertThat(log.getDetail())
-                            .contains("draftId=" + seeded.draftId())
-                            .contains("locked=1");
                 });
     }
 
@@ -333,7 +333,9 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
 
         as(token).when().delete(DRAFT.formatted(seeded.draftId())).then().statusCode(200);
 
-        assertThat(drafts.findById(seeded.draftId())).isEmpty();
+        assertThat(drafts.findByIdAndDeletedAtIsNull(seeded.draftId())).isEmpty();
+        assertThat(drafts.findById(seeded.draftId()))
+                .hasValueSatisfying(row -> assertThat(row.getDeletedAt()).isNotNull());
     }
 
     @Test

@@ -1,6 +1,11 @@
 package com.paiban.scheduling.web;
 
+import com.paiban.common.deletion.DeleteMode;
+import com.paiban.common.deletion.EntityType;
+import com.paiban.foundation.service.LifecycleService;
 import com.paiban.foundation.web.ImportDtos.ImportReport;
+import com.paiban.foundation.web.LifecycleDtos.DeleteImpactDto;
+import com.paiban.foundation.web.LifecycleDtos.DeleteResultDto;
 import com.paiban.identity.domain.Permissions;
 import com.paiban.scheduling.service.AssignmentExcelService;
 import com.paiban.scheduling.service.AssignmentImportService;
@@ -38,14 +43,17 @@ public class AssignmentController {
     private final AssignmentService service;
     private final AssignmentImportService importService;
     private final AssignmentExcelService excelService;
+    private final LifecycleService lifecycle;
 
     public AssignmentController(
             AssignmentService service,
             AssignmentImportService importService,
-            AssignmentExcelService excelService) {
+            AssignmentExcelService excelService,
+            LifecycleService lifecycle) {
         this.service = service;
         this.importService = importService;
         this.excelService = excelService;
+        this.lifecycle = lifecycle;
     }
 
     @GetMapping
@@ -79,10 +87,29 @@ public class AssignmentController {
         return service.update(id, request);
     }
 
+    @GetMapping("/{id}/delete-impact")
+    @PreAuthorize("hasAuthority('" + Permissions.ASSIGNMENT_MANAGE + "')")
+    public DeleteImpactDto deleteImpact(@PathVariable Long id) {
+        return lifecycle.impact(EntityType.ASSIGNMENT, id);
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('" + Permissions.ASSIGNMENT_MANAGE + "')")
-    public void delete(@PathVariable Long id) {
-        service.delete(id);
+    public DeleteResultDto delete(
+            @PathVariable Long id, @RequestParam(required = false) String mode) {
+        return lifecycle.delete(EntityType.ASSIGNMENT, id, DeleteMode.parse(mode));
+    }
+
+    @PostMapping("/{id}/disable")
+    @PreAuthorize("hasAuthority('" + Permissions.ASSIGNMENT_MANAGE + "')")
+    public void disable(@PathVariable Long id) {
+        lifecycle.disable(EntityType.ASSIGNMENT, id);
+    }
+
+    @PostMapping("/{id}/enable")
+    @PreAuthorize("hasAuthority('" + Permissions.ASSIGNMENT_MANAGE + "')")
+    public void enable(@PathVariable Long id) {
+        lifecycle.enable(EntityType.ASSIGNMENT, id);
     }
 
     @PostMapping(value = "/import/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

@@ -3,7 +3,7 @@
     <div class="toolbar">
       <div>
         <h2>课程管理</h2>
-        <p class="subtitle">维护学校开设的课程科目，设定是否允许连堂、室外场地及专用教室类型要求。</p>
+        <p class="subtitle">维护学校开设的课程科目，设定是否允许连堂、是否需要室外场地。</p>
       </div>
       <div class="toolbar-actions">
         <el-button v-if="auth.hasPermission('foundation:manage')" @click="importVisible = true">
@@ -38,14 +38,6 @@
             <span>{{ row.subject || '—' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="requiredRoomType" label="所需教室类型" min-width="130">
-          <template #default="{ row }">
-            <el-tag v-if="row.requiredRoomType" size="small">
-              {{ ROOM_TYPE_MAP[row.requiredRoomType] || row.requiredRoomType }}
-            </el-tag>
-            <span v-else class="muted">无特殊要求</span>
-          </template>
-        </el-table-column>
         <el-table-column prop="allowConsecutive" label="允许连堂" width="110">
           <template #default="{ row }">
             <el-tag :type="row.allowConsecutive ? 'success' : 'info'" size="small">
@@ -69,15 +61,22 @@
             <span v-else class="muted">—</span>
           </template>
         </el-table-column>
+        <el-table-column label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.active === false ? 'info' : 'success'">
+              {{ row.active === false ? '已停用' : '正常' }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column
           v-if="auth.hasPermission('foundation:manage')"
           label="操作"
-          width="160"
+          width="220"
           fixed="right"
         >
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="danger" @click="remove(row)">删除</el-button>
+            <LifecycleCell entity-type="course" :row="row" @updated="load" />
           </template>
         </el-table-column>
       </el-table>
@@ -95,21 +94,6 @@
         </el-form-item>
         <el-form-item label="所属学科" prop="subject">
           <el-input v-model="form.subject" placeholder="如：理科、文科、综合（选填）" />
-        </el-form-item>
-        <el-form-item label="教室要求" prop="requiredRoomType">
-          <el-select
-            v-model="form.requiredRoomType"
-            placeholder="无特殊要求（普通教室）"
-            clearable
-            style="width: 100%"
-          >
-            <el-option
-              v-for="item in ROOM_TYPE_OPTIONS"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
-          </el-select>
         </el-form-item>
         <el-form-item prop="allowConsecutive">
           <template #label>
@@ -161,12 +145,13 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Download, Upload } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ImportDialog from '@/components/ImportDialog.vue'
+import LifecycleCell from '@/components/lifecycle/LifecycleCell.vue'
 import InfoTooltip from '@/components/InfoTooltip.vue'
 import { serverMessage } from '@/api/errors'
 
@@ -178,23 +163,8 @@ interface Course {
   requireOutdoor: boolean
   requiredRoomType?: string | null
   color?: string | null
+  active?: boolean
 }
-
-const ROOM_TYPE_MAP: Record<string, string> = {
-  NORMAL: '普通教室',
-  LAB: '实验室',
-  PLAYGROUND: '操场/室外',
-  MULTIMEDIA: '多媒体',
-  OTHER: '其他',
-}
-
-const ROOM_TYPE_OPTIONS = [
-  { value: 'NORMAL', label: '普通教室' },
-  { value: 'LAB', label: '实验室' },
-  { value: 'PLAYGROUND', label: '操场/室外' },
-  { value: 'MULTIMEDIA', label: '多媒体' },
-  { value: 'OTHER', label: '其他' },
-]
 
 const predefineColors = [
   '#4F6EF7',
@@ -296,22 +266,6 @@ async function submit() {
   }
 }
 
-async function remove(row: Course) {
-  try {
-    await ElMessageBox.confirm(`确定要删除课程“${row.name}”吗？`, '删除确认', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-    await http.delete(`/courses/${row.id}`)
-    ElMessage.success('删除成功')
-    await load()
-  } catch (e: any) {
-    if (e !== 'cancel') {
-      ElMessage.error(serverMessage(e, '删除失败'))
-    }
-  }
-}
 
 async function handleExport() {
   exporting.value = true

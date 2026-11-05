@@ -80,7 +80,7 @@ class DraftValidatorTest {
         draft = new TimetableDraft();
         draft.setId(DRAFT_ID);
         draft.setSemesterId(SEMESTER_ID);
-        when(drafts.findById(DRAFT_ID)).thenReturn(Optional.of(draft));
+        when(drafts.findByIdAndDeletedAtIsNull(DRAFT_ID)).thenReturn(Optional.of(draft));
 
         when(draftLessons.findByDraftIdOrderByIdAsc(DRAFT_ID)).thenReturn(List.of(
                 lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1, ROOM_1),
@@ -182,21 +182,20 @@ class DraftValidatorTest {
     }
 
     @Test
-    void wholeDraftCheckReportsMissingRoomsAsABlockerNotAConflict() {
+    void wholeDraftCheckTreatsMissingRoomsAsPublishable() {
         useLessons(
                 lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1, ROOM_1),
                 lesson(LESSON_2, MATH, TEACHER_2, CLASS_1, P2, null));
 
         ValidationResult result = validator.validateDraft(DRAFT_ID);
 
-        assertThat(result.valid()).isFalse();
-        assertThat(result.publishable()).isFalse();
+        // Rooms are not a publishing precondition any more: a lesson without one is
+        // neither a conflict nor a blocker.
+        assertThat(result.valid()).isTrue();
+        assertThat(result.publishable()).isTrue();
         assertThat(result.hardConflicts()).isZero();
         assertThat(result.conflicts()).isEmpty();
-        assertThat(result.blockers())
-                .extracting(DraftPublishReadiness.Blocker::code)
-                .containsExactly(DraftPublishReadiness.MISSING_ROOMS);
-        assertThat(result.blockers().get(0).count()).isEqualTo(1);
+        assertThat(result.blockers()).isEmpty();
     }
 
     @Test
@@ -220,7 +219,7 @@ class DraftValidatorTest {
     }
 
     @Test
-    void wholeDraftCheckIsCleanWhenEveryLessonHasAPeriodAndARoom() {
+    void wholeDraftCheckIsCleanWhenEveryLessonHasAPeriod() {
         ValidationResult result = validator.validateDraft(DRAFT_ID);
 
         assertThat(result.valid()).isTrue();
@@ -244,7 +243,7 @@ class DraftValidatorTest {
     }
 
     @Test
-    void publishedDraftWithAMissingRoomIsStillInvalid() {
+    void publishedDraftWithoutARoomStaysValidButIsNotPublishable() {
         draft.setStatus("PUBLISHED");
         useLessons(
                 lesson(LESSON_1, CHINESE, TEACHER_1, CLASS_1, P1, ROOM_1),
@@ -252,11 +251,12 @@ class DraftValidatorTest {
 
         ValidationResult result = validator.validateDraft(DRAFT_ID);
 
-        assertThat(result.valid()).isFalse();
+        // A missing room is not a content defect; only the terminal state blocks a republish.
+        assertThat(result.valid()).isTrue();
         assertThat(result.publishable()).isFalse();
         assertThat(result.blockers())
                 .extracting(DraftPublishReadiness.Blocker::code)
-                .contains(DraftPublishReadiness.DRAFT_PUBLISHED, DraftPublishReadiness.MISSING_ROOMS);
+                .containsExactly(DraftPublishReadiness.DRAFT_PUBLISHED);
     }
 
     @Test

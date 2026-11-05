@@ -21,7 +21,7 @@ describe('deleteDraftWithConfirmation', () => {
     const [message, title, options] = confirm.mock.calls[0]
     expect(message).toContain('含 1 节锁定课节')
     expect(message).toContain('一并移除')
-    expect(message).toContain('无法恢复')
+    expect(message).toContain('最近删除')
     expect(title).toBe('删除草稿')
     expect(options).toMatchObject({ confirmButtonText: '解锁并删除', type: 'warning' })
     expect(deleteFn).toHaveBeenCalledWith('/timetable-drafts/7', {
@@ -41,7 +41,7 @@ describe('deleteDraftWithConfirmation', () => {
     expect(outcome).toBe('deleted')
     const [message, , options] = confirm.mock.calls[0]
     expect(message).toContain('普通草稿')
-    expect(message).toContain('删除后无法恢复')
+    expect(message).toContain('最近删除')
     expect(options).toMatchObject({ confirmButtonText: '确定删除', type: 'warning' })
     expect(deleteFn).toHaveBeenCalledWith('/timetable-drafts/8', {
       params: { unlockLocked: false, expectedLockedCount: 0 },

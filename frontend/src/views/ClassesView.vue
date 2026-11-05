@@ -83,15 +83,22 @@
           </template>
         </el-table-column>
         <el-table-column prop="studentCount" label="学生人数" min-width="100" />
+        <el-table-column label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.active === false ? 'info' : 'success'">
+              {{ row.active === false ? '已停用' : '正常' }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column
           v-if="auth.hasPermission('foundation:manage')"
           label="操作"
-          width="160"
+          width="220"
           fixed="right"
         >
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            <LifecycleCell entity-type="class" :row="row" @updated="loadClasses" />
           </template>
         </el-table-column>
       </el-table>
@@ -170,13 +177,15 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Download, Plus, Upload } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ImportDialog from '@/components/ImportDialog.vue'
+import LifecycleCell from '@/components/lifecycle/LifecycleCell.vue'
 import { useAuthStore } from '@/stores/auth'
 import { serverMessage } from '@/api/errors'
+import { activeOnly } from '@/utils/activeOptions'
 
 interface Semester {
   id: number
@@ -184,12 +193,14 @@ interface Semester {
   startDate?: string
   endDate?: string
   current: boolean
+  active?: boolean
 }
 
 interface GradeItem {
   id: number
   name: string
   sortOrder: number
+  active?: boolean
 }
 
 interface TeacherItem {
@@ -207,6 +218,7 @@ interface ClassItem {
   headTeacherName?: string | null
   studentCount: number
   teachingClassId?: number | null
+  active?: boolean
 }
 
 interface FormState {
@@ -255,7 +267,7 @@ async function loadSemesters() {
       http.get<Semester[]>('/semesters'),
       http.get<Semester>('/semesters/current', { validateStatus: (status) => status < 500 }),
     ])
-    semesters.value = listRes.data ?? []
+    semesters.value = activeOnly(listRes.data ?? [])
 
     let targetId: number | null = null
     if (currentRes.status === 200 && currentRes.data?.id) {
@@ -292,7 +304,7 @@ async function loadGrades() {
     const { data } = await http.get<GradeItem[]>('/grades', {
       params: { semesterId: semesterId.value },
     })
-    grades.value = data ?? []
+    grades.value = (data ?? []).filter((grade) => grade.active !== false)
   } catch (e: any) {
     ElMessage.error(serverMessage(e, '加载年级列表失败'))
   }
@@ -372,26 +384,6 @@ async function submitForm() {
   }
 }
 
-async function handleDelete(row: ClassItem) {
-  try {
-    await ElMessageBox.confirm(
-      `确定要删除行政班「${row.name}」吗？删除后关联教学班也将被移除，此操作不可撤销！`,
-      '删除确认',
-      {
-        confirmButtonText: '确定删除',
-        cancelButtonText: '取消',
-        type: 'warning',
-      },
-    )
-    await http.delete(`/classes/${row.id}`)
-    ElMessage.success('删除成功')
-    await loadClasses()
-  } catch (e: any) {
-    if (e !== 'cancel' && e !== 'close') {
-      ElMessage.error(serverMessage(e, '删除失败'))
-    }
-  }
-}
 
 async function handleExport() {
   if (!semesterId.value) return

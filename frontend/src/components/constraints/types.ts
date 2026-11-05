@@ -47,15 +47,24 @@ export interface ConstraintEntryDto {
   weight?: number | null
   /** Rows sharing this key are one requirement (one expanded slot set). */
   groupKey?: string | null
+  /**
+   * Ticket 04: plain-Chinese reasons the row points at a paused/removed object
+   * (`教师已停用：王老师`). The page marks the card 已失效 instead of silently
+   * evaluating a rule whose target the user can no longer use.
+   */
+  invalidReferences?: string[]
 }
 
 export interface ConstraintConfigDto {
+  id?: number
   type: string
   params: Record<string, unknown>
   weight: number
   hard: boolean
   enabled: boolean
   entries?: ConstraintEntryDto[] | null
+  /** Union of the row-level reasons, for switch cards that have no entries. */
+  invalidReferences?: string[]
 }
 
 /**
@@ -191,6 +200,7 @@ export interface ConstraintConfigRequest {
 export interface OptionItem {
   id: number
   name: string
+  active?: boolean
 }
 
 /**

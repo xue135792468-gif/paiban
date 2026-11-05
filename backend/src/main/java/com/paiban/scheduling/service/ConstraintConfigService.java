@@ -109,6 +109,24 @@ public class ConstraintConfigService {
         Long resolved = resolveSemester(semesterId);
         Map<String, List<ConstraintEntry>> byType = entriesByType(entries.findBySemesterId(resolved));
         return configs.findBySemesterId(resolved).stream()
+                .filter(config -> config.getDeletedAt() == null)
+                .map(config -> toDto(config, byType.get(config.getType())))
+                .toList();
+    }
+
+    /**
+     * What the editor may show. Retired and unknown-type rows are kept in the database
+     * for the migration report and for "old data stays queryable" (ticket 11), but they
+     * are not part of the editable configuration any more. Deleted rows live in the
+     * 7-day recycle bin (ticket 04) and are hidden the same way.
+     */
+    @Transactional(readOnly = true)
+    public List<ConstraintConfigDto> visibleList(Long semesterId) {
+        Long resolved = resolveSemester(semesterId);
+        Map<String, List<ConstraintEntry>> byType = entriesByType(entries.findBySemesterId(resolved));
+        return configs.findBySemesterId(resolved).stream()
+                .filter(config -> config.getDeletedAt() == null)
+                .filter(config -> !isPreservedType(config.getType()))
                 .map(config -> toDto(config, byType.get(config.getType())))
                 .toList();
     }
@@ -121,7 +139,7 @@ public class ConstraintConfigService {
     @Transactional(readOnly = true)
     public ConstraintStateDto state(Long semesterId) {
         Long resolved = resolveSemester(semesterId);
-        return new ConstraintStateDto(versionOf(resolved), list(resolved));
+        return new ConstraintStateDto(versionOf(resolved), visibleList(resolved));
     }
 
     @Transactional
@@ -170,6 +188,87 @@ public class ConstraintConfigService {
     }
 
     /**
+     * Adds one whole-school “this slot is free” requirement — a {@code CLASS_UNAVAILABLE}
+     * entry without a {@code classId} — unless that weekday+period is already configured.
+     *
+     * <p>The import pipeline proposes exactly one such rule after a manual mapping. It
+     * calls this method instead of assembling the request DTOs on its own, so version
+     * checks, planning and persistence stay in one place and imports never have to
+     * speak the web layer's types.
+     *
+     * @return {@code true} when a row was added, {@code false} when the slot already existed
+     */
+    @Transactional
+    public boolean addWeeklyNoClassRule(Long semesterId, int dayOfWeek, int periodNo) {
+        String type = ConstraintType.CLASS_UNAVAILABLE.name();
+        ConstraintStateDto state = state(semesterId);
+        List<ConstraintConfigRequest> requests = new ArrayList<>();
+        for (ConstraintConfigDto config : state.configs()) {
+            requests.add(toRequest(config));
+            if (type.equals(config.type()) && hasWholeSchoolSlot(config, dayOfWeek, periodNo)) {
+                return false;
+            }
+        }
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("dayOfWeek", dayOfWeek);
+        params.put("periodNo", periodNo);
+        ConstraintEntryRequest entry =
+                new ConstraintEntryRequest(null, params, true, null, null, null);
+        int index = indexOfType(requests, type);
+        if (index < 0) {
+            requests.add(new ConstraintConfigRequest(type, null, null, true, true, List.of(entry)));
+        } else {
+            ConstraintConfigRequest existing = requests.get(index);
+            List<ConstraintEntryRequest> entries = new ArrayList<>(
+                    existing.entries() == null ? List.of() : existing.entries());
+            entries.add(entry);
+            requests.set(index, new ConstraintConfigRequest(
+                    type, null, existing.weight(), existing.hard(), existing.enabled(), entries));
+        }
+        save(semesterId, requests, state.version());
+        return true;
+    }
+
+    private boolean hasWholeSchoolSlot(ConstraintConfigDto config, int dayOfWeek, int periodNo) {
+        for (ConstraintEntryDto entry : config.entries()) {
+            Map<String, Object> params = entry.params();
+            if (params.get("classId") == null
+                    && Integer.valueOf(dayOfWeek).equals(asInt(params.get("dayOfWeek")))
+                    && Integer.valueOf(periodNo).equals(asInt(params.get("periodNo")))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private ConstraintConfigRequest toRequest(ConstraintConfigDto config) {
+        boolean entryBacked = isEntryBacked(config.type());
+        List<ConstraintEntryRequest> entries = entryBacked || !config.entries().isEmpty()
+                ? config.entries().stream()
+                        .map(entry -> new ConstraintEntryRequest(
+                                entry.id(), entry.params(), entry.enabled(),
+                                entry.hard(), entry.weight(), entry.groupKey()))
+                        .toList()
+                : null;
+        return new ConstraintConfigRequest(
+                config.type(), entries == null ? config.params() : null,
+                config.weight(), config.hard(), config.enabled(), entries);
+    }
+
+    private int indexOfType(List<ConstraintConfigRequest> requests, String type) {
+        for (int index = 0; index < requests.size(); index++) {
+            if (type.equals(requests.get(index).type())) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    private static Integer asInt(Object value) {
+        return value instanceof Number number ? number.intValue() : null;
+    }
+
+    /**
      * Dry run for "添加到约束表": the exact refusals a save would produce, with no
      * writes and no version advance. The page can therefore reject an invalid merge
      * before it touches the borrowed draft.
@@ -181,6 +280,68 @@ public class ConstraintConfigService {
         Planning planning = plan(resolved, requests, existingEntries(resolved));
         return new ConstraintPreviewDto(
                 planning.errors(), planning.references(), warningsOf(resolved, planning));
+    }
+
+    /**
+     * A dry run of rules on top of the saved configuration, for the rule page's
+     * impact preview. The request's requirements replace the saved ones that share a
+     * group key (or entry id) and leave every other stored rule in place, so a single
+     * unsaved card is judged against the semester as it actually is. Nothing is
+     * written and the version does not advance.
+     */
+    public record PreviewSnapshot(ConstraintPreviewDto preview, ConstraintSettings settings) {}
+
+    @Transactional(readOnly = true)
+    public PreviewSnapshot previewSnapshot(
+            Long semesterId, List<ConstraintConfigRequest> requests) {
+        Long resolved = resolveSemester(semesterId);
+        List<ConstraintConfigRequest> merged = mergedForPreview(resolved, requests);
+        Planning planning = plan(resolved, merged, existingEntries(resolved));
+        return new PreviewSnapshot(
+                new ConstraintPreviewDto(
+                        planning.errors(), planning.references(), warningsOf(resolved, planning)),
+                settingsOf(planning));
+    }
+
+    /** Saved configuration with the request's requirement groups replaced in place. */
+    private List<ConstraintConfigRequest> mergedForPreview(
+            Long semesterId, List<ConstraintConfigRequest> requests) {
+        Map<String, ConstraintConfigRequest> byType = new LinkedHashMap<>();
+        snapshotOf(semesterId).forEach(config -> byType.put(config.type(), config));
+        for (ConstraintConfigRequest request : requests) {
+            ConstraintConfigRequest existing = byType.get(request.type());
+            if (existing == null) {
+                byType.put(request.type(), request);
+                continue;
+            }
+            List<ConstraintEntryRequest> overrides =
+                    request.entries() == null ? List.of() : request.entries();
+            Set<String> replacedGroups = new HashSet<>();
+            Set<Long> replacedIds = new HashSet<>();
+            for (ConstraintEntryRequest entry : overrides) {
+                if (StringUtils.hasText(entry.groupKey())) {
+                    replacedGroups.add(entry.groupKey());
+                }
+                if (entry.id() != null) {
+                    replacedIds.add(entry.id());
+                }
+            }
+            List<ConstraintEntryRequest> kept = new ArrayList<>();
+            for (ConstraintEntryRequest entry : existing.entries() == null
+                    ? List.<ConstraintEntryRequest>of() : existing.entries()) {
+                boolean replaced = (StringUtils.hasText(entry.groupKey())
+                        && replacedGroups.contains(entry.groupKey()))
+                        || (entry.id() != null && replacedIds.contains(entry.id()));
+                if (!replaced) {
+                    kept.add(entry);
+                }
+            }
+            kept.addAll(overrides);
+            byType.put(request.type(), new ConstraintConfigRequest(
+                    request.type(), request.params(), request.weight(), request.hard(),
+                    request.enabled(), kept));
+        }
+        return new ArrayList<>(byType.values());
     }
 
     /**
@@ -243,16 +404,20 @@ public class ConstraintConfigService {
         return auditService.audits(semesterId, all, actor);
     }
 
+    /** Enabled, live type rows. Rows in the recycle bin never reach an evaluation. */
     @Transactional(readOnly = true)
     public List<ConstraintConfig> active(Long semesterId) {
         return configs.findBySemesterId(semesterId).stream()
+                .filter(config -> config.getDeletedAt() == null)
                 .filter(ConstraintConfig::isEnabled)
                 .toList();
     }
 
+    /** True when the semester has any live (not recycled) configuration left. */
     @Transactional(readOnly = true)
     public boolean hasConfigs(Long semesterId) {
-        return !configs.findBySemesterId(semesterId).isEmpty();
+        return configs.findBySemesterId(semesterId).stream()
+                .anyMatch(config -> config.getDeletedAt() == null);
     }
 
     /**
@@ -262,7 +427,11 @@ public class ConstraintConfigService {
      */
     @Transactional(readOnly = true)
     public ConstraintSettings settings(Long semesterId) {
-        List<ConstraintConfig> all = configs.findBySemesterId(semesterId);
+        List<ConstraintConfig> all = configs.findBySemesterId(semesterId).stream()
+                // A recycled type row is "not configured", exactly like a type the user
+                // never saved; otherwise deleting every rule would silently keep rules.
+                .filter(config -> config.getDeletedAt() == null)
+                .toList();
         if (all.isEmpty()) {
             return ConstraintSettings.defaults();
         }
@@ -279,8 +448,7 @@ public class ConstraintConfigService {
         List<ConstraintConfig> defaults = new ArrayList<>();
         for (ConstraintType type : List.of(
                 ConstraintType.TEACHER_CONFLICT,
-                ConstraintType.CLASS_CONFLICT,
-                ConstraintType.ROOM_CONFLICT)) {
+                ConstraintType.CLASS_CONFLICT)) {
             ConstraintConfig config = new ConstraintConfig();
             config.setSemesterId(event.semesterId());
             config.setType(type.name());
@@ -302,6 +470,9 @@ public class ConstraintConfigService {
     List<ConstraintConfigRequest> snapshotOf(Long semesterId) {
         Map<String, List<ConstraintEntry>> byType = entriesByType(entries.findBySemesterId(semesterId));
         return configs.findBySemesterId(semesterId).stream()
+                // A recycled type row must not be captured into a new template; its
+                // entry rows are already dropped by entriesByType().
+                .filter(config -> config.getDeletedAt() == null)
                 .map(config -> toSnapshotRequest(config, byType.get(config.getType())))
                 .toList();
     }
@@ -527,6 +698,12 @@ public class ConstraintConfigService {
 
         List<ConstraintConfigDto> result = new ArrayList<>();
         Set<String> plannedTypes = new HashSet<>();
+        // One reference lookup for every planned row, so the save response does not run
+        // three queries per entry it just wrote.
+        ReferenceIndex references = referencesOf(planned.stream()
+                .flatMap(plan -> plan.entries().stream())
+                .map(PlannedEntry::params)
+                .toList());
         for (PlannedConfig plan : planned) {
             String type = plan.type().name();
             plannedTypes.add(type);
@@ -543,6 +720,9 @@ public class ConstraintConfigService {
             config.setWeight(plan.weight());
             config.setHard(plan.hard());
             config.setEnabled(plan.enabled());
+            // A type that was fully deleted keeps its row so old ids still resolve; a
+            // save that writes the type again brings the row back in one place.
+            config.setDeletedAt(null);
             ConstraintConfig savedConfig = configs.save(config);
 
             Map<Long, ConstraintEntry> current = existingEntries.getOrDefault(type, Map.of());
@@ -571,19 +751,31 @@ public class ConstraintConfigService {
                 PlannedEntry plannedEntry = plan.entries().get(index);
                 entryDtos.add(new ConstraintEntryDto(
                         savedRows.get(index).getId(), plannedEntry.params(), plannedEntry.enabled(),
-                        plannedEntry.hard(), plannedEntry.weight(), plannedEntry.groupKey()));
+                        plannedEntry.hard(), plannedEntry.weight(), plannedEntry.groupKey(),
+                        invalidReferencesOf(plannedEntry.params(), references)));
             }
             current.values().stream()
                     .filter(row -> !kept.contains(row.getId()))
+                    .filter(row -> row.getDeletedAt() == null)
                     .forEach(entries::delete);
             result.add(toDtoWithEntries(savedConfig, entryDtos));
         }
         existingConfigs.values().stream()
                 .filter(config -> !plannedTypes.contains(config.getType()))
+                // Ticket 11: retired rows are paused, never physically deleted. The rule
+                // page only sends the 19 active types, so a full save must leave the old
+                // 7 types (and their pausable entries) in place — and, since ticket 11's
+                // review, rows whose type code is unknown to the catalogue too.
+                .filter(config -> !isPreservedType(config.getType()))
+                // Deleted rows belong to the recycle bin: a full save must not remove
+                // them, otherwise "最近删除" could never restore the rule.
+                .filter(config -> config.getDeletedAt() == null)
                 .forEach(configs::delete);
         existingEntries.entrySet().stream()
                 .filter(byType -> !plannedTypes.contains(byType.getKey()))
+                .filter(byType -> !isPreservedType(byType.getKey()))
                 .flatMap(byType -> byType.getValue().values().stream())
+                .filter(row -> row.getDeletedAt() == null)
                 .forEach(entries::delete);
         return result;
     }
@@ -641,13 +833,25 @@ public class ConstraintConfigService {
                 Map.of("version", current, "configs", list(semesterId)));
     }
 
-    /** True when any stored entry uses a shape a legacy request cannot represent. */
+    /**
+     * True when any active stored entry uses a shape a legacy request cannot represent.
+     * Rows of a retired (or unknown) type are ignored: after the ticket-11 migration the
+     * seven paused types carry {@code enabled = false} rows, and counting those would
+     * keep rejecting every legacy save with a message about "逐项控制/分组" that no longer
+     * describes anything the user can edit (ticket 11 review).
+     */
     private boolean hasAdvancedEntries(Long semesterId) {
-        return entries.findBySemesterId(semesterId).stream().anyMatch(entry ->
-                !entry.isEnabled()
-                        || entry.getHard() != null
-                        || entry.getWeight() != null
-                        || (entry.getGroupKey() != null && StringUtils.hasText(entry.getGroupKey())));
+        return entries.findBySemesterId(semesterId).stream()
+                .filter(entry -> !isPreservedType(entry.getType()))
+                // Recycled rows are not part of the configuration, so they must not keep
+                // rejecting a legacy save that the visible rows can represent.
+                .filter(entry -> entry.getDeletedAt() == null)
+                .anyMatch(entry ->
+                        !entry.isEnabled()
+                                || entry.getHard() != null
+                                || entry.getWeight() != null
+                                || (entry.getGroupKey() != null
+                                        && StringUtils.hasText(entry.getGroupKey())));
     }
 
     /**
@@ -674,6 +878,24 @@ public class ConstraintConfigService {
         } catch (DataIntegrityViolationException ex) {
             throw versionConflict(semesterId, base, versionOf(semesterId));
         }
+    }
+
+    /**
+     * Advances the version for a writer that is not a configuration save.
+     *
+     * <p>Ticket 11's migration pauses rows in place, but the rule page, its cached
+     * previews and the version-aware save must still see that the configuration
+     * changed. It therefore moves the same counter through the same conditional bump
+     * as {@code commitPlan}, so a concurrent save conflicts exactly as it would with
+     * any other writer. The caller owns the transaction: a later failure rolls the
+     * bump back together with its own writes.
+     *
+     * @return the version now stored
+     */
+    public long advanceVersion(Long semesterId) {
+        long current = versionOf(semesterId);
+        advanceState(semesterId, current);
+        return current + 1;
     }
 
     // ------------------------------------------------------------------ entries
@@ -950,7 +1172,7 @@ public class ConstraintConfigService {
         }
         EntrySignature signature = new EntrySignature(params, entry.enabled(),
                 effectiveHard(entry, defaultHard), effectiveWeight(entry, defaultWeight),
-                type == ConstraintType.CLASS_UNAVAILABLE ? entry.groupKey() : null);
+                entry.groupKey());
         Integer first = seen.putIfAbsent(signature, entry.position());
         if (first != null) {
             errors.add(location(type, entry.position()) + ": 与第" + first + " 条完全相同，重复条目已拒绝");
@@ -1339,6 +1561,12 @@ public class ConstraintConfigService {
         Map<String, Object> legacyParams = entryDtos.isEmpty()
                 ? (isEntryBacked(config.getType()) ? Map.of() : paramsFromJson(config.getParamsJson()))
                 : entryDtos.get(0).params();
+        List<String> invalidReferences = entryDtos.stream()
+                .flatMap(entry -> entry.invalidReferences() == null
+                        ? java.util.stream.Stream.empty()
+                        : entry.invalidReferences().stream())
+                .distinct()
+                .toList();
         return new ConstraintConfigDto(
                 config.getId(),
                 config.getType(),
@@ -1350,7 +1578,8 @@ public class ConstraintConfigService {
                 config.getWeight(),
                 config.isHard(),
                 config.isEnabled(),
-                entryDtos);
+                entryDtos,
+                invalidReferences);
     }
 
     /**
@@ -1362,34 +1591,153 @@ public class ConstraintConfigService {
      * checker does not perform.
      */
     private List<ConstraintEntryDto> entryDtos(ConstraintConfig config, List<ConstraintEntry> entryRows) {
+        List<ConstraintEntry> sorted = entryRows == null
+                ? List.of()
+                : entryRows.stream()
+                        .sorted(Comparator.comparing(ConstraintEntry::getId,
+                                Comparator.nullsLast(Comparator.naturalOrder())))
+                        .toList();
+        List<Map<String, Object>> paramsRows = new ArrayList<>();
+        for (ConstraintEntry entry : sorted) {
+            paramsRows.add(paramsFromJson(entry.getParamsJson()));
+        }
+        // One batch lookup for the whole card instead of three queries per row.
+        ReferenceIndex references = referencesOf(paramsRows);
         List<ConstraintEntryDto> dtos = new ArrayList<>();
-        if (entryRows != null) {
-            entryRows.stream()
-                    .sorted(Comparator.comparing(ConstraintEntry::getId,
-                            Comparator.nullsLast(Comparator.naturalOrder())))
-                    .map(entry -> new ConstraintEntryDto(
-                            entry.getId(),
-                            paramsFromJson(entry.getParamsJson()),
-                            entry.isEnabled(),
-                            entry.getHard(),
-                            entry.getWeight(),
-                            entry.getGroupKey()))
-                    .forEach(dtos::add);
+        for (int index = 0; index < sorted.size(); index++) {
+            ConstraintEntry entry = sorted.get(index);
+            Map<String, Object> params = paramsRows.get(index);
+            dtos.add(new ConstraintEntryDto(
+                    entry.getId(),
+                    params,
+                    entry.isEnabled(),
+                    entry.getHard(),
+                    entry.getWeight(),
+                    entry.getGroupKey(),
+                    invalidReferencesOf(params, references)));
         }
         if (dtos.isEmpty() && !isEntryBacked(config.getType())) {
             Map<String, Object> legacy = paramsFromJson(config.getParamsJson());
             if (!legacy.isEmpty()) {
-                dtos.add(new ConstraintEntryDto(null, legacy, true, null, null, null));
+                dtos.add(new ConstraintEntryDto(
+                        null, legacy, true, null, null, null,
+                        invalidReferencesOf(legacy, referencesOf(List.of(legacy)))));
             }
         }
         return dtos;
     }
 
+    /**
+     * Objects a rule row points at that can no longer be used. Rule parameters are
+     * plain JSON ids (no foreign key), so a paused teacher/class/course would otherwise
+     * make the rule silently stop applying; the page shows these sentences instead.
+     */
+    private List<String> invalidReferencesOf(Map<String, Object> params, ReferenceIndex references) {
+        if (params == null || params.isEmpty()) {
+            return List.of();
+        }
+        List<String> reasons = new ArrayList<>();
+        Long teacherId = ConstraintSettings.longValue(params.get("teacherId"));
+        if (teacherId != null) {
+            Teacher teacher = references.teachers().get(teacherId);
+            if (teacher == null) {
+                reasons.add("教师已删除：#" + teacherId);
+            } else if (!teacher.isActive() || teacher.getDeletedAt() != null) {
+                reasons.add("教师已停用：" + teacher.getName());
+            }
+        }
+        Long classId = ConstraintSettings.longValue(params.get("classId"));
+        if (classId != null) {
+            AdminClass item = references.classes().get(classId);
+            if (item == null) {
+                reasons.add("行政班已删除：#" + classId);
+            } else if (!item.isActive() || item.getDeletedAt() != null) {
+                reasons.add("行政班已停用：" + item.getName());
+            }
+        }
+        Long courseId = ConstraintSettings.longValue(params.get("courseId"));
+        if (courseId != null) {
+            Course item = references.courses().get(courseId);
+            if (item == null) {
+                reasons.add("课程已删除：#" + courseId);
+            } else if (!item.isActive() || item.getDeletedAt() != null) {
+                reasons.add("课程已停用：" + item.getName());
+            }
+        }
+        return reasons;
+    }
+
+    /** The referenced rows of a batch of rule parameters, loaded in three queries. */
+    private ReferenceIndex referencesOf(List<Map<String, Object>> paramRows) {
+        Set<Long> teacherIds = new LinkedHashSet<>();
+        Set<Long> classIds = new LinkedHashSet<>();
+        Set<Long> courseIds = new LinkedHashSet<>();
+        for (Map<String, Object> params : paramRows) {
+            if (params == null || params.isEmpty()) {
+                continue;
+            }
+            Long teacherId = ConstraintSettings.longValue(params.get("teacherId"));
+            if (teacherId != null) {
+                teacherIds.add(teacherId);
+            }
+            Long classId = ConstraintSettings.longValue(params.get("classId"));
+            if (classId != null) {
+                classIds.add(classId);
+            }
+            Long courseId = ConstraintSettings.longValue(params.get("courseId"));
+            if (courseId != null) {
+                courseIds.add(courseId);
+            }
+        }
+        Map<Long, Teacher> teacherById = new HashMap<>();
+        if (!teacherIds.isEmpty()) {
+            teachers.findAllById(teacherIds).forEach(row -> teacherById.put(row.getId(), row));
+        }
+        Map<Long, AdminClass> classById = new HashMap<>();
+        if (!classIds.isEmpty()) {
+            adminClasses.findAllById(classIds).forEach(row -> classById.put(row.getId(), row));
+        }
+        Map<Long, Course> courseById = new HashMap<>();
+        if (!courseIds.isEmpty()) {
+            courses.findAllById(courseIds).forEach(row -> courseById.put(row.getId(), row));
+        }
+        return new ReferenceIndex(teacherById, classById, courseById);
+    }
+
+    private record ReferenceIndex(
+            Map<Long, Teacher> teachers,
+            Map<Long, AdminClass> classes,
+            Map<Long, Course> courses) {}
+
     private boolean isEntryBacked(String typeCode) {
+        ConstraintType type = typeOrNull(typeCode);
+        return type != null && type.isEntryBacked();
+    }
+
+    /**
+     * True when a stored row must survive a save that did not name it: a retired type
+     * is paused and kept readable, and a code the catalogue no longer knows at all is
+     * also kept untouched — deleting what we cannot interpret would lose user data the
+     * rule page never showed (ticket 11 review; previously an unknown code fell through
+     * as "not retired" and was deleted on the next full save).
+     */
+    private boolean isPreservedType(String typeCode) {
+        if (!StringUtils.hasText(typeCode)) {
+            return true;
+        }
+        ConstraintType type = typeOrNull(typeCode);
+        return type == null || type.isRetired();
+    }
+
+    /** Null for a blank or unknown code; never throws (unlike {@code valueOf}). */
+    private ConstraintType typeOrNull(String typeCode) {
+        if (!StringUtils.hasText(typeCode)) {
+            return null;
+        }
         try {
-            return ConstraintType.valueOf(typeCode).isEntryBacked();
+            return ConstraintType.valueOf(typeCode);
         } catch (IllegalArgumentException ex) {
-            return false;
+            return null;
         }
     }
 
@@ -1426,6 +1774,9 @@ public class ConstraintConfigService {
     private Map<String, List<ConstraintEntry>> entriesByType(List<ConstraintEntry> rows) {
         Map<String, List<ConstraintEntry>> byType = new LinkedHashMap<>();
         rows.stream()
+                // Deleted rows are recycle-bin content: they must never reach a DTO, a
+                // preview or a save decision (ticket 04).
+                .filter(entry -> entry.getDeletedAt() == null)
                 .sorted(Comparator.comparing(ConstraintEntry::getId,
                         Comparator.nullsLast(Comparator.naturalOrder())))
                 .forEach(entry -> byType.computeIfAbsent(entry.getType(), key -> new ArrayList<>())

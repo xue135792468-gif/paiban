@@ -9,14 +9,17 @@
       :busy="busy"
       :can-edit="canEdit"
       :can-publish="canPublish"
+      :cancelled-substitutions="cancelledSubstitutions"
       :publishable="publishable"
       :is-junior="isJunior"
       @back="router.push('/admin/scheduling')"
+      @dismiss-reprocess="dismissCancelledSubstitutions"
       @undo="undoMove"
       @refresh="load"
       @compare="openCompare"
       @rename="rename"
       @publish="publishDraft"
+      @withdraw="withdrawDraft"
       @remove="removeDraft"
     />
     <DraftStats
@@ -29,9 +32,7 @@
     <DraftPublishBlockers
       v-if="detail?.draft.status !== 'PUBLISHED'"
       :blockers="blockers"
-      :room-fill="canFillRooms"
       @edit-lessons="drawerVisible = true"
-      @fill-rooms="roomFillVisible = true"
     />
 
     <DraftOptimizationSection
@@ -43,8 +44,6 @@
       :locked-count="lockedCount"
       :lesson-count="detail?.lessons.length ?? 0"
     />
-
-    <RoomFillDialog v-model="roomFillVisible" :draft-id="draftId" @applied="load" />
 
     <el-card shadow="never" class="control-card">
       <DraftEditorControls
@@ -60,7 +59,8 @@
         :can-use-class-scope="canUseClassScope"
         :day-options="dayOptions"
         :class-scope-count="classScopeCount"
-        @view-change="resetTarget"
+        :swap-mode="teacherSwap.active.value"
+        @view-change="onViewChange"
         @swap="openSwapForSelected"
         @adjust-position="openTargetDialog"
         @toggle-drawer="drawerVisible = !drawerVisible"
@@ -77,17 +77,18 @@
       <el-card shadow="never" class="grid-card">
         <DraftGrid
           :periods="detail?.periods ?? []"
-          :lessons="filteredLessons"
+          :lessons="teacherSwap.gridLessons.value"
           :courses="courses"
-          :draggable="draftEditable && !selectionMode"
+          :draggable="draftEditable && !selectionMode && !teacherSwap.active.value"
           :dragged-lesson-id="dragged?.id ?? null"
           :selection-mode="selectionMode"
           :selected-lesson-ids="selectedIds"
           :targets="dragTargets"
+          :swap-targets="teacherSwap.active.value ? teacherSwap.targets.value : null"
+          :show-class-name="viewMode === 'teacher'"
           :blocked-periods="blockedPeriods"
           :conflict-lesson-ids="validation?.conflicts.map((item) => item.lessonId).filter((id) => id != null) ?? []"
           :locked-lesson-ids="lockedLessonIds"
-          :show-room="false"
           @drag-start="onDragStart"
           @drag-end="onDragEnd"
           @drop-cell="onDropCell"
@@ -182,26 +183,35 @@
       />
     </el-drawer>
 
-    <el-dialog v-model="previewVisible" title="换课预览" width="92%" top="4vh">
-      <DualTimetablePreview
-        v-if="panelLesson && previewCandidate"
-        v-model:swap-rooms="swapRooms"
-        :periods="detail?.periods ?? []"
-        :lessons="detail?.lessons ?? []"
-        :courses="courses"
-        :source="panelLesson"
-        :candidate="previewCandidate"
-      />
-      <template #footer>
-        <el-button @click="closePreview">取消</el-button>
-        <el-button type="primary" :loading="swapping" @click="onConfirmSwap">确认换课</el-button>
-      </template>
-    </el-dialog>
+    <SwapPreviewDialog
+      v-model:visible="previewVisible"
+      v-model:swap-rooms="swapRooms"
+      :periods="detail?.periods ?? []"
+      :lessons="detail?.lessons ?? []"
+      :courses="courses"
+      :source="panelLesson"
+      :candidate="previewCandidate"
+      :submitting="swapping"
+      @cancel="closePreview"
+      @confirm="onConfirmSwap"
+    />
+    <SwapPreviewDialog
+      v-model:visible="teacherSwap.previewVisible.value"
+      v-model:swap-rooms="teacherSwap.swapRooms.value"
+      :periods="detail?.periods ?? []"
+      :lessons="detail?.lessons ?? []"
+      :courses="courses"
+      :source="teacherSwap.sourceLesson.value"
+      :candidate="teacherSwap.previewCandidate.value"
+      :submitting="teacherSwap.submitting.value"
+      @cancel="teacherSwap.closePreview"
+      @confirm="teacherSwap.confirm"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
@@ -211,9 +221,8 @@ import DraftCompareDialog from '@/components/draft/DraftCompareDialog.vue'
 import DraftStats from '@/components/draft/DraftStats.vue'
 import DraftPublishBlockers from '@/components/draft/DraftPublishBlockers.vue'
 import DraftOptimizationSection from '@/components/draft/DraftOptimizationSection.vue'
-import RoomFillDialog from '@/components/draft/RoomFillDialog.vue'
 import SwapCandidatePanel from '@/components/draft/SwapCandidatePanel.vue'
-import DualTimetablePreview from '@/components/draft/DualTimetablePreview.vue'
+import SwapPreviewDialog from '@/components/draft/SwapPreviewDialog.vue'
 import DraftEditorToolbar from '@/components/draft/DraftEditorToolbar.vue'
 import DraftEditorControls from '@/components/draft/DraftEditorControls.vue'
 import DraftTargetDialog from '@/components/draft/DraftTargetDialog.vue'
@@ -224,6 +233,7 @@ import { useDraftEditor } from '@/composables/useDraftEditor'
 import { useDraftDrop } from '@/composables/useDraftDrop'
 import { useCyclePlans } from '@/composables/useCyclePlans'
 import { useSwapFlow } from '@/composables/useSwapFlow'
+import { useTeacherSwap } from '@/composables/useTeacherSwap'
 import { useDraftLocks } from '@/composables/useDraftLocks'
 import { useUndoShortcut } from '@/composables/useUndoShortcut'
 import { useDraftCompareQuery } from '@/composables/useDraftCompareQuery'
@@ -238,8 +248,6 @@ const isJunior = computed(() => settings.schoolType === 'junior')
 const draftId = Number(route.params.id)
 const canEdit = computed(() => auth.hasPermission('timetable:edit'))
 const canPublish = computed(() => auth.hasPermission('timetable:publish'))
-// Filling rooms needs two permissions; that pair is defined in the auth store.
-const canFillRooms = computed(() => auth.canFillDraftRooms)
 const canOptimize = computed(() => auth.hasPermission('scheduling:run'))
 const lockedCount = computed(
   () => (detail.value?.lessons ?? []).filter((lesson) => lesson.locked).length,
@@ -306,7 +314,11 @@ const {
   resetTarget,
   load,
   lessonAt,
-} = useDraftEditor({ draftId, canEdit, onLoaded: () => clearSelection() })
+} = useDraftEditor({
+  draftId,
+  canEdit,
+  onLoaded: () => { clearSelection(); teacherSwap.exit() },
+})
 
 const locks = useDraftLocks({
   draftId, detail, draftEditable, viewMode, targetId, reload: load, notify: ElMessage,
@@ -317,12 +329,24 @@ const {
 } = locks
 const { toggle: toggleLockSelection, lockSingle, unlockSingle } = locks
 
+const teacherSwap = useTeacherSwap({
+  adjust,
+  getLessons: () => detail.value?.lessons ?? [],
+  getBaseLessons: () => filteredLessons.value,
+  getViewMode: () => viewMode.value,
+  isEditable: () => draftEditable.value,
+  getTargetId: () => targetId.value,
+  getVersion: () => detail.value?.draft.version ?? null,
+  reload: load,
+  onConflicts: showConflicts,
+  notify: ElMessage,
+})
+
 const drawerVisible = ref(false)
 const dragged = ref<DraftLesson | null>(null)
 const dragTargets = ref<Record<number, { available: boolean; conflicts: DraftConflict[] }> | null>(null)
 const conflictVisible = ref(false)
 const cellConflicts = ref<DraftConflict[]>([])
-const roomFillVisible = ref(false)
 const targetVisible = ref(false)
 
 const lockedPeriodIds = computed(() =>
@@ -391,6 +415,7 @@ async function onDropCell(payload: {
 
 function onCellClick(payload: { day: number; periodNo: number }) {
   if (selectionMode.value) return
+  if (teacherSwap.handleCellClick(payload.day, payload.periodNo)) return
   const lesson = lessonAt(payload.day, payload.periodNo)
   if (!lesson) return
   selectLesson(lesson)
@@ -405,7 +430,13 @@ function onLessonActivate(lesson: DraftLesson) {
     toggleLockSelection(lesson.id)
     return
   }
+  if (teacherSwap.handleLessonActivate(lesson)) return
   selectLesson(lesson)
+}
+
+function onViewChange() {
+  teacherSwap.exit()
+  resetTarget()
 }
 
 function onToggleSelect(lesson: DraftLesson) {
@@ -486,15 +517,19 @@ async function undoMove() {
 
 useUndoShortcut({ canUndo, busy, undo: undoMove })
 
-const { rename, publish: publishDraft, remove: removeDraft } = useDraftActions({
-  draftId,
-  detail,
-  reload: load,
-})
+const draftActions = useDraftActions({ draftId, detail, reload: load })
+const { rename, publish: publishDraft, remove: removeDraft, withdraw: withdrawDraft } = draftActions
+const { cancelledSubstitutions, dismissCancelledSubstitutions } = draftActions
+
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && teacherSwap.active.value) teacherSwap.exit()
+}
 
 onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
   void load()
 })
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <style scoped>
@@ -515,6 +550,9 @@ onMounted(() => {
   flex: 1;
   border: none;
   overflow: auto;
+}
+.swap-mode-hint {
+  margin-bottom: 10px;
 }
 .drawer-card {
   width: 240px;

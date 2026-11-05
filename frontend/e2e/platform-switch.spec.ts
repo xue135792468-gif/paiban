@@ -112,7 +112,7 @@ test('钉钉切换到飞书并保留数据', async ({ page }) => {
   // 管理员从设置页一键切换到飞书。
   await uiLogin(page, 'admin', 'admin123')
 
-  await page.goto('/admin/settings')
+  await page.goto('/settings/general')
   const card = page.getByTestId('im-platform-card')
   await expect(card).toBeVisible()
   await expect(card.getByText('当前：钉钉')).toBeVisible()
@@ -137,7 +137,12 @@ test('钉钉切换到飞书并保留数据', async ({ page }) => {
   })
   await page.goto('/login')
   await page.waitForURL((url) => !url.pathname.startsWith('/login'))
-  await expect(page.getByText('张三').first()).toBeVisible()
+  // 票 01 后登录落在总览，不再有「教师列表」；教师账号的身份落在顶栏账号区。
+  // （教师角色没有 foundation:manage，/data/teachers 会跳 403，不能拿来当断言。）
+  expect(new URL(page.url()).pathname).toBe('/')
+  // Feishu 免登解析到的是同步账号（飞书教师…），不一定是切换前那个显示名；
+  // 这里只断言已进入应用壳，数据保留由下面的 API 断言验证。
+  await expect(page.locator('.user-name')).toBeVisible()
 
   // 切换前创建的教师仍然存在（未被同步删除或重建）。
   const teachers = await apiCall(api, token, 'get', '/teachers')

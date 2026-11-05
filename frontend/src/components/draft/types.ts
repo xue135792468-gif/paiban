@@ -100,6 +100,21 @@ export interface MoveTargetState {
   conflicts: DraftConflict[]
 }
 
+/**
+ * How one lesson behaves while the teacher-view swap mode is active.
+ * `foreign` means another class (never a target), `checking` means the
+ * intra-class candidate request is still in flight.
+ */
+export type SwapTargetStatus = 'swappable' | 'blocked' | 'foreign' | 'source' | 'checking'
+
+export interface SwapTargetState {
+  status: SwapTargetStatus
+  /** Human wording for the cell title, aria-label and hover hint. */
+  reason: string
+  /** Present for a same-class candidate, so a green click can open the preview. */
+  candidate?: SwapCandidate
+}
+
 /** A lesson that can be exchanged with the selected one, as returned by swap-candidates. */
 export interface SwapCandidate {
   lessonId: number

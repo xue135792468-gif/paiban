@@ -3,20 +3,12 @@ import { blockerTarget, canPublishNow, isPublishable } from './publishBlockers'
 import type { DraftPublishBlocker, DraftValidation } from './types'
 
 function blocker(overrides: Partial<DraftPublishBlocker> = {}): DraftPublishBlocker {
-  return { code: 'MISSING_ROOMS', message: '有 3 节课还没有分配教室', count: 3, action: 'ASSIGN_ROOMS', ...overrides }
+  return { code: 'UNSCHEDULED_LESSONS', message: '还有 3 节课未排课', count: 3, action: 'EDIT_LESSONS', ...overrides }
 }
 
 describe('blockerTarget', () => {
-  it('缺教室打开按行政班补固定教室的确认框', () => {
-    expect(blockerTarget('ASSIGN_ROOMS')).toEqual({ kind: 'dialog', label: '按行政班补固定教室' })
-  })
-
-  it('没有补教室权限时退回教室管理，不给服务端会拒绝的按钮', () => {
-    expect(blockerTarget('ASSIGN_ROOMS', { roomFill: false })).toEqual({
-      kind: 'link',
-      label: '去教室管理准备教室',
-      to: '/admin/rooms',
-    })
+  it('补教室动作已下线，不再给出任何入口', () => {
+    expect(blockerTarget('ASSIGN_ROOMS')).toEqual({ kind: 'none' })
   })
 
   it('未排课打开本页的未排课抽屉，不跳走', () => {

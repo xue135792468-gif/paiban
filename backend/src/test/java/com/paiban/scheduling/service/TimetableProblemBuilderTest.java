@@ -70,12 +70,12 @@ class TimetableProblemBuilderTest {
         assignment.setCourseId(1L);
         assignment.setTeacherId(1L);
         assignment.setWeeklyLessons(2);
-        when(assignmentRepository.findBySemesterId(1L)).thenReturn(List.of(assignment));
+        when(assignmentRepository.findBySemesterIdAndDeletedAtIsNull(1L)).thenReturn(List.of(assignment));
 
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
-                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null)));
+                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
         when(foundation.coursesById()).thenReturn(Map.of(1L,
-                new CourseDto(1L, "语文", null, false, false, null, null)));
+                new CourseDto(1L, "语文", null, false, false, null, null, true)));
         when(foundation.teachersById()).thenReturn(Map.of(1L,
                 new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null)));
 
@@ -86,7 +86,7 @@ class TimetableProblemBuilderTest {
 
         TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
-                warmStart, foundation)
+                warmStart, foundation, emptyBaselines())
                 .buildWithWarmStart(1L, ConstraintSettings.defaults());
         TimetableSolution solution = built.solution();
 
@@ -133,13 +133,13 @@ class TimetableProblemBuilderTest {
         assignment.setCourseId(1L);
         assignment.setTeacherId(1L);
         assignment.setWeeklyLessons(1);
-        when(assignmentRepository.findBySemesterId(1L)).thenReturn(List.of(assignment));
+        when(assignmentRepository.findBySemesterIdAndDeletedAtIsNull(1L)).thenReturn(List.of(assignment));
 
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
-                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null)));
+                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
         // NORMAL is the ordinary classroom, so the class room stays pinned.
         when(foundation.coursesById()).thenReturn(Map.of(1L,
-                new CourseDto(1L, "语文", null, false, false, "NORMAL", null)));
+                new CourseDto(1L, "语文", null, false, false, "NORMAL", null, true)));
         when(foundation.teachersById()).thenReturn(Map.of(1L,
                 new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null)));
 
@@ -148,7 +148,7 @@ class TimetableProblemBuilderTest {
 
         TimetableSolution solution = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
-                warmStart, foundation)
+                warmStart, foundation, emptyBaselines())
                 .build(1L);
 
         assertThat(solution.getLessons()).hasSize(1);
@@ -190,12 +190,12 @@ class TimetableProblemBuilderTest {
         assignment.setCourseId(1L);
         assignment.setTeacherId(1L);
         assignment.setWeeklyLessons(1);
-        when(assignmentRepository.findBySemesterId(1L)).thenReturn(List.of(assignment));
+        when(assignmentRepository.findBySemesterIdAndDeletedAtIsNull(1L)).thenReturn(List.of(assignment));
 
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
-                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null)));
+                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
         when(foundation.coursesById()).thenReturn(Map.of(1L,
-                new CourseDto(1L, "语文", null, false, false, "NORMAL", null)));
+                new CourseDto(1L, "语文", null, false, false, "NORMAL", null, true)));
         when(foundation.teachersById()).thenReturn(Map.of(1L,
                 new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null)));
 
@@ -206,7 +206,7 @@ class TimetableProblemBuilderTest {
 
         TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
-                warmStart, foundation)
+                warmStart, foundation, emptyBaselines())
                 .buildWithWarmStart(1L, ConstraintSettings.defaults());
         TimetableSolution solution = built.solution();
 
@@ -236,12 +236,12 @@ class TimetableProblemBuilderTest {
         when(roomRepository.findAllByOrderByNameAsc()).thenReturn(List.of());
 
         Assignment assignment = assignment(21L, 1L, 1L, 1L, 1);
-        when(assignmentRepository.findBySemesterId(1L)).thenReturn(List.of(assignment));
+        when(assignmentRepository.findBySemesterIdAndDeletedAtIsNull(1L)).thenReturn(List.of(assignment));
 
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
-                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null)));
+                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
         when(foundation.coursesById()).thenReturn(Map.of(1L,
-                new CourseDto(1L, "语文", null, false, false, null, null)));
+                new CourseDto(1L, "语文", null, false, false, null, null, true)));
         when(foundation.teachersById()).thenReturn(Map.of(1L,
                 new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null)));
 
@@ -250,7 +250,7 @@ class TimetableProblemBuilderTest {
 
         TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
-                warmStart, foundation)
+                warmStart, foundation, emptyBaselines())
                 .buildWithWarmStart(1L, ConstraintSettings.defaults());
 
         assertThat(built.warmStartSource()).isEqualTo("NONE");
@@ -281,13 +281,13 @@ class TimetableProblemBuilderTest {
         room.setCapacity(45);
         when(roomRepository.findAllByOrderByNameAsc()).thenReturn(List.of(room));
 
-        when(assignmentRepository.findBySemesterId(1L))
+        when(assignmentRepository.findBySemesterIdAndDeletedAtIsNull(1L))
                 .thenReturn(List.of(assignment(21L, 1L, 1L, 1L, 2)));
 
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
-                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null)));
+                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
         when(foundation.coursesById()).thenReturn(Map.of(1L,
-                new CourseDto(1L, "语文", null, false, false, null, null)));
+                new CourseDto(1L, "语文", null, false, false, null, null, true)));
         when(foundation.teachersById()).thenReturn(Map.of(
                 1L, new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null),
                 99L, new TeacherDto(99L, "李四", null, null, null, null, true, null, null, null, null)));
@@ -299,7 +299,7 @@ class TimetableProblemBuilderTest {
 
         TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
-                warmStart, foundation)
+                warmStart, foundation, emptyBaselines())
                 .buildFromSource(1L, ConstraintSettings.defaults(), snapshot);
 
         assertThat(built.warmStartSource()).isEqualTo("SOURCE_DRAFT");
@@ -335,12 +335,12 @@ class TimetableProblemBuilderTest {
         when(periodRepository.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(1L))
                 .thenReturn(List.of(period(11L, 1), period(12L, 2)));
         when(roomRepository.findAllByOrderByNameAsc()).thenReturn(List.of());
-        when(assignmentRepository.findBySemesterId(1L))
+        when(assignmentRepository.findBySemesterIdAndDeletedAtIsNull(1L))
                 .thenReturn(List.of(assignment(21L, 1L, 1L, 1L, 2)));
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
-                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null)));
+                new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
         when(foundation.coursesById()).thenReturn(Map.of(1L,
-                new CourseDto(1L, "语文", null, false, false, null, null)));
+                new CourseDto(1L, "语文", null, false, false, null, null, true)));
         when(foundation.teachersById()).thenReturn(Map.of(1L,
                 new TeacherDto(1L, "张三", null, null, null, null, true, null, null, null, null)));
 
@@ -352,7 +352,7 @@ class TimetableProblemBuilderTest {
 
         TimetableProblemBuilder.BuiltProblem built = new TimetableProblemBuilder(
                 periodRepository, roomRepository, assignmentRepository, semesterRepository,
-                warmStart, foundation)
+                warmStart, foundation, emptyBaselines())
                 .buildFromSource(1L, settings, snapshot);
 
         assertThat(built.solution().getLessons().get(0).getPeriod()).isNull();
@@ -381,6 +381,13 @@ class TimetableProblemBuilderTest {
             entries.add(entry);
         }
         return ConstraintSettings.from(List.of(config), entries, new ObjectMapper());
+    }
+
+    private static SemesterBaselineQuery emptyBaselines() {
+        SemesterBaselineQuery baselines = mock(SemesterBaselineQuery.class);
+        when(baselines.publishedLessons(org.mockito.ArgumentMatchers.anyLong()))
+                .thenReturn(List.of());
+        return baselines;
     }
 
     private static Assignment assignment(

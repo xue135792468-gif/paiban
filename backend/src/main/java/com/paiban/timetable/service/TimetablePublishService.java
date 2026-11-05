@@ -2,6 +2,8 @@ package com.paiban.timetable.service;
 
 import com.paiban.common.event.TimetablePublishedEvent;
 import com.paiban.common.web.ApiException;
+import com.paiban.foundation.domain.AuditLog;
+import com.paiban.foundation.domain.AuditLogRepository;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
 import com.paiban.scheduling.domain.DraftLesson;
@@ -10,13 +12,17 @@ import com.paiban.scheduling.domain.TimetableDraft;
 import com.paiban.scheduling.domain.TimetableDraftRepository;
 import com.paiban.scheduling.service.DraftPublishReadiness;
 import com.paiban.scheduling.service.DraftValidator;
+import com.paiban.substitution.domain.Substitution;
+import com.paiban.substitution.domain.SubstitutionRepository;
 import com.paiban.timetable.domain.TimetableEntry;
 import com.paiban.timetable.domain.TimetableEntryRepository;
 import com.paiban.timetable.domain.TimetablePublish;
 import com.paiban.timetable.domain.TimetablePublishRepository;
 import com.paiban.timetable.web.TimetableDtos.PublishInfoDto;
 import com.paiban.timetable.web.TimetableDtos.PublishResultDto;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -34,6 +40,9 @@ public class TimetablePublishService {
     private final DraftValidator validator;
     private final PeriodRepository periods;
     private final ApplicationEventPublisher events;
+    private final AuditLogRepository auditLogs;
+    private final SubstitutionRepository substitutions;
+    private final Clock clock;
 
     public TimetablePublishService(
             TimetableDraftRepository drafts,
@@ -42,7 +51,10 @@ public class TimetablePublishService {
             TimetablePublishRepository publishes,
             DraftValidator validator,
             PeriodRepository periods,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            AuditLogRepository auditLogs,
+            SubstitutionRepository substitutions,
+            Clock clock) {
         this.drafts = drafts;
         this.draftLessons = draftLessons;
         this.entries = entries;
@@ -50,6 +62,9 @@ public class TimetablePublishService {
         this.validator = validator;
         this.periods = periods;
         this.events = events;
+        this.auditLogs = auditLogs;
+        this.substitutions = substitutions;
+        this.clock = clock;
     }
 
     @Transactional
@@ -57,7 +72,8 @@ public class TimetablePublishService {
         // Take the same draft row lock every editor writes through. Without it a
         // manual change could land between validateDraft() and the entry copy, and the
         // published baseline would not be the table that was checked.
-        TimetableDraft draft = drafts.findWithLockById(draftId)
+        // A draft in the recycle bin cannot be published: restoring it is the way back.
+        TimetableDraft draft = drafts.findLiveWithLockById(draftId)
                 .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
         // Same judgement the page's whole-draft check shows: no second opinion here.
         DraftValidator.ValidationResult validation = validator.validateDraft(draftId);
@@ -99,15 +115,53 @@ public class TimetablePublishService {
         draft.setStatus("PUBLISHED");
         drafts.save(draft);
 
+        // One live baseline per semester. The status check above already refuses a second
+        // published draft, but legacy rows (and a crash between statements) can leave an
+        // older ACTIVE row behind; demoting it here keeps "the" baseline unambiguous.
+        List<TimetablePublish> previousActive = publishes.findBySemesterIdAndStatus(
+                draft.getSemesterId(), TimetablePublish.ACTIVE);
+        for (TimetablePublish previous : previousActive) {
+            previous.setStatus(TimetablePublish.WITHDRAWN);
+            previous.setWithdrawnAt(now);
+            previous.setWithdrawnBy(actor);
+        }
+        publishes.saveAll(previousActive);
+
         TimetablePublish publish = new TimetablePublish();
         publish.setSemesterId(draft.getSemesterId());
         publish.setDraftId(draftId);
         publish.setPublishedBy(actor);
         publish.setPublishedAt(now);
+        publish.setStatus(TimetablePublish.ACTIVE);
         TimetablePublish saved = publishes.save(publish);
 
+        auditLogs.save(new AuditLog(
+                actor == null ? "system" : actor,
+                "PUBLISH_TIMETABLE",
+                "TIMETABLE",
+                "draftId=" + draftId + ", publishId=" + saved.getId()
+                        + ", entries=" + baseline.size(),
+                baseline.size(),
+                0));
+
         events.publishEvent(new TimetablePublishedEvent(draft.getSemesterId(), draftId, actor));
-        return new PublishResultDto(draftId, baseline.size(), now, saved.getId());
+        return new PublishResultDto(
+                draftId, baseline.size(), now, saved.getId(),
+                cancelledFutureSubstitutions(draft.getSemesterId()));
+    }
+
+    /**
+     * Overlay rows that a withdrawal cancelled and that still cover a future lesson: the
+     * admin has to redo them against the fresh baseline. Old cancelled rows stay
+     * CANCELLED forever (they are history), so this count only clears once the affected
+     * dates have passed — the page shows the prompt as a reminder, not as a task state.
+     */
+    private int cancelledFutureSubstitutions(Long semesterId) {
+        LocalDate today = LocalDate.now(clock);
+        return (int) substitutions.findBySemesterIdAndStatus(semesterId, Substitution.CANCELLED)
+                .stream()
+                .filter(row -> SubstitutionFutures.affectsFuture(row, today))
+                .count();
     }
 
     /**
@@ -139,13 +193,25 @@ public class TimetablePublishService {
 
     @Transactional(readOnly = true)
     public PublishInfoDto publishInfo(Long semesterId) {
-        return publishes.findFirstBySemesterIdOrderByPublishedAtDesc(semesterId)
-                .map(publish -> new PublishInfoDto(
-                        publish.getSemesterId(),
-                        publish.getDraftId(),
-                        drafts.findById(publish.getDraftId()).map(TimetableDraft::getName).orElse(null),
-                        publish.getPublishedBy(),
-                        publish.getPublishedAt()))
-                .orElse(null);
+        return publishes.findFirstBySemesterIdAndStatusOrderByPublishedAtDesc(
+                        semesterId, TimetablePublish.ACTIVE)
+                .map(publish -> toInfo(publish, true))
+                .or(() -> publishes.findFirstBySemesterIdOrderByPublishedAtDesc(semesterId)
+                        .map(publish -> toInfo(publish, false)))
+                .orElseGet(() -> new PublishInfoDto(
+                        false, semesterId, null, null, null, null, null, null, null));
+    }
+
+    private PublishInfoDto toInfo(TimetablePublish publish, boolean published) {
+        return new PublishInfoDto(
+                published,
+                publish.getSemesterId(),
+                publish.getId(),
+                publish.getDraftId(),
+                drafts.findById(publish.getDraftId()).map(TimetableDraft::getName).orElse(null),
+                publish.getPublishedBy(),
+                publish.getPublishedAt(),
+                publish.getWithdrawnAt(),
+                publish.getStatus());
     }
 }

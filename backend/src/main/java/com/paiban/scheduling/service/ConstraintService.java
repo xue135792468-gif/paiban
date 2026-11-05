@@ -43,7 +43,7 @@ public class ConstraintService {
     // ---------------------------------------------------------------- catalogue
 
     public List<ConstraintTypeDto> types() {
-        return List.of(ConstraintType.values()).stream()
+        return ConstraintType.activeValues().stream()
                 .map(type -> new ConstraintTypeDto(
                         type.name(),
                         type.getDisplayName(),
@@ -65,6 +65,10 @@ public class ConstraintService {
 
     public List<ConstraintConfigDto> list(Long semesterId) {
         return configService.list(semesterId);
+    }
+
+    public List<ConstraintConfigDto> visibleList(Long semesterId) {
+        return configService.visibleList(semesterId);
     }
 
     public ConstraintStateDto state(Long semesterId) {

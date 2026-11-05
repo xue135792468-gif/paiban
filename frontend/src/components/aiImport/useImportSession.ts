@@ -365,7 +365,7 @@ export function useImportSession() {
           ElMessage({ type: 'warning', message: warning, duration: 6000, showClose: true })
         }
         ElMessage.success(`已生成草稿，共 ${data.imported} 节课`)
-        router.push(`/admin/drafts/${data.draftId}`)
+        router.push(`/workbench/drafts/${data.draftId}`)
         return
       }
       ElMessage.success(`已入库 ${data.imported} 条${targetTitle(current.targetType)}数据`)

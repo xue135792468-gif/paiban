@@ -4,7 +4,7 @@ import { apiCall, apiLogin, dateFor, newContext, seedSwapScenario, uiLogin } fro
 const FRIDAY = dateFor(5)
 
 async function submitSwap(page: import('@playwright/test').Page, date: string, reason: string) {
-  await page.goto('/substitutions')
+  await page.goto('/substitution/requests')
   await page.locator('.el-radio-button', { hasText: '调课' }).click()
   const dateInput = page.getByRole('combobox', { name: '调课日期' })
   await dateInput.fill(date)
@@ -34,7 +34,7 @@ async function submitSwap(page: import('@playwright/test').Page, date: string, r
 async function adminApprovePlan(page: import('@playwright/test').Page, expectedImpact: string) {
   await page.evaluate(() => localStorage.clear())
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/substitutions')
+  await page.goto('/substitution/requests')
   await page.getByRole('tab', { name: '待审批' }).click()
   await page.getByRole('button', { name: '生成方案' }).first().click()
   const dialog = page.locator('.el-dialog', { hasText: '候选调课方案' })
@@ -65,12 +65,12 @@ test('场景 9a：教师提交同日调课 → 教务生成方案并整单批准
   expect(statsB.swapParticipation).toBe(1)
   expect(statsB.substitutedOut).toBe(0)
 
-  await page.goto('/substitutions')
+  await page.goto('/substitution/requests')
   await page.getByRole('tab', { name: '调代记录' }).click()
   await expect(page.getByText('已生效').first()).toBeVisible()
   await expect(page.locator('.el-tag', { hasText: '调课' }).first()).toBeVisible()
 
-  await page.goto('/timetable')
+  await page.goto('/workbench/timetable')
   await page.getByPlaceholder('选择日期').fill(FRIDAY)
   await page.getByPlaceholder('选择日期').press('Enter')
   await expect(page.getByText('调').first()).toBeVisible()
@@ -91,7 +91,7 @@ test('场景 9b：周五无解时跨天到下周 → 影响 2 天且整单生效
   const days = new Set(records.map((row: { effectiveDate: string }) => row.effectiveDate))
   expect(days.size).toBe(2)
 
-  await page.goto('/timetable')
+  await page.goto('/workbench/timetable')
   await page.getByPlaceholder('选择日期').fill(FRIDAY)
   await page.getByPlaceholder('选择日期').press('Enter')
   await expect(page.getByText('调').first()).toBeVisible()

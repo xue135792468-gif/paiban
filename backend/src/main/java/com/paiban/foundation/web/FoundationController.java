@@ -1,6 +1,9 @@
 package com.paiban.foundation.web;
 
+import com.paiban.common.deletion.DeleteMode;
+import com.paiban.common.deletion.EntityType;
 import com.paiban.foundation.service.FoundationService;
+import com.paiban.foundation.service.LifecycleService;
 import com.paiban.foundation.web.FoundationDtos.AuditLogDto;
 import com.paiban.foundation.web.FoundationDtos.ClassDto;
 import com.paiban.foundation.web.FoundationDtos.CourseDto;
@@ -12,6 +15,8 @@ import com.paiban.foundation.web.FoundationDtos.SaveGradeRequest;
 import com.paiban.foundation.web.FoundationDtos.SaveRoomRequest;
 import com.paiban.foundation.web.FoundationDtos.SaveTeacherRequest;
 import com.paiban.foundation.web.FoundationDtos.TeacherDto;
+import com.paiban.foundation.web.LifecycleDtos.DeleteImpactDto;
+import com.paiban.foundation.web.LifecycleDtos.DeleteResultDto;
 import com.paiban.identity.domain.Permissions;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -31,9 +36,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class FoundationController {
 
     private final FoundationService service;
+    private final LifecycleService lifecycle;
 
-    public FoundationController(FoundationService service) {
+    public FoundationController(FoundationService service, LifecycleService lifecycle) {
         this.service = service;
+        this.lifecycle = lifecycle;
     }
 
     @GetMapping("/teachers")
@@ -45,7 +52,7 @@ public class FoundationController {
     /** Id + name only, so teachers can pick substitutes without seeing phone/email. */
     @GetMapping("/teachers/options")
     public List<FoundationDtos.TeacherOptionDto> teacherOptions() {
-        return service.listTeachers().stream()
+        return service.listTeacherOptions().stream()
                 .map(teacher -> new FoundationDtos.TeacherOptionDto(teacher.id(), teacher.name()))
                 .toList();
     }
@@ -62,10 +69,29 @@ public class FoundationController {
         return service.updateTeacher(id, request);
     }
 
+    @GetMapping("/teachers/{id}/delete-impact")
+    @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
+    public DeleteImpactDto teacherDeleteImpact(@PathVariable Long id) {
+        return lifecycle.impact(EntityType.TEACHER, id);
+    }
+
     @DeleteMapping("/teachers/{id}")
     @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
-    public void deleteTeacher(@PathVariable Long id) {
-        service.deleteTeacher(id);
+    public DeleteResultDto deleteTeacher(
+            @PathVariable Long id, @RequestParam(required = false) String mode) {
+        return lifecycle.delete(EntityType.TEACHER, id, DeleteMode.parse(mode));
+    }
+
+    @PostMapping("/teachers/{id}/disable")
+    @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
+    public void disableTeacher(@PathVariable Long id) {
+        lifecycle.disable(EntityType.TEACHER, id);
+    }
+
+    @PostMapping("/teachers/{id}/enable")
+    @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
+    public void enableTeacher(@PathVariable Long id) {
+        lifecycle.enable(EntityType.TEACHER, id);
     }
 
     @GetMapping("/rooms")
@@ -108,10 +134,29 @@ public class FoundationController {
         return service.updateCourse(id, request);
     }
 
+    @GetMapping("/courses/{id}/delete-impact")
+    @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
+    public DeleteImpactDto courseDeleteImpact(@PathVariable Long id) {
+        return lifecycle.impact(EntityType.COURSE, id);
+    }
+
     @DeleteMapping("/courses/{id}")
     @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
-    public void deleteCourse(@PathVariable Long id) {
-        service.deleteCourse(id);
+    public DeleteResultDto deleteCourse(
+            @PathVariable Long id, @RequestParam(required = false) String mode) {
+        return lifecycle.delete(EntityType.COURSE, id, DeleteMode.parse(mode));
+    }
+
+    @PostMapping("/courses/{id}/disable")
+    @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
+    public void disableCourse(@PathVariable Long id) {
+        lifecycle.disable(EntityType.COURSE, id);
+    }
+
+    @PostMapping("/courses/{id}/enable")
+    @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
+    public void enableCourse(@PathVariable Long id) {
+        lifecycle.enable(EntityType.COURSE, id);
     }
 
     @GetMapping("/grades")
@@ -132,10 +177,29 @@ public class FoundationController {
         return service.updateGrade(id, request);
     }
 
+    @GetMapping("/grades/{id}/delete-impact")
+    @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
+    public DeleteImpactDto gradeDeleteImpact(@PathVariable Long id) {
+        return lifecycle.impact(EntityType.GRADE, id);
+    }
+
     @DeleteMapping("/grades/{id}")
     @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
-    public void deleteGrade(@PathVariable Long id) {
-        service.deleteGrade(id);
+    public DeleteResultDto deleteGrade(
+            @PathVariable Long id, @RequestParam(required = false) String mode) {
+        return lifecycle.delete(EntityType.GRADE, id, DeleteMode.parse(mode));
+    }
+
+    @PostMapping("/grades/{id}/disable")
+    @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
+    public void disableGrade(@PathVariable Long id) {
+        lifecycle.disable(EntityType.GRADE, id);
+    }
+
+    @PostMapping("/grades/{id}/enable")
+    @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
+    public void enableGrade(@PathVariable Long id) {
+        lifecycle.enable(EntityType.GRADE, id);
     }
 
     @GetMapping("/classes")
@@ -156,10 +220,29 @@ public class FoundationController {
         return service.updateClass(id, request);
     }
 
+    @GetMapping("/classes/{id}/delete-impact")
+    @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
+    public DeleteImpactDto classDeleteImpact(@PathVariable Long id) {
+        return lifecycle.impact(EntityType.CLASS, id);
+    }
+
     @DeleteMapping("/classes/{id}")
     @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
-    public void deleteClass(@PathVariable Long id) {
-        service.deleteClass(id);
+    public DeleteResultDto deleteClass(
+            @PathVariable Long id, @RequestParam(required = false) String mode) {
+        return lifecycle.delete(EntityType.CLASS, id, DeleteMode.parse(mode));
+    }
+
+    @PostMapping("/classes/{id}/disable")
+    @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
+    public void disableClass(@PathVariable Long id) {
+        lifecycle.disable(EntityType.CLASS, id);
+    }
+
+    @PostMapping("/classes/{id}/enable")
+    @PreAuthorize("hasAuthority('" + Permissions.FOUNDATION_MANAGE + "')")
+    public void enableClass(@PathVariable Long id) {
+        lifecycle.enable(EntityType.CLASS, id);
     }
 
     @GetMapping("/foundation/audit-logs")

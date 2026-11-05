@@ -1,5 +1,4 @@
 package com.paiban.scheduling.solver;
-import org.springframework.util.StringUtils;
 
 import ai.timefold.solver.core.api.score.buildin.hardsoft.HardSoftScore;
 import ai.timefold.solver.core.api.score.stream.Constraint;
@@ -7,7 +6,6 @@ import ai.timefold.solver.core.api.score.stream.ConstraintCollectors;
 import ai.timefold.solver.core.api.score.stream.ConstraintFactory;
 import ai.timefold.solver.core.api.score.stream.ConstraintProvider;
 import ai.timefold.solver.core.api.score.stream.Joiners;
-import com.paiban.foundation.domain.PeriodSection;
 import com.paiban.scheduling.domain.ConstraintType;
 import com.paiban.scheduling.solver.ConstraintSettings.Control;
 import com.paiban.scheduling.solver.ConstraintSettings.Requirement;
@@ -37,19 +35,16 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         ConstraintSettings s = ConstraintSettingsHolder.get();
         List<Constraint> constraints = new ArrayList<>();
 
-        // Structural constraints that are always on: every lesson must be placed,
-        // course metadata (required room type) is part of the school's data model, and a
-        // class's ordinary lessons stay in the class's own classroom.
+        // Structural constraints that are always on: every lesson must be placed and a
+        // class's ordinary lessons stay in the class's own classroom. (Room-related
+        // catalogue rules were retired in ticket 09.)
         constraints.add(unassignedLesson(factory));
-        constraints.add(courseRoomTypeMetadata(factory, s));
         constraints.add(classFixedRoom(factory));
         constraints.add(lockedLessonPeriod(factory));
         constraints.add(classUnavailable(factory, s));
 
         addSwitch(constraints, s, ConstraintType.TEACHER_CONFLICT, teacherConflict(factory, s));
         addSwitch(constraints, s, ConstraintType.CLASS_CONFLICT, classConflict(factory, s));
-        addSwitch(constraints, s, ConstraintType.ROOM_CONFLICT, roomConflict(factory, s));
-        addSwitch(constraints, s, ConstraintType.ROOM_CAPACITY_FIT, roomCapacity(factory, s));
 
         addProhibition(factory, constraints, s, ConstraintType.TEACHER_UNAVAILABLE,
                 lesson -> true,
@@ -58,22 +53,6 @@ public class PaibanConstraintProvider implements ConstraintProvider {
                                 entry, lesson.getTeacherId(),
                                 lesson.getPeriod().getDayOfWeek(),
                                 lesson.getPeriod().getPeriodNo())));
-        addProhibition(factory, constraints, s, ConstraintType.TEACHER_MEETING_BLOCKED,
-                lesson -> true,
-                lesson -> s.match(ConstraintType.TEACHER_MEETING_BLOCKED,
-                        entry -> ConstraintEntryMatcher.slot(
-                                entry, lesson.getPeriod().getDayOfWeek(),
-                                lesson.getPeriod().getPeriodNo())
-                                && ConstraintEntryMatcher.meetingSubject(
-                                        entry, lesson.getTeacherSubject())));
-        addProhibition(factory, constraints, s, ConstraintType.COURSE_REQUIRED_ROOM_TYPE,
-                lesson -> roomTypeMismatch(s, lesson),
-                lesson -> courseStrictControl(s, ConstraintType.COURSE_REQUIRED_ROOM_TYPE,
-                        lesson.getCourseId()));
-        addProhibition(factory, constraints, s, ConstraintType.COURSE_NOT_IN_EVENING,
-                lesson -> lesson.getPeriod().getSection() == PeriodSection.EVENING,
-                lesson -> courseLooseControl(s, ConstraintType.COURSE_NOT_IN_EVENING,
-                        lesson.getCourseId()));
         addProhibition(factory, constraints, s, ConstraintType.COURSE_UNAVAILABLE,
                 lesson -> true,
                 lesson -> s.match(ConstraintType.COURSE_UNAVAILABLE,
@@ -86,8 +65,6 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         addThreshold(factory, constraints, s, ConstraintType.TEACHER_MAX_PER_DAY, Lesson::getTeacherId);
         addThreshold(factory, constraints, s, ConstraintType.CLASS_MAX_PER_DAY, Lesson::getAdminClassId);
         addCourseThreshold(factory, constraints, s);
-        addThreshold(factory, constraints, s, ConstraintType.EVENING_MAX, Lesson::getAdminClassId,
-                lesson -> lesson.getPeriod().getSection() == PeriodSection.EVENING);
         addProhibition(factory, constraints, s, ConstraintType.SPORT_NOT_FIRST_AFTERNOON,
                 lesson -> lesson.getPeriod().isFirstAfternoon(),
                 lesson -> sportControl(s, ConstraintType.SPORT_NOT_FIRST_AFTERNOON, lesson));
@@ -117,7 +94,6 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         addProhibition(factory, constraints, s, ConstraintType.PE_LAST_PERIOD_AVOID,
                 lesson -> lesson.getPeriod().isLastOfDay(),
                 lesson -> sportControl(s, ConstraintType.PE_LAST_PERIOD_AVOID, lesson));
-        addHeadTeacherFirstPeriod(factory, constraints, s);
 
         try {
             for (com.paiban.scheduling.solver.plugin.CustomConstraint plugin
@@ -204,25 +180,6 @@ public class PaibanConstraintProvider implements ConstraintProvider {
                 .asConstraint("课节未排");
     }
 
-    /**
-     * The course's own required room type is a hard invariant only while no configured
-     * requirement replaces it. A configured entry carries its own hard/soft control
-     * (see the {@code COURSE_REQUIRED_ROOM_TYPE} prohibition), so the solver, checker and
-     * substitution planner all read the same effective value.
-     */
-    private Constraint courseRoomTypeMetadata(ConstraintFactory f, ConstraintSettings s) {
-        return f.forEachIncludingUnassigned(Lesson.class)
-                .filter(lesson -> lesson.getPeriod() != null
-                        && lesson.getRequiredRoomType() != null
-                        && StringUtils.hasText(lesson.getRequiredRoomType())
-                        && s.courseText(ConstraintType.COURSE_REQUIRED_ROOM_TYPE,
-                        lesson.getCourseId(), "roomType") == null
-                        && (lesson.getRoom() == null
-                        || !lesson.getRequiredRoomType().equals(lesson.getRoom().getType())))
-                .penalize(HardSoftScore.ONE_HARD)
-                .asConstraint("课程教室类型要求");
-    }
-
     private Constraint teacherConflict(ConstraintFactory f, ConstraintSettings s) {
         return f.forEachUniquePair(
                         Lesson.class,
@@ -243,29 +200,9 @@ public class PaibanConstraintProvider implements ConstraintProvider {
                 .asConstraint(ConstraintType.CLASS_CONFLICT.getDisplayName());
     }
 
-    private Constraint roomConflict(ConstraintFactory f, ConstraintSettings s) {
-        return f.forEachUniquePair(
-                        Lesson.class,
-                        Joiners.equal(Lesson::getRoom),
-                        Joiners.equal(Lesson::getPeriod))
-                .filter((a, b) -> a.getPeriod() != null && a.getRoom() != null)
-                .penalize(penalty(s, ConstraintType.ROOM_CONFLICT))
-                .asConstraint(ConstraintType.ROOM_CONFLICT.getDisplayName());
-    }
-
-    private Constraint roomCapacity(ConstraintFactory f, ConstraintSettings s) {
-        return f.forEach(Lesson.class)
-                .filter(lesson -> lesson.getRoom() != null
-                        && lesson.getRoom().getCapacity() < lesson.getStudentCount())
-                .penalize(penalty(s, ConstraintType.ROOM_CAPACITY_FIT))
-                .asConstraint(ConstraintType.ROOM_CAPACITY_FIT.getDisplayName());
-    }
-
     /**
      * A class's own classroom is an invariant, not a preference: with interchangeable
-     * rooms the solver otherwise scatters every class over the whole building. Lessons
-     * whose course names a special room type are exempt — the course requirement owns
-     * their room, and {@link #courseRoomTypeMetadata} scores it.
+     * rooms the solver otherwise scatters every class over the whole building.
      */
     private Constraint classFixedRoom(ConstraintFactory f) {
         return f.forEachIncludingUnassigned(Lesson.class)
@@ -504,46 +441,11 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         return periodNo > first && periodNo < last && !usedPeriodNos.contains(periodNo);
     }
 
-    private void addHeadTeacherFirstPeriod(
-            ConstraintFactory f, List<Constraint> out, ConstraintSettings s) {
-        ConstraintType type = ConstraintType.HEAD_TEACHER_FIRST_PERIOD;
-        Control control = s.control(type);
-        if (control == null) {
-            return;
-        }
-        Predicate<Lesson> headTeacher = lesson -> lesson.getTeacherId() != null
-                && lesson.getTeacherId().equals(lesson.getHeadTeacherId());
-        if (control.hard()) {
-            out.add(f.forEach(Lesson.class)
-                    .filter(lesson -> lesson.getPeriod() != null
-                            && headTeacher.test(lesson)
-                            && !lesson.getPeriod().isFirstOfDay())
-                    .penalize(HardSoftScore.ONE_HARD)
-                    .asConstraint(type.getDisplayName()));
-        } else {
-            out.add(f.forEach(Lesson.class)
-                    .filter(lesson -> lesson.getPeriod() != null
-                            && headTeacher.test(lesson)
-                            && lesson.getPeriod().isFirstOfDay())
-                    .reward(HardSoftScore.ofSoft(Math.max(1, control.weight())))
-                    .asConstraint(type.getDisplayName()));
-        }
-    }
-
     // ---------- helpers ----------
 
     private HardSoftScore penalty(ConstraintSettings settings, ConstraintType type) {
         Control control = settings.control(type);
         return control == null ? HardSoftScore.ZERO : score(control);
-    }
-
-    private boolean roomTypeMismatch(ConstraintSettings s, Lesson lesson) {
-        String configured = s.courseText(
-                ConstraintType.COURSE_REQUIRED_ROOM_TYPE, lesson.getCourseId(), "roomType");
-        if (configured == null || !StringUtils.hasText(configured)) {
-            return false;
-        }
-        return lesson.getRoom() != null && !configured.equals(lesson.getRoom().getType());
     }
 
     private Control courseLooseControl(

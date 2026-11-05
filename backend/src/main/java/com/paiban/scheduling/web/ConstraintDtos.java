@@ -31,14 +31,25 @@ public final class ConstraintDtos {
      * pauses the requirement while keeping it; {@code hard}/{@code weight} null mean
      * "inherit the type default", which is how an upgraded configuration keeps its
      * original meaning. {@code groupKey} joins several rows into one requirement.
+     *
+     * <p>{@code invalidReferences} (ticket 04) names the objects this row points at
+     * that were paused or removed, in plain Chinese, so the page can mark the card
+     * "已失效" instead of evaluating a rule the user can no longer see the target of.
+     * It is a read-only diagnostic: saving never sends it back.
      */
     public record ConstraintEntryDto(Long id, Map<String, Object> params, boolean enabled,
-                                     Boolean hard, Integer weight, String groupKey) {}
+                                     Boolean hard, Integer weight, String groupKey,
+                                     List<String> invalidReferences) {}
 
+    /**
+     * {@code invalidReferences} is the union of the row-level reasons, so a card that
+     * is one switch (no entries) still reports its broken target.
+     */
     public record ConstraintConfigDto(Long id, String type, String name, String category,
                                       String categoryLabel, String description,
                                       Map<String, Object> params, int weight, boolean hard,
-                                      boolean enabled, List<ConstraintEntryDto> entries) {}
+                                      boolean enabled, List<ConstraintEntryDto> entries,
+                                      List<String> invalidReferences) {}
 
     /**
      * {@code params} is the legacy single-entry form: when {@code entries} is null
@@ -73,6 +84,34 @@ public final class ConstraintDtos {
 
     /** A dry run of a configuration: no writes and no version advance. */
     public record ConstraintPreviewRequest(List<ConstraintConfigRequest> configs) {}
+
+    /**
+     * Ask what a not-yet-saved rule (or a whole payload) would touch. The rules are
+     * merged onto the semester's saved configuration for evaluation, while the
+     * reported scope is derived from {@code configs} alone — so the page can preview
+     * one card without pretending every other rule is gone.
+     */
+    public record RuleImpactRequest(Long semesterId, List<ConstraintConfigRequest> configs) {}
+
+    public record ImpactObjectDto(Long id, String name) {}
+
+    public record ImpactSlotDto(int dayOfWeek, int periodNo) {}
+
+    public record ImpactConflictDto(Long lessonId, String type, String message) {}
+
+    /**
+     * The answer to "what would this rule touch": the classes, teachers and slots of
+     * its scope, how many lessons of the newest DRAFT fall inside it, and the hard
+     * conflicts the shared {@code ConstraintChecker} reports for those lessons.
+     * {@code errors}/{@code warnings} are the same refusals a preview would return.
+     */
+    public record RuleImpactDto(List<ImpactObjectDto> classes,
+                                List<ImpactObjectDto> teachers,
+                                List<ImpactSlotDto> slots,
+                                int lessonCount,
+                                List<ImpactConflictDto> conflicts,
+                                List<String> errors,
+                                List<String> warnings) {}
 
     /**
      * A dry run answers two separate questions: {@code errors}/{@code invalidReferences}

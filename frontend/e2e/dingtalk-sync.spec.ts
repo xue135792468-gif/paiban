@@ -22,7 +22,7 @@ test('钉钉通讯录预演、整部门排除与确认导入', async ({ page }) 
 
   try {
     await uiLogin(page, 'admin', 'admin123')
-    await page.goto('/admin/settings')
+    await page.goto('/settings/general')
 
     const card = page.locator('#dingtalk-integration')
     await expect(card).toBeVisible()

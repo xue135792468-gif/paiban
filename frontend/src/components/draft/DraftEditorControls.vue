@@ -6,7 +6,6 @@
     >
       <el-radio-button value="class">按行政班</el-radio-button>
       <el-radio-button value="teacher">按教师</el-radio-button>
-      <el-radio-button value="room">按教室</el-radio-button>
     </el-radio-group>
     <el-select
       :model-value="targetId"
@@ -103,7 +102,7 @@
               </el-dropdown-item>
             </template>
             <el-dropdown-item v-else disabled>
-              教师/教室视角只能按所选锁定，请切换到「按行政班」
+              教师视角只能按所选锁定，请切换到「按行政班」
             </el-dropdown-item>
           </el-dropdown-menu>
         </template>
@@ -122,6 +121,14 @@
     锁定保护课节的时间与任课教师；可单节锁定，也可多选后按所选、当前行政班的某天或全班批量锁定。
     批量范围只含已排课节；多选模式下不会触发拖拽。锁定不改变冲突判断，违规课节仍显示冲突，锁定不等于合规。
   </p>
+  <el-alert
+    v-if="swapMode"
+    class="swap-hint"
+    type="success"
+    :closable="false"
+    show-icon
+    title="换课模式：绿色可换（同班），灰色不可换（悬停看原因）；点绿格预览，Esc 退出"
+  />
 </template>
 
 <script setup lang="ts">
@@ -131,7 +138,7 @@ import type { LockBatchPayload } from '@/composables/useDraftLocks'
 
 withDefaults(
   defineProps<{
-    viewMode: 'class' | 'teacher' | 'room'
+    viewMode: 'class' | 'teacher'
     targetId: number | null
     targetOptions: Array<{ id: number; name: string }>
     selectedLesson: DraftLesson | null
@@ -143,6 +150,8 @@ withDefaults(
     canUseClassScope?: boolean
     dayOptions?: Array<{ day: number; label: string; count: number }>
     classScopeCount?: number
+    /** Teacher-view swap mode is active; shows the green/grey legend. */
+    swapMode?: boolean
   }>(),
   {
     selectionMode: false,
@@ -151,11 +160,12 @@ withDefaults(
     canUseClassScope: true,
     dayOptions: () => [],
     classScopeCount: 0,
+    swapMode: false,
   },
 )
 
 const emit = defineEmits<{
-  (e: 'update:viewMode', value: 'class' | 'teacher' | 'room'): void
+  (e: 'update:viewMode', value: 'class' | 'teacher'): void
   (e: 'update:targetId', value: number | null): void
   (e: 'view-change'): void
   (e: 'swap'): void
@@ -170,7 +180,7 @@ const emit = defineEmits<{
 }>()
 
 function onViewChange(value: string | number | boolean | undefined) {
-  const next = value as 'class' | 'teacher' | 'room'
+  const next = value as 'class' | 'teacher'
   emit('update:viewMode', next)
   emit('view-change')
 }
@@ -199,5 +209,8 @@ function onBatchCommand(command: unknown) {
 .scope-hint {
   font-size: 12px;
   color: var(--paiban-muted);
+}
+.swap-hint {
+  margin-top: 8px;
 }
 </style>

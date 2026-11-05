@@ -7,13 +7,18 @@ import ai.timefold.solver.core.config.constructionheuristic.ConstructionHeuristi
 import ai.timefold.solver.core.config.constructionheuristic.ConstructionHeuristicType;
 import ai.timefold.solver.core.config.localsearch.LocalSearchPhaseConfig;
 import ai.timefold.solver.core.config.solver.SolverConfig;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paiban.common.web.ApiException;
+import com.paiban.common.deletion.RecentDeletionWriter;
 import com.paiban.foundation.domain.AdminClass;
 import com.paiban.foundation.domain.AdminClassRepository;
 import com.paiban.foundation.domain.AuditLog;
 import com.paiban.foundation.domain.AuditLogRepository;
 import com.paiban.foundation.domain.Course;
 import com.paiban.foundation.domain.CourseRepository;
+import com.paiban.foundation.domain.Grade;
+import com.paiban.foundation.domain.GradeRepository;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
 import com.paiban.foundation.domain.Room;
@@ -42,6 +47,7 @@ import com.paiban.scheduling.web.SchedulingDtos.BlockedSlotDto;
 import com.paiban.scheduling.web.SchedulingDtos.DraftDto;
 import com.paiban.scheduling.web.SchedulingDtos.DraftLessonDto;
 import com.paiban.scheduling.web.SchedulingDtos.JobDto;
+import com.paiban.scheduling.web.SchedulingDtos.JobDiagnosticDto;
 import com.paiban.scheduling.web.SchedulingDtos.LessonOverride;
 import com.paiban.scheduling.web.SchedulingDtos.MoveResult;
 import com.paiban.scheduling.web.SchedulingDtos.StartJobRequest;
@@ -51,8 +57,10 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
@@ -80,6 +88,7 @@ public class SchedulingService {
     private final CourseRepository courses;
     private final TeacherRepository teachers;
     private final AdminClassRepository adminClasses;
+    private final GradeRepository grades;
     private final SemesterService semesters;
     private final ConstraintService constraints;
     private final ClassCapacityService capacity;
@@ -87,9 +96,11 @@ public class SchedulingService {
     private final DraftValidator validator;
     private final DraftWriteGuard guard;
     private final AuditLogRepository auditLogs;
+    private final RecentDeletionWriter deletions;
     private final SourceDraftSnapshotService sourceSnapshots;
     private final TransactionTemplate transactions;
     private final TaskExecutor executor;
+    private final ObjectMapper objectMapper;
     private final int defaultSolveSeconds;
     private final Map<Long, Solver<TimetableSolution>> runningSolvers = new ConcurrentHashMap<>();
     private final Object startLock = new Object();
@@ -104,6 +115,7 @@ public class SchedulingService {
             CourseRepository courses,
             TeacherRepository teachers,
             AdminClassRepository adminClasses,
+            GradeRepository grades,
             SemesterService semesters,
             ConstraintService constraints,
             ClassCapacityService capacity,
@@ -111,8 +123,10 @@ public class SchedulingService {
             DraftValidator validator,
             DraftWriteGuard guard,
             AuditLogRepository auditLogs,
+            RecentDeletionWriter deletions,
             SourceDraftSnapshotService sourceSnapshots,
             PlatformTransactionManager transactionManager,
+            ObjectMapper objectMapper,
             @Qualifier("schedulingExecutor") TaskExecutor executor,
             @Value("${paiban.scheduling.max-solve-seconds:60}") int defaultSolveSeconds) {
         this.jobs = jobs;
@@ -124,6 +138,7 @@ public class SchedulingService {
         this.courses = courses;
         this.teachers = teachers;
         this.adminClasses = adminClasses;
+        this.grades = grades;
         this.semesters = semesters;
         this.constraints = constraints;
         this.capacity = capacity;
@@ -131,8 +146,10 @@ public class SchedulingService {
         this.validator = validator;
         this.guard = guard;
         this.auditLogs = auditLogs;
+        this.deletions = deletions;
         this.sourceSnapshots = sourceSnapshots;
         this.transactions = new TransactionTemplate(transactionManager);
+        this.objectMapper = objectMapper;
         this.executor = executor;
         this.defaultSolveSeconds = defaultSolveSeconds;
     }
@@ -141,6 +158,8 @@ public class SchedulingService {
         Long resolved = semesterId != null
                 ? semesters.require(semesterId).getId()
                 : semesters.requireCurrent().getId();
+        Set<Long> gradeIds = normalizeGradeIds(
+                resolved, request == null ? null : request.gradeIds());
         // An explicit source is validated and frozen before any job exists. Its absence
         // keeps the legacy path (and its default warm-start policy) exactly unchanged.
         SourceDraftSnapshot snapshot = request != null && request.sourceDraftId() != null
@@ -157,6 +176,10 @@ public class SchedulingService {
             if (periods.countBySemesterId(resolved) == 0) {
                 throw ApiException.badRequest("请先配置作息表再提交排课");
             }
+            // Rooms are optional for publishing, but the solver still needs a non-empty
+            // room value range: Timefold skips an entity with any null planning variable
+            // in forEach, so a null room would hide teacher/class conflicts and leave the
+            // whole draft stacked in one slot. Removed together with the room model.
             if (rooms.count() == 0) {
                 throw ApiException.badRequest("请先配置教室再提交排课");
             }
@@ -166,6 +189,9 @@ public class SchedulingService {
             if (StringUtils.hasText(shortage)) {
                 throw ApiException.badRequest(shortage);
             }
+            // A grade-scoped job must be able to keep every other grade's lessons fixed;
+            // refusing here keeps the 409 synchronous instead of failing the async run.
+            problemBuilder.requireScopedSource(resolved, gradeIds, snapshot);
             SchedulingJob job = new SchedulingJob();
             job.setSemesterId(resolved);
             job.setStatus(SchedulingJob.PENDING);
@@ -175,6 +201,9 @@ public class SchedulingService {
             job.setSolveSeconds(request == null || request.maxSeconds() == null
                     ? defaultSolveSeconds
                     : request.maxSeconds());
+            if (gradeIds != null) {
+                job.setGradeIdsJson(writeJson(List.copyOf(gradeIds)));
+            }
             if (snapshot != null) {
                 job.setSourceDraftId(snapshot.draftId());
                 job.setSourceDraftVersion(snapshot.draftVersion());
@@ -194,6 +223,62 @@ public class SchedulingService {
         String stamp = DateTimeFormatter.ofPattern("MM-dd HH:mm")
                 .format(java.time.LocalDateTime.now());
         return snapshot == null ? "方案 " + stamp : "基于「" + snapshot.draftName() + "」优化 " + stamp;
+    }
+
+    /**
+     * Null/empty means "all grades" (the legacy behaviour). Duplicates collapse, and every
+     * id has to belong to this semester, so a stale UI cannot schedule another term's data.
+     */
+    private Set<Long> normalizeGradeIds(Long semesterId, List<Long> requested) {
+        if (requested == null || requested.isEmpty()) {
+            return null;
+        }
+        Set<Long> ids = new LinkedHashSet<>();
+        for (Long id : requested) {
+            if (id == null) {
+                throw ApiException.badRequest("年级不能为空");
+            }
+            Grade grade = grades.findById(id)
+                    .orElseThrow(() -> ApiException.badRequest("年级不属于该学期: " + id));
+            if (!semesterId.equals(grade.getSemesterId()) || grade.getDeletedAt() != null) {
+                throw ApiException.badRequest("年级不属于该学期: " + id);
+            }
+            ids.add(id);
+        }
+        return ids.isEmpty() ? null : ids;
+    }
+
+    private String writeJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception ex) {
+            throw new IllegalStateException("排课任务数据无法序列化", ex);
+        }
+    }
+
+    private Set<Long> readGradeIds(String json) {
+        if (!StringUtils.hasText(json)) {
+            return null;
+        }
+        try {
+            List<Long> ids = objectMapper.readValue(json, new TypeReference<List<Long>>() {});
+            return ids == null || ids.isEmpty() ? null : new LinkedHashSet<>(ids);
+        } catch (Exception ex) {
+            throw new IllegalStateException("排课任务的年级范围损坏，请重新发起", ex);
+        }
+    }
+
+    private List<JobDiagnosticDto> readDiagnostics(String json) {
+        if (!StringUtils.hasText(json)) {
+            return List.of();
+        }
+        try {
+            List<JobDiagnosticDto> rows =
+                    objectMapper.readValue(json, new TypeReference<List<JobDiagnosticDto>>() {});
+            return rows == null ? List.of() : rows;
+        } catch (Exception ex) {
+            throw new IllegalStateException("排课任务的诊断信息损坏", ex);
+        }
     }
 
     public void run(Long jobId) {
@@ -216,6 +301,7 @@ public class SchedulingService {
                 throw new IllegalStateException(shortage);
             }
             ConstraintSettingsHolder.set(settings);
+            Set<Long> gradeIds = readGradeIds(job.getGradeIdsJson());
             // A job with an explicit source works from its frozen snapshot, never from
             // the default baseline/oldest-draft policy. The fingerprint is re-checked
             // before solving so an edited assignment fails instead of mixing states.
@@ -224,9 +310,11 @@ public class SchedulingService {
             if (job.getSourceDraftId() != null) {
                 snapshot = sourceSnapshots.fromJson(job.getSourceSnapshotJson());
                 sourceSnapshots.requireAssignmentsUnchanged(snapshot, job.getSemesterId());
-                built = problemBuilder.buildFromSource(job.getSemesterId(), settings, snapshot);
+                built = problemBuilder.buildFromSource(
+                        job.getSemesterId(), settings, snapshot, gradeIds);
             } else {
-                built = problemBuilder.buildWithWarmStart(job.getSemesterId(), settings);
+                built = problemBuilder.buildWithWarmStart(
+                        job.getSemesterId(), settings, gradeIds);
             }
             // markRunning is a bulk update that bypasses the entity read above, so that
             // instance is stale; write only the warm-start source with a targeted update
@@ -395,6 +483,20 @@ public class SchedulingService {
                 .map(DraftPublishReadiness.Blocker::message)
                 .toList();
         job.setResultBlockers(blockerMessages.isEmpty() ? null : String.join("\n", blockerMessages));
+
+        // Only teacher-attributable hard conflicts become diagnostics; a clean or merely
+        // incomplete draft keeps the field empty so the page does not invent a culprit.
+        boolean hardFailure = score != null && score.hardScore() < 0;
+        if (!validation.publishable() || hardFailure || validation.hardConflicts() > 0) {
+            List<JobDiagnosticDto> diagnostics = validator.diagnose(savedDraft.getId()).stream()
+                    .map(row -> new JobDiagnosticDto(
+                            row.teacherId(), row.teacherName(), row.hardCount(),
+                            row.messages(), row.gradeIds(), row.classNames()))
+                    .toList();
+            job.setDiagnosticsJson(diagnostics.isEmpty() ? null : writeJson(diagnostics));
+        } else {
+            job.setDiagnosticsJson(null);
+        }
 
         job.setStatus(SchedulingJob.COMPLETED);
         job.setDraftId(savedDraft.getId());
@@ -567,8 +669,22 @@ public class SchedulingService {
                 draftLessons.countByDraftIdAndLockedTrue(draftId));
     }
 
+    /**
+     * Deletes a draft into the 7-day recycle bin (ticket 04). Only a DRAFT can be
+     * deleted: a published timetable must be withdrawn first and an archived one is
+     * history. The lessons are kept on purpose, so a restore brings back exactly the
+     * same timetable — including the locks the user confirmed dropping.
+     */
     @Transactional
     public void deleteDraft(Long draftId, boolean unlockLocked, Integer expectedLockedCount, String actor) {
+        TimetableDraft existing = drafts.findById(draftId)
+                .filter(draft -> draft.getDeletedAt() == null)
+                .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
+        if (!"DRAFT".equals(existing.getStatus())) {
+            throw ApiException.conflict("PUBLISHED".equals(existing.getStatus())
+                    ? "课表已发布，请先撤回再删除"
+                    : "课表已归档，不能删除");
+        }
         TimetableDraft draft = guard.lockEditable(draftId, null);
         int locked = (int) draftLessons.countByDraftIdAndLockedTrue(draftId);
         // The default stays conservative: a plain DELETE never touches a locked lesson.
@@ -588,15 +704,24 @@ public class SchedulingService {
                 throw ApiException.conflict("锁定状态已变化，请刷新后重试");
             }
         }
-        draftLessons.deleteByDraftId(draftId);
-        drafts.delete(draft);
-        auditLogs.save(new AuditLog(
-                actor == null ? "system" : actor,
-                "DRAFT_DELETE",
-                "TIMETABLE_DRAFT",
-                "draftId=" + draftId + ", locked=" + locked,
-                1,
-                0));
+        int lessonCount = (int) draftLessons.countByDraftId(draftId);
+        draft.setDeletedAt(java.time.Instant.now());
+        drafts.save(draft);
+        String snapshot = writeSnapshot(Map.of(
+                "status", "DRAFT",
+                "lessonCount", lessonCount,
+                "lockedCount", locked));
+        deletions.record(
+                DraftLifecycleService.ENTITY_TYPE, draft.getId(), draft.getName(), "课表草稿", snapshot);
+    }
+
+    /** Recycle-bin snapshot; the restore only clears {@code deleted_at}. */
+    private String writeSnapshot(Map<String, Object> snapshot) {
+        try {
+            return objectMapper.writeValueAsString(snapshot);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+            throw new IllegalStateException("草稿快照无法序列化", ex);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -677,6 +802,9 @@ public class SchedulingService {
 
     private TimetableDraft requireDraft(Long draftId) {
         return drafts.findById(draftId)
+                // A deleted draft is in the recycle bin and must behave as "not found":
+                // opening it would let the editor write into a recycling timetable.
+                .filter(draft -> draft.getDeletedAt() == null)
                 .orElseThrow(() -> ApiException.notFound("课表草稿不存在: " + draftId));
     }
 
@@ -684,6 +812,10 @@ public class SchedulingService {
         long remaining = "RUNNING".equals(job.getStatus())
                 ? Math.max(0, job.getSolveSeconds() * 1000L - job.getElapsedMs())
                 : 0;
+        Set<Long> scopedGradeIds = readGradeIds(job.getGradeIdsJson());
+        List<Long> gradeIds = scopedGradeIds == null
+                ? List.of()
+                : List.copyOf(scopedGradeIds);
         return new JobDto(
                 job.getId(),
                 job.getSemesterId(),
@@ -704,7 +836,9 @@ public class SchedulingService {
                 job.getSourceDraftVersion(),
                 job.getInheritedLockCount(),
                 job.getResultPublishable(),
-                blockerList(job.getResultBlockers()));
+                blockerList(job.getResultBlockers()),
+                gradeIds,
+                readDiagnostics(job.getDiagnosticsJson()));
     }
 
     private static List<String> blockerList(String stored) {

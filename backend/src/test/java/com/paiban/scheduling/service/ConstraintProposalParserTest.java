@@ -73,7 +73,7 @@ class ConstraintProposalParserTest {
      * per-class slot rows cannot be derived from one sentence.
      */
     @Test
-    void theCatalogueHidesTheManualOnlyTypeAndKeepsTheOtherTwentyFive() {
+    void theCatalogueHidesTheManualOnlyTypeAndRetiredTypes() {
         String catalogue = prompt.system();
 
         assertThat(catalogue).doesNotContain("CLASS_UNAVAILABLE");
@@ -84,14 +84,13 @@ class ConstraintProposalParserTest {
                 .map(Enum::name)
                 .toList();
         assertThat(listed).containsExactlyInAnyOrderElementsOf(List.of(
-                "TEACHER_CONFLICT", "CLASS_CONFLICT", "ROOM_CONFLICT", "ROOM_CAPACITY_FIT",
-                "TEACHER_UNAVAILABLE", "TEACHER_MEETING_BLOCKED", "COURSE_REQUIRED_ROOM_TYPE",
-                "COURSE_NOT_IN_EVENING", "COURSE_UNAVAILABLE", "SAME_COURSE_ONCE_PER_DAY",
-                "TEACHER_MAX_PER_DAY", "CLASS_MAX_PER_DAY", "COURSE_MAX_PER_DAY", "EVENING_MAX",
+                "TEACHER_CONFLICT", "CLASS_CONFLICT",
+                "TEACHER_UNAVAILABLE", "COURSE_UNAVAILABLE", "SAME_COURSE_ONCE_PER_DAY",
+                "TEACHER_MAX_PER_DAY", "CLASS_MAX_PER_DAY", "COURSE_MAX_PER_DAY",
                 "SPORT_NOT_FIRST_AFTERNOON", "CONSECUTIVE_LESSONS", "COURSE_SPREAD",
                 "MAIN_SUBJECT_MORNING", "TEACHER_PREFERRED_SLOT", "TEACHER_MAX_CONSECUTIVE",
                 "TEACHER_NO_FIRST_PERIOD", "TEACHER_DAY_OFF", "CLASS_GAP_MINIMIZED",
-                "PE_LAST_PERIOD_AVOID", "HEAD_TEACHER_FIRST_PERIOD"));
+                "PE_LAST_PERIOD_AVOID"));
     }
 
     /** Even a self-confident READY never turns the manual-only type into entries. */
@@ -128,25 +127,21 @@ class ConstraintProposalParserTest {
         });
     }
 
-    /** The thresholds that really do own a classId scope keep working. */
+    /** The threshold that really does own a classId scope keeps working. */
     @Test
     void classScopedThresholdsStillAcceptTheAdminClass() {
         List<ConstraintProposalDto> proposals =
                 ConstraintProposalNormalizer.normalize(parser.parse("""
                         {"proposals":[
                           {"type":"CLASS_MAX_PER_DAY","status":"READY","className":"高一(1)班",
-                           "values":{"maxPerDay":6}},
-                          {"type":"EVENING_MAX","status":"READY","className":"高一(2)班",
-                           "values":{"maxPerDay":0}}]}"""), context(), "nl-1");
+                           "values":{"maxPerDay":6}}]}"""), context(), "nl-1");
 
-        assertThat(proposals).hasSize(2).allSatisfy(proposal -> {
+        assertThat(proposals).hasSize(1).allSatisfy(proposal -> {
             assertThat(proposal.status()).isEqualTo(ConstraintProposalNormalizer.READY);
             assertThat(proposal.entries()).hasSize(1);
         });
         assertThat(proposals.get(0).entries().get(0).params())
                 .containsEntry("classId", 31L).containsEntry("maxPerDay", 6);
-        assertThat(proposals.get(1).entries().get(0).params())
-                .containsEntry("classId", 32L).containsEntry("maxPerDay", 0);
     }
 
     // ------------------------------------------------- fixture

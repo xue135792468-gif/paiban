@@ -19,6 +19,8 @@ import com.paiban.substitution.domain.Substitution;
 import com.paiban.substitution.domain.SubstitutionRepository;
 import com.paiban.timetable.domain.TimetableEntry;
 import com.paiban.timetable.domain.TimetableEntryRepository;
+import com.paiban.timetable.domain.TimetablePublish;
+import com.paiban.timetable.domain.TimetablePublishRepository;
 import com.paiban.timetable.web.TimetableDtos.SchoolTimetableDto;
 import com.paiban.timetable.web.TimetableDtos.TimetableEntryDto;
 import java.time.LocalDate;
@@ -49,6 +51,7 @@ public class TimetableViewService {
     private final AdminClassRepository adminClasses;
     private final SubstitutionRepository substitutions;
     private final com.paiban.substitution.domain.SubstitutionRequestRepository substitutionRequests;
+    private final TimetablePublishRepository publishes;
     private final SemesterService semesters;
     private final UserService users;
 
@@ -61,6 +64,7 @@ public class TimetableViewService {
             AdminClassRepository adminClasses,
             SubstitutionRepository substitutions,
             com.paiban.substitution.domain.SubstitutionRequestRepository substitutionRequests,
+            TimetablePublishRepository publishes,
             SemesterService semesters,
             UserService users) {
         this.entries = entries;
@@ -71,6 +75,7 @@ public class TimetableViewService {
         this.adminClasses = adminClasses;
         this.substitutions = substitutions;
         this.substitutionRequests = substitutionRequests;
+        this.publishes = publishes;
         this.semesters = semesters;
         this.users = users;
     }
@@ -78,6 +83,9 @@ public class TimetableViewService {
     @Transactional(readOnly = true)
     public List<TimetableEntryDto> classView(Long classId, String view, LocalDate date) {
         Long semesterId = semesters.requireCurrent().getId();
+        if (!hasActivePublish(semesterId)) {
+            return List.of();
+        }
         Map<Long, Substitution> overlay = overlayMap(semesterId, view, date);
         return enrich(entries.findBySemesterIdAndAdminClassId(semesterId, classId), semesterId).stream()
                 .map(dto -> apply(dto, overlay.get(dto.id()), semesterId))
@@ -87,6 +95,9 @@ public class TimetableViewService {
     @Transactional(readOnly = true)
     public List<TimetableEntryDto> teacherView(Long teacherId, String view, LocalDate date) {
         Long semesterId = semesters.requireCurrent().getId();
+        if (!hasActivePublish(semesterId)) {
+            return List.of();
+        }
         Map<Long, Substitution> overlay = overlayMap(semesterId, view, date);
         // ADR-0030：先叠加当天实际生效的调代，再按「最终有效教师」过滤。
         // 被解除安排的原教师不再看到这节课，接替者恰好看到一次。
@@ -99,6 +110,9 @@ public class TimetableViewService {
     @Transactional(readOnly = true)
     public List<TimetableEntryDto> roomView(Long roomId, String view, LocalDate date) {
         Long semesterId = semesters.requireCurrent().getId();
+        if (!hasActivePublish(semesterId)) {
+            return List.of();
+        }
         Map<Long, Substitution> overlay = overlayMap(semesterId, view, date);
         // 与 teacherView 同理：叠加后再按「当天有效教室」过滤，换出/换入各算一次。
         return enrich(entries.findBySemesterId(semesterId), semesterId).stream()
@@ -110,11 +124,16 @@ public class TimetableViewService {
     @Transactional(readOnly = true)
     public SchoolTimetableDto schoolView(String view, LocalDate date) {
         Long semesterId = semesters.requireCurrent().getId();
+        if (!hasActivePublish(semesterId)) {
+            return new SchoolTimetableDto(List.of(), List.of());
+        }
         Map<Long, Substitution> overlay = overlayMap(semesterId, view, date);
-        List<ClassDto> classes = adminClasses.findBySemesterIdOrderByGradeIdAscNameAsc(semesterId).stream()
+        List<ClassDto> classes = adminClasses
+                .findBySemesterIdAndDeletedAtIsNullOrderByGradeIdAscNameAsc(semesterId).stream()
                 .map(adminClass -> new ClassDto(
                         adminClass.getId(), adminClass.getName(), adminClass.getGradeId(), null,
-                        adminClass.getHeadTeacherId(), null, adminClass.getStudentCount(), null))
+                        adminClass.getHeadTeacherId(), null, adminClass.getStudentCount(), null,
+                        adminClass.isActive()))
                 .toList();
         List<TimetableEntryDto> all = enrich(entries.findBySemesterId(semesterId), semesterId).stream()
                 .map(dto -> apply(dto, overlay.get(dto.id()), semesterId))
@@ -154,6 +173,12 @@ public class TimetableViewService {
         return semesters.requireCurrent().getId();
     }
 
+    /** A withdrawn publish is history: views answer with an empty grid, never a 404. */
+    private boolean hasActivePublish(Long semesterId) {
+        return publishes.findFirstBySemesterIdAndStatusOrderByPublishedAtDesc(
+                semesterId, TimetablePublish.ACTIVE).isPresent();
+    }
+
     public void requireClassExists(Long classId) {
         if (!adminClasses.existsById(classId)) {
             throw ApiException.notFound("班级不存在: " + classId);
@@ -179,6 +204,7 @@ public class TimetableViewService {
         List<Substitution> effective =
                 substitutions.findBySemesterIdAndStatus(semesterId, Substitution.EFFECTIVE);
         return effective.stream()
+                .filter(item -> item.getEntryId() != null)
                 .filter(item -> touches(item, cutoff, semesterStart))
                 .sorted(Comparator.comparing(Substitution::getCreatedAt))
                 .collect(Collectors.toMap(

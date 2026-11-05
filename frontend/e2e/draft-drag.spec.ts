@@ -288,12 +288,14 @@ test('应用方案后加锁再撤销，提示先解锁且不误报成功', async
   expect(positionOf(stillApplied, seed.lessonAId)).toBe(seed.periodB)
 })
 
-test('教师视角拖拽与点击/键盘选择位置都能完成同一次移动', async ({ page }) => {
+test('拖拽、点击与键盘三种入口都能完成同一次移动', async ({ page }) => {
   const api = await newContext()
   const seed = await seedDraftDragScenario(api)
   await openDraft(page, seed.draftId)
-  await selectTeacher(page, seed.teacherAName)
 
+  // 教师视角只做拖拽：票 13 把「点课」改成了同班换课模式（绿/灰格），
+  // 那里不再有「已选课程」标签和移动目标选择；换课行为见 teacher-view-swap.spec.ts。
+  await selectTeacher(page, seed.teacherAName)
   const change = waitForChanges(page, seed.draftId)
   const reload = waitForDraftReload(page, seed.draftId)
   await drag(page, seed, seed.emptyPeriod)
@@ -306,7 +308,11 @@ test('教师视角拖拽与点击/键盘选择位置都能完成同一次移动'
   const undoReload = waitForDraftReload(page, seed.draftId)
   await page.getByRole('button', { name: /^撤销/ }).click()
   await undoReload
+  expect(positionOf(await draftDetail(api, seed.draftId), seed.lessonAId)).toBe(seed.periodA)
 
+  // 点击与键盘选择位置在班级视角完成——入口变了，移动本身仍是同一次。
+  await page.getByText('按行政班', { exact: true }).click()
+  await selectClass(page, seed.className)
   await lessonCard(page, seed.lessonAId).focus()
   await page.keyboard.press('Enter')
   await expect(page.locator('.controls .el-tag')).toContainText(seed.courseAName)

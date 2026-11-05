@@ -110,7 +110,7 @@ test.describe.serial('约束配置：自然语言只读建议', () => {
   })
 
   async function openPanel(page: Page) {
-    await page.goto('/admin/constraints')
+    await page.goto('/rules/advanced')
     await expect(page.getByTestId('constraint-ai-panel')).toBeVisible()
   }
 
