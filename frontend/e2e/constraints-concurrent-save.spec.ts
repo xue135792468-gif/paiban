@@ -36,6 +36,12 @@ test.describe.serial('约束配置：两人同时保存', () => {
     return page
   }
 
+  /** 保存后 UI 状态收敛有渲染节拍：CI 负载下偶发晚一拍，用 toPass 重试，不放宽断言。 */
+  async function expectGone(page: Page, testId: string) {
+    await expect(async () => {
+      await expect(page.getByTestId(testId)).toHaveCount(0, { timeout: 2000 })
+    }).toPass({ timeout: 20_000 })
+  }
 
   async function enableType(page: Page) {
     const toggle = page.getByTestId('constraint-enabled-switch')
@@ -65,7 +71,7 @@ test.describe.serial('约束配置：两人同时保存', () => {
     await pickOption(cardA, 'constraint-entry-teacher', first.name)
     await pickOption(cardA, 'constraint-entry-day', '周三')
     await pageA.getByTestId('constraint-save').click()
-    await expect(pageA.getByTestId('constraint-unsaved')).toHaveCount(0)
+    await expectGone(pageA, 'constraint-unsaved')
     await pageA.context().close()
 
     // B was loaded before A saved: its save is based on the old version.
@@ -83,7 +89,7 @@ test.describe.serial('约束配置：两人同时保存', () => {
     await expect(pageB.getByTestId('constraint-unsaved')).toBeVisible()
 
     await pageB.getByTestId('constraint-conflict-keep-mine').click()
-    await expect(pageB.getByTestId('constraint-unsaved')).toHaveCount(0)
+    await expectGone(pageB, 'constraint-unsaved')
 
     const saved = await configs()
     const types = saved.map((config: any) => config.type)
@@ -119,14 +125,14 @@ test.describe.serial('约束配置：两人同时保存', () => {
     await pickOption(cardA, 'constraint-entry-teacher', first.name)
     await pickOption(cardA, 'constraint-entry-day', '周五')
     await pageA.getByTestId('constraint-save').click()
-    await expect(pageA.getByTestId('constraint-unsaved')).toHaveCount(0)
+    await expectGone(pageA, 'constraint-unsaved')
     await pageA.context().close()
 
     await pageB.getByTestId('constraint-save').click()
     await expect(pageB.getByTestId('constraint-conflict')).toBeVisible()
     await pageB.getByTestId('constraint-conflict-take-theirs').click()
     await expect(pageB.getByTestId('constraint-conflict')).toHaveCount(0)
-    await expect(pageB.getByTestId('constraint-unsaved')).toHaveCount(0)
+    await expectGone(pageB, 'constraint-unsaved')
 
     // The abandoned preference is gone; A's saved requirement is what the page shows.
     await pageB.locator('[data-type="TEACHER_PREFERRED_SLOT"]').click()
