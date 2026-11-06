@@ -159,35 +159,6 @@ class ConstraintTargetEntriesIntegrationTest extends ApiIntegrationTest {
                     reloaded.jsonPath().getList("find { it.type == '" + type + "' }.entries");
             assertThat(entries).as(type + " keeps one entry").hasSize(1);
         }    }
-
-    @Test
-    void templateKeepsEveryEntryOfEveryTargetType() {
-        String token = adminToken();
-        long source = semesterWithPeriods(token);
-        World world = world(token);
-        save(token, source, twoEntriesForEachType(world)).then().statusCode(200);
-
-        long templateId = as(token).queryParam("semesterId", source)
-                .body(Map.of("name", "目标型条目-" + TestData.suffix()))
-                .when().post("/api/constraint-templates")
-                .then().statusCode(200)
-                .body("configCount", equalTo(8))
-                .extract().jsonPath().getLong("id");
-
-        long target = semesterWithPeriods(token);
-        Response applied = as(token).queryParam("semesterId", target)
-                .when().post("/api/constraint-templates/" + templateId + "/apply")
-                .then().statusCode(200).extract().response();
-
-        List<Map<String, Object>> configs = applied.jsonPath().getList("$");
-        assertThat(configs).hasSize(8);
-        for (Map<String, Object> config : configs) {
-            assertThat((List<?>) config.get("entries"))
-                    .as("template restores both entries of " + config.get("type"))
-                    .hasSize(2);
-        }
-    }
-
     // ------------------------------------------------------------------ helpers
 
     private record World(long firstTeacher, long secondTeacher, long firstCourse, long secondCourse) {}

@@ -16,3 +16,12 @@
 - [ ] 迁移在 PostgreSQL 容器中验证通过
 
 **Notes:** 产品所有者确认测试阶段可直接清空（2026-11-07）。AI 面板搬迁见票 03b；本票先把页面删干净，03b 再把面板接到规则页。
+
+## 实现说明（后端部分，2026-11-07）
+
+- 已物理删除旧「规则模板」后端：`ConstraintTemplate`、仓储、`ConstraintTemplateService`、控制器 5 个模板接口、`ConstraintService` 模板依赖、相关 DTO 与 `LifecycleService` 的 `CONSTRAINT_TEMPLATE` 标签。
+- 新增 `V56__reset_rules_and_drop_templates.sql`：清空非系统 `constraint_config` / `constraint_entry`、`constraint_workspace`、`recent_deletion` 里的旧规则/模板行与 `constraint_migration_map`，并 `DROP TABLE constraint_template`；两条系统底线保留。
+- `TemplateReferenceIssue` 改为 `ConstraintReferenceIssue`（规则预览、工作区、影响分析仍返回同一 JSON 形状）。
+- 模板专用测试已删除；迁移测试固定在 V55 验证 V26–V29/V55 的既有行为，不再跨到 V56。
+- 前端页面、导航、底线置顶与 03b 的 AI 面板搬迁仍未做，票面保持 ready-for-agent，不勾选前端相关项。
+

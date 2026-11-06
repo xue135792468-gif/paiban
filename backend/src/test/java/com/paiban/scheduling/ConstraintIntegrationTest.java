@@ -103,42 +103,6 @@ class ConstraintIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void templateCanBeSavedAndAppliedToAnotherSemester() {
-        String token = adminToken();
-        long source = TestData.semester(token);
-        String templateName = "复用模板-" + TestData.suffix();
-
-        as(token).queryParam("semesterId", source)
-                .body(Map.of("configs", List.of(
-                        Map.of("type", "TEACHER_CONFLICT", "params", Map.of(), "weight", 100, "hard", true),
-                        Map.of("type", "CLASS_MAX_PER_DAY", "params", Map.of("maxPerDay", 7),
-                                "weight", 65, "hard", false))))
-                .when().put("/api/constraints").then().statusCode(200);
-
-        long templateId = as(token).queryParam("semesterId", source)
-                .body(Map.of("name", templateName))
-                .when().post("/api/constraint-templates")
-                .then().statusCode(200)
-                .body("configCount", equalTo(2))
-                .extract().jsonPath().getLong("id");
-
-        long target = TestData.semester(token);
-        as(token).queryParam("semesterId", target)
-                .when().post("/api/constraint-templates/" + templateId + "/apply")
-                .then().statusCode(200)
-                .body("$", hasSize(2));
-
-        as(token).queryParam("semesterId", target)
-                .when().get("/api/constraints")
-                .then().statusCode(200)
-                .body("find { it.type == 'CLASS_MAX_PER_DAY' }.params.maxPerDay", equalTo(7));
-
-        as(token).when().get("/api/constraint-templates")
-                .then().statusCode(200)
-                .body("name", hasItem(templateName));
-    }
-
-    @Test
     void teacherCannotModifyConstraints() {
         String username = "ct_" + TestData.suffix();
         createUser(adminToken(), username, "teacher123", "teacher");

@@ -25,7 +25,7 @@ import com.paiban.scheduling.web.ConstraintDtos.ImpactConflictDto;
 import com.paiban.scheduling.web.ConstraintDtos.ImpactObjectDto;
 import com.paiban.scheduling.web.ConstraintDtos.ImpactSlotDto;
 import com.paiban.scheduling.web.ConstraintDtos.RuleImpactDto;
-import com.paiban.scheduling.web.ConstraintDtos.TemplateReferenceIssue;
+import com.paiban.scheduling.web.ConstraintDtos.ConstraintReferenceIssue;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -141,7 +141,7 @@ public class RuleImpactService {
         List<ConstraintConfigRequest> rules = requests == null ? List.of() : requests;
         ConstraintConfigService.PreviewSnapshot preview = configs.previewSnapshot(resolved, rules);
         List<String> errors = new ArrayList<>(preview.preview().errors());
-        for (TemplateReferenceIssue issue : preview.preview().invalidReferences()) {
+        for (ConstraintReferenceIssue issue : preview.preview().invalidReferences()) {
             errors.add(describeReference(issue));
         }
         List<String> warnings = new ArrayList<>(preview.preview().warnings());
@@ -490,7 +490,7 @@ public class RuleImpactService {
         return longValue == null ? null : longValue.intValue();
     }
 
-    private static String describeReference(TemplateReferenceIssue issue) {
+    private static String describeReference(ConstraintReferenceIssue issue) {
         String where = issue.position() > 0
                 ? issue.typeName() + "(" + issue.type() + ") 第" + issue.position() + " 条"
                 : issue.typeName() + "(" + issue.type() + ")";

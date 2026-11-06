@@ -124,7 +124,7 @@ public class ConstraintWorkspaceService {
         Map<String, Object> payload = fromJson(row.getPayloadJson());
         List<ConstraintConfigRequest> configs = configsOf(payload);
         List<String> errors = List.of();
-        List<com.paiban.scheduling.web.ConstraintDtos.TemplateReferenceIssue> references =
+        List<com.paiban.scheduling.web.ConstraintDtos.ConstraintReferenceIssue> references =
                 List.of();
         if (!configs.isEmpty()) {
             try {

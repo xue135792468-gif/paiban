@@ -225,49 +225,6 @@ class WeeklyNoClassSchoolScopeIntegrationTest extends ApiIntegrationTest {
         rejected.then().statusCode(400);
         assertThat(rejected.asString()).contains("完整");
     }
-
-    @Test
-    void templateKeepsWholeSchoolScopeAndMapsSelectedClasses() {
-        String token = adminToken();
-        long source = semesterWithPeriods(token, 2, List.of(1, 2));
-        long sourceClass = adminClass(token, source, "模板源班");
-        long target = semesterWithPeriods(token, 2, List.of(1, 2));
-        long targetClass = adminClass(token, target, "模板目标班");
-
-        save(token, source, List.of(banConfig(List.of(
-                entry(null, 1, 1, "all-school"),
-                entry(sourceClass, 1, 2, "selected"))))).then().statusCode(200);
-        long template = as(token).queryParam("semesterId", source)
-                .body(Map.of("name", "全校模板" + TestData.suffix()))
-                .post("/api/constraint-templates").then().statusCode(200)
-                .extract().jsonPath().getLong("id");
-
-        as(token).queryParam("semesterId", target).queryParam("baseVersion", version(token, target))
-                .body(Map.of()).post("/api/constraint-templates/" + template + "/apply")
-                .then().statusCode(409);
-
-        as(token).queryParam("semesterId", target).queryParam("baseVersion", version(token, target))
-                .body(Map.of("classMapping", Map.of(sourceClass, targetClass)))
-                .post("/api/constraint-templates/" + template + "/apply")
-                .then().statusCode(200);
-
-        List<Map<String, Object>> entries = as(token).queryParam("semesterId", target)
-                .get("/api/constraints").then().statusCode(200).extract().jsonPath()
-                .getList("find { it.type == 'CLASS_UNAVAILABLE' }.entries");
-        assertThat(entries).hasSize(2);
-        assertThat(entries.stream().anyMatch(row -> {
-            Map<?, ?> params = (Map<?, ?>) row.get("params");
-            return params.get("classId") == null
-                    && ((Number) params.get("periodNo")).intValue() == 1;
-        })).isTrue();
-        assertThat(entries.stream().anyMatch(row -> {
-            Map<?, ?> params = (Map<?, ?>) row.get("params");
-            return params.get("classId") != null
-                    && ((Number) params.get("classId")).longValue() == targetClass
-                    && ((Number) params.get("periodNo")).intValue() == 2;
-        })).isTrue();
-    }
-
     /**
      * 未保存工作区保存的是编辑器真正会提交的展开结果：两个班 × 两个时段 = 四条带
      * groupKey 与控制的条目，而不是一个额外的范围字段。恢复后服务器必须原样认得这四条，

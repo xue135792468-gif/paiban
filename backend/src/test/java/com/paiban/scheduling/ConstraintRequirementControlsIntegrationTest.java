@@ -26,9 +26,8 @@ import org.springframework.test.context.ActiveProfiles;
 
 /**
  * Ticket 14/01 through the public REST surface: the new {@code COURSE_UNAVAILABLE}
- * type, the per-requirement controls that travel with it, the group identity that
- * keeps the expanded slots one requirement, and the template round-trip that must not
- * drop any of them.
+ * type, the per-requirement controls that travel with it, and the group identity that
+ * keeps the expanded slots one requirement.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -209,39 +208,6 @@ class ConstraintRequirementControlsIntegrationTest extends ApiIntegrationTest {
                 .map(row -> ((Number) row.get("id")).longValue()).toList())
                 .containsExactly(ids.get(0), ids.get(1));
         assertThat(afterReenable.get(1).get("enabled")).isEqualTo(false);
-    }
-
-    @Test
-    void templateRoundTripKeepsGroupsAndPerRequirementControls() {
-        String token = adminToken();
-        long source = semesterWithPeriods(token);
-        long course = TestData.course(token, "体育" + TestData.suffix());
-        save(token, source, List.of(courseUnavailable(true, List.of(
-                slot("g1", true, null, course, 1, 1),
-                slot("g1", true, null, course, 1, 2),
-                slot("g2", false, 70, course, 2, 1)))))
-                .then().statusCode(200);
-
-        long templateId = as(token).queryParam("semesterId", source)
-                .body(Map.of("name", "课程禁排-" + TestData.suffix()))
-                .when().post("/api/constraint-templates")
-                .then().statusCode(200)
-                .body("entryCount", equalTo(3))
-                .extract().jsonPath().getLong("id");
-
-        long target = semesterWithPeriods(token);
-        as(token).queryParam("semesterId", target)
-                .when().post("/api/constraint-templates/" + templateId + "/apply")
-                .then().statusCode(200)
-                .body("find { it.type == 'COURSE_UNAVAILABLE' }.entries", hasSize(3));
-
-        List<Map<String, Object>> restored = reloadEntries(
-                token, target, "COURSE_UNAVAILABLE");
-        assertThat(restored).extracting(row -> row.get("groupKey"))
-                .containsExactly("g1", "g1", "g2");
-        assertThat(restored.get(0).get("hard")).isEqualTo(true);
-        assertThat(restored.get(2).get("hard")).isEqualTo(false);
-        assertThat(((Number) restored.get(2).get("weight")).intValue()).isEqualTo(70);
     }
 
     @Test

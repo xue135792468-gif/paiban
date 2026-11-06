@@ -34,7 +34,7 @@ import com.paiban.scheduling.web.ConstraintDtos.ConstraintPreviewDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintSaveAuditDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintStateDto;
 import com.paiban.scheduling.web.ConstraintDtos.ProposalDecision;
-import com.paiban.scheduling.web.ConstraintDtos.TemplateReferenceIssue;
+import com.paiban.scheduling.web.ConstraintDtos.ConstraintReferenceIssue;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -57,9 +57,8 @@ import org.springframework.util.StringUtils;
  * so a rejected request leaves the previous configuration untouched.
  *
  * <p>This service owns planning, persistence, the shared config version and the
- * effective {@link ConstraintSettings} snapshot. Template handling lives in
- * {@link ConstraintTemplateService}; both write through the same planning and
- * version methods here so a template apply can never disagree with a manual save.
+ * effective {@link ConstraintSettings} snapshot. Every write path goes through the
+ * same planning and version methods here, so no caller can disagree about a refusal.
  */
 @Service
 public class ConstraintConfigService {
@@ -505,7 +504,7 @@ public class ConstraintConfigService {
      * which rows are at fault.
      */
     record Planning(List<PlannedConfig> configs, List<String> errors,
-                    List<TemplateReferenceIssue> references) {}
+                    List<ConstraintReferenceIssue> references) {}
 
     /**
      * One accepted entry with the id it came in with, its 1-based request position and
@@ -516,7 +515,7 @@ public class ConstraintConfigService {
                         boolean enabled, Boolean hard, Integer weight, String groupKey) {}
 
     /** The entries of one type, plus the object references of those entries that do not resolve. */
-    private record EntryPlan(List<PlannedEntry> entries, List<TemplateReferenceIssue> references) {}
+    private record EntryPlan(List<PlannedEntry> entries, List<ConstraintReferenceIssue> references) {}
 
     /**
      * The scalar conditions a type attaches to one object. Two entries for the same
@@ -593,7 +592,7 @@ public class ConstraintConfigService {
     Planning plan(Long resolved, List<ConstraintConfigRequest> requests,
                   Map<Long, ConstraintEntry> existingEntries) {
         List<String> errors = new ArrayList<>();
-        List<TemplateReferenceIssue> references = new ArrayList<>();
+        List<ConstraintReferenceIssue> references = new ArrayList<>();
         List<PlannedConfig> planned = new ArrayList<>();
         Map<String, Set<Long>> claimedEntries = new HashMap<>();
         Set<String> seenTypes = new HashSet<>();
@@ -637,7 +636,7 @@ public class ConstraintConfigService {
     }
 
     /** `类型(CODE) 第N 条: 参数「字段」对象名#id 原因` — one saved/template row per line. */
-    private String describeReference(TemplateReferenceIssue issue) {
+    private String describeReference(ConstraintReferenceIssue issue) {
         String where = issue.position() > 0
                 ? issue.typeName() + "(" + issue.type() + ") 第" + issue.position() + " 条"
                 : issue.typeName() + "(" + issue.type() + ")";
@@ -912,7 +911,7 @@ public class ConstraintConfigService {
             Map<Long, ConstraintEntry> existingEntries, Map<String, Set<Long>> claimedEntries,
             List<String> errors) {
         List<PlannedEntry> planned = new ArrayList<>();
-        List<TemplateReferenceIssue> references = new ArrayList<>();
+        List<ConstraintReferenceIssue> references = new ArrayList<>();
         Map<EntrySignature, Integer> seen = new HashMap<>();
         List<ConstraintEntryRequest> requested = request.entries();
         if (requested == null) {
@@ -1158,7 +1157,7 @@ public class ConstraintConfigService {
             ConstraintType type, PlannedEntry entry, List<PlannedEntry> planned,
             Map<EntrySignature, Integer> seen, boolean defaultHard, int defaultWeight,
             SemesterScope timetable, Map<Long, ConstraintEntry> existingEntries,
-            Map<String, Set<Long>> claimedEntries, List<TemplateReferenceIssue> references,
+            Map<String, Set<Long>> claimedEntries, List<ConstraintReferenceIssue> references,
             List<String> errors) {
         Map<String, Object> params = entry.params();
         if (params.isEmpty() && !type.isEntryBacked()) {
@@ -1306,10 +1305,10 @@ public class ConstraintConfigService {
      * Teachers and courses are global assets (a missing one means it was deleted); a
      * class belongs to one semester and has to be rebound explicitly.
      */
-    private List<TemplateReferenceIssue> referencesOf(
+    private List<ConstraintReferenceIssue> referencesOf(
             ConstraintType type, Integer position, Map<String, Object> params,
             SemesterScope timetable) {
-        List<TemplateReferenceIssue> issues = new ArrayList<>();
+        List<ConstraintReferenceIssue> issues = new ArrayList<>();
         for (String field : REFERENCE_FIELDS) {
             Long objectId = ConstraintSettings.longValue(params.get(field));
             if (objectId == null) {
@@ -1319,7 +1318,7 @@ public class ConstraintConfigService {
             if (resolved.problem() == null) {
                 continue;
             }
-            issues.add(new TemplateReferenceIssue(
+            issues.add(new ConstraintReferenceIssue(
                     type.name(),
                     type.getDisplayName(),
                     position == null ? 0 : position,
