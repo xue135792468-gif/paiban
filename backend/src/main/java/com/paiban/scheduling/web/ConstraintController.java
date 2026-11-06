@@ -1,6 +1,7 @@
 package com.paiban.scheduling.web;
 
 import com.paiban.identity.domain.Permissions;
+import com.paiban.scheduling.service.ConstraintCopyService;
 import com.paiban.scheduling.service.ConstraintService;
 import com.paiban.scheduling.service.RuleImpactService;
 import com.paiban.scheduling.service.RuleLifecycleService;
@@ -10,6 +11,8 @@ import com.paiban.scheduling.web.ConstraintDtos.ConstraintPreviewRequest;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintSaveAuditDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintStateDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintTypeDto;
+import com.paiban.scheduling.web.ConstraintDtos.CopyRulesRequest;
+import com.paiban.scheduling.web.ConstraintDtos.CopyRulesResult;
 import com.paiban.scheduling.web.ConstraintDtos.RuleImpactDto;
 import com.paiban.scheduling.web.ConstraintDtos.RuleImpactRequest;
 import com.paiban.scheduling.web.ConstraintDtos.SaveConstraintsRequest;
@@ -33,12 +36,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class ConstraintController {
 
     private final ConstraintService service;
+    private final ConstraintCopyService copyService;
     private final RuleImpactService impact;
     private final RuleLifecycleService rules;
 
     public ConstraintController(
-            ConstraintService service, RuleImpactService impact, RuleLifecycleService rules) {
+            ConstraintService service, ConstraintCopyService copyService,
+            RuleImpactService impact, RuleLifecycleService rules) {
         this.service = service;
+        this.copyService = copyService;
         this.impact = impact;
         this.rules = rules;
     }
@@ -78,6 +84,19 @@ public class ConstraintController {
                 semesterId, request.configs() == null ? List.of() : request.configs(), baseVersion,
                 request.runId(), request.decisions(),
                 authentication == null ? null : authentication.getName());
+    }
+
+    /**
+     * Copies one semester's whole non-system rule set onto another (ticket 08). A
+     * {@code baseVersion} that no longer matches the target returns 409. Cards whose
+     * references cannot be resolved are copied paused and reported in {@code issues}.
+     */
+    @PostMapping("/constraints/copy-rules")
+    @PreAuthorize("hasAuthority('" + Permissions.CONSTRAINT_MANAGE + "')")
+    public CopyRulesResult copyRules(
+            @Valid @RequestBody CopyRulesRequest request, Authentication authentication) {
+        return copyService.copy(
+                request, authentication == null ? null : authentication.getName());
     }
 
     /**

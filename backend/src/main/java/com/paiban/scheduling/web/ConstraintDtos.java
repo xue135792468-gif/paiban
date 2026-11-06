@@ -148,4 +148,23 @@ public final class ConstraintDtos {
     public record ConstraintReferenceIssue(String type, String typeName, int position, String field,
                                            String fieldLabel, Long objectId, String name,
                                            String reason) {}
+
+    /**
+     * Copy the whole non-system rule set of one semester onto another (ticket 08).
+     * {@code baseVersion} is the target semester's version the page read; a mismatch
+     * returns 409 instead of overwriting a newer configuration.
+     */
+    public record CopyRulesRequest(Long sourceSemesterId, Long targetSemesterId,
+                                   Long baseVersion) {}
+
+    /**
+     * One copied card that could not be used in the target semester, with the reason in
+     * plain Chinese. {@code groupKey} is the card's new key in the target semester, so
+     * the page can point at the exact card it must fix or delete.
+     */
+    public record CopyRuleIssue(String type, String typeName, String groupKey, String reason) {}
+
+    /** {@code copiedCards} counts every card written; {@code disabledCards} the unusable ones. */
+    public record CopyRulesResult(int copiedCards, int disabledCards,
+                                  List<CopyRuleIssue> issues) {}
 }

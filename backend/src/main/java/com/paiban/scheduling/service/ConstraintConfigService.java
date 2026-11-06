@@ -766,7 +766,7 @@ public class ConstraintConfigService {
         ReferenceIndex references = referencesOf(planned.stream()
                 .flatMap(plan -> plan.entries().stream())
                 .map(PlannedEntry::params)
-                .toList());
+                .toList(), resolved);
         for (PlannedConfig plan : planned) {
             String type = plan.type().name();
             plannedTypes.add(type);
@@ -1728,7 +1728,7 @@ public class ConstraintConfigService {
             paramsRows.add(paramsFromJson(entry.getParamsJson()));
         }
         // One batch lookup for the whole card instead of three queries per row.
-        ReferenceIndex references = referencesOf(paramsRows);
+        ReferenceIndex references = referencesOf(paramsRows, config.getSemesterId());
         List<ConstraintEntryDto> dtos = new ArrayList<>();
         for (int index = 0; index < sorted.size(); index++) {
             ConstraintEntry entry = sorted.get(index);
@@ -1747,7 +1747,8 @@ public class ConstraintConfigService {
             if (!legacy.isEmpty()) {
                 dtos.add(new ConstraintEntryDto(
                         null, legacy, true, null, null, null,
-                        invalidReferencesOf(legacy, referencesOf(List.of(legacy)))));
+                        invalidReferencesOf(
+                                legacy, referencesOf(List.of(legacy), config.getSemesterId()))));
             }
         }
         return dtos;
@@ -1791,7 +1792,36 @@ public class ConstraintConfigService {
             }
         }
         addGroupIssues(reasons, params, references);
+        addSlotIssues(reasons, params, references);
         return reasons;
+    }
+
+    /**
+     * A weekday/period pair the semester's timetable no longer has (for example a rule
+     * copied from a semester with more periods). Only the copy path can produce such a
+     * row — a normal save refuses it before writing — so this is purely the diagnostic
+     * the rule page needs to explain why a copied card is paused. A row that targets a
+     * time group is skipped: the group's members carry the slots.
+     */
+    private void addSlotIssues(
+            List<String> reasons, Map<String, Object> params, ReferenceIndex references) {
+        if (hasValue(params.get("timeGroupId"))) {
+            return;
+        }
+        Integer day = ConstraintSettings.intValue(params.get("dayOfWeek"));
+        if (day == null) {
+            return;
+        }
+        Integer periodNo = ConstraintSettings.intValue(params.get("periodNo"));
+        if (periodNo != null) {
+            if (!references.slots().contains(day + "-" + periodNo)) {
+                reasons.add("星期" + day + "第" + periodNo + "节在本学期作息中不存在");
+            }
+            return;
+        }
+        if (references.slots().stream().noneMatch(slot -> slot.startsWith(day + "-"))) {
+            reasons.add("星期" + day + "在本学期作息中不存在");
+        }
     }
 
     /**
@@ -1827,11 +1857,13 @@ public class ConstraintConfigService {
     }
 
     /** The referenced rows of a batch of rule parameters, loaded in a fixed number of queries. */
-    private ReferenceIndex referencesOf(List<Map<String, Object>> paramRows) {
+    private ReferenceIndex referencesOf(
+            List<Map<String, Object>> paramRows, Long semesterId) {
         Set<Long> teacherIds = new LinkedHashSet<>();
         Set<Long> classIds = new LinkedHashSet<>();
         Set<Long> courseIds = new LinkedHashSet<>();
         Set<Long> groupIds = new LinkedHashSet<>();
+        boolean needsSlots = false;
         for (Map<String, Object> params : paramRows) {
             if (params == null || params.isEmpty()) {
                 continue;
@@ -1854,6 +1886,10 @@ public class ConstraintConfigService {
                     groupIds.add(groupId);
                 }
             }
+            if (!needsSlots && params.get("dayOfWeek") != null
+                    && !hasValue(params.get("timeGroupId"))) {
+                needsSlots = true;
+            }
         }
         Map<Long, Teacher> teacherById = new HashMap<>();
         if (!teacherIds.isEmpty()) {
@@ -1871,14 +1907,24 @@ public class ConstraintConfigService {
         if (!groupIds.isEmpty()) {
             ruleGroups.findAllById(groupIds).forEach(row -> groupById.put(row.getId(), row));
         }
-        return new ReferenceIndex(teacherById, classById, courseById, groupById);
+        // Slot coordinates are also diagnosed here: a rule copied from a semester with
+        // more periods points at a slot this semester does not have (ticket 08). The
+        // query is skipped for batches without any weekday parameter.
+        Set<String> slots = new LinkedHashSet<>();
+        if (semesterId != null && needsSlots) {
+            for (Period period : periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(semesterId)) {
+                slots.add(period.getDayOfWeek() + "-" + period.getPeriodNo());
+            }
+        }
+        return new ReferenceIndex(teacherById, classById, courseById, groupById, slots);
     }
 
     private record ReferenceIndex(
             Map<Long, Teacher> teachers,
             Map<Long, AdminClass> classes,
             Map<Long, Course> courses,
-            Map<Long, RuleGroup> groups) {}
+            Map<Long, RuleGroup> groups,
+            Set<String> slots) {}
 
     private boolean isEntryBacked(String typeCode) {
         ConstraintType type = typeOrNull(typeCode);
