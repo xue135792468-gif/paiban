@@ -724,8 +724,16 @@ export function sourceCard(page: Page, lessonDate: string): Locator {
   return page.getByTestId(`workbench-cell-${lessonDate}-1`).getByTestId('pick-lesson')
 }
 
-/** 真实鼠标管线：按住来源卡 → 移到目标格中心 → 松手（拖拽 spec 同节拍）。 */
-export async function dragCardToCell(page: Page, from: Locator, to: Locator): Promise<void> {
+/**
+ * 真实鼠标管线：按住来源卡 → 移到目标格中心 → 松手（拖拽 spec 同节拍）。
+ * `release: false` 停在「已移到目标格但还没松手」，给拖动中途的断言（票 17）用。
+ */
+export async function dragCardToCell(
+  page: Page,
+  from: Locator,
+  to: Locator,
+  options: { release?: boolean } = {},
+): Promise<void> {
   await from.scrollIntoViewIfNeeded()
   await to.scrollIntoViewIfNeeded()
   const fromBox = await from.boundingBox()
@@ -736,6 +744,7 @@ export async function dragCardToCell(page: Page, from: Locator, to: Locator): Pr
   await page.mouse.down()
   await page.waitForTimeout(50)
   await page.mouse.move(toBox!.x + toBox!.width / 2, toBox!.y + toBox!.height / 2, { steps: 10 })
+  if (options.release === false) return
   await page.mouse.up()
   await page.waitForTimeout(50)
 }

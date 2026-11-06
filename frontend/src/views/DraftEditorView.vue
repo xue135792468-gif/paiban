@@ -76,7 +76,7 @@
       <el-card shadow="never" class="grid-card">
         <DraftGrid
           :periods="detail?.periods ?? []"
-          :lessons="teacherSwap.gridLessons.value"
+          :lessons="dragClassView ? dragClassRows : teacherSwap.gridLessons.value"
           :courses="courses"
           :draggable="draftEditable && !selectionMode && !teacherSwap.active.value"
           :dragged-lesson-id="dragged?.id ?? null"
@@ -85,6 +85,8 @@
           :targets="dragTargets"
           :swap-targets="teacherSwap.active.value ? teacherSwap.targets.value : null"
           :show-class-name="viewMode === 'teacher'"
+          :drag-class-view="dragClassView"
+          :foreign-teacher-periods="foreignBusyPeriods"
           :blocked-periods="blockedPeriods"
           :conflict-lesson-ids="validation?.conflicts.map((item) => item.lessonId).filter((id) => id != null) ?? []"
           :locked-lesson-ids="lockedLessonIds"
@@ -223,6 +225,7 @@ import DraftEditorControls from '@/components/draft/DraftEditorControls.vue'
 import DraftTargetDialog from '@/components/draft/DraftTargetDialog.vue'
 import CyclePlanPanel from '@/components/draft/CyclePlanPanel.vue'
 import { courseColor } from '@/components/draft/colors'
+import { dragClassLessons, foreignTeacherPeriods } from '@/components/draft/dragClassView'
 import { useDraftAdjust } from '@/composables/useDraftAdjust'
 import { useDraftEditor } from '@/composables/useDraftEditor'
 import { useDraftDrop } from '@/composables/useDraftDrop'
@@ -340,6 +343,14 @@ const dragTargets = ref<Record<number, { available: boolean; conflicts: DraftCon
 const conflictVisible = ref(false)
 const cellConflicts = ref<DraftConflict[]>([])
 const targetVisible = ref(false)
+
+/** 票 17：教师视角拖起时，网格临时切成该课所属班的浅色课表；放下/取消自动还原。 */
+const dragClassView = computed(() => viewMode.value === 'teacher' && dragged.value != null)
+const dragClassSource = computed(() => (dragClassView.value ? dragged.value : null))
+const dragClassRows = computed(() => dragClassLessons(detail.value?.lessons ?? [], dragClassSource.value))
+const foreignBusyPeriods = computed(() =>
+  Object.fromEntries(foreignTeacherPeriods(detail.value?.lessons ?? [], dragClassSource.value)),
+)
 
 const lockedPeriodIds = computed(() =>
   (detail.value?.lessons ?? [])

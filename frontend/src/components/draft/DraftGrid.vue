@@ -1,7 +1,7 @@
 <template>
   <div
     class="grid"
-    :class="{ compact }"
+    :class="{ compact, 'drag-class-view': dragClassView }"
     :style="{ gridTemplateColumns: `96px repeat(${days.length}, minmax(${columnWidth}px, 1fr))` }"
   >
     <div class="corner">节次</div>
@@ -20,6 +20,7 @@
         :class="cellClass(day, row.periodNo)"
         :data-swap-state="swapStateAt(day, row.periodNo)?.status"
         :title="cellTitle(day, row.periodNo)"
+        :aria-label="foreignReasonAt(day, row.periodNo) || undefined"
         :aria-disabled="blockedReason(day, row.periodNo) ? 'true' : undefined"
         @dragover.prevent
         @dragenter.prevent
@@ -68,6 +69,9 @@
         </template>
         <div v-else-if="blockedReason(day, row.periodNo)" class="no-class">不上课</div>
         <div v-else class="empty-cell">—</div>
+        <div v-if="foreignReasonAt(day, row.periodNo)" class="foreign-busy-reason">
+          {{ foreignReasonAt(day, row.periodNo) }}
+        </div>
         <div v-if="blockedReason(day, row.periodNo) && lessonsAt(day, row.periodNo).length" class="blocked-conflict">
           占用了不上课时段，可将课程移走
         </div>
@@ -119,6 +123,13 @@ const props = withDefaults(
     swapTargets?: Record<number, SwapTargetState> | null
     /** Teacher view shows the administrative class on every card. */
     showClassName?: boolean
+    /**
+     * 票 17：教师视图拖动中临时切成该课所属班级的浅色课表，改的只是显示范围，
+     * 放下后仍走原有的 drop 流程。
+     */
+    dragClassView?: boolean
+    /** 票 17：该教师在其他班有课的节次（periodId → 原因），拖动时标灰显示。 */
+    foreignTeacherPeriods?: Record<number, string>
   }>(),
   {
     draggedLessonId: null,
@@ -132,6 +143,8 @@ const props = withDefaults(
     selectedLessonIds: () => [],
     swapTargets: null,
     showClassName: false,
+    dragClassView: false,
+    foreignTeacherPeriods: () => ({}),
   },
 )
 
@@ -252,11 +265,13 @@ function swapStateAt(day: number, periodNo: number): SwapTargetState | null {
 }
 
 function cellTitle(day: number, periodNo: number): string | undefined {
-  if (props.swapTargets != null) {
-    const state = swapStateAt(day, periodNo)
-    if (state) return state.reason
-  }
-  return blockedReason(day, periodNo) || undefined
+  // 票 17：「他班有课」只是提醒，落点依然合法，所以不能盖掉真实的目标/禁排原因。
+  const reason =
+    (props.swapTargets != null ? swapStateAt(day, periodNo)?.reason : '') ||
+    blockedReason(day, periodNo)
+  const foreign = foreignReasonAt(day, periodNo)
+  if (!reason) return foreign || undefined
+  return foreign ? `${reason}；${foreign}` : reason
 }
 
 function lessonMeta(lesson: DraftLesson) {
@@ -264,7 +279,28 @@ function lessonMeta(lesson: DraftLesson) {
   return `${lesson.className} · ${lesson.teacherName ?? ''}`
 }
 
+/** 票 17：拖动中该教师在他班有课的节次给出原因，用于标灰、悬停与 aria。 */
+const foreignReasonByCell = computed(() => {
+  const map: Record<string, string> = {}
+  if (!props.dragClassView) return map
+  props.periods.forEach((period) => {
+    const reason = props.foreignTeacherPeriods[period.id]
+    if (reason) map[`${period.dayOfWeek}-${period.periodNo}`] = reason
+  })
+  return map
+})
+
+function foreignReasonAt(day: number, periodNo: number): string {
+  return foreignReasonByCell.value[`${day}-${periodNo}`] ?? ''
+}
+
 function cellClass(day: number, periodNo: number) {
+  const base = targetClass(day, periodNo)
+  const foreign = foreignReasonAt(day, periodNo) ? 'foreign-busy' : ''
+  return [base, foreign].filter(Boolean).join(' ')
+}
+
+function targetClass(day: number, periodNo: number) {
   if (props.swapTargets != null) {
     const state = swapStateAt(day, periodNo)
     switch (state?.status) {
@@ -486,5 +522,21 @@ function onDrop(day: number, periodNo: number) {
   font-size: 11px;
   margin-top: 3px;
   color: #4b5563;
+}
+/* 票 17：教师视图拖起时整格铺一层浅色，像「该班的班级课表」；
+   已有目标高亮或他班占用的格子保留自己的底色，不抢语义。 */
+.grid.drag-class-view .cell:not(.valid-target):not(.invalid-target):not(.blocked-slot):not(.foreign-busy) {
+  background: #f7f9fc;
+}
+/* 票 17：他班有课只是提醒（该格本班这一节仍可换/可放），所以不设禁用光标。 */
+.cell.foreign-busy {
+  background: #eceef2;
+  outline: 1px dashed #b9bfca inset;
+  cursor: default;
+}
+.foreign-busy-reason {
+  font-size: 11px;
+  line-height: 1.3;
+  color: #6b7280;
 }
 </style>

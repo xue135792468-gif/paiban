@@ -304,4 +304,35 @@ describe('DraftGrid', () => {
     expect(foreignCard.classes()).toContain('swap-foreign')
     expect(foreignCard.attributes('title')).toBe('不同班，只能同班换课')
   })
+
+  it('票 17：拖起时切成该班浅色课表，他班占用节次标灰并写明原因', () => {
+    const wrapper = mountGrid({
+      periods: [period(1, 1), period(1, 2)],
+      lessons: [lesson(1, 1, 1, { className: '高一1班', teacherName: '王老师' })],
+      showClassName: true,
+      dragClassView: true,
+      foreignTeacherPeriods: { 102: '王老师在高一2班有课' },
+    })
+
+    expect(wrapper.get('.grid').classes()).toContain('drag-class-view')
+
+    const cells = wrapper.findAll('.cell')
+    expect(cells[0].classes()).not.toContain('foreign-busy')
+    expect(cells[1].classes()).toContain('foreign-busy')
+    expect(cells[1].attributes('title')).toBe('王老师在高一2班有课')
+    expect(cells[1].attributes('aria-label')).toBe('王老师在高一2班有课')
+    expect(cells[1].text()).toContain('王老师在高一2班有课')
+  })
+
+  it('票 17：非拖动状态没有浅色课表标记，也不显示他班占用', () => {
+    const wrapper = mountGrid({
+      periods: [period(1, 1), period(1, 2)],
+      lessons: [lesson(1, 1, 1)],
+      foreignTeacherPeriods: { 102: '王老师在高一2班有课' },
+    })
+
+    expect(wrapper.get('.grid').classes()).not.toContain('drag-class-view')
+    expect(wrapper.findAll('.cell')[1].classes()).not.toContain('foreign-busy')
+    expect(wrapper.text()).not.toContain('王老师在高一2班有课')
+  })
 })
