@@ -38,7 +38,7 @@
 - [x] 保存成功 ⇒ `constraint-unsaved` 消失；保存失败/409 ⇒ 标记保留且冲突条出现（既有行为不回归）
 - [x] 两人并发保存、放弃本地修改（take-theirs / keep-mine）两条路径都不回写旧内容
 - [x] `useConstraintSave.spec.ts` / `useConstraintDraft.spec.ts` 相应断言补齐（若存在）
-- [x] `scripts/verify.sh --full` 分层结果 + CI 四 job 全绿（见实现记录）
+- [x] `scripts/verify.sh --full` 退出码 0 + CI 四 job 全绿（见实现记录）
 - [x] 修复提交里写明「根因 = 保存成功未确定性清 dirty，依赖 reload 间接副作用」
 
 ## 范围外
@@ -68,10 +68,11 @@
 - 全量前端单测：**96 文件 / 693 用例**（worker + 门禁日志 `t18-vf2.log` 一致）
 - `npx vue-tsc --noEmit` EXIT=0；4 个仓库脚本（SFC/local-dates/e2e-helpers/module-boundaries）全 0
 - `constraints-concurrent-save.spec.ts` 单跑 + **连跑 3 次全 EXIT=0**（每次 2 passed），无 flake
-- `scripts/verify.sh --full` 分层结果（日志 `t18-vf2.log`）：后端 `BUILD SUCCESS`、前端 96/693、8 项仓库检查全绿；**Playwright 段因本机反复出现端口 28080/25173 残留（多次中断留下的孤儿 webServer）未能完整跑完**，本机三次尝试均未取得 `verify: ok` 的 exit 0。按 AGENTS「与 CI 同一路径」以 **CI 四 job 全绿** 为最终门禁证据（见下）。
+- **`scripts/verify.sh --full` 退出码 0**（日志 `t18-verify-clean.log`，终行 `==> verify: ok`）：后端 `BUILD SUCCESS`、前端 96 文件/693 用例、Playwright **173 passed (19.9m)**、8 项仓库检查全绿。此前几次尝试因反复中断留下孤儿 webServer 占用 28080/25173 而在 Playwright 启动阶段失败；清理干净后单次完整通过。
+- **CI `42238867017` 四 job 全绿**（backend 含真 PostgreSQL、e2e 全量、frontend、deploy-scripts）。本机全量门禁与 CI 双重通过。
 - 修复后 `CODING_STANDARDS.md` 新增一条护栏：「加重试前先分清『状态没清』和『状态清得晚』；`count()` 恒不为 0 时必须修业务链路并配单元级回归，`toPass` 只对晚一拍有效」。
 
 ### 边界 / 遗留
 - 未连生产、未部署（票 18 是前端逻辑修复，需后续单独部署 frontend）。
 - 另案（Hark 明列、本票未碰）：后端静默忽略未知 `teacherIds`、`GET /api/scheduling-jobs/current` 500。
-- 本机门禁端口残留已用 `taskkill` 清理干净（28080/25173 无 LISTENING、无孤儿 `test:e2e` 进程）。
+- 本机门禁端口残留已用 `taskkill` 清理干净（28080/25173 无 LISTENING、无孤儿 `test:e2e` 进程）；清理后的单次完整门禁 `verify.sh --full` 退出码 0。
