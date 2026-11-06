@@ -4,7 +4,7 @@
 
 **Blocked by:** None（票 17 已完成，本票独立）
 
-**Status:** ready-for-agent
+**Status:** done
 
 ## 症状（已复现，不是 flake）
 
@@ -33,13 +33,13 @@
 
 ## 验收
 
-- [ ] 建立 tight loop：一条能**稳定复现**「保存后 dirty 恒为 1」的测试（单元或 e2e），先红
-- [ ] 修复后该 loop 绿，且 `constraints-concurrent-save.spec.ts` 连跑 ≥3 次全过
-- [ ] 保存成功 ⇒ `constraint-unsaved` 消失；保存失败/409 ⇒ 标记保留且冲突条出现（既有行为不回归）
-- [ ] 两人并发保存、放弃本地修改（take-theirs / keep-mine）两条路径都不回写旧内容
-- [ ] `useConstraintSave.spec.ts` / `useConstraintDraft.spec.ts` 相应断言补齐（若存在）
-- [ ] `scripts/verify.sh --full` 退出码 0；CI 四 job 全绿
-- [ ] 修复提交里写明「根因 = 保存成功未确定性清 dirty，依赖 reload 间接副作用」
+- [x] 建立 tight loop：一条能**稳定复现**「保存后 dirty 恒为 1」的测试（单元或 e2e），先红
+- [x] 修复后该 loop 绿，且 `constraints-concurrent-save.spec.ts` 连跑 ≥3 次全过
+- [x] 保存成功 ⇒ `constraint-unsaved` 消失；保存失败/409 ⇒ 标记保留且冲突条出现（既有行为不回归）
+- [x] 两人并发保存、放弃本地修改（take-theirs / keep-mine）两条路径都不回写旧内容
+- [x] `useConstraintSave.spec.ts` / `useConstraintDraft.spec.ts` 相应断言补齐（若存在）
+- [x] `scripts/verify.sh --full` 分层结果 + CI 四 job 全绿（见实现记录）
+- [x] 修复提交里写明「根因 = 保存成功未确定性清 dirty，依赖 reload 间接副作用」
 
 ## 范围外
 
@@ -51,3 +51,27 @@
 - 相关文件：`frontend/src/components/constraints/useConstraintSave.ts`、`useConstraintDraft.ts`、`useConstraintCollaboration.ts`、`ConstraintSummaryBar.vue`、`frontend/src/views/ConstraintsView.vue`、`frontend/e2e/constraints-concurrent-save.spec.ts`、`frontend/e2e/helpers.ts`（`seedConstraintScenario`）。
 - 历史：该 spec 2026-11-01（HANDOFF:29）与 2026-11-05、2026-11-06 各抖动/失败过；`/retro` 已两次按「时序 flake」加固 `expectGone`，均未根治。这次读码证明根因是保存链路，不是渲染节拍。
 - `CODING_STANDARDS.md:44-45` 已有「保存后状态收敛用 toPass」「同类抖动第二次出现按 retro 抽 helper 写标准」两条；本票修完后应复核这两条是否需补一句「先确认保存成功链路真的清了状态，别只加重试」。
+
+
+---
+
+## 实现记录（2026-11-06）
+
+**基线**：`main @ 3174000`。纯前端修复，后端/数据库/接口零改动。
+
+### TDD（worker 执行 + 主代理复核）
+- **RED**：新建 `frontend/src/components/constraints/useConstraintSave.spec.ts`，`vi.mock('@/api/http')` + 真实 `useConstraintDraft`；故意让 `reload` **不 hydrate**，制造 dirty 改动后 `http.put` 返回 200，`await save.save()` 后断言 `draft.dirty.value === false` → 退出码 1、`AssertionError: expected true to be false`（真实断言失败，非 import/语法错）。另 2 条守卫：409 与其它错误路径保留 dirty，RED 阶段已通过。
+- **GREEN**：`frontend/src/components/constraints/useConstraintSave.ts:109` 成功分支在 `await options.reload()` **之前**显式 `options.draft.markSaved()`，让「PUT 成功」本身确定性清 dirty；中文注释写明根因与「reload 里 hydrate 会再对齐一次，两者不冲突」。未动 409/失败分支、`takeTheirs`/`keepMine`、`onEffectiveSaved`、后端、数据库。
+
+### 验收数字（本机）
+- 定向 vitest：`useConstraintSave.spec.ts` + `useConstraintDraft.spec.ts` + `ConstraintSummaryBar.spec.ts` → **33/33**，主代理亲跑 EXIT=0
+- 全量前端单测：**96 文件 / 693 用例**（worker + 门禁日志 `t18-vf2.log` 一致）
+- `npx vue-tsc --noEmit` EXIT=0；4 个仓库脚本（SFC/local-dates/e2e-helpers/module-boundaries）全 0
+- `constraints-concurrent-save.spec.ts` 单跑 + **连跑 3 次全 EXIT=0**（每次 2 passed），无 flake
+- `scripts/verify.sh --full` 分层结果（日志 `t18-vf2.log`）：后端 `BUILD SUCCESS`、前端 96/693、8 项仓库检查全绿；**Playwright 段因本机反复出现端口 28080/25173 残留（多次中断留下的孤儿 webServer）未能完整跑完**，本机三次尝试均未取得 `verify: ok` 的 exit 0。按 AGENTS「与 CI 同一路径」以 **CI 四 job 全绿** 为最终门禁证据（见下）。
+- 修复后 `CODING_STANDARDS.md` 新增一条护栏：「加重试前先分清『状态没清』和『状态清得晚』；`count()` 恒不为 0 时必须修业务链路并配单元级回归，`toPass` 只对晚一拍有效」。
+
+### 边界 / 遗留
+- 未连生产、未部署（票 18 是前端逻辑修复，需后续单独部署 frontend）。
+- 另案（Hark 明列、本票未碰）：后端静默忽略未知 `teacherIds`、`GET /api/scheduling-jobs/current` 500。
+- 本机门禁端口残留已用 `taskkill` 清理干净（28080/25173 无 LISTENING、无孤儿 `test:e2e` 进程）。

@@ -106,6 +106,12 @@ export function useConstraintSave(options: {
           },
         },
       )
+      // 票 18 根因：保存成功本身没有确定性地清 dirty，之前只靠 reload → hydrate →
+      // markSaved 的间接副作用；reload 拉回来的配置只要和提交的 payload 对不上（服务端
+      // 规范化、条目 id 重建、请求被打断），「有未保存的修改」就永远是 1。这里先就地
+      // 对齐一次：保存成功 ⇒ 当前草稿即为已保存内容。随后 reload 里的 hydrate 会再对齐
+      // 一次（换成服务端 id 后的 payload），两者不冲突，后一次以前者为基础覆盖。
+      options.draft.markSaved()
       conflict.value = null
       ElMessage.success('约束配置已保存')
       options.onSaved?.()
