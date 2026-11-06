@@ -1,6 +1,6 @@
 # rule-groups 跨票契约
 
-Status: ready-for-agent
+Status: done（票 01–08、03b 已按本契约实现）
 Date: 2026-11-07
 适用：票 01–08、03b。票面与本文件冲突时，以本文件为准，并在该票「实现说明」里记录偏差。
 

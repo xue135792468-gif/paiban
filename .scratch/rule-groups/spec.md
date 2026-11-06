@@ -1,6 +1,6 @@
 # 排课规则页重做 + 自定义分组 + 沿用往期规则
 
-Status: ready-for-agent
+Status: done（实现与本地全量门禁已完成；真实 PostgreSQL 迁移与部署待 CI/发布）
 Feature: rule-groups
 Date: 2026-11-07
 来源：产品所有者与 Hark 的 grill（2026-11-07），逐题确认；未回答题按推荐处理。
