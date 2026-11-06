@@ -68,8 +68,8 @@ export function duplicateMessages(row: TypeDraft): Record<number, string[]> {
  * blank card carries nothing (or is the explicit "every course" entry) and is
  * silently skipped instead of nagging.
  *
- * Threshold types are not handled here: they have their own two-piece editor, whose
- * warnings live in `thresholdModel.thresholdWarnings`.
+ * Threshold types are not handled here: their own editor validates the global
+ * default and its per-object exceptions.
  */
 export function missingParamWarnings(rows: TypeDraft[]): string[] {
   const warnings: string[] = []

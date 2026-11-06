@@ -125,7 +125,7 @@ test('无学期时引导去学期页', async ({ page }) => {
     { path: '/data/grades', href: '/help/foundation#grades' },
     { path: '/data/classes', href: '/help/foundation#classes' },
     { path: '/data/assignments', href: '/help/scheduling#assignments' },
-    { path: '/rules/advanced', href: '/help/scheduling#constraints' },
+    { path: '/rules', href: '/help/scheduling#constraints' },
     { path: '/workbench', href: '/help/scheduling#run' },
   ]
 
@@ -141,7 +141,7 @@ test('无学期时引导去学期页', async ({ page }) => {
   }
 })
 
-test('排课草稿、排课历史与约束列表为空时显示引导', async ({ page }) => {
+test('排课草稿、排课历史与规则列表为空时显示引导', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
   await stubSemester(page)
   await stubEmptyFoundation(page)
@@ -149,6 +149,7 @@ test('排课草稿、排课历史与约束列表为空时显示引导', async ({
   await stubJson(page, '**/api/scheduling-jobs**', [])
   await stubJson(page, '**/api/constraint-types', [])
   await stubJson(page, '**/api/constraints**', [])
+  await stubJson(page, '**/api/semesters/*/periods', [])
 
   await page.goto('/workbench')
   for (const item of [
@@ -165,12 +166,12 @@ test('排课草稿、排课历史与约束列表为空时显示引导', async ({
     )
   }
 
-  await page.goto('/rules/advanced')
-  const constraints = page
+  await page.goto('/rules')
+  const rulesGuide = page
     .locator('[data-testid="empty-state-guide"]:visible')
-    .filter({ has: page.getByRole('heading', { name: '还没有可配置的约束' }) })
-  await expect(constraints).toHaveCount(1)
-  await expect(constraints.getByRole('link', { name: '查看帮助文档' })).toHaveAttribute(
+    .filter({ has: page.getByRole('heading', { name: '还没有规则' }) })
+  await expect(rulesGuide).toHaveCount(1)
+  await expect(rulesGuide.getByRole('link', { name: '查看帮助文档' })).toHaveAttribute(
     'href',
     '/help/scheduling#constraints',
   )

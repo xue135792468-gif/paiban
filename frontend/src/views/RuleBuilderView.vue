@@ -8,12 +8,13 @@
           保存后自动排课、草稿校验和调代都按同一份规则执行。
         </p>
       </div>
-      <div class="head-actions">
-        <router-link to="/rules/advanced" class="advanced-link" data-testid="rule-advanced-link">
-          按类型配置
-        </router-link>
-      </div>
     </header>
+
+    <section class="system-baseline" data-testid="rule-system-baseline">
+      <div class="baseline-title">系统自带，不能关</div>
+      <p>一个老师同一节只能在一个班上课</p>
+      <p>一个班同一节只能上一门课</p>
+    </section>
 
     <EmptyStateGuide
       v-if="!loading && semesters.length === 0"
@@ -126,22 +127,6 @@
       </el-card>
 
       <footer class="footer">
-        <div class="notes">
-          <p v-if="otherCount > 0" class="other-note" data-testid="rule-other-note">
-            还有 {{ otherCount }} 条其它类型规则，在
-            <router-link to="/rules/advanced">「按类型配置」</router-link>
-            里管理。
-          </p>
-          <p
-            v-if="unrepresentedCount > 0"
-            class="other-note"
-            data-testid="rule-unrepresented-note"
-          >
-            还有 {{ unrepresentedCount }} 条本页未覆盖的规则（如跨多天或指定班级），在
-            <router-link to="/rules/advanced">「按类型配置」</router-link>
-            里管理。
-          </p>
-        </div>
         <el-button
           type="primary"
           :loading="saving"
@@ -175,14 +160,11 @@ import {
   applyCardInputs,
   cardConfigs,
   cardsFromState,
-  catalogueTypeCodes,
   configsFromCards,
   duplicateCard,
   entryBackedTypeCodes,
   isSwitchRule,
-  otherRuleCount,
   toggleCard,
-  unrepresentedGroupCount,
   type CardSentenceInput,
   type PeriodOption,
   type RuleCard,
@@ -221,7 +203,6 @@ const configs = ref<ConstraintConfigDto[]>([])
 const baseVersion = ref(0)
 const cards = ref<RuleCard[]>([])
 const entryBackedTypes = ref<Set<string>>(new Set())
-const catalogueCodes = ref<Set<string>>(new Set())
 const loadedSignature = ref('')
 /** Cards as they were saved, so a delete only refuses this card's own edits. */
 const loadedCards = ref<RuleCard[]>([])
@@ -260,15 +241,6 @@ const ruleNames = computed<RuleNames>(() => {
   }
 })
 const dirty = computed(() => cardsSignature(cards.value) !== loadedSignature.value)
-const otherCount = computed(() =>
-  otherRuleCount(
-    configs.value,
-    catalogueCodes.value.size > 0 ? catalogueCodes.value : undefined,
-  ),
-)
-const unrepresentedCount = computed(() =>
-  unrepresentedGroupCount(configs.value, { allClassIds: classIds.value }),
-)
 const editingCard = computed(
   () => cards.value.find((card) => card.key === editingKey.value) ?? null,
 )
@@ -320,7 +292,6 @@ async function loadCatalogue() {
   const { data } = await http.get<ConstraintTypeDef[]>('/constraint-types')
   const types = data ?? []
   entryBackedTypes.value = entryBackedTypeCodes(types)
-  catalogueCodes.value = catalogueTypeCodes(types)
 }
 
 async function loadState() {
@@ -534,9 +505,25 @@ h2 {
   font-size: 13px;
 }
 
-.advanced-link {
-  color: var(--el-color-primary);
+.system-baseline {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border-radius: var(--paiban-radius, 8px);
+  background: var(--el-fill-color-light, #f5f7fa);
+  color: var(--paiban-muted);
   font-size: 13px;
+  line-height: 1.7;
+}
+
+.baseline-title {
+  margin-bottom: 2px;
+  color: var(--el-text-color-primary, #303133);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.system-baseline p {
+  margin: 0;
 }
 
 .toolbar {
@@ -577,15 +564,5 @@ h2 {
   justify-content: flex-end;
   gap: 16px;
   margin-top: 14px;
-}
-
-.notes {
-  flex: 1 1 auto;
-}
-
-.other-note {
-  margin: 0 0 4px;
-  color: var(--paiban-muted);
-  font-size: 12px;
 }
 </style>

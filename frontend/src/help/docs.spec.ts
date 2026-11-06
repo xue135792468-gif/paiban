@@ -59,7 +59,6 @@ describe('HELP_DOCS', () => {
       '/workbench/drafts',
       '/substitution',
       '/rules',
-      '/rules/advanced',
       '/data/semesters',
       '/data/grades',
       '/data/classes',

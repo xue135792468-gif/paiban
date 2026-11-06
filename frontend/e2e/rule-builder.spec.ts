@@ -220,7 +220,8 @@ test.describe('排课规则：句子积木', () => {
     await uiLogin(page, 'admin', 'admin123')
     await page.goto('/rules')
     await expect(page.getByTestId('rule-card')).toHaveCount(2)
-    await expect(page.getByTestId('rule-other-note')).toContainText('1 条其它类型规则')
+    // 两条系统底线固定置顶，不再有「其它类型规则在高级页」的提示。
+    await expect(page.getByTestId('rule-system-baseline')).toBeVisible()
 
     const schoolCard = page
       .getByTestId('rule-card')
@@ -286,11 +287,6 @@ test.describe('排课规则：句子积木', () => {
     expect(
       saved.configs.some((config: { type: string }) => config.type === 'TEACHER_CONFLICT'),
     ).toBe(true)
-
-    await page.goto('/rules/advanced')
-    await expect(page.getByTestId('constraint-nav')).toBeVisible()
-    // 票 15 退役 8 个枚举（含 SPORT_NOT_FIRST_AFTERNOON）后，约束目录共 18 类。
-    await expect(page.getByTestId('constraint-nav-item')).toHaveCount(18)
   })
 
   test('创建数量型、形态型与预设规则，刷新后仍在', async ({ page }) => {

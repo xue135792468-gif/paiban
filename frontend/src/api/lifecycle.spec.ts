@@ -27,7 +27,6 @@ function row(overrides: Partial<RecentDeletion> = {}): RecentDeletion {
 describe('lifecycle: extended entity labels', () => {
   it('names every ticket-04 entity family in Chinese', () => {
     expect(LIFECYCLE_ENTITY_LABEL.constraint_rule).toBe('排课规则')
-    expect(LIFECYCLE_ENTITY_LABEL.constraint_template).toBe('规则模板')
     expect(LIFECYCLE_ENTITY_LABEL.timetable_draft).toBe('课表草稿')
     expect(LIFECYCLE_ENTITY_LABEL.ai_provider).toBe('AI 供应商')
     expect(LIFECYCLE_ENTITY_LABEL.ai_model).toBe('AI 模型')

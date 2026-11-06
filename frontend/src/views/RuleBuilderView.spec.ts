@@ -94,7 +94,6 @@ async function mountView(): Promise<VueWrapper> {
     history: createMemoryHistory(),
     routes: [
       { path: '/rules', component: { template: '<div />' } },
-      { path: '/rules/advanced', component: { template: '<div />' } },
       { path: '/:pathMatch(.*)*', component: { template: '<div />' } },
     ],
   })
@@ -109,14 +108,23 @@ async function mountView(): Promise<VueWrapper> {
 }
 
 describe('RuleBuilderView: grouped list, search and impact', () => {
-  it('groups cards by 对谁 and keeps the other-type note', async () => {
+  it('groups cards by 对谁 and keeps the system bottom lines on top', async () => {
     const wrapper = await mountView()
     expect(wrapper.find('[data-testid="rule-group-SCHOOL"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="rule-group-CLASS"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="rule-group-TEACHER"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="rule-group-COURSE"]').exists()).toBe(true)
     expect(wrapper.findAll('[data-testid="rule-card"]')).toHaveLength(4)
-    expect(wrapper.find('[data-testid="rule-other-note"]').text()).toContain('1 条其它类型规则')
+
+    const baseline = wrapper.find('[data-testid="rule-system-baseline"]')
+    expect(baseline.exists()).toBe(true)
+    expect(baseline.text()).toContain('系统自带，不能关')
+    expect(baseline.text()).toContain('一个老师同一节只能在一个班上课')
+    expect(baseline.text()).toContain('一个班同一节只能上一门课')
+    // 底线是固定文案，不能关闭、删除或编辑。
+    expect(baseline.findAll('button')).toHaveLength(0)
+    expect(baseline.html()).not.toContain('rule-delete')
+    expect(baseline.html()).not.toContain('rule-toggle')
     wrapper.unmount()
   })
 
