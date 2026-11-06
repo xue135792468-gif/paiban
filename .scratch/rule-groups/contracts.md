@@ -35,15 +35,16 @@ Date: 2026-11-07
 ```sql
 CHECK (group_type IN ('TEACHER','COURSE','TIME'))
 CHECK ((group_type = 'TIME') = (semester_id IS NOT NULL))
--- 教师/课程组：同一类型内全局唯一
-CREATE UNIQUE INDEX uq_rule_group_global_name
-  ON rule_group (group_type, name)
-  WHERE semester_id IS NULL AND deleted_at IS NULL;
--- 时间组：同一学期内唯一
-CREATE UNIQUE INDEX uq_rule_group_semester_name
-  ON rule_group (semester_id, group_type, name)
-  WHERE semester_id IS NOT NULL AND deleted_at IS NULL;
 ```
+
+唯一性用**可移植的 `live_key`**，不用 PostgreSQL 部分唯一索引（H2 2.3 不支持 `CREATE UNIQUE INDEX ... WHERE`，本地测试会直接失败）：
+
+- `live_key VARCHAR(160) NULL`，服务层维护：
+  - 教师/课程组：`TEACHER:<name>` / `COURSE:<name>`；
+  - 时间组：`TIME:<semesterId>:<name>`；
+  - 软删除时置 `NULL`，恢复时重算（若同名已被新组占用则拒绝恢复并提示）。
+- `CREATE UNIQUE INDEX uq_rule_group_live_key ON rule_group (live_key)`。
+- 这样只约束“活着的组”，删除后可立即建同名新组，且 H2/PostgreSQL 行为一致。
 
 ### 1.2 `rule_group_member`
 
@@ -57,11 +58,14 @@ CREATE UNIQUE INDEX uq_rule_group_semester_name
 
 约束：三选一（`teacher_id` / `course_id` / `day_of_week + period_no` 恰好一组非空）；组类型与成员类型必须一致（服务层校验）。
 
-```sql
-UNIQUE (group_id, teacher_id)  -- teacher_id 非空时
-UNIQUE (group_id, course_id)   -- course_id 非空时
-UNIQUE (group_id, day_of_week, period_no) -- 时间组成员
-```
+同样不用部分索引，改用可移植的 `member_key VARCHAR(48) NOT NULL`：
+
+- 教师成员：`T:<teacherId>`；
+- 课程成员：`C:<courseId>`；
+- 时间成员：`S:<dayOfWeek>-<periodNo>`；
+- `CREATE UNIQUE INDEX uq_rule_group_member_key ON rule_group_member (group_id, member_key)`。
+
+`member_key` 由服务层写入；更新成员时整体替换，重复成员在服务层去重。
 
 **为什么时间组不用 `period_id`**：作息保存会删除被移除的课节、保留仍存在的课节；跨学期的复制和「按星期+第几节对应」都以坐标为准。坐标是稳定身份，period id 不是。票 06 的「作息节次被删除时，时间组成员同步移除」按坐标比对实现。
 
@@ -209,6 +213,7 @@ interface RuleSentence {
 | 源 | 目标 | 失败时 |
 |---|---|---|
 | `teacherId` / `courseId` | 全局 id 不变 | 教师/课程已删除或停用 → 卡片停用，记「教师已停用：X」 |
+| `classId` | 目标学期没有该班（班级属于学期，不能按 id 对应） | 卡片停用，记「行政班不在本学期：#id」 |
 | `teacherGroupId` / `courseGroupId` | 全局组 id 不变 | 组已删除 → 卡片停用，记「分组已删除：X」 |
 | `timeGroupId` | 按组名找目标学期同名组，换成目标组 id | 无同名组 → 卡片停用，记「本学期没有时间组：X」 |
 | `dayOfWeek` + `periodNo` | 按坐标映射到目标作息 | 任一坐标不存在 → 卡片停用，记「第 x 节在本学期作息中不存在」 |

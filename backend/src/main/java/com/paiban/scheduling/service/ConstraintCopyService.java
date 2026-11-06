@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paiban.common.web.ApiException;
+import com.paiban.foundation.domain.AdminClass;
+import com.paiban.foundation.domain.AdminClassRepository;
 import com.paiban.foundation.domain.Course;
 import com.paiban.foundation.domain.CourseRepository;
 import com.paiban.foundation.domain.Period;
@@ -76,6 +78,7 @@ public class ConstraintCopyService {
     private final SemesterService semesters;
     private final TeacherRepository teachers;
     private final CourseRepository courses;
+    private final AdminClassRepository adminClasses;
     private final PeriodRepository periods;
     private final RuleGroupRepository ruleGroups;
     private final ObjectMapper objectMapper;
@@ -89,6 +92,7 @@ public class ConstraintCopyService {
             SemesterService semesters,
             TeacherRepository teachers,
             CourseRepository courses,
+            AdminClassRepository adminClasses,
             PeriodRepository periods,
             RuleGroupRepository ruleGroups,
             ObjectMapper objectMapper,
@@ -100,6 +104,7 @@ public class ConstraintCopyService {
         this.semesters = semesters;
         this.teachers = teachers;
         this.courses = courses;
+        this.adminClasses = adminClasses;
         this.periods = periods;
         this.ruleGroups = ruleGroups;
         this.objectMapper = objectMapper;
@@ -121,7 +126,7 @@ public class ConstraintCopyService {
         List<ConstraintConfigDto> previous = targetState.configs();
 
         MappingContext context = new MappingContext(
-                targetId, teacherMap(sourceId), courseMap(sourceId),
+                targetId, teacherMap(sourceId), courseMap(sourceId), targetClasses(targetId),
                 groupMap(sourceId), targetTimeGroups(targetId), targetSlots(targetId));
 
         List<CopyRuleIssue> issues = new ArrayList<>();
@@ -259,6 +264,7 @@ public class ConstraintCopyService {
             Long targetId,
             Map<Long, Teacher> teachers,
             Map<Long, Course> courses,
+            Map<Long, AdminClass> classes,
             Map<Long, RuleGroup> groups,
             Map<String, RuleGroup> targetTimeGroups,
             Set<String> slots) {}
@@ -281,8 +287,17 @@ public class ConstraintCopyService {
         return byId;
     }
 
-    private Map<Long, RuleGroup> groupMap(Long sourceId) {
-        Set<Long> ids = new LinkedHashSet<>();
+    /** Classes are semester-owned, so a source class id is never valid in the target. */
+    private Map<Long, AdminClass> targetClasses(Long targetId) {
+        Map<Long, AdminClass> byId = new HashMap<>();
+        for (AdminClass item : adminClasses.findBySemesterIdAndDeletedAtIsNullOrderByGradeIdAscNameAsc(
+                targetId)) {
+            byId.put(item.getId(), item);
+        }
+        return byId;
+    }
+
+    private Map<Long, RuleGroup> groupMap(Long sourceId) {        Set<Long> ids = new LinkedHashSet<>();
         ids.addAll(referencedIds(sourceId, "teacherGroupId"));
         ids.addAll(referencedIds(sourceId, "courseGroupId"));
         ids.addAll(referencedIds(sourceId, "timeGroupId"));
@@ -336,11 +351,27 @@ public class ConstraintCopyService {
             Map<String, Object> params, MappingContext context, List<String> reasons) {
         mapTeacher(params.get("teacherId"), context, reasons);
         mapCourse(params.get("courseId"), context, reasons);
+        mapClass(params.get("classId"), context, reasons);
         mapGroup(params.get("teacherGroupId"), RuleGroupType.TEACHER, context, reasons);
         mapGroup(params.get("courseGroupId"), RuleGroupType.COURSE, context, reasons);
         boolean hadTimeGroup = mapTimeGroup(params, context, reasons);
         if (!hadTimeGroup) {
             mapSlot(params, context, reasons);
+        }
+    }
+
+    /**
+     * A class belongs to one semester, so its id cannot travel. The source name could be
+     * matched to the target by name, but silently binding a rule to a different class
+     * would be worse than pausing it: the user sees the reason and repairs the card.
+     */
+    private void mapClass(Object raw, MappingContext context, List<String> reasons) {
+        Long id = ConstraintSettings.longValue(raw);
+        if (id == null) {
+            return;
+        }
+        if (!context.classes().containsKey(id)) {
+            reasons.add("行政班不在本学期：#" + id);
         }
     }
 

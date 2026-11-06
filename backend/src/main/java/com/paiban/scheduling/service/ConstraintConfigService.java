@@ -1897,7 +1897,19 @@ public class ConstraintConfigService {
         }
         Map<Long, AdminClass> classById = new HashMap<>();
         if (!classIds.isEmpty()) {
-            adminClasses.findAllById(classIds).forEach(row -> classById.put(row.getId(), row));
+            if (semesterId != null) {
+                // A class belongs to one semester; loading every id globally would make a
+                // rule copied from another semester look valid. Only this semester's live
+                // classes resolve here.
+                for (AdminClass row : adminClasses
+                        .findBySemesterIdAndDeletedAtIsNullOrderByGradeIdAscNameAsc(semesterId)) {
+                    if (classIds.contains(row.getId())) {
+                        classById.put(row.getId(), row);
+                    }
+                }
+            } else {
+                adminClasses.findAllById(classIds).forEach(row -> classById.put(row.getId(), row));
+            }
         }
         Map<Long, Course> courseById = new HashMap<>();
         if (!courseIds.isEmpty()) {

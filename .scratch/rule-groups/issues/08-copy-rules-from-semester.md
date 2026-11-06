@@ -20,13 +20,14 @@
 - **卡片语义**：源 `constraint_entry.group_key` 相同的行归一张卡，无 `group_key` 的行各自一张卡；单开关类型（无 entries 的配置行）记一张无句子的卡；entry-backed 类型没有存活行视为「未配置」，不产生卡。复制后每张卡生成新 `copy-<uuid>:<index>`，卡内所有行共用；`copiedCards` 计卡片数，`disabledCards` 计因映射失败而停用的卡。
 - **映射**：
   - `teacherId` / `courseId`：全局 id 不变；不存在/已删除 → 卡停用，原因「教师已删除 / 课程已删除：#id」；`active=false` → 「教师已停用：名 / 课程已停用：名」。
+  - `classId`：班级属于学期，不能按 id 直接对应；目标学期没有该班 → 卡停用，原因「行政班不在本学期：#id」。
   - `teacherGroupId` / `courseGroupId`：全局 id 不变；不存在/已删除/类型不符 → 卡停用，原因「分组已删除」或「分组类型不匹配」。
   - `timeGroupId`：按源组名找目标学期同名且存活的 `TIME` 组，换成目标组 id；找不到 → 卡停用，原因「本学期没有时间组：名」，并清掉该行 `timeGroupId`，避免误指向目标学期同 id 的组。
   - `dayOfWeek` + `periodNo`：目标作息没有该坐标 → 卡停用，原因「星期X第Y节在本学期作息中不存在」，参数保留；只有星期的固定无课日按「该星期是否有任何节次」判断。
   - 其余参数原样；config 的 weight/hard/enabled 与行的 hard/weight 原样，行 `enabled = 源开关 && 卡片可用`。
 - **`invalidReferences` 补节次原因**：`ConstraintConfigService` 的 `ReferenceIndex` 增加当前学期作息槽位集合，`invalidReferencesOf` 在行没有 `timeGroupId` 时检查 `dayOfWeek + periodNo`（或仅 `dayOfWeek`），返回「星期X第Y节在本学期作息中不存在」/「星期X在本学期作息中不存在」。正常保存仍先由 `validateTimetableConditions` 拒绝，不受影响。
 - **版本冲突**：`baseVersion` 非空且与目标当前版本不一致 → 409「目标学期规则已被修改…请刷新页面后重试」，不写任何行；源/目标相同 400，学期不存在/已删 404。
-- **测试**：新增 `CopyRulesIntegrationTest` 9 条：正常整套复制并替换旧规则、教师已删除、目标少一节、无同名时间组、同名时间组换 id、一行失败整卡停用、过期 `baseVersion` 409 且目标不变、系统底线保留（目标自己停用的 `TEACHER_CONFLICT` 不被源覆盖）、审计落库。与既有三个规则测试共 35 条通过；另跑相邻 5 个约束测试类 44 条通过；`scripts/check-migrations.sh` 通过（57 个版本唯一，本票无迁移）。
-- **已知边界**：`classId` 不在契约 §6 的映射表内，按原 id 复制；跨学期班级会由 `invalidReferences` 显示「行政班属于其他学期」，但不会因此停用卡片（契约未列此失败项，留给 08b 页面按 `invalidReferences` 提示）。
+- **测试**：新增 `CopyRulesIntegrationTest` 10 条：正常整套复制并替换旧规则、教师已删除、班级不在目标学期、目标少一节、无同名时间组、同名时间组换 id、一行失败整卡停用、过期 `baseVersion` 409 且目标不变、系统底线保留（目标自己停用的 `TEACHER_CONFLICT` 不被源覆盖）、审计落库。与既有规则/分组测试共 39 条通过；另跑相邻 5 个约束测试类 44 条通过；`scripts/check-migrations.sh` 通过（57 个版本唯一，本票无迁移）。
+- **已知边界**：`invalidReferences` 现在按目标学期加载班级，复制出来的跨学期班级规则会显示「行政班已删除：#id」并停用；08b 页面按 `invalidReferences` 提示。
 - **剩余（08b 前端）**：规则页入口与替换确认、来源学期选择、「本学期用不上」列表（按 `disabledCards` / `issues` 展示并允许逐张启用或删除）、E2E 主路径。
 

@@ -113,6 +113,34 @@ class CopyRulesIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void pausesACardWhoseClassBelongsToTheSourceSemester() {
+        String token = adminToken();
+        long source = semesterWithPeriods(token);
+        long target = semesterWithPeriods(token);
+        long grade = TestData.grade(token, source, "复制年级" + TestData.suffix());
+        long sourceClass = TestData.adminClass(
+                token, source, grade, "复制班" + TestData.suffix());
+        save(token, source, null, List.of(
+                config("CLASS_MAX_PER_DAY",
+                        List.of(entry(Map.of(
+                                "classId", sourceClass, "maxPerDay", 6), "class-card")))))
+                .then().statusCode(200);
+
+        copy(token, source, target, stateVersion(token, target)).then().statusCode(200)
+                .body("copiedCards", equalTo(1))
+                .body("disabledCards", equalTo(1))
+                .body("issues[0].reason", containsString("行政班不在本学期"));
+
+        as(token).queryParam("semesterId", target)
+                .when().get("/api/constraints")
+                .then().statusCode(200)
+                .body("find { it.type == 'CLASS_MAX_PER_DAY' }.entries[0].enabled",
+                        equalTo(false))
+                .body("find { it.type == 'CLASS_MAX_PER_DAY' }.invalidReferences",
+                        hasItem(containsString("行政班")));
+    }
+
+    @Test
     void pausesACardWhosePeriodDoesNotExistInTheTargetTimetable() {
         String token = adminToken();
         long source = semesterWithPeriods(token);      // 9 periods on each weekday
