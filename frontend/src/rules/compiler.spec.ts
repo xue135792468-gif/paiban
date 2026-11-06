@@ -111,6 +111,7 @@ const names: RuleNames = {
   teacher: (id) => (id === 7 ? '王老师' : `教师${id}`),
   course: (id) => (id === 9 ? '数学' : `课程${id}`),
   klass: (id) => (id === 3 ? '八年级1班' : `班级${id}`),
+  group: (id) => (id === 12 ? '教导主任' : `组${id}`),
 }
 
 describe('rule compiler: 16 createable types', () => {
@@ -342,6 +343,82 @@ describe('rule compiler: 16 createable types', () => {
       type: TEACHER_DAY_OFF, classId: null, teacherId: 7, courseId: null,
       days: [], periodNos: [], amount: null,
     })).toEqual(['选择星期'])
+  })
+})
+
+describe('teacher groups in sentences (ticket 04)', () => {
+  it('compiles a group sentence to group params and never a concrete teacher', () => {
+    const rows = entriesOf(compileRule({
+      type: TEACHER_UNAVAILABLE,
+      teacherId: 7,
+      teacherGroupId: 12,
+      days: [5],
+      periodNos: [5, 6],
+      strength: 'HARD',
+    }))
+    expect(rows.map((row) => row.params)).toEqual([
+      { teacherGroupId: 12, dayOfWeek: 5, periodNo: 5 },
+      { teacherGroupId: 12, dayOfWeek: 5, periodNo: 6 },
+    ])
+    expect(rows.every((row) => !('teacherId' in row.params))).toBe(true)
+    expect(new Set(rows.map((row) => row.groupKey)).size).toBe(1)
+  })
+
+  it('compiles a group threshold to one group parameter', () => {
+    const rows = entriesOf(compileRule({
+      type: TEACHER_MAX_PER_DAY,
+      teacherGroupId: 12,
+      amount: 4,
+      strength: 'SOFT',
+    }))
+    expect(rows[0].params).toEqual({ teacherGroupId: 12, maxPerDay: 4 })
+  })
+
+  it('reads a stored group row back with the group name in the sentence', () => {
+    const stored = [
+      config('TEACHER_UNAVAILABLE', [
+        entry(1, { teacherGroupId: 12, dayOfWeek: 5, periodNo: 5 }, { groupKey: 'pt-group' }),
+        entry(2, { teacherGroupId: 12, dayOfWeek: 5, periodNo: 6 }, { groupKey: 'pt-group' }),
+      ]),
+    ]
+    const cards = cardsFromState(stored)
+    expect(cards).toHaveLength(1)
+    const sentence = cards[0].sentences[0]
+    expect(sentence.teacherGroupId).toBe(12)
+    expect(sentence.teacherId).toBeNull()
+    expect(describeCard(cards[0], names)).toBe('教导主任 周五第 5、6 节 不上课')
+
+    // Saving the read-back card keeps the group reference instead of expanding it.
+    const merged = configsFromCards(stored, cards)
+    expect(merged[0].entries?.map((row) => row.params)).toEqual([
+      { teacherGroupId: 12, dayOfWeek: 5, periodNo: 5 },
+      { teacherGroupId: 12, dayOfWeek: 5, periodNo: 6 },
+    ])
+  })
+
+  it('accepts a group where a teacher is required, and still asks otherwise', () => {
+    const base = {
+      type: TEACHER_UNAVAILABLE,
+      classId: null,
+      teacherId: null,
+      courseId: null,
+      days: [5],
+      periodNos: [5],
+      amount: null,
+    }
+    expect(missingParts(base)).toContain('选择教师')
+    expect(missingParts({ ...base, teacherGroupId: 12 })).toEqual([])
+  })
+
+  it('does not turn a row with both a teacher and a group into a sentence', () => {
+    const cards = cardsFromState([
+      config('TEACHER_UNAVAILABLE', [
+        entry(1, {
+          teacherId: 7, teacherGroupId: 12, dayOfWeek: 5, periodNo: 5,
+        }, { groupKey: 'pt-both' }),
+      ]),
+    ])
+    expect(cards).toHaveLength(0)
   })
 })
 

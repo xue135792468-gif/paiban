@@ -12,6 +12,7 @@ export type LifecycleLabelType =
   | 'ai_provider'
   | 'ai_model'
   | 'dingtalk_config'
+  | 'rule_group'
 
 export type DeleteMode = 'DELETE' | 'CASCADE'
 
@@ -80,6 +81,7 @@ export const LIFECYCLE_ENTITY_LABEL: Record<LifecycleLabelType, string> = {
   ai_provider: 'AI 供应商',
   ai_model: 'AI 模型',
   dingtalk_config: '钉钉配置',
+  rule_group: '教师分组',
 }
 
 export async function getDeleteImpact(

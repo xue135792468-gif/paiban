@@ -27,7 +27,7 @@ export interface FormSentence {
   amount: number | null
   strength: RuleStrength
   exceptionClassIds: number[]
-  /** Reserved for tickets 04/05/06; always null for now. */
+  /** Ticket 04: teacher group reference; concrete ids are null while a group is used. */
   teacherGroupId: number | null
   courseGroupId: number | null
   timeGroupId: number | null
@@ -39,7 +39,15 @@ function subjectKindOf(
   classId: number | null,
   teacherId: number | null,
   courseId: number | null,
+  teacherGroupId: number | null = null,
+  courseGroupId: number | null = null,
 ): SubjectKind | null {
+  if (courseGroupId !== null) {
+    return 'COURSE'
+  }
+  if (teacherGroupId !== null) {
+    return 'TEACHER_GROUP'
+  }
   if (courseId !== null) {
     return 'COURSE'
   }
@@ -74,6 +82,8 @@ export function formSentenceFrom(sentence: RuleSentence): FormSentence {
       sentence.classId,
       sentence.teacherId,
       sentence.courseId,
+      sentence.teacherGroupId,
+      sentence.courseGroupId,
     ),
     classId: sentence.classId,
     teacherId: sentence.teacherId,
@@ -119,6 +129,9 @@ export function formSentenceInput(sentence: FormSentence): RuleInput | null {
     classId: sentence.classId,
     teacherId: sentence.teacherId,
     courseId: sentence.courseId,
+    teacherGroupId: sentence.teacherGroupId,
+    courseGroupId: sentence.courseGroupId,
+    timeGroupId: sentence.timeGroupId,
     days: normalizeDays(sentence.days),
     periodNos: normalizePeriods(sentence.periodNos),
     amount: sentence.amount,

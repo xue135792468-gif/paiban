@@ -29,6 +29,12 @@
             <el-option label="全校" value="school" />
             <el-option label="所有教师" value="all-teachers" />
             <el-option
+              v-for="group in teacherGroups ?? []"
+              :key="`teacher-group:${group.id}`"
+              :label="`教师组 · ${group.name}`"
+              :value="`teacher-group:${group.id}`"
+            />
+            <el-option
               v-for="item in classes"
               :key="`class:${item.id}`"
               :label="`班级 · ${item.name}`"
@@ -39,6 +45,12 @@
               :key="`teacher:${item.id}`"
               :label="`教师 · ${item.name}`"
               :value="`teacher:${item.id}`"
+            />
+            <el-option
+              v-if="createTeacherGroup"
+              label="＋ 新建教师组"
+              value="__new_teacher_group__"
+              data-testid="rule-subject-new-group"
             />
           </el-option-group>
           <el-option-group label="课程">
@@ -181,6 +193,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
+import { ElMessageBox } from 'element-plus'
 import type { OptionItem } from '@/components/constraints/types'
 import {
   CLASS_GAP_MINIMIZED,
@@ -207,6 +220,8 @@ const props = defineProps<{
   courses: OptionItem[]
   days: number[]
   periods: PeriodOption[]
+  teacherGroups?: { id: number; name: string }[]
+  createTeacherGroup?: (name: string) => Promise<{ id: number; name: string } | null>
 }>()
 
 const emit = defineEmits<{
@@ -245,6 +260,7 @@ const names = computed<RuleNames>(() => ({
   teacher: (id: number) => props.teachers.find((item) => item.id === id)?.name ?? `教师${id}`,
   course: (id: number) => props.courses.find((item) => item.id === id)?.name ?? `课程${id}`,
   klass: (id: number) => props.classes.find((item) => item.id === id)?.name ?? `班级${id}`,
+  group: (id: number) => props.teacherGroups?.find((item) => item.id === id)?.name ?? '教师组',
 }))
 
 const preview = computed(() => describeRule(local, names.value, props.periods))
@@ -261,6 +277,8 @@ const subjectValue = computed(() => {
       return local.classId === null ? null : `class:${local.classId}`
     case 'TEACHER':
       return local.teacherId === null ? null : `teacher:${local.teacherId}`
+    case 'TEACHER_GROUP':
+      return local.teacherGroupId === null ? null : `teacher-group:${local.teacherGroupId}`
     case 'COURSE':
       return local.courseId === null ? null : `course:${local.courseId}`
     default:
@@ -282,6 +300,8 @@ function acceptsSubject(kind: SubjectKind | null, type: RuleType): boolean {
     case 'CLASS':
       return rule.target === 'CLASS'
     case 'TEACHER':
+      return rule.target === 'TEACHER'
+    case 'TEACHER_GROUP':
       return rule.target === 'TEACHER'
     case 'ALL_COURSES':
       return rule.target === 'COURSE' && rule.course !== 'REQUIRED'
@@ -330,61 +350,79 @@ function lastPeriod(): number | null {
   return options.length > 0 ? options[options.length - 1] : null
 }
 
-function clearUnrelatedIds(kind: SubjectKind) {
-  if (kind === 'SCHOOL' || kind === 'ALL_TEACHERS') {
-    local.classId = null
-    local.teacherId = null
-    local.courseId = null
-  } else if (kind === 'ALL_COURSES') {
-    local.courseId = null
-    local.teacherId = null
-    local.classId = null
-  } else if (kind === 'CLASS') {
-    local.teacherId = null
-    local.courseId = null
-  } else if (kind === 'TEACHER') {
-    local.classId = null
-    local.courseId = null
-  } else {
-    local.classId = null
-    local.teacherId = null
-  }
-}
-
-function onSubjectChange(value: unknown) {
-  const text = typeof value === 'string' ? value : ''
-  let kind: SubjectKind | null = null
-  if (text === 'school') {
-    kind = 'SCHOOL'
-  } else if (text === 'all-teachers') {
-    kind = 'ALL_TEACHERS'
-  } else if (text === 'all-courses') {
-    kind = 'ALL_COURSES'
-  } else if (text.startsWith('class:')) {
-    kind = 'CLASS'
-  } else if (text.startsWith('teacher:')) {
-    kind = 'TEACHER'
-  } else if (text.startsWith('course:')) {
-    kind = 'COURSE'
-  }
-
+/**
+ * Applies one subject choice. Every concrete object and group reference is cleared
+ * first, so switching from 王老师 to 教导主任 can never leave both in the sentence.
+ */
+function setSubject(
+  kind: SubjectKind | null,
+  ids: Partial<Pick<FormSentence,
+    'classId' | 'teacherId' | 'courseId' | 'teacherGroupId'>> = {},
+) {
   local.subjectKind = kind
   local.exceptionClassIds = []
-  if (kind !== null) {
-    clearUnrelatedIds(kind)
-  }
-  if (kind === 'CLASS') {
-    local.classId = Number(text.slice('class:'.length))
-  } else if (kind === 'TEACHER') {
-    local.teacherId = Number(text.slice('teacher:'.length))
-  } else if (kind === 'COURSE') {
-    local.courseId = Number(text.slice('course:'.length))
-  }
+  local.classId = ids.classId ?? null
+  local.teacherId = ids.teacherId ?? null
+  local.courseId = ids.courseId ?? null
+  local.teacherGroupId = ids.teacherGroupId ?? null
+  local.courseGroupId = null
+  local.timeGroupId = null
 
   if (local.type && !acceptsSubject(kind, local.type)) {
     local.type = null
     local.amount = null
     local.exceptionClassIds = []
+  }
+}
+
+async function onSubjectChange(value: unknown) {
+  const text = typeof value === 'string' ? value : ''
+  if (text === '__new_teacher_group__') {
+    await createAndSelectGroup()
+    return
+  }
+  if (text === 'school') {
+    setSubject('SCHOOL')
+  } else if (text === 'all-teachers') {
+    setSubject('ALL_TEACHERS')
+  } else if (text === 'all-courses') {
+    setSubject('ALL_COURSES')
+  } else if (text.startsWith('class:')) {
+    setSubject('CLASS', { classId: Number(text.slice('class:'.length)) })
+  } else if (text.startsWith('teacher-group:')) {
+    setSubject('TEACHER_GROUP', {
+      teacherGroupId: Number(text.slice('teacher-group:'.length)),
+    })
+  } else if (text.startsWith('teacher:')) {
+    setSubject('TEACHER', { teacherId: Number(text.slice('teacher:'.length)) })
+  } else if (text.startsWith('course:')) {
+    setSubject('COURSE', { courseId: Number(text.slice('course:'.length)) })
+  }
+}
+
+/** 「＋ 新建教师组」: create the group, then select it. Cancel keeps the old subject. */
+async function createAndSelectGroup() {
+  if (!props.createTeacherGroup) {
+    return
+  }
+  let name = ''
+  try {
+    const result = await ElMessageBox.prompt('给这个教师组起个名字', '新建教师组', {
+      inputPattern: /^.{1,64}$/,
+      inputErrorMessage: '组名需要 1–64 个字',
+      confirmButtonText: '创建',
+      cancelButtonText: '取消',
+    })
+    name = String(result.value ?? '').trim()
+  } catch {
+    return
+  }
+  if (!name) {
+    return
+  }
+  const created = await props.createTeacherGroup(name)
+  if (created) {
+    setSubject('TEACHER_GROUP', { teacherGroupId: created.id })
   }
 }
 
@@ -398,9 +436,16 @@ function onTypeChange() {
   }
   if (next.target !== 'TEACHER') {
     local.teacherId = null
+    local.teacherGroupId = null
   }
   if (next.course === 'ALL') {
     local.courseId = null
+  }
+  if (next.target !== 'COURSE') {
+    local.courseGroupId = null
+  }
+  if (next.periods !== 'REQUIRED') {
+    local.timeGroupId = null
   }
   if (next.day !== 'REQUIRED') {
     local.days = []

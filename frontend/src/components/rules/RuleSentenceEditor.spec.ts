@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessageBox } from 'element-plus'
 import RuleForm from './RuleForm.vue'
 import {
   cardFromInputs,
@@ -20,7 +20,12 @@ const courses = [
   { id: 10, name: '体育' },
 ]
 
-function mountForm(initial: RuleCard | null = null) {
+const teacherGroups = [{ id: 12, name: '教导主任' }]
+
+function mountForm(
+  initial: RuleCard | null = null,
+  options: { createTeacherGroup?: (name: string) => Promise<{ id: number; name: string } | null> } = {},
+) {
   return mount(RuleForm, {
     props: {
       initial,
@@ -29,6 +34,8 @@ function mountForm(initial: RuleCard | null = null) {
       courses,
       days: [1, 3, 5],
       periods,
+      teacherGroups,
+      createTeacherGroup: options.createTeacherGroup,
     },
     global: { plugins: [ElementPlus] },
     attachTo: document.body,
@@ -86,10 +93,58 @@ describe('RuleSentenceEditor: subject first, then time, then requirement', () =>
       .map((component) => String(component.props('label')))
     expect(labels).toContain('全校')
     expect(labels).toContain('所有教师')
+    expect(labels).toContain('教师组 · 教导主任')
     expect(labels).toContain('班级 · 九（1）班')
     expect(labels).toContain('教师 · 王老师')
     expect(labels).toContain('全部课程')
     expect(labels).toContain('课程 · 数学')
+    wrapper.unmount()
+  })
+
+  it('offers only teacher requirements after a teacher group', async () => {
+    const wrapper = mountForm()
+    await setSelect(wrapper, 'rule-subject', 'teacher-group:12')
+    const labels = typeLabels(wrapper)
+    expect(labels).toContain('不上课')
+    expect(labels).toContain('每天最多 N 节')
+    expect(labels).toContain('固定无课日')
+    expect(labels).not.toContain('不排课')
+    expect(labels).not.toContain('连堂 N 节')
+    expect(labels).not.toContain('不空堂')
+
+    await setSelect(wrapper, 'rule-type', 'TEACHER_UNAVAILABLE')
+    await setSelect(wrapper, 'rule-days', [5])
+    await setPeriods(wrapper, [5, 6])
+    expect(wrapper.find('[data-testid="rule-preview"]').text())
+      .toContain('教导主任 周五第 5、6 节 不上课')
+    wrapper.unmount()
+  })
+
+  it('creates and selects a new teacher group from the dropdown', async () => {
+    const prompt = vi.spyOn(ElMessageBox, 'prompt').mockResolvedValue({ value: '数学组' } as never)
+    const createTeacherGroup = vi.fn().mockResolvedValue({ id: 21, name: '数学组' })
+    const wrapper = mountForm(null, { createTeacherGroup })
+
+    await setSelect(wrapper, 'rule-subject', '__new_teacher_group__')
+    await flushPromises()
+
+    expect(prompt).toHaveBeenCalledTimes(1)
+    expect(createTeacherGroup).toHaveBeenCalledWith('数学组')
+    expect(select(wrapper, 'rule-subject').props('modelValue')).toBe('teacher-group:21')
+    wrapper.unmount()
+  })
+
+  it('keeps the old subject when the new-group prompt is cancelled', async () => {
+    vi.spyOn(ElMessageBox, 'prompt').mockRejectedValue('cancel')
+    const createTeacherGroup = vi.fn()
+    const wrapper = mountForm(null, { createTeacherGroup })
+
+    await setSelect(wrapper, 'rule-subject', 'teacher:7')
+    await setSelect(wrapper, 'rule-subject', '__new_teacher_group__')
+    await flushPromises()
+
+    expect(createTeacherGroup).not.toHaveBeenCalled()
+    expect(select(wrapper, 'rule-subject').props('modelValue')).toBe('teacher:7')
     wrapper.unmount()
   })
 

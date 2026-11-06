@@ -1,20 +1,6 @@
 <template>
   <div class="rule-builder" data-testid="rule-builder">
-    <header class="head">
-      <div>
-        <h2>排课规则</h2>
-        <p class="subtitle">
-          用「谁 / 什么课 / 什么时候 / 要求」拼一句规则。一张卡可以装 1–3 句，共用一个开关；
-          保存后自动排课、草稿校验和调代都按同一份规则执行。
-        </p>
-      </div>
-    </header>
-
-    <section class="system-baseline" data-testid="rule-system-baseline">
-      <div class="baseline-title">系统自带，不能关</div>
-      <p>一个老师同一节只能在一个班上课</p>
-      <p>一个班同一节只能上一门课</p>
-    </section>
+    <RulePageHeader />
 
     <EmptyStateGuide
       v-if="!loading && semesters.length === 0"
@@ -27,36 +13,16 @@
     />
 
     <template v-else>
-      <div class="toolbar">
-        <el-select
-          v-model="semesterId"
-          placeholder="请选择学期"
-          :disabled="semesters.length === 0"
-          class="semester-select"
-          data-testid="rule-semester"
-          @change="onSemesterChange"
-        >
-          <el-option
-            v-for="semester in semesters"
-            :key="semester.id"
-            :label="semester.current ? `${semester.name} (当前)` : semester.name"
-            :value="semester.id"
-          />
-        </el-select>
-        <el-input
-          v-model="query"
-          clearable
-          placeholder="搜索规则（名称或句子）"
-          class="search-input"
-          data-testid="rule-search"
-        />
-        <el-button type="primary" :disabled="semesterId === null" data-testid="rule-new" @click="openNew">
-          新建规则
-        </el-button>
-        <el-button :disabled="semesterId === null" data-testid="rule-ai-toggle" @click="toggleAi">
-          AI 帮填
-        </el-button>
-      </div>
+      <RuleToolbar
+        v-model:semester-id="semesterId"
+        v-model:query="query"
+        :semesters="semesters"
+        :groups-visible="showGroups"
+        @semester-change="onSemesterChange"
+        @new="openNew"
+        @toggle-groups="showGroups = !showGroups"
+        @toggle-ai="toggleAi"
+      />
 
       <ConstraintAiPanel v-if="showAi && semesterId !== null" :semester-id="semesterId" :types="aiTypes" :teachers="teachers" :courses="courses" :can-read-all="canReadAll" :can-manage="canManage" @add="onAiAdd" />
       <el-alert v-if="aiNotice" type="info" :closable="false" show-icon class="alert" data-testid="rule-ai-notice" :title="aiNotice" />
@@ -88,6 +54,18 @@
         <p class="alert-copy">{{ errorMessage }}</p>
       </el-alert>
 
+      <RuleGroupSection
+        v-if="showGroups"
+        :groups="teacherGroups"
+        :teachers="teachers"
+        :loading="groupsLoading"
+        :create-group="createGroupWithMembers"
+        :update-group="updateTeacherGroup"
+        :delete-group="removeTeacherGroup"
+        :load-impact="loadGroupImpact"
+        @changed="onGroupsChanged"
+      />
+
       <RuleForm
         v-if="formOpen"
         :key="formKey"
@@ -97,6 +75,8 @@
         :courses="courses"
         :days="availableDays"
         :periods="periods"
+        :teacher-groups="teacherGroupOptions"
+        :create-teacher-group="createTeacherGroupEntry"
         @submit="onFormSubmit"
         @cancel="closeForm"
       />
@@ -157,7 +137,10 @@ import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ConstraintAiPanel from '@/components/constraints/ConstraintAiPanel.vue'
 import RuleForm from '@/components/rules/RuleForm.vue'
 import RuleGroupedList from '@/components/rules/RuleGroupedList.vue'
+import RuleGroupSection from '@/components/rules/RuleGroupSection.vue'
 import RuleImpactSummary from '@/components/rules/RuleImpactSummary.vue'
+import RulePageHeader from '@/components/rules/RulePageHeader.vue'
+import RuleToolbar from '@/components/rules/RuleToolbar.vue'
 import type {
   ConstraintConfigDto,
   ConstraintTypeDef,
@@ -182,6 +165,7 @@ import { cardChangedSinceLoad, cardLabelOf } from '@/rules/cardChange'
 import { deleteRuleCardWithConfirmation } from '@/rules/deleteRuleCard'
 import { useRuleImpact } from '@/rules/useRuleImpact'
 import { useRuleAi } from '@/rules/useRuleAi'
+import { useRuleGroups } from '@/rules/useRuleGroups'
 import { useAuthStore } from '@/stores/auth'
 
 interface Semester {
@@ -224,6 +208,18 @@ const formOpen = ref(false)
 const formKey = ref(0)
 const editingKey = ref<string | null>(null)
 const query = ref('')
+const showGroups = ref(false)
+const {
+  groups: teacherGroups,
+  teacherGroups: teacherGroupOptions,
+  groupNames,
+  loading: groupsLoading,
+  load: loadGroups,
+  createTeacher: createTeacherGroupEntry,
+  update: updateTeacherGroup,
+  remove: removeTeacherGroup,
+  impact: loadGroupImpact,
+} = useRuleGroups()
 const {
   visible: impactVisible,
   loading: impactLoading,
@@ -254,6 +250,7 @@ const ruleNames = computed<RuleNames>(() => {
     teacher: (id) => teacherNames.get(id) ?? `教师${id}`,
     course: (id) => courseNames.get(id) ?? `课程${id}`,
     klass: (id) => classNames.get(id) ?? `班级${id}`,
+    group: (id) => groupNames.value.get(id) ?? '教师组',
   }
 })
 const dirty = computed(() => cardsSignature(cards.value) !== loadedSignature.value)
@@ -377,6 +374,28 @@ function closeForm() {
   editingKey.value = null
 }
 
+/** The management panel creates the group first, then writes the picked members. */
+async function createGroupWithMembers(name: string, teacherIds: number[]): Promise<boolean> {
+  const created = await createTeacherGroupEntry(name)
+  if (!created) {
+    return false
+  }
+  if (teacherIds.length === 0) {
+    return true
+  }
+  return updateTeacherGroup(created.id, name, teacherIds)
+}
+
+/**
+ * A rename/member edit only refreshes the group list, so unsaved rule edits survive.
+ * Deleting rules together with the group is the one case that must reload the state.
+ */
+async function onGroupsChanged(payload: { deletedRules: number }) {
+  if (payload.deletedRules > 0) {
+    await loadState()
+  }
+}
+
 function onFormSubmit(payload: CardSentenceInput[]) {
   const next = applyCardInputs(editingCard.value, payload)
   if (editingKey.value !== null) {
@@ -488,7 +507,7 @@ async function reloadAfterConflict() {
 onMounted(async () => {
   loading.value = true
   try {
-    await Promise.all([loadSemesters(), loadTeachers(), loadCatalogue(), loadCourses()])
+    await Promise.all([loadSemesters(), loadTeachers(), loadCatalogue(), loadCourses(), loadGroups()])
     if (semesterId.value !== null) {
       await loadClasses()
       await loadState()
@@ -505,62 +524,6 @@ onMounted(async () => {
 <style scoped>
 .rule-builder {
   padding-bottom: 24px;
-}
-
-.head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-
-h2 {
-  margin: 0 0 4px;
-  font-size: 20px;
-}
-
-.subtitle {
-  margin: 0;
-  color: var(--paiban-muted);
-  font-size: 13px;
-}
-
-.system-baseline {
-  margin: 0 0 14px;
-  padding: 10px 14px;
-  border-radius: var(--paiban-radius, 8px);
-  background: var(--el-fill-color-light, #f5f7fa);
-  color: var(--paiban-muted);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.baseline-title {
-  margin-bottom: 2px;
-  color: var(--el-text-color-primary, #303133);
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.system-baseline p {
-  margin: 0;
-}
-
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-
-.semester-select {
-  width: 240px;
-}
-
-.search-input {
-  width: 220px;
 }
 
 .alert {

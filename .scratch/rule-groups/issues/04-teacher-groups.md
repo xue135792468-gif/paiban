@@ -4,16 +4,16 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 新增分组与分组成员数据（迁移从 V57 续号）；教师组为全局，跨学期保留
-- [ ] 规则页分组区可新建、改名、增减成员、删除教师组
-- [ ] 规则「谁」可选教师组；下拉内可新建组
-- [ ] 句子显示组名，如「教导主任 周一上午 不上课」
-- [ ] 约束快照构建时把教师组展开为成员；改组成员后不改规则即生效（集成测试）
-- [ ] 草稿校验与调代校验对组规则结论一致
-- [ ] 教师列表、规则下拉显示组后缀；教师列表可按组筛选
-- [ ] 删除被引用的组时先列出引用规则，可选「先改规则」或「连同规则一起删除」；删除走 7 天可撤销
+- [x] 新增分组与分组成员数据（迁移从 V57 续号）；教师组为全局，跨学期保留
+- [x] 规则页分组区可新建、改名、增减成员、删除教师组
+- [x] 规则「谁」可选教师组；下拉内可新建组
+- [x] 句子显示组名，如「教导主任 周一上午 不上课」
+- [x] 约束快照构建时把教师组展开为成员；改组成员后不改规则即生效（集成测试）
+- [x] 草稿校验与调代校验对组规则结论一致
+- [x] 教师列表、规则下拉显示组后缀；教师列表可按组筛选
+- [x] 删除被引用的组时先列出引用规则，可选「先改规则」或「连同规则一起删除」；删除走 7 天可撤销
 
 ## 实现说明（后端部分完成，04a）
 
@@ -26,3 +26,12 @@ Status 仍为 `ready-for-agent`：本文件只落地后端；分组管理区、�
 - **删除/撤销**：`DELETE` 有引用时返回 409 + `rules` 清单；`WITH_RULES` 先用 `RuleLifecycleService.delete(configId, cardKey, entryIds)` 按规则卡删除引用行，再软删组并写入 `recent_deletion`（`entity_type = RULE_GROUP`，`primary_flag = true`）。组和规则卡是**多个独立批次**（规则卡原本就各有一个批次），因此可以分别撤销；响应 `{batchIds, deletedRules}` 中 `deletedRules` 按规则卡计数。
 - **测试**：`RuleGroupIntegrationTest` 9 条，覆盖建组/重名、时间组学期与坐标、快照展开、改成员即生效、停用/删除成员、保存校验（不存在/已删/类型不符/同时写具体对象/类型不支持组键）、删除影响/409/`WITH_RULES`/分批撤销、草稿校验、调代快照。调代只覆盖到 `PlanSnapshotFactory` 读取同一份展开快照，未构造完整调代审批请求。
 - **与契约的已知偏差**：契约 §4 的成员请求体写 `{kind, id?}`，按本票后端任务书实现为 `{teacherId?, courseId?, dayOfWeek?, periodNo?}`；契约 §5.2 说组与规则同批次，按任务书改为各自的 `recent_deletion` 批次并在此说明。
+
+## 实现说明（前端部分 04b）
+
+- **API 与状态**：`frontend/src/api/ruleGroups.ts` 对齐后端 DTO；`rules/useRuleGroups.ts` 统一管理教师组的加载、改名/换成员、删除影响与 7 天撤销接口。组名通过 computed Map 进入 `RuleNames.group`，句子在规则页直接显示组名，不需要另拉 `/constraints/state`。
+- **编译器接线**：`RuleInput`/`FormSentence` 携带 `teacherGroupId`；`compileRule`/`sentenceEntries` 优先写 `teacherGroupId` 且不写 `teacherId`，`cardsFromState` 把组引用读回句子；`missingParts` 把组视为合法主语。`courseGroupId`/`timeGroupId` 的白名单与回填已预留，UI 留到票 05/06。
+- **分组管理区**：`RuleGroupSection.vue` 支持新建/改名/增减成员/删除；删除先取 `delete-impact`，无引用时普通确认，有引用时列出「学期 · 类型」并给「先改规则」「连同规则一起删除」两个选择。组变更只刷新分组列表，避免覆盖未保存规则；仅在 `WITH_RULES` 删除规则后 `loadState()`。
+- **规则页拆分**：`RuleBuilderView.vue` 抽出 `RuleToolbar.vue` 与 `RulePageHeader.vue`，保持在 600 行以内。
+- **教师列表**：姓名后显示「· 组名」后缀；顶部按组筛选，组加载失败只静默留空，不阻断教师页。回收站补 `rule_group` 的中文标签。
+- **测试**：`compiler.spec.ts`、`RuleSentenceEditor.spec.ts`、`RuleGroupSection.spec.ts`、`TeachersView.spec.ts` 覆盖组参数、句子、下拉新建组、删除影响与后缀/筛选；`e2e/teacher-groups.spec.ts` 跑通建组→写规则→改组→教师列表→删组连带规则的完整路径。

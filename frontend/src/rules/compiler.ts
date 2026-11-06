@@ -35,6 +35,7 @@ export type SubjectKind =
   | 'ALL_TEACHERS'
   | 'CLASS'
   | 'TEACHER'
+  | 'TEACHER_GROUP'
   | 'ALL_COURSES'
   | 'COURSE'
 
@@ -277,6 +278,10 @@ export interface RuleInput {
   classId?: number | null
   teacherId?: number | null
   courseId?: number | null
+  /** Ticket 04: a group reference wins over the concrete object. */
+  teacherGroupId?: number | null
+  courseGroupId?: number | null
+  timeGroupId?: number | null
   days?: number[]
   periodNos?: number[]
   amount?: number | null
@@ -324,6 +329,8 @@ export interface RuleNames {
   teacher: (id: number) => string
   course: (id: number) => string
   klass: (id: number) => string
+  /** Ticket 04: the display name of a user group (teacher/course/time). */
+  group?: (id: number) => string
 }
 
 export interface MergeOptions {
@@ -462,11 +469,22 @@ type RuleShape = Pick<
 > & {
   type: RuleType | null
   exceptionClassIds?: number[]
+  /** Ticket 04: group references; optional so older callers need no change. */
+  teacherGroupId?: number | null
+  courseGroupId?: number | null
+  timeGroupId?: number | null
   /** Present on form sentences only; lets the sentence grow before a type is picked. */
   subjectKind?: SubjectKind | null
 }
 
+function groupName(id: number, names: RuleNames): string {
+  return names.group?.(id) ?? '教师组'
+}
+
 function teacherSubject(parts: RuleShape, names: RuleNames): string {
+  if (parts.teacherGroupId !== null && parts.teacherGroupId !== undefined) {
+    return groupName(parts.teacherGroupId, names)
+  }
   if (parts.teacherId !== null && parts.teacherId !== undefined) {
     return names.teacher(parts.teacherId)
   }
@@ -485,6 +503,9 @@ function classSubject(parts: RuleShape, names: RuleNames): string {
 }
 
 function courseSubject(parts: RuleShape, names: RuleNames): string {
+  if (parts.courseGroupId !== null && parts.courseGroupId !== undefined) {
+    return groupName(parts.courseGroupId, names)
+  }
   if (parts.courseId !== null && parts.courseId !== undefined) {
     return names.course(parts.courseId)
   }
@@ -510,11 +531,17 @@ function pendingSubject(parts: RuleShape, names: RuleNames): string | null {
     case 'TEACHER':
       return parts.teacherId === null || parts.teacherId === undefined
         ? null : names.teacher(parts.teacherId)
+    case 'TEACHER_GROUP':
+      return parts.teacherGroupId === null || parts.teacherGroupId === undefined
+        ? null : groupName(parts.teacherGroupId, names)
     case 'COURSE':
       return parts.courseId === null || parts.courseId === undefined
         ? null : names.course(parts.courseId)
     default:
       break
+  }
+  if (parts.teacherGroupId !== null && parts.teacherGroupId !== undefined) {
+    return groupName(parts.teacherGroupId, names)
   }
   if (parts.teacherId !== null && parts.teacherId !== undefined) {
     return names.teacher(parts.teacherId)
@@ -632,16 +659,20 @@ export function missingParts(card: RuleShape): string[] {
   if (spec.target === 'CLASS' && !spec.allowSchool && (card.classId ?? null) === null) {
     missing.push('选择班级')
   }
-  if (spec.target === 'TEACHER' && !spec.allowAnyTeacher && (card.teacherId ?? null) === null) {
+  if (spec.target === 'TEACHER' && !spec.allowAnyTeacher
+    && (card.teacherId ?? null) === null && (card.teacherGroupId ?? null) === null) {
     missing.push('选择教师')
   }
-  if (spec.course === 'REQUIRED' && (card.courseId ?? null) === null) {
+  if (spec.course === 'REQUIRED'
+    && (card.courseId ?? null) === null && (card.courseGroupId ?? null) === null) {
     missing.push('选择课程')
   }
-  if (spec.day === 'REQUIRED' && (card.days ?? []).length === 0) {
+  if (spec.day === 'REQUIRED' && (card.days ?? []).length === 0
+    && (card.timeGroupId ?? null) === null) {
     missing.push('选择星期')
   }
-  if (spec.periods === 'REQUIRED' && (card.periodNos ?? []).length === 0) {
+  if (spec.periods === 'REQUIRED' && (card.periodNos ?? []).length === 0
+    && (card.timeGroupId ?? null) === null) {
     missing.push('选择第几节')
   }
   if (spec.amount && (card.amount === null || card.amount === undefined
@@ -726,15 +757,22 @@ function sentenceFromInput(input: RuleInput, groupKey: string | null): RuleSente
   }
   const rule = RULE_SPECS[input.type]
   const isSchoolUnavailable = input.type === CLASS_UNAVAILABLE && (input.classId ?? null) === null
+  const teacherGroupId = rule.target === 'TEACHER' ? toInteger(input.teacherGroupId) : null
+  const courseGroupId = rule.course === 'ALL' ? null : toInteger(input.courseGroupId)
+  const timeGroupId = rule.day === 'REQUIRED' || rule.periods === 'REQUIRED'
+    ? toInteger(input.timeGroupId) : null
   return {
     key: groupKey ? `group:${groupKey}` : `new:${newGroupKey()}`,
     groupKey,
     type: input.type,
     classId: rule.target === 'CLASS' ? toInteger(input.classId) : null,
-    teacherId: rule.target === 'TEACHER' ? toInteger(input.teacherId) : null,
-    courseId: rule.course === 'ALL' ? null : toInteger(input.courseId),
+    teacherId: rule.target === 'TEACHER' && teacherGroupId === null
+      ? toInteger(input.teacherId) : null,
+    courseId: rule.course !== 'ALL' && courseGroupId === null
+      ? toInteger(input.courseId) : null,
     days: rule.day === 'REQUIRED' ? normalizeDays(input.days ?? []) : [],
-    periodNos: rule.periods === 'REQUIRED' ? normalizePeriods(input.periodNos ?? []) : [],
+    periodNos: rule.periods === 'REQUIRED' && timeGroupId === null
+      ? normalizePeriods(input.periodNos ?? []) : [],
     amount: rule.amount ? toInteger(input.amount) ?? rule.amount.defaultValue : null,
     strength: rule.hardOnly ? 'HARD' : input.strength ?? 'HARD',
     enabled: true,
@@ -742,9 +780,9 @@ function sentenceFromInput(input: RuleInput, groupKey: string | null): RuleSente
     exceptionClassIds: isSchoolUnavailable
       ? Array.from(new Set(input.exceptionClassIds ?? [])).sort((left, right) => left - right)
       : [],
-    teacherGroupId: null,
-    courseGroupId: null,
-    timeGroupId: null,
+    teacherGroupId,
+    courseGroupId,
+    timeGroupId,
   }
 }
 
@@ -1010,6 +1048,24 @@ function sentenceEntries(sentence: RuleSentence, options: MergeOptions): SaveEnt
   const spec = RULE_SPECS[sentence.type]
   const hard = spec.hardOnly || sentence.strength === 'HARD'
   if (spec.periods === 'REQUIRED') {
+    if (sentence.timeGroupId !== null) {
+      // A time group replaces the day × period grid: one row carries the group id.
+      return sentenceClasses(sentence, options.classIds).map((classId) => {
+        const params = objectParams(sentence)
+        if (classId !== null) {
+          params.classId = classId
+        }
+        params.timeGroupId = sentence.timeGroupId
+        return {
+          id: sentence.entryIds[SINGLE_ENTRY_KEY] ?? null,
+          params,
+          enabled: sentence.enabled,
+          hard,
+          weight: null,
+          groupKey: sentence.groupKey,
+        }
+      })
+    }
     const days = normalizeDays(sentence.days)
     const classes = sentenceClasses(sentence, options.classIds)
     const exceptionSentence = sentence.exceptionClassIds.length > 0
@@ -1065,11 +1121,19 @@ function objectParams(sentence: RuleSentence): Record<string, unknown> {
   if (spec.target === 'CLASS' && sentence.classId !== null) {
     params.classId = sentence.classId
   }
-  if (spec.target === 'TEACHER' && sentence.teacherId !== null) {
-    params.teacherId = sentence.teacherId
+  if (spec.target === 'TEACHER') {
+    if (sentence.teacherGroupId !== null) {
+      params.teacherGroupId = sentence.teacherGroupId
+    } else if (sentence.teacherId !== null) {
+      params.teacherId = sentence.teacherId
+    }
   }
-  if (spec.target === 'COURSE' && sentence.courseId !== null) {
-    params.courseId = sentence.courseId
+  if (spec.target === 'COURSE') {
+    if (sentence.courseGroupId !== null) {
+      params.courseGroupId = sentence.courseGroupId
+    } else if (sentence.courseId !== null) {
+      params.courseId = sentence.courseId
+    }
   }
   if (spec.amount && sentence.amount !== null) {
     params[spec.amount.field] = sentence.amount
@@ -1143,27 +1207,55 @@ function slotSentence(
   const periods = new Set<number>()
   const objects = new Set<number | null>()
   const slotsByObject = new Map<number | null, Set<string>>()
+  const teacherGroups = new Set<number>()
+  const courseGroups = new Set<number>()
+  const timeGroups = new Set<number>()
   for (const entry of group.entries) {
     const params = entry.params ?? {}
     if (!allowedKeys(params, spec)) {
       return null
     }
-    const day = toInteger(params.dayOfWeek)
-    const periodNo = toInteger(params.periodNo)
-    if (day === null || periodNo === null) {
+    const teacherGroupId = toInteger(params.teacherGroupId)
+    const courseGroupId = toInteger(params.courseGroupId)
+    const timeGroupId = toInteger(params.timeGroupId)
+    const object = objectValue(spec, params)
+    // A concrete object and a group reference cannot live in the same row: the
+    // server would reject it too, so the sentence is not representable.
+    if (object !== null && (teacherGroupId !== null || courseGroupId !== null)) {
       return null
     }
-    const object = objectValue(spec, params)
-    days.add(day)
-    periods.add(periodNo)
+    if (teacherGroupId !== null) {
+      teacherGroups.add(teacherGroupId)
+    }
+    if (courseGroupId !== null) {
+      courseGroups.add(courseGroupId)
+    }
+    if (timeGroupId !== null) {
+      if (toInteger(params.dayOfWeek) !== null || toInteger(params.periodNo) !== null) {
+        return null
+      }
+      timeGroups.add(timeGroupId)
+    } else {
+      const day = toInteger(params.dayOfWeek)
+      const periodNo = toInteger(params.periodNo)
+      if (day === null || periodNo === null) {
+        return null
+      }
+      days.add(day)
+      periods.add(periodNo)
+      const slots = slotsByObject.get(object) ?? new Set<string>()
+      slots.add(slotKey(day, periodNo))
+      slotsByObject.set(object, slots)
+    }
     objects.add(object)
-    const slots = slotsByObject.get(object) ?? new Set<string>()
-    slots.add(slotKey(day, periodNo))
-    slotsByObject.set(object, slots)
+  }
+  if (teacherGroups.size > 1 || courseGroups.size > 1 || timeGroups.size > 1) {
+    return null
   }
   const sortedDays = normalizeDays(Array.from(days))
   const sortedPeriods = normalizePeriods(Array.from(periods))
-  if (sortedDays.length === 0 || sortedPeriods.length === 0) {
+  const timeGroupId = timeGroups.size === 1 ? Array.from(timeGroups)[0] : null
+  if (timeGroupId === null && (sortedDays.length === 0 || sortedPeriods.length === 0)) {
     return null
   }
   const exception = exceptionScope(
@@ -1174,6 +1266,8 @@ function slotSentence(
   }
   let classId: number | null = null
   let exceptionClassIds: number[] = []
+  const teacherGroupId = teacherGroups.size === 1 ? Array.from(teacherGroups)[0] : null
+  const courseGroupId = courseGroups.size === 1 ? Array.from(courseGroups)[0] : null
   if (exception) {
     exceptionClassIds = exception
   } else {
@@ -1181,20 +1275,25 @@ function slotSentence(
       return null
     }
     const object = Array.from(objects)[0] ?? null
-    if (objectRequired(spec) && object === null) {
+    const hasGroup = teacherGroupId !== null || courseGroupId !== null
+    if (objectRequired(spec) && object === null && !hasGroup) {
       return null
     }
     classId = spec.target === 'CLASS' ? object : null
   }
   // A multi-day sentence compiles to the full day × period grid; a group that
   // skips some combinations would be misread, so it stays unrepresented.
-  if (!coversGrid(slotsByObject, sortedDays, sortedPeriods)) {
+  if (timeGroupId === null && !coversGrid(slotsByObject, sortedDays, sortedPeriods)) {
     return null
   }
   const entryIds: Record<string, number> = {}
   const exceptionSentence = exceptionClassIds.length > 0
   group.entries.forEach((entry) => {
     if (entry.id === null) {
+      return
+    }
+    if (timeGroupId !== null) {
+      entryIds[SINGLE_ENTRY_KEY] = entry.id
       return
     }
     const day = toInteger(entry.params?.dayOfWeek)
@@ -1213,8 +1312,10 @@ function slotSentence(
     groupKey: group.groupKey,
     type,
     classId,
-    teacherId: spec.target === 'TEACHER' ? firstObject(objects) : null,
-    courseId: spec.target === 'COURSE' ? firstObject(objects) : null,
+    teacherId: spec.target === 'TEACHER' && teacherGroupId === null
+      ? firstObject(objects) : null,
+    courseId: spec.target === 'COURSE' && courseGroupId === null
+      ? firstObject(objects) : null,
     days: sortedDays,
     periodNos: sortedPeriods,
     amount: null,
@@ -1222,9 +1323,9 @@ function slotSentence(
     enabled: group.entries.every((entry) => entry.enabled !== false) && config.enabled !== false,
     entryIds,
     exceptionClassIds,
-    teacherGroupId: null,
-    courseGroupId: null,
-    timeGroupId: null,
+    teacherGroupId,
+    courseGroupId,
+    timeGroupId,
     ...invalidField(group.entries),
   }
 }
@@ -1242,17 +1343,30 @@ function dayOffSentence(
   const objects = new Set<number | null>()
   const days = new Set<number>()
   const entryIds: Record<string, number> = {}
+  const teacherGroups = new Set<number>()
+  const courseGroups = new Set<number>()
+  const timeGroups = new Set<number>()
   let amount: number | null = null
   for (const entry of group.entries) {
     const params = entry.params ?? {}
     if (!allowedKeys(params, spec)) {
       return null
     }
+    const teacherGroupId = toInteger(params.teacherGroupId)
+    const courseGroupId = toInteger(params.courseGroupId)
+    const timeGroupId = toInteger(params.timeGroupId)
+    const object = objectValue(spec, params)
+    if (object !== null && (teacherGroupId !== null || courseGroupId !== null)) {
+      return null
+    }
+    if (teacherGroupId !== null) teacherGroups.add(teacherGroupId)
+    if (courseGroupId !== null) courseGroups.add(courseGroupId)
+    if (timeGroupId !== null) timeGroups.add(timeGroupId)
     const day = toInteger(params.dayOfWeek)
     if (day === null || days.has(day)) {
       return null
     }
-    objects.add(objectValue(spec, params))
+    objects.add(object)
     if (spec.amount) {
       const value = toInteger(params[spec.amount.field])
       if (value === null || value < spec.amount.min || value > spec.amount.max) {
@@ -1271,8 +1385,15 @@ function dayOffSentence(
   if (days.size === 0 || objects.size !== 1) {
     return null
   }
+  if (teacherGroups.size > 1 || courseGroups.size > 1 || timeGroups.size > 1) {
+    return null
+  }
+  const teacherGroupId = teacherGroups.size === 1 ? Array.from(teacherGroups)[0] : null
+  const courseGroupId = courseGroups.size === 1 ? Array.from(courseGroups)[0] : null
+  const timeGroupId = timeGroups.size === 1 ? Array.from(timeGroups)[0] : null
   const object = Array.from(objects)[0] ?? null
-  if (objectRequired(spec) && object === null) {
+  const hasGroup = teacherGroupId !== null || courseGroupId !== null
+  if (objectRequired(spec) && object === null && !hasGroup) {
     return null
   }
   return {
@@ -1280,8 +1401,8 @@ function dayOffSentence(
     groupKey: group.groupKey,
     type,
     classId: spec.target === 'CLASS' ? object : null,
-    teacherId: spec.target === 'TEACHER' ? object : null,
-    courseId: spec.target === 'COURSE' ? object : null,
+    teacherId: spec.target === 'TEACHER' && teacherGroupId === null ? object : null,
+    courseId: spec.target === 'COURSE' && courseGroupId === null ? object : null,
     days: normalizeDays(Array.from(days)),
     periodNos: [],
     amount,
@@ -1289,9 +1410,9 @@ function dayOffSentence(
     enabled: group.entries.every((entry) => entry.enabled !== false) && config.enabled !== false,
     entryIds,
     exceptionClassIds: [],
-    teacherGroupId: null,
-    courseGroupId: null,
-    timeGroupId: null,
+    teacherGroupId,
+    courseGroupId,
+    timeGroupId,
     ...invalidField(group.entries),
   }
 }
@@ -1376,8 +1497,15 @@ function singleSentence(
   if (!allowedKeys(params, spec)) {
     return null
   }
+  const teacherGroupId = toInteger(params.teacherGroupId)
+  const courseGroupId = toInteger(params.courseGroupId)
+  const timeGroupId = toInteger(params.timeGroupId)
   const object = objectValue(spec, params)
-  if (objectRequired(spec) && object === null) {
+  if (object !== null && (teacherGroupId !== null || courseGroupId !== null)) {
+    return null
+  }
+  const hasGroup = teacherGroupId !== null || courseGroupId !== null
+  if (objectRequired(spec) && object === null && !hasGroup) {
     return null
   }
   let amount: number | null = null
@@ -1392,8 +1520,8 @@ function singleSentence(
     groupKey: group.groupKey,
     type,
     classId: spec.target === 'CLASS' ? object : null,
-    teacherId: spec.target === 'TEACHER' ? object : null,
-    courseId: spec.target === 'COURSE' ? object : null,
+    teacherId: spec.target === 'TEACHER' && teacherGroupId === null ? object : null,
+    courseId: spec.target === 'COURSE' && courseGroupId === null ? object : null,
     days: [],
     periodNos: [],
     amount,
@@ -1401,9 +1529,9 @@ function singleSentence(
     enabled: entry.enabled !== false && config.enabled !== false,
     entryIds: entry.id === null ? {} : { [SINGLE_ENTRY_KEY]: entry.id },
     exceptionClassIds: [],
-    teacherGroupId: null,
-    courseGroupId: null,
-    timeGroupId: null,
+    teacherGroupId,
+    courseGroupId,
+    timeGroupId,
     ...invalidField([entry]),
   }
 }
@@ -1416,6 +1544,15 @@ function allowedKeys(
   const allowed = new Set<string>()
   if (spec.target !== 'NONE') {
     allowed.add(objectField(spec))
+  }
+  if (spec.target === 'TEACHER') {
+    allowed.add('teacherGroupId')
+  }
+  if (spec.target === 'COURSE') {
+    allowed.add('courseGroupId')
+  }
+  if (spec.day === 'REQUIRED' || spec.periods === 'REQUIRED') {
+    allowed.add('timeGroupId')
   }
   if (spec.amount) {
     allowed.add(spec.amount.field)
