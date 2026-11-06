@@ -133,7 +133,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
 import { activeOnly } from '@/utils/activeOptions'
@@ -166,6 +166,7 @@ import {
 } from '@/rules/compiler'
 import { cardsSignature } from '@/rules/signature'
 import { cardChangedSinceLoad, cardLabelOf } from '@/rules/cardChange'
+import { buildConflictContext, findRuleConflicts, formatConflictMessage } from '@/rules/conflicts'
 import { deleteRuleCardWithConfirmation } from '@/rules/deleteRuleCard'
 import { useRuleImpact } from '@/rules/useRuleImpact'
 import { useRuleAi } from '@/rules/useRuleAi'
@@ -256,6 +257,15 @@ const ruleNames = computed<RuleNames>(() => {
   }
 })
 const dirty = computed(() => cardsSignature(cards.value) !== loadedSignature.value)
+/** Ticket 07: the groups expanded to concrete members/slots, read by the save check. */
+const conflictContext = computed(() => buildConflictContext({
+  periods: periods.value,
+  names: ruleNames.value,
+  allClassIds: classIds.value,
+  teacherGroups: teacherGroups.groups.value,
+  courseGroups: courseGroups.groups.value,
+  timeGroups: timeGroups.groups.value,
+}))
 const editingCard = computed(
   () => cards.value.find((card) => card.key === editingKey.value) ?? null,
 )
@@ -463,6 +473,20 @@ async function save() {
     if (preview && preview.errors.length > 0) {
       ElMessage.error('规则还有错误，未保存')
       return
+    }
+    // Ticket 07: a warning only. The user may save anyway; the server does not check this.
+    const conflicts = findRuleConflicts(cards.value, conflictContext.value)
+    if (conflicts.length > 0) {
+      try {
+        await ElMessageBox.confirm(formatConflictMessage(conflicts), '规则互相卡住', {
+          type: 'warning',
+          confirmButtonText: '仍然保存',
+          cancelButtonText: '返回修改',
+          distinguishCancelAndClose: true,
+        })
+      } catch {
+        return
+      }
     }
     const ai = aiFields()
     await http.put(
