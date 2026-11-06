@@ -54,15 +54,12 @@
         <p class="alert-copy">{{ errorMessage }}</p>
       </el-alert>
 
-      <RuleGroupSection
+      <RuleGroupPanels
         v-if="showGroups"
-        :groups="teacherGroups"
         :teachers="teachers"
-        :loading="groupsLoading"
-        :create-group="createGroupWithMembers"
-        :update-group="updateTeacherGroup"
-        :delete-group="removeTeacherGroup"
-        :load-impact="loadGroupImpact"
+        :courses="courses"
+        :teacher-groups="teacherGroups"
+        :course-groups="courseGroups"
         @changed="onGroupsChanged"
       />
 
@@ -76,7 +73,9 @@
         :days="availableDays"
         :periods="periods"
         :teacher-groups="teacherGroupOptions"
-        :create-teacher-group="createTeacherGroupEntry"
+        :create-teacher-group="teacherGroups.create"
+        :course-groups="courseGroupOptions"
+        :create-course-group="courseGroups.create"
         @submit="onFormSubmit"
         @cancel="closeForm"
       />
@@ -137,7 +136,7 @@ import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ConstraintAiPanel from '@/components/constraints/ConstraintAiPanel.vue'
 import RuleForm from '@/components/rules/RuleForm.vue'
 import RuleGroupedList from '@/components/rules/RuleGroupedList.vue'
-import RuleGroupSection from '@/components/rules/RuleGroupSection.vue'
+import RuleGroupPanels from '@/components/rules/RuleGroupPanels.vue'
 import RuleImpactSummary from '@/components/rules/RuleImpactSummary.vue'
 import RulePageHeader from '@/components/rules/RulePageHeader.vue'
 import RuleToolbar from '@/components/rules/RuleToolbar.vue'
@@ -209,17 +208,10 @@ const formKey = ref(0)
 const editingKey = ref<string | null>(null)
 const query = ref('')
 const showGroups = ref(false)
-const {
-  groups: teacherGroups,
-  teacherGroups: teacherGroupOptions,
-  groupNames,
-  loading: groupsLoading,
-  load: loadGroups,
-  createTeacher: createTeacherGroupEntry,
-  update: updateTeacherGroup,
-  remove: removeTeacherGroup,
-  impact: loadGroupImpact,
-} = useRuleGroups()
+const teacherGroups = useRuleGroups('TEACHER')
+const courseGroups = useRuleGroups('COURSE')
+const teacherGroupOptions = teacherGroups.options
+const courseGroupOptions = courseGroups.options
 const {
   visible: impactVisible,
   loading: impactLoading,
@@ -250,7 +242,8 @@ const ruleNames = computed<RuleNames>(() => {
     teacher: (id) => teacherNames.get(id) ?? `教师${id}`,
     course: (id) => courseNames.get(id) ?? `课程${id}`,
     klass: (id) => classNames.get(id) ?? `班级${id}`,
-    group: (id) => groupNames.value.get(id) ?? '教师组',
+    teacherGroup: (id) => teacherGroups.groupNames.value.get(id) ?? '教师组',
+    courseGroup: (id) => courseGroups.groupNames.value.get(id) ?? '课程组',
   }
 })
 const dirty = computed(() => cardsSignature(cards.value) !== loadedSignature.value)
@@ -374,20 +367,7 @@ function closeForm() {
   editingKey.value = null
 }
 
-/** The management panel creates the group first, then writes the picked members. */
-async function createGroupWithMembers(name: string, teacherIds: number[]): Promise<boolean> {
-  const created = await createTeacherGroupEntry(name)
-  if (!created) {
-    return false
-  }
-  if (teacherIds.length === 0) {
-    return true
-  }
-  return updateTeacherGroup(created.id, name, teacherIds)
-}
-
-/**
- * A rename/member edit only refreshes the group list, so unsaved rule edits survive.
+/** A rename/member edit only refreshes the group list, so unsaved rule edits survive.
  * Deleting rules together with the group is the one case that must reload the state.
  */
 async function onGroupsChanged(payload: { deletedRules: number }) {
@@ -507,7 +487,14 @@ async function reloadAfterConflict() {
 onMounted(async () => {
   loading.value = true
   try {
-    await Promise.all([loadSemesters(), loadTeachers(), loadCatalogue(), loadCourses(), loadGroups()])
+    await Promise.all([
+      loadSemesters(),
+      loadTeachers(),
+      loadCatalogue(),
+      loadCourses(),
+      teacherGroups.load(),
+      courseGroups.load(),
+    ])
     if (semesterId.value !== null) {
       await loadClasses()
       await loadState()

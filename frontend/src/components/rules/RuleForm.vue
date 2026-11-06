@@ -16,6 +16,8 @@
       :periods="periods"
       :teacher-groups="teacherGroups"
       :create-teacher-group="createTeacherGroup"
+      :course-groups="courseGroups"
+      :create-course-group="createCourseGroup"
       @update:sentence="updateSentence(index, $event)"
       @remove="removeSentence(index)"
     />
@@ -78,6 +80,8 @@ const props = defineProps<{
   periods: PeriodOption[]
   teacherGroups?: { id: number; name: string }[]
   createTeacherGroup?: (name: string) => Promise<{ id: number; name: string } | null>
+  courseGroups?: { id: number; name: string }[]
+  createCourseGroup?: (name: string) => Promise<{ id: number; name: string } | null>
 }>()
 
 const emit = defineEmits<{
@@ -98,7 +102,8 @@ const names = computed<RuleNames>(() => ({
   teacher: (id: number) => props.teachers.find((item) => item.id === id)?.name ?? `教师${id}`,
   course: (id: number) => props.courses.find((item) => item.id === id)?.name ?? `课程${id}`,
   klass: (id: number) => props.classes.find((item) => item.id === id)?.name ?? `班级${id}`,
-  group: (id: number) => props.teacherGroups?.find((item) => item.id === id)?.name ?? '教师组',
+  teacherGroup: (id: number) => props.teacherGroups?.find((item) => item.id === id)?.name ?? '教师组',
+  courseGroup: (id: number) => props.courseGroups?.find((item) => item.id === id)?.name ?? '课程组',
 }))
 
 const classIds = computed(() => props.classes.map((item) => item.id))

@@ -22,6 +22,21 @@
     </div>
 
     <el-card shadow="never">
+      <div v-if="groups.length > 0" class="group-filter-row">
+        <el-select
+          v-model="filterGroupId"
+          class="group-filter"
+          data-testid="course-group-filter"
+        >
+          <el-option label="全部分组" value="all" />
+          <el-option
+            v-for="group in groups"
+            :key="group.id"
+            :label="group.name"
+            :value="group.id"
+          />
+        </el-select>
+      </div>
       <EmptyStateGuide
         v-if="!loading && courses.length === 0"
         title="还没有课程数据"
@@ -31,8 +46,15 @@
         help-anchor="courses"
         @action="openCreate"
       />
-      <el-table v-else v-loading="loading" :data="courses" stripe>
-        <el-table-column prop="name" label="课程名称" min-width="140" />
+      <el-table v-else v-loading="loading" :data="filteredCourses" stripe>
+        <el-table-column prop="name" label="课程名称" min-width="140">
+          <template #default="{ row }">
+            <span>{{ row.name }}</span>
+            <span v-if="suffixOf(row)" class="group-suffix" :data-testid="`course-group-suffix-${row.id}`">
+              · {{ suffixOf(row) }}
+            </span>
+          </template>
+        </el-table-column>
         <el-table-column prop="subject" label="所属学科" min-width="120">
           <template #default="{ row }">
             <span>{{ row.subject || '—' }}</span>
@@ -130,10 +152,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Download, Upload } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
+import { getRuleGroups, type RuleGroup } from '@/api/ruleGroups'
 import { useAuthStore } from '@/stores/auth'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ImportDialog from '@/components/ImportDialog.vue'
@@ -172,6 +195,36 @@ const dialogVisible = ref(false)
 const importVisible = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
+const groups = ref<RuleGroup[]>([])
+const filterGroupId = ref<number | 'all'>('all')
+
+const filteredCourses = computed(() => {
+  if (filterGroupId.value === 'all') {
+    return courses.value
+  }
+  const group = groups.value.find((item) => item.id === filterGroupId.value)
+  if (!group) {
+    return courses.value
+  }
+  const memberIds = new Set(
+    group.members
+      .filter((member) => member.kind === 'COURSE')
+      .map((member) => member.objectId),
+  )
+  return courses.value.filter((course) => memberIds.has(course.id))
+})
+
+/** 「技能课」/「技能课、理科实验」 for the name column. */
+function courseGroupNames(courseId: number): string[] {
+  return groups.value
+    .filter((group) =>
+      group.members.some((member) => member.kind === 'COURSE' && member.objectId === courseId))
+    .map((group) => group.name)
+}
+
+function suffixOf(row: Course): string {
+  return courseGroupNames(row.id).join('、')
+}
 
 const defaultForm = {
   name: '',
@@ -278,7 +331,22 @@ async function handleExport() {
   }
 }
 
-onMounted(load)
+/**
+ * Groups only decorate the list; a missing read permission must not block the
+ * course page, so a failure leaves the suffix/filter empty.
+ */
+async function loadGroups() {
+  try {
+    groups.value = await getRuleGroups('COURSE')
+  } catch (e: unknown) {
+    groups.value = []
+    console.warn('加载课程分组失败', e)
+  }
+}
+
+onMounted(async () => {
+  await Promise.all([load(), loadGroups()])
+})
 </script>
 
 <style scoped>
@@ -306,6 +374,16 @@ h2 {
 }
 .muted {
   color: var(--paiban-muted);
+}
+.group-suffix {
+  color: var(--paiban-muted, #6b7280);
+  font-size: 12px;
+}
+.group-filter-row {
+  margin-bottom: 12px;
+}
+.group-filter {
+  width: 220px;
 }
 .color-cell {
   display: flex;

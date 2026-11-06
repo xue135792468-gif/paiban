@@ -1,38 +1,38 @@
 <template>
-  <el-card shadow="never" class="rule-groups" data-testid="rule-group-section">
+  <el-card shadow="never" class="rule-groups" :data-testid="tid('rule-group-section')">
     <div class="head">
       <div>
-        <h3>教师分组</h3>
-        <p class="hint">一个老师可以属于多个组；改组成员后引用该组的规则自动生效。</p>
+        <h3>{{ title }}</h3>
+        <p class="hint">{{ hintText }}</p>
       </div>
-      <el-button type="primary" data-testid="rule-group-new" @click="openCreate">
+      <el-button type="primary" :data-testid="tid('rule-group-new')" @click="openCreate">
         新建分组
       </el-button>
     </div>
 
     <el-empty
       v-if="groups.length === 0"
-      description="还没有教师分组"
-      data-testid="rule-group-empty"
+      :description="`还没有${title}`"
+      :data-testid="tid('rule-group-empty')"
     />
     <div v-else v-loading="loading" class="list">
       <div
         v-for="group in groups"
         :key="group.id"
         class="row"
-        :data-testid="`rule-group-row-${group.id}`"
+        :data-testid="tid(`rule-group-row-${group.id}`)"
       >
         <div class="info">
-          <span class="name" :data-testid="`rule-group-name-${group.id}`">{{ group.name }}</span>
-          <span class="members" :data-testid="`rule-group-members-text-${group.id}`">
+          <span class="name" :data-testid="tid(`rule-group-name-${group.id}`)">{{ group.name }}</span>
+          <span class="members" :data-testid="tid(`rule-group-members-text-${group.id}`)">
             {{ memberNames(group) }}
           </span>
         </div>
         <div class="actions">
-          <el-button link type="primary" :data-testid="`rule-group-edit-${group.id}`" @click="openEdit(group)">
+          <el-button link type="primary" :data-testid="tid(`rule-group-edit-${group.id}`)" @click="openEdit(group)">
             编辑
           </el-button>
-          <el-button link type="danger" :data-testid="`rule-group-delete-${group.id}`" @click="askDelete(group)">
+          <el-button link type="danger" :data-testid="tid(`rule-group-delete-${group.id}`)" @click="askDelete(group)">
             删除
           </el-button>
         </div>
@@ -41,7 +41,7 @@
 
     <el-dialog
       v-model="dialogVisible"
-      :title="editing ? '编辑教师分组' : '新建教师分组'"
+      :title="editing ? `编辑${title}` : `新建${title}`"
       width="520px"
       destroy-on-close
     >
@@ -51,36 +51,36 @@
             v-model="formName"
             maxlength="64"
             show-word-limit
-            placeholder="如：教导主任"
-            data-testid="rule-group-name-input"
+            :placeholder="namePlaceholder"
+            :data-testid="tid('rule-group-name-input')"
           />
         </el-form-item>
         <el-form-item label="成员">
           <el-select
-            v-model="formTeacherIds"
+            v-model="formMemberIds"
             multiple
             filterable
             collapse-tags
-            placeholder="选择教师（可不选，之后再加）"
+            :placeholder="`选择${memberLabel}（可不选，之后再加）`"
             class="member-select"
-            data-testid="rule-group-members"
+            :data-testid="tid('rule-group-members')"
           >
             <el-option
-              v-for="teacher in teachers"
-              :key="teacher.id"
-              :label="teacher.name"
-              :value="teacher.id"
+              v-for="option in options"
+              :key="option.id"
+              :label="option.name"
+              :value="option.id"
             />
           </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button data-testid="rule-group-cancel" @click="dialogVisible = false">取消</el-button>
+        <el-button :data-testid="tid('rule-group-cancel')" @click="dialogVisible = false">取消</el-button>
         <el-button
           type="primary"
           :loading="saving"
           :disabled="!validName"
-          data-testid="rule-group-save"
+          :data-testid="tid('rule-group-save')"
           @click="submit"
         >
           保存
@@ -94,6 +94,7 @@
 import { computed, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { OptionItem } from '@/components/constraints/types'
+import type { RuleGroupKind } from '@/rules/useRuleGroups'
 import type {
   RuleGroup,
   RuleGroupDeleteResult,
@@ -101,11 +102,19 @@ import type {
 } from '@/api/ruleGroups'
 
 const props = defineProps<{
+  /** Teacher or course groups; the panel is the same widget for both. */
+  groupType: RuleGroupKind
+  /** 「教师分组」/「课程分组」 */
+  title: string
+  /** 「老师」/「课程」 */
+  memberLabel: string
   groups: RuleGroup[]
-  teachers: OptionItem[]
+  /** Teachers or courses, matching `groupType`. */
+  options: OptionItem[]
+  hint?: string
   loading?: boolean
-  createGroup?: (name: string, teacherIds: number[]) => Promise<boolean>
-  updateGroup?: (id: number, name: string, teacherIds: number[]) => Promise<boolean>
+  createGroup?: (name: string, memberIds: number[]) => Promise<boolean>
+  updateGroup?: (id: number, name: string, memberIds: number[]) => Promise<boolean>
   deleteGroup?: (id: number, withRules: boolean) => Promise<RuleGroupDeleteResult | null>
   loadImpact?: (id: number) => Promise<RuleGroupImpact | null>
 }>()
@@ -117,14 +126,31 @@ const emit = defineEmits<{
 const dialogVisible = ref(false)
 const editing = ref<RuleGroup | null>(null)
 const formName = ref('')
-const formTeacherIds = ref<number[]>([])
+const formMemberIds = ref<number[]>([])
 const saving = ref(false)
 
 const validName = computed(() => formName.value.trim().length > 0 && formName.value.trim().length <= 64)
 
+const hintText = computed(
+  () => props.hint
+    ?? `一个${props.memberLabel}可以属于多个组；改组成员后引用该组的规则自动生效。`,
+)
+
+const namePlaceholder = computed(
+  () => (props.groupType === 'TEACHER' ? '如：教导主任' : '如：技能课'),
+)
+
+/**
+ * Teacher panels keep the ticket-04 test ids; a second panel on the same page
+ * appends its type so both sections stay addressable.
+ */
+function tid(base: string): string {
+  return props.groupType === 'TEACHER' ? base : `${base}-${props.groupType.toLowerCase()}`
+}
+
 function memberNames(group: RuleGroup): string {
   const names = group.members
-    .filter((member) => member.kind === 'TEACHER')
+    .filter((member) => member.kind === props.groupType)
     .map((member) => member.name)
   return names.length > 0 ? names.join('、') : '还没有成员'
 }
@@ -132,15 +158,15 @@ function memberNames(group: RuleGroup): string {
 function openCreate() {
   editing.value = null
   formName.value = ''
-  formTeacherIds.value = []
+  formMemberIds.value = []
   dialogVisible.value = true
 }
 
 function openEdit(group: RuleGroup) {
   editing.value = group
   formName.value = group.name
-  formTeacherIds.value = group.members
-    .filter((member) => member.kind === 'TEACHER')
+  formMemberIds.value = group.members
+    .filter((member) => member.kind === props.groupType)
     .map((member) => member.objectId)
   dialogVisible.value = true
 }
@@ -153,8 +179,8 @@ async function submit() {
   saving.value = true
   try {
     const saved = editing.value
-      ? await props.updateGroup?.(editing.value.id, name, formTeacherIds.value)
-      : await props.createGroup?.(name, formTeacherIds.value)
+      ? await props.updateGroup?.(editing.value.id, name, formMemberIds.value)
+      : await props.createGroup?.(name, formMemberIds.value)
     if (saved) {
       dialogVisible.value = false
       ElMessage.success(editing.value ? '分组已更新' : '分组已创建')

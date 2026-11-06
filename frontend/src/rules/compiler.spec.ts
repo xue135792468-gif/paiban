@@ -111,7 +111,8 @@ const names: RuleNames = {
   teacher: (id) => (id === 7 ? '王老师' : `教师${id}`),
   course: (id) => (id === 9 ? '数学' : `课程${id}`),
   klass: (id) => (id === 3 ? '八年级1班' : `班级${id}`),
-  group: (id) => (id === 12 ? '教导主任' : `组${id}`),
+  teacherGroup: (id) => (id === 12 ? '教导主任' : `教师组${id}`),
+  courseGroup: (id) => (id === 21 ? '技能课' : `课程组${id}`),
 }
 
 describe('rule compiler: 16 createable types', () => {
@@ -415,6 +416,78 @@ describe('teacher groups in sentences (ticket 04)', () => {
       config('TEACHER_UNAVAILABLE', [
         entry(1, {
           teacherId: 7, teacherGroupId: 12, dayOfWeek: 5, periodNo: 5,
+        }, { groupKey: 'pt-both' }),
+      ]),
+    ])
+    expect(cards).toHaveLength(0)
+  })
+})
+
+describe('course groups in sentences (ticket 05)', () => {
+  it('compiles a course-group sentence to group params and never a concrete course', () => {
+    const rows = entriesOf(compileRule({
+      type: COURSE_UNAVAILABLE,
+      courseId: 9,
+      courseGroupId: 21,
+      days: [2],
+      periodNos: [1, 2],
+      strength: 'HARD',
+    }))
+    expect(rows.map((row) => row.params)).toEqual([
+      { courseGroupId: 21, dayOfWeek: 2, periodNo: 1 },
+      { courseGroupId: 21, dayOfWeek: 2, periodNo: 2 },
+    ])
+    expect(rows.every((row) => !('courseId' in row.params))).toBe(true)
+    expect(new Set(rows.map((row) => row.groupKey)).size).toBe(1)
+  })
+
+  it('compiles a course-group threshold to one group parameter', () => {
+    const rows = entriesOf(compileRule({
+      type: COURSE_MAX_PER_DAY,
+      courseGroupId: 21,
+      amount: 1,
+      strength: 'SOFT',
+    }))
+    expect(rows[0].params).toEqual({ courseGroupId: 21, maxPerDay: 1 })
+  })
+
+  it('reads a stored course-group row back with the group name in the sentence', () => {
+    const stored = [
+      config('COURSE_MAX_PER_DAY', [
+        entry(1, { courseGroupId: 21, maxPerDay: 1 }, { groupKey: 'pt-course-group' }),
+      ]),
+    ]
+    const cards = cardsFromState(stored)
+    expect(cards).toHaveLength(1)
+    expect(cards[0].sentences[0].courseGroupId).toBe(21)
+    expect(cards[0].sentences[0].courseId).toBeNull()
+    expect(describeCard(cards[0], names)).toBe('技能课 每天最多 1 节')
+
+    // Saving the read-back card keeps the group reference instead of expanding it.
+    const merged = configsFromCards(stored, cards)
+    expect(merged[0].entries?.map((row) => row.params))
+      .toEqual([{ courseGroupId: 21, maxPerDay: 1 }])
+  })
+
+  it('accepts a course group where a course is required, and still asks otherwise', () => {
+    const base = {
+      type: COURSE_UNAVAILABLE,
+      classId: null,
+      teacherId: null,
+      courseId: null,
+      days: [2],
+      periodNos: [1],
+      amount: null,
+    }
+    expect(missingParts(base)).toContain('选择课程')
+    expect(missingParts({ ...base, courseGroupId: 21 })).toEqual([])
+  })
+
+  it('does not turn a row with both a course and a course group into a sentence', () => {
+    const cards = cardsFromState([
+      config('COURSE_MAX_PER_DAY', [
+        entry(1, {
+          courseId: 9, courseGroupId: 21, maxPerDay: 1,
         }, { groupKey: 'pt-both' }),
       ]),
     ])

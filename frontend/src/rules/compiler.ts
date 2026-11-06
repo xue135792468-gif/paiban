@@ -38,6 +38,7 @@ export type SubjectKind =
   | 'TEACHER_GROUP'
   | 'ALL_COURSES'
   | 'COURSE'
+  | 'COURSE_GROUP'
 
 export type RuleType =
   | 'CLASS_UNAVAILABLE'
@@ -329,8 +330,11 @@ export interface RuleNames {
   teacher: (id: number) => string
   course: (id: number) => string
   klass: (id: number) => string
-  /** Ticket 04: the display name of a user group (teacher/course/time). */
-  group?: (id: number) => string
+  /** Ticket 04/05: display names of the user groups. */
+  teacherGroup?: (id: number) => string
+  courseGroup?: (id: number) => string
+  /** Reserved for ticket 06 (time groups). */
+  timeGroup?: (id: number) => string
 }
 
 export interface MergeOptions {
@@ -477,13 +481,17 @@ type RuleShape = Pick<
   subjectKind?: SubjectKind | null
 }
 
-function groupName(id: number, names: RuleNames): string {
-  return names.group?.(id) ?? '教师组'
+function teacherGroupName(id: number, names: RuleNames): string {
+  return names.teacherGroup?.(id) ?? '教师组'
+}
+
+function courseGroupName(id: number, names: RuleNames): string {
+  return names.courseGroup?.(id) ?? '课程组'
 }
 
 function teacherSubject(parts: RuleShape, names: RuleNames): string {
   if (parts.teacherGroupId !== null && parts.teacherGroupId !== undefined) {
-    return groupName(parts.teacherGroupId, names)
+    return teacherGroupName(parts.teacherGroupId, names)
   }
   if (parts.teacherId !== null && parts.teacherId !== undefined) {
     return names.teacher(parts.teacherId)
@@ -504,7 +512,7 @@ function classSubject(parts: RuleShape, names: RuleNames): string {
 
 function courseSubject(parts: RuleShape, names: RuleNames): string {
   if (parts.courseGroupId !== null && parts.courseGroupId !== undefined) {
-    return groupName(parts.courseGroupId, names)
+    return courseGroupName(parts.courseGroupId, names)
   }
   if (parts.courseId !== null && parts.courseId !== undefined) {
     return names.course(parts.courseId)
@@ -533,21 +541,27 @@ function pendingSubject(parts: RuleShape, names: RuleNames): string | null {
         ? null : names.teacher(parts.teacherId)
     case 'TEACHER_GROUP':
       return parts.teacherGroupId === null || parts.teacherGroupId === undefined
-        ? null : groupName(parts.teacherGroupId, names)
+        ? null : teacherGroupName(parts.teacherGroupId, names)
     case 'COURSE':
       return parts.courseId === null || parts.courseId === undefined
         ? null : names.course(parts.courseId)
+    case 'COURSE_GROUP':
+      return parts.courseGroupId === null || parts.courseGroupId === undefined
+        ? null : courseGroupName(parts.courseGroupId, names)
     default:
       break
   }
   if (parts.teacherGroupId !== null && parts.teacherGroupId !== undefined) {
-    return groupName(parts.teacherGroupId, names)
+    return teacherGroupName(parts.teacherGroupId, names)
   }
   if (parts.teacherId !== null && parts.teacherId !== undefined) {
     return names.teacher(parts.teacherId)
   }
   if (parts.classId !== null && parts.classId !== undefined) {
     return names.klass(parts.classId)
+  }
+  if (parts.courseGroupId !== null && parts.courseGroupId !== undefined) {
+    return courseGroupName(parts.courseGroupId, names)
   }
   if (parts.courseId !== null && parts.courseId !== undefined) {
     return names.course(parts.courseId)

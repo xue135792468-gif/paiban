@@ -26,40 +26,21 @@
           @change="onSubjectChange"
         >
           <el-option-group label="人 / 班级">
-            <el-option label="全校" value="school" />
-            <el-option label="所有教师" value="all-teachers" />
             <el-option
-              v-for="group in teacherGroups ?? []"
-              :key="`teacher-group:${group.id}`"
-              :label="`教师组 · ${group.name}`"
-              :value="`teacher-group:${group.id}`"
-            />
-            <el-option
-              v-for="item in classes"
-              :key="`class:${item.id}`"
-              :label="`班级 · ${item.name}`"
-              :value="`class:${item.id}`"
-            />
-            <el-option
-              v-for="item in teachers"
-              :key="`teacher:${item.id}`"
-              :label="`教师 · ${item.name}`"
-              :value="`teacher:${item.id}`"
-            />
-            <el-option
-              v-if="createTeacherGroup"
-              label="＋ 新建教师组"
-              value="__new_teacher_group__"
-              data-testid="rule-subject-new-group"
+              v-for="item in teacherSubjectOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+              :data-testid="item.testId"
             />
           </el-option-group>
           <el-option-group label="课程">
-            <el-option label="全部课程" value="all-courses" />
             <el-option
-              v-for="item in courses"
-              :key="`course:${item.id}`"
-              :label="`课程 · ${item.name}`"
-              :value="`course:${item.id}`"
+              v-for="item in courseSubjectOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+              :data-testid="item.testId"
             />
           </el-option-group>
         </el-select>
@@ -193,7 +174,6 @@
 
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
-import { ElMessageBox } from 'element-plus'
 import type { OptionItem } from '@/components/constraints/types'
 import {
   CLASS_GAP_MINIMIZED,
@@ -209,6 +189,11 @@ import {
   type RuleType,
   type SubjectKind,
 } from '@/rules/compiler'
+import { promptGroupName } from '@/rules/promptGroupName'
+import {
+  courseSubjectOptions as courseSubjectOptionList,
+  teacherSubjectOptions as teacherSubjectOptionList,
+} from '@/rules/subjectOptions'
 import type { FormSentence } from '@/rules/form'
 
 const props = defineProps<{
@@ -222,6 +207,8 @@ const props = defineProps<{
   periods: PeriodOption[]
   teacherGroups?: { id: number; name: string }[]
   createTeacherGroup?: (name: string) => Promise<{ id: number; name: string } | null>
+  courseGroups?: { id: number; name: string }[]
+  createCourseGroup?: (name: string) => Promise<{ id: number; name: string } | null>
 }>()
 
 const emit = defineEmits<{
@@ -260,10 +247,24 @@ const names = computed<RuleNames>(() => ({
   teacher: (id: number) => props.teachers.find((item) => item.id === id)?.name ?? `教师${id}`,
   course: (id: number) => props.courses.find((item) => item.id === id)?.name ?? `课程${id}`,
   klass: (id: number) => props.classes.find((item) => item.id === id)?.name ?? `班级${id}`,
-  group: (id: number) => props.teacherGroups?.find((item) => item.id === id)?.name ?? '教师组',
+  teacherGroup: (id: number) => props.teacherGroups?.find((item) => item.id === id)?.name ?? '教师组',
+  courseGroup: (id: number) => props.courseGroups?.find((item) => item.id === id)?.name ?? '课程组',
 }))
 
 const preview = computed(() => describeRule(local, names.value, props.periods))
+
+const teacherSubjectOptions = computed(() => teacherSubjectOptionList({
+  teacherGroups: props.teacherGroups,
+  classes: props.classes,
+  teachers: props.teachers,
+  canCreate: Boolean(props.createTeacherGroup),
+}))
+
+const courseSubjectOptions = computed(() => courseSubjectOptionList({
+  courseGroups: props.courseGroups,
+  courses: props.courses,
+  canCreate: Boolean(props.createCourseGroup),
+}))
 
 const subjectValue = computed(() => {
   switch (local.subjectKind) {
@@ -281,6 +282,8 @@ const subjectValue = computed(() => {
       return local.teacherGroupId === null ? null : `teacher-group:${local.teacherGroupId}`
     case 'COURSE':
       return local.courseId === null ? null : `course:${local.courseId}`
+    case 'COURSE_GROUP':
+      return local.courseGroupId === null ? null : `course-group:${local.courseGroupId}`
     default:
       return null
   }
@@ -306,6 +309,7 @@ function acceptsSubject(kind: SubjectKind | null, type: RuleType): boolean {
     case 'ALL_COURSES':
       return rule.target === 'COURSE' && rule.course !== 'REQUIRED'
     case 'COURSE':
+    case 'COURSE_GROUP':
       return rule.target === 'COURSE'
     default:
       return false
@@ -357,7 +361,7 @@ function lastPeriod(): number | null {
 function setSubject(
   kind: SubjectKind | null,
   ids: Partial<Pick<FormSentence,
-    'classId' | 'teacherId' | 'courseId' | 'teacherGroupId'>> = {},
+    'classId' | 'teacherId' | 'courseId' | 'teacherGroupId' | 'courseGroupId'>> = {},
 ) {
   local.subjectKind = kind
   local.exceptionClassIds = []
@@ -365,7 +369,7 @@ function setSubject(
   local.teacherId = ids.teacherId ?? null
   local.courseId = ids.courseId ?? null
   local.teacherGroupId = ids.teacherGroupId ?? null
-  local.courseGroupId = null
+  local.courseGroupId = ids.courseGroupId ?? null
   local.timeGroupId = null
 
   if (local.type && !acceptsSubject(kind, local.type)) {
@@ -378,7 +382,11 @@ function setSubject(
 async function onSubjectChange(value: unknown) {
   const text = typeof value === 'string' ? value : ''
   if (text === '__new_teacher_group__') {
-    await createAndSelectGroup()
+    await createAndSelectGroup('TEACHER')
+    return
+  }
+  if (text === '__new_course_group__') {
+    await createAndSelectGroup('COURSE')
     return
   }
   if (text === 'school') {
@@ -395,35 +403,35 @@ async function onSubjectChange(value: unknown) {
     })
   } else if (text.startsWith('teacher:')) {
     setSubject('TEACHER', { teacherId: Number(text.slice('teacher:'.length)) })
+  } else if (text.startsWith('course-group:')) {
+    setSubject('COURSE_GROUP', {
+      courseGroupId: Number(text.slice('course-group:'.length)),
+    })
   } else if (text.startsWith('course:')) {
     setSubject('COURSE', { courseId: Number(text.slice('course:'.length)) })
   }
 }
 
-/** 「＋ 新建教师组」: create the group, then select it. Cancel keeps the old subject. */
-async function createAndSelectGroup() {
-  if (!props.createTeacherGroup) {
+/** 「＋ 新建教师组 / 课程组」: create the group, then select it. Cancel keeps the old subject. */
+async function createAndSelectGroup(kind: 'TEACHER' | 'COURSE') {
+  const create = kind === 'TEACHER' ? props.createTeacherGroup : props.createCourseGroup
+  if (!create) {
     return
   }
-  let name = ''
-  try {
-    const result = await ElMessageBox.prompt('给这个教师组起个名字', '新建教师组', {
-      inputPattern: /^.{1,64}$/,
-      inputErrorMessage: '组名需要 1–64 个字',
-      confirmButtonText: '创建',
-      cancelButtonText: '取消',
-    })
-    name = String(result.value ?? '').trim()
-  } catch {
-    return
-  }
+  const name = await promptGroupName(kind === 'TEACHER' ? '教师组' : '课程组')
   if (!name) {
     return
   }
-  const created = await props.createTeacherGroup(name)
-  if (created) {
-    setSubject('TEACHER_GROUP', { teacherGroupId: created.id })
+  const created = await create(name)
+  if (!created) {
+    return
   }
+  setSubject(
+    kind === 'TEACHER' ? 'TEACHER_GROUP' : 'COURSE_GROUP',
+    kind === 'TEACHER'
+      ? { teacherGroupId: created.id }
+      : { courseGroupId: created.id },
+  )
 }
 
 function onTypeChange() {

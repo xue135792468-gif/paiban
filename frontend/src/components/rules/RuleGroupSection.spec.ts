@@ -41,8 +41,11 @@ const impactWithRules: RuleGroupImpact = {
 function mountSection(overrides: Record<string, unknown> = {}): VueWrapper {
   return mount(RuleGroupSection, {
     props: {
+      groupType: 'TEACHER',
+      title: '教师分组',
+      memberLabel: '老师',
       groups,
-      teachers,
+      options: teachers,
       loading: false,
       createGroup: vi.fn().mockResolvedValue(true),
       updateGroup: vi.fn().mockResolvedValue(true),

@@ -43,7 +43,7 @@ function subjectKindOf(
   courseGroupId: number | null = null,
 ): SubjectKind | null {
   if (courseGroupId !== null) {
-    return 'COURSE'
+    return 'COURSE_GROUP'
   }
   if (teacherGroupId !== null) {
     return 'TEACHER_GROUP'

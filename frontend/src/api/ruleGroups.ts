@@ -1,6 +1,6 @@
 import { http } from '@/api/http'
 
-/** Ticket 04: teacher / course / time groups. The rule page uses teacher groups. */
+/** Ticket 04/05: teacher / course / time groups (ticket 06 wires time groups). */
 export type RuleGroupType = 'TEACHER' | 'COURSE' | 'TIME'
 
 export interface RuleGroupMember {

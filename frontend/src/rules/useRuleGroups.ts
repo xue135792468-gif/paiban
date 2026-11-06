@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, type ComputedRef, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { serverMessage } from '@/api/errors'
 import {
@@ -11,17 +11,41 @@ import {
   type RuleGroupDeleteResult,
   type RuleGroupImpact,
   type RuleGroupMemberRequest,
+  type RuleGroupType,
 } from '@/api/ruleGroups'
 
+/** Ticket 04/05: the two global group families the rule page edits. */
+export type RuleGroupKind = Extract<RuleGroupType, 'TEACHER' | 'COURSE'>
+
+/** The handle one group family exposes to the page and the panels component. */
+export interface UseRuleGroups {
+  groups: Ref<RuleGroup[]>
+  options: ComputedRef<Array<{ id: number; name: string }>>
+  groupNames: ComputedRef<Map<number, string>>
+  loading: Ref<boolean>
+  error: Ref<string | null>
+  groupsOf: (objectId: number) => RuleGroup[]
+  load: () => Promise<void>
+  create: (name: string) => Promise<{ id: number; name: string } | null>
+  update: (id: number, name: string, memberIds: number[]) => Promise<boolean>
+  remove: (id: number, withRules: boolean) => Promise<RuleGroupDeleteResult | null>
+  impact: (id: number) => Promise<RuleGroupImpact | null>
+}
+
 /**
- * Ticket 04: the rule page's teacher groups. One load feeds the management panel,
- * the subject dropdown and the sentence names, so a rename or member edit reaches
- * every sentence without another `/constraints/state` round trip.
+ * One load feeds the management panel, the subject dropdown and the sentence
+ * names, so a rename or member edit reaches every sentence without another
+ * `/constraints/state` round trip.
+ *
+ * The composable is generic over the group type: the API shape is identical, only
+ * the member key (`teacherId` / `courseId`) and the wording differ.
  */
-export function useRuleGroups() {
+export function useRuleGroups(type: RuleGroupKind): UseRuleGroups {
   const groups = ref<RuleGroup[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
+
+  const label = type === 'TEACHER' ? '教师' : '课程'
 
   const groupNames = computed(() => {
     const names = new Map<number, string>()
@@ -31,41 +55,43 @@ export function useRuleGroups() {
     return names
   })
 
-  const teacherGroups = computed(() => groups.value.map((group) => ({
+  const options = computed(() => groups.value.map((group) => ({
     id: group.id,
     name: group.name,
   })))
 
-  function groupsOfTeacher(teacherId: number): RuleGroup[] {
+  function groupsOf(objectId: number): RuleGroup[] {
     return groups.value.filter((group) =>
-      group.members.some((member) => member.kind === 'TEACHER' && member.objectId === teacherId))
+      group.members.some((member) => member.kind === type && member.objectId === objectId))
   }
 
   async function load(): Promise<void> {
     loading.value = true
     error.value = null
     try {
-      groups.value = await getRuleGroups('TEACHER')
+      groups.value = await getRuleGroups(type)
     } catch (e: unknown) {
       groups.value = []
-      error.value = serverMessage(e, '加载教师分组失败')
+      error.value = serverMessage(e, `加载${label}分组失败`)
     } finally {
       loading.value = false
     }
   }
 
-  function membersOf(teacherIds: number[]): RuleGroupMemberRequest[] {
-    return [...new Set(teacherIds)].map((teacherId) => ({ teacherId }))
+  function membersOf(ids: number[]): RuleGroupMemberRequest[] {
+    return [...new Set(ids)].map((id) => (
+      type === 'TEACHER' ? { teacherId: id } : { courseId: id }
+    ))
   }
 
   /** Used by the subject dropdown: creates an empty group and returns it to select. */
-  async function createTeacher(name: string): Promise<{ id: number; name: string } | null> {
+  async function create(name: string): Promise<{ id: number; name: string } | null> {
     try {
-      const created = await createRuleGroup({ type: 'TEACHER', name, members: [] })
+      const created = await createRuleGroup({ type, name, members: [] })
       await load()
       return { id: created.id, name: created.name }
     } catch (e: unknown) {
-      ElMessage.error(serverMessage(e, '创建教师分组失败'))
+      ElMessage.error(serverMessage(e, `创建${label}分组失败`))
       return null
     }
   }
@@ -73,18 +99,18 @@ export function useRuleGroups() {
   async function update(
     id: number,
     name: string,
-    teacherIds: number[],
+    memberIds: number[],
   ): Promise<boolean> {
     try {
       await updateRuleGroup(id, {
-        type: 'TEACHER',
+        type,
         name,
-        members: membersOf(teacherIds),
+        members: membersOf(memberIds),
       })
       await load()
       return true
     } catch (e: unknown) {
-      ElMessage.error(serverMessage(e, '保存教师分组失败'))
+      ElMessage.error(serverMessage(e, `保存${label}分组失败`))
       return false
     }
   }
@@ -98,7 +124,7 @@ export function useRuleGroups() {
       await load()
       return result
     } catch (e: unknown) {
-      ElMessage.error(serverMessage(e, '删除教师分组失败'))
+      ElMessage.error(serverMessage(e, `删除${label}分组失败`))
       return null
     }
   }
@@ -114,13 +140,13 @@ export function useRuleGroups() {
 
   return {
     groups,
-    teacherGroups,
+    options,
     groupNames,
     loading,
     error,
-    groupsOfTeacher,
+    groupsOf,
     load,
-    createTeacher,
+    create,
     update,
     remove,
     impact,

@@ -21,10 +21,14 @@ const courses = [
 ]
 
 const teacherGroups = [{ id: 12, name: '教导主任' }]
+const courseGroups = [{ id: 21, name: '技能课' }]
 
 function mountForm(
   initial: RuleCard | null = null,
-  options: { createTeacherGroup?: (name: string) => Promise<{ id: number; name: string } | null> } = {},
+  options: {
+    createTeacherGroup?: (name: string) => Promise<{ id: number; name: string } | null>
+    createCourseGroup?: (name: string) => Promise<{ id: number; name: string } | null>
+  } = {},
 ) {
   return mount(RuleForm, {
     props: {
@@ -36,6 +40,8 @@ function mountForm(
       periods,
       teacherGroups,
       createTeacherGroup: options.createTeacherGroup,
+      courseGroups,
+      createCourseGroup: options.createCourseGroup,
     },
     global: { plugins: [ElementPlus] },
     attachTo: document.body,
@@ -98,6 +104,7 @@ describe('RuleSentenceEditor: subject first, then time, then requirement', () =>
     expect(labels).toContain('教师 · 王老师')
     expect(labels).toContain('全部课程')
     expect(labels).toContain('课程 · 数学')
+    expect(labels).toContain('课程组 · 技能课')
     wrapper.unmount()
   })
 
@@ -145,6 +152,46 @@ describe('RuleSentenceEditor: subject first, then time, then requirement', () =>
 
     expect(createTeacherGroup).not.toHaveBeenCalled()
     expect(select(wrapper, 'rule-subject').props('modelValue')).toBe('teacher:7')
+    wrapper.unmount()
+  })
+
+  it('offers only course requirements after a course group', async () => {
+    const wrapper = mountForm()
+    await setSelect(wrapper, 'rule-subject', 'course-group:21')
+    const labels = typeLabels(wrapper)
+    expect(labels).toContain('不排课')
+    expect(labels).toContain('每天最多 N 节')
+    expect(labels).toContain('每天最多 1 节')
+    expect(labels).toContain('连堂 N 节')
+    expect(labels).toContain('分散到不同天')
+    expect(labels).toContain('不在最后一节')
+    expect(labels).toContain('排在上午')
+    expect(labels).not.toContain('不上课')
+    expect(labels).not.toContain('固定无课日')
+    expect(labels).not.toContain('不空堂')
+    wrapper.unmount()
+  })
+
+  it('previews a course-group sentence with the group name', async () => {
+    const wrapper = mountForm()
+    await setSelect(wrapper, 'rule-subject', 'course-group:21')
+    await setSelect(wrapper, 'rule-type', 'COURSE_MAX_PER_DAY')
+    expect(wrapper.find('[data-testid="rule-preview"]').text())
+      .toContain('技能课 每天最多 2 节')
+    wrapper.unmount()
+  })
+
+  it('creates and selects a new course group from the dropdown', async () => {
+    const prompt = vi.spyOn(ElMessageBox, 'prompt').mockResolvedValue({ value: '理科组' } as never)
+    const createCourseGroup = vi.fn().mockResolvedValue({ id: 22, name: '理科组' })
+    const wrapper = mountForm(null, { createCourseGroup })
+
+    await setSelect(wrapper, 'rule-subject', '__new_course_group__')
+    await flushPromises()
+
+    expect(prompt).toHaveBeenCalledTimes(1)
+    expect(createCourseGroup).toHaveBeenCalledWith('理科组')
+    expect(select(wrapper, 'rule-subject').props('modelValue')).toBe('course-group:22')
     wrapper.unmount()
   })
 
