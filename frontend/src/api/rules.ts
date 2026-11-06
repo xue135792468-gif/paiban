@@ -39,3 +39,34 @@ export async function fetchRuleImpact(
   const { data } = await http.post<RuleImpact>('/rules/impact', { semesterId, configs })
   return data
 }
+
+/** One copied card the target semester cannot resolve; `groupKey` is the new card key. */
+export interface CopyRuleIssue {
+  type: string
+  typeName: string
+  groupKey: string
+  reason: string
+}
+
+/** Ticket 08: every copied card, plus the unusable ones and why. */
+export interface CopyRulesResult {
+  copiedCards: number
+  disabledCards: number
+  issues: CopyRuleIssue[]
+}
+
+export interface CopyRulesRequest {
+  sourceSemesterId: number
+  targetSemesterId: number
+  baseVersion?: number
+}
+
+/**
+ * Replaces the target semester's non-system rules with a past semester's whole set.
+ * The two system baselines stay with the target; the server returns which copied
+ * cards had to be paused because a reference no longer resolves.
+ */
+export async function copyRules(request: CopyRulesRequest): Promise<CopyRulesResult> {
+  const { data } = await http.post<CopyRulesResult>('/constraints/copy-rules', request)
+  return data
+}

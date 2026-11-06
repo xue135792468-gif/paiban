@@ -4,11 +4,11 @@
 
 **Blocked by:** 06
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 可选任一往期学期作为来源；替换前有确认
+- [x] 可选任一往期学期作为来源；替换前有确认
 - [x] 可对应的规则原样复制并保持原开关状态
-- [ ] 老师已删、节次不存在、无同名时间组三种情况：规则复制但停用，并列入「本学期用不上」
+- [x] 老师已删、节次不存在、无同名时间组三种情况：规则复制但停用，并列入「本学期用不上」
 - [x] 不复制分组（分组本就共享）；不影响现有「学期复制」功能
 - [x] 复制后草稿校验按新规则生效
 - [x] 集成测试覆盖上述四种情况
@@ -29,5 +29,15 @@
 - **版本冲突**：`baseVersion` 非空且与目标当前版本不一致 → 409「目标学期规则已被修改…请刷新页面后重试」，不写任何行；源/目标相同 400，学期不存在/已删 404。
 - **测试**：新增 `CopyRulesIntegrationTest` 10 条：正常整套复制并替换旧规则、教师已删除、班级不在目标学期、目标少一节、无同名时间组、同名时间组换 id、一行失败整卡停用、过期 `baseVersion` 409 且目标不变、系统底线保留（目标自己停用的 `TEACHER_CONFLICT` 不被源覆盖）、审计落库。与既有规则/分组测试共 39 条通过；另跑相邻 5 个约束测试类 44 条通过；`scripts/check-migrations.sh` 通过（57 个版本唯一，本票无迁移）。
 - **已知边界**：`invalidReferences` 现在按目标学期加载班级，复制出来的跨学期班级规则会显示「行政班已删除：#id」并停用；08b 页面按 `invalidReferences` 提示。
-- **剩余（08b 前端）**：规则页入口与替换确认、来源学期选择、「本学期用不上」列表（按 `disabledCards` / `issues` 展示并允许逐张启用或删除）、E2E 主路径。
+- **08b 前端**：已完成，见下方「实现说明（08b 前端）」；E2E 覆盖复制确认与「用不上」列表。
+
+## 实现说明（08b 前端部分完成）
+
+- **入口与确认**：规则页工具栏新增「复制往期规则」（`RuleToolbar` 的 `actions-extra` slot 挂 `RuleCopyButton`）。弹窗里的来源下拉排除当前编辑的学期，并给当前学期标注「（当前）」；未选来源时确认按钮禁用。确认前明确提示「当前学期的非系统规则会被删除；两条系统底线保留」。
+- **调用与结果**：确认后 `POST /constraints/copy-rules`，带上页面加载时的 `baseVersion`；成功显示「已复制 N 张规则卡，其中 M 张本学期用不上」，逐条列出 `issues` 的 `typeName：reason`（最多 8 条，其余显示「等 N 条」）。失败保留弹窗，用 `serverMessage` 显示服务端原因。关闭后 `loadState()` 刷新规则、版本与分组。
+- **本学期用不上**：新增 `RuleUnusablePanel`，只收录**已停用且**句子带 `invalidReferences` 或缺槽位（`missingParts`）的卡；用户主动停用的完整卡仍留在正常列表。每卡显示句子、去重后的原因，以及「去修改」「删除」，复用现有 `openEdit` / `onRemove`。主列表改用 `usableCards`，同一张卡不会两处重复。
+- **拆分**：判定逻辑在 `frontend/src/rules/unusableRules.ts`，复制调用与 409 冲突记录在 `frontend/src/rules/useRuleCopy.ts`；`RuleBuilderView.vue` 保持 594 行（≤600）。
+- **测试**：新增 `src/api/rules.spec.ts`、`RuleCopyButton.spec.ts`（6 条）、`RuleUnusablePanel.spec.ts`（5 条），并在 `RuleBuilderView.spec.ts` 增 2 条（用不上区与主列表不重复、复制弹窗）。全量 vitest 89 文件 686 条通过；`npm run lint`、`npm run build`、`check-sfc-size.sh`、`check-ticket-status.sh` 通过。
+- **E2E**：`frontend/e2e/copy-rules.spec.ts` 建源/目标两个学期，源学期两条教师规则（其中一名教师随后删除），目标先存旧规则；页面选来源并确认后断言结果、失效原因、正常卡与用不上区、API 两行一启用一停用且旧规则消失、刷新后失效区仍在。`rule-builder` / `teacher-groups` / `course-groups` / `time-groups` / `copy-rules` 共 8 条通过。
+- **与方案偏差**：`copyFromSemester` 记录 409 冲突后继续抛出异常，让弹窗用 `serverMessage` 展示服务端原文；若吞掉异常返回 `null`，弹窗只能显示通用文案。`baseVersion` 作为组件 prop 保留但组件本身不使用，真正带版本的是父级注入的 `copy`。
 

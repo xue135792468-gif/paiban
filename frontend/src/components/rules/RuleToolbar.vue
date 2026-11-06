@@ -35,6 +35,7 @@
     <el-button :disabled="semesterId === null" data-testid="rule-ai-toggle" @click="emit('toggle-ai')">
       AI 帮填
     </el-button>
+    <slot name="actions-extra" />
   </div>
 </template>
 

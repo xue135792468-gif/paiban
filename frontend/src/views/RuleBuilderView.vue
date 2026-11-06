@@ -22,7 +22,11 @@
         @new="openNew"
         @toggle-groups="showGroups = !showGroups"
         @toggle-ai="toggleAi"
-      />
+      >
+        <template #actions-extra>
+          <RuleCopyButton :semesters="semesters" :target-semester-id="semesterId" :base-version="baseVersion" :copy="copyFromSemester" @done="onCopied" />
+        </template>
+      </RuleToolbar>
 
       <ConstraintAiPanel v-if="showAi && semesterId !== null" :semester-id="semesterId" :types="aiTypes" :teachers="teachers" :courses="courses" :can-read-all="canReadAll" :can-manage="canManage" @add="onAiAdd" />
       <el-alert v-if="aiNotice" type="info" :closable="false" show-icon class="alert" data-testid="rule-ai-notice" :title="aiNotice" />
@@ -102,18 +106,20 @@
           help-slug="scheduling"
           help-anchor="constraints"
         />
-        <RuleGroupedList
-          v-else
-          :cards="cards"
-          :query="query"
-          :names="ruleNames"
-          :periods="periods"
-          @edit="openEdit"
-          @toggle="onToggle"
-          @duplicate="onDuplicate"
-          @remove="onRemove"
-          @impact="onImpact"
-        />
+        <template v-else>
+          <RuleUnusablePanel v-if="ruleBuckets.unusable.length > 0" :cards="ruleBuckets.unusable" :names="ruleNames" :periods="periods" @edit="openEdit" @remove="onRemove" />
+          <RuleGroupedList
+            :cards="ruleBuckets.usable"
+            :query="query"
+            :names="ruleNames"
+            :periods="periods"
+            @edit="openEdit"
+            @toggle="onToggle"
+            @duplicate="onDuplicate"
+            @remove="onRemove"
+            @impact="onImpact"
+          />
+        </template>
       </el-card>
 
       <footer class="footer">
@@ -140,11 +146,13 @@ import { activeOnly } from '@/utils/activeOptions'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ConstraintAiPanel from '@/components/constraints/ConstraintAiPanel.vue'
 import RuleForm from '@/components/rules/RuleForm.vue'
+import RuleCopyButton from '@/components/rules/RuleCopyButton.vue'
 import RuleGroupedList from '@/components/rules/RuleGroupedList.vue'
 import RuleGroupPanels from '@/components/rules/RuleGroupPanels.vue'
 import RuleImpactSummary from '@/components/rules/RuleImpactSummary.vue'
 import RulePageHeader from '@/components/rules/RulePageHeader.vue'
 import RuleToolbar from '@/components/rules/RuleToolbar.vue'
+import RuleUnusablePanel from '@/components/rules/RuleUnusablePanel.vue'
 import type {
   ConstraintConfigDto,
   ConstraintTypeDef,
@@ -171,7 +179,9 @@ import { deleteRuleCardWithConfirmation } from '@/rules/deleteRuleCard'
 import { useRuleImpact } from '@/rules/useRuleImpact'
 import { useRuleAi } from '@/rules/useRuleAi'
 import { useRuleGroups } from '@/rules/useRuleGroups'
+import { useRuleCopy } from '@/rules/useRuleCopy'
 import { useTimeGroups } from '@/rules/useTimeGroups'
+import { splitUnusableRules } from '@/rules/unusableRules'
 import { useAuthStore } from '@/stores/auth'
 
 interface Semester {
@@ -230,6 +240,9 @@ const {
   preview: previewImpact,
   hide: hideImpact,
 } = useRuleImpact(semesterId)
+const { copyFromSemester, onCopied } = useRuleCopy({
+  semesterId, baseVersion, setConflict: (value) => { conflict.value = value }, reload: loadState,
+})
 
 const availableDays = computed(() =>
   Array.from(new Set(periods.value.map((period) => period.dayOfWeek))).sort(
@@ -257,6 +270,8 @@ const ruleNames = computed<RuleNames>(() => {
   }
 })
 const dirty = computed(() => cardsSignature(cards.value) !== loadedSignature.value)
+/** Ticket 08: copied cards whose references are gone, kept out of the normal list. */
+const ruleBuckets = computed(() => splitUnusableRules(cards.value))
 /** Ticket 07: the groups expanded to concrete members/slots, read by the save check. */
 const conflictContext = computed(() => buildConflictContext({
   periods: periods.value,

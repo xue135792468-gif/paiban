@@ -7,7 +7,7 @@ import RuleBuilderView from './RuleBuilderView.vue'
 import type { RuleImpact } from '@/api/rules'
 
 const httpMock = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), post: vi.fn(), delete: vi.fn() }))
-const impactMock = vi.hoisted(() => ({ fetchRuleImpact: vi.fn() }))
+const impactMock = vi.hoisted(() => ({ fetchRuleImpact: vi.fn(), copyRules: vi.fn() }))
 
 vi.mock('@/api/http', () => ({ http: httpMock }))
 vi.mock('@/api/rules', () => impactMock)
@@ -74,6 +74,7 @@ beforeEach(() => {
   httpMock.delete.mockReset()
   impactMock.fetchRuleImpact.mockReset()
   impactMock.fetchRuleImpact.mockResolvedValue(impact)
+  impactMock.copyRules.mockReset()
   httpMock.put.mockResolvedValue({ data: [] })
   httpMock.get.mockImplementation((url: string) => {
     if (url === '/semesters') return Promise.resolve({ status: 200, data: semesters })
@@ -359,6 +360,59 @@ describe('RuleBuilderView: grouped list, search and impact', () => {
     await wrapper.find('[data-testid="rule-ai-toggle"]').trigger('click')
     await flushPromises()
     expect(wrapper.find('[data-testid="constraint-ai-panel"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('keeps copied rules with broken references in 本学期用不上, not in the main list', async () => {
+    const copiedConfig = {
+      type: 'TEACHER_UNAVAILABLE',
+      params: {},
+      weight: 100,
+      hard: true,
+      enabled: true,
+      entries: [
+        {
+          id: 9,
+          params: { teacherId: 99, dayOfWeek: 1, periodNo: 1 },
+          enabled: false,
+          hard: true,
+          weight: null,
+          groupKey: 'pt-copied',
+          invalidReferences: ['教师已删除：#99'],
+        },
+      ],
+    }
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/semesters') return Promise.resolve({ status: 200, data: semesters })
+      if (url === '/semesters/current') return Promise.resolve({ status: 200, data: semesters[0] })
+      if (url === '/teachers/options') return Promise.resolve({ data: teachers })
+      if (url === '/courses') return Promise.resolve({ data: courses })
+      if (url === '/constraint-types') return Promise.resolve({ data: [] })
+      if (url === '/classes') return Promise.resolve({ data: classes })
+      if (url === '/constraints/state') {
+        return Promise.resolve({ data: { version: 6, configs: [...stateConfigs, copiedConfig] } })
+      }
+      if (url === '/semesters/1/periods') return Promise.resolve({ data: periodRows })
+      return Promise.resolve({ data: [] })
+    })
+    const wrapper = await mountView()
+
+    expect(wrapper.get('[data-testid="rule-unusable-panel"]').text())
+      .toContain('本学期用不上（1）')
+    expect(wrapper.get('[data-testid="rule-unusable-panel"]').text()).toContain('教师已删除：#99')
+    expect(wrapper.findAll('[data-testid="rule-card"]')).toHaveLength(4)
+    expect(wrapper.get('[data-testid="rule-cards"]').text()).not.toContain('教师已删除')
+    wrapper.unmount()
+  })
+
+  it('opens the copy dialog from the toolbar', async () => {
+    const wrapper = await mountView()
+    await wrapper.get('[data-testid="rule-copy-open"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="rule-copy-dialog"]').text())
+      .toContain('从以前的学期复制规则')
+    expect(wrapper.get('[data-testid="rule-copy-confirm"]').attributes('disabled')).toBeDefined()
     wrapper.unmount()
   })
 })
