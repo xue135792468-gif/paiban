@@ -128,6 +128,14 @@ public final class ConstraintSettings {
             }
             rules.put(type, new Rule(config.isHard(), config.getWeight(), requirementsOf(active)));
         }
+        // The two system invariants are always on and always hard. A missing, paused or
+        // soft-deleted row must not silently disable conflict detection (ticket 03:
+        // 系统自带，不能关); this is also why every snapshot's fingerprint carries them.
+        for (ConstraintType type : List.of(
+                ConstraintType.TEACHER_CONFLICT,
+                ConstraintType.CLASS_CONFLICT)) {
+            rules.put(type, new Rule(true, 100, List.of()));
+        }
         return new ConstraintSettings(rules);
     }
 

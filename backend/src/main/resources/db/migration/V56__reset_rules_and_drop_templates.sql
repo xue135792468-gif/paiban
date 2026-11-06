@@ -11,6 +11,29 @@ WHERE type NOT IN ('TEACHER_CONFLICT', 'CLASS_CONFLICT');
 DELETE FROM constraint_config
 WHERE type NOT IN ('TEACHER_CONFLICT', 'CLASS_CONFLICT');
 
+-- 两条系统底线不可关闭：恢复被暂停/软删的系统行，缺的按学期补上。
+-- 即便数据库没有这两行，ConstraintSettings 也会强制启用它们；这里同步把库补齐，
+-- 让规则页保存时能原样带着它们走。
+UPDATE constraint_config
+SET enabled = TRUE, hard = TRUE, weight = 100, deleted_at = NULL
+WHERE type IN ('TEACHER_CONFLICT', 'CLASS_CONFLICT');
+
+INSERT INTO constraint_config (semester_id, type, params_json, weight, hard, enabled)
+SELECT s.id, 'TEACHER_CONFLICT', '{}', 100, TRUE, TRUE
+FROM semester s
+WHERE NOT EXISTS (
+    SELECT 1 FROM constraint_config c
+    WHERE c.semester_id = s.id AND c.type = 'TEACHER_CONFLICT'
+);
+
+INSERT INTO constraint_config (semester_id, type, params_json, weight, hard, enabled)
+SELECT s.id, 'CLASS_CONFLICT', '{}', 100, TRUE, TRUE
+FROM semester s
+WHERE NOT EXISTS (
+    SELECT 1 FROM constraint_config c
+    WHERE c.semester_id = s.id AND c.type = 'CLASS_CONFLICT'
+);
+
 -- 旧规则草稿工作区与「最近删除」里的旧规则/旧模板，清空后恢复没有意义。
 DELETE FROM constraint_workspace;
 
