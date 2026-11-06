@@ -363,6 +363,170 @@ class RuleGroupIntegrationTest extends ApiIntegrationTest {
         assertThat(teacherIds(snapshot.settings())).containsExactlyInAnyOrder(first, second);
     }
 
+    // -------------------------------------------------------- course groups
+
+    @Test
+    void createsCourseGroupAndRejectsDuplicateNameOrWrongMemberType() {
+        String token = adminToken();
+        long first = TestData.course(token, "体育" + TestData.suffix());
+        long second = TestData.course(token, "美术" + TestData.suffix());
+        String name = "技能课" + TestData.suffix();
+
+        Response created = as(token).body(Map.of(
+                        "type", "COURSE",
+                        "name", name,
+                        "members", List.of(
+                                Map.of("courseId", first),
+                                Map.of("courseId", second))))
+                .when().post("/api/rule-groups");
+        created.then().statusCode(200)
+                .body("type", org.hamcrest.Matchers.equalTo("COURSE"))
+                .body("semesterId", org.hamcrest.Matchers.nullValue())
+                .body("members.size()", org.hamcrest.Matchers.equalTo(2));
+        long groupId = created.jsonPath().getLong("id");
+
+        List<Map<String, Object>> members = as(token)
+                .queryParam("type", "COURSE")
+                .when().get("/api/rule-groups")
+                .then().statusCode(200).extract()
+                .jsonPath().getList("find { it.id == " + groupId + " }.members");
+        assertThat(members).extracting(row -> ((Number) row.get("objectId")).longValue())
+                .containsExactlyInAnyOrder(first, second);
+        assertThat(members).extracting(row -> row.get("kind")).containsOnly("COURSE");
+
+        // Course groups are global: a semester id is refused, a live duplicate name is 409.
+        as(token).body(Map.of(
+                        "type", "COURSE",
+                        "name", name,
+                        "semesterId", 1,
+                        "members", List.of(Map.of("courseId", first))))
+                .when().post("/api/rule-groups")
+                .then().statusCode(400);
+        as(token).body(Map.of(
+                        "type", "COURSE",
+                        "name", name,
+                        "members", List.of(Map.of("courseId", first))))
+                .when().post("/api/rule-groups")
+                .then().statusCode(409);
+
+        // A teacher member on a course group is rejected by the shared validation.
+        long teacher = TestData.teacher(token, "课程组成员校验" + TestData.suffix());
+        assertBadRequest(as(token).body(Map.of(
+                        "type", "COURSE",
+                        "name", "错误成员组" + TestData.suffix(),
+                        "members", List.of(Map.of("teacherId", teacher))))
+                .when().post("/api/rule-groups")
+                .then().statusCode(400).extract().response(), "不能指定教师");
+    }
+
+    @Test
+    void courseGroupThresholdExpandsIntoSettingsAndTracksMemberChanges() {
+        String token = adminToken();
+        long semesterId = semesterWithPeriods(token);
+        long first = TestData.course(token, "体育甲" + TestData.suffix());
+        long second = TestData.course(token, "美术甲" + TestData.suffix());
+        long third = TestData.course(token, "音乐甲" + TestData.suffix());
+        String name = "技能课甲" + TestData.suffix();
+        long groupId = createCourseGroup(token, name, first, second);
+
+        saveCourseGroupRule(token, semesterId, "COURSE_MAX_PER_DAY", Map.of(
+                        "courseGroupId", groupId, "maxPerDay", 1))
+                .then().statusCode(200);
+
+        ConstraintSettings settings = configService.settings(semesterId);
+        assertThat(settings.requirements(ConstraintType.COURSE_MAX_PER_DAY)).hasSize(1);
+        assertThat(settings.entries(ConstraintType.COURSE_MAX_PER_DAY)).hasSize(2);
+        assertThat(courseIds(settings, ConstraintType.COURSE_MAX_PER_DAY))
+                .containsExactlyInAnyOrder(first, second);
+        assertThat(settings.entries(ConstraintType.COURSE_MAX_PER_DAY))
+                .allSatisfy(row -> {
+                    assertThat(row).doesNotContainKey("courseGroupId");
+                    assertThat(ConstraintSettings.longValue(row.get("maxPerDay"))).isEqualTo(1L);
+                });
+        // The stored rows keep the group reference; expansion happens only in the snapshot.
+        assertThat(entryRepository.findBySemesterIdAndTypeOrderByIdAsc(
+                semesterId, "COURSE_MAX_PER_DAY"))
+                .hasSize(1)
+                .allMatch(row -> row.getParamsJson().contains("\"courseGroupId\":" + groupId));
+
+        // Editing members reaches the rule without resaving it.
+        as(token).body(Map.of(
+                        "type", "COURSE",
+                        "name", name,
+                        "members", List.of(
+                                Map.of("courseId", second),
+                                Map.of("courseId", third))))
+                .when().put("/api/rule-groups/" + groupId)
+                .then().statusCode(200);
+        assertThat(courseIds(configService.settings(semesterId), ConstraintType.COURSE_MAX_PER_DAY))
+                .containsExactlyInAnyOrder(second, third);
+    }
+
+    @Test
+    void courseUnavailableGroupReachesSettingsAndDraftValidation() {
+        String token = adminToken();
+        long semesterId = semesterWithPeriods(token);
+        long memberCourse = TestData.course(token, "体育乙" + TestData.suffix());
+        long outsiderCourse = TestData.course(token, "数学乙" + TestData.suffix());
+        long groupId = createCourseGroup(token, "技能课乙" + TestData.suffix(), memberCourse);
+        saveCourseGroupRule(token, semesterId, "COURSE_UNAVAILABLE", Map.of(
+                        "courseGroupId", groupId, "dayOfWeek", 5, "periodNo", 7))
+                .then().statusCode(200);
+
+        ConstraintSettings settings = configService.settings(semesterId);
+        assertThat(settings.entries(ConstraintType.COURSE_UNAVAILABLE)).hasSize(1);
+        assertThat(courseIds(settings, ConstraintType.COURSE_UNAVAILABLE))
+                .containsExactly(memberCourse);
+
+        Map<String, Long> periods = periodIds(token, semesterId);
+        long gradeId = TestData.grade(token, semesterId, "高一" + TestData.suffix());
+        long classId = TestData.adminClass(token, semesterId, gradeId, "高一1班" + TestData.suffix());
+        long teacher = TestData.teacher(token, "课程草稿教师" + TestData.suffix());
+
+        long memberDraft = draft(semesterId, classId, memberCourse, teacher, periods.get("5-7"));
+        assertThat(validate(token, memberDraft).jsonPath()
+                .getList("conflicts.type", String.class))
+                .contains("COURSE_UNAVAILABLE");
+
+        long outsiderDraft = draft(semesterId, classId, outsiderCourse, teacher, periods.get("5-7"));
+        assertThat(validate(token, outsiderDraft).jsonPath()
+                .getList("conflicts.type", String.class))
+                .doesNotContain("COURSE_UNAVAILABLE");
+    }
+
+    @Test
+    void deletingAReferencedCourseGroupRefusesUnlessRulesGoTogether() {
+        String token = adminToken();
+        long semesterId = semesterWithPeriods(token);
+        long first = TestData.course(token, "体育丙" + TestData.suffix());
+        long second = TestData.course(token, "美术丙" + TestData.suffix());
+        String name = "技能课丙" + TestData.suffix();
+        long groupId = createCourseGroup(token, name, first, second);
+        saveCourseGroupRule(token, semesterId, "COURSE_MAX_PER_DAY", Map.of(
+                        "courseGroupId", groupId, "maxPerDay", 1))
+                .then().statusCode(200);
+
+        as(token).when().get("/api/rule-groups/" + groupId + "/delete-impact")
+                .then().statusCode(200)
+                .body("rules.size()", org.hamcrest.Matchers.equalTo(1))
+                .body("type", org.hamcrest.Matchers.equalTo("COURSE"));
+
+        as(token).when().delete("/api/rule-groups/" + groupId)
+                .then().statusCode(409)
+                .body("rules.size()", org.hamcrest.Matchers.equalTo(1));
+
+        as(token).when().delete("/api/rule-groups/" + groupId + "?mode=WITH_RULES")
+                .then().statusCode(200)
+                .body("deletedRules", org.hamcrest.Matchers.equalTo(1));
+
+        assertThat(configService.settings(semesterId)
+                .requirements(ConstraintType.COURSE_MAX_PER_DAY)).isEmpty();
+        assertThat(entryRepository.findBySemesterIdAndTypeOrderByIdAsc(
+                semesterId, "COURSE_MAX_PER_DAY"))
+                .hasSize(1)
+                .allMatch(row -> row.getDeletedAt() != null);
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private void assertBadRequest(Response response, String expected) {
@@ -382,14 +546,24 @@ class RuleGroupIntegrationTest extends ApiIntegrationTest {
         return response.jsonPath().getLong("id");
     }
 
-    private long createCourseGroup(String token, String name, long courseId) {
+    private long createCourseGroup(String token, String name, long... courseIds) {
+        List<Map<String, Object>> members = new ArrayList<>();
+        for (long id : courseIds) {
+            members.add(Map.of("courseId", id));
+        }
         Response response = as(token).body(Map.of(
-                        "type", "COURSE",
-                        "name", name,
-                        "members", List.of(Map.of("courseId", courseId))))
+                        "type", "COURSE", "name", name, "members", members))
                 .when().post("/api/rule-groups");
         response.then().statusCode(200);
         return response.jsonPath().getLong("id");
+    }
+
+    private Response saveCourseGroupRule(
+            String token, long semesterId, String type, Map<String, Object> params) {
+        return as(token).queryParam("semesterId", semesterId)
+                .body(Map.of("configs", List.of(config(
+                        type, params, "group-" + params.get("courseGroupId")))))
+                .when().put("/api/constraints");
     }
 
     private Response saveTeacherGroupRule(
@@ -434,6 +608,12 @@ class RuleGroupIntegrationTest extends ApiIntegrationTest {
     private List<Long> teacherIds(ConstraintSettings settings) {
         return settings.entries(ConstraintType.TEACHER_UNAVAILABLE).stream()
                 .map(row -> ConstraintSettings.longValue(row.get("teacherId")))
+                .toList();
+    }
+
+    private List<Long> courseIds(ConstraintSettings settings, ConstraintType type) {
+        return settings.entries(type).stream()
+                .map(row -> ConstraintSettings.longValue(row.get("courseId")))
                 .toList();
     }
 
