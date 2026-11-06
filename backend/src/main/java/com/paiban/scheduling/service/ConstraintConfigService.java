@@ -25,6 +25,9 @@ import com.paiban.scheduling.domain.ConstraintType.Category;
 import com.paiban.scheduling.domain.ConstraintType.Param;
 import com.paiban.scheduling.domain.ConstraintType.ParamType;
 import com.paiban.scheduling.domain.ConstraintWorkspaceRepository;
+import com.paiban.scheduling.domain.RuleGroup;
+import com.paiban.scheduling.domain.RuleGroupRepository;
+import com.paiban.scheduling.domain.RuleGroupType;
 import com.paiban.scheduling.solver.ConstraintSettings;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintConfigDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintConfigRequest;
@@ -74,6 +77,8 @@ public class ConstraintConfigService {
     private final AdminClassRepository adminClasses;
     private final ConstraintAuditService auditService;
     private final ClassCapacityService capacity;
+    private final RuleGroupRepository ruleGroups;
+    private final RuleGroupExpander groupExpander;
     private final ObjectMapper objectMapper;
 
     public ConstraintConfigService(
@@ -88,6 +93,8 @@ public class ConstraintConfigService {
             AdminClassRepository adminClasses,
             ConstraintAuditService auditService,
             ClassCapacityService capacity,
+            RuleGroupRepository ruleGroups,
+            RuleGroupExpander groupExpander,
             ObjectMapper objectMapper) {
         this.configs = configs;
         this.states = states;
@@ -100,6 +107,8 @@ public class ConstraintConfigService {
         this.adminClasses = adminClasses;
         this.auditService = auditService;
         this.capacity = capacity;
+        this.ruleGroups = ruleGroups;
+        this.groupExpander = groupExpander;
         this.objectMapper = objectMapper;
     }
 
@@ -299,7 +308,7 @@ public class ConstraintConfigService {
         return new PreviewSnapshot(
                 new ConstraintPreviewDto(
                         planning.errors(), planning.references(), warningsOf(resolved, planning)),
-                settingsOf(planning));
+                settingsOf(resolved, planning));
     }
 
     /** Saved configuration with the request's requirement groups replaced in place. */
@@ -354,7 +363,7 @@ public class ConstraintConfigService {
         if (!refusalErrors(planning).isEmpty()) {
             return List.of();
         }
-        String message = capacity.message(resolved, settingsOf(planning));
+        String message = capacity.message(resolved, settingsOf(resolved, planning));
         return StringUtils.hasText(message) ? List.of(message) : List.of();
     }
 
@@ -363,10 +372,10 @@ public class ConstraintConfigService {
      * planned mapping and {@link ConstraintSettings} itself, so there is no second
      * parser that could disagree with what a save would store.
      */
-    private ConstraintSettings settingsOf(Planning planning) {
+    private ConstraintSettings settingsOf(Long semesterId, Planning planning) {
         List<ConstraintConfig> configs = new ArrayList<>();
-        List<ConstraintEntry> rows = new ArrayList<>();
-        long rowId = 0;
+        List<PlannedEntry> plannedEntries = new ArrayList<>();
+        List<String> types = new ArrayList<>();
         for (PlannedConfig planned : planning.configs()) {
             ConstraintConfig config = new ConstraintConfig();
             config.setType(planned.type().name());
@@ -376,14 +385,30 @@ public class ConstraintConfigService {
             config.setParamsJson("{}");
             configs.add(config);
             for (PlannedEntry entry : planned.entries()) {
+                plannedEntries.add(entry);
+                types.add(planned.type().name());
+            }
+        }
+        List<Map<String, Object>> paramsRows = new ArrayList<>(plannedEntries.size());
+        for (PlannedEntry entry : plannedEntries) {
+            paramsRows.add(entry.params());
+        }
+        // Same expansion as the saved snapshot, so a preview cannot promise a different
+        // outcome than the save it precedes.
+        List<List<Map<String, Object>>> expanded = groupExpander.expandAll(semesterId, paramsRows);
+        List<ConstraintEntry> rows = new ArrayList<>();
+        long rowId = 0;
+        for (int index = 0; index < plannedEntries.size(); index++) {
+            PlannedEntry entry = plannedEntries.get(index);
+            for (Map<String, Object> params : expanded.get(index)) {
                 ConstraintEntry row = new ConstraintEntry();
                 row.setId(++rowId);
-                row.setType(planned.type().name());
+                row.setType(types.get(index));
                 row.setEnabled(entry.enabled());
                 row.setHard(entry.hard());
                 row.setWeight(entry.weight());
                 row.setGroupKey(entry.groupKey());
-                row.setParamsJson(writeParams(entry.params()));
+                row.setParamsJson(writeParams(params));
                 rows.add(row);
             }
         }
@@ -435,7 +460,47 @@ public class ConstraintConfigService {
             return ConstraintSettings.defaults();
         }
         List<ConstraintConfig> enabled = all.stream().filter(ConstraintConfig::isEnabled).toList();
-        return ConstraintSettings.from(enabled, entries.findBySemesterId(semesterId), objectMapper);
+        return ConstraintSettings.from(
+                enabled, expandEntries(semesterId, entries.findBySemesterId(semesterId)),
+                objectMapper);
+    }
+
+    /**
+     * Expands every stored row's group references into concrete member rows before it
+     * reaches {@link ConstraintSettings}. The persisted rows keep their group ids; only
+     * the snapshot carries members, so editing a group changes every referencing rule
+     * without a save. Copies are built on purpose: this is a read-only transaction and a
+     * JPA-managed entity must never be mutated by a snapshot build.
+     */
+    private List<ConstraintEntry> expandEntries(
+            Long semesterId, List<ConstraintEntry> rows) {
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> paramsRows = new ArrayList<>(rows.size());
+        for (ConstraintEntry row : rows) {
+            paramsRows.add(paramsFromJson(row.getParamsJson()));
+        }
+        List<List<Map<String, Object>>> expanded = groupExpander.expandAll(semesterId, paramsRows);
+        List<ConstraintEntry> result = new ArrayList<>();
+        for (int index = 0; index < rows.size(); index++) {
+            ConstraintEntry source = rows.get(index);
+            for (Map<String, Object> params : expanded.get(index)) {
+                ConstraintEntry copy = new ConstraintEntry();
+                copy.setId(source.getId());
+                copy.setSemesterId(source.getSemesterId());
+                copy.setType(source.getType());
+                copy.setCreatedAt(source.getCreatedAt());
+                copy.setEnabled(source.isEnabled());
+                copy.setHard(source.getHard());
+                copy.setWeight(source.getWeight());
+                copy.setGroupKey(source.getGroupKey());
+                copy.setDeletedAt(source.getDeletedAt());
+                copy.setParamsJson(writeParams(params));
+                result.add(copy);
+            }
+        }
+        return result;
     }
 
     @EventListener
@@ -616,7 +681,8 @@ public class ConstraintConfigService {
                 errors.add(type.getDisplayName() + ": 必须是硬约束，不能改为尽量");
             }
             EntryPlan entries = planEntries(
-                    type, request, hard, weight, timetable, existingEntries, claimedEntries, errors);
+                    type, request, hard, weight, resolved, timetable, existingEntries,
+                    claimedEntries, errors);
             references.addAll(entries.references());
             planned.add(new PlannedConfig(
                     type,
@@ -907,7 +973,7 @@ public class ConstraintConfigService {
      */
     private EntryPlan planEntries(
             ConstraintType type, ConstraintConfigRequest request, boolean defaultHard,
-            int defaultWeight, SemesterScope timetable,
+            int defaultWeight, Long semesterId, SemesterScope timetable,
             Map<Long, ConstraintEntry> existingEntries, Map<String, Set<Long>> claimedEntries,
             List<String> errors) {
         List<PlannedEntry> planned = new ArrayList<>();
@@ -918,7 +984,8 @@ public class ConstraintConfigService {
             // Legacy shape: `params` is the single entry, and its messages keep the
             // pre-ADR wording. It inherits the type controls, so its meaning is the same
             // as before per-requirement controls existed.
-            Map<String, Object> params = validateParams(type, request.params(), null, errors);
+            Map<String, Object> params = validateParams(
+                    type, request.params(), null, semesterId, errors);
             accept(type, new PlannedEntry(null, params, 1, true, null, null, null),
                     planned, seen, defaultHard, defaultWeight, timetable, existingEntries,
                     claimedEntries, references, errors);
@@ -935,7 +1002,7 @@ public class ConstraintConfigService {
                 errors.add(location(type, position) + ": 必须留空，不能改为尽量");
             }
             Map<String, Object> params = validateParams(
-                    type, raw == null ? null : raw.params(), position, errors);
+                    type, raw == null ? null : raw.params(), position, semesterId, errors);
             Integer weight = raw == null ? null : raw.weight();
             if (weight != null && (weight < 0 || weight > 100)) {
                 errors.add(location(type, position) + ": 权重必须在 0-100 之间");
@@ -1270,8 +1337,13 @@ public class ConstraintConfigService {
         }
         String location = location(type, position);
         switch (type) {
-            case TEACHER_UNAVAILABLE, TEACHER_PREFERRED_SLOT, COURSE_UNAVAILABLE, CLASS_UNAVAILABLE ->
+            case TEACHER_UNAVAILABLE, TEACHER_PREFERRED_SLOT, COURSE_UNAVAILABLE, CLASS_UNAVAILABLE -> {
+                // A time group replaces the explicit slot; its members are checked when
+                // the group is edited, not on every rule save.
+                if (!hasTimeGroup(params)) {
                     requireSlot(location, params, timetable, errors);
+                }
+            }
             case TEACHER_DAY_OFF -> requireDay(location, params, timetable, errors);
             case MAIN_SUBJECT_MORNING ->
                     requirePeriodNo(location, params, "beforePeriodNo", "上午截止节次", timetable, errors);
@@ -1310,6 +1382,11 @@ public class ConstraintConfigService {
             SemesterScope timetable) {
         List<ConstraintReferenceIssue> issues = new ArrayList<>();
         for (String field : REFERENCE_FIELDS) {
+            if (coveredByGroup(field, params)) {
+                // The group is the target; its own existence is validated with the entry
+                // (RuleGroupExpander treats a missing group as zero members).
+                continue;
+            }
             Long objectId = ConstraintSettings.longValue(params.get(field));
             if (objectId == null) {
                 continue;
@@ -1421,10 +1498,13 @@ public class ConstraintConfigService {
     }
 
     private Map<String, Object> validateParams(
-            ConstraintType type, Map<String, Object> input, Integer position, List<String> errors) {
+            ConstraintType type, Map<String, Object> input, Integer position,
+            Long semesterId, List<String> errors) {
         String prefix = location(type, position) + ": ";
         Map<String, Object> source = input == null ? Map.of() : input;
         Map<String, Object> normalized = new LinkedHashMap<>();
+        Set<String> covered = validateGroupParams(
+                type, source, prefix, semesterId, errors, normalized);
         for (Param param : type.getParams()) {
             Object value = source.get(param.name());
             if (isBlankNoClassClassId(type, param, value)) {
@@ -1435,7 +1515,7 @@ public class ConstraintConfigService {
                 continue;
             }
             if (value == null || (value instanceof String text && !StringUtils.hasText(text))) {
-                if (param.required()) {
+                if (param.required() && !covered.contains(param.name())) {
                     errors.add(prefix + "参数「" + param.label() + "」不能为空");
                 }
                 continue;
@@ -1459,9 +1539,102 @@ public class ConstraintConfigService {
         }
         source.keySet().stream()
                 .filter(key -> type.getParams().stream().noneMatch(param -> param.name().equals(key)))
+                .filter(key -> GROUP_SPECS.stream().noneMatch(spec -> spec.key().equals(key)))
                 .forEach(key -> errors.add(prefix + "未知参数 " + key));
         return normalized;
     }
+
+    /**
+     * Group keys are an alternative to a concrete object, not an extra parameter. This
+     * validates the three group references of one entry and returns the concrete fields
+     * they replace, so a rule that names only {@code teacherGroupId} is not also told
+     * that {@code teacherId} is missing.
+     */
+    private Set<String> validateGroupParams(
+            ConstraintType type, Map<String, Object> source, String prefix, Long semesterId,
+            List<String> errors, Map<String, Object> normalized) {
+        Set<String> covered = new LinkedHashSet<>();
+        for (GroupSpec spec : GROUP_SPECS) {
+            Object raw = source.get(spec.key());
+            if (!hasValue(raw)) {
+                continue;
+            }
+            if (!allowsGroup(type, spec.type())) {
+                errors.add(prefix + "参数「" + spec.label() + "」不能用于"
+                        + type.getDisplayName());
+                continue;
+            }
+            covered.addAll(spec.coveredFields());
+            for (String field : spec.coveredFields()) {
+                if (hasValue(source.get(field))) {
+                    errors.add(prefix + "参数「" + paramLabel(type, field) + "」与「"
+                            + spec.label() + "」不能同时指定；" + spec.label() + "已代表具体成员");
+                    break;
+                }
+            }
+            Long groupId = ConstraintSettings.longValue(raw);
+            if (groupId == null) {
+                errors.add(prefix + "参数「" + spec.label() + "」必须是整数");
+                continue;
+            }
+            RuleGroup group = ruleGroups.findById(groupId).orElse(null);
+            if (group == null || group.getDeletedAt() != null) {
+                errors.add(prefix + "参数「" + spec.label() + "」指向的分组不存在或已被删除："
+                        + groupId);
+                continue;
+            }
+            if (group.getGroupType() != spec.type()) {
+                errors.add(prefix + "参数「" + spec.label() + "」指向的分组类型不匹配：" + groupId);
+                continue;
+            }
+            if (spec.type() == RuleGroupType.TIME
+                    && (semesterId == null || !semesterId.equals(group.getSemesterId()))) {
+                errors.add(prefix + "参数「" + spec.label() + "」不属于当前学期：" + groupId);
+                continue;
+            }
+            normalized.put(spec.key(), groupId.intValue());
+        }
+        return covered;
+    }
+
+    /** A group is accepted only where the type already has a matching concrete key. */
+    private boolean allowsGroup(ConstraintType type, RuleGroupType groupType) {
+        String field = switch (groupType) {
+            case TEACHER -> "teacherId";
+            case COURSE -> "courseId";
+            case TIME -> "periodNo";
+        };
+        return type.getParams().stream().anyMatch(param -> field.equals(param.name()));
+    }
+
+    private static boolean hasValue(Object value) {
+        return value != null && (!(value instanceof String text) || StringUtils.hasText(text));
+    }
+
+    private static boolean hasTimeGroup(Map<String, Object> params) {
+        return params != null && hasValue(params.get("timeGroupId"));
+    }
+
+    /** A concrete object field is replaced by its group key, so it is not resolved separately. */
+    private static boolean coveredByGroup(String field, Map<String, Object> params) {
+        if (params == null) {
+            return false;
+        }
+        return ("teacherId".equals(field) && hasValue(params.get("teacherGroupId")))
+                || ("courseId".equals(field) && hasValue(params.get("courseGroupId")));
+    }
+
+    /** One group key, its display label, the group type and the concrete fields it replaces. */
+    private record GroupSpec(String key, String label, RuleGroupType type,
+                             Set<String> coveredFields) {}
+
+    private static final List<GroupSpec> GROUP_SPECS = List.of(
+            new GroupSpec("teacherGroupId", "教师分组", RuleGroupType.TEACHER,
+                    Set.of("teacherId")),
+            new GroupSpec("courseGroupId", "课程分组", RuleGroupType.COURSE,
+                    Set.of("courseId")),
+            new GroupSpec("timeGroupId", "时间分组", RuleGroupType.TIME,
+                    Set.of("dayOfWeek", "periodNo")));
 
     /** Type name plus the 1-based entry position, so an error points at one row. */
     private String location(ConstraintType type, Integer position) {
@@ -1617,14 +1790,48 @@ public class ConstraintConfigService {
                 reasons.add("课程已停用：" + item.getName());
             }
         }
+        addGroupIssues(reasons, params, references);
         return reasons;
     }
 
-    /** The referenced rows of a batch of rule parameters, loaded in three queries. */
+    /**
+     * A group reference that no longer resolves (deleted, unknown or of the wrong type)
+     * makes the rule silently apply to nobody. The page shows the reason so the user can
+     * fix or delete the card instead of wondering why the sentence does nothing.
+     */
+    private void addGroupIssues(
+            List<String> reasons, Map<String, Object> params, ReferenceIndex references) {
+        addGroupIssue(reasons, references, params.get("teacherGroupId"), RuleGroupType.TEACHER);
+        addGroupIssue(reasons, references, params.get("courseGroupId"), RuleGroupType.COURSE);
+        addGroupIssue(reasons, references, params.get("timeGroupId"), RuleGroupType.TIME);
+    }
+
+    private void addGroupIssue(
+            List<String> reasons, ReferenceIndex references, Object raw, RuleGroupType expected) {
+        Long groupId = ConstraintSettings.longValue(raw);
+        if (groupId == null) {
+            return;
+        }
+        RuleGroup group = references.groups().get(groupId);
+        if (group == null) {
+            reasons.add("分组已删除：#" + groupId);
+            return;
+        }
+        if (group.getDeletedAt() != null) {
+            reasons.add("分组已删除：" + group.getName());
+            return;
+        }
+        if (group.getGroupType() != expected) {
+            reasons.add("分组类型不匹配：" + group.getName());
+        }
+    }
+
+    /** The referenced rows of a batch of rule parameters, loaded in a fixed number of queries. */
     private ReferenceIndex referencesOf(List<Map<String, Object>> paramRows) {
         Set<Long> teacherIds = new LinkedHashSet<>();
         Set<Long> classIds = new LinkedHashSet<>();
         Set<Long> courseIds = new LinkedHashSet<>();
+        Set<Long> groupIds = new LinkedHashSet<>();
         for (Map<String, Object> params : paramRows) {
             if (params == null || params.isEmpty()) {
                 continue;
@@ -1641,6 +1848,12 @@ public class ConstraintConfigService {
             if (courseId != null) {
                 courseIds.add(courseId);
             }
+            for (String key : List.of("teacherGroupId", "courseGroupId", "timeGroupId")) {
+                Long groupId = ConstraintSettings.longValue(params.get(key));
+                if (groupId != null) {
+                    groupIds.add(groupId);
+                }
+            }
         }
         Map<Long, Teacher> teacherById = new HashMap<>();
         if (!teacherIds.isEmpty()) {
@@ -1654,13 +1867,18 @@ public class ConstraintConfigService {
         if (!courseIds.isEmpty()) {
             courses.findAllById(courseIds).forEach(row -> courseById.put(row.getId(), row));
         }
-        return new ReferenceIndex(teacherById, classById, courseById);
+        Map<Long, RuleGroup> groupById = new HashMap<>();
+        if (!groupIds.isEmpty()) {
+            ruleGroups.findAllById(groupIds).forEach(row -> groupById.put(row.getId(), row));
+        }
+        return new ReferenceIndex(teacherById, classById, courseById, groupById);
     }
 
     private record ReferenceIndex(
             Map<Long, Teacher> teachers,
             Map<Long, AdminClass> classes,
-            Map<Long, Course> courses) {}
+            Map<Long, Course> courses,
+            Map<Long, RuleGroup> groups) {}
 
     private boolean isEntryBacked(String typeCode) {
         ConstraintType type = typeOrNull(typeCode);
