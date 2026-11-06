@@ -186,12 +186,15 @@ export const RULE_SPECS: Record<RuleType, RuleSpec> = {
     course: 'REQUIRED', day: 'REQUIRED', periods: 'REQUIRED',
   }),
   COURSE_MAX_PER_DAY: spec(COURSE_MAX_PER_DAY, 'QUANTITY', '每天最多 N 节', 'COURSE', {
-    course: 'REQUIRED', amount: { field: 'maxPerDay', label: '每天最多节数', min: 1, max: 8, defaultValue: 2 }, defaultWeight: 50,
+    course: 'OPTIONAL', coursePlaceholder: '全部课程',
+    amount: { field: 'maxPerDay', label: '每天最多节数', min: 1, max: 8, defaultValue: 2 }, defaultWeight: 50,
   }),
   TEACHER_MAX_PER_DAY: spec(TEACHER_MAX_PER_DAY, 'QUANTITY', '每天最多 N 节', 'TEACHER', {
+    allowAnyTeacher: true,
     amount: { field: 'maxPerDay', label: '每天最多节数', min: 1, max: 12, defaultValue: 4 }, defaultWeight: 60,
   }),
   CLASS_MAX_PER_DAY: spec(CLASS_MAX_PER_DAY, 'QUANTITY', '每天最多 N 节', 'CLASS', {
+    allowSchool: true,
     amount: { field: 'maxPerDay', label: '每天最多节数', min: 1, max: 12, defaultValue: 8 }, defaultWeight: 50,
   }),
   SAME_COURSE_ONCE_PER_DAY: spec(SAME_COURSE_ONCE_PER_DAY, 'QUANTITY', '每天最多 1 节', 'COURSE', {
@@ -274,7 +277,7 @@ export interface RuleInput {
   classId?: number | null
   teacherId?: number | null
   courseId?: number | null
-  dayOfWeek?: number | null
+  days?: number[]
   periodNos?: number[]
   amount?: number | null
   strength?: RuleStrength
@@ -291,13 +294,17 @@ export interface RuleSentence {
   classId: number | null
   teacherId: number | null
   courseId: number | null
-  dayOfWeek: number | null
+  days: number[]
   periodNos: number[]
   amount: number | null
   strength: RuleStrength
   enabled: boolean
   entryIds: Record<string, number>
   exceptionClassIds: number[]
+  /** Reserved for tickets 04/05/06: a sentence may reference a user group instead. */
+  teacherGroupId: number | null
+  courseGroupId: number | null
+  timeGroupId: number | null
   /**
    * Ticket 04: server-side reasons the stored target can no longer be used
    * (`教师已停用：王老师`). Absent means every reference still resolves.
@@ -352,6 +359,10 @@ export function weekdayLabel(dayOfWeek: number): string {
 
 export function normalizePeriods(periodNos: number[]): number[] {
   return Array.from(new Set(periodNos)).sort((left, right) => left - right)
+}
+
+export function normalizeDays(days: number[]): number[] {
+  return Array.from(new Set(days)).sort((left, right) => left - right)
 }
 
 export function slotKey(dayOfWeek: number, periodNo: number): string {
@@ -419,32 +430,35 @@ function foldedTimeOfDay(
 }
 
 /**
- * "周五下午" when the picked periods cover that whole slice, "周五第 5、6 节"
- * otherwise; a pending day/period set reads as such.
+ * "周一、周三下午" when the picked periods cover that whole slice of every picked
+ * day, "周一、周三第 5、6 节" otherwise; no periods reads as the day list alone
+ * (fixed days off), no days reads as such.
  */
 export function timeLabel(
-  dayOfWeek: number | null,
+  days: number[],
   periodNos: number[],
   periods?: PeriodOption[] | null,
 ): string {
-  if (dayOfWeek === null) {
+  const sortedDays = normalizeDays(days)
+  if (sortedDays.length === 0) {
     return '（请选择星期）'
   }
-  const label = weekdayLabel(dayOfWeek)
+  const label = sortedDays.map(weekdayLabel).join('、')
   const sorted = normalizePeriods(periodNos)
   if (sorted.length === 0) {
-    return `${label}（还没选节次）`
+    return label
   }
-  const folded = foldedTimeOfDay(dayOfWeek, sorted, periods)
-  if (folded !== null) {
-    return `${label}${folded}`
+  const folded = sortedDays.map((day) => foldedTimeOfDay(day, sorted, periods))
+  const shared = folded[0]
+  if (shared !== null && folded.every((value) => value === shared)) {
+    return `${label}${shared}`
   }
   return `${label}第 ${sorted.join('、')} 节`
 }
 
 type RuleShape = Pick<
   RuleSentence,
-  'classId' | 'teacherId' | 'courseId' | 'dayOfWeek' | 'periodNos' | 'amount'
+  'classId' | 'teacherId' | 'courseId' | 'days' | 'periodNos' | 'amount'
 > & {
   type: RuleType | null
   exceptionClassIds?: number[]
@@ -523,14 +537,15 @@ export function describeRule(
   names: RuleNames,
   periods?: PeriodOption[] | null,
 ): string {
-  const time = timeLabel(parts.dayOfWeek ?? null, parts.periodNos ?? [], periods)
+  const days = parts.days ?? []
+  const time = timeLabel(days, parts.periodNos ?? [], periods)
   if (!parts.type) {
     const subject = pendingSubject(parts, names)
     const pieces: string[] = []
     if (subject) {
       pieces.push(subject)
     }
-    if ((parts.dayOfWeek ?? null) !== null) {
+    if (days.length > 0) {
       pieces.push(time)
     }
     return pieces.length === 0
@@ -543,8 +558,9 @@ export function describeRule(
   const klass = classSubject(parts, names)
   const course = courseSubject(parts, names)
   const amount = parts.amount === null || parts.amount === undefined ? 'N' : String(parts.amount)
-  const day = parts.dayOfWeek === null || parts.dayOfWeek === undefined
-    ? '（请选择星期）' : weekdayLabel(parts.dayOfWeek)
+  const sortedDays = normalizeDays(days)
+  const day = sortedDays.length === 0
+    ? '（请选择星期）' : sortedDays.map(weekdayLabel).join('、')
   const exceptions = parts.exceptionClassIds?.length
     ? `，除了 ${parts.exceptionClassIds.map((id) => names.klass(id)).join('、')}`
     : ''
@@ -622,7 +638,7 @@ export function missingParts(card: RuleShape): string[] {
   if (spec.course === 'REQUIRED' && (card.courseId ?? null) === null) {
     missing.push('选择课程')
   }
-  if (spec.day === 'REQUIRED' && (card.dayOfWeek ?? null) === null) {
+  if (spec.day === 'REQUIRED' && (card.days ?? []).length === 0) {
     missing.push('选择星期')
   }
   if (spec.periods === 'REQUIRED' && (card.periodNos ?? []).length === 0) {
@@ -717,7 +733,7 @@ function sentenceFromInput(input: RuleInput, groupKey: string | null): RuleSente
     classId: rule.target === 'CLASS' ? toInteger(input.classId) : null,
     teacherId: rule.target === 'TEACHER' ? toInteger(input.teacherId) : null,
     courseId: rule.course === 'ALL' ? null : toInteger(input.courseId),
-    dayOfWeek: rule.day === 'REQUIRED' ? toInteger(input.dayOfWeek) : null,
+    days: rule.day === 'REQUIRED' ? normalizeDays(input.days ?? []) : [],
     periodNos: rule.periods === 'REQUIRED' ? normalizePeriods(input.periodNos ?? []) : [],
     amount: rule.amount ? toInteger(input.amount) ?? rule.amount.defaultValue : null,
     strength: rule.hardOnly ? 'HARD' : input.strength ?? 'HARD',
@@ -726,6 +742,9 @@ function sentenceFromInput(input: RuleInput, groupKey: string | null): RuleSente
     exceptionClassIds: isSchoolUnavailable
       ? Array.from(new Set(input.exceptionClassIds ?? [])).sort((left, right) => left - right)
       : [],
+    teacherGroupId: null,
+    courseGroupId: null,
+    timeGroupId: null,
   }
 }
 
@@ -818,6 +837,7 @@ export function duplicateCard(card: RuleCard): RuleCard {
       key: `group:${cardId}:${index}`,
       groupKey: `${cardId}:${index}`,
       entryIds: {},
+      days: [...sentence.days],
       periodNos: [...sentence.periodNos],
       exceptionClassIds: [...sentence.exceptionClassIds],
     })),
@@ -990,40 +1010,47 @@ function sentenceEntries(sentence: RuleSentence, options: MergeOptions): SaveEnt
   const spec = RULE_SPECS[sentence.type]
   const hard = spec.hardOnly || sentence.strength === 'HARD'
   if (spec.periods === 'REQUIRED') {
-    const day = sentence.dayOfWeek ?? 0
+    const days = normalizeDays(sentence.days)
     const classes = sentenceClasses(sentence, options.classIds)
     const exceptionSentence = sentence.exceptionClassIds.length > 0
     return classes.flatMap((classId) =>
-      normalizePeriods(sentence.periodNos).map((periodNo) => {
-        const params: Record<string, unknown> = {}
-        if (classId !== null) {
-          params.classId = classId
-        }
-        if (sentence.teacherId !== null) {
-          params.teacherId = sentence.teacherId
-        }
-        if (sentence.courseId !== null) {
-          params.courseId = sentence.courseId
-        }
-        params.dayOfWeek = day
-        params.periodNo = periodNo
-        const key = exceptionSentence && classId !== null
-          ? `${classId}:${slotKey(day, periodNo)}`
-          : slotKey(day, periodNo)
-        return {
-          id: sentence.entryIds[key] ?? null,
-          params,
-          enabled: sentence.enabled,
-          hard,
-          weight: null,
-          groupKey: sentence.groupKey,
-        }
-      }),
+      days.flatMap((day) =>
+        normalizePeriods(sentence.periodNos).map((periodNo) => {
+          const params = objectParams(sentence)
+          if (classId !== null) {
+            params.classId = classId
+          }
+          params.dayOfWeek = day
+          params.periodNo = periodNo
+          const key = exceptionSentence && classId !== null
+            ? `${classId}:${slotKey(day, periodNo)}`
+            : slotKey(day, periodNo)
+          return {
+            id: sentence.entryIds[key] ?? null,
+            params,
+            enabled: sentence.enabled,
+            hard,
+            weight: null,
+            groupKey: sentence.groupKey,
+          }
+        }),
+      ),
     )
+  }
+  if (spec.day === 'REQUIRED') {
+    // Fixed days off (TEACHER_DAY_OFF) persist as one row per weekday, same group.
+    return normalizeDays(sentence.days).map((day) => ({
+      id: sentence.entryIds[`day-${day}`] ?? null,
+      params: { ...objectParams(sentence), dayOfWeek: day },
+      enabled: sentence.enabled,
+      hard,
+      weight: null,
+      groupKey: sentence.groupKey,
+    }))
   }
   return [{
     id: sentence.entryIds[SINGLE_ENTRY_KEY] ?? null,
-    params: singleParams(sentence),
+    params: objectParams(sentence),
     enabled: sentence.enabled,
     hard,
     weight: null,
@@ -1031,7 +1058,8 @@ function sentenceEntries(sentence: RuleSentence, options: MergeOptions): SaveEnt
   }]
 }
 
-function singleParams(sentence: RuleSentence): Record<string, unknown> {
+/** The object and amount parameters a sentence writes, without any weekday. */
+function objectParams(sentence: RuleSentence): Record<string, unknown> {
   const spec = RULE_SPECS[sentence.type]
   const params: Record<string, unknown> = {}
   if (spec.target === 'CLASS' && sentence.classId !== null) {
@@ -1045,9 +1073,6 @@ function singleParams(sentence: RuleSentence): Record<string, unknown> {
   }
   if (spec.amount && sentence.amount !== null) {
     params[spec.amount.field] = sentence.amount
-  }
-  if (spec.day === 'REQUIRED') {
-    params.dayOfWeek = sentence.dayOfWeek
   }
   return params
 }
@@ -1079,9 +1104,9 @@ function identityOfEntry(entry: ConstraintEntryDto, index: number): string {
 }
 
 /**
- * The sentence model covers exactly one weekday, one scope and a set of periods
- * (or one single-value requirement). A stored group that says anything else is not
- * a card; it stays in the advanced page and is preserved on save.
+ * The sentence model covers one scope, a set of weekdays and a set of periods
+ * (or one single-value requirement). A stored group that says anything else is
+ * not a card; it stays in the advanced page and is preserved on save.
  */
 function sentenceFromGroup(
   type: RuleType,
@@ -1095,6 +1120,9 @@ function sentenceFromGroup(
   }
   if (spec.periods === 'REQUIRED') {
     return slotSentence(type, group, config, options)
+  }
+  if (spec.day === 'REQUIRED') {
+    return dayOffSentence(type, group, config)
   }
   if (group.entries.length !== 1) {
     return null
@@ -1112,11 +1140,12 @@ function slotSentence(
 ): RuleSentence | null {
   const spec = RULE_SPECS[type]
   const days = new Set<number>()
+  const periods = new Set<number>()
   const objects = new Set<number | null>()
-  const periodsByObject = new Map<number | null, number[]>()
+  const slotsByObject = new Map<number | null, Set<string>>()
   for (const entry of group.entries) {
     const params = entry.params ?? {}
-    if (!allowedKeys(params, spec, false)) {
+    if (!allowedKeys(params, spec)) {
       return null
     }
     const day = toInteger(params.dayOfWeek)
@@ -1126,15 +1155,20 @@ function slotSentence(
     }
     const object = objectValue(spec, params)
     days.add(day)
+    periods.add(periodNo)
     objects.add(object)
-    const list = periodsByObject.get(object) ?? []
-    list.push(periodNo)
-    periodsByObject.set(object, list)
+    const slots = slotsByObject.get(object) ?? new Set<string>()
+    slots.add(slotKey(day, periodNo))
+    slotsByObject.set(object, slots)
   }
-  if (days.size !== 1) {
+  const sortedDays = normalizeDays(Array.from(days))
+  const sortedPeriods = normalizePeriods(Array.from(periods))
+  if (sortedDays.length === 0 || sortedPeriods.length === 0) {
     return null
   }
-  const exception = exceptionScope(spec, objects, periodsByObject, options)
+  const exception = exceptionScope(
+    spec, objects, slotsByObject, sortedDays, sortedPeriods, options,
+  )
   if (exception === 'INVALID') {
     return null
   }
@@ -1151,6 +1185,11 @@ function slotSentence(
       return null
     }
     classId = spec.target === 'CLASS' ? object : null
+  }
+  // A multi-day sentence compiles to the full day × period grid; a group that
+  // skips some combinations would be misread, so it stays unrepresented.
+  if (!coversGrid(slotsByObject, sortedDays, sortedPeriods)) {
+    return null
   }
   const entryIds: Record<string, number> = {}
   const exceptionSentence = exceptionClassIds.length > 0
@@ -1176,21 +1215,88 @@ function slotSentence(
     classId,
     teacherId: spec.target === 'TEACHER' ? firstObject(objects) : null,
     courseId: spec.target === 'COURSE' ? firstObject(objects) : null,
-    dayOfWeek: Array.from(days)[0],
-    periodNos: normalizePeriods(Array.from(new Set(
-      Array.from(periodsByObject.values()).flat(),
-    ))),
+    days: sortedDays,
+    periodNos: sortedPeriods,
     amount: null,
     strength: strengthOf(group.entries, config, spec),
     enabled: group.entries.every((entry) => entry.enabled !== false) && config.enabled !== false,
     entryIds,
     exceptionClassIds,
+    teacherGroupId: null,
+    courseGroupId: null,
+    timeGroupId: null,
     ...invalidField(group.entries),
   }
 }
 
 /**
- * The reasons of a stored group, or nothing when every reference resolves. The field
+ * Fixed days off (TEACHER_DAY_OFF) persist as one row per weekday with the same
+ * group key; reading them back joins the days into one sentence.
+ */
+function dayOffSentence(
+  type: RuleType,
+  group: EntryGroup,
+  config: ConstraintConfigDto,
+): RuleSentence | null {
+  const spec = RULE_SPECS[type]
+  const objects = new Set<number | null>()
+  const days = new Set<number>()
+  const entryIds: Record<string, number> = {}
+  let amount: number | null = null
+  for (const entry of group.entries) {
+    const params = entry.params ?? {}
+    if (!allowedKeys(params, spec)) {
+      return null
+    }
+    const day = toInteger(params.dayOfWeek)
+    if (day === null || days.has(day)) {
+      return null
+    }
+    objects.add(objectValue(spec, params))
+    if (spec.amount) {
+      const value = toInteger(params[spec.amount.field])
+      if (value === null || value < spec.amount.min || value > spec.amount.max) {
+        return null
+      }
+      if (amount !== null && amount !== value) {
+        return null
+      }
+      amount = value
+    }
+    days.add(day)
+    if (entry.id !== null) {
+      entryIds[`day-${day}`] = entry.id
+    }
+  }
+  if (days.size === 0 || objects.size !== 1) {
+    return null
+  }
+  const object = Array.from(objects)[0] ?? null
+  if (objectRequired(spec) && object === null) {
+    return null
+  }
+  return {
+    key: group.identity,
+    groupKey: group.groupKey,
+    type,
+    classId: spec.target === 'CLASS' ? object : null,
+    teacherId: spec.target === 'TEACHER' ? object : null,
+    courseId: spec.target === 'COURSE' ? object : null,
+    days: normalizeDays(Array.from(days)),
+    periodNos: [],
+    amount,
+    strength: strengthOf(group.entries, config, spec),
+    enabled: group.entries.every((entry) => entry.enabled !== false) && config.enabled !== false,
+    entryIds,
+    exceptionClassIds: [],
+    teacherGroupId: null,
+    courseGroupId: null,
+    timeGroupId: null,
+    ...invalidField(group.entries),
+  }
+}
+
+/** The reasons of a stored group, or nothing when every reference resolves. The field
  * is only present when broken, so existing card comparisons stay unchanged.
  */
 function invalidField(entries: ConstraintEntryDto[]): { invalidReferences?: string[] } {
@@ -1202,15 +1308,35 @@ function firstObject(objects: Set<number | null>): number | null {
   return Array.from(objects)[0] ?? null
 }
 
+function gridSlots(days: number[], periods: number[]): string[] {
+  return days.flatMap((day) => periods.map((periodNo) => slotKey(day, periodNo)))
+}
+
+function matchesGrid(slots: Set<string>, days: number[], periods: number[]): boolean {
+  const grid = gridSlots(days, periods)
+  return slots.size === grid.length && grid.every((slot) => slots.has(slot))
+}
+
+function coversGrid(
+  slotsByObject: Map<number | null, Set<string>>,
+  days: number[],
+  periods: number[],
+): boolean {
+  return Array.from(slotsByObject.values())
+    .every((slots) => matchesGrid(slots, days, periods))
+}
+
 /**
  * A school-scope CLASS_UNAVAILABLE group stored as one row per class is an
- * exception sentence: every class except the ones named gets the slot. Anything
- * else (mixed scopes, different slot sets) is not representable here.
+ * exception sentence: every class except the ones named gets the same day/period
+ * grid. Anything else (mixed scopes, different grids) is not representable here.
  */
 function exceptionScope(
   spec: RuleSpec,
   objects: Set<number | null>,
-  periodsByObject: Map<number | null, number[]>,
+  slotsByObject: Map<number | null, Set<string>>,
+  days: number[],
+  periods: number[],
   options: MergeOptions,
 ): number[] | null | 'INVALID' {
   const allClasses = options.classIds ?? []
@@ -1226,9 +1352,14 @@ function exceptionScope(
   if (remaining.length === 0) {
     return null
   }
-  const slotSets = Array.from(periodsByObject.values())
-    .map((list) => normalizePeriods(list).join(','))
-  if (new Set(slotSets).size !== 1) {
+  const signatures = new Set(
+    Array.from(slotsByObject.values())
+      .map((slots) => Array.from(slots).sort().join(',')),
+  )
+  if (signatures.size !== 1) {
+    return 'INVALID'
+  }
+  if (!coversGrid(slotsByObject, days, periods)) {
     return 'INVALID'
   }
   return remaining
@@ -1242,7 +1373,7 @@ function singleSentence(
   group: EntryGroup,
 ): RuleSentence | null {
   const spec = RULE_SPECS[type]
-  if (!allowedKeys(params, spec, true)) {
+  if (!allowedKeys(params, spec)) {
     return null
   }
   const object = objectValue(spec, params)
@@ -1256,13 +1387,6 @@ function singleSentence(
       return null
     }
   }
-  let dayOfWeek: number | null = null
-  if (spec.day === 'REQUIRED') {
-    dayOfWeek = toInteger(params.dayOfWeek)
-    if (dayOfWeek === null) {
-      return null
-    }
-  }
   return {
     key: group.identity,
     groupKey: group.groupKey,
@@ -1270,13 +1394,16 @@ function singleSentence(
     classId: spec.target === 'CLASS' ? object : null,
     teacherId: spec.target === 'TEACHER' ? object : null,
     courseId: spec.target === 'COURSE' ? object : null,
-    dayOfWeek,
+    days: [],
     periodNos: [],
     amount,
     strength: strengthOf([entry], config, spec),
     enabled: entry.enabled !== false && config.enabled !== false,
     entryIds: entry.id === null ? {} : { [SINGLE_ENTRY_KEY]: entry.id },
     exceptionClassIds: [],
+    teacherGroupId: null,
+    courseGroupId: null,
+    timeGroupId: null,
     ...invalidField([entry]),
   }
 }
@@ -1285,7 +1412,6 @@ function singleSentence(
 function allowedKeys(
   params: Record<string, unknown>,
   spec: RuleSpec,
-  single: boolean,
 ): boolean {
   const allowed = new Set<string>()
   if (spec.target !== 'NONE') {
@@ -1294,7 +1420,7 @@ function allowedKeys(
   if (spec.amount) {
     allowed.add(spec.amount.field)
   }
-  if (spec.day === 'REQUIRED' && single) {
+  if (spec.day === 'REQUIRED') {
     allowed.add('dayOfWeek')
   }
   if (spec.periods === 'REQUIRED') {
@@ -1362,13 +1488,16 @@ export function cardsFromState(
         classId: null,
         teacherId: null,
         courseId: null,
-        dayOfWeek: null,
+        days: [],
         periodNos: [],
         amount: null,
         strength: RULE_SPECS[config.type].hardOnly || config.hard ? 'HARD' : 'SOFT',
         enabled: config.enabled !== false,
         entryIds: {},
         exceptionClassIds: [],
+        teacherGroupId: null,
+        courseGroupId: null,
+        timeGroupId: null,
         ...(config.invalidReferences?.length
           ? { invalidReferences: [...config.invalidReferences] }
           : {}),

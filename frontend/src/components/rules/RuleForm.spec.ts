@@ -65,7 +65,7 @@ describe('RuleForm: subject first, live sentence and exceptions', () => {
     expect(select(wrapper, 'rule-subject').props('filterable')).toBe(true)
     expect(select(wrapper, 'rule-type').props('disabled')).toBe(true)
     expect(select(wrapper, 'rule-type').props('placeholder')).toBe('先选谁 / 什么课')
-    expect(wrapper.find('[data-testid="rule-day"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="rule-days"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="rule-missing"]').text()).toContain('选择要求')
     expect(wrapper.find('[data-testid="rule-submit"]').attributes('disabled')).toBeDefined()
     wrapper.unmount()
@@ -75,7 +75,7 @@ describe('RuleForm: subject first, live sentence and exceptions', () => {
     const wrapper = mountForm()
     await setSelect(wrapper, 'rule-subject', 'teacher:7')
     await setSelect(wrapper, 'rule-type', 'TEACHER_UNAVAILABLE')
-    await setSelect(wrapper, 'rule-day', 1)
+    await setSelect(wrapper, 'rule-days', [1])
     await setPeriods(wrapper, [3])
     expect(wrapper.find('[data-testid="rule-preview"]').text())
       .toContain('王老师 周一第 3 节 不上课')
@@ -87,7 +87,7 @@ describe('RuleForm: subject first, live sentence and exceptions', () => {
     const wrapper = mountForm()
     await setSelect(wrapper, 'rule-subject', 'teacher:7')
     await setSelect(wrapper, 'rule-type', 'TEACHER_UNAVAILABLE')
-    await setSelect(wrapper, 'rule-day', 2)
+    await setSelect(wrapper, 'rule-days', [2])
     await setPeriods(wrapper, [3, 4])
     expect(wrapper.find('[data-testid="rule-preview"]').text())
       .toContain('王老师 周二下午 不上课')
@@ -98,7 +98,7 @@ describe('RuleForm: subject first, live sentence and exceptions', () => {
     const wrapper = mountForm()
     await setSelect(wrapper, 'rule-subject', 'school')
     await setSelect(wrapper, 'rule-type', 'CLASS_UNAVAILABLE')
-    await setSelect(wrapper, 'rule-day', 1)
+    await setSelect(wrapper, 'rule-days', [1])
     await setPeriods(wrapper, [3])
     expect(wrapper.find('[data-testid="rule-exceptions"]').exists()).toBe(true)
     expect(select(wrapper, 'rule-exceptions').props('multiple')).toBe(true)
@@ -125,7 +125,7 @@ describe('RuleForm: subject first, live sentence and exceptions', () => {
   it('submits the sentence with its stored key', async () => {
     const initial = cardFromInputs([{
       type: 'CLASS_UNAVAILABLE',
-      dayOfWeek: 1,
+      days: [1],
       periodNos: [3],
     }])
     const wrapper = mountForm(initial)

@@ -38,15 +38,22 @@ test.describe('排课规则：句子积木', () => {
     return page.getByTestId('rule-form')
   }
 
-  async function chooseDay(page: Page, label: string) {
-    await pickOption(form(page), 'rule-day', label)
+  async function chooseDays(page: Page, labels: string[], testId = 'rule-days') {
+    const select = form(page).getByTestId(testId)
+    await select.click()
+    const dropdown = page.locator('.el-select-dropdown:visible').last()
+    for (const label of labels) {
+      await dropdown.getByText(label, { exact: true }).first().click()
+    }
+    await page.keyboard.press('Escape')
+    await expect(dropdown).toBeHidden()
   }
 
   async function addSchoolRule(page: Page) {
     await page.getByTestId('rule-new').click()
     await expect(form(page)).toBeVisible()
     await pickOption(form(page), 'rule-subject', '全校')
-    await chooseDay(page, '周五')
+    await chooseDays(page, ['周五'])
     await form(page).getByTestId('rule-period-7').click()
     await pickOption(form(page), 'rule-type', '不上课')
     await expect(form(page).getByTestId('rule-preview')).toContainText(
@@ -63,7 +70,7 @@ test.describe('排课规则：句子积木', () => {
     await page.getByTestId('rule-new').click()
     await expect(form(page)).toBeVisible()
     await pickOption(form(page), 'rule-subject', `教师 · ${teacherName}`)
-    await chooseDay(page, '周五')
+    await chooseDays(page, ['周五'])
     for (const periodNo of [5, 6, 7, 8]) {
       await form(page).getByTestId(`rule-period-${periodNo}`).click()
     }
@@ -347,5 +354,61 @@ test.describe('排课规则：句子积木', () => {
     await expect(page.getByText(`${math.name} 每天最多 1 节`)).toBeVisible()
     await expect(page.getByText(`${chinese.name} 连堂 2 节`)).toBeVisible()
     await expect(page.getByText('体育 不在最后一节')).toBeVisible()
+  })
+
+  test('一句话选多天：王老师 周一、周三 不上课', async ({ page }) => {
+    // 从空配置开始，只断言这一条多天规则。
+    const before = await state()
+    await apiCall(
+      api,
+      token,
+      'put',
+      '/constraints',
+      { configs: [] },
+      { semesterId: seed.semesterId, baseVersion: before.version },
+    )
+
+    await uiLogin(page, 'admin', 'admin123')
+    await page.goto('/rules')
+    await expect(page.getByTestId('rule-builder')).toBeVisible()
+
+    const teacherName = seed.teachers[0].name
+    await page.getByTestId('rule-new').click()
+    await pickOption(form(page), 'rule-subject', `教师 · ${teacherName}`)
+    await chooseDays(page, ['周一', '周三'])
+    for (const periodNo of [5, 6, 7, 8]) {
+      await form(page).getByTestId(`rule-period-${periodNo}`).click()
+    }
+    await pickOption(form(page), 'rule-type', '不上课')
+    const sentence = `${teacherName} 周一、周三第 5、6、7、8 节 不上课`
+    await expect(form(page).getByTestId('rule-preview')).toContainText(sentence)
+    await form(page).getByTestId('rule-submit').click()
+
+    await expect(page.getByTestId('rule-card')).toHaveCount(1)
+    await expect(page.getByTestId('rule-sentence')).toHaveText(sentence)
+
+    await saveRules(page)
+
+    const saved = await state()
+    const teacher = saved.configs.find(
+      (config: { type: string }) => config.type === 'TEACHER_UNAVAILABLE',
+    )
+    expect(teacher.entries).toHaveLength(8)
+    expect(
+      teacher.entries.map(
+        (entry: { params: { dayOfWeek: number; periodNo: number } }) => [
+          entry.params.dayOfWeek,
+          entry.params.periodNo,
+        ],
+      ),
+    ).toEqual([
+      [1, 5], [1, 6], [1, 7], [1, 8],
+      [3, 5], [3, 6], [3, 7], [3, 8],
+    ])
+    expect(new Set(teacher.entries.map((entry: { groupKey: string }) => entry.groupKey)).size).toBe(1)
+
+    await page.reload()
+    await expect(page.getByTestId('rule-card')).toHaveCount(1)
+    await expect(page.getByText(sentence)).toBeVisible()
   })
 })

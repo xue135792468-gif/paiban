@@ -8,10 +8,10 @@ import {
   type RuleCard,
 } from '@/rules/compiler'
 
-const periods: PeriodOption[] = [
-  ...[1, 2, 3, 4].map((periodNo) => ({ dayOfWeek: 5, periodNo, startTime: '08:00:00' })),
-  ...[5, 6, 7, 8].map((periodNo) => ({ dayOfWeek: 5, periodNo, startTime: '14:00:00' })),
-]
+const periods: PeriodOption[] = [1, 3, 5].flatMap((day) => [
+  ...[1, 2, 3, 4].map((periodNo) => ({ dayOfWeek: day, periodNo, startTime: '08:00:00' })),
+  ...[5, 6, 7, 8].map((periodNo) => ({ dayOfWeek: day, periodNo, startTime: '14:00:00' })),
+])
 
 const teachers = [{ id: 7, name: '王老师' }]
 const classes = [{ id: 1, name: '九（1）班' }]
@@ -27,7 +27,7 @@ function mountForm(initial: RuleCard | null = null) {
       teachers,
       classes,
       courses,
-      days: [5],
+      days: [1, 3, 5],
       periods,
     },
     global: { plugins: [ElementPlus] },
@@ -71,7 +71,7 @@ describe('RuleSentenceEditor: subject first, then time, then requirement', () =>
   it('renders 谁 / 什么课 before 什么时候 and 要求 last', () => {
     const wrapper = mountForm()
     const subject = wrapper.get('[data-testid="rule-subject"]').element
-    const day = wrapper.get('[data-testid="rule-day"]').element
+    const day = wrapper.get('[data-testid="rule-days"]').element
     const type = wrapper.get('[data-testid="rule-type"]').element
     expect(precedes(subject, day)).toBe(true)
     expect(precedes(day, type)).toBe(true)
@@ -116,7 +116,7 @@ describe('RuleSentenceEditor: subject first, then time, then requirement', () =>
     const wrapper = mountForm()
     await setSelect(wrapper, 'rule-subject', 'all-teachers')
     const labels = typeLabels(wrapper)
-    expect(labels).toEqual(['连续不超过 N 节'])
+    expect(labels).toEqual(['每天最多 N 节', '连续不超过 N 节'])
     wrapper.unmount()
   })
 
@@ -140,6 +140,7 @@ describe('RuleSentenceEditor: subject first, then time, then requirement', () =>
     const wrapper = mountForm()
     await setSelect(wrapper, 'rule-subject', 'all-courses')
     const labels = typeLabels(wrapper)
+    expect(labels).toContain('每天最多 N 节')
     expect(labels).toContain('每天最多 1 节')
     expect(labels).toContain('分散到不同天')
     expect(labels).toContain('不在最后一节')
@@ -149,10 +150,17 @@ describe('RuleSentenceEditor: subject first, then time, then requirement', () =>
     wrapper.unmount()
   })
 
-  it('keeps only 不上课 and 不空堂 for 全校', async () => {
+  it('keeps 不上课, 每天最多 N 节 and 不空堂 for 全校', async () => {
     const wrapper = mountForm()
     await setSelect(wrapper, 'rule-subject', 'school')
-    expect(typeLabels(wrapper)).toEqual(['不上课', '不空堂'])
+    expect(typeLabels(wrapper)).toEqual(['不上课', '每天最多 N 节', '不空堂'])
+    wrapper.unmount()
+  })
+
+  it('keeps both class-scoped requirement types after 班级', async () => {
+    const wrapper = mountForm()
+    await setSelect(wrapper, 'rule-subject', 'class:1')
+    expect(typeLabels(wrapper)).toEqual(['不上课', '每天最多 N 节'])
     wrapper.unmount()
   })
 
@@ -160,13 +168,38 @@ describe('RuleSentenceEditor: subject first, then time, then requirement', () =>
     const wrapper = mountForm()
     await setSelect(wrapper, 'rule-subject', 'teacher:7')
     await setSelect(wrapper, 'rule-type', 'TEACHER_UNAVAILABLE')
-    await setSelect(wrapper, 'rule-day', 5)
+    await setSelect(wrapper, 'rule-days', [5])
     await setPeriods(wrapper, [5, 6])
     const preview = () => wrapper.find('[data-testid="rule-preview"]').text()
     expect(preview()).toContain('王老师 周五第 5、6 节 不上课')
 
     await setPeriods(wrapper, [5, 6, 7, 8])
     expect(preview()).toContain('王老师 周五下午 不上课')
+    wrapper.unmount()
+  })
+
+  it('previews several weekdays as one sentence and folds a shared slice', async () => {
+    const wrapper = mountForm()
+    await setSelect(wrapper, 'rule-subject', 'teacher:7')
+    await setSelect(wrapper, 'rule-type', 'TEACHER_UNAVAILABLE')
+    await setSelect(wrapper, 'rule-days', [3, 1])
+    await setPeriods(wrapper, [5, 6, 7, 8])
+    const preview = () => wrapper.find('[data-testid="rule-preview"]').text()
+    expect(preview()).toContain('王老师 周一、周三下午 不上课')
+
+    await setPeriods(wrapper, [5, 6])
+    expect(preview()).toContain('王老师 周一、周三第 5、6 节 不上课')
+    wrapper.unmount()
+  })
+
+  it('keeps 固定无课日 to weekdays only and joins several days', async () => {
+    const wrapper = mountForm()
+    await setSelect(wrapper, 'rule-subject', 'teacher:7')
+    await setSelect(wrapper, 'rule-type', 'TEACHER_DAY_OFF')
+    await setSelect(wrapper, 'rule-days', [3, 1])
+    expect(wrapper.find('[data-testid="rule-period-1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="rule-preview"]').text())
+      .toContain('王老师 周一、周三 不排课')
     wrapper.unmount()
   })
 
@@ -184,7 +217,7 @@ describe('RuleSentenceEditor: subject first, then time, then requirement', () =>
     const initial = cardFromInputs([{
       type: 'TEACHER_UNAVAILABLE',
       teacherId: 7,
-      dayOfWeek: 5,
+      days: [5],
       periodNos: [5, 6],
     }])
     const wrapper = mountForm(initial)

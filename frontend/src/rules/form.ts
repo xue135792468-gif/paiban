@@ -1,5 +1,6 @@
 import {
   RULE_SPECS,
+  normalizeDays,
   normalizePeriods,
   type RuleInput,
   type RuleSentence,
@@ -21,11 +22,15 @@ export interface FormSentence {
   classId: number | null
   teacherId: number | null
   courseId: number | null
-  dayOfWeek: number | null
+  days: number[]
   periodNos: number[]
   amount: number | null
   strength: RuleStrength
   exceptionClassIds: number[]
+  /** Reserved for tickets 04/05/06; always null for now. */
+  teacherGroupId: number | null
+  courseGroupId: number | null
+  timeGroupId: number | null
 }
 
 /** Infers the subject a stored sentence was written with. */
@@ -73,11 +78,14 @@ export function formSentenceFrom(sentence: RuleSentence): FormSentence {
     classId: sentence.classId,
     teacherId: sentence.teacherId,
     courseId: sentence.courseId,
-    dayOfWeek: sentence.dayOfWeek,
+    days: [...sentence.days],
     periodNos: [...sentence.periodNos],
     amount: sentence.amount,
     strength: sentence.strength,
     exceptionClassIds: [...sentence.exceptionClassIds],
+    teacherGroupId: sentence.teacherGroupId,
+    courseGroupId: sentence.courseGroupId,
+    timeGroupId: sentence.timeGroupId,
   }
 }
 
@@ -89,11 +97,14 @@ export function blankFormSentence(): FormSentence {
     classId: null,
     teacherId: null,
     courseId: null,
-    dayOfWeek: null,
+    days: [],
     periodNos: [],
     amount: null,
     strength: 'HARD',
     exceptionClassIds: [],
+    teacherGroupId: null,
+    courseGroupId: null,
+    timeGroupId: null,
   }
 }
 
@@ -108,7 +119,7 @@ export function formSentenceInput(sentence: FormSentence): RuleInput | null {
     classId: sentence.classId,
     teacherId: sentence.teacherId,
     courseId: sentence.courseId,
-    dayOfWeek: sentence.dayOfWeek,
+    days: normalizeDays(sentence.days),
     periodNos: normalizePeriods(sentence.periodNos),
     amount: sentence.amount,
     strength: rule.hardOnly ? 'HARD' : sentence.strength,

@@ -99,6 +99,18 @@ test.describe('排课规则：完整积木交互', () => {
     await expect(dropdown).toBeHidden()
   }
 
+  /** The weekday picker is now a multi-select; each pick keeps the dropdown open. */
+  async function pickDays(page: Page, testId: string, labels: string[]) {
+    const select = form(page).getByTestId(testId)
+    await select.click()
+    const dropdown = page.locator('.el-select-dropdown:visible').last()
+    for (const label of labels) {
+      await dropdown.getByText(label, { exact: true }).first().click()
+    }
+    await page.keyboard.press('Escape')
+    await expect(dropdown).toBeHidden()
+  }
+
   test('一张卡两句：全校不排 + 除了九（2）班', async ({ page }) => {
     await resetRules()
     await uiLogin(page, 'admin', 'admin123')
@@ -109,14 +121,14 @@ test.describe('排课规则：完整积木交互', () => {
     const editor = form(page)
     await pickOption(editor, 'rule-subject', '全校')
     await pickOption(editor, 'rule-type', '不上课')
-    await pickOption(editor, 'rule-day', '周一')
+    await pickDays(page, 'rule-days', ['周一'])
     await editor.getByTestId('rule-period-3').click()
 
     await editor.getByTestId('rule-add-sentence').click()
     await expect(editor.getByTestId('rule-sentence-block-1')).toBeVisible()
     await pickOption(editor, 'rule-subject-1', '全校')
     await pickOption(editor, 'rule-type-1', '不上课')
-    await pickOption(editor, 'rule-day-1', '周二')
+    await pickDays(page, 'rule-days-1', ['周二'])
     await editor.getByTestId('rule-period-3-1').click()
     await pickException(page, 'rule-exceptions-1', classB.name)
 
@@ -172,7 +184,7 @@ test.describe('排课规则：完整积木交互', () => {
     const editor = form(page)
     await pickOption(editor, 'rule-subject', `教师 · ${teacherName}`)
     await pickOption(editor, 'rule-type', '不上课')
-    await pickOption(editor, 'rule-day', '周五')
+    await pickDays(page, 'rule-days', ['周五'])
     // 票 15：时段改成按节次勾选，「整个下午」= 第 5–8 节。
     for (const periodNo of [5, 6, 7, 8]) {
       await editor.getByTestId(`rule-period-${periodNo}`).click()
@@ -182,7 +194,7 @@ test.describe('排课规则：完整积木交互', () => {
     await page.getByTestId('rule-new').click()
     await pickOption(form(page), 'rule-subject', '全校')
     await pickOption(form(page), 'rule-type', '不上课')
-    await pickOption(form(page), 'rule-day', '周五')
+    await pickDays(page, 'rule-days', ['周五'])
     await form(page).getByTestId('rule-period-7').click()
     await form(page).getByTestId('rule-submit').click()
 

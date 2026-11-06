@@ -58,16 +58,18 @@
       <span class="label">什么时候</span>
       <div class="value column">
         <el-select
-          v-model="local.dayOfWeek"
+          v-model="local.days"
+          multiple
           filterable
-          placeholder="搜索星期"
+          collapse-tags
+          placeholder="选择星期（可多选）"
           class="day-select"
-          :data-testid="tid('rule-day')"
-          @change="onDayChange"
+          :data-testid="tid('rule-days')"
+          @change="onDaysChange"
         >
           <el-option v-for="day in days" :key="day" :label="weekdayLabel(day)" :value="day" />
         </el-select>
-        <div v-if="showPeriods && local.dayOfWeek !== null" class="periods">
+        <div v-if="showPeriods && local.days.length > 0" class="periods">
           <div class="period-actions">
             <el-button
               size="small"
@@ -186,6 +188,7 @@ import {
   RULE_GROUPS,
   RULE_SPECS,
   describeRule,
+  normalizeDays,
   normalizePeriods,
   weekdayLabel,
   type PeriodOption,
@@ -214,6 +217,7 @@ const emit = defineEmits<{
 /** A local copy keeps the form editable without mutating the parent's prop. */
 const local = reactive<FormSentence>({
   ...props.sentence,
+  days: [...props.sentence.days],
   periodNos: [...props.sentence.periodNos],
   exceptionClassIds: [...props.sentence.exceptionClassIds],
 })
@@ -221,6 +225,7 @@ const local = reactive<FormSentence>({
 watch(local, () => {
   emit('update:sentence', {
     ...local,
+    days: [...local.days],
     periodNos: [...local.periodNos],
     exceptionClassIds: [...local.exceptionClassIds],
   })
@@ -302,16 +307,22 @@ const showPeriods = computed(
   () => local.type === null || rule.value?.periods === 'REQUIRED',
 )
 
-/** Only the periods the chosen weekday actually has, so no "不存在的第 9 节". */
+/** Only the periods every chosen weekday has, so no "不存在的第 9 节". */
 const periodOptions = computed(() => {
-  if (local.dayOfWeek === null) {
+  if (local.days.length === 0) {
     return []
   }
-  return normalizePeriods(
-    props.periods
-      .filter((period) => period.dayOfWeek === local.dayOfWeek)
-      .map((period) => period.periodNo),
+  const sets = local.days.map((day) => props.periods
+    .filter((period) => period.dayOfWeek === day)
+    .map((period) => period.periodNo))
+  if (sets.some((set) => set.length === 0)) {
+    return []
+  }
+  const common = sets.slice(1).reduce(
+    (left, right) => left.filter((periodNo) => right.includes(periodNo)),
+    [...sets[0]],
   )
+  return normalizePeriods(common)
 })
 
 function lastPeriod(): number | null {
@@ -392,7 +403,7 @@ function onTypeChange() {
     local.courseId = null
   }
   if (next.day !== 'REQUIRED') {
-    local.dayOfWeek = null
+    local.days = []
   }
   if (next.periods !== 'REQUIRED') {
     local.periodNos = []
@@ -406,7 +417,8 @@ function onTypeChange() {
   }
 }
 
-function onDayChange() {
+function onDaysChange() {
+  local.days = normalizeDays(local.days)
   const allowed = new Set(periodOptions.value)
   local.periodNos = local.periodNos.filter((periodNo) => allowed.has(periodNo))
 }
@@ -498,7 +510,7 @@ function clearPeriods() {
 }
 
 .day-select {
-  width: 130px;
+  width: 240px;
 }
 
 .periods {
