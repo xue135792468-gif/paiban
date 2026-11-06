@@ -4,15 +4,15 @@
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] 每个学期有预建的「上午」「下午」时间组，可改成员、可改名
 - [x] 可新建其他时间组；同一学期内组名唯一
-- [ ] 规则「什么时候」可选时间组，下拉内可新建
+- [x] 规则「什么时候」可选时间组，下拉内可新建
 - [x] 快照展开时间组；改成员即生效（集成测试）
-- [ ] 作息列表显示时间组后缀，可按组筛选
+- [x] 作息列表显示时间组后缀，可按组筛选
 - [x] 作息节次被删除时，时间组成员同步移除
-- [ ] 与票 05 合并后，不看帮助一分钟内能拼出「技能课 不排在 上午」
+- [x] 与票 05 合并后，不看帮助一分钟内能拼出「技能课 不排在 上午」
 
 **Notes:** 「上午/下午」原先由前端按时间折算，改为数据后句子渲染优先用时间组名。
 
@@ -30,3 +30,11 @@
 - **测试**：新增 `TimeGroupIntegrationTest`（8 条），既有 `RuleGroupIntegrationTest` 调整 1 处断言（学期现在自带两个预建时间组，不能再断言列表长度为 1）。覆盖：预建空组、按作息填充、`TEACHER_UNAVAILABLE × timeGroupId` 展开 4 行、`COURSE_UNAVAILABLE` 两门课 × 4 节 = 8 行（「技能课 不排在 上午」）、改成员立即生效且 `autoFilled = false`、删课节同步（自动组重算 + 用户组只剪失效坐标）、跨学期时间组 400、同学期第二个「上午」409。
 - **剩余（06b 前端）**：规则「什么时候」下拉接 `timeGroupId` 与下拉内新建；作息列表时间组后缀与按组筛选；句子渲染优先用时间组名；E2E 主路径。
 - **验证**：`RuleGroupIntegrationTest` 13 + `TimeGroupIntegrationTest` 8 + `RuleBuilderIntegrationTest` 3 + `ConstraintIntegrationTest` 5 + `ConstraintEntriesIntegrationTest` 10 = 39 条通过；`scripts/check-migrations.sh` 通过（57 个版本唯一）。
+
+## 实现说明（06b 前端部分完成）
+
+- **composable**：新增 `frontend/src/rules/useTimeGroups.ts`（按 `semesterId` 拉 `TIME` 组；`create`/`update` 用 `{dayOfWeek, periodNo}` 成员；空成员允许，供下拉「新建时间组」先建空组）。
+- **管理区**：`RuleTimeGroupSection.vue` + `RuleTimeGroupDialog.vue`，`RuleGroupPanels` 在教师/课程面板后渲染；无学期时显示提示卡。预建组显示「预建」标签，成员摘要最多 6 个；删除沿用 `RuleGroupSection` 的影响确认语义（无引用普通确认，有引用可「连同规则一起删除」）。
+- **句子模型**：`RuleTimeSlotEditor.vue` 从 `RuleSentenceEditor` 抽出时间行，`el-select` 提供「按星期/节次」、各时间组、「＋ 新建时间组」；选组清空 days/periodNos 并隐藏节次网格。`compiler.ts` 的 `describeRule` 优先用组名，`sentenceFromInput`/`allowedKeys` 只在 `periods === 'REQUIRED'` 时接受 `timeGroupId`，固定无课日自动丢弃。
+- **作息列表**：`ScheduleEditorView.vue` 增加「时间组」列与按组筛选；保存作息后重新拉组，列随成员同步更新。
+- **测试**：`compiler.spec.ts` 新增 8 条时间组用例；新增 `RuleTimeSlotEditor.spec.ts` 8 条、`RuleTimeGroupSection.spec.ts` 6 条、`ScheduleEditorView.spec.ts` 3 条，并在 `RuleSentenceEditor.spec.ts` 补 4 条集成用例。全量 vitest 85 文件 / 659 条通过；lint、build 通过；E2E `time-groups.spec.ts` 1 条 + `rule-builder`/`teacher-groups`/`course-groups` 6 条通过。

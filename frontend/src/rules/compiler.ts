@@ -579,14 +579,20 @@ export function describeRule(
   periods?: PeriodOption[] | null,
 ): string {
   const days = parts.days ?? []
-  const time = timeLabel(days, parts.periodNos ?? [], periods)
+  const timeGroupId = parts.timeGroupId ?? null
+  // A time group is the stored form of the time slice, so its name wins over any
+  // weekday/period folding. The row carries no day/period params at all.
+  const timeGroupName = timeGroupId === null
+    ? null
+    : names.timeGroup?.(timeGroupId) ?? '时间组'
+  const time = timeGroupName ?? timeLabel(days, parts.periodNos ?? [], periods)
   if (!parts.type) {
     const subject = pendingSubject(parts, names)
     const pieces: string[] = []
     if (subject) {
       pieces.push(subject)
     }
-    if (days.length > 0) {
+    if (days.length > 0 || timeGroupName !== null) {
       pieces.push(time)
     }
     return pieces.length === 0
@@ -681,12 +687,14 @@ export function missingParts(card: RuleShape): string[] {
     && (card.courseId ?? null) === null && (card.courseGroupId ?? null) === null) {
     missing.push('选择课程')
   }
-  if (spec.day === 'REQUIRED' && (card.days ?? []).length === 0
-    && (card.timeGroupId ?? null) === null) {
+  // Only a day × period grid can be replaced by a time group; fixed days off
+  // still need their weekdays.
+  const hasTimeGroup = spec.periods === 'REQUIRED'
+    && (card.timeGroupId ?? null) !== null
+  if (spec.day === 'REQUIRED' && (card.days ?? []).length === 0 && !hasTimeGroup) {
     missing.push('选择星期')
   }
-  if (spec.periods === 'REQUIRED' && (card.periodNos ?? []).length === 0
-    && (card.timeGroupId ?? null) === null) {
+  if (spec.periods === 'REQUIRED' && (card.periodNos ?? []).length === 0 && !hasTimeGroup) {
     missing.push('选择第几节')
   }
   if (spec.amount && (card.amount === null || card.amount === undefined
@@ -773,8 +781,9 @@ function sentenceFromInput(input: RuleInput, groupKey: string | null): RuleSente
   const isSchoolUnavailable = input.type === CLASS_UNAVAILABLE && (input.classId ?? null) === null
   const teacherGroupId = rule.target === 'TEACHER' ? toInteger(input.teacherGroupId) : null
   const courseGroupId = rule.course === 'ALL' ? null : toInteger(input.courseGroupId)
-  const timeGroupId = rule.day === 'REQUIRED' || rule.periods === 'REQUIRED'
-    ? toInteger(input.timeGroupId) : null
+  // A time group only replaces a day × period grid, so fixed days off (which only
+  // pick weekdays) never keep one.
+  const timeGroupId = rule.periods === 'REQUIRED' ? toInteger(input.timeGroupId) : null
   return {
     key: groupKey ? `group:${groupKey}` : `new:${newGroupKey()}`,
     groupKey,
@@ -784,7 +793,8 @@ function sentenceFromInput(input: RuleInput, groupKey: string | null): RuleSente
       ? toInteger(input.teacherId) : null,
     courseId: rule.course !== 'ALL' && courseGroupId === null
       ? toInteger(input.courseId) : null,
-    days: rule.day === 'REQUIRED' ? normalizeDays(input.days ?? []) : [],
+    days: rule.day === 'REQUIRED' && timeGroupId === null
+      ? normalizeDays(input.days ?? []) : [],
     periodNos: rule.periods === 'REQUIRED' && timeGroupId === null
       ? normalizePeriods(input.periodNos ?? []) : [],
     amount: rule.amount ? toInteger(input.amount) ?? rule.amount.defaultValue : null,
@@ -1565,7 +1575,7 @@ function allowedKeys(
   if (spec.target === 'COURSE') {
     allowed.add('courseGroupId')
   }
-  if (spec.day === 'REQUIRED' || spec.periods === 'REQUIRED') {
+  if (spec.periods === 'REQUIRED') {
     allowed.add('timeGroupId')
   }
   if (spec.amount) {

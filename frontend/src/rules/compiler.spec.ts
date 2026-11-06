@@ -113,6 +113,7 @@ const names: RuleNames = {
   klass: (id) => (id === 3 ? '八年级1班' : `班级${id}`),
   teacherGroup: (id) => (id === 12 ? '教导主任' : `教师组${id}`),
   courseGroup: (id) => (id === 21 ? '技能课' : `课程组${id}`),
+  timeGroup: (id) => (id === 3 ? '上午' : `时间组${id}`),
 }
 
 describe('rule compiler: 16 createable types', () => {
@@ -489,6 +490,126 @@ describe('course groups in sentences (ticket 05)', () => {
         entry(1, {
           courseId: 9, courseGroupId: 21, maxPerDay: 1,
         }, { groupKey: 'pt-both' }),
+      ]),
+    ])
+    expect(cards).toHaveLength(0)
+  })
+})
+
+describe('time groups in sentences (ticket 06)', () => {
+  const base = {
+    classId: null,
+    teacherId: null,
+    courseId: null,
+    days: [] as number[],
+    periodNos: [] as number[],
+    amount: null,
+  }
+
+  it('shows the time group name instead of weekdays', () => {
+    expect(describeRule({
+      ...base,
+      type: COURSE_UNAVAILABLE,
+      courseGroupId: 21,
+      timeGroupId: 3,
+    }, names)).toBe('技能课 不排在 上午')
+    expect(describeRule({
+      ...base,
+      type: TEACHER_UNAVAILABLE,
+      teacherId: 7,
+      timeGroupId: 3,
+    }, names)).toBe('王老师 上午 不上课')
+  })
+
+  it('grows the sentence with the group name before the requirement is picked', () => {
+    expect(describeRule({
+      ...base,
+      type: null,
+      courseGroupId: 21,
+      subjectKind: 'COURSE_GROUP',
+      timeGroupId: 3,
+    }, names)).toBe('技能课 上午 （请选择要求）')
+  })
+
+  it('compiles a time group to one row, without day or period params', () => {
+    const rows = entriesOf(compileRule({
+      type: COURSE_UNAVAILABLE,
+      courseId: 9,
+      timeGroupId: 3,
+      days: [1],
+      periodNos: [1],
+      strength: 'HARD',
+    }))
+    expect(rows).toHaveLength(1)
+    expect(rows[0].params).toEqual({ courseId: 9, timeGroupId: 3 })
+    expect(rows[0].id).toBeNull()
+    expect(rows[0].groupKey).toMatch(/^pt-/)
+    expect(rows[0].params).not.toHaveProperty('dayOfWeek')
+    expect(rows[0].params).not.toHaveProperty('periodNo')
+  })
+
+  it('combines a course group and a time group in the same row', () => {
+    const rows = entriesOf(compileRule({
+      type: COURSE_UNAVAILABLE,
+      courseGroupId: 21,
+      timeGroupId: 3,
+      strength: 'HARD',
+    }))
+    expect(rows).toHaveLength(1)
+    expect(rows[0].params).toEqual({ courseGroupId: 21, timeGroupId: 3 })
+    expect(new Set(rows.map((row) => row.groupKey)).size).toBe(1)
+  })
+
+  it('reads a stored time-group row back and saves it unchanged', () => {
+    const stored = [
+      config('COURSE_UNAVAILABLE', [
+        entry(7, { courseGroupId: 21, timeGroupId: 3 }, { groupKey: 'pt-time' }),
+      ]),
+    ]
+    const cards = cardsFromState(stored)
+    expect(cards).toHaveLength(1)
+    const sentence = cards[0].sentences[0]
+    expect(sentence.timeGroupId).toBe(3)
+    expect(sentence.days).toEqual([])
+    expect(sentence.periodNos).toEqual([])
+    expect(sentence.entryIds).toEqual({ single: 7 })
+    expect(describeCard(cards[0], names)).toBe('技能课 不排在 上午')
+
+    const merged = configsFromCards(stored, cards)
+    expect(merged[0].entries?.map((row) => row.params))
+      .toEqual([{ courseGroupId: 21, timeGroupId: 3 }])
+  })
+
+  it('accepts a time group only where a period grid is required', () => {
+    expect(missingParts({
+      ...base,
+      type: COURSE_UNAVAILABLE,
+      courseId: 9,
+      timeGroupId: 3,
+    })).toEqual([])
+    expect(missingParts({
+      ...base,
+      type: TEACHER_DAY_OFF,
+      teacherId: 7,
+      timeGroupId: 3,
+    })).toContain('选择星期')
+  })
+
+  it('drops a time group from a fixed day off', () => {
+    const rows = entriesOf(compileRule({
+      type: TEACHER_DAY_OFF,
+      teacherId: 7,
+      days: [3],
+      timeGroupId: 3,
+      strength: 'SOFT',
+    }))
+    expect(rows.map((row) => row.params)).toEqual([{ teacherId: 7, dayOfWeek: 3 }])
+  })
+
+  it('rejects a day-off row that carries a time group', () => {
+    const cards = cardsFromState([
+      config('TEACHER_DAY_OFF', [
+        entry(1, { teacherId: 7, dayOfWeek: 3, timeGroupId: 3 }, { groupKey: 'pt-off' }),
       ]),
     ])
     expect(cards).toHaveLength(0)

@@ -18,6 +18,8 @@ export interface RuleGroup {
   name: string
   semesterId: number | null
   members: RuleGroupMember[]
+  /** Ticket 06: the prebuilt 上午/下午 group still tracks the timetable. */
+  autoFilled?: boolean
 }
 
 export interface RuleGroupMemberRequest {

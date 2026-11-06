@@ -60,6 +60,9 @@
         :courses="courses"
         :teacher-groups="teacherGroups"
         :course-groups="courseGroups"
+        :time-groups="timeGroups"
+        :semester-id="semesterId"
+        :periods="periods"
         @changed="onGroupsChanged"
       />
 
@@ -76,6 +79,8 @@
         :create-teacher-group="teacherGroups.create"
         :course-groups="courseGroupOptions"
         :create-course-group="courseGroups.create"
+        :time-groups="timeGroupOptions"
+        :create-time-group="createTimeGroup"
         @submit="onFormSubmit"
         @cancel="closeForm"
       />
@@ -165,6 +170,7 @@ import { deleteRuleCardWithConfirmation } from '@/rules/deleteRuleCard'
 import { useRuleImpact } from '@/rules/useRuleImpact'
 import { useRuleAi } from '@/rules/useRuleAi'
 import { useRuleGroups } from '@/rules/useRuleGroups'
+import { useTimeGroups } from '@/rules/useTimeGroups'
 import { useAuthStore } from '@/stores/auth'
 
 interface Semester {
@@ -210,8 +216,10 @@ const query = ref('')
 const showGroups = ref(false)
 const teacherGroups = useRuleGroups('TEACHER')
 const courseGroups = useRuleGroups('COURSE')
+const timeGroups = useTimeGroups(semesterId)
 const teacherGroupOptions = teacherGroups.options
 const courseGroupOptions = courseGroups.options
+const timeGroupOptions = timeGroups.options
 const {
   visible: impactVisible,
   loading: impactLoading,
@@ -244,6 +252,7 @@ const ruleNames = computed<RuleNames>(() => {
     klass: (id) => classNames.get(id) ?? `班级${id}`,
     teacherGroup: (id) => teacherGroups.groupNames.value.get(id) ?? '教师组',
     courseGroup: (id) => courseGroups.groupNames.value.get(id) ?? '课程组',
+    timeGroup: (id) => timeGroups.groupNames.value.get(id) ?? '时间组',
   }
 })
 const dirty = computed(() => cardsSignature(cards.value) !== loadedSignature.value)
@@ -346,7 +355,7 @@ async function loadState() {
 async function onSemesterChange() {
   closeForm()
   hideImpact()
-  await loadClasses()
+  await Promise.all([loadClasses(), timeGroups.load()])
   await loadState()
 }
 
@@ -371,9 +380,15 @@ function closeForm() {
  * Deleting rules together with the group is the one case that must reload the state.
  */
 async function onGroupsChanged(payload: { deletedRules: number }) {
+  await timeGroups.load()
   if (payload.deletedRules > 0) {
     await loadState()
   }
+}
+
+/** 「＋ 新建时间组」 in the sentence's 「什么时候」 dropdown starts as an empty group. */
+function createTimeGroup(name: string): Promise<{ id: number; name: string } | null> {
+  return timeGroups.create(name, [])
 }
 
 function onFormSubmit(payload: CardSentenceInput[]) {
@@ -495,6 +510,7 @@ onMounted(async () => {
       teacherGroups.load(),
       courseGroups.load(),
     ])
+    await timeGroups.load()
     if (semesterId.value !== null) {
       await loadClasses()
       await loadState()

@@ -47,48 +47,18 @@
       </div>
     </div>
 
-    <div v-if="showTime" class="row">
-      <span class="label">什么时候</span>
-      <div class="value column">
-        <el-select
-          v-model="local.days"
-          multiple
-          filterable
-          collapse-tags
-          placeholder="选择星期（可多选）"
-          class="day-select"
-          :data-testid="tid('rule-days')"
-          @change="onDaysChange"
-        >
-          <el-option v-for="day in days" :key="day" :label="weekdayLabel(day)" :value="day" />
-        </el-select>
-        <div v-if="showPeriods && local.days.length > 0" class="periods">
-          <div class="period-actions">
-            <el-button
-              size="small"
-              :disabled="lastPeriod() === null"
-              :data-testid="tid('rule-last-period')"
-              @click="selectLastPeriod"
-            >
-              最后一节
-            </el-button>
-            <el-button size="small" :data-testid="tid('rule-clear-periods')" @click="clearPeriods">
-              清空
-            </el-button>
-          </div>
-          <el-checkbox-group v-model="local.periodNos" class="period-checks">
-            <el-checkbox
-              v-for="periodNo in periodOptions"
-              :key="periodNo"
-              :value="periodNo"
-              :data-testid="periodTestId(periodNo)"
-            >
-              第 {{ periodNo }} 节
-            </el-checkbox>
-          </el-checkbox-group>
-        </div>
-      </div>
-    </div>
+    <RuleTimeSlotEditor
+      v-if="showTime"
+      v-model:days="local.days"
+      v-model:period-nos="local.periodNos"
+      v-model:time-group-id="local.timeGroupId"
+      :periods="periods"
+      :time-groups="timeGroups ?? []"
+      :create-time-group="createTimeGroup"
+      :allow-periods="showPeriods"
+      :allow-time-group="allowTimeGroup"
+      :index="index"
+    />
 
     <div class="row">
       <span class="label">要求</span>
@@ -175,15 +145,13 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
 import type { OptionItem } from '@/components/constraints/types'
+import RuleTimeSlotEditor from '@/components/rules/RuleTimeSlotEditor.vue'
 import {
   CLASS_GAP_MINIMIZED,
   CLASS_UNAVAILABLE,
   RULE_GROUPS,
   RULE_SPECS,
   describeRule,
-  normalizeDays,
-  normalizePeriods,
-  weekdayLabel,
   type PeriodOption,
   type RuleNames,
   type RuleType,
@@ -209,6 +177,8 @@ const props = defineProps<{
   createTeacherGroup?: (name: string) => Promise<{ id: number; name: string } | null>
   courseGroups?: { id: number; name: string }[]
   createCourseGroup?: (name: string) => Promise<{ id: number; name: string } | null>
+  timeGroups?: { id: number; name: string }[]
+  createTimeGroup?: (name: string) => Promise<{ id: number; name: string } | null>
 }>()
 
 const emit = defineEmits<{
@@ -237,10 +207,6 @@ function tid(base: string): string {
   return props.index === 0 ? base : `${base}-${props.index}`
 }
 
-function periodTestId(periodNo: number): string {
-  return props.index === 0 ? `rule-period-${periodNo}` : `rule-period-${periodNo}-${props.index}`
-}
-
 const rule = computed(() => (local.type === null ? null : RULE_SPECS[local.type]))
 
 const names = computed<RuleNames>(() => ({
@@ -249,6 +215,7 @@ const names = computed<RuleNames>(() => ({
   klass: (id: number) => props.classes.find((item) => item.id === id)?.name ?? `班级${id}`,
   teacherGroup: (id: number) => props.teacherGroups?.find((item) => item.id === id)?.name ?? '教师组',
   courseGroup: (id: number) => props.courseGroups?.find((item) => item.id === id)?.name ?? '课程组',
+  timeGroup: (id: number) => props.timeGroups?.find((item) => item.id === id)?.name ?? '时间组',
 }))
 
 const preview = computed(() => describeRule(local, names.value, props.periods))
@@ -330,29 +297,10 @@ const showTime = computed(() => local.type === null || rule.value?.day === 'REQU
 const showPeriods = computed(
   () => local.type === null || rule.value?.periods === 'REQUIRED',
 )
-
-/** Only the periods every chosen weekday has, so no "不存在的第 9 节". */
-const periodOptions = computed(() => {
-  if (local.days.length === 0) {
-    return []
-  }
-  const sets = local.days.map((day) => props.periods
-    .filter((period) => period.dayOfWeek === day)
-    .map((period) => period.periodNo))
-  if (sets.some((set) => set.length === 0)) {
-    return []
-  }
-  const common = sets.slice(1).reduce(
-    (left, right) => left.filter((periodNo) => right.includes(periodNo)),
-    [...sets[0]],
-  )
-  return normalizePeriods(common)
-})
-
-function lastPeriod(): number | null {
-  const options = periodOptions.value
-  return options.length > 0 ? options[options.length - 1] : null
-}
+/** Time groups replace the day × period grid, so only slot types may use them. */
+const allowTimeGroup = computed(
+  () => local.type === null || rule.value?.periods === 'REQUIRED',
+)
 
 /**
  * Applies one subject choice. Every concrete object and group reference is cleared
@@ -469,23 +417,6 @@ function onTypeChange() {
     local.exceptionClassIds = []
   }
 }
-
-function onDaysChange() {
-  local.days = normalizeDays(local.days)
-  const allowed = new Set(periodOptions.value)
-  local.periodNos = local.periodNos.filter((periodNo) => allowed.has(periodNo))
-}
-
-function selectLastPeriod() {
-  const last = lastPeriod()
-  if (last !== null) {
-    local.periodNos = [last]
-  }
-}
-
-function clearPeriods() {
-  local.periodNos = []
-}
 </script>
 
 <style scoped>
@@ -560,28 +491,6 @@ function clearPeriods() {
 .type-select,
 .object-select {
   width: 240px;
-}
-
-.day-select {
-  width: 240px;
-}
-
-.periods {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.period-actions {
-  display: flex;
-  gap: 6px;
-}
-
-.period-checks {
-  display: flex;
-  gap: 2px 12px;
-  flex-wrap: wrap;
 }
 
 .hint {

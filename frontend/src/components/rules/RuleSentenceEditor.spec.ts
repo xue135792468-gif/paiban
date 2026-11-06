@@ -22,12 +22,14 @@ const courses = [
 
 const teacherGroups = [{ id: 12, name: '教导主任' }]
 const courseGroups = [{ id: 21, name: '技能课' }]
+const timeGroups = [{ id: 3, name: '上午' }, { id: 4, name: '下午' }]
 
 function mountForm(
   initial: RuleCard | null = null,
   options: {
     createTeacherGroup?: (name: string) => Promise<{ id: number; name: string } | null>
     createCourseGroup?: (name: string) => Promise<{ id: number; name: string } | null>
+    createTimeGroup?: (name: string) => Promise<{ id: number; name: string } | null>
   } = {},
 ) {
   return mount(RuleForm, {
@@ -42,6 +44,8 @@ function mountForm(
       createTeacherGroup: options.createTeacherGroup,
       courseGroups,
       createCourseGroup: options.createCourseGroup,
+      timeGroups,
+      createTimeGroup: options.createTimeGroup,
     },
     global: { plugins: [ElementPlus] },
     attachTo: document.body,
@@ -328,3 +332,57 @@ describe('RuleSentenceEditor: subject first, then time, then requirement', () =>
     wrapper.unmount()
   })
 })
+
+describe('RuleSentenceEditor: time groups (ticket 06)', () => {
+  it('previews 技能课 不排在 上午 and hides the weekday grid', async () => {
+    const wrapper = mountForm()
+    await setSelect(wrapper, 'rule-subject', 'course-group:21')
+    await setSelect(wrapper, 'rule-type', 'COURSE_UNAVAILABLE')
+    await setSelect(wrapper, 'rule-time-group', 'time-group:3')
+
+    expect(wrapper.find('[data-testid="rule-days"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="rule-period-1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="rule-preview"]').text())
+      .toContain('技能课 不排在 上午')
+    wrapper.unmount()
+  })
+
+  it('returns to the explicit grid when 按星期/节次 is picked', async () => {
+    const wrapper = mountForm()
+    await setSelect(wrapper, 'rule-subject', 'course-group:21')
+    await setSelect(wrapper, 'rule-type', 'COURSE_UNAVAILABLE')
+    await setSelect(wrapper, 'rule-time-group', 'time-group:3')
+    await setSelect(wrapper, 'rule-time-group', '')
+
+    expect(wrapper.find('[data-testid="rule-days"]').exists()).toBe(true)
+    expect(select(wrapper, 'rule-time-group').props('modelValue')).toBe('')
+    wrapper.unmount()
+  })
+
+  it('creates and selects a new time group from 什么时候', async () => {
+    const prompt = vi.spyOn(ElMessageBox, 'prompt').mockResolvedValue({ value: '晚自习' } as never)
+    const createTimeGroup = vi.fn().mockResolvedValue({ id: 9, name: '晚自习' })
+    const wrapper = mountForm(null, { createTimeGroup })
+    await setSelect(wrapper, 'rule-subject', 'course-group:21')
+    expect(wrapper.find('[data-testid="rule-time-group"]').exists()).toBe(true)
+
+    await setSelect(wrapper, 'rule-time-group', '__new_time_group__')
+    await flushPromises()
+
+    expect(prompt).toHaveBeenCalledTimes(1)
+    expect(createTimeGroup).toHaveBeenCalledWith('晚自习')
+    expect(select(wrapper, 'rule-time-group').props('modelValue')).toBe('time-group:9')
+    wrapper.unmount()
+  })
+
+  it('does not offer a time group for fixed days off', async () => {
+    const wrapper = mountForm()
+    await setSelect(wrapper, 'rule-subject', 'teacher:7')
+    await setSelect(wrapper, 'rule-type', 'TEACHER_DAY_OFF')
+
+    expect(wrapper.find('[data-testid="rule-time-group"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="rule-days"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+})
+
