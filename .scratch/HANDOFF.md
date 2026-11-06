@@ -1,5 +1,7 @@
 # 接手说明（2026-10-25 会话交接）
 
+> **2026-11-07 新特性 rule-groups 已定稿，尚未实现**：产品所有者完成 grill，规格 [rule-groups/spec.md](rule-groups/spec.md)、8 张实现票 + AI 面板票 [rule-groups/issues/](rule-groups/issues/)、跨票契约 [rule-groups/contracts.md](rule-groups/contracts.md) 已入库。目标：规则读成一句话（谁→什么课→什么时候→要求）、只留一个规则页、教师/课程/时间三类自定义分组、从往期学期复制规则。上线顺序 **01 → 02 → 03 → 03b → 04 → 05 → 06 → 07 → 08，串行执行**（05/06、07/08 共用 `RuleBuilderView` 与快照展开，不并行）。最新迁移 V55：V56 清空旧规则并删模板表，V57 建分组表，V58 为存量学期补预建时间组。产品所有者已确认测试阶段可清空旧规则；AI 规则面板搬到规则页（票 03b）；旧规则模板前后端一起删。本批未开工、未部署。
+
 > **2026-11-06 新票 17（待实现）**：用户与 Hark 顾问已对齐定稿，需求是**草稿编辑器「按教师」视角下拖动换课**（拖起时临时切成该班的浅色班级课表、他班占用标灰、放下后回原教师课表），是纯前端交互，**不改后端/数据库/排课范围**。票据 [17-teacher-view-drag-swap.md](product-trim/issues/17-teacher-view-drag-swap.md)（`ready-for-agent`），定稿依据 [Hark 结论](product-trim/hold/hark-teacher-scope-conclusion.md) 与 [背景简报](product-trim/hold/teacher-scope-scheduling-brief.md)。**需求已定，不要重新 grill、不要改范围**；旧一轮的 8 个待澄清问题已作废。另案（非本票）：后端静默忽略未知 `teacherIds`、`GET /api/scheduling-jobs/current` 500，需单独开票。
 
 > **2026-11-05 收敛收口已完成并上线**：票 15（物理删除旧代码/数据 + Flyway V55）与票 16（全量验收）已实现、验收、push 并部署到生产，V55 已首次在生产库执行。**接手先看 [票 16 全量验收记录](product-trim/hold/16-full-acceptance.md) 与 [验收报告](product-trim/hold/16-acceptance-report.md)**（数字只记在这两处，不重复写进本文件）。下方「现在的状态 / 红线 / 待办」是 2026-10-25 的历史快照：教室体系已被票 15 物理删除，「发布要求教室」「补教室」等条目不再适用；当前状态以票 16 记录、`git log` 与线上事实为准。部署 health 判定见 `docs/runbooks/deploy.md` 第 5 步（含 18443 假红与域名 502 归属说明）。
