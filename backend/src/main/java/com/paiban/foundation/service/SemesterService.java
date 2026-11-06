@@ -1,5 +1,6 @@
 package com.paiban.foundation.service;
 
+import com.paiban.common.event.PeriodsChangedEvent;
 import com.paiban.common.event.SemesterCreatedEvent;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.Period;
@@ -169,7 +170,12 @@ public class SemesterService {
                 saved.add(period);
             }
         }
-        return periods.saveAll(saved).stream()
+        List<Period> savedRows = periods.saveAll(saved);
+        // Listeners read the final table (deletions included) to sync derived data such
+        // as the prebuilt time groups; the flush makes that read see this save.
+        periods.flush();
+        events.publishEvent(new PeriodsChangedEvent(semesterId));
+        return savedRows.stream()
                 .sorted((a, b) -> a.getDayOfWeek() != b.getDayOfWeek()
                         ? Integer.compare(a.getDayOfWeek(), b.getDayOfWeek())
                         : Integer.compare(a.getPeriodNo(), b.getPeriodNo()))
@@ -227,7 +233,10 @@ public class SemesterService {
                 appended.add(period);
             }
         }
-        return periods.saveAll(appended).stream()
+        List<Period> savedRows = periods.saveAll(appended);
+        periods.flush();
+        events.publishEvent(new PeriodsChangedEvent(semesterId));
+        return savedRows.stream()
                 .sorted((a, b) -> a.getDayOfWeek() != b.getDayOfWeek()
                         ? Integer.compare(a.getDayOfWeek(), b.getDayOfWeek())
                         : Integer.compare(a.getPeriodNo(), b.getPeriodNo()))

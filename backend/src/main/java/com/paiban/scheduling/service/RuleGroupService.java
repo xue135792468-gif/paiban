@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paiban.common.deletion.DeletionRestoreHandler;
 import com.paiban.common.deletion.RecentDeletion;
 import com.paiban.common.deletion.RecentDeletionWriter;
+import com.paiban.common.event.PeriodsChangedEvent;
+import com.paiban.common.event.SemesterCreatedEvent;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.Course;
 import com.paiban.foundation.domain.CourseRepository;
@@ -32,6 +34,7 @@ import com.paiban.scheduling.web.RuleGroupDtos.RuleGroupReferenceDto;
 import com.paiban.scheduling.web.RuleGroupDtos.RuleGroupRequest;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -40,6 +43,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -65,6 +69,12 @@ public class RuleGroupService implements DeletionRestoreHandler {
     static final String ENTITY_TYPE = "RULE_GROUP";
     private static final String MODE_DELETE = "DELETE";
     private static final String MODE_WITH_RULES = "WITH_RULES";
+
+    /** The two time groups every semester starts with (ticket 06). */
+    static final String MORNING_GROUP = "上午";
+    static final String AFTERNOON_GROUP = "下午";
+    /** Slots starting at or after this time belong to 「下午」, matching V58. */
+    private static final LocalTime NOON = LocalTime.of(12, 0);
 
     private final RuleGroupRepository groups;
     private final RuleGroupMemberRepository members;
@@ -124,6 +134,144 @@ public class RuleGroupService implements DeletionRestoreHandler {
         return toDtos(rows);
     }
 
+    // --------------------------------------------------------- prebuilt groups
+
+    /**
+     * A new semester starts with the editable 「上午」/「下午」 time groups (ticket 06).
+     * They are empty until the timetable exists; {@link #onPeriodsChanged} then fills
+     * them from {@code period.start_time}. A semester that already has a live time group
+     * was seeded before (migrated data), so it is left alone.
+     */
+    @EventListener
+    @Transactional
+    public void onSemesterCreated(SemesterCreatedEvent event) {
+        Long semesterId = event.semesterId();
+        if (semesterId == null
+                || !groups.findBySemesterIdAndDeletedAtIsNullOrderByNameAsc(semesterId).isEmpty()) {
+            return;
+        }
+        createPrebuilt(semesterId, MORNING_GROUP);
+        createPrebuilt(semesterId, AFTERNOON_GROUP);
+    }
+
+    /** Keeps the semester's time groups aligned with its timetable after a period save. */
+    @EventListener
+    @Transactional
+    public void onPeriodsChanged(PeriodsChangedEvent event) {
+        syncTimeGroups(event.semesterId());
+    }
+
+    /**
+     * Two rules apply after a period save:
+     *
+     * <ul>
+     *   <li>a prebuilt group still following the timetable ({@code autoFilled} and the
+     *       original name) is recomputed from {@code start_time}, even when the new
+     *       member set is empty;</li>
+     *   <li>every other group only loses the coordinates that no longer exist — a user
+     *       edit is never overwritten.</li>
+     * </ul>
+     */
+    @Transactional
+    public void syncTimeGroups(Long semesterId) {
+        if (semesterId == null) {
+            return;
+        }
+        SlotSets slots = slotSets(semesterId);
+        for (RuleGroup group : groups.findBySemesterIdAndDeletedAtIsNullOrderByNameAsc(semesterId)) {
+            if (group.getGroupType() != RuleGroupType.TIME) {
+                continue;
+            }
+            if (group.isAutoFilled() && MORNING_GROUP.equals(group.getName())) {
+                replaceSlotMembers(group, slots.morning());
+            } else if (group.isAutoFilled() && AFTERNOON_GROUP.equals(group.getName())) {
+                replaceSlotMembers(group, slots.afternoon());
+            } else {
+                pruneMissingSlots(group, slots.all());
+            }
+        }
+    }
+
+    private void createPrebuilt(Long semesterId, String name) {
+        Instant now = Instant.now(clock);
+        RuleGroup group = new RuleGroup();
+        group.setGroupType(RuleGroupType.TIME);
+        group.setName(name);
+        group.setSemesterId(semesterId);
+        group.setLiveKey(liveKey(RuleGroupType.TIME, name, semesterId));
+        group.setAutoFilled(true);
+        group.setCreatedAt(now);
+        group.setUpdatedAt(now);
+        groups.saveAndFlush(group);
+        SlotSets slots = slotSets(semesterId);
+        replaceSlotMembers(group, MORNING_GROUP.equals(name) ? slots.morning() : slots.afternoon());
+    }
+
+    /**
+     * Rebuilds an auto group's members. A direct delete keeps the
+     * {@code (group_id, member_key)} unique index safe when a coordinate survives a save.
+     */
+    private void replaceSlotMembers(RuleGroup group, Set<SlotKey> slots) {
+        members.deleteByGroupId(group.getId());
+        members.flush();
+        if (!slots.isEmpty()) {
+            List<RuleGroupMember> rows = new ArrayList<>(slots.size());
+            for (SlotKey slot : slots) {
+                RuleGroupMember member = new RuleGroupMember();
+                member.setGroupId(group.getId());
+                member.setMemberKey("S:" + slot.key());
+                member.setDayOfWeek(slot.dayOfWeek());
+                member.setPeriodNo(slot.periodNo());
+                rows.add(member);
+            }
+            members.saveAll(rows);
+            members.flush();
+        }
+        group.setUpdatedAt(Instant.now(clock));
+        groups.save(group);
+    }
+
+    /** Drops members whose weekday+period no longer exists in the semester timetable. */
+    private void pruneMissingSlots(RuleGroup group, Set<String> liveSlots) {
+        List<RuleGroupMember> stale = new ArrayList<>();
+        for (RuleGroupMember member : members.findByGroupIdOrderByIdAsc(group.getId())) {
+            if (member.getDayOfWeek() == null || member.getPeriodNo() == null
+                    || !liveSlots.contains(member.getDayOfWeek() + "-" + member.getPeriodNo())) {
+                stale.add(member);
+            }
+        }
+        if (stale.isEmpty()) {
+            return;
+        }
+        members.deleteAll(stale);
+        members.flush();
+        group.setUpdatedAt(Instant.now(clock));
+        groups.save(group);
+    }
+
+    /** The semester timetable split the same way V58 splits it: at 12:00. */
+    private SlotSets slotSets(Long semesterId) {
+        Set<String> all = new LinkedHashSet<>();
+        Set<SlotKey> morning = new LinkedHashSet<>();
+        Set<SlotKey> afternoon = new LinkedHashSet<>();
+        for (Period period : periods.findBySemesterIdOrderByDayOfWeekAscPeriodNoAsc(semesterId)) {
+            SlotKey slot = new SlotKey(period.getDayOfWeek(), period.getPeriodNo());
+            all.add(slot.key());
+            boolean isMorning = period.getStartTime() != null
+                    && period.getStartTime().isBefore(NOON);
+            (isMorning ? morning : afternoon).add(slot);
+        }
+        return new SlotSets(all, morning, afternoon);
+    }
+
+    private record SlotKey(int dayOfWeek, int periodNo) {
+        String key() {
+            return dayOfWeek + "-" + periodNo;
+        }
+    }
+
+    private record SlotSets(Set<String> all, Set<SlotKey> morning, Set<SlotKey> afternoon) {}
+
     // ------------------------------------------------------------------- writing
 
     @Transactional
@@ -143,6 +291,8 @@ public class RuleGroupService implements DeletionRestoreHandler {
         group.setName(name);
         group.setSemesterId(semesterId);
         group.setLiveKey(liveKey);
+        // A user-created group is never auto-recomputed by a timetable save.
+        group.setAutoFilled(false);
         group.setCreatedAt(now);
         group.setUpdatedAt(now);
         try {
@@ -175,6 +325,9 @@ public class RuleGroupService implements DeletionRestoreHandler {
         saveMembers(group.getId(), specs);
         group.setName(name);
         group.setLiveKey(liveKey);
+        // The user touched this group, so a timetable save must not overwrite its members
+        // again (ticket 06); the prebuilt name means nothing once it is user-owned.
+        group.setAutoFilled(false);
         group.setUpdatedAt(Instant.now(clock));
         try {
             groups.saveAndFlush(group);
@@ -490,7 +643,7 @@ public class RuleGroupService implements DeletionRestoreHandler {
             }
             dtos.add(new RuleGroupDto(
                     group.getId(), group.getGroupType().name(), group.getName(),
-                    group.getSemesterId(), memberDtos));
+                    group.getSemesterId(), memberDtos, group.isAutoFilled()));
         }
         return dtos;
     }

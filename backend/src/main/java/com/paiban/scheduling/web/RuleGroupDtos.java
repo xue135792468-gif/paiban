@@ -21,8 +21,9 @@ public final class RuleGroupDtos {
     public record RuleGroupMemberDto(Long id, String kind, Long objectId, String name,
                                      Integer dayOfWeek, Integer periodNo) {}
 
+    /** {@code autoFilled} marks the prebuilt 「上午」/「下午」 group still tracking the timetable. */
     public record RuleGroupDto(Long id, String type, String name, Long semesterId,
-                               List<RuleGroupMemberDto> members) {}
+                               List<RuleGroupMemberDto> members, boolean autoFilled) {}
 
     /**
      * One rule card that references a group. {@code groupKey} is the card key

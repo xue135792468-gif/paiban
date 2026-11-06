@@ -51,6 +51,14 @@ public class RuleGroup {
     @Column(name = "live_key", length = 160)
     private String liveKey;
 
+    /**
+     * True only for the prebuilt 「上午」/「下午」 time groups until the user edits them.
+     * A timetable save then recomputes their members from {@code period.start_time};
+     * once the user edits the group the flag is cleared and the members are kept.
+     */
+    @Column(name = "auto_filled", nullable = false)
+    private boolean autoFilled;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 

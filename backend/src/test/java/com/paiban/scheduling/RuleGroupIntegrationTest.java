@@ -128,10 +128,13 @@ class RuleGroupIntegrationTest extends ApiIntegrationTest {
                 .body("semesterId", org.hamcrest.Matchers.equalTo((int) semesterId))
                 .body("members[0].kind", org.hamcrest.Matchers.equalTo("TIME"));
 
+        // The semester also carries the two prebuilt 「上午」/「下午」 groups (ticket 06),
+        // so the user group is asserted by id rather than by list size.
         as(token).queryParam("type", "TIME").queryParam("semesterId", semesterId)
                 .when().get("/api/rule-groups")
                 .then().statusCode(200)
-                .body("size()", org.hamcrest.Matchers.equalTo(1));
+                .body("find { it.id == " + created.jsonPath().getLong("id") + " }.name",
+                        org.hamcrest.Matchers.equalTo(name));
     }
 
     // ---------------------------------------------------- snapshot expansion
