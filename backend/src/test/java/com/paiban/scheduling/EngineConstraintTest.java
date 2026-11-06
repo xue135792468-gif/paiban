@@ -83,13 +83,15 @@ class EngineConstraintTest {
 
     @Test
     void disabledConstraintDoesNotScore() {
+        // The system baselines cannot be disabled (ticket 03), so this proves the
+        // switch on an ordinary hard constraint instead.
         com.paiban.scheduling.domain.ConstraintConfig disabled =
-                config(ConstraintType.CLASS_CONFLICT, true, 100, Map.of());
+                config(ConstraintType.TEACHER_MAX_PER_DAY, true, 100, Map.of("maxPerDay", 1));
         disabled.setEnabled(false);
         ConstraintSettingsHolder.set(ConstraintSettings.from(
                 List.of(disabled), new com.fasterxml.jackson.databind.ObjectMapper()));
         Lesson a = lesson(1, 10, 100, 1000, MON1);
-        Lesson b = lesson(2, 11, 100, 1001, MON1);
+        Lesson b = lesson(2, 10, 200, 1001, MON2);
         TimetableSolution solution =
                 new TimetableSolution(List.of(a, b), List.of(MON1, MON2, MON5));
 
