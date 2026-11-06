@@ -155,7 +155,7 @@ describe('ConstraintAiPanel', () => {
     expect(wrapper.get('[data-testid="constraint-ai-note"]').text()).toContain('需要你校对')
     // Adding needs an explicit selection; nothing is written automatically.
     const add = wrapper.get('[data-testid="constraint-ai-add"]')
-    expect(add.text()).toContain('添加到约束表')
+    expect(add.text()).toContain('添加到规则')
     expect(add.attributes('disabled')).toBeDefined()
   })
 

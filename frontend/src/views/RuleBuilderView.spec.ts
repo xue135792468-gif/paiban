@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import ElementPlus, { ElMessageBox } from 'element-plus'
+import { createPinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import RuleBuilderView from './RuleBuilderView.vue'
 import type { RuleImpact } from '@/api/rules'
@@ -80,6 +81,9 @@ beforeEach(() => {
     if (url === '/teachers/options') return Promise.resolve({ data: teachers })
     if (url === '/courses') return Promise.resolve({ data: courses })
     if (url === '/constraint-types') return Promise.resolve({ data: [] })
+    if (url === '/constraint-proposals/availability') {
+      return Promise.resolve({ data: { available: false, message: '测试关闭' } })
+    }
     if (url === '/classes') return Promise.resolve({ data: classes })
     if (url === '/constraints/state') {
       return Promise.resolve({ data: { version: 3, configs: stateConfigs } })
@@ -101,7 +105,7 @@ async function mountView(): Promise<VueWrapper> {
   await router.isReady()
   const wrapper = mount(RuleBuilderView, {
     attachTo: document.body,
-    global: { plugins: [router, ElementPlus] },
+    global: { plugins: [router, ElementPlus, createPinia()] },
   })
   await flushPromises()
   return wrapper
@@ -268,6 +272,21 @@ describe('RuleBuilderView: grouped list, search and impact', () => {
     await flushPromises()
     expect(httpMock.put).not.toHaveBeenCalled()
     expect(wrapper.find('[data-testid="rule-impact-errors"]').text()).toContain('课程参数缺失')
+    wrapper.unmount()
+  })
+
+  it('shows and hides the AI panel from the toolbar', async () => {
+    const wrapper = await mountView()
+    expect(wrapper.find('[data-testid="constraint-ai-panel"]').exists()).toBe(false)
+
+    await wrapper.find('[data-testid="rule-ai-toggle"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="constraint-ai-panel"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="constraint-ai-unavailable"]').text()).toContain('测试关闭')
+
+    await wrapper.find('[data-testid="rule-ai-toggle"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="constraint-ai-panel"]').exists()).toBe(false)
     wrapper.unmount()
   })
 })

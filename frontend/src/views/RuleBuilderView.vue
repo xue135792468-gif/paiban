@@ -53,7 +53,13 @@
         <el-button type="primary" :disabled="semesterId === null" data-testid="rule-new" @click="openNew">
           新建规则
         </el-button>
+        <el-button :disabled="semesterId === null" data-testid="rule-ai-toggle" @click="toggleAi">
+          AI 帮填
+        </el-button>
       </div>
+
+      <ConstraintAiPanel v-if="showAi && semesterId !== null" :semester-id="semesterId" :types="aiTypes" :teachers="teachers" :courses="courses" :can-read-all="canReadAll" :can-manage="canManage" @add="onAiAdd" />
+      <el-alert v-if="aiNotice" type="info" :closable="false" show-icon class="alert" data-testid="rule-ai-notice" :title="aiNotice" />
 
       <el-alert
         v-if="conflict"
@@ -148,6 +154,7 @@ import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
 import { activeOnly } from '@/utils/activeOptions'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
+import ConstraintAiPanel from '@/components/constraints/ConstraintAiPanel.vue'
 import RuleForm from '@/components/rules/RuleForm.vue'
 import RuleGroupedList from '@/components/rules/RuleGroupedList.vue'
 import RuleImpactSummary from '@/components/rules/RuleImpactSummary.vue'
@@ -174,6 +181,8 @@ import { cardsSignature } from '@/rules/signature'
 import { cardChangedSinceLoad, cardLabelOf } from '@/rules/cardChange'
 import { deleteRuleCardWithConfirmation } from '@/rules/deleteRuleCard'
 import { useRuleImpact } from '@/rules/useRuleImpact'
+import { useRuleAi } from '@/rules/useRuleAi'
+import { useAuthStore } from '@/stores/auth'
 
 interface Semester {
   id: number
@@ -200,6 +209,7 @@ const classes = ref<OptionItem[]>([])
 const courses = ref<OptionItem[]>([])
 const periods = ref<PeriodOption[]>([])
 const configs = ref<ConstraintConfigDto[]>([])
+const catalogue = ref<ConstraintTypeDef[]>([])
 const baseVersion = ref(0)
 const cards = ref<RuleCard[]>([])
 const entryBackedTypes = ref<Set<string>>(new Set())
@@ -230,6 +240,12 @@ const availableDays = computed(() =>
   ),
 )
 const classIds = computed(() => classes.value.map((item) => item.id))
+const auth = useAuthStore()
+const canManage = computed(() => auth.hasPermission('constraint:manage'))
+const canReadAll = computed(() => auth.hasPermission('settings:manage'))
+const {
+  showAi, aiTypes, aiNotice, toggle: toggleAi, onAiAdd, aiFields, resetAi,
+} = useRuleAi({ catalogue, classIds, cards })
 const ruleNames = computed<RuleNames>(() => {
   const teacherNames = new Map(teachers.value.map((teacher) => [teacher.id, teacher.name]))
   const classNames = new Map(classes.value.map((item) => [item.id, item.name]))
@@ -291,10 +307,14 @@ async function loadClasses() {
 async function loadCatalogue() {
   const { data } = await http.get<ConstraintTypeDef[]>('/constraint-types')
   const types = data ?? []
+  catalogue.value = types
   entryBackedTypes.value = entryBackedTypeCodes(types)
 }
 
 async function loadState() {
+  // A reload starts from the stored configuration: an earlier run's decisions must
+  // not travel with the next save.
+  resetAi()
   if (semesterId.value === null) {
     configs.value = []
     periods.value = []
@@ -430,9 +450,10 @@ async function save() {
       ElMessage.error('规则还有错误，未保存')
       return
     }
+    const ai = aiFields()
     await http.put(
       '/constraints',
-      { configs: payload },
+      { configs: payload, ...(ai ?? {}) },
       {
         params: {
           semesterId: semesterId.value,
