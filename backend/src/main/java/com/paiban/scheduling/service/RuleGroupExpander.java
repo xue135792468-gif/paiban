@@ -64,13 +64,6 @@ public class RuleGroupExpander {
         this.periods = periods;
     }
 
-    /** Expand one stored parameter row; it may become 0..N rows. */
-    public List<Map<String, Object>> expand(Long semesterId, Map<String, Object> params) {
-        List<List<Map<String, Object>>> result =
-                expandAll(semesterId, params == null ? List.of() : List.of(params));
-        return result.isEmpty() ? List.of() : result.get(0);
-    }
-
     /**
      * Batch form used by the snapshot builders: one pass loads every group and member
      * the rows name, so a configuration with many group rows costs a fixed number of

@@ -1,6 +1,8 @@
 package com.paiban.scheduling;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasItem;
 
 import com.paiban.scheduling.domain.ConstraintEntry;
 import com.paiban.scheduling.domain.ConstraintEntryRepository;
@@ -159,6 +161,23 @@ class RuleGroupIntegrationTest extends ApiIntegrationTest {
                 semesterId, "TEACHER_UNAVAILABLE"))
                 .hasSize(1)
                 .allMatch(row -> row.getParamsJson().contains("\"teacherGroupId\":" + groupId));
+    }
+
+    @Test
+    void anEmptyGroupIsAcceptedButReportedByTheRulePage() {
+        String token = adminToken();
+        long semesterId = semesterWithPeriods(token);
+        String name = "空教师组" + TestData.suffix();
+        long groupId = createTeacherGroup(token, name);
+
+        // An empty group is legal to reference: it simply selects nobody (contract §2.2).
+        saveTeacherGroupRule(token, semesterId, null, groupId, 1, 1).then().statusCode(200);
+
+        as(token).queryParam("semesterId", semesterId)
+                .when().get("/api/constraints")
+                .then().statusCode(200)
+                .body("find { it.type == 'TEACHER_UNAVAILABLE' }.entries[0].invalidReferences",
+                        hasItem(containsString("组内没有成员：" + name)));
     }
 
     @Test

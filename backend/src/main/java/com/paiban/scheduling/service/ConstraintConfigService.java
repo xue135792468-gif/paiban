@@ -26,6 +26,8 @@ import com.paiban.scheduling.domain.ConstraintType.Param;
 import com.paiban.scheduling.domain.ConstraintType.ParamType;
 import com.paiban.scheduling.domain.ConstraintWorkspaceRepository;
 import com.paiban.scheduling.domain.RuleGroup;
+import com.paiban.scheduling.domain.RuleGroupMember;
+import com.paiban.scheduling.domain.RuleGroupMemberRepository;
 import com.paiban.scheduling.domain.RuleGroupRepository;
 import com.paiban.scheduling.domain.RuleGroupType;
 import com.paiban.scheduling.solver.ConstraintSettings;
@@ -78,6 +80,7 @@ public class ConstraintConfigService {
     private final ConstraintAuditService auditService;
     private final ClassCapacityService capacity;
     private final RuleGroupRepository ruleGroups;
+    private final RuleGroupMemberRepository groupMembers;
     private final RuleGroupExpander groupExpander;
     private final ObjectMapper objectMapper;
 
@@ -94,6 +97,7 @@ public class ConstraintConfigService {
             ConstraintAuditService auditService,
             ClassCapacityService capacity,
             RuleGroupRepository ruleGroups,
+            RuleGroupMemberRepository groupMembers,
             RuleGroupExpander groupExpander,
             ObjectMapper objectMapper) {
         this.configs = configs;
@@ -108,6 +112,7 @@ public class ConstraintConfigService {
         this.auditService = auditService;
         this.capacity = capacity;
         this.ruleGroups = ruleGroups;
+        this.groupMembers = groupMembers;
         this.groupExpander = groupExpander;
         this.objectMapper = objectMapper;
     }
@@ -1853,6 +1858,19 @@ public class ConstraintConfigService {
         }
         if (group.getGroupType() != expected) {
             reasons.add("分组类型不匹配：" + group.getName());
+            return;
+        }
+        if (expected == RuleGroupType.TIME
+                && references.semesterId() != null
+                && !references.semesterId().equals(group.getSemesterId())) {
+            // Ticket 08: a copied card may keep pointing at the source semester's time
+            // group when the target has no group of that name. The expander yields no
+            // rows, so the card is paused; this sentence is the persisted reason the
+            // page shows instead of dropping the card silently.
+            reasons.add("分组不属于本学期：" + group.getName());
+        }
+        if (references.emptyGroups().contains(groupId)) {
+            reasons.add("组内没有成员：" + group.getName());
         }
     }
 
@@ -1916,8 +1934,19 @@ public class ConstraintConfigService {
             courses.findAllById(courseIds).forEach(row -> courseById.put(row.getId(), row));
         }
         Map<Long, RuleGroup> groupById = new HashMap<>();
+        Set<Long> emptyGroups = new LinkedHashSet<>();
         if (!groupIds.isEmpty()) {
             ruleGroups.findAllById(groupIds).forEach(row -> groupById.put(row.getId(), row));
+            // One batch query keeps the "group exists but has no members" diagnostic cheap.
+            Set<Long> nonEmptyGroups = new LinkedHashSet<>();
+            for (RuleGroupMember member : groupMembers.findByGroupIdInOrderByIdAsc(groupIds)) {
+                nonEmptyGroups.add(member.getGroupId());
+            }
+            for (Long groupId : groupIds) {
+                if (!nonEmptyGroups.contains(groupId)) {
+                    emptyGroups.add(groupId);
+                }
+            }
         }
         // Slot coordinates are also diagnosed here: a rule copied from a semester with
         // more periods points at a slot this semester does not have (ticket 08). The
@@ -1928,7 +1957,8 @@ public class ConstraintConfigService {
                 slots.add(period.getDayOfWeek() + "-" + period.getPeriodNo());
             }
         }
-        return new ReferenceIndex(teacherById, classById, courseById, groupById, slots);
+        return new ReferenceIndex(
+                teacherById, classById, courseById, groupById, emptyGroups, semesterId, slots);
     }
 
     private record ReferenceIndex(
@@ -1936,6 +1966,8 @@ public class ConstraintConfigService {
             Map<Long, AdminClass> classes,
             Map<Long, Course> courses,
             Map<Long, RuleGroup> groups,
+            Set<Long> emptyGroups,
+            Long semesterId,
             Set<String> slots) {}
 
     private boolean isEntryBacked(String typeCode) {

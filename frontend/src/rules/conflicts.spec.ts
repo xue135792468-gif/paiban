@@ -40,6 +40,7 @@ function context(overrides: Partial<ConflictContext> = {}): ConflictContext {
       [32, [{ dayOfWeek: 5, periodNo: 2 }, { dayOfWeek: 5, periodNo: 3 }]],
     ]),
     allClassIds: [1, 2],
+    allCourseIds: [9, 10],
     ...overrides,
   }
 }
@@ -149,6 +150,38 @@ describe('findRuleConflicts', () => {
     const preferred = card({ type: 'TEACHER_PREFERRED_SLOT', teacherGroupId: 11, timeGroupId: 31 })
     expect(findRuleConflicts([toggleCard(blocked, false), preferred], context())).toHaveLength(0)
   })
+
+  it('subtracts 除了某班 from a whole-school CLASS_UNAVAILABLE', () => {
+    // The positive side of this fixture cannot target a class today (its types are
+    // teacher/course scoped), so the assertion documents that an excluded class never
+    // leaks into the object set and produces a false positive.
+    const conflicts = findRuleConflicts([
+      card({
+        type: 'CLASS_UNAVAILABLE',
+        classId: null,
+        exceptionClassIds: [2],
+        days: [1],
+        periodNos: [1],
+      }),
+      card({ type: 'MAIN_SUBJECT_MORNING', courseId: 9, amount: 4 }),
+    ], context())
+    expect(conflicts).toHaveLength(0)
+  })
+
+  it('treats a COURSE rule without course or group as 全部课程', () => {
+    const conflicts = findRuleConflicts([
+      card({ type: 'PE_LAST_PERIOD_AVOID', courseId: null }),
+      card({ type: 'MAIN_SUBJECT_MORNING', courseId: 9, amount: 7 }),
+    ], context())
+
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0].first.type).toBe('PE_LAST_PERIOD_AVOID')
+    expect(conflicts[0].second.type).toBe('MAIN_SUBJECT_MORNING')
+    expect(conflicts[0].members.map((member) => member.name)).toEqual(['数学'])
+    expect(conflicts[0].slots).toEqual([
+      '周一第7节', '周二第7节', '周三第7节', '周四第7节', '周五第7节',
+    ])
+  })
 })
 
 describe('formatConflictMessage', () => {
@@ -186,6 +219,7 @@ describe('buildConflictContext', () => {
       periods,
       names,
       allClassIds: [1, 2],
+      allCourseIds: [9, 10],
       teacherGroups: [{ id: 11, members: [
         { kind: 'TEACHER', objectId: 1, dayOfWeek: null, periodNo: null },
         { kind: 'COURSE', objectId: 9, dayOfWeek: null, periodNo: null },
@@ -203,5 +237,6 @@ describe('buildConflictContext', () => {
     expect(built.courseGroupMembers.get(21)).toEqual([9])
     expect(built.timeGroupSlots.get(31)).toEqual([{ dayOfWeek: 5, periodNo: 5 }])
     expect(built.allClassIds).toEqual([1, 2])
+    expect(built.allCourseIds).toEqual([9, 10])
   })
 })

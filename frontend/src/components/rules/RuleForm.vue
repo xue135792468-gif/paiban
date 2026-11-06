@@ -80,9 +80,9 @@ const props = defineProps<{
   courses: OptionItem[]
   days: number[]
   periods: PeriodOption[]
-  teacherGroups?: { id: number; name: string }[]
+  teacherGroups?: { id: number; name: string; memberIds?: number[] }[]
   createTeacherGroup?: (name: string) => Promise<{ id: number; name: string } | null>
-  courseGroups?: { id: number; name: string }[]
+  courseGroups?: { id: number; name: string; memberIds?: number[] }[]
   createCourseGroup?: (name: string) => Promise<{ id: number; name: string } | null>
   timeGroups?: { id: number; name: string }[]
   createTimeGroup?: (name: string) => Promise<{ id: number; name: string } | null>

@@ -10,6 +10,16 @@ export interface SubjectOption {
 interface GroupOption {
   id: number
   name: string
+  /** Optional so existing callers/tests can pass bare `{id, name}` groups. */
+  memberIds?: number[]
+}
+
+/** 「教导主任、语文组」: the live group names one teacher / course belongs to. */
+function groupSuffix(groups: GroupOption[] | undefined, objectId: number): string {
+  const names = (groups ?? [])
+    .filter((group) => group.memberIds?.includes(objectId))
+    .map((group) => group.name)
+  return names.length === 0 ? '' : `（${names.join('、')}）`
 }
 
 /** 人 / 班级: school, teachers, teacher groups, classes, teachers, 新建教师组. */
@@ -32,7 +42,7 @@ export function teacherSubjectOptions(input: {
     })),
     ...input.teachers.map((item) => ({
       value: `teacher:${item.id}`,
-      label: `教师 · ${item.name}`,
+      label: `教师 · ${item.name}${groupSuffix(input.teacherGroups, item.id)}`,
     })),
     ...(input.canCreate
       ? [{ value: '__new_teacher_group__', label: '＋ 新建教师组', testId: 'rule-subject-new-group' }]
@@ -54,7 +64,7 @@ export function courseSubjectOptions(input: {
     })),
     ...input.courses.map((item) => ({
       value: `course:${item.id}`,
-      label: `课程 · ${item.name}`,
+      label: `课程 · ${item.name}${groupSuffix(input.courseGroups, item.id)}`,
     })),
     ...(input.canCreate
       ? [{ value: '__new_course_group__', label: '＋ 新建课程组', testId: 'rule-subject-new-course-group' }]

@@ -189,9 +189,13 @@ class CopyRulesIntegrationTest extends ApiIntegrationTest {
 
         Map<String, Object> rule = configOf(configs(token, target), "TEACHER_UNAVAILABLE");
         Map<String, Object> params = paramsOfFirstEntry(rule);
-        assertThat(params).doesNotContainKey("timeGroupId");
+        // The source id stays: group ids are globally unique, the expander yields no rows
+        // for the foreign TIME group, and the semester diagnostic below needs the id.
+        assertThat(number(params.get("timeGroupId"))).isEqualTo(groupId);
         assertThat(((Map<?, ?>) ((List<?>) rule.get("entries")).get(0)).get("enabled"))
                 .isEqualTo(false);
+        assertThat((List<?>) rule.get("invalidReferences"))
+                .anyMatch(reason -> String.valueOf(reason).contains("分组不属于本学期：" + name));
     }
 
     @Test

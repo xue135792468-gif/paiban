@@ -182,7 +182,7 @@ async function remove(group: RuleGroup, withRules: boolean) {
     return
   }
   ElMessage.success(withRules
-    ? `已删除时间分组和 ${result.deletedRules} 条规则，7 天内可恢复`
+    ? `已删除时间分组和 ${result.deletedRules} 条规则，7 天内可在「最近删除」分别恢复`
     : '已删除时间分组，7 天内可在「最近删除」恢复')
   emit('changed', { deletedRules: result.deletedRules })
 }

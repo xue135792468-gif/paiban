@@ -277,6 +277,7 @@ const conflictContext = computed(() => buildConflictContext({
   periods: periods.value,
   names: ruleNames.value,
   allClassIds: classIds.value,
+  allCourseIds: courses.value.map((course) => course.id),
   teacherGroups: teacherGroups.groups.value,
   courseGroups: courseGroups.groups.value,
   timeGroups: timeGroups.groups.value,

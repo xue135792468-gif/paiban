@@ -20,7 +20,7 @@ export type RuleGroupKind = Extract<RuleGroupType, 'TEACHER' | 'COURSE'>
 /** The handle one group family exposes to the page and the panels component. */
 export interface UseRuleGroups {
   groups: Ref<RuleGroup[]>
-  options: ComputedRef<Array<{ id: number; name: string }>>
+  options: ComputedRef<Array<{ id: number; name: string; memberIds: number[] }>>
   groupNames: ComputedRef<Map<number, string>>
   loading: Ref<boolean>
   error: Ref<string | null>
@@ -58,6 +58,9 @@ export function useRuleGroups(type: RuleGroupKind): UseRuleGroups {
   const options = computed(() => groups.value.map((group) => ({
     id: group.id,
     name: group.name,
+    memberIds: group.members
+      .filter((member) => member.kind === type)
+      .map((member) => member.objectId),
   })))
 
   function groupsOf(objectId: number): RuleGroup[] {

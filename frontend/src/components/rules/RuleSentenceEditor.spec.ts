@@ -20,8 +20,8 @@ const courses = [
   { id: 10, name: '体育' },
 ]
 
-const teacherGroups = [{ id: 12, name: '教导主任' }]
-const courseGroups = [{ id: 21, name: '技能课' }]
+const teacherGroups = [{ id: 12, name: '教导主任', memberIds: [7] }]
+const courseGroups = [{ id: 21, name: '技能课', memberIds: [10] }]
 const timeGroups = [{ id: 3, name: '上午' }, { id: 4, name: '下午' }]
 
 function mountForm(
@@ -105,9 +105,10 @@ describe('RuleSentenceEditor: subject first, then time, then requirement', () =>
     expect(labels).toContain('所有教师')
     expect(labels).toContain('教师组 · 教导主任')
     expect(labels).toContain('班级 · 九（1）班')
-    expect(labels).toContain('教师 · 王老师')
+    expect(labels).toContain('教师 · 王老师（教导主任）')
     expect(labels).toContain('全部课程')
     expect(labels).toContain('课程 · 数学')
+    expect(labels).toContain('课程 · 体育（技能课）')
     expect(labels).toContain('课程组 · 技能课')
     wrapper.unmount()
   })

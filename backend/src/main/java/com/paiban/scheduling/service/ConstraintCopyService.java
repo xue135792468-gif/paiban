@@ -420,8 +420,13 @@ public class ConstraintCopyService {
 
     /**
      * Time groups are semester-owned, so only the name is portable. On success the row
-     * points at the target semester's group id; on failure the reference is cleared so
-     * the copied row cannot accidentally point at a same-id group of the target.
+     * points at the target semester's group id. When no target group has that name the
+     * source id stays in the params: group ids are globally unique, so the row cannot
+     * accidentally point at another target group, and {@code RuleGroupExpander} expands
+     * a TIME group of another semester to zero rows (the rule stays paused). Keeping the
+     * id also gives the rule page a persisted reason — the semester check in
+     * {@code ConstraintConfigService} reports it — instead of a row that silently loses
+     * both its group and its slot and disappears from the page.
      *
      * @return {@code true} when the row had a time group, so the slot check is skipped
      */
@@ -445,7 +450,9 @@ public class ConstraintCopyService {
         RuleGroup target = context.targetTimeGroups().get(source.getName());
         if (target == null) {
             reasons.add("本学期没有时间组：" + source.getName());
-            params.remove("timeGroupId");
+            // Keep the source id (see the javadoc): the semester mismatch is reported by
+            // the rule page and the expander yields no rows, so the card stays paused
+            // instead of losing its only reference and vanishing from the page.
             return true;
         }
         params.put("timeGroupId", target.getId());

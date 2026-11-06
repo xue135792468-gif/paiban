@@ -193,8 +193,8 @@ test.describe('排课规则：教师分组', () => {
 
     // 7. 组和规则卡都进入 7 天撤销的「最近删除」。
     await page.goto('/settings/recycle-bin')
-    await expect(page.getByText(groupName).first()).toBeVisible()
-    await expect(page.getByText('分组', { exact: true }).first()).toBeVisible()
-    await expect(page.getByText('排课规则').first()).toBeVisible()
+    const rows = page.locator('.el-table__row')
+    await expect(rows.filter({ hasText: groupName }).first()).toContainText('分组')
+    await expect(rows.filter({ hasText: '排课规则' }).first()).toBeVisible()
   })
 })

@@ -80,7 +80,7 @@ CHECK ((group_type = 'TIME') = (semester_id IS NOT NULL))
 
 ### 1.4 软删除与撤销
 
-- 分组删除走 `recent_deletion`：`entity_type = 'RULE_GROUP'`，`primary_flag = true`，批次里可同时带被删的规则卡。
+- 分组删除走 `recent_deletion`：`entity_type = 'RULE_GROUP'`，`primary_flag = true`；组和每张被删的规则卡各写一个批次。
 - 分组成员不软删；组恢复后成员原样回来。
 - 组名唯一索引只看 `deleted_at IS NULL`，所以删除后可以立刻建同名新组。
 
@@ -185,14 +185,14 @@ interface RuleSentence {
 - 写权限：`constraint:manage`。
 - 成员请求体用 `{kind: 'TEACHER'|'COURSE'|'TIME', id?, dayOfWeek?, periodNo?}`；服务端按组类型校验。
 - 教师/课程/作息列表不新增分组字段；前端一次拉取相关组，按成员 id 本地拼后缀与筛选。教师/课程数据量小，够用。
-- 删除响应与现有 `delete-impact` 风格一致：`{rules: [...], message}`；`WITH_RULES` 在一个 `recent_deletion` 批次里写组 + 规则卡。
+- 删除响应与现有 `delete-impact` 风格一致：`{rules: [...], message}`；`WITH_RULES` 时组写一个 `recent_deletion` 批次，每张引用规则卡各写一个批次；响应返回全部 `batchIds`，撤销时分别恢复。
 
 ## 5. 删除分组的语义
 
 1. 无引用：直接软删组，7 天内可撤销。
 2. 有引用 + `mode=DELETE`：409，返回「哪些规则在用」；用户可选择：
    - 返回改规则（前端取消删除）；
-   - 再发 `mode=WITH_RULES`，组和引用规则卡同批软删。
+   - 再发 `mode=WITH_RULES`，组和引用规则卡一起软删，但各自写独立的 `recent_deletion` 批次（分组一个，每张规则卡各一个）。
 3. `WITH_RULES` 必须按**规则卡**删，不是按单行：同 `groupKey` 的所有槽位行一起软删；卡片开关/删除的现有生命周期逻辑复用。
 4. 撤销：现有 `recent_deletion` 恢复接口按批次恢复；恢复组后再恢复规则卡，顺序由处理器保证。
 5. 组被规则引用但已被外部删除（数据异常）：快照展开为 0 行，页面标「分组已删除」，不阻止其他规则保存。

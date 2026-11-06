@@ -61,6 +61,7 @@ export interface ConflictContext {
   courseGroupMembers: Map<number, number[]>
   timeGroupSlots: Map<number, Array<{ dayOfWeek: number; periodNo: number }>>
   allClassIds: number[]
+  allCourseIds: number[]
 }
 
 /** The structural slice of a rule group the context builder needs (keeps this file HTTP-free). */
@@ -78,6 +79,7 @@ export interface ConflictContextSource {
   periods: PeriodOption[]
   names: RuleNames
   allClassIds: number[]
+  allCourseIds: number[]
   teacherGroups: ConflictGroupSource[]
   courseGroups: ConflictGroupSource[]
   timeGroups: ConflictGroupSource[]
@@ -121,6 +123,7 @@ export function buildConflictContext(source: ConflictContextSource): ConflictCon
     courseGroupMembers,
     timeGroupSlots,
     allClassIds: source.allClassIds,
+    allCourseIds: source.allCourseIds,
   }
 }
 
@@ -271,7 +274,10 @@ function objectsOf(sentence: RuleSentence, context: ConflictContext): TargetObje
     if (sentence.classId !== null) {
       return [target('CLASS', sentence.classId)]
     }
-    return context.allClassIds.map((id) => target('CLASS', id))
+    const exceptions = new Set(sentence.exceptionClassIds)
+    return context.allClassIds
+      .filter((id) => !exceptions.has(id))
+      .map((id) => target('CLASS', id))
   }
   const spec = RULE_SPECS[sentence.type]
   if (spec.target === 'TEACHER') {
@@ -292,6 +298,8 @@ function objectsOf(sentence: RuleSentence, context: ConflictContext): TargetObje
       return (context.courseGroupMembers.get(sentence.courseGroupId) ?? [])
         .map((id) => target('COURSE', id))
     }
+    // No course and no group means 全部课程 (for example 体育不在最后一节 left blank).
+    return context.allCourseIds.map((id) => target('COURSE', id))
   }
   return []
 }
