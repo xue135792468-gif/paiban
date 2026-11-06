@@ -13,6 +13,7 @@ import {
   COURSE_SPREAD,
   COURSE_UNAVAILABLE,
   MAIN_SUBJECT_MORNING,
+  PE_LAST_PERIOD_AVOID,
   RULE_GROUPS,
   RULE_SPECS,
   RULE_TYPES,
@@ -31,13 +32,16 @@ import {
   compileRule,
   configsFromCards,
   describeCard,
+  describeRule,
   duplicateCard,
   missingParts,
   otherRuleCount,
   sentenceProblem,
+  timeLabel,
   toggleCard,
   unrepresentedGroupCount,
   type CardSentenceInput,
+  type PeriodOption,
   type RuleCard,
   type RuleNames,
 } from './compiler'
@@ -301,6 +305,149 @@ describe('rule compiler: 16 createable types', () => {
   })
 })
 
+describe('sentence wording: subject + time + requirement', () => {
+  type Shape = Parameters<typeof describeRule>[0]
+
+  function sentence(overrides: Partial<Shape> & Pick<Shape, 'type'>): string {
+    return describeRule({
+      classId: null,
+      teacherId: null,
+      courseId: null,
+      dayOfWeek: null,
+      periodNos: [],
+      amount: null,
+      ...overrides,
+    }, names)
+  }
+
+  const week: PeriodOption[] = [
+    ...[1, 2, 3, 4].map((periodNo) => ({ dayOfWeek: 5, periodNo, startTime: '08:00:00' })),
+    ...[5, 6, 7, 8].map((periodNo) => ({ dayOfWeek: 5, periodNo, startTime: '14:00' })),
+  ]
+
+  it('writes all 16 requirements as one plain sentence', () => {
+    expect(sentence({ type: CLASS_UNAVAILABLE, dayOfWeek: 5, periodNos: [7] }))
+      .toBe('全校 周五第 7 节 不上课')
+    expect(sentence({
+      type: CLASS_UNAVAILABLE, classId: 3, dayOfWeek: 5, periodNos: [7],
+    })).toBe('八年级1班 周五第 7 节 不上课')
+    expect(sentence({
+      type: CLASS_UNAVAILABLE, dayOfWeek: 5, periodNos: [7], exceptionClassIds: [3],
+    })).toBe('全校 周五第 7 节 不上课，除了 八年级1班')
+    expect(sentence({
+      type: TEACHER_UNAVAILABLE, teacherId: 7, dayOfWeek: 5, periodNos: [5, 6],
+    })).toBe('王老师 周五第 5、6 节 不上课')
+    expect(sentence({
+      type: COURSE_UNAVAILABLE, courseId: 9, dayOfWeek: 5, periodNos: [5, 6],
+    })).toBe('数学 不排在 周五第 5、6 节')
+    expect(sentence({ type: COURSE_MAX_PER_DAY, courseId: 9, amount: 1 }))
+      .toBe('数学 每天最多 1 节')
+    expect(sentence({ type: TEACHER_MAX_PER_DAY, teacherId: 7, amount: 4 }))
+      .toBe('王老师 每天最多 4 节')
+    expect(sentence({ type: CLASS_MAX_PER_DAY, classId: 3, amount: 8 }))
+      .toBe('八年级1班 每天最多 8 节')
+    expect(sentence({ type: SAME_COURSE_ONCE_PER_DAY, courseId: 9 }))
+      .toBe('数学 每天最多 1 节')
+    expect(sentence({ type: SAME_COURSE_ONCE_PER_DAY }))
+      .toBe('同一门课程 每天最多 1 节')
+    expect(sentence({ type: CONSECUTIVE_LESSONS, courseId: 9, amount: 2 }))
+      .toBe('数学 连堂 2 节')
+    expect(sentence({ type: COURSE_SPREAD, courseId: 9 })).toBe('数学 分散到不同天')
+    expect(sentence({ type: COURSE_SPREAD })).toBe('全部课程 分散到不同天')
+    expect(sentence({ type: CLASS_GAP_MINIMIZED })).toBe('班级 不空堂')
+    expect(sentence({ type: TEACHER_MAX_CONSECUTIVE, teacherId: 7, amount: 3 }))
+      .toBe('王老师 连续不超过 3 节')
+    expect(sentence({ type: TEACHER_MAX_CONSECUTIVE, amount: 3 }))
+      .toBe('所有教师 连续不超过 3 节')
+    expect(sentence({ type: PE_LAST_PERIOD_AVOID, courseId: 9 }))
+      .toBe('数学 不在最后一节')
+    expect(sentence({ type: PE_LAST_PERIOD_AVOID })).toBe('体育 不在最后一节')
+    expect(sentence({ type: MAIN_SUBJECT_MORNING, courseId: 9, amount: 4 }))
+      .toBe('数学 排在上午（前 4 节）')
+    expect(sentence({ type: TEACHER_NO_FIRST_PERIOD, teacherId: 7 }))
+      .toBe('王老师 不排第一节')
+    expect(sentence({ type: TEACHER_DAY_OFF, teacherId: 7, dayOfWeek: 3 }))
+      .toBe('王老师 周三 不排课')
+    expect(sentence({ type: TEACHER_PREFERRED_SLOT, teacherId: 7, dayOfWeek: 3, periodNos: [5, 6] }))
+      .toBe('王老师 偏好 周三第 5、6 节')
+  })
+
+  it('never says 的 课 在', () => {
+    const sentences = [
+      sentence({ type: CLASS_UNAVAILABLE, dayOfWeek: 5, periodNos: [7] }),
+      sentence({ type: TEACHER_UNAVAILABLE, teacherId: 7, dayOfWeek: 5, periodNos: [5] }),
+      sentence({ type: COURSE_UNAVAILABLE, courseId: 9, dayOfWeek: 5, periodNos: [5] }),
+      sentence({ type: COURSE_MAX_PER_DAY, courseId: 9, amount: 1 }),
+      sentence({ type: TEACHER_MAX_PER_DAY, teacherId: 7, amount: 4 }),
+      sentence({ type: CLASS_MAX_PER_DAY, classId: 3, amount: 8 }),
+      sentence({ type: SAME_COURSE_ONCE_PER_DAY }),
+      sentence({ type: CONSECUTIVE_LESSONS, courseId: 9, amount: 2 }),
+      sentence({ type: COURSE_SPREAD }),
+      sentence({ type: CLASS_GAP_MINIMIZED }),
+      sentence({ type: TEACHER_MAX_CONSECUTIVE, amount: 3 }),
+      sentence({ type: PE_LAST_PERIOD_AVOID }),
+      sentence({ type: MAIN_SUBJECT_MORNING, courseId: 9, amount: 4 }),
+      sentence({ type: TEACHER_NO_FIRST_PERIOD, teacherId: 7 }),
+      sentence({ type: TEACHER_DAY_OFF, teacherId: 7, dayOfWeek: 3 }),
+      sentence({ type: TEACHER_PREFERRED_SLOT, teacherId: 7, dayOfWeek: 3, periodNos: [5] }),
+    ]
+    sentences.forEach((text) => expect(text).not.toContain('的 课 在'))
+  })
+
+  it('folds a full morning, afternoon or whole day into 上午/下午/全天', () => {
+    expect(timeLabel(5, [5, 6, 7, 8], week)).toBe('周五下午')
+    expect(timeLabel(5, [1, 2, 3, 4], week)).toBe('周五上午')
+    expect(timeLabel(5, [1, 2, 3, 4, 5, 6, 7, 8], week)).toBe('周五全天')
+    expect(timeLabel(5, [5, 6], week)).toBe('周五第 5、6 节')
+
+    expect(describeRule({
+      type: TEACHER_UNAVAILABLE, classId: null, teacherId: 7, courseId: null,
+      dayOfWeek: 5, periodNos: [5, 6, 7, 8], amount: null,
+    }, names, week)).toBe('王老师 周五下午 不上课')
+    expect(describeRule({
+      type: TEACHER_UNAVAILABLE, classId: null, teacherId: 7, courseId: null,
+      dayOfWeek: 5, periodNos: [1, 2, 3, 4], amount: null,
+    }, names, week)).toBe('王老师 周五上午 不上课')
+    expect(describeRule({
+      type: TEACHER_UNAVAILABLE, classId: null, teacherId: 7, courseId: null,
+      dayOfWeek: 5, periodNos: [1, 2, 3, 4, 5, 6, 7, 8], amount: null,
+    }, names, week)).toBe('王老师 周五全天 不上课')
+  })
+
+  it('falls back to 第 x、y 节 without start times or for a partial slice', () => {
+    const noTimes: PeriodOption[] = week.map(({ dayOfWeek, periodNo }) => ({ dayOfWeek, periodNo }))
+    expect(timeLabel(5, [5, 6], noTimes)).toBe('周五第 5、6 节')
+    expect(timeLabel(4, [1], week)).toBe('周四第 1 节')
+    expect(timeLabel(5, [1, 2, 3], week)).toBe('周五第 1、2、3 节')
+  })
+
+  it('grows the subject and time before the requirement is chosen', () => {
+    expect(describeRule({
+      type: null, classId: null, teacherId: 7, courseId: null,
+      dayOfWeek: 5, periodNos: [5], amount: null,
+    }, names)).toBe('王老师 周五第 5 节 （请选择要求）')
+    expect(describeRule({
+      type: null, classId: null, teacherId: 7, courseId: null,
+      dayOfWeek: 5, periodNos: [5, 6, 7, 8], amount: null,
+    }, names, week)).toBe('王老师 周五下午 （请选择要求）')
+    expect(describeRule({
+      type: null, classId: null, teacherId: null, courseId: null,
+      dayOfWeek: null, periodNos: [], amount: null, subjectKind: 'SCHOOL',
+    }, names)).toBe('全校 （请选择要求）')
+    expect(describeRule({
+      type: null, classId: null, teacherId: null, courseId: null,
+      dayOfWeek: null, periodNos: [], amount: null,
+    }, names)).toBe('（请先选谁 / 什么课）')
+  })
+
+  it('names the missing subject instead of inventing one', () => {
+    expect(sentence({ type: TEACHER_DAY_OFF, dayOfWeek: 3 })).toBe('（请选择教师） 周三 不排课')
+    expect(sentence({ type: CLASS_MAX_PER_DAY, amount: 8 })).toBe('（请选择班级） 每天最多 8 节')
+    expect(sentence({ type: CONSECUTIVE_LESSONS, amount: 2 })).toBe('（请选择课程） 连堂 2 节')
+  })
+})
+
+
 describe('state to cards', () => {
   it('renders time-slice cards with the agreed wording', () => {
     const cards = cardsFromState([
@@ -313,8 +460,8 @@ describe('state to cards', () => {
     ])
 
     expect(cards).toHaveLength(2)
-    expect(describeCard(cards[0], names)).toBe('王老师 的 课 在 周五第 5、6、7、8 节 不排')
-    expect(describeCard(cards[1], names)).toBe('全校 的 课 在 周五第 7 节 不排')
+    expect(describeCard(cards[0], names)).toBe('王老师 周五第 5、6、7、8 节 不上课')
+    expect(describeCard(cards[1], names)).toBe('全校 周五第 7 节 不上课')
     expect(cards[0].sentences[0].entryIds)
       .toEqual({ '5-5': 105, '5-6': 106, '5-7': 107, '5-8': 108 })
   })
@@ -515,7 +662,7 @@ describe('cards: multiple sentences and exceptions', () => {
     expect(sentence.classId).toBeNull()
     expect(sentence.exceptionClassIds).toEqual([2])
     expect(describeCard(cards[0], names))
-      .toBe('全校 的 课 在 周一第 3 节 不排，除了 班级2')
+      .toBe('全校 周一第 3 节 不上课，除了 班级2')
     expect(sentence.entryIds).toEqual({ '1:1-3': 1, '3:1-3': 2 })
   })
 

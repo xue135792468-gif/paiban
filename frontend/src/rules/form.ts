@@ -5,6 +5,7 @@ import {
   type RuleSentence,
   type RuleStrength,
   type RuleType,
+  type SubjectKind,
 } from './compiler'
 
 /** The mutable sentence shape the rule form edits (no storage identity beyond `key`). */
@@ -12,6 +13,11 @@ export interface FormSentence {
   key: string | null
   /** Null until the user picks a requirement. */
   type: RuleType | null
+  /**
+   * What the first slot ("谁 / 什么课") holds. Form-only: the saved sentence keeps
+   * the concrete id (or its absence = 全校 / 所有教师 / 全部课程).
+   */
+  subjectKind: SubjectKind | null
   classId: number | null
   teacherId: number | null
   courseId: number | null
@@ -22,10 +28,48 @@ export interface FormSentence {
   exceptionClassIds: number[]
 }
 
+/** Infers the subject a stored sentence was written with. */
+function subjectKindOf(
+  type: RuleType | null,
+  classId: number | null,
+  teacherId: number | null,
+  courseId: number | null,
+): SubjectKind | null {
+  if (courseId !== null) {
+    return 'COURSE'
+  }
+  if (teacherId !== null) {
+    return 'TEACHER'
+  }
+  if (classId !== null) {
+    return 'CLASS'
+  }
+  if (!type) {
+    return null
+  }
+  const target = RULE_SPECS[type].target
+  if (target === 'COURSE') {
+    return 'ALL_COURSES'
+  }
+  if (target === 'TEACHER') {
+    return 'ALL_TEACHERS'
+  }
+  if (target === 'CLASS') {
+    return 'SCHOOL'
+  }
+  return 'SCHOOL'
+}
+
 export function formSentenceFrom(sentence: RuleSentence): FormSentence {
   return {
     key: sentence.key,
     type: sentence.type,
+    subjectKind: subjectKindOf(
+      sentence.type,
+      sentence.classId,
+      sentence.teacherId,
+      sentence.courseId,
+    ),
     classId: sentence.classId,
     teacherId: sentence.teacherId,
     courseId: sentence.courseId,
@@ -41,6 +85,7 @@ export function blankFormSentence(): FormSentence {
   return {
     key: null,
     type: null,
+    subjectKind: null,
     classId: null,
     teacherId: null,
     courseId: null,

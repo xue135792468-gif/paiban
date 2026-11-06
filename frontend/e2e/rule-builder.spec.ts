@@ -45,11 +45,12 @@ test.describe('排课规则：句子积木', () => {
   async function addSchoolRule(page: Page) {
     await page.getByTestId('rule-new').click()
     await expect(form(page)).toBeVisible()
-    await pickOption(form(page), 'rule-type', '全校/班级 的 课 不排')
+    await pickOption(form(page), 'rule-subject', '全校')
     await chooseDay(page, '周五')
     await form(page).getByTestId('rule-period-7').click()
+    await pickOption(form(page), 'rule-type', '不上课')
     await expect(form(page).getByTestId('rule-preview')).toContainText(
-      '全校 的 课 在 周五第 7 节 不排',
+      '全校 周五第 7 节 不上课',
     )
     await form(page).getByTestId('rule-submit').click()
   }
@@ -61,14 +62,14 @@ test.describe('排课规则：句子积木', () => {
   async function addTeacherAfternoonRule(page: Page, teacherName: string) {
     await page.getByTestId('rule-new').click()
     await expect(form(page)).toBeVisible()
-    await pickOption(form(page), 'rule-type', '教师 的 课 不排')
-    await pickOption(form(page), 'rule-teacher', teacherName)
+    await pickOption(form(page), 'rule-subject', `教师 · ${teacherName}`)
     await chooseDay(page, '周五')
     for (const periodNo of [5, 6, 7, 8]) {
       await form(page).getByTestId(`rule-period-${periodNo}`).click()
     }
+    await pickOption(form(page), 'rule-type', '不上课')
     await expect(form(page).getByTestId('rule-preview')).toContainText(
-      `${teacherName} 的 课 在 周五第 5、6、7、8 节 不排`,
+      `${teacherName} 周五第 5、6、7、8 节 不上课`,
     )
     await form(page).getByTestId('rule-submit').click()
   }
@@ -81,8 +82,8 @@ test.describe('排课规则：句子积木', () => {
   ) {
     await page.getByTestId('rule-new').click()
     await expect(form(page)).toBeVisible()
+    await pickOption(form(page), 'rule-subject', `课程 · ${courseName}`)
     await pickOption(form(page), 'rule-type', typeLabel)
-    await pickOption(form(page), 'rule-course', courseName)
     const input = form(page).getByTestId('rule-amount').locator('input')
     await input.fill(String(amount))
     await input.press('Tab')
@@ -120,7 +121,7 @@ test.describe('排课规则：句子积木', () => {
 
     await addSchoolRule(page)
     await expect(page.getByTestId('rule-card')).toHaveCount(1)
-    await expect(page.getByTestId('rule-sentence')).toHaveText('全校 的 课 在 周五第 7 节 不排')
+    await expect(page.getByTestId('rule-sentence')).toHaveText('全校 周五第 7 节 不上课')
 
     const teacherName = seed.teachers[0].name
     await addTeacherAfternoonRule(page, teacherName)
@@ -153,8 +154,8 @@ test.describe('排课规则：句子积木', () => {
 
     await page.reload()
     await expect(page.getByTestId('rule-card')).toHaveCount(2)
-    await expect(page.getByText('全校 的 课 在 周五第 7 节 不排')).toBeVisible()
-    await expect(page.getByText(`${teacherName} 的 课 在 周五第 5、6、7、8 节 不排`)).toBeVisible()
+    await expect(page.getByText('全校 周五第 7 节 不上课')).toBeVisible()
+    await expect(page.getByText(`${teacherName} 周五第 5、6、7、8 节 不上课`)).toBeVisible()
   })
 
   test('停用一张卡片、删除另一张，其它类型规则不受影响', async ({ page }) => {
@@ -216,7 +217,7 @@ test.describe('排课规则：句子积木', () => {
 
     const schoolCard = page
       .getByTestId('rule-card')
-      .filter({ hasText: '全校 的 课 在 周五第 7 节 不排' })
+      .filter({ hasText: '全校 周五第 7 节 不上课' })
     await schoolCard.getByTestId('rule-toggle').click()
     await expect(schoolCard.getByTestId('rule-disabled-tag')).toBeVisible()
     await saveRules(page)
@@ -239,7 +240,7 @@ test.describe('排课规则：句子积木', () => {
     await expect(editForm).toBeVisible()
     await editForm.getByTestId('rule-period-6').click()
     await editForm.getByTestId('rule-period-7').click()
-    await expect(editForm.getByTestId('rule-preview')).toContainText('全校 的 课 在 周五第 6 节 不排')
+    await expect(editForm.getByTestId('rule-preview')).toContainText('全校 周五第 6 节 不上课')
     await editForm.getByTestId('rule-submit').click()
     await saveRules(page)
 
@@ -253,7 +254,7 @@ test.describe('排课规则：句子积木', () => {
 
     const teacherCard = page
       .getByTestId('rule-card')
-      .filter({ hasText: `${seed.teachers[0].name} 的 课 在 周五第 5、6、7、8 节 不排` })
+      .filter({ hasText: `${seed.teachers[0].name} 周五第 5、6、7、8 节 不上课` })
     // 票 04：删卡直接走服务端（进「最近删除」），保存按钮因此不再变脏。
     const deleted = page.waitForResponse(
       (response) =>
@@ -304,16 +305,17 @@ test.describe('排课规则：句子积木', () => {
     const math = seed.courses[0]
     const chinese = seed.courses[1]
 
-    await addCourseAmountRule(page, '课程 每天最多 N 节', math.name, 1)
+    await addCourseAmountRule(page, '每天最多 N 节', math.name, 1)
     await expect(page.getByTestId('rule-card')).toHaveCount(1)
     await expect(page.getByTestId('rule-sentence')).toHaveText(`${math.name} 每天最多 1 节`)
 
-    await addCourseAmountRule(page, '课程 连堂 N 节', chinese.name, 2)
+    await addCourseAmountRule(page, '连堂 N 节', chinese.name, 2)
     await expect(page.getByTestId('rule-card')).toHaveCount(2)
     await expect(page.getByText(`${chinese.name} 连堂 2 节`)).toBeVisible()
 
     await page.getByTestId('rule-new').click()
-    await pickOption(form(page), 'rule-type', '体育 不在最后一节')
+    await pickOption(form(page), 'rule-subject', '全部课程')
+    await pickOption(form(page), 'rule-type', '不在最后一节')
     await expect(form(page).getByTestId('rule-preview')).toContainText('体育 不在最后一节')
     await form(page).getByTestId('rule-submit').click()
     await expect(page.getByTestId('rule-card')).toHaveCount(3)

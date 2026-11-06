@@ -99,7 +99,9 @@ const names = computed<RuleNames>(() => ({
 const classIds = computed(() => props.classes.map((item) => item.id))
 
 const preview = computed(() =>
-  sentences.value.map((sentence) => describeRule(sentence, names.value)).join('；'),
+  sentences.value
+    .map((sentence) => describeRule(sentence, names.value, props.periods))
+    .join('；'),
 )
 
 const problems = computed(() =>

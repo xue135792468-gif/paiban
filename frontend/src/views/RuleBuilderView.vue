@@ -4,7 +4,7 @@
       <div>
         <h2>排课规则</h2>
         <p class="subtitle">
-          用「对谁 / 哪些课 / 什么时候 / 要求」拼一句规则。一张卡可以装 1–3 句，共用一个开关；
+          用「谁 / 什么课 / 什么时候 / 要求」拼一句规则。一张卡可以装 1–3 句，共用一个开关；
           保存后自动排课、草稿校验和调代都按同一份规则执行。
         </p>
       </div>
@@ -116,6 +116,7 @@
           :cards="cards"
           :query="query"
           :names="ruleNames"
+          :periods="periods"
           @edit="openEdit"
           @toggle="onToggle"
           @duplicate="onDuplicate"
@@ -207,6 +208,7 @@ interface ConstraintState {
 interface PeriodDto {
   dayOfWeek: number
   periodNo: number
+  startTime?: string | null
 }
 
 const semesters = ref<Semester[]>([])
@@ -343,6 +345,7 @@ async function loadState() {
     periods.value = (periodRes.data ?? []).map((period) => ({
       dayOfWeek: period.dayOfWeek,
       periodNo: period.periodNo,
+      startTime: period.startTime ?? null,
     }))
     cards.value = cardsFromState(configs.value, { allClassIds: classIds.value })
     // A snapshot copy: the page replaces single entries of `cards.value` in place, so

@@ -26,6 +26,18 @@ export type RuleStrength = 'HARD' | 'SOFT'
 export type RuleGroup = 'TIME' | 'QUANTITY' | 'SHAPE' | 'PRESET'
 export type RuleTargetGroup = 'SCHOOL' | 'CLASS' | 'TEACHER' | 'COURSE'
 
+/**
+ * The subject a sentence starts with. Form-only: it tells the editor which object
+ * the user picked before a requirement type exists, and is inferred on load.
+ */
+export type SubjectKind =
+  | 'SCHOOL'
+  | 'ALL_TEACHERS'
+  | 'CLASS'
+  | 'TEACHER'
+  | 'ALL_COURSES'
+  | 'COURSE'
+
 export type RuleType =
   | 'CLASS_UNAVAILABLE'
   | 'TEACHER_UNAVAILABLE'
@@ -164,54 +176,54 @@ function spec(
 
 /** Every createable requirement, keyed by the existing constraint type it compiles to. */
 export const RULE_SPECS: Record<RuleType, RuleSpec> = {
-  CLASS_UNAVAILABLE: spec(CLASS_UNAVAILABLE, 'TIME', '全校/班级 的 课 不排', 'CLASS', {
+  CLASS_UNAVAILABLE: spec(CLASS_UNAVAILABLE, 'TIME', '不上课', 'CLASS', {
     allowSchool: true, day: 'REQUIRED', periods: 'REQUIRED', hardOnly: true,
   }),
-  TEACHER_UNAVAILABLE: spec(TEACHER_UNAVAILABLE, 'TIME', '教师 的 课 不排', 'TEACHER', {
+  TEACHER_UNAVAILABLE: spec(TEACHER_UNAVAILABLE, 'TIME', '不上课', 'TEACHER', {
     day: 'REQUIRED', periods: 'REQUIRED',
   }),
-  COURSE_UNAVAILABLE: spec(COURSE_UNAVAILABLE, 'TIME', '课程 不排', 'COURSE', {
+  COURSE_UNAVAILABLE: spec(COURSE_UNAVAILABLE, 'TIME', '不排课', 'COURSE', {
     course: 'REQUIRED', day: 'REQUIRED', periods: 'REQUIRED',
   }),
-  COURSE_MAX_PER_DAY: spec(COURSE_MAX_PER_DAY, 'QUANTITY', '课程 每天最多 N 节', 'COURSE', {
+  COURSE_MAX_PER_DAY: spec(COURSE_MAX_PER_DAY, 'QUANTITY', '每天最多 N 节', 'COURSE', {
     course: 'REQUIRED', amount: { field: 'maxPerDay', label: '每天最多节数', min: 1, max: 8, defaultValue: 2 }, defaultWeight: 50,
   }),
-  TEACHER_MAX_PER_DAY: spec(TEACHER_MAX_PER_DAY, 'QUANTITY', '教师 每天最多 N 节', 'TEACHER', {
+  TEACHER_MAX_PER_DAY: spec(TEACHER_MAX_PER_DAY, 'QUANTITY', '每天最多 N 节', 'TEACHER', {
     amount: { field: 'maxPerDay', label: '每天最多节数', min: 1, max: 12, defaultValue: 4 }, defaultWeight: 60,
   }),
-  CLASS_MAX_PER_DAY: spec(CLASS_MAX_PER_DAY, 'QUANTITY', '班级 每天最多 N 节', 'CLASS', {
+  CLASS_MAX_PER_DAY: spec(CLASS_MAX_PER_DAY, 'QUANTITY', '每天最多 N 节', 'CLASS', {
     amount: { field: 'maxPerDay', label: '每天最多节数', min: 1, max: 12, defaultValue: 8 }, defaultWeight: 50,
   }),
-  SAME_COURSE_ONCE_PER_DAY: spec(SAME_COURSE_ONCE_PER_DAY, 'QUANTITY', '同一课程 一天最多一节', 'COURSE', {
-    course: 'OPTIONAL', coursePlaceholder: '全部课程',
+  SAME_COURSE_ONCE_PER_DAY: spec(SAME_COURSE_ONCE_PER_DAY, 'QUANTITY', '每天最多 1 节', 'COURSE', {
+    course: 'OPTIONAL', coursePlaceholder: '同一门课程',
   }),
-  CONSECUTIVE_LESSONS: spec(CONSECUTIVE_LESSONS, 'SHAPE', '课程 连堂 N 节', 'COURSE', {
+  CONSECUTIVE_LESSONS: spec(CONSECUTIVE_LESSONS, 'SHAPE', '连堂 N 节', 'COURSE', {
     course: 'REQUIRED', amount: { field: 'minConsecutive', label: '连排节数', min: 2, max: 4, defaultValue: 2 }, defaultWeight: 60,
   }),
-  COURSE_SPREAD: spec(COURSE_SPREAD, 'SHAPE', '课程 分散到不同天', 'COURSE', {
+  COURSE_SPREAD: spec(COURSE_SPREAD, 'SHAPE', '分散到不同天', 'COURSE', {
     course: 'OPTIONAL', coursePlaceholder: '全部课程', defaultWeight: 50,
   }),
-  CLASS_GAP_MINIMIZED: spec(CLASS_GAP_MINIMIZED, 'SHAPE', '班级 不空堂', 'NONE', {
+  CLASS_GAP_MINIMIZED: spec(CLASS_GAP_MINIMIZED, 'SHAPE', '不空堂', 'NONE', {
     defaultWeight: 30,
   }),
-  TEACHER_MAX_CONSECUTIVE: spec(TEACHER_MAX_CONSECUTIVE, 'SHAPE', '教师 连续不超过 N 节', 'TEACHER', {
+  TEACHER_MAX_CONSECUTIVE: spec(TEACHER_MAX_CONSECUTIVE, 'SHAPE', '连续不超过 N 节', 'TEACHER', {
     allowAnyTeacher: true,
     amount: { field: 'maxConsecutive', label: '最多连续节数', min: 1, max: 8, defaultValue: 3 }, defaultWeight: 45,
   }),
-  PE_LAST_PERIOD_AVOID: spec(PE_LAST_PERIOD_AVOID, 'PRESET', '体育 不在最后一节', 'COURSE', {
-    course: 'OPTIONAL', coursePlaceholder: '体育类', defaultWeight: 35,
+  PE_LAST_PERIOD_AVOID: spec(PE_LAST_PERIOD_AVOID, 'PRESET', '不在最后一节', 'COURSE', {
+    course: 'OPTIONAL', coursePlaceholder: '体育', defaultWeight: 35,
   }),
-  MAIN_SUBJECT_MORNING: spec(MAIN_SUBJECT_MORNING, 'PRESET', '主科 排在上午（前 N 节）', 'COURSE', {
+  MAIN_SUBJECT_MORNING: spec(MAIN_SUBJECT_MORNING, 'PRESET', '排在上午', 'COURSE', {
     course: 'REQUIRED',
     amount: { field: 'beforePeriodNo', label: '上午截止节次', min: 2, max: 8, defaultValue: 4 }, defaultWeight: 55,
   }),
-  TEACHER_NO_FIRST_PERIOD: spec(TEACHER_NO_FIRST_PERIOD, 'PRESET', '教师 不排第一节', 'TEACHER', {
+  TEACHER_NO_FIRST_PERIOD: spec(TEACHER_NO_FIRST_PERIOD, 'PRESET', '不排第一节', 'TEACHER', {
     defaultWeight: 35,
   }),
-  TEACHER_DAY_OFF: spec(TEACHER_DAY_OFF, 'PRESET', '教师 固定无课日', 'TEACHER', {
+  TEACHER_DAY_OFF: spec(TEACHER_DAY_OFF, 'PRESET', '固定无课日', 'TEACHER', {
     day: 'REQUIRED', defaultWeight: 30,
   }),
-  TEACHER_PREFERRED_SLOT: spec(TEACHER_PREFERRED_SLOT, 'PRESET', '教师 偏好时段', 'TEACHER', {
+  TEACHER_PREFERRED_SLOT: spec(TEACHER_PREFERRED_SLOT, 'PRESET', '偏好时段', 'TEACHER', {
     day: 'REQUIRED', periods: 'REQUIRED', defaultWeight: 40,
   }),
 }
@@ -251,6 +263,8 @@ const WEEKDAYS = ['', '周一', '周二', '周三', '周四', '周五', '周六'
 export interface PeriodOption {
   dayOfWeek: number
   periodNo: number
+  /** Wall-clock start (`08:00:00` or `08:00`); drives the 上午/下午 folding. */
+  startTime?: string | null
 }
 
 /** The values the form edits, without the card's storage identity. */
@@ -344,8 +358,75 @@ export function slotKey(dayOfWeek: number, periodNo: number): string {
   return `${dayOfWeek}-${periodNo}`
 }
 
-/** "周五第 7 节"; a day or period set still pending reads as such. */
-export function timeLabel(dayOfWeek: number | null, periodNos: number[]): string {
+/** Minutes after midnight for `08:00:00` / `08:00`; null when absent or unparsable. */
+function minuteOfDay(value: string | null | undefined): number | null {
+  if (!value) {
+    return null
+  }
+  const [hours, minutes] = value.split(':')
+  const hour = Number(hours)
+  const minute = Number(minutes ?? 0)
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+    return null
+  }
+  return hour * 60 + minute
+}
+
+function sameSlots(left: number[], right: number[]): boolean {
+  return left.length > 0
+    && left.length === right.length
+    && left.every((value, index) => value === right[index])
+}
+
+/**
+ * "上午" / "下午" / "全天" when the picked periods are exactly that slice of the
+ * day, otherwise null. Missing start times (or a day without periods) never fold:
+ * the sentence then spells out 第 x、y 节.
+ */
+function foldedTimeOfDay(
+  dayOfWeek: number,
+  sorted: number[],
+  periods?: PeriodOption[] | null,
+): '上午' | '下午' | '全天' | null {
+  const dayPeriods = (periods ?? []).filter((period) => period.dayOfWeek === dayOfWeek)
+  if (dayPeriods.length === 0) {
+    return null
+  }
+  const timed = dayPeriods.map((period) => ({
+    periodNo: period.periodNo,
+    minutes: minuteOfDay(period.startTime),
+  }))
+  if (timed.some((period) => period.minutes === null)) {
+    return null
+  }
+  const all = normalizePeriods(timed.map((period) => period.periodNo))
+  const morning = normalizePeriods(
+    timed.filter((period) => (period.minutes as number) < 12 * 60).map((period) => period.periodNo),
+  )
+  const afternoon = normalizePeriods(
+    timed.filter((period) => (period.minutes as number) >= 12 * 60).map((period) => period.periodNo),
+  )
+  if (sameSlots(sorted, morning)) {
+    return '上午'
+  }
+  if (sameSlots(sorted, afternoon)) {
+    return '下午'
+  }
+  if (sameSlots(sorted, all)) {
+    return '全天'
+  }
+  return null
+}
+
+/**
+ * "周五下午" when the picked periods cover that whole slice, "周五第 5、6 节"
+ * otherwise; a pending day/period set reads as such.
+ */
+export function timeLabel(
+  dayOfWeek: number | null,
+  periodNos: number[],
+  periods?: PeriodOption[] | null,
+): string {
   if (dayOfWeek === null) {
     return '（请选择星期）'
   }
@@ -354,46 +435,127 @@ export function timeLabel(dayOfWeek: number | null, periodNos: number[]): string
   if (sorted.length === 0) {
     return `${label}（还没选节次）`
   }
+  const folded = foldedTimeOfDay(dayOfWeek, sorted, periods)
+  if (folded !== null) {
+    return `${label}${folded}`
+  }
   return `${label}第 ${sorted.join('、')} 节`
 }
 
 type RuleShape = Pick<
   RuleSentence,
   'classId' | 'teacherId' | 'courseId' | 'dayOfWeek' | 'periodNos' | 'amount'
-> & { type: RuleType | null; exceptionClassIds?: number[] }
+> & {
+  type: RuleType | null
+  exceptionClassIds?: number[]
+  /** Present on form sentences only; lets the sentence grow before a type is picked. */
+  subjectKind?: SubjectKind | null
+}
 
-/** The sentence the card shows: "数学 每天最多 1 节" / "全校 的 课 在 周五第 7 节 不排". */
-export function describeRule(parts: RuleShape, names: RuleNames): string {
+function teacherSubject(parts: RuleShape, names: RuleNames): string {
+  if (parts.teacherId !== null && parts.teacherId !== undefined) {
+    return names.teacher(parts.teacherId)
+  }
+  return parts.type && RULE_SPECS[parts.type].allowAnyTeacher
+    ? '所有教师'
+    : '（请选择教师）'
+}
+
+function classSubject(parts: RuleShape, names: RuleNames): string {
+  if (parts.classId !== null && parts.classId !== undefined) {
+    return names.klass(parts.classId)
+  }
+  return parts.type && RULE_SPECS[parts.type].allowSchool
+    ? '全校'
+    : '（请选择班级）'
+}
+
+function courseSubject(parts: RuleShape, names: RuleNames): string {
+  if (parts.courseId !== null && parts.courseId !== undefined) {
+    return names.course(parts.courseId)
+  }
   if (!parts.type) {
-    return '（请选择要求）'
+    return '（请选择课程）'
+  }
+  const rule = RULE_SPECS[parts.type]
+  return rule.course === 'REQUIRED' ? '（请选择课程）' : rule.coursePlaceholder
+}
+
+/** The subject a sentence without a type can still show, from the form's own pick. */
+function pendingSubject(parts: RuleShape, names: RuleNames): string | null {
+  switch (parts.subjectKind) {
+    case 'SCHOOL':
+      return '全校'
+    case 'ALL_TEACHERS':
+      return '所有教师'
+    case 'ALL_COURSES':
+      return '全部课程'
+    case 'CLASS':
+      return parts.classId === null || parts.classId === undefined
+        ? null : names.klass(parts.classId)
+    case 'TEACHER':
+      return parts.teacherId === null || parts.teacherId === undefined
+        ? null : names.teacher(parts.teacherId)
+    case 'COURSE':
+      return parts.courseId === null || parts.courseId === undefined
+        ? null : names.course(parts.courseId)
+    default:
+      break
+  }
+  if (parts.teacherId !== null && parts.teacherId !== undefined) {
+    return names.teacher(parts.teacherId)
+  }
+  if (parts.classId !== null && parts.classId !== undefined) {
+    return names.klass(parts.classId)
+  }
+  if (parts.courseId !== null && parts.courseId !== undefined) {
+    return names.course(parts.courseId)
+  }
+  return null
+}
+
+/**
+ * One sentence in speaking order: subject → time → requirement.
+ * "王老师 周五下午 不上课" / "体育 不在最后一节" / "数学 每天最多 1 节".
+ */
+export function describeRule(
+  parts: RuleShape,
+  names: RuleNames,
+  periods?: PeriodOption[] | null,
+): string {
+  const time = timeLabel(parts.dayOfWeek ?? null, parts.periodNos ?? [], periods)
+  if (!parts.type) {
+    const subject = pendingSubject(parts, names)
+    const pieces: string[] = []
+    if (subject) {
+      pieces.push(subject)
+    }
+    if ((parts.dayOfWeek ?? null) !== null) {
+      pieces.push(time)
+    }
+    return pieces.length === 0
+      ? '（请先选谁 / 什么课）'
+      : `${pieces.join(' ')} （请选择要求）`
   }
   const type = parts.type
   const spec = RULE_SPECS[type]
-  const teacher = parts.teacherId === null || parts.teacherId === undefined
-    ? '教师' : names.teacher(parts.teacherId)
-  const anyTeacher = parts.teacherId === null || parts.teacherId === undefined
-    ? '所有教师' : teacher
-  const klass = parts.classId === null || parts.classId === undefined
-    ? '全校' : names.klass(parts.classId)
-  const course = parts.courseId === null || parts.courseId === undefined
-    ? '全部课程' : names.course(parts.courseId)
-  const sport = parts.courseId === null || parts.courseId === undefined
-    ? '体育' : names.course(parts.courseId)
+  const teacher = teacherSubject(parts, names)
+  const klass = classSubject(parts, names)
+  const course = courseSubject(parts, names)
   const amount = parts.amount === null || parts.amount === undefined ? 'N' : String(parts.amount)
   const day = parts.dayOfWeek === null || parts.dayOfWeek === undefined
     ? '（请选择星期）' : weekdayLabel(parts.dayOfWeek)
-  const time = timeLabel(parts.dayOfWeek ?? null, parts.periodNos ?? [])
   const exceptions = parts.exceptionClassIds?.length
     ? `，除了 ${parts.exceptionClassIds.map((id) => names.klass(id)).join('、')}`
     : ''
 
   switch (type) {
     case CLASS_UNAVAILABLE:
-      return `${klass} 的 课 在 ${time} 不排${exceptions}`
+      return `${klass} ${time} 不上课${exceptions}`
     case TEACHER_UNAVAILABLE:
-      return `${teacher} 的 课 在 ${time} 不排`
+      return `${teacher} ${time} 不上课`
     case COURSE_UNAVAILABLE:
-      return `${course} 在 ${time} 不排`
+      return `${course} 不排在 ${time}`
     case COURSE_MAX_PER_DAY:
       return `${course} 每天最多 ${amount} 节`
     case TEACHER_MAX_PER_DAY:
@@ -401,8 +563,7 @@ export function describeRule(parts: RuleShape, names: RuleNames): string {
     case CLASS_MAX_PER_DAY:
       return `${klass} 每天最多 ${amount} 节`
     case SAME_COURSE_ONCE_PER_DAY:
-      return parts.courseId === null || parts.courseId === undefined
-        ? '同一课程 每天最多 1 节' : `${course} 每天最多 1 节`
+      return `${course} 每天最多 1 节`
     case CONSECUTIVE_LESSONS:
       return `${course} 连堂 ${amount} 节`
     case COURSE_SPREAD:
@@ -410,9 +571,9 @@ export function describeRule(parts: RuleShape, names: RuleNames): string {
     case CLASS_GAP_MINIMIZED:
       return '班级 不空堂'
     case TEACHER_MAX_CONSECUTIVE:
-      return `${anyTeacher} 连续不超过 ${amount} 节`
+      return `${teacher} 连续不超过 ${amount} 节`
     case PE_LAST_PERIOD_AVOID:
-      return `${sport} 不在最后一节`
+      return `${course} 不在最后一节`
     case MAIN_SUBJECT_MORNING:
       return `${course} 排在上午（前 ${amount} 节）`
     case TEACHER_NO_FIRST_PERIOD:
@@ -426,13 +587,23 @@ export function describeRule(parts: RuleShape, names: RuleNames): string {
   }
 }
 
-export function describeSentence(sentence: RuleSentence, names: RuleNames): string {
-  return describeRule(sentence, names)
+export function describeSentence(
+  sentence: RuleSentence,
+  names: RuleNames,
+  periods?: PeriodOption[] | null,
+): string {
+  return describeRule(sentence, names, periods)
 }
 
 /** One card's sentences, joined for a compact card line. */
-export function describeCard(card: RuleCard, names: RuleNames): string {
-  return card.sentences.map((sentence) => describeSentence(sentence, names)).join('；')
+export function describeCard(
+  card: RuleCard,
+  names: RuleNames,
+  periods?: PeriodOption[] | null,
+): string {
+  return card.sentences
+    .map((sentence) => describeSentence(sentence, names, periods))
+    .join('；')
 }
 
 /** The slots the requirement still needs before it can be saved. */
@@ -1341,14 +1512,19 @@ export const TARGET_LABELS: Record<RuleTargetGroup, string> = {
 }
 
 /** The list's free-text filter: object names, sentence wording and the bucket name. */
-export function cardMatches(card: RuleCard, query: string, names: RuleNames): boolean {
+export function cardMatches(
+  card: RuleCard,
+  query: string,
+  names: RuleNames,
+  periods?: PeriodOption[] | null,
+): boolean {
   const text = query.trim().toLowerCase()
   if (text === '') {
     return true
   }
   const haystack = [
     TARGET_LABELS[cardTarget(card)],
-    ...card.sentences.map((sentence) => describeSentence(sentence, names)),
+    ...card.sentences.map((sentence) => describeSentence(sentence, names, periods)),
   ].join(' ').toLowerCase()
   return haystack.includes(text)
 }
