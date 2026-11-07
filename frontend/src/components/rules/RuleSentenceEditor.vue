@@ -15,19 +15,66 @@
     </div>
 
     <div class="row">
+      <span class="label">谁 / 什么课</span>
+      <div class="value">
+        <el-select
+          :model-value="subjectValue"
+          filterable
+          placeholder="选择谁 / 什么课"
+          class="subject-select"
+          :data-testid="tid('rule-subject')"
+          @change="onSubjectChange"
+        >
+          <el-option-group label="人 / 班级">
+            <el-option
+              v-for="item in teacherSubjectOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+              :data-testid="item.testId"
+            />
+          </el-option-group>
+          <el-option-group label="课程">
+            <el-option
+              v-for="item in courseSubjectOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+              :data-testid="item.testId"
+            />
+          </el-option-group>
+        </el-select>
+      </div>
+    </div>
+
+    <RuleTimeSlotEditor
+      v-if="showTime"
+      v-model:days="local.days"
+      v-model:period-nos="local.periodNos"
+      v-model:time-group-id="local.timeGroupId"
+      :periods="periods"
+      :time-groups="timeGroups ?? []"
+      :create-time-group="createTimeGroup"
+      :allow-periods="showPeriods"
+      :allow-time-group="allowTimeGroup"
+      :index="index"
+    />
+
+    <div class="row">
       <span class="label">要求</span>
       <div class="value">
         <el-select
           v-model="local.type"
           filterable
           clearable
-          placeholder="选择要求"
+          :disabled="local.subjectKind === null"
+          :placeholder="local.subjectKind === null ? '先选谁 / 什么课' : '选择要求'"
           class="type-select"
           :data-testid="tid('rule-type')"
           @change="onTypeChange"
         >
           <el-option-group
-            v-for="group in RULE_GROUPS"
+            v-for="group in typeGroups"
             :key="group.group"
             :label="group.label"
           >
@@ -39,119 +86,6 @@
             />
           </el-option-group>
         </el-select>
-      </div>
-    </div>
-
-    <div v-if="rule && rule.target !== 'NONE'" class="row">
-      <span class="label">对谁</span>
-      <div class="value">
-        <template v-if="rule?.target === 'CLASS'">
-          <el-radio-group
-            v-if="rule?.allowSchool"
-            :model-value="local.classId === null ? 'SCHOOL' : 'CLASS'"
-            :data-testid="tid('rule-scope')"
-            @change="onClassScope"
-          >
-            <el-radio-button value="SCHOOL">全校</el-radio-button>
-            <el-radio-button value="CLASS">班级</el-radio-button>
-          </el-radio-group>
-          <el-select
-            v-if="!rule?.allowSchool || local.classId !== null"
-            v-model="local.classId"
-            filterable
-            clearable
-            placeholder="搜索班级"
-            class="object-select"
-            :data-testid="tid('rule-class')"
-          >
-            <el-option v-for="item in classes" :key="item.id" :label="item.name" :value="item.id" />
-          </el-select>
-        </template>
-
-        <template v-else-if="rule?.target === 'TEACHER'">
-          <el-radio-group
-            v-if="rule?.allowAnyTeacher"
-            :model-value="local.teacherId === null ? 'ANY' : 'ONE'"
-            :data-testid="tid('rule-scope')"
-            @change="onTeacherScope"
-          >
-            <el-radio-button value="ANY">所有教师</el-radio-button>
-            <el-radio-button value="ONE">指定教师</el-radio-button>
-          </el-radio-group>
-          <el-select
-            v-if="!rule?.allowAnyTeacher || local.teacherId !== null"
-            v-model="local.teacherId"
-            filterable
-            clearable
-            placeholder="搜索教师"
-            class="object-select"
-            :data-testid="tid('rule-teacher')"
-          >
-            <el-option v-for="item in teachers" :key="item.id" :label="item.name" :value="item.id" />
-          </el-select>
-        </template>
-
-        <span v-else class="word">所有班级</span>
-      </div>
-    </div>
-
-    <div v-if="rule && rule.course !== 'ALL'" class="row">
-      <span class="label">哪些课</span>
-      <div class="value">
-        <el-select
-          v-model="local.courseId"
-          filterable
-          :clearable="rule?.course === 'OPTIONAL'"
-          :placeholder="rule?.coursePlaceholder"
-          class="object-select"
-          :data-testid="tid('rule-course')"
-        >
-          <el-option v-for="item in courses" :key="item.id" :label="item.name" :value="item.id" />
-        </el-select>
-        <span v-if="rule?.course === 'OPTIONAL'" class="hint">
-          留空表示{{ rule?.coursePlaceholder }}
-        </span>
-      </div>
-    </div>
-
-    <div v-if="rule && rule.day === 'REQUIRED'" class="row">
-      <span class="label">什么时候</span>
-      <div class="value column">
-        <el-select
-          v-model="local.dayOfWeek"
-          filterable
-          placeholder="搜索星期"
-          class="day-select"
-          :data-testid="tid('rule-day')"
-          @change="onDayChange"
-        >
-          <el-option v-for="day in days" :key="day" :label="weekdayLabel(day)" :value="day" />
-        </el-select>
-        <div v-if="rule?.periods === 'REQUIRED' && local.dayOfWeek !== null" class="periods">
-          <div class="period-actions">
-            <el-button
-              size="small"
-              :disabled="lastPeriod() === null"
-              :data-testid="tid('rule-last-period')"
-              @click="selectLastPeriod"
-            >
-              最后一节
-            </el-button>
-            <el-button size="small" :data-testid="tid('rule-clear-periods')" @click="clearPeriods">
-              清空
-            </el-button>
-          </div>
-          <el-checkbox-group v-model="local.periodNos" class="period-checks">
-            <el-checkbox
-              v-for="periodNo in periodOptions"
-              :key="periodNo"
-              :value="periodNo"
-              :data-testid="periodTestId(periodNo)"
-            >
-              第 {{ periodNo }} 节
-            </el-checkbox>
-          </el-checkbox-group>
-        </div>
       </div>
     </div>
 
@@ -170,7 +104,10 @@
       </div>
     </div>
 
-    <div v-if="local.type === 'CLASS_UNAVAILABLE' && local.classId === null" class="row">
+    <div
+      v-if="local.type === 'CLASS_UNAVAILABLE' && local.classId === null"
+      class="row"
+    >
       <span class="label">例外</span>
       <div class="value">
         <el-select
@@ -208,16 +145,23 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
 import type { OptionItem } from '@/components/constraints/types'
+import RuleTimeSlotEditor from '@/components/rules/RuleTimeSlotEditor.vue'
 import {
+  CLASS_GAP_MINIMIZED,
   CLASS_UNAVAILABLE,
   RULE_GROUPS,
   RULE_SPECS,
   describeRule,
-  normalizePeriods,
-  weekdayLabel,
   type PeriodOption,
   type RuleNames,
+  type RuleType,
+  type SubjectKind,
 } from '@/rules/compiler'
+import { promptGroupName } from '@/rules/promptGroupName'
+import {
+  courseSubjectOptions as courseSubjectOptionList,
+  teacherSubjectOptions as teacherSubjectOptionList,
+} from '@/rules/subjectOptions'
 import type { FormSentence } from '@/rules/form'
 
 const props = defineProps<{
@@ -229,6 +173,12 @@ const props = defineProps<{
   courses: OptionItem[]
   days: number[]
   periods: PeriodOption[]
+  teacherGroups?: { id: number; name: string; memberIds?: number[] }[]
+  createTeacherGroup?: (name: string) => Promise<{ id: number; name: string } | null>
+  courseGroups?: { id: number; name: string; memberIds?: number[] }[]
+  createCourseGroup?: (name: string) => Promise<{ id: number; name: string } | null>
+  timeGroups?: { id: number; name: string }[]
+  createTimeGroup?: (name: string) => Promise<{ id: number; name: string } | null>
 }>()
 
 const emit = defineEmits<{
@@ -239,6 +189,7 @@ const emit = defineEmits<{
 /** A local copy keeps the form editable without mutating the parent's prop. */
 const local = reactive<FormSentence>({
   ...props.sentence,
+  days: [...props.sentence.days],
   periodNos: [...props.sentence.periodNos],
   exceptionClassIds: [...props.sentence.exceptionClassIds],
 })
@@ -246,10 +197,15 @@ const local = reactive<FormSentence>({
 watch(local, () => {
   emit('update:sentence', {
     ...local,
+    days: [...local.days],
     periodNos: [...local.periodNos],
     exceptionClassIds: [...local.exceptionClassIds],
   })
 }, { deep: true })
+
+function tid(base: string): string {
+  return props.index === 0 ? base : `${base}-${props.index}`
+}
 
 const rule = computed(() => (local.type === null ? null : RULE_SPECS[local.type]))
 
@@ -257,33 +213,173 @@ const names = computed<RuleNames>(() => ({
   teacher: (id: number) => props.teachers.find((item) => item.id === id)?.name ?? `教师${id}`,
   course: (id: number) => props.courses.find((item) => item.id === id)?.name ?? `课程${id}`,
   klass: (id: number) => props.classes.find((item) => item.id === id)?.name ?? `班级${id}`,
+  teacherGroup: (id: number) => props.teacherGroups?.find((item) => item.id === id)?.name ?? '教师组',
+  courseGroup: (id: number) => props.courseGroups?.find((item) => item.id === id)?.name ?? '课程组',
+  timeGroup: (id: number) => props.timeGroups?.find((item) => item.id === id)?.name ?? '时间组',
 }))
 
-const preview = computed(() => describeRule(local, names.value))
+const preview = computed(() => describeRule(local, names.value, props.periods))
 
-function tid(base: string): string {
-  return props.index === 0 ? base : `${base}-${props.index}`
-}
+const teacherSubjectOptions = computed(() => teacherSubjectOptionList({
+  teacherGroups: props.teacherGroups,
+  classes: props.classes,
+  teachers: props.teachers,
+  canCreate: Boolean(props.createTeacherGroup),
+}))
 
-function periodTestId(periodNo: number): string {
-  return props.index === 0 ? `rule-period-${periodNo}` : `rule-period-${periodNo}-${props.index}`
-}
+const courseSubjectOptions = computed(() => courseSubjectOptionList({
+  courseGroups: props.courseGroups,
+  courses: props.courses,
+  canCreate: Boolean(props.createCourseGroup),
+}))
 
-/** Only the periods the chosen weekday actually has, so no "不存在的第 9 节". */
-const periodOptions = computed(() => {
-  if (local.dayOfWeek === null) {
-    return []
+const subjectValue = computed(() => {
+  switch (local.subjectKind) {
+    case 'SCHOOL':
+      return 'school'
+    case 'ALL_TEACHERS':
+      return 'all-teachers'
+    case 'ALL_COURSES':
+      return 'all-courses'
+    case 'CLASS':
+      return local.classId === null ? null : `class:${local.classId}`
+    case 'TEACHER':
+      return local.teacherId === null ? null : `teacher:${local.teacherId}`
+    case 'TEACHER_GROUP':
+      return local.teacherGroupId === null ? null : `teacher-group:${local.teacherGroupId}`
+    case 'COURSE':
+      return local.courseId === null ? null : `course:${local.courseId}`
+    case 'COURSE_GROUP':
+      return local.courseGroupId === null ? null : `course-group:${local.courseGroupId}`
+    default:
+      return null
   }
-  return normalizePeriods(
-    props.periods
-      .filter((period) => period.dayOfWeek === local.dayOfWeek)
-      .map((period) => period.periodNo),
-  )
 })
 
-function lastPeriod(): number | null {
-  const options = periodOptions.value
-  return options.length > 0 ? options[options.length - 1] : null
+/** True when the picked subject can carry this requirement. */
+function acceptsSubject(kind: SubjectKind | null, type: RuleType): boolean {
+  if (kind === null) {
+    return false
+  }
+  const rule = RULE_SPECS[type]
+  switch (kind) {
+    case 'SCHOOL':
+      return (rule.target === 'CLASS' && rule.allowSchool) || type === CLASS_GAP_MINIMIZED
+    case 'ALL_TEACHERS':
+      return rule.target === 'TEACHER' && rule.allowAnyTeacher
+    case 'CLASS':
+      return rule.target === 'CLASS'
+    case 'TEACHER':
+      return rule.target === 'TEACHER'
+    case 'TEACHER_GROUP':
+      return rule.target === 'TEACHER'
+    case 'ALL_COURSES':
+      return rule.target === 'COURSE' && rule.course !== 'REQUIRED'
+    case 'COURSE':
+    case 'COURSE_GROUP':
+      return rule.target === 'COURSE'
+    default:
+      return false
+  }
+}
+
+/** Only the requirement groups that read naturally after the picked subject. */
+const typeGroups = computed(() =>
+  RULE_GROUPS
+    .map((group) => ({
+      ...group,
+      types: group.types.filter((type) => acceptsSubject(local.subjectKind, type)),
+    }))
+    .filter((group) => group.types.length > 0),
+)
+
+const showTime = computed(() => local.type === null || rule.value?.day === 'REQUIRED')
+const showPeriods = computed(
+  () => local.type === null || rule.value?.periods === 'REQUIRED',
+)
+/** Time groups replace the day × period grid, so only slot types may use them. */
+const allowTimeGroup = computed(
+  () => local.type === null || rule.value?.periods === 'REQUIRED',
+)
+
+/**
+ * Applies one subject choice. Every concrete object and group reference is cleared
+ * first, so switching from 王老师 to 教导主任 can never leave both in the sentence.
+ */
+function setSubject(
+  kind: SubjectKind | null,
+  ids: Partial<Pick<FormSentence,
+    'classId' | 'teacherId' | 'courseId' | 'teacherGroupId' | 'courseGroupId'>> = {},
+) {
+  local.subjectKind = kind
+  local.exceptionClassIds = []
+  local.classId = ids.classId ?? null
+  local.teacherId = ids.teacherId ?? null
+  local.courseId = ids.courseId ?? null
+  local.teacherGroupId = ids.teacherGroupId ?? null
+  local.courseGroupId = ids.courseGroupId ?? null
+  local.timeGroupId = null
+
+  if (local.type && !acceptsSubject(kind, local.type)) {
+    local.type = null
+    local.amount = null
+    local.exceptionClassIds = []
+  }
+}
+
+async function onSubjectChange(value: unknown) {
+  const text = typeof value === 'string' ? value : ''
+  if (text === '__new_teacher_group__') {
+    await createAndSelectGroup('TEACHER')
+    return
+  }
+  if (text === '__new_course_group__') {
+    await createAndSelectGroup('COURSE')
+    return
+  }
+  if (text === 'school') {
+    setSubject('SCHOOL')
+  } else if (text === 'all-teachers') {
+    setSubject('ALL_TEACHERS')
+  } else if (text === 'all-courses') {
+    setSubject('ALL_COURSES')
+  } else if (text.startsWith('class:')) {
+    setSubject('CLASS', { classId: Number(text.slice('class:'.length)) })
+  } else if (text.startsWith('teacher-group:')) {
+    setSubject('TEACHER_GROUP', {
+      teacherGroupId: Number(text.slice('teacher-group:'.length)),
+    })
+  } else if (text.startsWith('teacher:')) {
+    setSubject('TEACHER', { teacherId: Number(text.slice('teacher:'.length)) })
+  } else if (text.startsWith('course-group:')) {
+    setSubject('COURSE_GROUP', {
+      courseGroupId: Number(text.slice('course-group:'.length)),
+    })
+  } else if (text.startsWith('course:')) {
+    setSubject('COURSE', { courseId: Number(text.slice('course:'.length)) })
+  }
+}
+
+/** 「＋ 新建教师组 / 课程组」: create the group, then select it. Cancel keeps the old subject. */
+async function createAndSelectGroup(kind: 'TEACHER' | 'COURSE') {
+  const create = kind === 'TEACHER' ? props.createTeacherGroup : props.createCourseGroup
+  if (!create) {
+    return
+  }
+  const name = await promptGroupName(kind === 'TEACHER' ? '教师组' : '课程组')
+  if (!name) {
+    return
+  }
+  const created = await create(name)
+  if (!created) {
+    return
+  }
+  setSubject(
+    kind === 'TEACHER' ? 'TEACHER_GROUP' : 'COURSE_GROUP',
+    kind === 'TEACHER'
+      ? { teacherGroupId: created.id }
+      : { courseGroupId: created.id },
+  )
 }
 
 function onTypeChange() {
@@ -296,12 +392,19 @@ function onTypeChange() {
   }
   if (next.target !== 'TEACHER') {
     local.teacherId = null
+    local.teacherGroupId = null
   }
   if (next.course === 'ALL') {
     local.courseId = null
   }
+  if (next.target !== 'COURSE') {
+    local.courseGroupId = null
+  }
+  if (next.periods !== 'REQUIRED') {
+    local.timeGroupId = null
+  }
   if (next.day !== 'REQUIRED') {
-    local.dayOfWeek = null
+    local.days = []
   }
   if (next.periods !== 'REQUIRED') {
     local.periodNos = []
@@ -313,41 +416,6 @@ function onTypeChange() {
   if (local.type !== CLASS_UNAVAILABLE) {
     local.exceptionClassIds = []
   }
-}
-
-function onClassScope(scope: unknown) {
-  if (scope === 'SCHOOL') {
-    local.classId = null
-  } else if (local.classId === null && props.classes.length > 0) {
-    local.classId = props.classes[0].id
-  }
-  if (local.classId !== null) {
-    local.exceptionClassIds = []
-  }
-}
-
-function onTeacherScope(scope: unknown) {
-  if (scope === 'ANY') {
-    local.teacherId = null
-  } else if (local.teacherId === null && props.teachers.length > 0) {
-    local.teacherId = props.teachers[0].id
-  }
-}
-
-function onDayChange() {
-  const allowed = new Set(periodOptions.value)
-  local.periodNos = local.periodNos.filter((periodNo) => allowed.has(periodNo))
-}
-
-function selectLastPeriod() {
-  const last = lastPeriod()
-  if (last !== null) {
-    local.periodNos = [last]
-  }
-}
-
-function clearPeriods() {
-  local.periodNos = []
 }
 </script>
 
@@ -395,8 +463,8 @@ function clearPeriods() {
 }
 
 .label {
-  width: 64px;
-  flex: 0 0 64px;
+  width: 80px;
+  flex: 0 0 80px;
   color: var(--paiban-muted, #6b7280);
   font-size: 13px;
   line-height: 32px;
@@ -419,31 +487,10 @@ function clearPeriods() {
   color: var(--paiban-ink, #1f2937);
 }
 
+.subject-select,
 .type-select,
 .object-select {
   width: 240px;
-}
-
-.day-select {
-  width: 130px;
-}
-
-.periods {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.period-actions {
-  display: flex;
-  gap: 6px;
-}
-
-.period-checks {
-  display: flex;
-  gap: 2px 12px;
-  flex-wrap: wrap;
 }
 
 .hint {

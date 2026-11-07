@@ -1,6 +1,7 @@
 package com.paiban.scheduling.web;
 
 import com.paiban.identity.domain.Permissions;
+import com.paiban.scheduling.service.ConstraintCopyService;
 import com.paiban.scheduling.service.ConstraintService;
 import com.paiban.scheduling.service.RuleImpactService;
 import com.paiban.scheduling.service.RuleLifecycleService;
@@ -10,13 +11,11 @@ import com.paiban.scheduling.web.ConstraintDtos.ConstraintPreviewRequest;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintSaveAuditDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintStateDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintTypeDto;
+import com.paiban.scheduling.web.ConstraintDtos.CopyRulesRequest;
+import com.paiban.scheduling.web.ConstraintDtos.CopyRulesResult;
 import com.paiban.scheduling.web.ConstraintDtos.RuleImpactDto;
 import com.paiban.scheduling.web.ConstraintDtos.RuleImpactRequest;
 import com.paiban.scheduling.web.ConstraintDtos.SaveConstraintsRequest;
-import com.paiban.scheduling.web.ConstraintDtos.SaveTemplateRequest;
-import com.paiban.scheduling.web.ConstraintDtos.TemplateApplyPreview;
-import com.paiban.scheduling.web.ConstraintDtos.TemplateApplyRequest;
-import com.paiban.scheduling.web.ConstraintDtos.TemplateDto;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
@@ -37,12 +36,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class ConstraintController {
 
     private final ConstraintService service;
+    private final ConstraintCopyService copyService;
     private final RuleImpactService impact;
     private final RuleLifecycleService rules;
 
     public ConstraintController(
-            ConstraintService service, RuleImpactService impact, RuleLifecycleService rules) {
+            ConstraintService service, ConstraintCopyService copyService,
+            RuleImpactService impact, RuleLifecycleService rules) {
         this.service = service;
+        this.copyService = copyService;
         this.impact = impact;
         this.rules = rules;
     }
@@ -82,6 +84,19 @@ public class ConstraintController {
                 semesterId, request.configs() == null ? List.of() : request.configs(), baseVersion,
                 request.runId(), request.decisions(),
                 authentication == null ? null : authentication.getName());
+    }
+
+    /**
+     * Copies one semester's whole non-system rule set onto another (ticket 08). A
+     * {@code baseVersion} that no longer matches the target returns 409. Cards whose
+     * references cannot be resolved are copied paused and reported in {@code issues}.
+     */
+    @PostMapping("/constraints/copy-rules")
+    @PreAuthorize("hasAuthority('" + Permissions.CONSTRAINT_MANAGE + "')")
+    public CopyRulesResult copyRules(
+            @Valid @RequestBody CopyRulesRequest request, Authentication authentication) {
+        return copyService.copy(
+                request, authentication == null ? null : authentication.getName());
     }
 
     /**
@@ -138,60 +153,5 @@ public class ConstraintController {
             @RequestParam(required = false) String cardKey,
             @RequestParam(required = false) List<Long> entryIds) {
         return rules.delete(configId, cardKey, entryIds);
-    }
-
-    @GetMapping("/constraint-templates")
-    public List<TemplateDto> templates() {
-        return service.listTemplates();
-    }
-
-    @PostMapping("/constraint-templates")
-    @PreAuthorize("hasAuthority('" + Permissions.CONSTRAINT_MANAGE + "')")
-    public TemplateDto saveTemplate(
-            @RequestParam(required = false) Long semesterId,
-            @Valid @RequestBody SaveTemplateRequest request) {
-        return service.saveTemplate(request.name(), semesterId);
-    }
-
-    /**
-     * Applies a template to a semester. The optional body names the class ids the
-     * template carries so a class of another semester can be rebound explicitly; without
-     * it an invalid class reference refuses the whole apply.
-     *
-     * <p>The refusal is a 409 whose body carries {@code message} plus the same two lists
-     * {@link #preview} returns — {@code errors} and {@code invalidReferences} — because a
-     * refusal is a business answer the page has to render row by row, not a generic
-     * failure. Keeping the business body on the 409 (instead of flattening everything
-     * into one string) is what lets the panel run a single parse for both calls.
-     */
-    @PostMapping("/constraint-templates/{id}/apply")
-    @PreAuthorize("hasAuthority('" + Permissions.CONSTRAINT_MANAGE + "')")
-    public List<ConstraintConfigDto> apply(
-            @PathVariable Long id,
-            @RequestParam(required = false) Long semesterId,
-            @RequestParam(required = false) Long baseVersion,
-            @RequestBody(required = false) TemplateApplyRequest request,
-            Authentication authentication) {
-        return service.applyTemplate(id, semesterId, request, baseVersion,
-                authentication == null ? null : authentication.getName());
-    }
-
-    /**
-     * Dry run for the template panel: nothing is written. Reports the same
-     * {@code errors} / {@code invalidReferences} lists the apply refusal carries.
-     */
-    @PostMapping("/constraint-templates/{id}/preview")
-    @PreAuthorize("hasAuthority('" + Permissions.CONSTRAINT_MANAGE + "')")
-    public TemplateApplyPreview preview(
-            @PathVariable Long id,
-            @RequestParam(required = false) Long semesterId,
-            @RequestBody(required = false) TemplateApplyRequest request) {
-        return service.previewTemplate(id, semesterId, request);
-    }
-
-    @DeleteMapping("/constraint-templates/{id}")
-    @PreAuthorize("hasAuthority('" + Permissions.CONSTRAINT_MANAGE + "')")
-    public void deleteTemplate(@PathVariable Long id) {
-        service.deleteTemplate(id);
     }
 }

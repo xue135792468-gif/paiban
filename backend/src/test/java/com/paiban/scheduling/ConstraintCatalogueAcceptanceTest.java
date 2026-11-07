@@ -54,6 +54,10 @@ import org.springframework.test.context.ActiveProfiles;
 @ActiveProfiles("test")
 class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
 
+    /** Ticket 03: these two are always-on invariants, not user-switchable rules. */
+    private static final java.util.Set<String> SYSTEM_BASELINES = java.util.Set.of(
+            "TEACHER_CONFLICT", "CLASS_CONFLICT");
+
     @Autowired
     private TimetableDraftRepository drafts;
 
@@ -210,9 +214,18 @@ class ConstraintCatalogueAcceptanceTest extends ApiIntegrationTest {
 
         if (spec.switchType()) {
             save(token, world, List.of(switchConfig(spec.type(), false, true))).then().statusCode(200);
-            assertThat(conflictCodes(token, draftId))
-                    .as("%s 关闭后仍然报出违反", spec.type())
-                    .doesNotContain(spec.code());
+            if (SYSTEM_BASELINES.contains(spec.type())) {
+                // Ticket 03: the two system bottom lines cannot be closed. Disabling
+                // their row must not make the draft verdict forget the conflict; the
+                // settings snapshot re-adds both as hard requirements on purpose.
+                assertThat(conflictCodes(token, draftId))
+                        .as("%s 是系统底线，关闭后仍必须报出违反", spec.type())
+                        .contains(spec.code());
+            } else {
+                assertThat(conflictCodes(token, draftId))
+                        .as("%s 关闭后仍然报出违反", spec.type())
+                        .doesNotContain(spec.code());
+            }
         }
 
         if (spec.soft()) {

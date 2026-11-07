@@ -99,10 +99,10 @@
             data-testid="constraint-ai-add"
             @click="onAdd"
           >
-            添加到约束表（已选 {{ selectedProposals.length }} 条）
+            添加到规则（已选 {{ selectedProposals.length }} 条）
           </el-button>
           <span class="ai-note-inline">
-            加入后仍是未保存修改；统一「保存配置」后才生效。
+            加入后仍是未保存修改；统一「保存规则」后才生效。
           </span>
         </div>
         <p class="ai-note" data-testid="constraint-ai-note">

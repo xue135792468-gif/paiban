@@ -16,7 +16,7 @@ export function cardsSignature(cards: RuleCard[]): string {
         classId: sentence.classId,
         teacherId: sentence.teacherId,
         courseId: sentence.courseId,
-        dayOfWeek: sentence.dayOfWeek,
+        days: [...sentence.days].sort((left, right) => left - right),
         periodNos: [...sentence.periodNos].sort((left, right) => left - right),
         amount: sentence.amount,
         strength: sentence.strength,

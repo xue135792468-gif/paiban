@@ -567,7 +567,6 @@ public class LifecycleService {
         }
         for (String[] known : new String[][] {
                 {"CONSTRAINT_RULE", "排课规则"},
-                {"CONSTRAINT_TEMPLATE", "规则模板"},
                 {"TIMETABLE_DRAFT", "课表草稿"},
                 {"AI_PROVIDER", "AI 供应商"},
                 {"AI_MODEL", "AI 模型"},

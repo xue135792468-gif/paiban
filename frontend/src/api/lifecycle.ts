@@ -8,11 +8,11 @@ export type LifecycleLabelType =
   | LifecycleEntityType
   | 'import_recipe'
   | 'constraint_rule'
-  | 'constraint_template'
   | 'timetable_draft'
   | 'ai_provider'
   | 'ai_model'
   | 'dingtalk_config'
+  | 'rule_group'
 
 export type DeleteMode = 'DELETE' | 'CASCADE'
 
@@ -77,11 +77,11 @@ export const LIFECYCLE_ENTITY_LABEL: Record<LifecycleLabelType, string> = {
   assignment: '授课任务',
   import_recipe: '导入配方',
   constraint_rule: '排课规则',
-  constraint_template: '规则模板',
   timetable_draft: '课表草稿',
   ai_provider: 'AI 供应商',
   ai_model: 'AI 模型',
   dingtalk_config: '钉钉配置',
+  rule_group: '分组',
 }
 
 export async function getDeleteImpact(

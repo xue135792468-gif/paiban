@@ -155,32 +155,6 @@ class ConstraintWorkspaceIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void applyingATemplateAlsoClearsTheCallersWorkspace() {
-        String token = adminToken();
-        long semesterId = semesterWithPeriods(token);
-        as(token).queryParam("semesterId", semesterId).queryParam("baseVersion", 0)
-                .body(Map.of("configs", List.of(Map.of(
-                        "type", "TEACHER_CONFLICT", "params", Map.of(), "weight", 100,
-                        "hard", true, "enabled", true))))
-                .when().put("/api/constraints").then().statusCode(200);
-        long templateId = as(token).queryParam("semesterId", semesterId)
-                .body(Map.of("name", "工作区模板-" + TestData.suffix()))
-                .when().post("/api/constraint-templates")
-                .then().statusCode(200).extract().jsonPath().getLong("id");
-        saveWorkspace(token, semesterId, 0, 0, payload("待保存", List.of()))
-                .then().statusCode(200);
-
-        as(token).queryParam("semesterId", semesterId).queryParam("baseVersion", 1)
-                .when().post("/api/constraint-templates/" + templateId + "/apply")
-                .then().statusCode(200);
-
-        as(token).queryParam("semesterId", semesterId)
-                .when().get("/api/constraint-workspace")
-                .then().statusCode(200)
-                .body("exists", equalTo(false));
-    }
-
-    @Test
     void deletingDiscardsOnlyTheCallersWork() {
         String admin = adminToken();
         long semesterId = semesterWithPeriods(admin);

@@ -102,38 +102,6 @@ class ConstraintThresholdControlsIntegrationTest extends ApiIntegrationTest {
                 .isEqualTo(false);
     }
 
-    @Test
-    void templateRoundTripKeepsBothScopesAndTheirControls() {
-        String token = adminToken();
-        long source = semesterWithPeriods(token);
-        long teacher = TestData.teacher(token, "上限模板" + TestData.suffix());
-        save(token, source, List.of(teacherMax(
-                true, scope(null, 4, true, null),
-                scope(teacher, 6, false, 30)))).then().statusCode(200);
-
-        long templateId = as(token).queryParam("semesterId", source)
-                .body(Map.of("name", "阈值控制-" + TestData.suffix()))
-                .when().post("/api/constraint-templates")
-                .then().statusCode(200)
-                .body("entryCount", equalTo(2))
-                .extract().jsonPath().getLong("id");
-
-        long target = semesterWithPeriods(token);
-        as(token).queryParam("semesterId", target)
-                .when().post("/api/constraint-templates/" + templateId + "/apply")
-                .then().statusCode(200)
-                .body("find { it.type == 'TEACHER_MAX_PER_DAY' }.entries", hasSize(2));
-
-        List<Map<String, Object>> restored = reload(token, target);
-        assertThat(restored).hasSize(2);
-        Map<?, ?> globalParams = (Map<?, ?>) restored.get(0).get("params");
-        assertThat(((Number) globalParams.get("maxPerDay")).intValue()).isEqualTo(4);
-        assertThat(restored.get(0).get("hard")).isEqualTo(true);
-        assertThat(restored.get(1).get("hard")).isEqualTo(false);
-        assertThat(((Number) restored.get(1).get("weight")).intValue()).isEqualTo(30);
-        assertThat(restored.get(1).get("id")).isNotNull();
-    }
-
     // ------------------------------------------------------------------ helpers
 
     private long semesterWithPeriods(String token) {

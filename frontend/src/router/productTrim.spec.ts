@@ -54,11 +54,6 @@ describe('product trim routing', () => {
     const rules = mainChildren[3]
     expect(rules.name).toBe('rules')
     expect(rules.meta?.title).toBe('排课规则')
-    // The type-by-type editor keeps its own route so existing bookmarks and
-    // advanced rules remain reachable without taking over the default page.
-    expect(mainChildren.find((route) => route.path === 'rules/advanced')?.name).toBe(
-      'constraints',
-    )
 
     const ai = mainChildren[5]
     expect(ai.name).toBe('ai-providers')
@@ -114,7 +109,7 @@ describe('product trim routing', () => {
       ['/substitutions', '/substitution'],
       ['/substitutions?requestId=9', '/substitution/requests?requestId=9'],
       ['/substitutions/workbench', '/substitution'],
-      ['/admin/constraints', '/rules/advanced'],
+      ['/admin/constraints', '/rules'],
       ['/admin/ai-providers', '/ai'],
       ['/admin/settings', '/settings/general'],
       ['/admin/users', '/settings/users'],

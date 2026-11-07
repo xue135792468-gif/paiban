@@ -22,6 +22,21 @@
     </div>
 
     <el-card shadow="never">
+      <div v-if="groups.length > 0" class="group-filter-row">
+        <el-select
+          v-model="filterGroupId"
+          class="group-filter"
+          data-testid="teacher-group-filter"
+        >
+          <el-option label="全部分组" value="all" />
+          <el-option
+            v-for="group in groups"
+            :key="group.id"
+            :label="group.name"
+            :value="group.id"
+          />
+        </el-select>
+      </div>
       <EmptyStateGuide
         v-if="!loading && teachers.length === 0"
         title="还没有教师数据"
@@ -31,13 +46,20 @@
         help-anchor="teachers"
         @action="openCreate"
       />
-      <el-table v-else v-loading="loading" :data="teachers" stripe>
+      <el-table v-else v-loading="loading" :data="filteredTeachers" stripe>
         <el-table-column prop="employeeNo" label="工号" min-width="120">
           <template #default="{ row }">
             <span>{{ row.employeeNo || '—' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="name" label="姓名" min-width="120" />
+        <el-table-column prop="name" label="姓名" min-width="160">
+          <template #default="{ row }">
+            <span>{{ row.name }}</span>
+            <span v-if="suffixOf(row)" class="group-suffix" :data-testid="`teacher-group-suffix-${row.id}`">
+              · {{ suffixOf(row) }}
+            </span>
+          </template>
+        </el-table-column>
         <el-table-column prop="subject" label="任教学科" min-width="120">
           <template #default="{ row }">
             <span>{{ row.subject || '—' }}</span>
@@ -136,10 +158,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Download, Upload } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
+import { getRuleGroups, type RuleGroup } from '@/api/ruleGroups'
 import { useAuthStore } from '@/stores/auth'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ImportDialog from '@/components/ImportDialog.vue'
@@ -167,6 +190,36 @@ const dialogVisible = ref(false)
 const importVisible = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
+const groups = ref<RuleGroup[]>([])
+const filterGroupId = ref<number | 'all'>('all')
+
+const filteredTeachers = computed(() => {
+  if (filterGroupId.value === 'all') {
+    return teachers.value
+  }
+  const group = groups.value.find((item) => item.id === filterGroupId.value)
+  if (!group) {
+    return teachers.value
+  }
+  const memberIds = new Set(
+    group.members
+      .filter((member) => member.kind === 'TEACHER')
+      .map((member) => member.objectId),
+  )
+  return teachers.value.filter((teacher) => memberIds.has(teacher.id))
+})
+
+/** 「教导主任」/「教导主任、数学组」 for the name column. */
+function teacherGroupNames(teacherId: number): string[] {
+  return groups.value
+    .filter((group) =>
+      group.members.some((member) => member.kind === 'TEACHER' && member.objectId === teacherId))
+    .map((group) => group.name)
+}
+
+function suffixOf(row: Teacher): string {
+  return teacherGroupNames(row.id).join('、')
+}
 
 const defaultForm = {
   name: '',
@@ -283,7 +336,22 @@ async function handleExport() {
   }
 }
 
-onMounted(load)
+/**
+ * Groups only decorate the list; a missing read permission must not block the
+ * teacher page, so a failure leaves the suffix/filter empty.
+ */
+async function loadGroups() {
+  try {
+    groups.value = await getRuleGroups('TEACHER')
+  } catch (e: unknown) {
+    groups.value = []
+    console.warn('加载教师分组失败', e)
+  }
+}
+
+onMounted(async () => {
+  await Promise.all([load(), loadGroups()])
+})
 </script>
 
 <style scoped>
@@ -291,6 +359,16 @@ onMounted(load)
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+}
+.group-suffix {
+  color: var(--paiban-muted, #6b7280);
+  font-size: 12px;
+}
+.group-filter-row {
+  margin-bottom: 12px;
+}
+.group-filter {
+  width: 220px;
 }
 .toolbar {
   display: flex;

@@ -16,7 +16,23 @@
     </div>
 
     <el-card v-loading="loading" shadow="never">
-      <el-table :data="rows" border>
+      <div v-if="groupFilterOptions.length > 0" class="filter-row">
+        <span class="filter-label">筛选时间组</span>
+        <el-select
+          v-model="groupFilter"
+          class="group-filter"
+          data-testid="schedule-group-filter"
+        >
+          <el-option label="全部时间组" value="" />
+          <el-option
+            v-for="name in groupFilterOptions"
+            :key="name"
+            :label="name"
+            :value="name"
+          />
+        </el-select>
+      </div>
+      <el-table :data="filteredRows" border>
         <el-table-column label="节次" width="110">
           <template #default="{ row }">
             <el-input-number v-model="row.periodNo" :min="1" :max="20" size="small" controls-position="right" />
@@ -25,6 +41,11 @@
         <el-table-column label="名称" width="150">
           <template #default="{ row }">
             <el-input v-model="row.label" size="small" />
+          </template>
+        </el-table-column>
+        <el-table-column label="时间组" width="150">
+          <template #default="{ row }">
+            <span :data-testid="`schedule-time-group-${row.periodNo}`">{{ timeGroupSuffix(row) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="开始" width="120">
@@ -72,12 +93,13 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Plus } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
+import { getRuleGroups, type RuleGroup } from '@/api/ruleGroups'
 
 interface Semester {
   id: number
@@ -110,6 +132,9 @@ const rows = ref<SlotRow[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const generating = ref(false)
+const timeGroups = ref<RuleGroup[]>([])
+/** Filter value is a group name: time-group names are unique per semester. */
+const groupFilter = ref('')
 
 const days = [
   { value: 1, label: '周一' },
@@ -156,7 +181,57 @@ async function load() {
   } finally {
     loading.value = false
   }
+  await loadTimeGroups()
 }
+
+/**
+ * Ticket 06: groups only decorate the list; a failed read must not block the
+ * timetable editor, so the column and filter quietly stay empty.
+ */
+async function loadTimeGroups() {
+  try {
+    timeGroups.value = await getRuleGroups('TIME', semesterId)
+  } catch (e: unknown) {
+    timeGroups.value = []
+    console.warn('加载时间分组失败', e)
+  }
+}
+
+const groupFilterOptions = computed(() => {
+  const names = new Set<string>()
+  for (const group of timeGroups.value) {
+    names.add(group.name)
+  }
+  return Array.from(names)
+})
+
+/** A row is one period number; a group claims it when it has any of the row's days. */
+function timeGroupNamesForRow(row: SlotRow): string[] {
+  const names = new Set<string>()
+  for (const group of timeGroups.value) {
+    const matches = group.members.some((member) =>
+      member.kind === 'TIME'
+      && member.dayOfWeek !== null
+      && member.periodNo === row.periodNo
+      && row.days.includes(member.dayOfWeek))
+    if (matches) {
+      names.add(group.name)
+    }
+  }
+  return Array.from(names)
+}
+
+function timeGroupSuffix(row: SlotRow): string {
+  const names = timeGroupNamesForRow(row)
+  return names.length > 0 ? names.join('、') : '—'
+}
+
+const filteredRows = computed(() => {
+  if (!groupFilter.value) {
+    return rows.value
+  }
+  return rows.value.filter((row) => timeGroupNamesForRow(row).includes(groupFilter.value))
+})
 
 function toggleDay(row: SlotRow, day: number, checked: boolean) {
   if (checked && !row.days.includes(day)) row.days.push(day)
@@ -248,6 +323,19 @@ h2 {
 .actions {
   display: flex;
   gap: 8px;
+}
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.filter-label {
+  color: var(--paiban-muted, #6b7280);
+  font-size: 13px;
+}
+.group-filter {
+  width: 200px;
 }
 .add-row {
   margin-top: 12px;

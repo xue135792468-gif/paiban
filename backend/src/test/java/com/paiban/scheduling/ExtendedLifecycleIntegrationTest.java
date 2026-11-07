@@ -22,7 +22,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
- * Ticket 04's extended lifecycle: rule cards, templates, drafts, users, AI providers
+ * Ticket 04's extended lifecycle: rule cards, drafts, users, AI providers
  * and DingTalk settings all delete softly, appear in the 7-day recycle bin and restore
  * through the single {@code LifecycleService} seam.
  */
@@ -351,31 +351,6 @@ class ExtendedLifecycleIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void deletedTemplateHidesAndRestores() {
-        String token = adminToken();
-        Seed seed = seed(token);
-        saveUnavailable(token, seed, List.of(entry(seed.teacherId(), 1, 1, "card-a:0")))
-                .then().statusCode(200);
-        String name = "模板" + TestData.suffix();
-        Response created = as(token).queryParam("semesterId", seed.semesterId())
-                .body(Map.of("name", name))
-                .when().post("/api/constraint-templates");
-        created.then().statusCode(200);
-        long templateId = created.jsonPath().getLong("id");
-
-        as(token).when().delete("/api/constraint-templates/" + templateId)
-                .then().statusCode(200);
-        List<Integer> ids = as(token).when().get("/api/constraint-templates")
-                .then().statusCode(200).extract().jsonPath().getList("id");
-        assertThat(ids).doesNotContain((int) templateId);
-
-        restore(token, latestBatch(token, "CONSTRAINT_TEMPLATE"));
-        List<Integer> restored = as(token).when().get("/api/constraint-templates")
-                .then().statusCode(200).extract().jsonPath().getList("id");
-        assertThat(restored).contains((int) templateId);
-    }
-
-    @Test
     void recycledDraftIsRefusedByValidationSwapPublishAndWithdraw() {
         String token = adminToken();
         ScheduleFixture.Result world = ScheduleFixture.solved(token, 5);
@@ -461,34 +436,6 @@ class ExtendedLifecycleIntegrationTest extends ApiIntegrationTest {
         assertThat(restored).hasSize(1);
         assertThat(restored.get(0).get("groupKey")).isNull();
         assertThat(enabledByGroup(restored)).containsEntry("<legacy>", true);
-    }
-
-    @Test
-    void templateSnapshotAndPreviewSkipRecycledRuleRows() {
-        String token = adminToken();
-        Seed seed = seed(token);
-        saveUnavailable(token, seed, List.of(
-                entry(seed.teacherId(), 1, 1, "card-a:0"),
-                entry(seed.teacherId(), 1, 2, "card-a:0"),
-                entry(seed.teacherId(), 2, 1, "card-b:0")))
-                .then().statusCode(200);
-        long configId = configId(token, seed.semesterId(), "TEACHER_UNAVAILABLE");
-
-        as(token).queryParam("cardKey", "card-a")
-                .when().delete("/api/rules/" + configId)
-                .then().statusCode(200);
-
-        Response created = as(token).queryParam("semesterId", seed.semesterId())
-                .body(Map.of("name", "模板" + TestData.suffix()))
-                .when().post("/api/constraint-templates");
-        created.then().statusCode(200);
-        assertThat(created.jsonPath().getInt("entryCount")).isEqualTo(1);
-        long templateId = created.jsonPath().getLong("id");
-
-        as(token).queryParam("semesterId", seed.semesterId())
-                .when().post("/api/constraint-templates/" + templateId + "/preview")
-                .then().statusCode(200)
-                .body("entryCount", equalTo(1));
     }
 
     @Test

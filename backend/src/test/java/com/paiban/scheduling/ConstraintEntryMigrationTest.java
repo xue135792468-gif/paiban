@@ -20,9 +20,15 @@ import org.junit.jupiter.api.Test;
  * V26 must turn every existing {@code constraint_config.params_json} into one
  * entry row, so a pre-existing single-params configuration keeps its meaning after
  * the upgrade. The check migrates to V25, seeds the old shape, then migrates to
- * the head and reads the entry rows back.
+ * V55 and reads the entry rows back.
+ *
+ * <p>V55 is the last version before ticket 03's V56 reset, which deliberately
+ * deletes every non-system rule and entry. These tests describe V26-V29, so they
+ * stop before the reset instead of asserting data V56 is meant to remove.
  */
 class ConstraintEntryMigrationTest {
+
+    private static final String PRE_RESET_VERSION = "55";
 
     private String url;
 
@@ -37,7 +43,7 @@ class ConstraintEntryMigrationTest {
     void legacyParamsBecomeOneEntryPerType() throws Exception {
         migrateTo("25");
         long semesterId = seedLegacyConfiguration();
-        migrateTo(null);
+        migrateTo(PRE_RESET_VERSION);
 
         try (Connection connection = DriverManager.getConnection(url, "sa", "");
                 Statement statement = connection.createStatement()) {
@@ -63,7 +69,7 @@ class ConstraintEntryMigrationTest {
     void emptyTargetOfAnOptionalTypeBecomesOneExplicitEntry() throws Exception {
         migrateTo("25");
         long semesterId = seedLegacyConfiguration();
-        migrateTo(null);
+        migrateTo(PRE_RESET_VERSION);
 
         try (Connection connection = DriverManager.getConnection(url, "sa", "");
                 Statement statement = connection.createStatement()) {
@@ -96,7 +102,7 @@ class ConstraintEntryMigrationTest {
                 insertConfig(statement, semesterId, type, "{}", false, 50);
             }
         }
-        migrateTo(null);
+        migrateTo(PRE_RESET_VERSION);
 
         try (Connection connection = DriverManager.getConnection(url, "sa", "");
                 Statement statement = connection.createStatement()) {
@@ -130,7 +136,7 @@ class ConstraintEntryMigrationTest {
                     "{\"classId\":9,\"maxPerDay\":5}", false, 50);
             insertConfig(statement, semesterId, "TEACHER_MAX_CONSECUTIVE", null, false, 45);
         }
-        migrateTo(null);
+        migrateTo(PRE_RESET_VERSION);
 
         try (Connection connection = DriverManager.getConnection(url, "sa", "");
                 Statement statement = connection.createStatement()) {
@@ -172,7 +178,7 @@ class ConstraintEntryMigrationTest {
             insertConfig(statement, semesterId, "EVENING_MAX", null, false, 40);
             insertConfig(statement, semesterId, "TEACHER_MAX_CONSECUTIVE", "{}", false, 45);
         }
-        migrateTo(null);
+        migrateTo(PRE_RESET_VERSION);
 
         try (Connection connection = DriverManager.getConnection(url, "sa", "");
                 Statement statement = connection.createStatement()) {
@@ -208,7 +214,7 @@ class ConstraintEntryMigrationTest {
             }
             insertConfig(statement, semesterId, "TEACHER_MAX_PER_DAY", "{\"maxPerDay\":6}", false, 60);
         }
-        migrateTo(null);
+        migrateTo(PRE_RESET_VERSION);
 
         try (Connection connection = DriverManager.getConnection(url, "sa", "");
                 Statement statement = connection.createStatement()) {
@@ -220,25 +226,6 @@ class ConstraintEntryMigrationTest {
                     + " where e.semester_id = c.semester_id and e.type = c.type)");
             assertThat(entriesOfType(statement, semesterId, "TEACHER_MAX_PER_DAY"))
                     .containsExactly("{\"maxPerDay\":6}");
-        }
-    }
-
-    @Test
-    void v29WidensTheTemplateTextBeyondTheOldEightThousandCharacters() throws Exception {
-        migrateTo("28");
-        migrateTo(null);
-
-        // A 200-entry template is ~12k characters, so anything past 8000 must round trip.
-        String wide = "x".repeat(60_000);
-        try (Connection connection = DriverManager.getConnection(url, "sa", "");
-                Statement statement = connection.createStatement()) {
-            statement.executeUpdate("insert into constraint_template (name, configs_json, created_at)"
-                    + " values ('宽模板', '" + wide + "', CURRENT_TIMESTAMP)");
-            try (ResultSet row = statement.executeQuery(
-                    "select length(configs_json) from constraint_template where name = '宽模板'")) {
-                assertThat(row.next()).isTrue();
-                assertThat(row.getInt(1)).isEqualTo(60_000);
-            }
         }
     }
 

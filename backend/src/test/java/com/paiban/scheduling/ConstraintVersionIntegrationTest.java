@@ -121,28 +121,6 @@ class ConstraintVersionIntegrationTest extends ApiIntegrationTest {
         }
     }
 
-    @Test
-    void aTemplateApplyHonoursTheSameVersion() {
-        String token = adminToken();
-        long semesterId = semesterWithPeriods(token);
-        save(token, semesterId, null, List.of(switchConfig("TEACHER_CONFLICT"))).then().statusCode(200);
-        long templateId = as(token).queryParam("semesterId", semesterId)
-                .body(Map.of("name", "版本模板-" + TestData.suffix()))
-                .when().post("/api/constraint-templates")
-                .then().statusCode(200).extract().jsonPath().getLong("id");
-        save(token, semesterId, 1L, List.of(switchConfig("CLASS_CONFLICT"))).then().statusCode(200);
-
-        // Based on version 1 while the semester is at 2: refused, nothing changes.
-        as(token).queryParam("semesterId", semesterId).queryParam("baseVersion", 1L)
-                .when().post("/api/constraint-templates/" + templateId + "/apply")
-                .then().statusCode(409);
-
-        as(token).queryParam("semesterId", semesterId).queryParam("baseVersion", 2L)
-                .when().post("/api/constraint-templates/" + templateId + "/apply")
-                .then().statusCode(200);
-        assertThat(stateVersion(token, semesterId)).isEqualTo(3);
-    }
-
     // ------------------------------------------------------------------ helpers
 
     private Callable<Integer> concurrentSave(

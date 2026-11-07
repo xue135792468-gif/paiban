@@ -1,7 +1,6 @@
 package com.paiban.scheduling.web;
 
 import com.paiban.scheduling.service.ConstraintConfigDiff;
-import jakarta.validation.constraints.NotBlank;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -120,7 +119,7 @@ public final class ConstraintDtos {
      * showing them and only a real solve refuses to start.
      */
     public record ConstraintPreviewDto(List<String> errors,
-                                       List<TemplateReferenceIssue> invalidReferences,
+                                       List<ConstraintReferenceIssue> invalidReferences,
                                        List<String> warnings) {}
 
     /**
@@ -142,35 +141,30 @@ public final class ConstraintDtos {
     public record ConstraintStateDto(long version, List<ConstraintConfigDto> configs) {}
 
     /**
-     * {@code configCount} is the number of type rows the template holds,
-     * {@code entryCount} the number of parameter entries it will restore.
+     * One object reference that no longer resolves: {@code position} is the 1-based
+     * entry inside its type, {@code name} the object's current name when it still
+     * exists somewhere.
      */
-    public record TemplateDto(Long id, String name, Instant createdAt, int configCount,
-                              int entryCount) {}
+    public record ConstraintReferenceIssue(String type, String typeName, int position, String field,
+                                           String fieldLabel, Long objectId, String name,
+                                           String reason) {}
 
     /**
-     * Optional body of a template apply. {@code classMapping} names the target-semester
-     * class for each class id the template carries; an id that is not named is reported
-     * as invalid instead of being matched by name.
+     * Copy the whole non-system rule set of one semester onto another (ticket 08).
+     * {@code baseVersion} is the target semester's version the page read; a mismatch
+     * returns 409 instead of overwriting a newer configuration.
      */
-    public record TemplateApplyRequest(Map<Long, Long> classMapping) {}
+    public record CopyRulesRequest(Long sourceSemesterId, Long targetSemesterId,
+                                   Long baseVersion) {}
 
     /**
-     * One template reference that cannot be carried into the target semester:
-     * {@code position} is the 1-based entry inside its type, {@code name} the object's
-     * current name when it still exists somewhere.
+     * One copied card that could not be used in the target semester, with the reason in
+     * plain Chinese. {@code groupKey} is the card's new key in the target semester, so
+     * the page can point at the exact card it must fix or delete.
      */
-    public record TemplateReferenceIssue(String type, String typeName, int position, String field,
-                                         String fieldLabel, Long objectId, String name,
-                                         String reason) {}
+    public record CopyRuleIssue(String type, String typeName, String groupKey, String reason) {}
 
-    /**
-     * Dry run of an apply: what it would restore ({@code configCount}/{@code entryCount}),
-     * which references are invalid, and any other reason the save would be refused.
-     */
-    public record TemplateApplyPreview(int configCount, int entryCount,
-                                       List<TemplateReferenceIssue> invalidReferences,
-                                       List<String> errors) {}
-
-    public record SaveTemplateRequest(@NotBlank(message = "模板名称不能为空") String name) {}
+    /** {@code copiedCards} counts every card written; {@code disabledCards} the unusable ones. */
+    public record CopyRulesResult(int copiedCards, int disabledCards,
+                                  List<CopyRuleIssue> issues) {}
 }

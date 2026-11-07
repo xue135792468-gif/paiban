@@ -12,32 +12,24 @@ import com.paiban.scheduling.web.ConstraintDtos.ConstraintStateDto;
 import com.paiban.scheduling.web.ConstraintDtos.ConstraintTypeDto;
 import com.paiban.scheduling.web.ConstraintDtos.ParamDefDto;
 import com.paiban.scheduling.web.ConstraintDtos.ProposalDecision;
-import com.paiban.scheduling.web.ConstraintDtos.TemplateApplyPreview;
-import com.paiban.scheduling.web.ConstraintDtos.TemplateApplyRequest;
-import com.paiban.scheduling.web.ConstraintDtos.TemplateDto;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
 /**
  * The constraint module's entry point: the type catalogue plus one facade over
- * {@link ConstraintConfigService} (planning, saving, version, settings) and
- * {@link ConstraintTemplateService} (templates).
+ * {@link ConstraintConfigService} (planning, saving, version, settings).
  *
  * <p>Every existing caller — the REST controller, the solver, draft validation,
  * publication readiness, substitution and the CLI — keeps this single dependency,
- * while the behaviour lives in the two focused services.
+ * while the behaviour lives in the focused service.
  */
 @Service
 public class ConstraintService {
 
     private final ConstraintConfigService configService;
-    private final ConstraintTemplateService templateService;
 
-    public ConstraintService(
-            ConstraintConfigService configService,
-            ConstraintTemplateService templateService) {
+    public ConstraintService(ConstraintConfigService configService) {
         this.configService = configService;
-        this.templateService = templateService;
     }
 
     // ---------------------------------------------------------------- catalogue
@@ -111,41 +103,6 @@ public class ConstraintService {
     /** The one settings snapshot every evaluation entry point builds. */
     public ConstraintSettings settings(Long semesterId) {
         return configService.settings(semesterId);
-    }
-
-    // ----------------------------------------------------------------- templates
-
-    public TemplateDto saveTemplate(String name, Long semesterId) {
-        return templateService.saveTemplate(name, semesterId);
-    }
-
-    public List<TemplateDto> listTemplates() {
-        return templateService.listTemplates();
-    }
-
-    public List<ConstraintConfigDto> applyTemplate(
-            Long templateId, Long semesterId, TemplateApplyRequest request) {
-        return templateService.applyTemplate(templateId, semesterId, request);
-    }
-
-    public List<ConstraintConfigDto> applyTemplate(
-            Long templateId, Long semesterId, TemplateApplyRequest request, Long baseVersion) {
-        return templateService.applyTemplate(templateId, semesterId, request, baseVersion);
-    }
-
-    public List<ConstraintConfigDto> applyTemplate(
-            Long templateId, Long semesterId, TemplateApplyRequest request, Long baseVersion,
-            String actor) {
-        return templateService.applyTemplate(templateId, semesterId, request, baseVersion, actor);
-    }
-
-    public TemplateApplyPreview previewTemplate(
-            Long templateId, Long semesterId, TemplateApplyRequest request) {
-        return templateService.previewTemplate(templateId, semesterId, request);
-    }
-
-    public void deleteTemplate(Long id) {
-        templateService.deleteTemplate(id);
     }
 
     private ParamDefDto toDto(Param param) {

@@ -209,14 +209,8 @@ export const routes: RouteRecordRaw[] = [
         ],
       },
 
-      // 排课规则的高级入口：按约束类型逐条配置。它保持一级页面仍是七项，
-      // 因此排在设置之后；导航高亮由路径前缀归到「排课规则」。
-      {
-        path: 'rules/advanced',
-        name: 'constraints',
-        component: () => import('@/views/ConstraintsView.vue'),
-        meta: { title: '排课规则（按类型）', permission: 'constraint:manage' },
-      },
+      // 旧的高级入口已下线：所有规则都在规则页，旧书签直接回到 `/rules`。
+      { path: 'rules/advanced', redirect: '/rules' },
 
       // 系统页：保留路由，但不再出现在一级导航。
       {
@@ -261,7 +255,7 @@ export const routes: RouteRecordRaw[] = [
             : { path: '/substitution' },
       },
       { path: 'substitutions/workbench', redirect: '/substitution' },
-      { path: 'admin/constraints', redirect: '/rules/advanced' },
+      { path: 'admin/constraints', redirect: '/rules' },
       { path: 'admin/ai-providers', redirect: '/ai' },
       { path: 'admin/settings', redirect: '/settings/general' },
       { path: 'admin/users', redirect: '/settings/users' },

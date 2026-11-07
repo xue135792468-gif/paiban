@@ -99,6 +99,18 @@ test.describe('排课规则：完整积木交互', () => {
     await expect(dropdown).toBeHidden()
   }
 
+  /** The weekday picker is now a multi-select; each pick keeps the dropdown open. */
+  async function pickDays(page: Page, testId: string, labels: string[]) {
+    const select = form(page).getByTestId(testId)
+    await select.click()
+    const dropdown = page.locator('.el-select-dropdown:visible').last()
+    for (const label of labels) {
+      await dropdown.getByText(label, { exact: true }).first().click()
+    }
+    await page.keyboard.press('Escape')
+    await expect(dropdown).toBeHidden()
+  }
+
   test('一张卡两句：全校不排 + 除了九（2）班', async ({ page }) => {
     await resetRules()
     await uiLogin(page, 'admin', 'admin123')
@@ -107,18 +119,20 @@ test.describe('排课规则：完整积木交互', () => {
 
     await page.getByTestId('rule-new').click()
     const editor = form(page)
-    await pickOption(editor, 'rule-type', '全校/班级 的 课 不排')
-    await pickOption(editor, 'rule-day', '周一')
+    await pickOption(editor, 'rule-subject', '全校')
+    await pickOption(editor, 'rule-type', '不上课')
+    await pickDays(page, 'rule-days', ['周一'])
     await editor.getByTestId('rule-period-3').click()
 
     await editor.getByTestId('rule-add-sentence').click()
     await expect(editor.getByTestId('rule-sentence-block-1')).toBeVisible()
-    await pickOption(editor, 'rule-type-1', '全校/班级 的 课 不排')
-    await pickOption(editor, 'rule-day-1', '周二')
+    await pickOption(editor, 'rule-subject-1', '全校')
+    await pickOption(editor, 'rule-type-1', '不上课')
+    await pickDays(page, 'rule-days-1', ['周二'])
     await editor.getByTestId('rule-period-3-1').click()
     await pickException(page, 'rule-exceptions-1', classB.name)
 
-    await expect(editor.getByTestId('rule-preview')).toContainText('周一第 3 节 不排')
+    await expect(editor.getByTestId('rule-preview')).toContainText('周一第 3 节 不上课')
     await expect(editor.getByTestId('rule-preview')).toContainText('除了')
     await editor.getByTestId('rule-submit').click()
 
@@ -168,9 +182,9 @@ test.describe('排课规则：完整积木交互', () => {
     const teacherName = seed.teachers[0].name
     await page.getByTestId('rule-new').click()
     const editor = form(page)
-    await pickOption(editor, 'rule-type', '教师 的 课 不排')
-    await pickOption(editor, 'rule-teacher', teacherName)
-    await pickOption(editor, 'rule-day', '周五')
+    await pickOption(editor, 'rule-subject', `教师 · ${teacherName}`)
+    await pickOption(editor, 'rule-type', '不上课')
+    await pickDays(page, 'rule-days', ['周五'])
     // 票 15：时段改成按节次勾选，「整个下午」= 第 5–8 节。
     for (const periodNo of [5, 6, 7, 8]) {
       await editor.getByTestId(`rule-period-${periodNo}`).click()
@@ -178,8 +192,9 @@ test.describe('排课规则：完整积木交互', () => {
     await editor.getByTestId('rule-submit').click()
 
     await page.getByTestId('rule-new').click()
-    await pickOption(form(page), 'rule-type', '全校/班级 的 课 不排')
-    await pickOption(form(page), 'rule-day', '周五')
+    await pickOption(form(page), 'rule-subject', '全校')
+    await pickOption(form(page), 'rule-type', '不上课')
+    await pickDays(page, 'rule-days', ['周五'])
     await form(page).getByTestId('rule-period-7').click()
     await form(page).getByTestId('rule-submit').click()
 
@@ -199,7 +214,7 @@ test.describe('排课规则：完整积木交互', () => {
     // 影响预览：教师规则至少报告这位教师和课节数。
     const teacherCard = page
       .getByTestId('rule-card')
-      .filter({ hasText: `${teacherName} 的 课 在 周五第 5、6、7、8 节 不排` })
+      .filter({ hasText: `${teacherName} 周五第 5、6、7、8 节 不上课` })
       .first()
     await teacherCard.getByTestId('rule-impact').click()
     await expect(page.getByTestId('rule-impact-summary')).toBeVisible()
@@ -221,7 +236,7 @@ test.describe('排课规则：完整积木交互', () => {
     // 停用原卡：只有这张卡的分组变成 enabled=false。
     const original = page
       .getByTestId('rule-card')
-      .filter({ hasText: `${teacherName} 的 课 在 周五第 5、6、7、8 节 不排` })
+      .filter({ hasText: `${teacherName} 周五第 5、6、7、8 节 不上课` })
       .first()
     await original.getByTestId('rule-toggle').click()
     await expect(original.getByTestId('rule-disabled-tag')).toBeVisible()
@@ -240,7 +255,7 @@ test.describe('排课规则：完整积木交互', () => {
     // 删除复制出来的卡：确认弹窗先展示影响，删除后另一张卡不受影响。
     const copies = page
       .getByTestId('rule-card')
-      .filter({ hasText: `${teacherName} 的 课 在 周五第 5、6、7、8 节 不排` })
+      .filter({ hasText: `${teacherName} 周五第 5、6、7、8 节 不上课` })
     // 票 04：删卡直接走服务端（进「最近删除」），保存按钮因此不再变脏。
     const deleted = page.waitForResponse(
       (response) =>

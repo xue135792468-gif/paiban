@@ -1,6 +1,6 @@
 package com.paiban.scheduling.web;
 
-import com.paiban.scheduling.web.ConstraintDtos.TemplateReferenceIssue;
+import com.paiban.scheduling.web.ConstraintDtos.ConstraintReferenceIssue;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -24,5 +24,5 @@ public final class ConstraintWorkspaceDtos {
     public record ConstraintWorkspaceDto(boolean exists, long revision, long baseVersion,
                                          Map<String, Object> payload, Instant updatedAt,
                                          List<String> errors,
-                                         List<TemplateReferenceIssue> invalidReferences) {}
+                                         List<ConstraintReferenceIssue> invalidReferences) {}
 }

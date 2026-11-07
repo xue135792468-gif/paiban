@@ -9,8 +9,6 @@ import com.paiban.scheduling.domain.ConstraintConfig;
 import com.paiban.scheduling.domain.ConstraintConfigRepository;
 import com.paiban.scheduling.domain.ConstraintEntry;
 import com.paiban.scheduling.domain.ConstraintEntryRepository;
-import com.paiban.scheduling.domain.ConstraintTemplate;
-import com.paiban.scheduling.domain.ConstraintTemplateRepository;
 import com.paiban.scheduling.domain.DraftLesson;
 import com.paiban.scheduling.domain.DraftLessonRepository;
 import com.paiban.scheduling.domain.TimetableDraft;
@@ -40,9 +38,6 @@ class ConstraintEntriesIntegrationTest extends ApiIntegrationTest {
 
     @Autowired
     private ConstraintConfigRepository configRepository;
-
-    @Autowired
-    private ConstraintTemplateRepository templateRepository;
 
     @Autowired
     private TimetableDraftRepository draftRepository;
@@ -249,62 +244,6 @@ class ConstraintEntriesIntegrationTest extends ApiIntegrationTest {
         assertThat(unavailableEntries(source).get(0).getId()).isEqualTo(seededEntryId);
     }
 
-
-    @Test
-    void templateRoundTripRestoresEveryEntry() {
-        String token = adminToken();
-        long source = semesterWithPeriods(token);
-        long first = TestData.teacher(token, "模板甲" + TestData.suffix());
-        long second = TestData.teacher(token, "模板乙" + TestData.suffix());
-        save(token, source, List.of(
-                unavailable(entry(first, 1, 1), entry(first, 1, 2), entry(second, 2, 4)),
-                Map.of("type", "CLASS_MAX_PER_DAY", "params", Map.of("maxPerDay", 7),
-                        "weight", 65, "hard", false, "enabled", true))).then().statusCode(200);
-
-        long templateId = as(token).queryParam("semesterId", source)
-                .body(Map.of("name", "多条教师禁排-" + TestData.suffix()))
-                .when().post("/api/constraint-templates")
-                .then().statusCode(200)
-                .body("configCount", equalTo(2))
-                .extract().jsonPath().getLong("id");
-
-        long target = semesterWithPeriods(token);
-        as(token).queryParam("semesterId", target)
-                .when().post("/api/constraint-templates/" + templateId + "/apply")
-                .then().statusCode(200)
-                .body("find { it.type == 'TEACHER_UNAVAILABLE' }.entries", hasSize(3));
-
-        List<Map<String, Object>> restored =
-                as(token).queryParam("semesterId", target).when().get("/api/constraints")
-                        .then().statusCode(200)
-                        .extract().jsonPath()
-                        .getList("find { it.type == 'TEACHER_UNAVAILABLE' }.entries");
-        assertThat(restored).hasSize(3);
-        assertThat(restored.stream()
-                .map(row -> ((Number) ((Map<?, ?>) row.get("params")).get("teacherId")).longValue())
-                .toList()).containsExactly(first, first, second);
-        assertThat(unavailableEntries(target)).hasSize(3);
-    }
-
-    @Test
-    void legacyTemplateWithoutEntriesStillApplies() {
-        String token = adminToken();
-        long semesterId = semesterWithPeriods(token);
-        long teacher = TestData.teacher(token, "老模板" + TestData.suffix());
-        // The pre-V26 template shape: one params map per type, no entries array.
-        String legacyJson = "[{\"type\":\"TEACHER_UNAVAILABLE\",\"params\":{\"teacherId\":" + teacher
-                + ",\"dayOfWeek\":1,\"periodNo\":3},\"weight\":100,\"hard\":true,\"enabled\":true}]";
-        long templateId = seedLegacyTemplate("老模板-" + TestData.suffix(), legacyJson);
-
-        as(token).queryParam("semesterId", semesterId)
-                .when().post("/api/constraint-templates/" + templateId + "/apply")
-                .then().statusCode(200)
-                .body("find { it.type == 'TEACHER_UNAVAILABLE' }.entries", hasSize(1))
-                .body("find { it.type == 'TEACHER_UNAVAILABLE' }.entries[0].params.periodNo",
-                        equalTo(3));
-        assertThat(unavailableEntries(semesterId)).hasSize(1);
-    }
-
     @Test
     void draftCheckAndPublishRefuseBothUnavailableSlots() {
         String token = adminToken();
@@ -500,14 +439,5 @@ class ConstraintEntriesIntegrationTest extends ApiIntegrationTest {
         return entryRepository.findBySemesterId(semesterId).stream()
                 .filter(entry -> "TEACHER_UNAVAILABLE".equals(entry.getType()))
                 .toList();
-    }
-
-    /** Seeds a template row in the pre-V26 JSON shape, bypassing the current writer. */
-    private long seedLegacyTemplate(String name, String configsJson) {
-        ConstraintTemplate template = new ConstraintTemplate();
-        template.setName(name);
-        template.setConfigsJson(configsJson);
-        template.setCreatedAt(java.time.Instant.now());
-        return templateRepository.save(template).getId();
     }
 }

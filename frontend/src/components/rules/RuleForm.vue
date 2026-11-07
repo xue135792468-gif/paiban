@@ -14,6 +14,12 @@
       :courses="courses"
       :days="days"
       :periods="periods"
+      :teacher-groups="teacherGroups"
+      :create-teacher-group="createTeacherGroup"
+      :course-groups="courseGroups"
+      :create-course-group="createCourseGroup"
+      :time-groups="timeGroups"
+      :create-time-group="createTimeGroup"
       @update:sentence="updateSentence(index, $event)"
       @remove="removeSentence(index)"
     />
@@ -74,6 +80,12 @@ const props = defineProps<{
   courses: OptionItem[]
   days: number[]
   periods: PeriodOption[]
+  teacherGroups?: { id: number; name: string; memberIds?: number[] }[]
+  createTeacherGroup?: (name: string) => Promise<{ id: number; name: string } | null>
+  courseGroups?: { id: number; name: string; memberIds?: number[] }[]
+  createCourseGroup?: (name: string) => Promise<{ id: number; name: string } | null>
+  timeGroups?: { id: number; name: string }[]
+  createTimeGroup?: (name: string) => Promise<{ id: number; name: string } | null>
 }>()
 
 const emit = defineEmits<{
@@ -94,12 +106,17 @@ const names = computed<RuleNames>(() => ({
   teacher: (id: number) => props.teachers.find((item) => item.id === id)?.name ?? `教师${id}`,
   course: (id: number) => props.courses.find((item) => item.id === id)?.name ?? `课程${id}`,
   klass: (id: number) => props.classes.find((item) => item.id === id)?.name ?? `班级${id}`,
+  teacherGroup: (id: number) => props.teacherGroups?.find((item) => item.id === id)?.name ?? '教师组',
+  courseGroup: (id: number) => props.courseGroups?.find((item) => item.id === id)?.name ?? '课程组',
+  timeGroup: (id: number) => props.timeGroups?.find((item) => item.id === id)?.name ?? '时间组',
 }))
 
 const classIds = computed(() => props.classes.map((item) => item.id))
 
 const preview = computed(() =>
-  sentences.value.map((sentence) => describeRule(sentence, names.value)).join('；'),
+  sentences.value
+    .map((sentence) => describeRule(sentence, names.value, props.periods))
+    .join('；'),
 )
 
 const problems = computed(() =>

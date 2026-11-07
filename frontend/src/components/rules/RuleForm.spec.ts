@@ -5,9 +5,10 @@ import RuleForm from './RuleForm.vue'
 import { cardFromInputs, type PeriodOption, type RuleCard } from '@/rules/compiler'
 
 const periods: PeriodOption[] = [1, 2].flatMap((day) => [
-  { dayOfWeek: day, periodNo: 1, section: 'MORNING' },
-  { dayOfWeek: day, periodNo: 2, section: 'AFTERNOON' },
-  { dayOfWeek: day, periodNo: 3, section: 'AFTERNOON' },
+  { dayOfWeek: day, periodNo: 1, startTime: '08:00:00' },
+  { dayOfWeek: day, periodNo: 2, startTime: '09:00:00' },
+  { dayOfWeek: day, periodNo: 3, startTime: '14:00:00' },
+  { dayOfWeek: day, periodNo: 4, startTime: '15:00:00' },
 ])
 
 const teachers = [
@@ -58,62 +59,53 @@ async function setPeriods(wrapper: VueWrapper, values: number[]) {
   await flushPromises()
 }
 
-describe('RuleForm: searchable slots, live sentence and exceptions', () => {
-  it('starts with every slot empty and asks for the requirement first', () => {
+describe('RuleForm: subject first, live sentence and exceptions', () => {
+  it('starts with 谁 / 什么课 first and the requirement disabled', () => {
     const wrapper = mountForm()
-    expect(select(wrapper, 'rule-type').props('filterable')).toBe(true)
-    expect(select(wrapper, 'rule-type').props('placeholder')).toBe('选择要求')
-    expect(wrapper.find('[data-testid="rule-day"]').exists()).toBe(false)
+    expect(select(wrapper, 'rule-subject').props('filterable')).toBe(true)
+    expect(select(wrapper, 'rule-type').props('disabled')).toBe(true)
+    expect(select(wrapper, 'rule-type').props('placeholder')).toBe('先选谁 / 什么课')
+    expect(wrapper.find('[data-testid="rule-days"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="rule-missing"]').text()).toContain('选择要求')
     expect(wrapper.find('[data-testid="rule-submit"]').attributes('disabled')).toBeDefined()
     wrapper.unmount()
   })
 
-  it('makes 班级 and 哪些课 searchable once the sentence needs them', async () => {
-    const initial = cardFromInputs([{
-      type: 'COURSE_MAX_PER_DAY',
-      classId: null,
-      courseId: 9,
-      amount: 2,
-      strength: 'HARD',
-    }])
-    const wrapper = mountForm(initial)
-    expect(select(wrapper, 'rule-course').props('filterable')).toBe(true)
-
-    // 班级 target appears when the scope switches from 全校 to 班级.
-    await setSelect(wrapper, 'rule-type', 'CLASS_MAX_PER_DAY')
-    const group = wrapper
-      .findAllComponents({ name: 'ElRadioGroup' })
-      .find((component) => component.attributes('data-testid') === 'rule-scope')
-    group?.vm.$emit('change', 'CLASS')
-    await flushPromises()
-    expect(select(wrapper, 'rule-class').props('filterable')).toBe(true)
+  it('grows the sentence while the slots are filled in speaking order', async () => {
+    const wrapper = mountForm()
+    await setSelect(wrapper, 'rule-subject', 'teacher:7')
+    await setSelect(wrapper, 'rule-type', 'TEACHER_UNAVAILABLE')
+    await setSelect(wrapper, 'rule-days', [1])
+    await setPeriods(wrapper, [3])
+    expect(wrapper.find('[data-testid="rule-preview"]').text())
+      .toContain('王老师 周一第 3 节 不上课')
+    expect(wrapper.find('[data-testid="rule-submit"]').attributes('disabled')).toBeUndefined()
     wrapper.unmount()
   })
 
-  it('updates the sentence while the slots are being filled', async () => {
+  it('folds a full afternoon into 下午 in the preview', async () => {
     const wrapper = mountForm()
-    await setSelect(wrapper, 'rule-type', 'CLASS_UNAVAILABLE')
-    expect(select(wrapper, 'rule-day').props('filterable')).toBe(true)
-    await setSelect(wrapper, 'rule-day', 1)
-    await setPeriods(wrapper, [3])
+    await setSelect(wrapper, 'rule-subject', 'teacher:7')
+    await setSelect(wrapper, 'rule-type', 'TEACHER_UNAVAILABLE')
+    await setSelect(wrapper, 'rule-days', [2])
+    await setPeriods(wrapper, [3, 4])
     expect(wrapper.find('[data-testid="rule-preview"]').text())
-      .toContain('全校 的 课 在 周一第 3 节 不排')
-    expect(wrapper.find('[data-testid="rule-submit"]').attributes('disabled')).toBeUndefined()
+      .toContain('王老师 周二下午 不上课')
     wrapper.unmount()
   })
 
   it('offers 除了班级 for a school-scope 不排 sentence and previews the exception', async () => {
     const wrapper = mountForm()
+    await setSelect(wrapper, 'rule-subject', 'school')
     await setSelect(wrapper, 'rule-type', 'CLASS_UNAVAILABLE')
-    await setSelect(wrapper, 'rule-day', 1)
+    await setSelect(wrapper, 'rule-days', [1])
     await setPeriods(wrapper, [3])
     expect(wrapper.find('[data-testid="rule-exceptions"]').exists()).toBe(true)
     expect(select(wrapper, 'rule-exceptions').props('multiple')).toBe(true)
 
     await setSelect(wrapper, 'rule-exceptions', [2])
     expect(wrapper.find('[data-testid="rule-preview"]').text())
-      .toContain('全校 的 课 在 周一第 3 节 不排，除了 九（2）班')
+      .toContain('全校 周一第 3 节 不上课，除了 九（2）班')
     wrapper.unmount()
   })
 
@@ -133,7 +125,7 @@ describe('RuleForm: searchable slots, live sentence and exceptions', () => {
   it('submits the sentence with its stored key', async () => {
     const initial = cardFromInputs([{
       type: 'CLASS_UNAVAILABLE',
-      dayOfWeek: 1,
+      days: [1],
       periodNos: [3],
     }])
     const wrapper = mountForm(initial)

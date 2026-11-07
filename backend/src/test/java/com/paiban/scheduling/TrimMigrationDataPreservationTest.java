@@ -16,7 +16,10 @@ import org.junit.jupiter.api.Test;
 /**
  * 票 16 的迁移数据保全验收：V55 只 DROP 17 个旧列、3 张旧表、4 个索引与 2 个约束，
  * 不 DELETE 任何数据行，因此升级后的验收口径是「行数与主体不丢」，而不是「被删的旧列还在」。
- * 本测试在 V54 结构上写入旧数据，再迁到最新版，然后用 JDBC 直查行数与主体值。
+ * 本测试在 V54 结构上写入旧数据，再迁到 V55，然后用 JDBC 直查行数与主体值。
+ *
+ * <p>这里停在 V55 是刻意的：票 03 的 V56 会按产品所有者确认清空非系统规则、
+ * 工作区与最近删除，这些保全断言只描述 V55 的行为，不能跨到 V56 之后。
  *
  * <p>迁移在独立 UUID 的 H2 内存库上跑全量（{@code MODE=PostgreSQL}），不启动 Spring、
  * 不连 Docker，所以本地默认就跑。真实 PostgreSQL 的<b>迁移可执行性</b>由 CI
@@ -38,7 +41,7 @@ class TrimMigrationDataPreservationTest {
     void v55KeepsPublishedTimetableSubstitutionRuleAndImportRows() throws Exception {
         migrateTo("54");
         seedLegacySchedulingData();
-        migrateTo(null);
+        migrateTo("55");
 
         try (Connection connection = DriverManager.getConnection(url, "sa", "");
                 Statement statement = connection.createStatement()) {
@@ -108,7 +111,7 @@ class TrimMigrationDataPreservationTest {
     void v55KeepsRedLineTablesAndTheirRows() throws Exception {
         migrateTo("54");
         seedRedLineData();
-        migrateTo(null);
+        migrateTo("55");
 
         try (Connection connection = DriverManager.getConnection(url, "sa", "");
                 Statement statement = connection.createStatement()) {
@@ -149,7 +152,7 @@ class TrimMigrationDataPreservationTest {
     @Test
     void v55DropsOnlyLegacyColumnsAndTables() throws Exception {
         migrateTo("54");
-        migrateTo(null);
+        migrateTo("55");
 
         String[][] droppedColumns = {
                 {"course", "required_room_type"},

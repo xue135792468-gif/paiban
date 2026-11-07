@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import ElementPlus, { ElMessageBox } from 'element-plus'
+import { createPinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import RuleBuilderView from './RuleBuilderView.vue'
 import type { RuleImpact } from '@/api/rules'
 
 const httpMock = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), post: vi.fn(), delete: vi.fn() }))
-const impactMock = vi.hoisted(() => ({ fetchRuleImpact: vi.fn() }))
+const impactMock = vi.hoisted(() => ({ fetchRuleImpact: vi.fn(), copyRules: vi.fn() }))
 
 vi.mock('@/api/http', () => ({ http: httpMock }))
 vi.mock('@/api/rules', () => impactMock)
@@ -73,6 +74,7 @@ beforeEach(() => {
   httpMock.delete.mockReset()
   impactMock.fetchRuleImpact.mockReset()
   impactMock.fetchRuleImpact.mockResolvedValue(impact)
+  impactMock.copyRules.mockReset()
   httpMock.put.mockResolvedValue({ data: [] })
   httpMock.get.mockImplementation((url: string) => {
     if (url === '/semesters') return Promise.resolve({ status: 200, data: semesters })
@@ -80,6 +82,9 @@ beforeEach(() => {
     if (url === '/teachers/options') return Promise.resolve({ data: teachers })
     if (url === '/courses') return Promise.resolve({ data: courses })
     if (url === '/constraint-types') return Promise.resolve({ data: [] })
+    if (url === '/constraint-proposals/availability') {
+      return Promise.resolve({ data: { available: false, message: '测试关闭' } })
+    }
     if (url === '/classes') return Promise.resolve({ data: classes })
     if (url === '/constraints/state') {
       return Promise.resolve({ data: { version: 3, configs: stateConfigs } })
@@ -94,7 +99,6 @@ async function mountView(): Promise<VueWrapper> {
     history: createMemoryHistory(),
     routes: [
       { path: '/rules', component: { template: '<div />' } },
-      { path: '/rules/advanced', component: { template: '<div />' } },
       { path: '/:pathMatch(.*)*', component: { template: '<div />' } },
     ],
   })
@@ -102,21 +106,30 @@ async function mountView(): Promise<VueWrapper> {
   await router.isReady()
   const wrapper = mount(RuleBuilderView, {
     attachTo: document.body,
-    global: { plugins: [router, ElementPlus] },
+    global: { plugins: [router, ElementPlus, createPinia()] },
   })
   await flushPromises()
   return wrapper
 }
 
 describe('RuleBuilderView: grouped list, search and impact', () => {
-  it('groups cards by 对谁 and keeps the other-type note', async () => {
+  it('groups cards by 对谁 and keeps the system bottom lines on top', async () => {
     const wrapper = await mountView()
     expect(wrapper.find('[data-testid="rule-group-SCHOOL"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="rule-group-CLASS"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="rule-group-TEACHER"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="rule-group-COURSE"]').exists()).toBe(true)
     expect(wrapper.findAll('[data-testid="rule-card"]')).toHaveLength(4)
-    expect(wrapper.find('[data-testid="rule-other-note"]').text()).toContain('1 条其它类型规则')
+
+    const baseline = wrapper.find('[data-testid="rule-system-baseline"]')
+    expect(baseline.exists()).toBe(true)
+    expect(baseline.text()).toContain('系统自带，不能关')
+    expect(baseline.text()).toContain('一个老师同一节只能在一个班上课')
+    expect(baseline.text()).toContain('一个班同一节只能上一门课')
+    // 底线是固定文案，不能关闭、删除或编辑。
+    expect(baseline.findAll('button')).toHaveLength(0)
+    expect(baseline.html()).not.toContain('rule-delete')
+    expect(baseline.html()).not.toContain('rule-toggle')
     wrapper.unmount()
   })
 
@@ -159,6 +172,78 @@ describe('RuleBuilderView: grouped list, search and impact', () => {
     expect(httpMock.put).toHaveBeenCalledTimes(1)
     const payload = httpMock.put.mock.calls[0][1] as { configs: unknown[] }
     expect(payload.configs.length).toBeGreaterThan(0)
+    wrapper.unmount()
+  })
+
+  it('warns about hard rules that block each other and still saves on confirm', async () => {
+    const conflictConfigs = [
+      {
+        type: 'CLASS_UNAVAILABLE',
+        params: {},
+        weight: 100,
+        hard: true,
+        enabled: true,
+        entries: [
+          { id: 1, params: { dayOfWeek: 2, periodNo: 2 }, enabled: true, hard: true, weight: null, groupKey: 'pt-extra' },
+        ],
+      },
+      {
+        type: 'TEACHER_UNAVAILABLE',
+        params: {},
+        weight: 100,
+        hard: true,
+        enabled: true,
+        entries: [
+          { id: 2, params: { teacherId: 7, dayOfWeek: 1, periodNo: 1 }, enabled: true, hard: true, weight: null, groupKey: 'pt-block' },
+        ],
+      },
+      {
+        type: 'TEACHER_PREFERRED_SLOT',
+        params: {},
+        weight: 40,
+        hard: true,
+        enabled: true,
+        entries: [
+          { id: 3, params: { teacherId: 7, dayOfWeek: 1, periodNo: 1 }, enabled: true, hard: true, weight: null, groupKey: 'pt-prefer' },
+        ],
+      },
+    ]
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/semesters') return Promise.resolve({ status: 200, data: semesters })
+      if (url === '/semesters/current') return Promise.resolve({ status: 200, data: semesters[0] })
+      if (url === '/teachers/options') return Promise.resolve({ data: teachers })
+      if (url === '/courses') return Promise.resolve({ data: courses })
+      if (url === '/constraint-types') return Promise.resolve({ data: [] })
+      if (url === '/classes') return Promise.resolve({ data: classes })
+      if (url === '/constraints/state') {
+        return Promise.resolve({ data: { version: 5, configs: conflictConfigs } })
+      }
+      if (url === '/semesters/1/periods') return Promise.resolve({ data: periodRows })
+      return Promise.resolve({ data: [] })
+    })
+    const confirm = vi
+      .spyOn(ElMessageBox, 'confirm')
+      .mockRejectedValue(new Error('cancel') as never)
+    const wrapper = await mountView()
+
+    // Pause an unrelated card so the page counts as edited.
+    await wrapper.findAll('[data-testid="rule-toggle"]')[0].trigger('click')
+    await flushPromises()
+    await wrapper.find('[data-testid="rule-save"]').trigger('click')
+    await flushPromises()
+
+    expect(confirm).toHaveBeenCalledTimes(1)
+    expect(String(confirm.mock.calls[0][0])).toContain('「王老师 周一第 1 节 不上课」')
+    expect(String(confirm.mock.calls[0][0])).toContain('「王老师 偏好 周一第 1 节」')
+    expect(String(confirm.mock.calls[0][0])).toContain('受影响：王老师')
+    expect(confirm.mock.calls[0][1]).toBe('规则互相卡住')
+    // 返回修改: nothing was written.
+    expect(httpMock.put).not.toHaveBeenCalled()
+
+    confirm.mockResolvedValue('confirm' as never)
+    await wrapper.find('[data-testid="rule-save"]').trigger('click')
+    await flushPromises()
+    expect(httpMock.put).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
 
@@ -260,6 +345,74 @@ describe('RuleBuilderView: grouped list, search and impact', () => {
     await flushPromises()
     expect(httpMock.put).not.toHaveBeenCalled()
     expect(wrapper.find('[data-testid="rule-impact-errors"]').text()).toContain('课程参数缺失')
+    wrapper.unmount()
+  })
+
+  it('shows and hides the AI panel from the toolbar', async () => {
+    const wrapper = await mountView()
+    expect(wrapper.find('[data-testid="constraint-ai-panel"]').exists()).toBe(false)
+
+    await wrapper.find('[data-testid="rule-ai-toggle"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="constraint-ai-panel"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="constraint-ai-unavailable"]').text()).toContain('测试关闭')
+
+    await wrapper.find('[data-testid="rule-ai-toggle"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="constraint-ai-panel"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('keeps copied rules with broken references in 本学期用不上, not in the main list', async () => {
+    const copiedConfig = {
+      type: 'TEACHER_UNAVAILABLE',
+      params: {},
+      weight: 100,
+      hard: true,
+      enabled: true,
+      entries: [
+        {
+          id: 9,
+          params: { teacherId: 99, dayOfWeek: 1, periodNo: 1 },
+          enabled: false,
+          hard: true,
+          weight: null,
+          groupKey: 'pt-copied',
+          invalidReferences: ['教师已删除：#99'],
+        },
+      ],
+    }
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/semesters') return Promise.resolve({ status: 200, data: semesters })
+      if (url === '/semesters/current') return Promise.resolve({ status: 200, data: semesters[0] })
+      if (url === '/teachers/options') return Promise.resolve({ data: teachers })
+      if (url === '/courses') return Promise.resolve({ data: courses })
+      if (url === '/constraint-types') return Promise.resolve({ data: [] })
+      if (url === '/classes') return Promise.resolve({ data: classes })
+      if (url === '/constraints/state') {
+        return Promise.resolve({ data: { version: 6, configs: [...stateConfigs, copiedConfig] } })
+      }
+      if (url === '/semesters/1/periods') return Promise.resolve({ data: periodRows })
+      return Promise.resolve({ data: [] })
+    })
+    const wrapper = await mountView()
+
+    expect(wrapper.get('[data-testid="rule-unusable-panel"]').text())
+      .toContain('本学期用不上（1）')
+    expect(wrapper.get('[data-testid="rule-unusable-panel"]').text()).toContain('教师已删除：#99')
+    expect(wrapper.findAll('[data-testid="rule-card"]')).toHaveLength(4)
+    expect(wrapper.get('[data-testid="rule-cards"]').text()).not.toContain('教师已删除')
+    wrapper.unmount()
+  })
+
+  it('opens the copy dialog from the toolbar', async () => {
+    const wrapper = await mountView()
+    await wrapper.get('[data-testid="rule-copy-open"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="rule-copy-dialog"]').text())
+      .toContain('从以前的学期复制规则')
+    expect(wrapper.get('[data-testid="rule-copy-confirm"]').attributes('disabled')).toBeDefined()
     wrapper.unmount()
   })
 })
