@@ -42,6 +42,15 @@ import java.util.function.Predicate;
 public final class ConstraintSettings {
 
     /**
+     * Marks a snapshot row that {@code RuleGroupExpander} produced from a group
+     * reference. It never reaches the database (the snapshot is in-memory only); it
+     * exists so threshold resolution can tell a group rule from a single-object rule
+     * and honour "single object > group > global" instead of whichever row happened to
+     * be stored first (ticket 08 review, Hark P1-2).
+     */
+    public static final String GROUP_EXPANDED = "__groupExpanded";
+
+    /**
      * One active row: its requirement key (null for a stand-alone row), the effective
      * controls after resolving the entry override against the type default, and its
      * parameters.
@@ -349,61 +358,94 @@ public final class ConstraintSettings {
      * The effective threshold for one object of a scoped threshold type:
      *
      * <pre>
-     * the object's own exception, else the global default, else no limit at all
+     * single-object rule, else group rule, else global default, else no limit at all
      * </pre>
+     *
+     * <p>Several live rules may target the same object once a group is expanded (a
+     * teacher's own cap plus a group cap, or two overlapping groups). The selection is
+     * deterministic: a specific rule wins over a group rule regardless of strength,
+     * and among rules of the same level the <em>smallest</em> value wins — every
+     * threshold is an upper bound, so the smallest is the strictest. Equal values keep
+     * hard over soft, then the first one in stored order. See
+     * {@link #thresholdFor(ConstraintType, Long)}; {@link #thresholdControl} reads the
+     * same selection, so the number and its control can never come from different rows.
      *
      * <p>"No limit at all" is a real answer: an exceptions-only configuration never
      * invents a default for the objects it did not list.
      */
     public Integer limitOrNull(ConstraintType type, Long objectId) {
-        ConstraintType.ThresholdScope scope = type.thresholdScope();
-        if (scope == null) {
-            return null;
-        }
-        Integer global = null;
-        for (Map<String, Object> entry : entries(type)) {
-            Integer value = intValue(entry.get(scope.valueField()));
-            if (value == null) {
-                continue;
-            }
-            Long target = longValue(entry.get(scope.objectField()));
-            if (target == null) {
-                if (global == null) {
-                    global = value;
-                }
-            } else if (objectId != null && target.equals(objectId)) {
-                return value;
-            }
-        }
-        return global;
+        ThresholdSelection selection = thresholdFor(type, objectId);
+        return selection == null ? null : selection.value();
     }
 
     /**
-     * The control that belongs to the threshold actually selected for this object: the
-     * exception's own hard/soft choice and weight, else the global entry's. The global
-     * is never layered back on top of a replacing exception (ticket-14 spec: 先替代再判重叠).
+     * The control that belongs to the threshold actually selected for this object. It is
+     * resolved together with the value in {@link #thresholdFor(ConstraintType, Long)}, so
+     * a group rule's smaller number is never paired with a specific rule's control. The
+     * global is never layered back on top of a replacing exception (ticket-14 spec:
+     * 先替代再判重叠).
      */
     public Control thresholdControl(ConstraintType type, Long objectId) {
+        ThresholdSelection selection = thresholdFor(type, objectId);
+        return selection == null ? null : selection.control();
+    }
+
+    /** One selected threshold: the number and the hard/soft choice of the same row. */
+    private record ThresholdSelection(int value, Control control) {}
+
+    /**
+     * Picks the threshold rule that governs one object: the object's own live rule
+     * first, then a rule expanded from a group, then the global default. Within one
+     * level the smallest value is the strictest upper bound; ties prefer hard, then the
+     * row seen first. Returns null when no live rule yields a value.
+     */
+    private ThresholdSelection thresholdFor(ConstraintType type, Long objectId) {
         ConstraintType.ThresholdScope scope = type.thresholdScope();
         if (scope == null) {
             return null;
         }
-        Control global = null;
+        ThresholdSelection specific = null;
+        ThresholdSelection grouped = null;
+        ThresholdSelection global = null;
         for (Requirement requirement : requirements(type)) {
             for (Map<String, Object> entry : requirement.entries()) {
-                if (intValue(entry.get(scope.valueField())) == null) {
+                Integer value = intValue(entry.get(scope.valueField()));
+                if (value == null) {
                     continue;
                 }
                 Long target = longValue(entry.get(scope.objectField()));
-                if (target != null && target.equals(objectId)) {
-                    return requirement.control();
-                }
-                if (target == null && global == null) {
-                    global = requirement.control();
+                if (target == null) {
+                    global = stricter(global, value, requirement.control());
+                } else if (objectId != null && target.equals(objectId)) {
+                    if (isGroupExpanded(entry)) {
+                        grouped = stricter(grouped, value, requirement.control());
+                    } else {
+                        specific = stricter(specific, value, requirement.control());
+                    }
                 }
             }
         }
-        return global;
+        if (specific != null) {
+            return specific;
+        }
+        return grouped != null ? grouped : global;
+    }
+
+    /** Smaller value wins (every threshold is an upper bound); a tie prefers hard. */
+    private static ThresholdSelection stricter(
+            ThresholdSelection current, int value, Control control) {
+        if (current == null || value < current.value()) {
+            return new ThresholdSelection(value, control);
+        }
+        if (value == current.value() && control.hard() && !current.control().hard()) {
+            return new ThresholdSelection(value, control);
+        }
+        return current;
+    }
+
+    private static boolean isGroupExpanded(Map<String, Object> entry) {
+        Object marker = entry.get(GROUP_EXPANDED);
+        return Boolean.TRUE.equals(marker) || "true".equalsIgnoreCase(String.valueOf(marker));
     }
 
     /** True when {@code count} still respects this object's limit; unlimited is always within. */

@@ -182,7 +182,7 @@ describe('RuleSentenceEditor: subject first, then time, then requirement', () =>
     await setSelect(wrapper, 'rule-subject', 'course-group:21')
     await setSelect(wrapper, 'rule-type', 'COURSE_MAX_PER_DAY')
     expect(wrapper.find('[data-testid="rule-preview"]').text())
-      .toContain('技能课 每天最多 2 节')
+      .toContain('技能课 每门每天最多 2 节')
     wrapper.unmount()
   })
 

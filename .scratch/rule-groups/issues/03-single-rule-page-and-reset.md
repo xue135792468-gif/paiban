@@ -24,6 +24,7 @@
 - `TemplateReferenceIssue` 改为 `ConstraintReferenceIssue`（规则预览、工作区、影响分析仍返回同一 JSON 形状）。
 - `V56` 还会恢复被暂停/软删的系统行、为缺失的学期补上两行；`ConstraintSettings.from` 强制把 `TEACHER_CONFLICT` / `CLASS_CONFLICT` 放回快照并设为必须，数据库行缺失、暂停或软删都不会让冲突检测静默失效（新增 `ConstraintSettingsSystemRulesTest` 2 例）。
 - 模板专用测试已删除；迁移测试固定在 V55 验证 V26–V29/V55 的既有行为，不再跨到 V56。
+- Hark 复审（2026-11-07）发现 V56 没有推进 `constraint_config_state.version`：部署时仍打开的旧规则页会带着旧 baseVersion 把旧规则写回来。新增 `V59__bump_constraint_version_after_reset.sql`（`version = version + 1`），不改已跑过 CI/开发库的 V56，避免迁移校验和不匹配。
 - 前端页面、导航、底线置顶与 03b 的 AI 面板搬迁仍未做，票面保持 ready-for-agent，不勾选前端相关项。
 
 ## 实现说明（前端部分，2026-11-07）

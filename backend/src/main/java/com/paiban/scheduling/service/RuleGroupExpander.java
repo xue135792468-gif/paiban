@@ -149,6 +149,9 @@ public class RuleGroupExpander {
             }
             for (Map<String, Object> row : accumulated) {
                 GROUP_KEYS.forEach(row::remove);
+                // Internal-only marker: the row came from a group, so threshold
+                // resolution can prefer a rule naming one object over a group rule.
+                row.put(ConstraintSettings.GROUP_EXPANDED, true);
             }
             result.add(accumulated);
         }

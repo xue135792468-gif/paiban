@@ -685,9 +685,14 @@ public class ConstraintConfigService {
             if (type.isHardOnly() && !hard) {
                 errors.add(type.getDisplayName() + ": 必须是硬约束，不能改为尽量");
             }
+            // A card that is paused — either the whole config or one requirement — is a
+            // stored value, not a live rule. It was already validated when it became
+            // usable (or copied as an unusable card), so a later save must not refuse it
+            // for references that are precisely why it is paused (ticket 08 review).
+            boolean configEnabled = request.enabled() == null || request.enabled();
             EntryPlan entries = planEntries(
                     type, request, hard, weight, resolved, timetable, existingEntries,
-                    claimedEntries, errors);
+                    claimedEntries, configEnabled, errors);
             references.addAll(entries.references());
             planned.add(new PlannedConfig(
                     type,
@@ -980,7 +985,7 @@ public class ConstraintConfigService {
             ConstraintType type, ConstraintConfigRequest request, boolean defaultHard,
             int defaultWeight, Long semesterId, SemesterScope timetable,
             Map<Long, ConstraintEntry> existingEntries, Map<String, Set<Long>> claimedEntries,
-            List<String> errors) {
+            boolean configEnabled, List<String> errors) {
         List<PlannedEntry> planned = new ArrayList<>();
         List<ConstraintReferenceIssue> references = new ArrayList<>();
         Map<EntrySignature, Integer> seen = new HashMap<>();
@@ -989,11 +994,12 @@ public class ConstraintConfigService {
             // Legacy shape: `params` is the single entry, and its messages keep the
             // pre-ADR wording. It inherits the type controls, so its meaning is the same
             // as before per-requirement controls existed.
-            Map<String, Object> params = validateParams(
-                    type, request.params(), null, semesterId, errors);
+            Map<String, Object> params = configEnabled
+                    ? validateParams(type, request.params(), null, semesterId, errors)
+                    : rawParams(request.params());
             accept(type, new PlannedEntry(null, params, 1, true, null, null, null),
                     planned, seen, defaultHard, defaultWeight, timetable, existingEntries,
-                    claimedEntries, references, errors);
+                    claimedEntries, references, configEnabled, errors);
             return new EntryPlan(planned, references);
         }
         if (type.getParams().isEmpty() && !requested.isEmpty()) {
@@ -1006,8 +1012,15 @@ public class ConstraintConfigService {
             if (type.isHardOnly() && raw != null && Boolean.FALSE.equals(raw.hard())) {
                 errors.add(location(type, position) + ": 必须留空，不能改为尽量");
             }
-            Map<String, Object> params = validateParams(
-                    type, raw == null ? null : raw.params(), position, semesterId, errors);
+            boolean enabled = raw == null || raw.enabled() == null || raw.enabled();
+            // Only a live row is judged against this semester. A paused row keeps exactly
+            // what it had, so a copied card can wait here until its reference comes back
+            // without blocking every other save in the semester.
+            boolean strict = configEnabled && enabled;
+            Map<String, Object> params = strict
+                    ? validateParams(
+                            type, raw == null ? null : raw.params(), position, semesterId, errors)
+                    : rawParams(raw == null ? null : raw.params());
             Integer weight = raw == null ? null : raw.weight();
             if (weight != null && (weight < 0 || weight > 100)) {
                 errors.add(location(type, position) + ": 权重必须在 0-100 之间");
@@ -1015,11 +1028,10 @@ public class ConstraintConfigService {
             }
             String groupKey = raw == null ? null
                     : normalizeGroupKey(raw.groupKey(), type, position, errors);
-            boolean enabled = raw == null || raw.enabled() == null || raw.enabled();
             accept(type, new PlannedEntry(raw == null ? null : raw.id(), params, position,
                             enabled, raw == null ? null : raw.hard(), weight, groupKey),
                     planned, seen, defaultHard, defaultWeight, timetable, existingEntries,
-                    claimedEntries, references, errors);
+                    claimedEntries, references, strict, errors);
         }
         rejectInconsistentGroups(type, planned, defaultHard, defaultWeight, errors);
         Set<String> mixedScopeGroups = rejectMixedClassScope(type, planned, errors);
@@ -1027,6 +1039,11 @@ public class ConstraintConfigService {
         rejectContradictoryScalars(type, planned, errors);
         rejectDuplicateThresholdScopes(type, planned, errors);
         return new EntryPlan(planned, references);
+    }
+
+    /** A paused row is stored verbatim: no normalization, no required-value check. */
+    private Map<String, Object> rawParams(Map<String, Object> params) {
+        return params == null ? new LinkedHashMap<>() : new LinkedHashMap<>(params);
     }
 
     /**
@@ -1062,7 +1079,8 @@ public class ConstraintConfigService {
             int defaultWeight, List<String> errors) {
         Map<String, PlannedEntry> byGroup = new LinkedHashMap<>();
         for (PlannedEntry entry : planned) {
-            if (entry.groupKey() == null) {
+            if (entry.groupKey() == null || !entry.enabled()) {
+                // A paused row keeps whatever it had; only live rows must agree.
                 continue;
             }
             PlannedEntry previous = byGroup.putIfAbsent(entry.groupKey(), entry);
@@ -1106,7 +1124,7 @@ public class ConstraintConfigService {
         Map<String, PlannedEntry> firstSelected = new LinkedHashMap<>();
         for (PlannedEntry entry : planned) {
             String group = entry.groupKey();
-            if (group == null) {
+            if (group == null || !entry.enabled()) {
                 continue;
             }
             boolean wholeSchool = entry.params().get("classId") == null;
@@ -1141,7 +1159,8 @@ public class ConstraintConfigService {
         }
         Map<String, List<PlannedEntry>> byGroup = new LinkedHashMap<>();
         for (PlannedEntry entry : planned) {
-            if (entry.groupKey() == null || skippedGroups.contains(entry.groupKey())) {
+            if (entry.groupKey() == null || !entry.enabled()
+                    || skippedGroups.contains(entry.groupKey())) {
                 continue;
             }
             byGroup.computeIfAbsent(entry.groupKey(), key -> new ArrayList<>()).add(entry);
@@ -1208,6 +1227,9 @@ public class ConstraintConfigService {
         }
         Map<Long, PlannedEntry> byScope = new LinkedHashMap<>();
         for (PlannedEntry entry : planned) {
+            if (!entry.enabled()) {
+                continue;
+            }
             if (ConstraintSettings.intValue(entry.params().get(scope.valueField())) == null) {
                 // Already rejected as a missing required value; not a scope conflict.
                 continue;
@@ -1230,13 +1252,25 @@ public class ConstraintConfigService {
             Map<EntrySignature, Integer> seen, boolean defaultHard, int defaultWeight,
             SemesterScope timetable, Map<Long, ConstraintEntry> existingEntries,
             Map<String, Set<Long>> claimedEntries, List<ConstraintReferenceIssue> references,
-            List<String> errors) {
+            boolean strict, List<String> errors) {
         Map<String, Object> params = entry.params();
         if (params.isEmpty() && !type.isEntryBacked()) {
             // Nothing to store: no object condition. `{}` means "no extra
             // condition" and is kept in the legacy params column only. For an
             // entry-backed type whose target is optional `{}` is a real entry: the
             // explicit "every course / the sport class" row.
+            return;
+        }
+        if (!strict) {
+            // A paused row is opaque: its id still has to be ours (structure), but its
+            // contents are the paused value the user is keeping, so nothing about them
+            // is refused here. Deduplication is skipped too — merging a paused row with a
+            // live one is exactly the silent data loss the strict path prevents.
+            if (entry.id() != null) {
+                claimEntry(type, entry.position(), entry.id(), existingEntries, claimedEntries,
+                        errors);
+            }
+            planned.add(entry);
             return;
         }
         EntrySignature signature = new EntrySignature(params, entry.enabled(),
@@ -1295,6 +1329,9 @@ public class ConstraintConfigService {
         }
         Map<Long, PlannedEntry> byObject = new LinkedHashMap<>();
         for (PlannedEntry entry : planned) {
+            if (!entry.enabled()) {
+                continue;
+            }
             Long objectId = ConstraintSettings.longValue(entry.params().get(spec.objectField()));
             if (objectId == null) {
                 continue;

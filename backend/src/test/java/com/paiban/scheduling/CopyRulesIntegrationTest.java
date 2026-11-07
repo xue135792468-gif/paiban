@@ -169,6 +169,53 @@ class CopyRulesIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void aCopiedPausedCardDoesNotBlockLaterSavesAndStaysStrictWhenReEnabled() {
+        String token = adminToken();
+        long source = semesterWithPeriods(token);      // 9 periods on each weekday
+        long target = TestData.semester(token);        // 8 periods on Monday only
+        putMondayPeriods(token, target, List.of(1, 2, 3, 4, 5, 6, 7, 8));
+        long teacher = TestData.teacher(token, "停用卡教师" + TestData.suffix());
+        save(token, source, null, List.of(
+                config("TEACHER_UNAVAILABLE",
+                        List.of(entry(Map.of(
+                                "teacherId", teacher, "dayOfWeek", 1, "periodNo", 9),
+                                "ninth")))))
+                .then().statusCode(200);
+        copy(token, source, target, stateVersion(token, target)).then().statusCode(200)
+                .body("disabledCards", equalTo(1));
+
+        // Saving the semester back must not be refused by the paused card: its missing
+        // ninth period is exactly why it is paused, and the user cannot fix it without
+        // losing every other edit.
+        List<Map<String, Object>> requests = requestsOf(configs(token, target));
+        List<Map<String, Object>> ruleEntries =
+                entriesOf(configOf(requests, "TEACHER_UNAVAILABLE"));
+        ruleEntries.add(entry(Map.of(
+                "teacherId", teacher, "dayOfWeek", 1, "periodNo", 1), "live"));
+        save(token, target, stateVersion(token, target), requests).then().statusCode(200);
+
+        List<Map<String, Object>> stored = configs(token, target);
+        Map<String, Object> paused = pausedEntry(
+                configOf(stored, "TEACHER_UNAVAILABLE"));
+        assertThat(paused.get("enabled")).isEqualTo(false);
+        assertThat(periodOf(paused)).isEqualTo(9);
+        assertThat((List<?>) configOf(stored, "TEACHER_UNAVAILABLE").get("invalidReferences"))
+                .anyMatch(reason -> String.valueOf(reason).contains("第9节在本学期作息中不存在"));
+
+        // Re-enabling it is a live rule again and is validated as strictly as ever.
+        List<Map<String, Object>> reEnabled = requestsOf(configs(token, target));
+        Map<String, Object> reEnabledCard = configOf(reEnabled, "TEACHER_UNAVAILABLE");
+        entriesOf(reEnabledCard).forEach(row -> {
+            if (Integer.valueOf(9).equals(periodOf(row))) {
+                row.put("enabled", true);
+            }
+        });
+        Response rejected = save(token, target, stateVersion(token, target), reEnabled);
+        rejected.then().statusCode(400);
+        assertThat(rejected.asString()).contains("第9节不在本学期作息范围内");
+    }
+
+    @Test
     void pausesACardWhoseTimeGroupHasNoSameNameTarget() {
         String token = adminToken();
         long source = semesterWithPeriods(token);
@@ -449,6 +496,50 @@ class CopyRulesIntegrationTest extends ApiIntegrationTest {
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> entriesOf(Map<String, Object> config) {
         return (List<Map<String, Object>>) config.get("entries");
+    }
+
+    /** The GET response reshaped exactly like the page's PUT body (no read-only fields). */
+    private List<Map<String, Object>> requestsOf(List<Map<String, Object>> configs) {
+        List<Map<String, Object>> requests = new ArrayList<>();
+        for (Map<String, Object> config : configs) {
+            Map<String, Object> request = new LinkedHashMap<>();
+            request.put("type", config.get("type"));
+            request.put("weight", config.get("weight"));
+            request.put("hard", config.get("hard"));
+            request.put("enabled", config.get("enabled"));
+            List<Map<String, Object>> entries = new ArrayList<>();
+            for (Map<String, Object> row : entriesOf(config)) {
+                entries.add(requestEntry(row));
+            }
+            request.put("entries", entries);
+            requests.add(request);
+        }
+        return requests;
+    }
+
+    private Map<String, Object> requestEntry(Map<String, Object> stored) {
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("id", stored.get("id"));
+        entry.put("params", stored.get("params"));
+        entry.put("enabled", stored.get("enabled"));
+        entry.put("hard", stored.get("hard"));
+        entry.put("weight", stored.get("weight"));
+        entry.put("groupKey", stored.get("groupKey"));
+        return entry;
+    }
+
+    private Map<String, Object> pausedEntry(Map<String, Object> config) {
+        return entriesOf(config).stream()
+                .filter(row -> Boolean.FALSE.equals(row.get("enabled")))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("缺少停用条目"));
+    }
+
+    private Integer periodOf(Map<String, Object> entry) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> params = (Map<String, Object>) entry.get("params");
+        Object value = params == null ? null : params.get("periodNo");
+        return value instanceof Number number ? number.intValue() : null;
     }
 
     private Map<String, Object> paramsOfFirstEntry(Map<String, Object> config) {

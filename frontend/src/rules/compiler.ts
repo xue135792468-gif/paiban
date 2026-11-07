@@ -604,6 +604,13 @@ export function describeRule(
   const teacher = teacherSubject(parts, names)
   const klass = classSubject(parts, names)
   const course = courseSubject(parts, names)
+  // A requirement that names a group applies to every member, so the sentence has to
+  // say 每门 / 每人; without it "技能课 每天最多 1 节" reads like one cap for the whole
+  // group instead of one cap per course (ticket 05 review, Hark P1-3).
+  const courseGroup = parts.courseGroupId !== null && parts.courseGroupId !== undefined
+  const teacherGroup = parts.teacherGroupId !== null && parts.teacherGroupId !== undefined
+  const courseEach = courseGroup ? '每门' : ''
+  const teacherEach = teacherGroup ? '每人' : ''
   const amount = parts.amount === null || parts.amount === undefined ? 'N' : String(parts.amount)
   const sortedDays = normalizeDays(days)
   const day = sortedDays.length === 0
@@ -620,31 +627,31 @@ export function describeRule(
     case COURSE_UNAVAILABLE:
       return `${course} 不排在 ${time}`
     case COURSE_MAX_PER_DAY:
-      return `${course} 每天最多 ${amount} 节`
+      return `${course} ${courseEach}每天最多 ${amount} 节`
     case TEACHER_MAX_PER_DAY:
-      return `${teacher} 每天最多 ${amount} 节`
+      return `${teacher} ${teacherEach}每天最多 ${amount} 节`
     case CLASS_MAX_PER_DAY:
       return `${klass} 每天最多 ${amount} 节`
     case SAME_COURSE_ONCE_PER_DAY:
-      return `${course} 每天最多 1 节`
+      return `${course} ${courseEach}每天最多 1 节`
     case CONSECUTIVE_LESSONS:
-      return `${course} 连堂 ${amount} 节`
+      return `${course} ${courseEach}连堂 ${amount} 节`
     case COURSE_SPREAD:
-      return `${course} 分散到不同天`
+      return `${course} ${courseEach}分散到不同天`
     case CLASS_GAP_MINIMIZED:
       return '班级 不空堂'
     case TEACHER_MAX_CONSECUTIVE:
-      return `${teacher} 连续不超过 ${amount} 节`
+      return `${teacher} ${teacherEach}连续不超过 ${amount} 节`
     case PE_LAST_PERIOD_AVOID:
-      return `${course} 不在最后一节`
+      return `${course} ${courseEach}不在最后一节`
     case MAIN_SUBJECT_MORNING:
-      return `${course} 排在上午（前 ${amount} 节）`
+      return `${course} ${courseEach}排在上午（前 ${amount} 节）`
     case TEACHER_NO_FIRST_PERIOD:
       return `${teacher} 不排第一节`
     case TEACHER_DAY_OFF:
       return `${teacher} ${day} 不排课`
     case TEACHER_PREFERRED_SLOT:
-      return `${teacher} 偏好 ${time}`
+      return `${teacher} ${teacherEach}偏好 ${time}`
     default:
       return spec.label
   }

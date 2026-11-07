@@ -107,7 +107,7 @@ test.describe('排课规则：课程分组', () => {
     const amount = form(page).getByTestId('rule-amount').locator('input')
     await amount.fill('1')
     await amount.blur()
-    const sentence = `${groupName} 每天最多 1 节`
+    const sentence = `${groupName} 每门每天最多 1 节`
     await expect(form(page).getByTestId('rule-preview')).toContainText(sentence)
     await form(page).getByTestId('rule-submit').click()
     await expect(page.getByTestId('rule-sentence')).toHaveText(sentence)

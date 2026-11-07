@@ -462,7 +462,7 @@ describe('course groups in sentences (ticket 05)', () => {
     expect(cards).toHaveLength(1)
     expect(cards[0].sentences[0].courseGroupId).toBe(21)
     expect(cards[0].sentences[0].courseId).toBeNull()
-    expect(describeCard(cards[0], names)).toBe('技能课 每天最多 1 节')
+    expect(describeCard(cards[0], names)).toBe('技能课 每门每天最多 1 节')
 
     // Saving the read-back card keeps the group reference instead of expanding it.
     const merged = configsFromCards(stored, cards)
