@@ -4,18 +4,18 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-human
+**Status:** done
 
 - [x] 导航和规则页里不再有「按类型配置」入口；直接访问旧地址会回到规则页
 - [x] 删除 `ConstraintsView.vue`、`components/constraints/` 下仅供高级页使用的组件与单测；规则页只保留 `types.ts` 共享类型
 - [x] 旧「规则模板」栏、`useConstraintTemplates`、后端 `ConstraintTemplateService` / `ConstraintTemplate` / 仓储 / 5 个模板接口 / 相关 DTO 一并删除
-- [x] 迁移（V56）清空非系统约束配置/条目，删除旧 `constraint_template` 数据并 `DROP TABLE`；两条底线仍生效（H2 已跑；真实 PostgreSQL 待 CI）
-- [x] 清空后自动排课、草稿校验、调代校验正常运行（`verify.sh --full`：后端 1025 条 0 失败含 FullChainAcceptanceTest/排课/草稿/调代；Playwright 137 条通过）
+- [x] 迁移（V56）清空非系统约束配置/条目，删除旧 `constraint_template` 数据并 `DROP TABLE`；两条底线仍生效（H2 + CI 真实 PostgreSQL 均通过）
+- [x] 清空后自动排课、草稿校验、调代校验正常运行（`verify.sh --full`：后端 1026 条 0 失败含 FullChainAcceptanceTest/排课/草稿/调代；Playwright 137 条通过）
 - [x] 规则页顶部显示两条底线，不可关闭、不可删除
 - [x] 全仓 `grep` 不再有 `constraint_template` / `ConstraintTemplate` / `/constraint-templates` 的活引用
-- [ ] 迁移在 PostgreSQL 容器中验证通过
+- [x] 迁移在 PostgreSQL 容器中验证通过（PR #28 backend CI：`PostgresContainerIT` 1/1，Flyway 到最新版）
 
-**Notes:** 产品所有者确认测试阶段可直接清空（2026-11-07）。AI 面板搬迁见票 03b；本票先把页面删干净，03b 再把面板接到规则页。只剩「真实 PostgreSQL 容器验证」与「清空后的排课/草稿/调代冒烟」两项待收口；本机无 Docker，PostgreSQL 由 CI 覆盖。
+**Notes:** 产品所有者确认测试阶段可直接清空（2026-11-07）。AI 面板搬迁见票 03b。PR #28 四个 CI job 全绿（backend 含真实 PostgreSQL、frontend、e2e、deploy-scripts）。
 
 ## 实现说明（后端部分，2026-11-07）
 
