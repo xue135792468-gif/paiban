@@ -136,4 +136,24 @@ describe('SettingsView: 钉钉同步超时', () => {
     )
     wrapper.unmount()
   })
+
+  it('预演进行中把按钮文案换成正在拉取通讯录', async () => {
+    let release: ((value: unknown) => void) | undefined
+    httpMock.post.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve
+        }),
+    )
+    const wrapper = await mountView()
+
+    await wrapper.find('[data-testid="dingtalk-preview"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="dingtalk-preview"]').text()).toContain('正在拉取通讯录')
+
+    release?.({ data: previewFixture })
+    await flushPromises()
+    wrapper.unmount()
+  })
 })

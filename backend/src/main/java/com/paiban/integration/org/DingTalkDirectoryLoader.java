@@ -44,6 +44,8 @@ public class DingTalkDirectoryLoader {
     public static final long ROOT_DEPARTMENT_ID = 1L;
     private static final int PAGE_SIZE = 100;
     private static final int DEFAULT_LOAD_CONCURRENCY = 4;
+    /** DingTalk allows roughly 20 requests per second; a typo must not blow past that. */
+    private static final int MAX_LOAD_CONCURRENCY = 16;
 
     private final DingTalkClient client;
     private final int loadConcurrency;
@@ -58,7 +60,7 @@ public class DingTalkDirectoryLoader {
             DingTalkClient client,
             @Value("${paiban.integration.dingtalk.load-concurrency:4}") int loadConcurrency) {
         this.client = client;
-        this.loadConcurrency = Math.max(1, loadConcurrency);
+        this.loadConcurrency = Math.min(MAX_LOAD_CONCURRENCY, Math.max(1, loadConcurrency));
     }
 
     public DingTalkDirectory load() {
@@ -216,11 +218,14 @@ public class DingTalkDirectoryLoader {
                 if (cause instanceof DingTalkApiException api && api.isDepartmentUnavailable()) {
                     failedCalls.incrementAndGet();
                     values.put(entry.getKey(), unavailableFallback.get());
-                } else if (cause instanceof RuntimeException runtime) {
-                    fatal = fatal == null ? runtime : fatal;
-                } else {
-                    fatal = fatal == null ? new IllegalStateException(cause) : fatal;
+                    continue;
                 }
+                // Fatal (for example the IP whitelist): stop waiting for the rest. The pool
+                // is shut down by the caller, which interrupts whatever is still running.
+                fatal = cause instanceof RuntimeException runtime
+                        ? runtime
+                        : new IllegalStateException(cause);
+                break;
             } catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("拉取钉钉通讯录被中断", ex);
