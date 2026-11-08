@@ -33,6 +33,15 @@
 - [x] 线程池在任何路径下都被关闭（含异常）
 - [x] 定向测试 + `verify.sh --quick` + `verify.sh --full` 全绿
 
+## 验证（2026-11-09，本机）
+
+- 后端 `./mvnw test`：**1035 条，0 失败，7 跳过**（本机无 Docker，`PostgresContainerIT` 跳过，由 CI 在真实 PostgreSQL 上跑）
+- 前端 `vitest`：**690 条 / 89 文件全绿**
+- 定向：`DingTalkDirectoryLoaderTest` 11 条全绿；`SettingsView.spec.ts` 3 条全绿
+- 并发证据：把并发数临时改成 1，`runsTheDepartmentFetchesInParallel` 5 秒后栅栏超时失败；改回 4 立即通过
+- Playwright：**136 / 137 通过**。唯一失败项 `workbench-a11y.spec.ts:128`（320×700 横向滚动）**不是断言失败**——报错是 Playwright 写 trace 文件 `ENOENT ... recording3777.trace`（`browserContext.close` 阶段），属于 Windows 文件写入/占用问题；用 `scripts/e2e.sh workbench-a11y.spec.ts` 单独重跑 **2/2 通过**（含同一条 320×700 用例）
+- 仓库级检查（`verify.sh --quick`）：SFC 体积、本地日期、e2e helper、isBlank、模块边界、迁移版本、票状态、AI 超时 全通过
+
 ## 不再做的
 
 - 不引入「预演结果缓存供确认复用」——需要过期与一致性设计，本轮不做。
