@@ -6,6 +6,13 @@ import axios from 'axios'
  */
 export const AI_IMPORT_TIMEOUT_MS = 900000
 
+/**
+ * DingTalk walks every department with two round trips each: a real tenant took 54
+ * seconds, so the 30-second default aborted the request while the backend kept working
+ * and the screen cried "预演失败". Preview and confirm opt into this budget instead.
+ */
+export const DINGTALK_SYNC_TIMEOUT_MS = 180000
+
 export const http = axios.create({
   baseURL: '/api',
   timeout: 30000,

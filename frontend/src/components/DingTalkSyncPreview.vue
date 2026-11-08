@@ -22,9 +22,10 @@
           size="small"
           :loading="confirming"
           :disabled="confirmCount === 0"
+          data-testid="dingtalk-confirm"
           @click="confirm"
         >
-          确认导入 {{ confirmCount }} 人
+          {{ confirming ? '正在写入（约 1 分钟）' : `确认导入 ${confirmCount} 人` }}
         </el-button>
       </div>
 

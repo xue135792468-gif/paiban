@@ -45,6 +45,9 @@ paiban:
       agent-id: ""
       sync-strategy: dingtalk
       fake: false
+      # Departments are fetched concurrently: 50 departments × 2 round trips is ~54s
+      # serially. Keep this well under DingTalk's rate limit (~20 requests/second).
+      load-concurrency: 4
   export:
     school-logo-path: ""
     pdf-font-path: ""
