@@ -42,6 +42,8 @@ Thumbs.db
 # local env
 .env
 .env.local
+# written by scripts/install.sh on a fresh server; holds the bootstrap password
+.initial-admin-password
 
 # zcode workflow drafts
 .zcode/
