@@ -11,7 +11,12 @@ const httpMock = vi.hoisted(() => ({
   put: vi.fn(),
   delete: vi.fn(),
 }))
-vi.mock('@/api/http', () => ({ http: httpMock }))
+vi.mock('@/api/http', async () => {
+  // Keep the real constant so a change to the timeout budget fails this spec, and only
+  // swap the axios instance for the spies.
+  const actual = await vi.importActual<typeof import('@/api/http')>('@/api/http')
+  return { http: httpMock, DINGTALK_SYNC_TIMEOUT_MS: actual.DINGTALK_SYNC_TIMEOUT_MS }
+})
 
 const dingtalkConfig = {
   enabled: true,
@@ -61,6 +66,94 @@ describe('SettingsView: 清除钉钉配置', () => {
     expect(confirm).toHaveBeenCalledTimes(1)
     expect(String(confirm.mock.calls[0][0])).toContain('最近删除')
     expect(httpMock.delete).toHaveBeenCalledWith('/integrations/dingtalk/config')
+    wrapper.unmount()
+  })
+})
+
+const previewFixture = {
+  success: true,
+  message: '预演完成：扫描 1 个部门 / 1 人，耗时 12 ms；新增 1',
+  departmentsScanned: 1,
+  usersScanned: 1,
+  skippedDepartments: 0,
+  failedDepartments: 0,
+  elapsedMs: 12,
+  skippedDepartmentNames: [],
+  summary: { create: 1, merge: 0, suspected: 0, skip: 0 },
+  departments: [
+    {
+      department: '全校教职工',
+      items: [
+        {
+          userId: 'u-1',
+          name: '王老师',
+          employeeNo: 'EMP101',
+          phone: null,
+          departments: ['全校教职工'],
+          active: true,
+          category: 'CREATE',
+          reason: '钉钉通讯录新增',
+          matchedTeacherId: null,
+          matchedTeacherName: null,
+          fills: [],
+          conflicts: [],
+          candidates: [],
+        },
+      ],
+    },
+  ],
+}
+
+describe('SettingsView: 钉钉同步超时', () => {
+  it('预演和确认都用 180 秒超时，不再被 30 秒默认值掐断', async () => {
+    httpMock.post.mockImplementation((url: string) => {
+      if (url === '/integrations/dingtalk/sync/preview') {
+        return Promise.resolve({ data: previewFixture })
+      }
+      if (url === '/integrations/dingtalk/sync/confirm') {
+        return Promise.resolve({ data: { success: true, message: '同步完成' } })
+      }
+      return Promise.resolve({ data: {} })
+    })
+    const wrapper = await mountView()
+
+    await wrapper.find('[data-testid="dingtalk-preview"]').trigger('click')
+    await flushPromises()
+
+    expect(httpMock.post).toHaveBeenCalledWith(
+      '/integrations/dingtalk/sync/preview',
+      undefined,
+      { timeout: 180000 },
+    )
+
+    await wrapper.find('[data-testid="dingtalk-confirm"]').trigger('click')
+    await flushPromises()
+
+    expect(httpMock.post).toHaveBeenCalledWith(
+      '/integrations/dingtalk/sync/confirm',
+      { excludedDepartments: [], excludedUserIds: [], suspectedDecisions: [] },
+      { timeout: 180000 },
+    )
+    wrapper.unmount()
+  })
+
+  it('预演进行中把按钮文案换成正在拉取通讯录', async () => {
+    let release: ((value: unknown) => void) | undefined
+    httpMock.post.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve
+        }),
+    )
+    const wrapper = await mountView()
+
+    await wrapper.find('[data-testid="dingtalk-preview"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="dingtalk-preview"]').text()).toContain('正在拉取通讯录')
+
+    release?.({ data: previewFixture })
+    await flushPromises()
     wrapper.unmount()
   })
 })

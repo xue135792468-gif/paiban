@@ -4,8 +4,13 @@
       <el-button type="primary" :loading="saving" data-testid="dingtalk-save" @click="emit('save')">
         保存钉钉配置
       </el-button>
-      <el-button :loading="previewing" :disabled="!enabled" @click="emit('preview')">
-        预演同步
+      <el-button
+        :loading="previewing"
+        :disabled="!enabled"
+        data-testid="dingtalk-preview"
+        @click="emit('preview')"
+      >
+        {{ previewing ? '正在拉取通讯录（约 1 分钟）' : '预演同步' }}
       </el-button>
       <el-button
         type="danger"

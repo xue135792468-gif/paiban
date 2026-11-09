@@ -169,7 +169,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, type UploadFile } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { http } from '@/api/http'
+import { DINGTALK_SYNC_TIMEOUT_MS, http } from '@/api/http'
 import InfoTooltip from '@/components/InfoTooltip.vue'
 import SubstitutionPolicyCard from '@/components/settings/SubstitutionPolicyCard.vue'
 import SubstitutionRecipientsCard from '@/components/settings/SubstitutionRecipientsCard.vue'
@@ -300,7 +300,11 @@ async function previewSync() {
   previewing.value = true
   syncResult.value = null
   try {
-    const { data } = await http.post<SyncPreview>('/integrations/dingtalk/sync/preview')
+    const { data } = await http.post<SyncPreview>(
+      '/integrations/dingtalk/sync/preview',
+      undefined,
+      { timeout: DINGTALK_SYNC_TIMEOUT_MS },
+    )
     syncPreview.value = data
     if (!data.success) {
       ElMessage.error(data.message)
@@ -315,7 +319,11 @@ async function previewSync() {
 async function confirmSync(request: SyncConfirmRequest) {
   confirming.value = true
   try {
-    const { data } = await http.post<SyncResult>('/integrations/dingtalk/sync/confirm', request)
+    const { data } = await http.post<SyncResult>(
+      '/integrations/dingtalk/sync/confirm',
+      request,
+      { timeout: DINGTALK_SYNC_TIMEOUT_MS },
+    )
     syncResult.value = data
     if (data.success) {
       ElMessage.success(data.message)
