@@ -42,6 +42,22 @@
 - Playwright：**136 / 137 通过**。唯一失败项 `workbench-a11y.spec.ts:128`（320×700 横向滚动）**不是断言失败**——报错是 Playwright 写 trace 文件 `ENOENT ... recording3777.trace`（`browserContext.close` 阶段），属于 Windows 文件写入/占用问题；用 `scripts/e2e.sh workbench-a11y.spec.ts` 单独重跑 **2/2 通过**（含同一条 320×700 用例）
 - 仓库级检查（`verify.sh --quick`）：SFC 体积、本地日期、e2e helper、isBlank、模块边界、迁移版本、票状态、AI 超时 全通过
 
+## 部署与实测（2026-11-09）
+
+- PR [#29](https://github.com/xue135792468-gif/paiban/pull/29) 合并 `e22e312`，服务器 `~/paiban` 同步到同一提交。
+- 备份 `~/backups/paiban/paiban-pre-20261109T051334Z.sql.gz`（151689 B，`gzip -t` 通过）；Flyway 保持 **59**（本次无迁移）；四容器 healthy；服务器内与公网 `/api/health` 均 200；`teacher 48 / timetable_entry 1092 / draft_lesson 2730 / substitution 0` 与部署前一致。
+- **生产实测预演耗时**（三次，同一份通讯录）：
+
+  | 时间 | 耗时 | 扫描结果 |
+  |---|---|---|
+  | 修复前 | 54005 ms | 49 部门 / 368 人 / 新增 322 / 疑似同名 46 |
+  | 14:20 | 20285 ms | 同上 |
+  | 20:03 | 18471 ms | 同上 |
+  | 20:13 | 17144 ms | 同上 |
+
+  约 **3.1 倍**加速（并发 4，理论上限 4 倍；根部门必须先取、分页与接口自身延迟占掉一部分）。三次结果逐项一致，说明并发下的去重与分组顺序在生产数据上稳定。
+- 前端不再出现「预演失败」；180 秒预算对 17–20 秒的实际耗时留有充足余量。
+
 ## 不再做的
 
 - 不引入「预演结果缓存供确认复用」——需要过期与一致性设计，本轮不做。
