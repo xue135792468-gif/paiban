@@ -98,7 +98,9 @@ const error = ref('')
 const dingtalkNotice = ref<DingTalkLoginNotice | null>(null)
 const isPasswordMode = computed(() => route.query.mode === 'password')
 
+const DINGTALK_SDK_TIMEOUT_MS = 10000
 const DINGTALK_READY_TIMEOUT_MS = 5000
+const DINGTALK_AUTH_CODE_TIMEOUT_MS = 10000
 
 function loadDingTalkSdk(): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -107,41 +109,71 @@ function loadDingTalkSdk(): Promise<any> {
       resolve(existing)
       return
     }
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      reject(new Error('钉钉 JSAPI 加载超时'))
+    }, DINGTALK_SDK_TIMEOUT_MS)
     const script = document.createElement('script')
     script.src = 'https://g.alicdn.com/dingding/dingtalk-jsapi/3.0.25/dingtalk.open.js'
     script.onload = () => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
       const loaded = (window as any).dd
       if (loaded) resolve(loaded)
       else reject(new Error('钉钉 JSAPI 未初始化'))
     }
-    script.onerror = () => reject(new Error('钉钉 JSAPI 加载失败'))
+    script.onerror = () => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      reject(new Error('钉钉 JSAPI 加载失败'))
+    }
     document.head.appendChild(script)
   })
 }
 
 function requestAuthCode(dd: any, corpId: string): Promise<string> {
   return new Promise((resolve, reject) => {
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      reject(new Error('获取钉钉免登授权码超时'))
+    }, DINGTALK_AUTH_CODE_TIMEOUT_MS)
+    const finishResolve = (code: unknown) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      if (typeof code === 'string' && code) resolve(code)
+      else reject(new Error('未获取到钉钉免登授权码'))
+    }
+    const finishReject = (err: unknown) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      reject(err ?? new Error('获取钉钉免登授权码失败'))
+    }
     if (typeof dd.getAuthCode === 'function') {
       dd.getAuthCode({ corpId })
         .then((result: any) => {
-          const code = result?.authCode ?? result?.code
-          if (code) resolve(code)
-          else reject(new Error('未获取到钉钉免登授权码'))
+          finishResolve(result?.authCode ?? result?.code)
         })
-        .catch(reject)
+        .catch(finishReject)
       return
     }
     if (!dd?.runtime?.permission?.requestAuthCode) {
-      reject(new Error('钉钉免登接口不可用'))
+      finishReject(new Error('钉钉免登接口不可用'))
       return
     }
     dd.runtime.permission.requestAuthCode({
       corpId,
       onSuccess: (result: any) => {
-        if (result?.code) resolve(result.code)
-        else reject(new Error('未获取到钉钉免登授权码'))
+        finishResolve(result?.code)
       },
-      onFail: reject,
+      onFail: finishReject,
     })
   })
 }

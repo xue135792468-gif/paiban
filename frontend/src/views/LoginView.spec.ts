@@ -168,6 +168,49 @@ describe('LoginView: 钉钉免登原因码说明页与管理员密码入口', ()
     wrapper.unmount()
   })
 
+  it('钉钉 JSAPI 脚本加载挂起超时（onload/onerror 均不触发）时显示友好说明与密码入口', async () => {
+    delete (window as any).dd
+    vi.useFakeTimers()
+
+    const { wrapper } = await mountLogin()
+    await vi.advanceTimersByTimeAsync(11000)
+    await flushPromises()
+
+    const notice = wrapper.find('[data-testid="dingtalk-login-notice"]')
+    expect(notice.exists()).toBe(true)
+    expect(notice.attributes('data-reason-code')).toBe('DINGTALK_CALL_FAILED')
+    expect(notice.text()).toContain('钉钉登录暂时无法完成')
+    expect(wrapper.find('[data-testid="switch-password-login"]').text()).toContain('我是管理员，用密码登录')
+    expect(wrapper.find('input[type="password"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('requestAuthCode 永不回调超时后显示友好说明与密码入口', async () => {
+    ;(window as any).dd = {
+      ready: (cb: () => void) => cb(),
+      runtime: {
+        permission: {
+          requestAuthCode: () => {
+            // Simulate requestAuthCode hanging forever
+          },
+        },
+      },
+    }
+    vi.useFakeTimers()
+
+    const { wrapper } = await mountLogin()
+    await vi.advanceTimersByTimeAsync(11000)
+    await flushPromises()
+
+    const notice = wrapper.find('[data-testid="dingtalk-login-notice"]')
+    expect(notice.exists()).toBe(true)
+    expect(notice.attributes('data-reason-code')).toBe('DINGTALK_CALL_FAILED')
+    expect(notice.text()).toContain('钉钉登录暂时无法完成')
+    expect(wrapper.find('[data-testid="switch-password-login"]').text()).toContain('我是管理员，用密码登录')
+    expect(wrapper.find('input[type="password"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('点击「我是管理员，用密码登录」写入 ?mode=password 并显示密码表单；带 ?mode=password 刷新不触发自动免登循环', async () => {
     installFakeDingTalk()
     httpMock.post.mockRejectedValueOnce({
