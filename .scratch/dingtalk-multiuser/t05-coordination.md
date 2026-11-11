@@ -1,5 +1,17 @@
 # 05 施工协调快照（不是交付证明）
 
+## 2026-11-12 02:36 最新状态（下方早期快照保留）
+
+- 集成 `c487df3b84e25b497286d9803fac9ab9a2146745` 已含后端 `03743b4`、前端 `b767f1d`、五例并发 `c4eaeb0`、主控过期竞态 `2950110` 及首轮最小 UI/E2E 整改 `188ae98`；仍未放行，06–08 未施工。
+- 双轴原始审源 `10b3e8b...6611b3c`，最终原文与主控判定见 [t05-review.md](t05-review.md)，分别保留 Standards 与 Spec 的计数和优先级。物理审源快照工作树为 `dingtalk-t05-review-snapshot`，只读。
+- 当前唯一生产整改 worker：Dirac，`01a1cbb8-7f76-7642-a326-fe698a1b363d`，`group/deepseek` high，工作树 `dingtalk-t05-review-fixes`。统一修 Mapper 的旧效果回填、reject/withdraw 课后作废、锁后刷新当前 AppUser、系统撤销与同名展示、公共 E2E helper 及唯一申请行断言；原始 reviewer 报告不由它改写。
+- 主控独立 QA：`dingtalk-t05-authz-race` 的 `6f05e1830143e20d7dbdcd753347c28939f64ba8` 仅增加权限旧快照测试和说明。真实角色变更、新 auth/me、同 EM 旧权限形成确定性红；生产修复后必须原样转绿。已普通合入 Dirac 分支（`e2a38ee`），尚未并入集成；不能把这条刻意保留的红当作交付完成。
+- Dirac 前端 checkpoint `d86b286` 已有定向组件、lint/类型证据；剩后端先补行为红，再跑审批普通/并发/过期竞态/权限快照四类定向。主控随后运行受影响 E2E、实际查看结果截图，并做两轴独立增量复核；05 通过后才派 06。
+- 第一、第二轮浏览器失败、trace、截图、真实退出与源哈希均分别保留于 `logs/t05-browser-run1/2`、`.runtime/t05-browser-run1/2`、`evidence/t05-browser-run1/2`，两轮源稳定；端口/服务已结束。具体统计只看复查记录，不从旧快照推断通过。
+- 原 backend/UI/concurrency writers 与两个首轮 reviewers 已完成并关闭；merger 已完成前一批固定 SHA 合并后关闭。不得移除任何被审批拒绝过清理的整个工作树；新增 QA/runtime 路径也尚未清理，不称已单独获准删除。
+
+## 早期施工快照
+
 2026-11-11约23:55。原八票01/02/04/03已经各自施工、整改复核放行，均暂implemented；05正在施工；06/07/08未施工。最终全量verify尚未执行。集成分支codex/dingtalk-multiuser目前提交10b3e8b4045390265d63dee74e3389473ec51016，未推送/部署。
 
 ## 三个独立写集
