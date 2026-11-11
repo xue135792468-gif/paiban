@@ -1,6 +1,6 @@
 # 接手说明（2026-10-25 会话交接）
 
-> **2026-11-11 钉钉多用户八票正在独立集成**：用户已授权按 implement-spec 实施，并要求重要/高风险票完成施工后先双轴复查。集成分支 `codex/dingtalk-multiuser`；规格、八票、依赖和当前事实见 [dingtalk-multiuser/spec.md](dingtalk-multiuser/spec.md) 与 [execution.md](dingtalk-multiuser/execution.md)。01 已完成本票整改与复核，02 已施工、正在处理双轴复查意见，均暂保留 implemented，最终完整门禁后才置 done；其余施工票尚未开工，03/04/05/07的研究与代码定位不代表已实现。身份首次绑定的权限冲突另有产品问题待答复，见 [03 Module 草案](dingtalk-multiuser/t03-module-plan.md)。本轮仅交付集成分支，尚未部署。
+> **2026-11-11 钉钉多用户八票正在独立集成**：用户已授权按 implement-spec 实施，并要求重要/高风险票完成施工后先双轴复查。集成分支 `codex/dingtalk-multiuser`；规格、八票、依赖和当前事实见 [dingtalk-multiuser/spec.md](dingtalk-multiuser/spec.md) 与 [execution.md](dingtalk-multiuser/execution.md)。01、02 已完成整改与双轴复核，暂保留 implemented，最终完整门禁后才置 done；04 分片施工中，尚未整票验收，03/05–08 尚未施工。身份首次绑定保护已获产品明确确认，见 [03 Module 方案](dingtalk-multiuser/t03-module-plan.md)；04 放行后回到03。研究与准备文档不代表实现。本轮仅交付集成分支，尚未部署。
 >
 > **接手请先看实际证据**：单票验收统计只在对应 delivery/review 文档，入口不复制。01 的 [复查](dingtalk-multiuser/t01-review.md)、02 的 [施工记录](dingtalk-multiuser/t02-delivery.md) 为当前入口；最终全规格验收仍待施工/整改结束后冻结源码执行。下方11-09“从未确认通讯录同步”的描述是历史快照，已被本次只读核验更新，见 execution.md「当前事实」，不能据此重复执行真实同步。
 
