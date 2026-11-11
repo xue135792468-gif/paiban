@@ -7,7 +7,7 @@
 - V62保留给本票：`app_user.login_type`，Java `LoginType` 为 `PASSWORD` / `DINGTALK`。原账号全部PASSWORD且hash保留；DINGTALK账号hash为null，数据库与实体允许null，但密码登录/重置必须按类型拒绝，不能靠空hash偶然失败。旧构造器/fixture兼容，不能大面积删除旧断言。
 - UserSummary追加 `loginType`，JSON字符串。新后端总返回有效类型，前端为既有fixture兼容可把缺失视PASSWORD；DINGTALK隐藏重置密码入口，提升角色不改类型。至少保留一个enabled PASSWORD超级管理员，按类型/身份判断，不用用户名硬编码。
 - `/api/auth/dingtalk`仍只收authCode。失败JSON保留status/message，可追加稳定 `code`：`NOT_PROVISIONED`、`AMBIGUOUS_IDENTITY`、`ACCOUNT_DISABLED`、`DINGTALK_DISABLED`、`DINGTALK_CALL_FAILED`、`ADMIN_BINDING_REQUIRED`。前端按code决定说明，不依赖某一HTTP错误码猜身份。凭据/原始外部异常不得进入响应/日志/审计。
-- 说明页在登录页内呈现。钉钉UA自动免登失败明确解释；手动密码入口带 `?mode=password` 并真正跳过本次自动免登，刷新也不循环。普通浏览器仍显示密码表单。SDK/配置失败也必须可读，不静默退回密码页。成功走已有登录落点逻辑。
+- 说明页在登录页内呈现。钉钉UA自动免登失败明确解释；手动密码入口带 `?mode=password` 并真正跳过本次自动免登，刷新也不循环。普通浏览器仍显示密码表单。SDK/配置失败也必须可读，不静默退回密码页。成功使用统一登录落点逻辑：按 User Story 19，关联教师且具备本人课表能力、非排课/编辑管理者，默认根路径落点时进入本人课表（缺少 redirect 或显式 redirect=/ 都按既有根路径规则处理）；非根显式 redirect 与管理员初始化落点保留，任何异步落点在导航前重查本次登录仍有效。
 
 ## C：所有UID写入的保护
 
