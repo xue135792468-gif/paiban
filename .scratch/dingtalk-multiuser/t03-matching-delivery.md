@@ -2,7 +2,9 @@
 
 2026-11-11。分支 `codex/dingtalk-t03-matching`，工作树 `.worktrees/dingtalk-t03-matching`，
 基点 `30ba7c3`（已含 integration `fe759dd` + C 绑定保护 + A1 HTTP adapter + A2 登录类型 + 首登全链绿）。
-交付前按约定 merge 当前 integration tip `cb7cb58`（A3 + 密码总钥匙守卫），为 fast-forward，无冲突、未 reset。
+交付跑基点为 `cb7cb58`（A3 + 密码总钥匙守卫；该 ref 后来被 merger 以 message-amend 变成同 tree 的
+`a853597`，内容一致）。之后按约定以 `--no-ff` 合入 integration `51dfe3a`
+（main 的 5 项 PWD 测试 + ADR-0036，**未改 provisioner**）。全程未 reset / rebase / amend。
 
 **这不是 03 整票完成**，也不与主线程的密码总钥匙守卫 / 并发用例重叠：
 本切片只把「免登时系统认谁」的六条既有规则钉成回归。
@@ -45,7 +47,10 @@
 | 阶段 | 提交点 | exit | 结果 |
 |---|---|---|---|
 | merge 前 | `30ba7c3` | 0 | `Tests run: 6, Failures: 0, Errors: 0`（36–39 s） |
-| merge 后（交付） | `cb7cb58` | 0 | `Tests run: 6, Failures: 0, Errors: 0`，`BUILD SUCCESS`（36.30 s） |
+| 交付跑基点 | `cb7cb58` | 0 | `Tests run: 6, Failures: 0, Errors: 0`，`BUILD SUCCESS`（36.30 s） |
+
+合入 `51dfe3a` 之后没有再跑这 6 条：该合入只新增／改动其它测试与文档，且
+`DingTalkAccountProvisioner` / `DingTalkBindingPolicy` 相对 `30ba7c3` 是空 diff（`git diff --stat` 无输出）。
 
 日志（gitignored，保留真实退出码，未接 `| tee`）：
 `.scratch/dingtalk-multiuser/logs/t03-matching-targeted.log`（交付跑）、
