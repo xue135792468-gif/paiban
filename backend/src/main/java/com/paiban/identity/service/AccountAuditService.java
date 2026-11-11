@@ -118,15 +118,19 @@ public class AccountAuditService {
         }
         List<String> roleCodes = user.getRoles().stream().map(Role::getCode).sorted().toList();
         Long teacherId = user.getTeacherId();
-        String teacherName = teacherId == null ? null
-                : teachers.findById(teacherId).map(teacher -> teacher.getName()).orElse(null);
+        // 教师信息只读一次，姓名与钉钉 UID 取自同一份实时快照：绑定前后各写一条审计时，
+        // 前后差异能直接看出「这次多了一个 UID」。
+        com.paiban.foundation.domain.Teacher teacher = teacherId == null ? null
+                : teachers.findById(teacherId).orElse(null);
         return new AccountSnapshot(
                 user.getUsername(),
                 user.getDisplayName(),
                 user.isEnabled(),
                 teacherId,
-                teacherName,
-                roleCodes);
+                teacher == null ? null : teacher.getName(),
+                roleCodes,
+                user.getLoginType(),
+                teacher == null ? null : teacher.getDingtalkUserId());
     }
 
     private AuditLog newLog(

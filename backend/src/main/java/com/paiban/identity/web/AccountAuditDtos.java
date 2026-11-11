@@ -1,5 +1,6 @@
 package com.paiban.identity.web;
 
+import com.paiban.identity.domain.LoginType;
 import java.time.Instant;
 import java.util.List;
 
@@ -8,14 +9,34 @@ public final class AccountAuditDtos {
 
     private AccountAuditDtos() {}
 
-    /** 账号快照 allowlist：账号标识、姓名、启用、关联教师、身份。 */
+    /**
+     * 账号快照 allowlist：账号标识、姓名、启用、关联教师、身份，以及票 03 追加的
+     * 登录类型与钉钉 UID（业务字段，便于事后分辨账号类型与绑定关系）。
+     *
+     * <p>任何密码、哈希、token、集成密钥都不会进入快照。历史记录的 JSON 没有后两个字段，
+     * 读取时保持 {@code null} 表示「当时未知」，不改写旧 JSON。
+     */
     public record AccountSnapshot(
             String username,
             String displayName,
             boolean enabled,
             Long teacherId,
             String teacherName,
-            List<String> roleCodes) {}
+            List<String> roleCodes,
+            LoginType loginType,
+            String dingtalkUserId) {
+
+        /** 旧 6 参构造器兼容（02 的历史事件与既有测试 fixture）：未知的类型/绑定读作 null。 */
+        public AccountSnapshot(
+                String username,
+                String displayName,
+                boolean enabled,
+                Long teacherId,
+                String teacherName,
+                List<String> roleCodes) {
+            this(username, displayName, enabled, teacherId, teacherName, roleCodes, null, null);
+        }
+    }
 
     public record AccountAuditEntry(
             Long id,
