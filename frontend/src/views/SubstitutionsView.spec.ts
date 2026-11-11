@@ -70,6 +70,9 @@ describe('调代课页面', () => {
     vi.clearAllMocks()
     document.body.innerHTML = ''
     httpMock.get.mockImplementation((url: string) => {
+      if (url === '/semesters/current') {
+        return Promise.resolve({ status: 200, data: { id: 1, name: '2026 秋季学期' } })
+      }
       if (url === '/teachers/options') {
         return Promise.resolve({ data: [{ id: 2, name: '李老师' }] })
       }
@@ -95,6 +98,9 @@ describe('调代课页面', () => {
 
   it('管理员有待审批页签，按 SUBMITTED 加载，批准后重新拉列表', async () => {
     httpMock.get.mockImplementation((url: string, config?: { params?: Record<string, unknown> }) => {
+      if (url === '/semesters/current') {
+        return Promise.resolve({ status: 200, data: { id: 1, name: '2026 秋季学期' } })
+      }
       if (url === '/teachers/options') {
         return Promise.resolve({ data: [{ id: 2, name: '李老师' }] })
       }
@@ -107,6 +113,9 @@ describe('调代课页面', () => {
       if (url === '/substitution-requests/21/approve') {
         // 批准后待批列表应为空，页面要重新取数才看得见。
         httpMock.get.mockImplementation((target: string) => {
+          if (target === '/semesters/current') {
+            return Promise.resolve({ status: 200, data: { id: 1, name: '2026 秋季学期' } })
+          }
           if (target === '/teachers/options') {
             return Promise.resolve({ data: [{ id: 2, name: '李老师' }] })
           }
@@ -140,21 +149,75 @@ describe('调代课页面', () => {
     expect(wrapper.text()).toContain('没有待审批的申请')
   })
 
-  it('还没有学期时列表给出明确提示，而不是静默失败', async () => {
+  it('没有当前学期（204）时只显示说明，不请求班级、教师和调代依赖接口', async () => {
     httpMock.get.mockImplementation((url: string) => {
+      if (url === '/semesters/current') {
+        return Promise.resolve({ status: 204, data: null })
+      }
+      throw new Error(`unexpected request without semester: ${url}`)
+    })
+
+    const wrapper = await mountView(['substitution:submit'])
+
+    expect(wrapper.text()).toContain('当前没有进行中的学期')
+    expect(wrapper.find('[data-testid="substitution-no-semester"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('提交调代申请')
+    const urls = httpMock.get.mock.calls.map(([url]) => url)
+    expect(urls).toEqual(['/semesters/current'])
+  })
+
+  it('学期接口的真实错误原样提示，不伪装成没有学期', async () => {
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/semesters/current') {
+        return Promise.reject({
+          response: { status: 500, data: { message: '学期服务暂时不可用' } },
+        })
+      }
+      throw new Error(`unexpected request after semester failure: ${url}`)
+    })
+
+    const wrapper = await mountView(['substitution:submit'])
+
+    expect(wrapper.text()).toContain('学期服务暂时不可用')
+    expect(wrapper.text()).not.toContain('当前没有进行中的学期')
+  })
+
+  it('待审批先失败、我的列表后成功时，待批错误不会被清掉', async () => {
+    let rejectPending!: (reason: unknown) => void
+    const pendingResponse = new Promise((resolve, reject) => {
+      void resolve
+      rejectPending = reject
+    })
+    let resolveMine!: (value: unknown) => void
+    const mineResponse = new Promise((resolve) => {
+      resolveMine = resolve
+    })
+    httpMock.get.mockImplementation((url: string, config?: { params?: Record<string, unknown> }) => {
+      if (url === '/semesters/current') {
+        return Promise.resolve({ status: 200, data: { id: 1, name: '2026 秋季学期' } })
+      }
       if (url === '/teachers/options') {
         return Promise.resolve({ data: [] })
       }
       if (url === '/classes') {
         return Promise.resolve({ data: [] })
       }
-      return Promise.reject({
-        response: { status: 400, data: { message: '当前没有进行中的学期，请先在学期管理中设置' } },
-      })
+      if (url === '/substitution-requests' && config?.params?.status === 'SUBMITTED') {
+        return pendingResponse
+      }
+      return mineResponse
     })
 
-    const wrapper = await mountView(['substitution:submit'])
+    const wrapper = await mountView(['substitution:submit', 'substitution:approve'])
+    expect(httpMock.get.mock.calls.some(([url]) => url === '/substitution-requests')).toBe(true)
 
-    expect(wrapper.text()).toContain('当前没有进行中的学期')
+    rejectPending({
+      response: { status: 500, data: { message: '待审批列表暂时不可用' } },
+    })
+    await flushPromises()
+    resolveMine({ data: [] })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('待审批列表暂时不可用')
   })
 })

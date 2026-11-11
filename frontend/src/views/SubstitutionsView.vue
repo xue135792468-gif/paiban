@@ -9,38 +9,62 @@
     </div>
 
     <el-alert
-      v-if="loadError"
+      v-if="bootError"
       class="load-error"
-      :title="loadError"
+      :title="bootError"
       type="warning"
       :closable="false"
       show-icon
     />
 
-    <el-tabs v-model="activeTab">
-      <el-tab-pane label="我的调代" name="mine">
-        <SubstitutionRequestForm :my-teacher-id="myTeacherId" :teachers="teachers" @submitted="loadMine" />
-        <SubstitutionMineTable ref="mineRef" :requests="myRequests" @changed="reloadAfterChange" />
-      </el-tab-pane>
+    <div v-else-if="noSemester" class="no-semester" data-testid="substitution-no-semester">
+      <h3>当前没有进行中的学期</h3>
+      <p>请先在「学期管理」中创建并设置当前学期，之后这里会显示代课申请与审批记录。</p>
+    </div>
 
-      <el-tab-pane v-if="canApprove" label="待审批" name="pending">
-        <SubstitutionApprovalPanel
-          :requests="pendingRequests"
-          :teachers="teachers"
-          :can-approve="canApprove"
-          @changed="reloadAfterChange"
-        />
-      </el-tab-pane>
+    <template v-else-if="booted">
+      <el-alert
+        v-if="mineError"
+        class="load-error"
+        :title="mineError"
+        type="warning"
+        :closable="false"
+        show-icon
+      />
+      <el-alert
+        v-if="pendingError"
+        class="load-error"
+        :title="pendingError"
+        type="warning"
+        :closable="false"
+        show-icon
+      />
 
-      <el-tab-pane v-if="canViewRecords" label="调代记录" name="records">
-        <SubstitutionRecordsPanel
-          ref="recordsRef"
-          :class-options="classOptions"
-          :teachers="teachers"
-          :can-view-all="canViewAllRecords"
-        />
-      </el-tab-pane>
-    </el-tabs>
+      <el-tabs v-model="activeTab">
+        <el-tab-pane label="我的调代" name="mine">
+          <SubstitutionRequestForm :my-teacher-id="myTeacherId" :teachers="teachers" @submitted="loadMine" />
+          <SubstitutionMineTable ref="mineRef" :requests="myRequests" @changed="reloadAfterChange" />
+        </el-tab-pane>
+
+        <el-tab-pane v-if="canApprove" label="待审批" name="pending">
+          <SubstitutionApprovalPanel
+            :requests="pendingRequests"
+            :teachers="teachers"
+            :can-approve="canApprove"
+            @changed="reloadAfterChange"
+          />
+        </el-tab-pane>
+
+        <el-tab-pane v-if="canViewRecords" label="调代记录" name="records">
+          <SubstitutionRecordsPanel
+            ref="recordsRef"
+            :class-options="classOptions"
+            :teachers="teachers"
+            :can-view-all="canViewAllRecords"
+          />
+        </el-tab-pane>
+      </el-tabs>
+    </template>
   </div>
 </template>
 
@@ -86,8 +110,12 @@ const classOptions = computed(() =>
 )
 const myRequests = ref<RequestRow[]>([])
 const pendingRequests = ref<RequestRow[]>([])
-/** 没有学期等前置条件缺失时，后端会直接拒绝；页面要说清楚而不是静默空表。 */
-const loadError = ref('')
+const booted = ref(false)
+const noSemester = ref(false)
+const bootError = ref('')
+/** 我的列表与待批列表各记各的错误，后成功的一条不能吞掉先失败的另一条。 */
+const mineError = ref('')
+const pendingError = ref('')
 const mineRef = ref<InstanceType<typeof SubstitutionMineTable> | null>(null)
 const recordsRef = ref<InstanceType<typeof SubstitutionRecordsPanel> | null>(null)
 
@@ -95,10 +123,10 @@ async function loadMine() {
   try {
     const { data } = await http.get('/substitution-requests', { params: { mine: true } })
     myRequests.value = data
-    loadError.value = ''
+    mineError.value = ''
   } catch (error) {
     myRequests.value = []
-    loadError.value = serverMessage(error, '调代数据加载失败，请稍后重试')
+    mineError.value = serverMessage(error, '调代数据加载失败，请稍后重试')
   }
 }
 
@@ -108,9 +136,10 @@ async function loadPending() {
   try {
     const { data } = await http.get('/substitution-requests', { params: { status: 'SUBMITTED' } })
     pendingRequests.value = data
+    pendingError.value = ''
   } catch (error) {
     pendingRequests.value = []
-    loadError.value = serverMessage(error, '待审批列表加载失败，请稍后重试')
+    pendingError.value = serverMessage(error, '待审批列表加载失败，请稍后重试')
   }
 }
 
@@ -119,23 +148,52 @@ async function reloadAfterChange() {
 }
 
 async function reloadAll() {
+  if (!booted.value) {
+    await initialize()
+    return
+  }
   await Promise.all([loadMine(), loadPending(), recordsRef.value?.reload()])
 }
 
-onMounted(async () => {
-  const [teacherRes, classRes] = await Promise.all([
-    http.get('/teachers/options'),
-    http.get('/classes'),
-  ])
-  teachers.value = teacherRes.data
-  classes.value = classRes.data.filter((item: { active?: boolean }) => item.active !== false)
+async function initialize() {
+  bootError.value = ''
+  try {
+    const current = await http.get('/semesters/current')
+    if (current.status === 204 || !current.data) {
+      noSemester.value = true
+      booted.value = false
+      return
+    }
+  } catch (error) {
+    // 真实错误（500/网络）不是“没有学期”，要保留可读原因。
+    noSemester.value = false
+    booted.value = false
+    bootError.value = serverMessage(error, '学期信息加载失败，请稍后重试')
+    return
+  }
+  noSemester.value = false
+  try {
+    const [teacherRes, classRes] = await Promise.all([
+      http.get('/teachers/options'),
+      http.get('/classes'),
+    ])
+    teachers.value = teacherRes.data
+    classes.value = classRes.data.filter((item: { active?: boolean }) => item.active !== false)
+  } catch (error) {
+    booted.value = false
+    bootError.value = serverMessage(error, '调代基础数据加载失败，请稍后重试')
+    return
+  }
+  booted.value = true
   await reloadAfterChange()
   const requestId = Number(route.query.requestId)
   if (requestId) {
     await nextTick()
     await mineRef.value?.openHistory(requestId)
   }
-})
+}
+
+onMounted(initialize)
 </script>
 
 <style scoped>
