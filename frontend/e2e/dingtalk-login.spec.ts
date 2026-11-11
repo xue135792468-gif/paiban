@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { APIRequestContext, BrowserContext, Page } from '@playwright/test'
-import { apiCall, apiLogin, newContext, uiLogin } from './helpers'
+import { API, apiCall, apiLogin, newContext, uiLogin } from './helpers'
 import { capture } from './screenshots'
 
 const DINGTALK_UA =
@@ -193,6 +193,18 @@ test('已绑定UID老师免登并取得同一账号', async ({ browser }) => {
       await expect(menu).not.toContainText('排课规则')
     }
     await capture(page, 'dingtalk-t03-auto-provision-logged-in')
+    const semesterResponse = await api.get(`${API}/semesters/current`, {
+      headers: { Authorization: `Bearer ${authBody.token}` },
+    })
+    expect([200, 204]).toContain(semesterResponse.status())
+    if (semesterResponse.status() === 204) {
+      // 隔离启动时没有学期：真实后端返回204，不能用拦截或预造学期掩盖页面错误。
+      await page.goto('/substitution/requests')
+      await expect(page).toHaveURL(/\/substitution\/requests$/)
+      await expect(page.getByTestId('substitution-no-semester')).toBeVisible()
+      await expect(page.getByRole('button', { name: '提交申请' })).toHaveCount(0)
+      await capture(page, 'dingtalk-t05-no-semester-requests')
+    }
     expect(browserErrors).toEqual([])
   } finally {
     await context.close()
