@@ -51,7 +51,14 @@
         <el-table-column label="操作" width="320" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="primary" @click="openReset(row)">重置密码</el-button>
+            <el-button
+              v-if="row.loginType !== 'DINGTALK'"
+              link
+              type="primary"
+              @click="openReset(row)"
+            >
+              重置密码
+            </el-button>
             <el-button
               v-if="row.enabled"
               link
@@ -150,12 +157,14 @@ import ImportDialog from '@/components/ImportDialog.vue'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
 import { PRESET_ROLES, presetRoleLabel, primaryRoleCode } from '@/constants/roles'
+import type { LoginType } from '@/stores/auth'
 
 interface UserRow {
   id: number
   username: string
   displayName: string
   enabled: boolean
+  loginType?: LoginType
   teacherId?: number | null
   roles: string[]
   permissions: string[]

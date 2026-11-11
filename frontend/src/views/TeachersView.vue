@@ -132,7 +132,12 @@
         </el-form-item>
         <el-divider content-position="left">平台绑定</el-divider>
         <el-form-item label="钉钉 UserID">
-          <el-input v-model="form.dingtalkUserId" placeholder="留空表示清除绑定" />
+          <el-input
+            v-model="form.dingtalkUserId"
+            data-testid="teacher-dingtalk-userid"
+            :disabled="!canManageIntegration"
+            :placeholder="canManageIntegration ? '留空表示清除绑定' : '仅超级管理员可修改'"
+          />
         </el-form-item>
         <el-form-item label="状态" prop="active">
           <el-switch
@@ -164,6 +169,7 @@ import { Plus, Download, Upload } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import { getRuleGroups, type RuleGroup } from '@/api/ruleGroups'
 import { useAuthStore } from '@/stores/auth'
+import { INTEGRATION_MANAGE_PERMISSION } from '@/constants/permissions'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ImportDialog from '@/components/ImportDialog.vue'
 import LifecycleCell from '@/components/lifecycle/LifecycleCell.vue'
@@ -182,6 +188,7 @@ interface Teacher {
 }
 
 const auth = useAuthStore()
+const canManageIntegration = computed(() => auth.hasPermission(INTEGRATION_MANAGE_PERMISSION))
 const teachers = ref<Teacher[]>([])
 const loading = ref(false)
 const saving = ref(false)
@@ -276,15 +283,17 @@ async function submit() {
   await formRef.value.validate()
   saving.value = true
   try {
-    const payload = {
+    const payload: Record<string, unknown> = {
       name: form.name.trim(),
       employeeNo: form.employeeNo.trim() || null,
       phone: form.phone.trim() || null,
       email: form.email.trim() || null,
       subject: form.subject.trim() || null,
       active: form.active,
+    }
+    if (canManageIntegration.value) {
       // Empty string clears a binding; the backend treats an omitted field as unchanged.
-      dingtalkUserId: form.dingtalkUserId.trim(),
+      payload.dingtalkUserId = form.dingtalkUserId.trim()
     }
     if (editingId.value) {
       await http.put(`/teachers/${editingId.value}`, payload)

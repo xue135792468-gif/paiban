@@ -161,3 +161,102 @@ describe('UserAdminView: 多角色账号编辑不静默降级', () => {
     wrapper.unmount()
   })
 })
+
+describe('UserAdminView: 钉钉免登账号无密码与提升身份', () => {
+  it('DINGTALK 账号隐藏「重置密码」按钮，PASSWORD 或旧格式缺失 loginType 的账号仍显示「重置密码」', async () => {
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/users') {
+        return Promise.resolve({
+          data: [
+            {
+              id: 1,
+              username: 'admin',
+              displayName: '总钥匙管理员',
+              enabled: true,
+              loginType: 'PASSWORD',
+              roles: ['super_admin'],
+              permissions: [],
+            },
+            {
+              id: 2,
+              username: 'dd_li',
+              displayName: '李老师',
+              enabled: true,
+              loginType: 'DINGTALK',
+              teacherId: 8,
+              roles: ['teacher'],
+              permissions: [],
+            },
+            {
+              id: 3,
+              username: 'legacy_pwd',
+              displayName: '历史密码号',
+              enabled: true,
+              roles: ['admin'],
+              permissions: [],
+            },
+          ],
+        })
+      }
+      if (url === '/teachers/options') return Promise.resolve({ data: [{ id: 8, name: '李老师' }] })
+      return Promise.resolve({ data: [] })
+    })
+
+    const wrapper = mount(UserAdminView, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+
+    const rows = wrapper.findAll('.el-table__body-wrapper tbody tr')
+    expect(rows).toHaveLength(3)
+    expect(rows[0].text()).toContain('重置密码')
+    expect(rows[1].text()).not.toContain('重置密码')
+    expect(rows[2].text()).toContain('重置密码')
+    wrapper.unmount()
+  })
+
+  it('把 DINGTALK 老师提升为教务管理员时编辑弹窗无密码输入且提交载荷不含密码字段', async () => {
+    let capturedPutPayload: Record<string, unknown> | undefined
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/users') {
+        return Promise.resolve({
+          data: [
+            {
+              id: 2,
+              username: 'dd_li',
+              displayName: '李老师',
+              enabled: true,
+              loginType: 'DINGTALK',
+              teacherId: 8,
+              roles: ['teacher'],
+              permissions: [],
+            },
+          ],
+        })
+      }
+      if (url === '/teachers/options') return Promise.resolve({ data: [{ id: 8, name: '李老师' }] })
+      return Promise.resolve({ data: [] })
+    })
+    httpMock.put.mockImplementation((_url: string, payload: Record<string, unknown>) => {
+      capturedPutPayload = payload
+      return Promise.resolve({ data: {} })
+    })
+
+    const wrapper = mount(UserAdminView, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+
+    const dialog = await openEditDialog(wrapper)
+    expect(dialog.find('input[type="password"]').exists()).toBe(false)
+
+    dialog.findAllComponents({ name: 'ElSelect' })[0].vm.$emit('update:modelValue', 'admin')
+    await flushPromises()
+    await saveEditDialog(wrapper)
+
+    expect(capturedPutPayload).toEqual({
+      displayName: '李老师',
+      teacherId: 8,
+      roleCodes: ['admin'],
+    })
+    expect(capturedPutPayload).not.toHaveProperty('password')
+    expect(capturedPutPayload).not.toHaveProperty('loginType')
+    wrapper.unmount()
+  })
+})

@@ -1,0 +1,180 @@
+# 票 03-B：前端免登说明页、密码入口、账号登录类型与教师 UID 权限切片
+
+2026-11-11，分支 `codex/dingtalk-t03-ui`，工作树 `E:/排课系统/.worktrees/dingtalk-t03-ui`。
+
+开工基点 `3f73700`，提交前已 fast-forward 合并 `codex/dingtalk-multiuser` 最新提交 `fc3b325`。每个子任务前均检查物理内存空闲（4.7–5.0 GiB）。
+
+## 范围与边界
+
+- 本切片为 **03-B 前端与浏览器用例准备**，严格遵循 `.scratch/dingtalk-multiuser/t03-wire-contract.md` 与 `t03-module-plan.md`。
+- 只改动 `frontend/**` 与本交付文档，未修改 `backend/**`、迁移、04 功能、其他票据或根全局配置，未重做登录页视觉。
+- 变更路径：
+  - `frontend/src/api/http.ts`（+ `http.spec.ts`）：仅针对 `/auth/dingtalk` 的 401 响应跳过全局清 token 与 `/login` 强制跳转，使免登失败的结构化原因码原样传给 `LoginView`，不破坏正常会话过期 401 行为。
+  - `frontend/src/composables/useDingTalkLoginNotice.ts`：6 个稳定原因码（`NOT_PROVISIONED`、`AMBIGUOUS_IDENTITY`、`ACCOUNT_DISABLED`、`DINGTALK_DISABLED`、`DINGTALK_CALL_FAILED`、`ADMIN_BINDING_REQUIRED`）的友好说明映射；前 5 项说明可联系教务处核实教师档案，但绑定钉钉 UserID、重新启用账号、配置钉钉集成参数均须由超级管理员操作；`ADMIN_BINDING_REQUIRED` 明确唯一确认路径为超级管理员在「教师管理」中填写钉钉 UserID 确认绑定（不含「或钉钉同步」），绝不拼接或回显原始 vendor 错误消息。
+  - `frontend/src/views/LoginView.vue`（337 行，≤ 600 行限制）+ `LoginView.spec.ts`：钉钉 UA 自动尝试免登；配置关闭 / 缺少 `corpId` / SDK 加载失败 / `dd.ready` 有限超时（5s）/ `requestAuthCode` 失败 / 后端返回原因码时均渲染 `[data-testid="dingtalk-login-notice"]` 说明块，不再静默退回密码表单；提供 `[data-testid="switch-password-login"]`（「我是管理员，用密码登录」）写入 `?mode=password` 并展示密码表单，带 `?mode=password` 刷新跳过自动免登不循环；普通浏览器直接渲染密码表单；免登成功复用 `useLoginLanding().landAfterLogin()`。
+  - `frontend/src/stores/auth.ts`：`CurrentUser`（导出别名 `UserSummary`）追加可选 `loginType?: 'PASSWORD' | 'DINGTALK'`。
+  - `frontend/src/views/UserAdminView.vue`（393 行）+ `UserAdminView.spec.ts`：`row.loginType === 'DINGTALK'` 隐藏「重置密码」按钮（缺失视为 `PASSWORD` 保持向后兼容）；提升钉钉免登老师为管理员时无密码输入、提交载荷不含密码字段。
+  - `frontend/src/constants/permissions.ts`、`frontend/src/views/TeachersView.vue`（404 行）+ `TeachersView.spec.ts`：导出 `INTEGRATION_MANAGE_PERMISSION = 'integration:manage'`，钉钉 UserID 输入框（`[data-testid="teacher-dingtalk-userid"]`）仅 `auth.hasPermission(INTEGRATION_MANAGE_PERMISSION)` 可编辑；教务管理员只读可见，且提交新建/编辑教师时省略 `dingtalkUserId` 字段（不会传空串清除已有绑定），普通字段如姓名正常保存。
+  - `frontend/src/api/accountAudit.ts`、`frontend/src/utils/accountAuditChange.ts`（+ `accountAuditChange.spec.ts`、`AccountAuditView.spec.ts`）：`AccountSnapshot` 追加可选 `loginType` 与 `dingtalkUserId`，按 typed allowlist 展示登录方式与钉钉 UID；`null`/`undefined` 统一显示为 `—`（不给历史未知 `null` 贴「未绑定」标签），旧快照（`loginType == null && dingtalkUserId == null`）升级到新快照的常规修改不虚报登录方式或 UID 变更，配对事件（`DINGTALK_LINK`）展示 `钉钉UID：— → <uid>`，忽略任意凭据/hash 或未知对象键。
+  - `frontend/e2e/helpers.ts`、`frontend/e2e/dingtalk-login.spec.ts`：`uiLogin` 第 4 参数 `options` 追加可选 `loginPath?: string`（默认 `'/login'`，向后兼容所有既有调用）；准备 2 条 Playwright 用例（免登失败说明页 + `?mode=password` 跳过循环并复用 `uiLogin(..., { loginPath: '/login?mode=password' })` 完成密码登录；`已绑定UID老师免登并取得同一账号` 只读复用现有 `dd-001` 绑定教师或仅在缺失时新建自有教师、只清理自有教师 UID、校验 `POST /api/auth/dingtalk` 200 响应 `token`/`user.id`/`user.teacherId` 与 `GET /api/auth/me` 一致，并记录断言 `console` error / `pageerror`），待后端 A/C 整合后由主线程统一运行。
+  - `.scratch/dingtalk-multiuser/logs/t03-ui-final.log`：6 个文件 40 条定向 Vitest 原始输出日志（含 2 条 SDK / authCode 超时用例，见文末接管记录）。
+
+## 主线程预审 3 项修复记录（相对 `8157380`）
+
+1. **原因码文案职责边界**：`ADMIN_BINDING_REQUIRED` 删除「或钉钉同步」，明确本版唯一确认路径为超级管理员在「教师管理」填写钉钉 UserID；其余原因码明确联系教务处核实教师档案，而绑定 UID、重新启用账号、配置钉钉集成均由超级管理员操作。
+2. **审计快照 `null` 未知语义**：`dingtalkUserId` 为 `null`/`undefined` 时统一显示 `—`，不将历史未知 `null` 标为「未绑定」；旧未知快照（`before.loginType == null && before.dingtalkUserId == null`）在常规更新时不虚报 UID 变更，`DINGTALK_LINK` 配对事件显示 `钉钉UID：— → <uid>`。
+3. **E2E 不篡改外部 fixture + 真实响应断言 + 复用 `uiLogin`**：第 1 条复用 `uiLogin(page, 'admin', 'admin123', { loginPath: '/login?mode=password' })`；第 2 条改名为 `已绑定UID老师免登并取得同一账号`，只读检查并复用已绑定 `dd-001` 的教师（多个 `dd-001` 或关联账号全停用时直接报前置错误，绝不清空或启用他人 fixture），仅在不存在时创建自有教师并在 `finally` 仅清自有 UID；等待 `POST /api/auth/dingtalk` 200 响应并校验 `user.id`（有启用账号时等于稳定最小 ID，新建时 `loginType === 'DINGTALK'`）、`user.teacherId` 及 `GET /api/auth/me` 一致性，两条均记录并断言 `console` error 与 `pageerror`。
+
+## TDD 红 → 绿记录
+
+测试 seam 均为公开 DOM、用户输入、路由地址、HTTP 拦截器结果与请求载荷，不使用内部 call counts，不改动既有测试断言。
+
+| 垂直切片 | 红（首次失败摘要） | 最小实现 | 绿 |
+|---|---|---|---|
+| 1. `http.ts` 免登 401 透传与普通 401 保留 | `http.spec.ts`：`expected null to be 'existing-token'`（1 failed \| 1 passed） | 响应拦截器排除 `/auth/dingtalk` 的 401 清会话与强制跳转 | 2 passed |
+| 2. `LoginView` 6 原因码说明、SDK/配置失败、`?mode=password` 跳过循环与 `landAfterLogin` | `LoginView.spec.ts`：`[data-testid="dingtalk-login-notice"]` 不存在、落地页为 `/` 而非 `/onboarding`（10 failed \| 1 passed） | 新增 `useDingTalkLoginNotice.ts` 并接入 `LoginView.vue`（含 `dd.ready` 5s 超时与 `?mode=password` 分支） | 11 passed |
+| 3. `UserAdminView` 隐藏 `DINGTALK` 重置密码与提升身份无密码 | `UserAdminView.spec.ts`：`expected 'dd_li李老师...重置密码 停用' not to contain '重置密码'`（1 failed \| 7 passed） | `v-if="row.loginType !== 'DINGTALK'"` 控制重置密码按钮 | 8 passed |
+| 4. `TeachersView` 按 `integration:manage` 控制 UID 只超管可改、教务省略 UID | `TeachersView.spec.ts`：`[data-testid="teacher-dingtalk-userid"]` 缺失（2 failed \| 2 passed） | `INTEGRATION_MANAGE_PERMISSION` 控制 disabled 与提交 payload 是否携带 `dingtalkUserId` | 4 passed |
+| 5. `AccountAudit` 快照 `loginType` / `dingtalkUserId` allowlist 展示与配对差异 | `accountAuditChange.spec.ts` + `AccountAuditView.spec.ts`：缺少登录方式与 `钉钉UID：— → ...`（2 failed \| 11 passed） | `AccountSnapshot` 与 `accountAuditChange.ts` 按 allowlist 格式化 `loginType` 与 `dingtalkUserId`，未知 `null` 统一显示 `—` | 13 passed |
+| 6. `LoginView` SDK 脚本永不 load / `requestAuthCode` 永不回调 | `LoginView.spec.ts`：补丁前实现下两条新用例报 `expected false to be true`（2 failed \| 11 passed，exit 1） | SDK 加载与 authCode 各加 10s deadline + `settled` 守卫，计时器清理，晚回调不提交登录 | 13 passed（6 文件合计 40） |
+
+## 已执行验证命令与退出码
+
+均在 `E:/排课系统/.worktrees/dingtalk-t03-ui/frontend`（或工作树根）串行执行：
+
+1. `npx vitest run --no-file-parallelism src/api/http.spec.ts src/views/LoginView.spec.ts src/views/UserAdminView.spec.ts src/views/TeachersView.spec.ts src/utils/accountAuditChange.spec.ts src/views/AccountAuditView.spec.ts > ../.scratch/dingtalk-multiuser/logs/t03-ui-final.log 2>&1` → **6 files / 40 tests passed, exit 0**（原始输出见 `.scratch/dingtalk-multiuser/logs/t03-ui-final.log`）
+2. `npm run lint`（`eslint . --max-warnings 0`） → **exit 0**
+3. `npx vue-tsc -b` → **exit 0**
+4. `npx playwright test --list e2e/dingtalk-login.spec.ts` → **2 tests in 1 file, exit 0**
+5. `bash scripts/check-sfc-size.sh && bash scripts/check-e2e-helpers.sh && bash scripts/check-ticket-status.sh` → **exit 0**（`LoginView.vue` 337 行、`UserAdminView.vue` 393 行、`TeachersView.vue` 404 行，均 ≤ 600 行）
+
+## 未验证项（留待主线程整合 A/C/A2/A3 后验证）
+
+- **Playwright 真实浏览器与后端联调（未跑）**：`frontend/e2e/dingtalk-login.spec.ts` 仅通过 `--list` 校验语法与用例注册，未启动全栈服务，待主线程合入 A/C 后端免登与绑定保护后串行运行。
+- **最后一个启用 PASSWORD 超级管理员守卫（未验证）**：由后端 A3 切片实现与整合验证，本前端切片不声称已验证。
+- **后端 Maven 测试与全量 `scripts/verify.sh`（未跑）**：本切片仅涉及前端代码与测试。
+
+## 接管收尾（2026-11-11 第二段：Gemini 4 额度耗尽后接管）
+
+原代理留下未提交的 `LoginView.vue` / `LoginView.spec.ts` 半成品补丁（SDK 加载与 `requestAuthCode` 超时）。接管者不 reset / 不 stash，接着写完之后提交；源码写集仍仅 `frontend/**` 与本交付文档。
+
+### 本轮提交
+
+- `6e77f7b` `fix(dingtalk-t03): bound SDK load and auth-code waits with finite deadlines`：仅 `frontend/src/views/LoginView.vue`、`frontend/src/views/LoginView.spec.ts`（+84 / −9）。
+- `3c182f9` `Merge branch 'codex/dingtalk-multiuser' into codex/dingtalk-t03-ui`：合入源冻结 tip `fe759dd`（A1 HTTP adapter、A2 登录类型、C 绑定保护）；前端写集与源不相交，合并零冲突、未改动任何 `frontend/**` 文件。
+
+### 超时补丁要点
+
+- `loadDingTalkSdk()`：脚本 `onload` / `onerror` 都不触发时由 10s deadline 拒绝；`settled` 标志让晚回调失效并清理计时器；既有 `dd.ready` 5s 超时不回归。
+- `requestAuthCode()`：`dd.getAuthCode` 与 `runtime.permission.requestAuthCode` 两条路径共用 10s deadline + `settled` 守卫，晚到的 `onSuccess` / promise 决议被丢弃，不会再走到 `setSession` / `landAfterLogin`。
+- 外部阶段按顺序 `await`（配置 → SDK → ready → authCode → `POST /api/auth/dingtalk`），没有对整段登录操作 race；超时只截断当前阶段，密码入口始终可用（POST 由 axios 全局 30s 兜底）。
+- 两条新用例只走公开 DOM（fake timer 推进 11s），断言 `DINGTALK_CALL_FAILED` 说明 + 「我是管理员，用密码登录」，不测私有函数、不数调用次数。
+
+### 真实红 → 绿（非伪造）
+
+- 红：把 `LoginView.vue` 临时还原为补丁前的 `HEAD 45ae1aa` 版本后跑 `LoginView.spec.ts` → `Tests 2 failed | 11 passed (13)`，exit 1；两条新用例分别报 `expected false to be true`。随后按文件哈希（`9F4240EA…`）还原补丁文件并复核哈希一致。
+- 红日志：`.scratch/dingtalk-multiuser/logs/t03-ui-final-red.log`
+- 绿：6 文件 / 40 tests passed，exit 0，含逐条用例名（11,689 字节）：`.scratch/dingtalk-multiuser/logs/t03-ui-final-verified.log`
+
+### 主线程 3 项修复复核（`45ae1aa`，读源码 + 跑用例）
+
+1. `ADMIN_BINDING_REQUIRED` 只指向「超级管理员在『教师管理』填写钉钉 UserID」，用例另有 `not.toContain('钉钉同步')` 断言。
+2. 其余原因码统一「联系教务处核实教师档案」；绑定 UID、重新启用账号、配置钉钉集成均写明由超级管理员操作；TeachersView 教务侧 UID 只读且提交省略 `dingtalkUserId`。
+3. 审计：`dingtalkUserId` 为 `null` / `undefined` 显示 `—`，不贴「未绑定」；旧未知快照（`loginType` 与 `dingtalkUserId` 均 null）在常规更新时不虚报 UID 变更，`DINGTALK_LINK` 配对仍按 `钉钉UID：— → <uid>` 展示。
+4. E2E：只读复用已绑 `dd-001` 的教师，出现多个或关联账号全停用直接报前置错误，绝不清空/启用他人 fixture；仅在缺失时自建教师并于 `finally` 只清自有 UID；断言 `POST /api/auth/dingtalk` 的 200、`token`、`user.id`、`user.teacherId`、`loginType` 与 `GET /api/auth/me` 一致。
+5. `helpers.uiLogin` 第 4 参为 `{ tour?: boolean; loginPath?: string }`，默认 `'/login'`，既有 tour / defaultpath 调用不变；密码用例走 `/login?mode=password`。
+
+### 本轮执行命令与真实退出码
+
+| 命令 | 结果 |
+|---|---|
+| `npx vitest run --no-file-parallelism --reporter=verbose <6 个 spec>` | 6 files / 40 tests passed，exit 0 |
+| 同命令对补丁前 `LoginView.vue` | 2 failed / 11 passed，exit 1（红例证据） |
+| `npm run lint` | exit 0 |
+| `npx vue-tsc -b` | exit 0 |
+| `npx playwright test --list e2e/dingtalk-login.spec.ts` | 2 tests in 1 file，exit 0 |
+
+### 如实记录的两点不确定
+
+- 旧 `.scratch/dingtalk-multiuser/logs/t03-ui-final.log` 只有 580 字节：内容是 runner 横幅 + `6 passed (6)` / `40 passed (40)` 汇总，没有逐条用例行，且与上文「38 条」不一致。本会话用 11,689 字节、含逐条用例名的 `t03-ui-final-verified.log` 取代它；`logs/` 被 `.gitignore:18` 忽略，两份日志都只在本工作树留存。
+- 源冻结 tip `fe759dd` 的 `/auth/dingtalk` 仍只抛 401「钉钉免登失败」，尚未输出稳定 `code`（A3 待做）。前端在无 `code` 时回退 `DINGTALK_CALL_FAILED` 说明；结构化原因码的真实浏览器断言须等 A3 落盘后才有意义。
+
+### 仍未运行（本切片不声称验证）
+
+- Playwright 真实浏览器 + 全栈联调（按要求未启动，待主线程整合后串行执行）。
+- 后端 Maven 测试与全量 `scripts/verify.sh`（本切片只动前端）。
+- 「最后一个启用 PASSWORD 超级管理员」守卫（后端 A3 职责）。
+## 第三轮：自动登录竞态与落地守卫（2026-11-11 深夜）
+
+主线程读码指出的两个真实竞态，均按最小改动修掉，未引入通用取消框架：
+
+1. **pending 期可提交密码 / 迟到的钉钉响应覆盖密码会话**：登录页在钉钉 UA 等待态时原来走 `v-else` 直接渲染密码表单，且 `auth.setSession` 前没有任何失效判定。
+   - 新增 `[data-testid="dingtalk-login-pending"]` 等待块（「正在通过钉钉免登」+「我是管理员，用密码登录」），等待期不再暴露密码表单。
+   - `autoLoginAttempt` 单调递增令牌：点击切密码、开始密码提交（`submit` 入口）、`onBeforeUnmount` 三处调用 `invalidateAutoLogin()`；`tryDingTalkLogin` 在配置、SDK、`dd.ready`、authCode、POST 各阶段之后以及 `auth.setSession` 之前逐一复核，过期即返回，晚到响应既不写会话也不跳转。
+2. **落地 helper 内部还有一次 await**：`landAfterLogin()` 会 `await /onboarding/status` 后才 `router.replace`，上面的阶段检查已经过去，旧 helper 仍会把用户带离密码页。
+   - `useLoginLanding.landAfterLogin(fallback = '/', isCurrent: () => boolean = () => true)`：可选失效回调，默认恒真，所有其它调用方与普通密码登录逻辑不变；在 `await` 之后与两处 `router.replace` 之前各复核一次。
+   - 自动登录调用改为 `await landAfterLogin('/', isActive)`。
+
+### 新增用例（4 条，全部公开 DOM / 路由）
+
+- 钉钉免登响应延迟时切到密码入口，晚到的免登响应不得写入会话或跳转（等待态可见、密码表单不可见、切后 `?mode=password`）。
+- 组件卸载后晚到的钉钉免登响应不得写入会话或跳转（同时断言卸载后 `router.push` / `replace` 零调用）。
+- 密码登录完成后，晚到的钉钉免登响应不得覆盖密码会话（`paiban_token` 仍为 `password-token`）。
+- 钉钉免登已拿到会话但落地检查未返回时切到密码入口，旧落地不得把用户带离密码页（延迟 `/onboarding/status`，`showWizard: true`）。
+
+`LoginView.spec.ts` 由 13 → 17 条；6 个目标文件合计 40 → 44 条。
+
+### 真实红（非伪造）
+
+- 去掉 `auth.setSession` 前那行 `if (!isActive()) return` → 切密码用例报 `expected '<late token>' to be null`，`Tests 1 failed | 16 skipped`，exit 1；随即按文件哈希还原（`C3ACEBCC…`）。日志 `.scratch/dingtalk-multiuser/logs/t03-race-red.log`。
+- 把 `useLoginLanding.ts` 临时还原成补丁前版本 → 落地用例报 `expected '/onboarding' to be '/login'`，exit 1；随后按长度/内容还原。日志 `.scratch/dingtalk-multiuser/logs/t03-landing-red.log`。
+
+### 绿与门禁（真实退出码，合并 `51dfe3a` 之后）
+
+| 命令 | 结果 |
+|---|---|
+| 6 个目标 spec（`--no-file-parallelism --reporter=verbose`） | 6 files / **44 tests passed**，exit 0（日志 12,494 B：`.scratch/dingtalk-multiuser/logs/t03-ui-final-verified.log`） |
+| `npm run lint` | exit 0 |
+| `npx vue-tsc -b` | exit 0 |
+| `npx playwright test --list e2e/dingtalk-login.spec.ts` | 2 tests in 1 file，exit 0（未跑浏览器） |
+
+### 合并与 E2E 断言
+
+- 合并 integration tip `51dfe3a`（A3 自动开号 + 结构化 `DingTalkLoginFailure`，6 个稳定 `code`）→ `fad2d3f`；源侧 0 个 `frontend/**` 文件，前端写集无冲突。
+- 首条 Playwright 用例新增 `await expect(notice).toHaveAttribute('data-reason-code', 'DINGTALK_CALL_FAILED')`（不新增浏览器用例数）。依据实际源码：`fake:UNKNOWN_EMP` 在 `FakeDingTalkClient.exchangeAuthCode` 抛「未知的测试工号」，`DingTalkAuthProvider` 的 `catch (RuntimeException)` 统一映射 `DINGTALK_CALL_FAILED`（401 + `code`）。若后续把未知工号改判 `NOT_PROVISIONED`，这条断言需同步。
+
+### 仍未运行
+
+- 真实浏览器 Playwright 全栈（主线程整合后执行）；后端 Maven 测试与 `scripts/verify.sh`。
+
+## 真实浏览器 E2E（主线程执行，本切片冻结后）
+
+主线程在本工作树、对冻结的 4 个前端文件跑完 `frontend/e2e/dingtalk-login.spec.ts`：
+
+- 结果：**2 passed（1.0m）**，进程真实 exit 0；`28303` / `25303` 端口跑完后无监听。
+- 前后一致性：跑前跑后 4 个前端文件 SHA256 完全相同（`LoginView.vue` C3ACEBCC…、`LoginView.spec.ts` D469EE45…、`useLoginLanding.ts` A3097FFD…、`e2e/dingtalk-login.spec.ts` E6DFE5A4…），即验证的就是本切片提交的字节。
+- 日志：`.scratch/dingtalk-multiuser/logs/t03-browser-e2e.log`；截图 3 张在 `.scratch/dingtalk-multiuser/evidence/t03-browser/`，由主线程归档与提交，本切片不 stage 图片与日志。
+- 覆盖内容：免登失败说明页（含 `data-reason-code = DINGTALK_CALL_FAILED` 断言）、`?mode=password` 跳过循环并完成密码登录、已绑 `dd-001` 教师免登取得同一账号（`POST /api/auth/dingtalk` 200 + `/auth/me` 一致）。
+
+本条取代上文「未验证项」中的 Playwright 一项：**真实浏览器 E2E 已验证通过**。仍未由本切片执行的是后端 Maven 测试与全量 `scripts/verify.sh`（由主线程在整票收尾时负责）。
+
+## 第四轮：UserStory19 老师默认落点（2026-11-11）
+
+规格 `spec.md:53`「作为老师，我想默认看到自己的课表」在真实截图里未满足：老师登录后落在总览。统筹决定做最小补足，t03-wire 的「既有落点」工程约束让位给这条上位 UserStory。
+
+- 判据与导航 / 课表页同一套**能力**判断（不看 role 字符串）：已关联 `teacherId`、有 `timetable:view:own`、且 `!canManageDrafts`（无 `scheduling:run` / `timetable:edit`）。
+- 仅在**无显式 redirect** 且 fallback 为 `'/'` 时生效，落到 `workbenchLandingPath(...)`（同样排除管理者后即 `/workbench/timetable`，与 `navigation.ts` 共用同一函数）。
+- 显式 `?redirect=` 照旧优先；管理员 Home / onboarding 既有分支不变；新的 `router.replace` 前同样复核 `isCurrent`，自动登录传入的 `isActive` 保护继续生效。
+- 未改导航权限代码、未改 Home、未新增页面。
+
+### 新增回归（1 条，公开路由级）
+
+「老师登录后默认落到自己的课表（UserStory19），显式 redirect 仍然优先」：密码登录后路由为 `/workbench/timetable`；带 `/login?redirect=/substitution` 时仍去 `/substitution`。`LoginView.spec.ts` 由 17 → 18 条，6 个目标文件由 44 → **45** 条。
+
+### 真实红 → 绿
+
+- 红：把 `useLoginLanding.ts` 临时还原成补丁前版本 → `AssertionError: expected '/' to be '/workbench/timetable'`，`1 failed | 17 skipped`，exit 1；随后按文件哈希（`F5959A4E…`）还原。日志 `.scratch/dingtalk-multiuser/logs/t03-teacher-landing-red.log`。
+- 绿：`LoginView.spec.ts` 18 passed，exit 0（`t03-teacher-landing-green.log`）；6 个目标 spec 串行 `--no-file-parallelism --maxWorkers=1` → **6 files / 45 tests passed，exit 0**，日志 `.scratch/dingtalk-multiuser/logs/t03-ui-final-verified.log`（12,691 B，覆盖旧的 44 条口径）。
+- `npx vue-tsc -b` exit 0；`npm run lint` exit 0（均在前一轮 Vitest 结束后串行执行，未并发重活）。
+
+主线程另加的 `me.permissions` / 菜单隐藏断言属其写集，本切片未 stage、未改动；真实浏览器需由主线程按当前冻结源码复跑。
