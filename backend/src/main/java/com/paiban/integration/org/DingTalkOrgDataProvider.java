@@ -6,6 +6,7 @@ import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.foundation.service.FoundationService;
 import com.paiban.identity.service.AccountMutationGuard;
+import com.paiban.identity.service.DingTalkBindingPolicy;
 import com.paiban.identity.service.UserService;
 import com.paiban.integration.dingtalk.DingTalkApiException;
 import com.paiban.integration.domain.DingUser;
@@ -38,6 +39,10 @@ import org.springframework.transaction.support.TransactionTemplate;
  * transaction; only the teacher writes and the audit row run in one. Teachers that
  * are missing from this run are never deactivated automatically: tightening the
  * tenant's visibility must not empty the school roster.
+ *
+ * <p>03-C：没有任何无人值守路径可以给「关联管理员账号且尚未绑定」的档案首次绑定钉钉身份，
+ * 也不会把已有的非空 UID 改绑成另一个 —— 规划阶段整行跳过，写入阶段再按同一
+ * {@link DingTalkBindingPolicy} 拦一次，算作跳过而不是补写。
  */
 @Component
 public class DingTalkOrgDataProvider implements OrgDataProvider {
@@ -50,6 +55,7 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
     private final DingTalkDeactivationPlanner deactivationPlanner;
     private final DingTalkMergeRules rules;
     private final DingTalkTeacherMatcher matcher;
+    private final DingTalkBindingPolicy bindingPolicy;
     private final TeacherRepository teachers;
     private final FoundationService foundation;
     private final AccountMutationGuard accountMutationGuard;
@@ -64,6 +70,7 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
             DingTalkDeactivationPlanner deactivationPlanner,
             DingTalkMergeRules rules,
             DingTalkTeacherMatcher matcher,
+            DingTalkBindingPolicy bindingPolicy,
             TeacherRepository teachers,
             FoundationService foundation,
             AccountMutationGuard accountMutationGuard,
@@ -76,6 +83,7 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
         this.deactivationPlanner = deactivationPlanner;
         this.rules = rules;
         this.matcher = matcher;
+        this.bindingPolicy = bindingPolicy;
         this.teachers = teachers;
         this.foundation = foundation;
         this.accountMutationGuard = accountMutationGuard;
@@ -244,6 +252,7 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
         int created = 0;
         int updated = 0;
         int deactivated = 0;
+        int protectedSkipped = 0;
         for (Item item : plan.items()) {
             if (item.category() == Category.CREATE) {
                 Teacher fresh = new Teacher();
@@ -257,6 +266,13 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
                     // Deleted between planning and writing; nothing sensible to update.
                     continue;
                 }
+                // 03-C 第二道闸：规划阶段已整行跳过受保护档案，这里用同一 policy 再确认一次，
+                // 任何后续改动都留不下「无人值守首次绑定管理员档案」的旁路。
+                if (bindingPolicy.requiresExplicitFirstBinding(teacher)) {
+                    log.warn("跳过受保护教师档案的自动钉钉绑定：teacherId={}", teacher.getId());
+                    protectedSkipped++;
+                    continue;
+                }
                 rules.apply(teacher, item.user());
                 teachers.save(teacher);
                 updated++;
@@ -267,7 +283,7 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
                 deactivated++;
             }
         }
-        int skipped = (int) plan.count(Category.SKIP);
+        int skipped = (int) plan.count(Category.SKIP) + protectedSkipped;
         int suspected = (int) plan.count(Category.SUSPECTED);
         long elapsed = elapsedMs(startedAt);
         String message = "同步完成：扫描 " + directory.departmentsScanned() + " 个部门 / "
@@ -292,9 +308,11 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
 
     @Transactional
     public void applyEvent(String type, DingUser user) {
-        if (user == null || user.userId() == null) {
+        if (user == null || !org.springframework.util.StringUtils.hasText(user.userId())) {
             return;
         }
+        // 先拿账号锚点再匹配：事件与手工改档案 / 同步共用同一锁序，避免读到刚被改过的绑定。
+        accountMutationGuard.lock();
         Teacher teacher = matcher.match(user).orElse(null);
         if ("user_leave".equalsIgnoreCase(type)) {
             if (teacher != null) {
@@ -308,12 +326,19 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
             }
             teacher = new Teacher();
             teacher.setCreatedAt(Instant.now());
+        } else if (bindingPolicy.requiresExplicitFirstBinding(teacher)) {
+            // 03-C：受保护档案整行跳过 —— 事件不是可信的首次绑定来源，信息也不改。
+            return;
         }
         setIfPresent(user.name(), teacher::setName);
         setIfPresent(user.jobNumber(), teacher::setEmployeeNo);
         setIfPresent(user.mobile(), teacher::setPhone);
         setIfPresent(user.email(), teacher::setEmail);
-        teacher.setDingtalkUserId(user.userId());
+        // 只在还没有绑定时补上；已有的非空 UID 绝不被事件改绑成另一个身份
+        // （按工号/手机命中的档案可能属于同名的另一个人）。
+        if (!org.springframework.util.StringUtils.hasText(teacher.getDingtalkUserId())) {
+            teacher.setDingtalkUserId(user.userId());
+        }
         teacher.setActive(true);
         teachers.save(teacher);
     }
