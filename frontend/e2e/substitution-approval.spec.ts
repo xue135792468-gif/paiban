@@ -132,10 +132,14 @@ test.describe('代课申请与审批', () => {
       await page.evaluate(() => localStorage.clear())
       await uiLogin(page, seed.username, seed.password)
       await page.goto('/substitution/requests')
-      await expect(page.locator('.el-table').getByText('已生效').first()).toBeVisible()
-      await expect(page.locator('.el-table').getByText(`期望：${expectedTeacherName}`)).toBeVisible()
-      await expect(page.locator('.el-table').getByText(`实际：${otherTeacher.name}`)).toBeVisible()
-      await expect(page.locator('.el-table').getByText('同意，改由王老师代课')).toBeVisible()
+      const effectiveRow = page.locator('.el-table__row', { hasText: '家中有事，第二次提交' })
+      await expect(effectiveRow).toHaveCount(1)
+      await expect(effectiveRow.getByText('已生效', { exact: true })).toBeVisible()
+      await expect(
+        effectiveRow.getByText(`期望：${expectedTeacherName}`, { exact: true }),
+      ).toBeVisible()
+      await expect(effectiveRow.getByText(`实际：${otherTeacher.name}`, { exact: true })).toBeVisible()
+      await expect(effectiveRow.getByText('同意，改由王老师代课', { exact: true })).toBeVisible()
       await capture(page, 't05-review-fixes-teacher-effective-expected-actual')
     } finally {
       await api.dispose()

@@ -18,27 +18,47 @@
 - 无学期状态文案改为：“请由教务管理员在「学期管理」中创建并设置当前学期，之后这里会
   显示代课申请与审批记录。”现有标题、`data-testid`、样式和权限逻辑保持不变。
 
+## 第二轮：审批结果按申请行定位
+
+- 主控对源提交 `6c5e43e9c457ad3cdf0cf29df75b5e6944d3cd77` 实跑 run2，得到
+  5 passed / 1 failed、真实 exit 1，`SOURCE_IDENTICAL=1`；首例已成功走到 Teacher 最终页。
+  失败是整表 `.el-table.getByText('期望：…')` 同时命中已撤回行和重新提交行，strict mode
+  报 2 个元素；第二例驳回已通过。
+- 按 `CODING_STANDARDS.md` 的“E2E 断言按行或按容器作用域”，用第二次提交独有的 reason
+  `家中有事，第二次提交` 定位 `.el-table__row`，先断言 exact count 1，再在该 row 内分别
+  断言“已生效”、期望人、实际人和审批意见。撤回与重新提交阶段及原业务断言均保留。
+- 行范围取自实际 `SubstitutionMineTable.vue` DOM：数据行使用 `.el-table__row`，reason
+  与状态、代课教师、审批意见位于同一行。run2 的 error-context 也确认撤回行 reason 为
+  `家中有事，先撤回再提交`，不会与第二次提交行混淆。
+- 教师在最终页的正确行断言全部完成后才调用本票固定文件名截图，截图不承担断言。
+
 ## 主控视觉 QA
 
 主控实际执行 `view_image` 查看首轮成功的无学期截图，确认教师身份下原文案“请先在
 「学期管理」中创建并设置当前学期”会引导教师进入其无权操作的管理页面。本次按主控确认
 改为明确由教务管理员完成创建和设置。后续两轴固定 `661` 源码判断仍由主控执行。
 
+主控还实际执行 `view_image` 查看新增的改人批准 dialog 截图，确认 Academic 身份、所选
+第三位教师和版面均正确。
+
 ## 红 → 绿证据
 
 | 阶段 | 证据 | 结果 |
 |---|---|---|
 | 真实红（主控） | `E:/排课系统/.worktrees/dingtalk-integration/.scratch/dingtalk-multiuser/logs/t05-browser-run1/playwright.log` 与 `E:/排课系统/.worktrees/dingtalk-integration/.scratch/dingtalk-multiuser/.runtime/t05-browser-run1/test-results/` 下两份 approval error-context | 完整 6 条 Playwright：4 passed / 2 failed，exit 1；源码一致标记 `SOURCE_IDENTICAL=1`，服务均退出 |
-| 本次验证 | 对 Vue 与 E2E 两个文件一起运行定向 ESLint；原始日志为 `E:/排课系统/.worktrees/dingtalk-t05-review-fixes/.runtime/logs/t05-targeted-eslint.log` | exit 0 |
+| 第二轮红（主控） | `E:/排课系统/.worktrees/dingtalk-integration/.scratch/dingtalk-multiuser/logs/t05-browser-run2/playwright.log` 与同 integration 工作树 `.scratch/dingtalk-multiuser/.runtime/t05-browser-run2/test-results/` 下首个 approval case 的 error-context | 完整 6 条 Playwright：5 passed / 1 failed，真实 exit 1；首例整表文本 strict mode 命中 2 行，驳回例已通过；端口 28405/25405 与 Java 进程均归零 |
+| 第一轮本次验证 | 对 Vue 与 E2E 两个文件一起运行定向 ESLint；原始日志为 `E:/排课系统/.worktrees/dingtalk-t05-review-fixes/.runtime/logs/t05-targeted-eslint.log` | exit 0 |
 
-本轮没有伪造单测或镜像测试。修复后的完整 6 条 Playwright 由主控统一复跑，本工作树按
-授权不自行启动服务、网络或 Playwright。
+两轮都没有伪造单测或镜像测试。第二轮修复后，主控下一轮只需复跑受影响的
+`substitution-approval.spec.ts` 两例；本工作树按授权不自行启动服务、网络或 Playwright，
+也未提前声称首例已绿。
 
 ## 验证边界
 
 - 仅对 `frontend/src/views/SubstitutionsView.vue` 与
   `frontend/e2e/substitution-approval.spec.ts` 一起执行定向 ESLint。
-- 未运行 Vitest、后端测试、Playwright、全量 `verify.sh`、服务或网络。
+- 第二轮仅定向 ESLint `frontend/e2e/substitution-approval.spec.ts`，保留真实退出码；
+  未运行 Vitest、后端测试、Playwright、全量 `verify.sh`、服务或网络。
 - `vue-tsc -b` 不覆盖 E2E，不能作为两处失败调用已通过类型检查的证据。
 - 临时 JSON、ESLint 日志与缓存均置于本工作树 `.runtime/`；shell、Git hook 和 npm cache
   均显式指向该目录。
