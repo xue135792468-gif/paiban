@@ -2,6 +2,8 @@
 
 日期：2026-11-11。分支 `codex/dingtalk-t02`，基于集成 `codex/dingtalk-multiuser`（收尾合并到 `01ae454`）。
 
+> 本记录是 `4eb1886` 初次施工的阶段快照。复查后的动作目录、实现与最新验证见 `t02-review-fixes-delivery.md`；下面的“尚未运行E2E”等描述保留当时事实，不代表整改后的状态。
+
 ## 做了什么
 
 - 复用 `audit_log`（V61 加列）：`category`（`ACCOUNT` 分类）、`target_user_id`（稳定目标账号 ID）、`before_json` / `after_json`（allowlist 快照）+ `(category, created_at, id)` 索引；旧日志全保留，既有账号事件（`APP_USER`、`users/IMPORT`）回填为 `ACCOUNT`。
@@ -43,5 +45,4 @@
 
 变异验证后恢复源码时，Maven 增量编译曾因文件时间戳回退沿用旧的 class（出现一次假失败）；touch 源文件后重编译即 11/11 绿，源码无净变化。
 
-复查补正（2026-11-11）：上述 112 通过不成立——`ExtendedLifecycleIntegrationTest` 两条既有断言仍在通用日志里找
-`DISABLE_USER/ENABLE_USER`，在 4eb1886 上实测 2 失败。已在 `t02-review-fixes-delivery.md` 修正并复跑。
+复查补充（2026-11-11）：上述定向集合的通过结果真实，统筹在删除已合入的施工工作树前直接核对过全部15份JUnit XML，失败/错误/跳过均为0。该命令包含 `LifecycleIntegrationTest`，不包含 `ExtendedLifecycleIntegrationTest`，不能据此宣称所有生命周期用例通过。复查额外发现后者两条旧断言仍从通用日志读取 `DISABLE_USER/ENABLE_USER`，在基点实测失败；现已修正并纳入整改后的定向集合，见 `t02-review-fixes-delivery.md`。这是覆盖范围补齐，不是否定已验证的通过数。
