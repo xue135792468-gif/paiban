@@ -61,6 +61,8 @@ test('钉钉免登失败展示说明页，「我是管理员，用密码登录�
 
     const notice = page.getByTestId('dingtalk-login-notice')
     await expect(notice).toBeVisible()
+    // 真实后端把未知员工身份映射成稳定原因码，页面据此渲染说明（不是任意 notice 就算过）
+    await expect(notice).toHaveAttribute('data-reason-code', 'DINGTALK_CALL_FAILED')
     await expect(page.getByPlaceholder('请输入密码')).toHaveCount(0)
     await capture(page, 'dingtalk-t03-login-notice')
 

@@ -30,6 +30,25 @@ function installFakeDingTalk(authCode = 'fake-auth-code') {
   }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+const ADMIN_USER = {
+  id: 1,
+  username: 'admin',
+  displayName: '超管老师',
+  enabled: true,
+  loginType: 'PASSWORD' as const,
+  roles: ['super_admin'],
+  permissions: ['onboarding:manage'],
+}
 async function mountLogin(initialPath = '/login') {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -211,6 +230,114 @@ describe('LoginView: 钉钉免登原因码说明页与管理员密码入口', ()
     wrapper.unmount()
   })
 
+  it('钉钉免登响应延迟时切到密码入口，晚到的免登响应不得写入会话或跳转', async () => {
+    installFakeDingTalk('code-late')
+    const late = deferred<{ data: unknown }>()
+    httpMock.post.mockReturnValueOnce(late.promise)
+
+    const { wrapper, router } = await mountLogin('/login')
+    // 免登进行中：明确展示等待态，且此时不暴露密码表单
+    expect(wrapper.find('[data-testid="dingtalk-login-pending"]').exists()).toBe(true)
+    expect(wrapper.find('input[type="password"]').exists()).toBe(false)
+
+    await wrapper.find('[data-testid="switch-password-login"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.query.mode).toBe('password')
+    expect(wrapper.find('input[type="password"]').exists()).toBe(true)
+
+    late.resolve({
+      data: { token: 'late-DingTalk-token', user: { ...ADMIN_USER, loginType: 'DINGTALK' } },
+    })
+    await flushPromises()
+
+    expect(localStorage.getItem('paiban_token')).toBeNull()
+    expect(localStorage.getItem('paiban_user')).toBeNull()
+    expect(router.currentRoute.value.path).toBe('/login')
+    expect(wrapper.find('[data-testid="dingtalk-login-notice"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('组件卸载后晚到的钉钉免登响应不得写入会话或跳转', async () => {
+    installFakeDingTalk('code-late-unmount')
+    const late = deferred<{ data: unknown }>()
+    httpMock.post.mockReturnValueOnce(late.promise)
+
+    const { wrapper, router } = await mountLogin('/login')
+    expect(wrapper.find('[data-testid="dingtalk-login-pending"]').exists()).toBe(true)
+
+    const pushes = vi.spyOn(router, 'push')
+    const replaces = vi.spyOn(router, 'replace')
+    wrapper.unmount()
+
+    late.resolve({
+      data: { token: 'late-DingTalk-token-after-unmount', user: { ...ADMIN_USER, loginType: 'DINGTALK' } },
+    })
+    await flushPromises()
+
+    // 卸载后迟到的钉钉响应：不写会话、不触发任何跳转
+    expect(localStorage.getItem('paiban_token')).toBeNull()
+    expect(localStorage.getItem('paiban_user')).toBeNull()
+    expect(pushes).not.toHaveBeenCalled()
+    expect(replaces).not.toHaveBeenCalled()
+  })
+  it('密码登录完成后，晚到的钉钉免登响应不得覆盖密码会话', async () => {
+    installFakeDingTalk('code-late-override')
+    const late = deferred<{ data: unknown }>()
+    httpMock.post.mockReturnValueOnce(late.promise)
+
+    const { wrapper } = await mountLogin('/login')
+    await wrapper.find('[data-testid="switch-password-login"]').trigger('click')
+    await flushPromises()
+
+    httpMock.post.mockResolvedValueOnce({ data: { token: 'password-token', user: ADMIN_USER } })
+    const inputs = wrapper.findAll('input')
+    await inputs[0].setValue('admin')
+    await inputs[1].setValue('secret-pass')
+    await wrapper.find('button.submit').trigger('click')
+    await flushPromises()
+
+    expect(localStorage.getItem('paiban_token')).toBe('password-token')
+
+    late.resolve({
+      data: { token: 'late-DingTalk-token', user: { ...ADMIN_USER, loginType: 'DINGTALK' } },
+    })
+    await flushPromises()
+
+    expect(localStorage.getItem('paiban_token')).toBe('password-token')
+    expect(localStorage.getItem('paiban_user')).toContain('超管老师')
+    wrapper.unmount()
+  })
+  it('钉钉免登已拿到会话但落地检查未返回时切到密码入口，旧落地不得把用户带离密码页', async () => {
+    installFakeDingTalk('code-landing')
+    httpMock.post.mockResolvedValueOnce({
+      data: { token: 'dingtalk-session-token', user: { ...ADMIN_USER, loginType: 'DINGTALK' } },
+    })
+    const status = deferred<{ data: { showWizard: boolean } }>()
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/auth/dingtalk/config') {
+        return Promise.resolve({ data: { enabled: true, corpId: 'ding-corp-1' } })
+      }
+      if (url === '/onboarding/status') {
+        return status.promise
+      }
+      return Promise.resolve({ data: {} })
+    })
+
+    const { wrapper, router } = await mountLogin('/login')
+    expect(localStorage.getItem('paiban_token')).toBe('dingtalk-session-token')
+
+    await wrapper.find('[data-testid="switch-password-login"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.query.mode).toBe('password')
+
+    // 旧的落地检查此时才返回「要进向导」：不得再导航
+    status.resolve({ data: { showWizard: true } })
+    await flushPromises()
+
+    expect(router.currentRoute.value.path).toBe('/login')
+    expect(router.currentRoute.value.query.mode).toBe('password')
+    wrapper.unmount()
+  })
   it('点击「我是管理员，用密码登录」写入 ?mode=password 并显示密码表单；带 ?mode=password 刷新不触发自动免登循环', async () => {
     installFakeDingTalk()
     httpMock.post.mockRejectedValueOnce({

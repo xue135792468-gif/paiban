@@ -15,7 +15,31 @@
       <el-card class="login-card" shadow="never">
         <h2>登录</h2>
         <div
-          v-if="dingtalkNotice && !isPasswordMode"
+          v-if="isDingTalkPending"
+          class="dingtalk-notice"
+          data-testid="dingtalk-login-pending"
+        >
+          <el-alert
+            title="正在通过钉钉免登"
+            description="正在向钉钉确认你的身份，请稍候。若长时间没有反应，可以改用管理员密码登录。"
+            type="info"
+            :closable="false"
+            show-icon
+            class="notice-alert"
+          />
+          <div class="notice-actions">
+            <el-button
+              link
+              type="primary"
+              data-testid="switch-password-login"
+              @click="switchToPasswordMode"
+            >
+              我是管理员，用密码登录
+            </el-button>
+          </div>
+        </div>
+        <div
+          v-else-if="dingtalkNotice && !isPasswordMode"
           class="dingtalk-notice"
           data-testid="dingtalk-login-notice"
           :data-reason-code="dingtalkNotice.code"
@@ -69,7 +93,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
@@ -97,6 +121,9 @@ const loading = ref(false)
 const error = ref('')
 const dingtalkNotice = ref<DingTalkLoginNotice | null>(null)
 const isPasswordMode = computed(() => route.query.mode === 'password')
+
+const isDingTalkPending = ref(false)
+let autoLoginAttempt = 0
 
 const DINGTALK_SDK_TIMEOUT_MS = 10000
 const DINGTALK_READY_TIMEOUT_MS = 5000
@@ -207,7 +234,15 @@ function waitForDingTalkReady(dd: any): Promise<void> {
   })
 }
 
+function invalidateAutoLogin() {
+  // 每次失效都推进令牌：所有进行中的自动登录阶段在此之后一律视为过期，
+  // 尤其不能在 auth.setSession / landAfterLogin 之前放行迟到的钉钉响应。
+  autoLoginAttempt += 1
+  isDingTalkPending.value = false
+}
+
 async function switchToPasswordMode() {
+  invalidateAutoLogin()
   dingtalkNotice.value = null
   error.value = ''
   await router.replace({
@@ -220,21 +255,36 @@ async function switchToPasswordMode() {
 async function tryDingTalkLogin() {
   if (isPasswordMode.value) return
   if (!/DingTalk/i.test(navigator.userAgent)) return
+  autoLoginAttempt += 1
+  const attempt = autoLoginAttempt
+  const isActive = () => attempt === autoLoginAttempt
+  isDingTalkPending.value = true
   try {
     const { data: config } = await http.get('/auth/dingtalk/config')
+    if (!isActive()) return
     if (!config?.enabled || !config.corpId) {
       dingtalkNotice.value = resolveDingTalkLoginNotice('DINGTALK_DISABLED')
       return
     }
     const dd = await loadDingTalkSdk()
+    if (!isActive()) return
     await waitForDingTalkReady(dd)
+    if (!isActive()) return
     const authCode = await requestAuthCode(dd, config.corpId)
+    if (!isActive()) return
     const { data } = await http.post('/auth/dingtalk', { authCode })
+    // 每个阶段之后复核失效令牌：切密码入口、开始密码提交、组件卸载都会让这次尝试过期，
+    // 迟到的钉钉响应不能在这里 setSession，更不能把已登录的密码会话再覆盖掉。
+    if (!isActive()) return
     auth.setSession(data.token, data.user)
     ElMessage.success('钉钉免登成功')
-    await landAfterLogin()
+    // 落地还会 await /onboarding/status：把失效判定传进去，切密码/卸载后旧落地不得再跳转
+    await landAfterLogin('/', isActive)
   } catch (ex: unknown) {
+    if (!isActive()) return
     dingtalkNotice.value = resolveDingTalkLoginNotice(extractDingTalkErrorCode(ex))
+  } finally {
+    if (isActive()) isDingTalkPending.value = false
   }
 }
 
@@ -242,7 +292,13 @@ onMounted(async () => {
   await tryDingTalkLogin()
 })
 
+onBeforeUnmount(() => {
+  invalidateAutoLogin()
+})
+
 async function submit() {
+  // 开始密码提交即作废一切进行中的自动登录，避免晚到的钉钉响应覆盖密码会话
+  invalidateAutoLogin()
   if (!formRef.value) return
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return

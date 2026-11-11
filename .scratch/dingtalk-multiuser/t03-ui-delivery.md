@@ -104,3 +104,45 @@
 - Playwright 真实浏览器 + 全栈联调（按要求未启动，待主线程整合后串行执行）。
 - 后端 Maven 测试与全量 `scripts/verify.sh`（本切片只动前端）。
 - 「最后一个启用 PASSWORD 超级管理员」守卫（后端 A3 职责）。
+## 第三轮：自动登录竞态与落地守卫（2026-11-11 深夜）
+
+主线程读码指出的两个真实竞态，均按最小改动修掉，未引入通用取消框架：
+
+1. **pending 期可提交密码 / 迟到的钉钉响应覆盖密码会话**：登录页在钉钉 UA 等待态时原来走 `v-else` 直接渲染密码表单，且 `auth.setSession` 前没有任何失效判定。
+   - 新增 `[data-testid="dingtalk-login-pending"]` 等待块（「正在通过钉钉免登」+「我是管理员，用密码登录」），等待期不再暴露密码表单。
+   - `autoLoginAttempt` 单调递增令牌：点击切密码、开始密码提交（`submit` 入口）、`onBeforeUnmount` 三处调用 `invalidateAutoLogin()`；`tryDingTalkLogin` 在配置、SDK、`dd.ready`、authCode、POST 各阶段之后以及 `auth.setSession` 之前逐一复核，过期即返回，晚到响应既不写会话也不跳转。
+2. **落地 helper 内部还有一次 await**：`landAfterLogin()` 会 `await /onboarding/status` 后才 `router.replace`，上面的阶段检查已经过去，旧 helper 仍会把用户带离密码页。
+   - `useLoginLanding.landAfterLogin(fallback = '/', isCurrent: () => boolean = () => true)`：可选失效回调，默认恒真，所有其它调用方与普通密码登录逻辑不变；在 `await` 之后与两处 `router.replace` 之前各复核一次。
+   - 自动登录调用改为 `await landAfterLogin('/', isActive)`。
+
+### 新增用例（4 条，全部公开 DOM / 路由）
+
+- 钉钉免登响应延迟时切到密码入口，晚到的免登响应不得写入会话或跳转（等待态可见、密码表单不可见、切后 `?mode=password`）。
+- 组件卸载后晚到的钉钉免登响应不得写入会话或跳转（同时断言卸载后 `router.push` / `replace` 零调用）。
+- 密码登录完成后，晚到的钉钉免登响应不得覆盖密码会话（`paiban_token` 仍为 `password-token`）。
+- 钉钉免登已拿到会话但落地检查未返回时切到密码入口，旧落地不得把用户带离密码页（延迟 `/onboarding/status`，`showWizard: true`）。
+
+`LoginView.spec.ts` 由 13 → 17 条；6 个目标文件合计 40 → 44 条。
+
+### 真实红（非伪造）
+
+- 去掉 `auth.setSession` 前那行 `if (!isActive()) return` → 切密码用例报 `expected '<late token>' to be null`，`Tests 1 failed | 16 skipped`，exit 1；随即按文件哈希还原（`C3ACEBCC…`）。日志 `.scratch/dingtalk-multiuser/logs/t03-race-red.log`。
+- 把 `useLoginLanding.ts` 临时还原成补丁前版本 → 落地用例报 `expected '/onboarding' to be '/login'`，exit 1；随后按长度/内容还原。日志 `.scratch/dingtalk-multiuser/logs/t03-landing-red.log`。
+
+### 绿与门禁（真实退出码，合并 `51dfe3a` 之后）
+
+| 命令 | 结果 |
+|---|---|
+| 6 个目标 spec（`--no-file-parallelism --reporter=verbose`） | 6 files / **44 tests passed**，exit 0（日志 12,494 B：`.scratch/dingtalk-multiuser/logs/t03-ui-final-verified.log`） |
+| `npm run lint` | exit 0 |
+| `npx vue-tsc -b` | exit 0 |
+| `npx playwright test --list e2e/dingtalk-login.spec.ts` | 2 tests in 1 file，exit 0（未跑浏览器） |
+
+### 合并与 E2E 断言
+
+- 合并 integration tip `51dfe3a`（A3 自动开号 + 结构化 `DingTalkLoginFailure`，6 个稳定 `code`）→ `fad2d3f`；源侧 0 个 `frontend/**` 文件，前端写集无冲突。
+- 首条 Playwright 用例新增 `await expect(notice).toHaveAttribute('data-reason-code', 'DINGTALK_CALL_FAILED')`（不新增浏览器用例数）。依据实际源码：`fake:UNKNOWN_EMP` 在 `FakeDingTalkClient.exchangeAuthCode` 抛「未知的测试工号」，`DingTalkAuthProvider` 的 `catch (RuntimeException)` 统一映射 `DINGTALK_CALL_FAILED`（401 + `code`）。若后续把未知工号改判 `NOT_PROVISIONED`，这条断言需同步。
+
+### 仍未运行
+
+- 真实浏览器 Playwright 全栈（主线程整合后执行）；后端 Maven 测试与 `scripts/verify.sh`。
