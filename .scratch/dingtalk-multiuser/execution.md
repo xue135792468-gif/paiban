@@ -36,3 +36,5 @@
 每张票的实测结果只写单票交付记录；本文件记录依赖与评审入口，不复制测试统计。
 
 03已于2026-11-11通过施工、两轴整改增量复核与真实浏览器验收并由统筹放行，暂implemented；入口t03-delivery.md/t03-review.md。下一票05，仍待整票施工与双轴放行后再06。最终八票全量verify尚未运行。UI工作树任务runtime/截图副本联合清理被自动审批拒绝，保留现场及工作树，09记录为准。
+
+05已从e091d0f启动：codex/dingtalk-t05-backend与codex/dingtalk-t05-ui独立写集；主模型负责锁/事务/权限取舍和测试调度。当前后端定向TDD优先，前端先准备红测试，避免内存不足并发重测。契约与旧调用方保全见t05-wire-contract、t05-transaction-plan、t05-caller-regression-map。06/07研究准备不等于施工。
