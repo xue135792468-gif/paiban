@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -28,13 +29,20 @@ public class HttpDingTalkClient implements DingTalkClient {
     private static final String OAPI = "https://oapi.dingtalk.com";
 
     private final SettingsService settings;
-    private final RestClient restClient = RestClient.create();
+    private final RestClient restClient;
     private volatile String cachedToken;
     private volatile String cachedCredentials;
     private volatile long tokenExpiresAt;
 
+    @Autowired
     public HttpDingTalkClient(SettingsService settings) {
+        this(settings, RestClient.create());
+    }
+
+    /** 测试 seam：允许注入带有本地 stub 的 RestClient，绝不访问真实钉钉。 */
+    HttpDingTalkClient(SettingsService settings, RestClient restClient) {
         this.settings = settings;
+        this.restClient = restClient;
     }
 
     @Override
@@ -60,17 +68,21 @@ public class HttpDingTalkClient implements DingTalkClient {
                 .retrieve()
                 .body(Map.class);
         DingTalkApiException.check(response, "列出子部门 (dept_id=" + departmentId + ")");
+        if (response == null) {
+            throw DingTalkApiException.incomplete("列出子部门 (dept_id=" + departmentId + ")");
+        }
         List<DingDepartment> departments = new ArrayList<>();
-        Object result = response == null ? null : response.get("result");
-        if (result instanceof List<?> items) {
-            for (Object item : items) {
-                if (item instanceof Map<?, ?> department && department.get("dept_id") instanceof Number id) {
-                    Object parent = department.get("parent_id");
-                    departments.add(new DingDepartment(
-                            id.longValue(),
-                            string(department.get("name")),
-                            parent instanceof Number parentId ? parentId.longValue() : null));
-                }
+        Object result = response.get("result");
+        if (!(result instanceof List<?> items)) {
+            throw DingTalkApiException.incomplete("列出子部门 (dept_id=" + departmentId + ")");
+        }
+        for (Object item : items) {
+            if (item instanceof Map<?, ?> department && department.get("dept_id") instanceof Number id) {
+                Object parent = department.get("parent_id");
+                departments.add(new DingDepartment(
+                        id.longValue(),
+                        string(department.get("name")),
+                        parent instanceof Number parentId ? parentId.longValue() : null));
             }
         }
         return departments;
@@ -84,31 +96,41 @@ public class HttpDingTalkClient implements DingTalkClient {
                 .retrieve()
                 .body(Map.class);
         DingTalkApiException.check(response, "拉取钉钉部门用户 (dept_id=" + departmentId + ")");
-        Object result = response == null ? null : response.get("result");
+        if (response == null) {
+            throw DingTalkApiException.incomplete("拉取钉钉部门用户 (dept_id=" + departmentId + ")");
+        }
+        Object result = response.get("result");
         if (!(result instanceof Map<?, ?> resultMap)) {
-            return DingUserPage.last(List.of());
+            throw DingTalkApiException.incomplete("拉取钉钉部门用户 (dept_id=" + departmentId + ")");
         }
         List<DingUser> users = new ArrayList<>();
         Object list = resultMap.get("list");
-        if (list instanceof List<?> items) {
-            for (Object item : items) {
-                if (item instanceof Map<?, ?> user) {
-                    users.add(new DingUser(
-                            string(user.get("userid")),
-                            string(user.get("name")),
-                            string(user.get("mobile")),
-                            // user/list does not return email; field customisation is backlog.
-                            null,
-                            string(user.get("job_number")),
-                            isActive(user.get("active")),
-                            List.of()));
-                }
+        if (!(list instanceof List<?> items)) {
+            throw DingTalkApiException.incomplete("拉取钉钉部门用户 (dept_id=" + departmentId + ")");
+        }
+        for (Object item : items) {
+            if (item instanceof Map<?, ?> user) {
+                users.add(new DingUser(
+                        string(user.get("userid")),
+                        string(user.get("name")),
+                        string(user.get("mobile")),
+                        // user/list does not return email; field customisation is backlog.
+                        null,
+                        string(user.get("job_number")),
+                        isActive(user.get("active")),
+                        List.of()));
             }
         }
         boolean hasMore = Boolean.TRUE.equals(resultMap.get("has_more"));
-        long nextCursor = resultMap.get("next_cursor") instanceof Number next
-                ? next.longValue()
-                : cursor + size;
+        long nextCursor;
+        if (resultMap.get("next_cursor") instanceof Number next) {
+            nextCursor = next.longValue();
+        } else if (hasMore) {
+            // 还有下一页却没有游标：这是协议结构缺失，不能当成末页把目录判成完整。
+            throw DingTalkApiException.incomplete("拉取钉钉部门用户 (dept_id=" + departmentId + ")");
+        } else {
+            nextCursor = cursor + size;
+        }
         return new DingUserPage(users, hasMore, nextCursor);
     }
 

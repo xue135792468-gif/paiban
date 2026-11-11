@@ -39,6 +39,7 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
     private final SettingsService settings;
     private final DingTalkDirectoryLoader directoryLoader;
     private final DingTalkSyncPlanner planner;
+    private final DingTalkDeactivationPlanner deactivationPlanner;
     private final DingTalkMergeRules rules;
     private final DingTalkTeacherMatcher matcher;
     private final TeacherRepository teachers;
@@ -49,6 +50,7 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
             SettingsService settings,
             DingTalkDirectoryLoader directoryLoader,
             DingTalkSyncPlanner planner,
+            DingTalkDeactivationPlanner deactivationPlanner,
             DingTalkMergeRules rules,
             DingTalkTeacherMatcher matcher,
             TeacherRepository teachers,
@@ -57,6 +59,7 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
         this.settings = settings;
         this.directoryLoader = directoryLoader;
         this.planner = planner;
+        this.deactivationPlanner = deactivationPlanner;
         this.rules = rules;
         this.matcher = matcher;
         this.teachers = teachers;
@@ -94,12 +97,14 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
         }
         // An invalid merge decision is a caller error (400), not a failed fetch.
         DingTalkSyncPlan plan = planner.plan(directory, decisions);
+        DingTalkDeactivationPlanner.DeactivationPlan deactivationPlan = deactivationPlanner.plan(directory);
         long elapsed = elapsedMs(startedAt);
         String message = "预演完成：扫描 " + directory.departmentsScanned() + " 个部门 / "
                 + directory.usersScanned() + " 人，耗时 " + elapsed + " ms；新增 "
                 + plan.count(Category.CREATE) + "，补齐 " + plan.count(Category.MERGE)
                 + "，疑似同名 " + plan.count(Category.SUSPECTED)
-                + "，跳过 " + plan.count(Category.SKIP);
+                + "，跳过 " + plan.count(Category.SKIP)
+                + "，将停用账号 " + deactivationPlan.candidates().size();
         log.info(
                 "钉钉通讯录预演：扫描部门 {} 个 / 用户 {} 人 / 耗时 {} ms（跳过特殊部门 {}，不可读部门 {}），"
                         + "新增 {}，补齐 {}，疑似同名 {}，跳过 {}",
@@ -121,7 +126,10 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
                 directory.failedDepartments(),
                 elapsed,
                 directory.skipped(),
-                plan);
+                plan,
+                deactivationPlan.scanComplete(),
+                deactivationPlan.warning(),
+                deactivationPlan.candidates());
     }
 
     /** Applies the plan built from the selected scope and audits the write. */

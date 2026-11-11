@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -26,6 +27,7 @@ public class FakeDingTalkClient implements DingTalkClient {
     private final Map<Long, Map<String, DingUser>> usersByDepartment = new LinkedHashMap<>();
     private final Map<Long, DingTalkApiException> userListFailures = new ConcurrentHashMap<>();
     private final Map<Long, Integer> userListCalls = new ConcurrentHashMap<>();
+    private final Set<Long> stuckCursorDepartments = ConcurrentHashMap.newKeySet();
     private int pageSizeLimit = 100;
 
     public FakeDingTalkClient() {
@@ -45,6 +47,7 @@ public class FakeDingTalkClient implements DingTalkClient {
         usersByDepartment.clear();
         userListFailures.clear();
         userListCalls.clear();
+        stuckCursorDepartments.clear();
         departments.put(ROOT_DEPARTMENT_ID, new DingDepartment(ROOT_DEPARTMENT_ID, "根部门", null));
         usersByDepartment.put(ROOT_DEPARTMENT_ID, new LinkedHashMap<>());
         return this;
@@ -81,6 +84,12 @@ public class FakeDingTalkClient implements DingTalkClient {
         return this;
     }
 
+    /** 票 04：让 {@code user/list} 永远报告「还有下一页」但游标不推进，测试坏分页。 */
+    public synchronized FakeDingTalkClient stuckUserListCursor(long departmentId) {
+        stuckCursorDepartments.add(departmentId);
+        return this;
+    }
+
     /** How many times {@code user/list} was called for a department (including failed calls). */
     public int userListCalls(long departmentId) {
         return userListCalls.getOrDefault(departmentId, 0);
@@ -114,6 +123,9 @@ public class FakeDingTalkClient implements DingTalkClient {
             throw failure;
         }
         List<DingUser> all = new ArrayList<>(usersByDepartment.getOrDefault(departmentId, Map.of()).values());
+        if (stuckCursorDepartments.contains(departmentId)) {
+            return new DingUserPage(all, true, cursor);
+        }
         int effectiveSize = Math.max(1, Math.min(size, pageSizeLimit));
         int from = (int) Math.min(Math.max(cursor, 0), all.size());
         int to = Math.min(from + effectiveSize, all.size());
