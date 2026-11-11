@@ -4,6 +4,8 @@ import com.paiban.common.settings.SettingsService;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.foundation.service.FoundationService;
+import com.paiban.identity.service.AccountMutationGuard;
+import com.paiban.identity.service.UserService;
 import com.paiban.integration.dingtalk.DingTalkApiException;
 import com.paiban.integration.domain.DingUser;
 import com.paiban.integration.org.DingTalkSyncPlan.Category;
@@ -43,6 +45,8 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
     private final DingTalkTeacherMatcher matcher;
     private final TeacherRepository teachers;
     private final FoundationService foundation;
+    private final AccountMutationGuard accountMutationGuard;
+    private final UserService users;
     private final TransactionTemplate transactionTemplate;
 
     public DingTalkOrgDataProvider(
@@ -53,6 +57,8 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
             DingTalkTeacherMatcher matcher,
             TeacherRepository teachers,
             FoundationService foundation,
+            AccountMutationGuard accountMutationGuard,
+            UserService users,
             PlatformTransactionManager transactionManager) {
         this.settings = settings;
         this.directoryLoader = directoryLoader;
@@ -61,6 +67,8 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
         this.matcher = matcher;
         this.teachers = teachers;
         this.foundation = foundation;
+        this.accountMutationGuard = accountMutationGuard;
+        this.users = users;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -142,8 +150,16 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
             return new OrgSyncResult(false, 0, 0, 0, 0, 0, 0, 0, elapsed, message);
         }
 
-        DingTalkSyncPlan plan = planner.plan(directory, decisions);
-        OrgSyncResult result = transactionTemplate.execute(status -> apply(directory, plan, startedAt));
+        OrgSyncResult result = transactionTemplate.execute(status -> {
+            accountMutationGuard.lock();
+            DingTalkSyncPlan plan = planner.plan(directory, decisions);
+            int accountDisabled = 0;
+            for (DingTalkSyncDecisions.DeactivationSelection selection : decisions.deactivationSelections()) {
+                users.disableForSync(selection.accountId());
+                accountDisabled++;
+            }
+            return apply(directory, plan, startedAt, accountDisabled);
+        });
         if (result == null) {
             return OrgSyncResult.failed("同步未执行");
         }
@@ -164,7 +180,8 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
     }
 
     /** Writes exactly the CREATE/MERGE items inside the caller's transaction. */
-    private OrgSyncResult apply(DingTalkDirectory directory, DingTalkSyncPlan plan, long startedAt) {
+    private OrgSyncResult apply(
+            DingTalkDirectory directory, DingTalkSyncPlan plan, long startedAt, int accountDisabled) {
         int created = 0;
         int updated = 0;
         int deactivated = 0;
@@ -196,7 +213,8 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
         long elapsed = elapsedMs(startedAt);
         String message = "同步完成：扫描 " + directory.departmentsScanned() + " 个部门 / "
                 + directory.usersScanned() + " 人，耗时 " + elapsed + " ms；新增 " + created
-                + "，补齐 " + updated + "，停用 " + deactivated + "，跳过 " + skipped
+                + "，补齐 " + updated + "，教师档案停用 " + deactivated
+                + "，账号停用 " + accountDisabled + "，跳过 " + skipped
                 + "，疑似同名 " + suspected;
         foundation.audit("system", "DINGTALK_SYNC", "teacher", message, created + updated, 0);
         return new OrgSyncResult(
@@ -209,7 +227,8 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
                 directory.departmentsScanned(),
                 directory.usersScanned(),
                 elapsed,
-                message);
+                message,
+                accountDisabled);
     }
 
     @Transactional
