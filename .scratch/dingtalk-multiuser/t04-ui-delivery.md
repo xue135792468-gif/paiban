@@ -19,7 +19,9 @@
 
 ## 初审整改记录（相对 `91d1020`）
 
-1. **E2E 候选取消隔离**：在 `frontend/e2e/dingtalk-sync.spec.ts` 中捕获 `/api/integrations/dingtalk/sync/preview` 的真实响应 `deactivations`，对除本测试目标 `accountB` 之外的所有候选逐一点击取消勾选，避免全量套件中其他 spec 残留已绑定账号被一并停用或导致计数偏差。
+1. **E2E 候选取消隔离（覆盖本文件新旧两条用例）**：
+   - 第 1 条导入用例：通过公开 `POST /teachers` + `createAccount` 播种一个不在钉钉目录的关联账号作干扰项，捕获 `preview` 响应 `deactivations`（断言含该干扰账号）后逐一取消全部待停用候选，验证整部门排除时「确认导入 0 人」禁用、恢复后确认导入直接完成（不弹停用框），并在导入后断言该干扰账号仍为 `enabled: true`，`finally` 清空 `dingtalkUserId`。
+   - 第 2 条停用用例：捕获 `preview` 真实响应 `deactivations`，对除本测试目标 `accountB` 之外的所有候选逐一点击取消勾选，避免全量套件中其他 spec 残留已绑定账号被一并停用或导致计数偏差。
 2. **去除 `runSql` 旁路**：`frontend/e2e/dingtalk-sync.spec.ts` 改用公开 `POST /teachers` 直接传入 `dingtalkUserId` 造数，`finally` 中通过 `PUT /teachers/{id}` 传 `dingtalkUserId: ''` 清除绑定，删除 `runSql` 导入与调用。
 3. **组件测试 seam 纯化**：`frontend/src/components/DingTalkSyncPreview.spec.ts` 删除全部 `toHaveBeenCalledTimes`、`not.toHaveBeenCalled` 与 `mock.calls` 内部调用断言，只验证公开 DOM 与 emitted `confirm` payload；部分扫描用例将 `ElMessageBox.confirm` 模拟为取消，验证无需走停用确认仍正常 emit 导入载荷（二次确认弹窗文案由 E2E 对真实 `.el-message-box` 断言）。
 4. **精确行数与原始日志落盘**：修正 `DingTalkSyncPreview.vue` 行数为实测 455 行，并将 3 个文件 13 条定向 Vitest 的原始输出落盘至 `.scratch/dingtalk-multiuser/logs/t04-ui-vitest.log`。

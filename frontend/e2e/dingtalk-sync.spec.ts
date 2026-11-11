@@ -23,6 +23,8 @@ test.beforeEach(({ page }) => {
 test('钉钉通讯录预演、整部门排除与确认导入', async ({ page }) => {
   const api: APIRequestContext = await newContext()
   const token = await apiLogin(api)
+  const suffix = Math.random().toString(36).slice(2, 8)
+  const seededTeachers: Array<{ id: number; name: string; employeeNo: string }> = []
   await apiCall(api, token, 'put', '/integrations/dingtalk/config', {
     enabled: true,
     appKey: 'e2e-app-key',
@@ -32,18 +34,58 @@ test('钉钉通讯录预演、整部门排除与确认导入', async ({ page }) 
   })
 
   try {
+    // 播种一个不在钉钉目录中的已绑定关联账号作干扰：本用例取消全部停用候选后只验证导入，该账号导入后仍保持启用。
+    const distractorTeacher = await apiCall(api, token, 'post', '/teachers', {
+      name: `导入干扰${suffix}`,
+      employeeNo: `DI-${suffix}`,
+      dingtalkUserId: `dd-import-distractor-${suffix}`,
+    })
+    seededTeachers.push({
+      id: distractorTeacher.id,
+      name: distractorTeacher.name,
+      employeeNo: distractorTeacher.employeeNo,
+    })
+    const distractorAccount = await createAccount(api, {
+      username: `import_distractor_${suffix}`,
+      displayName: distractorTeacher.name,
+      password: 'teacher123',
+      roles: ['teacher'],
+      teacherId: distractorTeacher.id,
+      token,
+    })
+
     await uiLogin(page, 'admin', 'admin123')
     await page.goto('/settings/general')
 
     const card = page.locator('#dingtalk-integration')
     await expect(card).toBeVisible()
-    await card.getByRole('button', { name: '预演同步' }).click()
+    const [previewResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          response.url().includes('/api/integrations/dingtalk/sync/preview'),
+      ),
+      card.getByRole('button', { name: '预演同步' }).click(),
+    ])
+    expect(previewResponse.status()).toBe(200)
+    const previewBody = await previewResponse.json()
+    const candidateIds: number[] = (previewBody.deactivations ?? []).map(
+      (item: { accountId: number }) => item.accountId,
+    )
+    expect(candidateIds).toContain(distractorAccount.id)
 
     const preview = card.locator('.org-sync-preview')
     await expect(preview).toBeVisible()
     await expect(preview.getByText('根部门')).toBeVisible()
-    // Scope to rows: names can also appear inside conflict details from earlier specs.
-    const rows = preview.locator('.el-table__body tr')
+
+    // 取消本次预演中全部待停用候选，使本用例只验证纯导入流程
+    for (const candidateId of candidateIds) {
+      await preview.getByTestId(`dingtalk-deactivate-checkbox-${candidateId}`).click()
+    }
+    await expect(preview.getByTestId('dingtalk-deactivation-tag')).toContainText('将停用 0')
+
+    // Scope to department rows: names can also appear inside conflict details from earlier specs.
+    const rows = preview.locator('.groups .el-table__body tr')
     await expect(rows.filter({ hasText: '张三' })).toHaveCount(1)
     await expect(rows.filter({ hasText: '李四' })).toHaveCount(1)
 
@@ -62,8 +104,20 @@ test('钉钉通讯录预演、整部门排除与确认导入', async ({ page }) 
     // 完成后预演表关闭，展示扫描量与写入统计。
     await expect(preview).toHaveCount(0)
     await expect(card.locator('.sync-result')).toContainText('扫描 1 个部门 / 2 人')
+
+    // 被取消停用的干扰账号保持启用状态
+    const users = await apiCall(api, token, 'get', '/users')
+    const afterDistractor = users.find((user: any) => user.id === distractorAccount.id)
+    expect(afterDistractor?.enabled).toBe(true)
     expect(browserErrors).toEqual([])
   } finally {
+    for (const teacher of seededTeachers) {
+      await apiCall(api, token, 'put', `/teachers/${teacher.id}`, {
+        name: teacher.name,
+        employeeNo: teacher.employeeNo,
+        dingtalkUserId: '',
+      }).catch(() => undefined)
+    }
     await apiCall(api, token, 'put', '/integrations/dingtalk/config', { enabled: false })
     await api.dispose()
   }
