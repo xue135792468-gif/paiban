@@ -91,7 +91,7 @@ public class SettingsController {
             }
             validate(key, value);
         });
-        values.forEach(settings::put);
+        settings.putAll(values);
         return visibleSettings();
     }
 

@@ -16,6 +16,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -172,9 +173,16 @@ public class UserService {
     /**
      * 串行化所有「可能让最后一个启用超管消失」的写入。锁的是稳定的角色行，
      * 因为当超管集合为空时 app_user 上没有行可锁。
+     *
+     * <p>拿不到这一行说明种子 / 迁移没把 {@code super_admin} 建起来：此时既不能串行化，
+     * 也不能用「没有其他超管」的假象放行，所以明确失败（fail closed），
+     * 绝不把 {@code Optional} 丢掉后继续无锁改账号。
      */
     private void lockSuperAdminAnchor() {
-        roles.findByCodeForUpdate(SUPER_ADMIN_ROLE);
+        if (roles.findByCodeForUpdate(SUPER_ADMIN_ROLE).isEmpty()) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "超级管理员角色缺失，账号变更已中止");
+        }
     }
 
     /**

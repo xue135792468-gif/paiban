@@ -14,7 +14,14 @@ import java.util.UUID;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 
-/** Old-school upgrade boundary: V60 changes authorization, not accounts or school data. */
+/**
+ * Old-school upgrade boundary: V60 changes authorization, not accounts or school data.
+ *
+ * <p>Flyway runs a versioned migration exactly once per database, so this test proves the
+ * V59→V60 upgrade path and the row-level preservation around it — not that the SQL script is
+ * replayable. Re-running {@code migrate(url, "60")} on an already-migrated schema is a framework
+ * no-op and would only have asserted that Flyway skips recorded versions.
+ */
 class RoleUpgradeDataPreservationTest {
 
     @Test
@@ -48,12 +55,6 @@ class RoleUpgradeDataPreservationTest {
             assertThat(strings(sql, "select p.code from role_permission rp join role r on r.id=rp.role_id"
                     + " join permission p on p.id=rp.permission_id where r.code in ('admin','super_admin','teacher')"))
                     .doesNotContain("timetable:view:class", "substitution:view:class");
-            assertThat(businessRows(connection)).isEqualTo(before);
-            // A repeated upgrade must not change users, bindings, roles, or business data.
-            List<String> identities = strings(sql, "select user_id || ':' || role_id from user_role order by user_id,role_id");
-            migrate(url, "60");
-            assertThat(strings(sql, "select user_id || ':' || role_id from user_role order by user_id,role_id"))
-                    .isEqualTo(identities);
             assertThat(businessRows(connection)).isEqualTo(before);
         }
     }

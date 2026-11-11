@@ -59,7 +59,9 @@
 | `TimetableController.schoolView` | 仅 `TIMETABLE_VIEW` | 否：规格要求的「只读查看全校课表」本身就是这个权限 |
 | 草稿 / 发布 / 导出（`/api/timetable-drafts/**`、`publish`、`withdraw`、`export/*`） | `TIMETABLE_EDIT` / `TIMETABLE_PUBLISH` / `EXPORT_TIMETABLE` | 否：老师一个都没有，测试断言 403 |
 | `AdminSubstitutionService.MANAGER_PERMISSIONS`（工作台代发、代人提交） | `TIMETABLE_VIEW` + `SUBSTITUTION_SUBMIT` + `SUBSTITUTION_APPROVE` 三项全部具备 | 否：老师缺 `SUBSTITUTION_APPROVE`；`RolePermissionMatrixIntegrationTest` 与 `AdminSubstitutionIntegrationTest.plainTeacherCannotUseTheManagerWorkbench` 双重断言 403 |
-| `SubstitutionPlanService.plansFor` / 方案确认 | `SUBSTITUTION_APPROVE` | 否：与 `timetable:view` 无关，老师没有该权限 |
+| `SubstitutionPlanService.plansFor`（读方案） | 端点 `SUBSTITUTION_SUBMIT` + 服务内「`SUBSTITUTION_APPROVE` 或本人是申请人」 | 否：老师只能读到自己提交的方案 |
+| `SubstitutionPlanService.pickTarget`（为他人课节选目标节次） | `AdminSubstitutionService.MANAGER_PERMISSIONS` 三项全部具备：`timetable:view` + `substitution:submit` + `substitution:approve` | 否：老师缺 `substitution:approve` |
+| 置换方案确认（`AdminSwapService.requireManager`，经工作台控制器） | 同上 `MANAGER_PERMISSIONS` 三项 | 否：同上 |
 | `SubstitutionRequestService.create/list/detail/history` | `SUBSTITUTION_VIEW`（全局）或本人 / 本班教师关系 | 否：老师只能看到本人记录（`/api/substitutions/my`），`/api/substitutions` 返回 403 |
 | `NotificationService.onTimetablePublished` | 曾用 `teacherId != null \|\| TIMETABLE_VIEW` | **已修**：改为 `teacherId != null \|\| TIMETABLE_EDIT`，否则任何只读账号都会被当成管理端收件人 |
 | `NotificationService` 管理类收件人 `adminUsers()` | 角色持有者 | **已修**：同时包含 `admin` 与 `super_admin`，否则升级后运维通知失去收件人 |

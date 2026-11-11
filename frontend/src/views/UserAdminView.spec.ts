@@ -94,3 +94,70 @@ describe('UserAdminView: 改身份只有三个选项', () => {
     wrapper.unmount()
   })
 })
+
+/** 多角色账号：后端按字母序返回，编辑弹窗必须按预置身份优先级显示最高身份。 */
+const multiRoleUser = {
+  id: 3,
+  username: 'triple',
+  displayName: '三身份账号',
+  enabled: true,
+  roles: ['admin', 'super_admin', 'teacher'],
+  permissions: [],
+}
+
+function serveMultiRoleAccount() {
+  httpMock.get.mockImplementation((url: string) => {
+    if (url === '/users') return Promise.resolve({ data: [multiRoleUser] })
+    if (url === '/teachers/options') return Promise.resolve({ data: [] })
+    return Promise.resolve({ data: [] })
+  })
+}
+
+/** 编辑弹窗的作用域：标题唯一，避免与新建弹窗的同名控件串位。 */
+function editDialog(wrapper: ReturnType<typeof mount>) {
+  const dialog = wrapper
+    .findAllComponents({ name: 'ElDialog' })
+    .find((component) => component.props('title') === '编辑用户')
+  if (!dialog) throw new Error('edit dialog not rendered')
+  return dialog
+}
+
+async function openEditDialog(wrapper: ReturnType<typeof mount>) {
+  await wrapper.findAll('button').find((button) => button.text() === '编辑')!.trigger('click')
+  await flushPromises()
+  return editDialog(wrapper)
+}
+
+async function saveEditDialog(wrapper: ReturnType<typeof mount>) {
+  await editDialog(wrapper).findAll('button').find((button) => button.text() === '保存')!.trigger('click')
+  await flushPromises()
+}
+
+describe('UserAdminView: 多角色账号编辑不静默降级', () => {
+  it('按最高预置身份显示（超级管理员），而不是后端返回顺序里的第一个', async () => {
+    serveMultiRoleAccount()
+    const wrapper = mount(UserAdminView, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+
+    const dialog = await openEditDialog(wrapper)
+
+    expect(dialog.findAllComponents({ name: 'ElSelect' })[0].props('modelValue')).toBe('super_admin')
+    wrapper.unmount()
+  })
+
+  it('只改姓名时不上送 roleCodes，三个身份原样保留', async () => {
+    serveMultiRoleAccount()
+    const wrapper = mount(UserAdminView, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+
+    const dialog = await openEditDialog(wrapper)
+    await dialog.findAllComponents({ name: 'ElInput' })[1].setValue('仅修改姓名')
+    await flushPromises()
+    await saveEditDialog(wrapper)
+
+    const payload = httpMock.put.mock.calls[0][1] as Record<string, unknown>
+    expect(payload.displayName).toBe('仅修改姓名')
+    expect(payload).not.toHaveProperty('roleCodes')
+    wrapper.unmount()
+  })
+})

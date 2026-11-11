@@ -93,3 +93,12 @@ scripts/e2e.sh e2e/dingtalk-roles.spec.ts
 - 本切片未启动后端、未跑 Playwright、未跑后端集成测试与 `scripts/verify.sh`（按约定禁止并行启动后端与全量门禁）。
 - 未访问生产库、未连真钉钉、未使用任何生产凭证；临时日志 `frontend/../.tmp-unit.log` 在提交前删除。
 - 账号审计页不在本票范围（02 实现）；本切片只为 `audit:view:account` 预留了不误判的测试身份数据。
+
+## 整合后补记（2026-11-11，复查整改切片）
+
+上面的「未运行」是**本切片当时**的状态，保留不改。角色后端切片整合进
+`codex/dingtalk-multiuser` 之后，`e2e/dingtalk-roles.spec.ts` 已在
+`codex/dingtalk-t01-review` 实际运行并在复查整改后通过 **4/4**（新增多角色账号
+「只改姓名不丢身份」真实跨前后端回归），证据与命令见 `t01-review-fixes-delivery.md`。
+同一轮还上收了公共 `createAccount` 助手、给下拉/工具栏加了作用域，
+并给教师身份补了 `radio` 选中断言。

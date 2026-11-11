@@ -149,7 +149,7 @@ import { Plus } from '@element-plus/icons-vue'
 import ImportDialog from '@/components/ImportDialog.vue'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
-import { PRESET_ROLES, isPresetRoleCode, presetRoleLabel } from '@/constants/roles'
+import { PRESET_ROLES, presetRoleLabel, primaryRoleCode } from '@/constants/roles'
 
 interface UserRow {
   id: number
@@ -192,6 +192,8 @@ const editForm = reactive({
   identity: 'teacher' as string,
   teacherId: undefined as number | undefined,
 })
+/** 打开弹窗时的身份快照：只有用户显式换了身份才上送 roleCodes。 */
+let editIdentityBaseline = 'teacher'
 
 const resetVisible = ref(false)
 const resetPassword = ref('')
@@ -253,12 +255,16 @@ async function submitCreate() {
 }
 
 function openEdit(row: UserRow) {
+  // 后端按字母序返回角色，直接取第一个会把三身份账号显示成教务管理员；
+  // 弹窗显示最高预置身份，编辑时也以它为基线判断「是否真的改了身份」。
+  const identity = primaryRoleCode(row.roles) ?? 'teacher'
+  editIdentityBaseline = identity
   Object.assign(editForm, {
     id: row.id,
     username: row.username,
     displayName: row.displayName,
     // 迁移已把班主任账号改成老师；未知旧编码在这里落到老师的身份上。
-    identity: row.roles.find((role) => isPresetRoleCode(role)) ?? 'teacher',
+    identity,
     teacherId: row.teacherId ?? undefined,
   })
   editVisible.value = true
@@ -270,11 +276,16 @@ async function submitEdit() {
     // The edit dialog no longer carries the enabled switch: pausing and resuming an
     // account go through the row actions, so the server's self/last-admin guards and
     // the audit log always apply.
-    await http.put(`/users/${editForm.id}`, {
+    const payload: { displayName: string; teacherId?: number; roleCodes?: string[] } = {
       displayName: editForm.displayName,
-      roleCodes: [editForm.identity],
       teacherId: editForm.teacherId,
-    })
+    }
+    // 改姓名 / 关联教师不是改身份：不带 roleCodes，服务端保留原角色集合，
+    // 否则多角色账号会被静默压成弹窗里那一个身份（票 01 复查 F2）。
+    if (editForm.identity !== editIdentityBaseline) {
+      payload.roleCodes = [editForm.identity]
+    }
+    await http.put(`/users/${editForm.id}`, payload)
     ElMessage.success('已保存')
     editVisible.value = false
     await load()

@@ -24,13 +24,23 @@ export function presetRoleLabel(code: string): string {
 }
 
 /**
+ * The highest preset identity an account holds, in `PRESET_ROLES` order
+ * (超级管理员 > 教务管理员 > 老师). The backend returns role codes alphabetically,
+ * so `roles[0]` is NOT the strongest identity: an account holding
+ * `['admin', 'super_admin', 'teacher']` must read as 超级管理员, not 教务管理员.
+ */
+export function primaryRoleCode(roles: string[]): string | null {
+  const held = new Set(roles)
+  return PRESET_ROLES.find((role) => held.has(role.code))?.code ?? null
+}
+
+/**
  * One badge per account: the highest preset identity it holds. Roles outside
  * the preset list (legacy codes) are ignored so they never read as a product role.
  */
 export function primaryRoleLabel(roles: string[]): string {
-  const held = new Set(roles)
-  const matched = PRESET_ROLES.find((role) => held.has(role.code))
-  return matched?.label ?? ''
+  const code = primaryRoleCode(roles)
+  return code ? presetRoleLabel(code) : ''
 }
 
 export function isPresetRoleCode(code: string): boolean {

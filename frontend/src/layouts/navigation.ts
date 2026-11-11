@@ -7,6 +7,7 @@ import {
   MagicStick,
   Setting,
 } from '@element-plus/icons-vue'
+import { canManageDrafts } from '@/constants/permissions'
 
 /**
  * 侧边导航的唯一一份定义。
@@ -100,7 +101,7 @@ export function dataLandingPath(can: (permission: string) => boolean): string {
  * workbench itself, read-only timetable viewers get the timetable page.
  */
 export function workbenchLandingPath(can: (permission: string) => boolean): string {
-  return can('scheduling:run') || can('timetable:edit') ? '/workbench' : '/workbench/timetable'
+  return canManageDrafts(can) ? '/workbench' : '/workbench/timetable'
 }
 
 /** Where a menu entry actually navigates to for this caller. */

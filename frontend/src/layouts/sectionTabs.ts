@@ -1,16 +1,18 @@
 import type { PageTabItem } from '@/components/layout/PageTabs.vue'
+import { canManageDrafts } from '@/constants/permissions'
 
 /** The permission surface these tab builders need; keeps the store out of the pure functions. */
 export type Can = (permission: string) => boolean
 
 /**
  * Tabs of 课表工作台. 草稿与排课 opens the scheduler (its route demands
- * `scheduling:run` / `timetable:edit`), so a read-only viewer — teachers now hold
- * `timetable:view` — must not see it, otherwise the tab leads straight to a 403.
+ * `canManageDrafts`: `scheduling:run` or `timetable:edit`), so a read-only viewer —
+ * teachers now hold `timetable:view` — must not see it, otherwise the tab leads
+ * straight to a 403. The same predicate guards the route and the nav landing page.
  */
 export function workbenchTabs(can: Can): PageTabItem[] {
   const tabs: PageTabItem[] = []
-  if (can('scheduling:run') || can('timetable:edit')) {
+  if (canManageDrafts(can)) {
     tabs.push({ label: '草稿与排课', to: '/workbench', activePrefix: '/workbench/drafts' })
   }
   tabs.push({ label: '课表', to: '/workbench/timetable', tour: '/workbench/timetable' })

@@ -96,6 +96,30 @@ class SettingsPermissionIntegrationTest extends ApiIntegrationTest {
         assertThat(visible.keySet()).noneMatch(key -> key.startsWith("integration.dingtalk."));
     }
 
+    /**
+     * 票 01 复查 S8：一次保存多项设置是一个业务动作。
+     *
+     * <p>首字段合法、第二字段超 {@code app_setting.setting_value} 的 2000 字符上限时，
+     * 请求必须整体失败，且首字段不能留下半写结果——这里故意不校验长度，让 2000 字符
+     * 这一真实数据库约束去拒绝，避免用应用层校验把本用例变成空断言。
+     */
+    @Test
+    void batchUpdateRejectedByTheColumnLimitLeavesTheFirstFieldUntouched() {
+        String admin = adminToken();
+        as(admin).body(Map.of(SettingsService.SCHOOL_NAME, "before-batch-update"))
+                .put("/api/settings").then().statusCode(200);
+
+        Map<String, String> batch = new LinkedHashMap<>();
+        batch.put(SettingsService.SCHOOL_NAME, "must-not-survive-the-batch");
+        batch.put(SettingsService.PUBLIC_BASE_URL, "h".repeat(2001));
+
+        int status = as(admin).body(batch).put("/api/settings").then().extract().statusCode();
+        assertThat(status).as("2000 字符上限必须拒绝整批保存").isGreaterThanOrEqualTo(400);
+        assertThat(as(admin).get("/api/settings").then().statusCode(200)
+                .extract().jsonPath().getString("'school.name'"))
+                .isEqualTo("before-batch-update");
+    }
+
     @Test
     void logoUploadResponseDoesNotBypassSettingsVisibility() throws Exception {
         byte[] png = Base64.getDecoder().decode(

@@ -126,6 +126,7 @@ import { ElMessage } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
+import { canManageDrafts } from '@/constants/permissions'
 import { useAuthStore } from '@/stores/auth'
 import InfoTooltip from '@/components/InfoTooltip.vue'
 import { serverMessage } from '@/api/errors'
@@ -184,9 +185,7 @@ const canExport = computed(() => auth.hasPermission('export:timetable'))
 const canViewAll = computed(() => auth.hasPermission('timetable:view'))
 const canViewClassScope = computed(() => auth.hasPermission('timetable:view:class'))
 // 票 01：老师新增的「查看全部课表」只是只读扩权，不是排课/编辑能力。
-const canManageSchedule = computed(
-  () => auth.hasPermission('scheduling:run') || auth.hasPermission('timetable:edit'),
-)
+const canManageSchedule = computed(() => canManageDrafts((permission) => auth.hasPermission(permission)))
 const headClasses = computed(() =>
   classes.value.filter((item) => item.headTeacherId != null && item.headTeacherId === auth.user?.teacherId),
 )

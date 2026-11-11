@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { routes } from '@/router'
+import { authGuard } from '@/router/guard'
 import { resolveMenuPath, visibleMenuGroups, type PermissionReader } from '@/layouts/navigation'
 import { useAuthStore } from '@/stores/auth'
 
@@ -59,16 +60,8 @@ function signIn(permissions: string[]) {
 
 function makeRouter() {
   const router = createRouter({ history: createMemoryHistory(), routes })
-  router.beforeEach((to) => {
-    const auth = useAuthStore()
-    if (to.meta.public) return true
-    if (!auth.isLoggedIn) return { name: 'login', query: { redirect: to.fullPath } }
-    const required = to.meta.permission as string | undefined
-    if (required && !auth.hasPermission(required)) return { name: 'forbidden' }
-    const any = to.meta.permissionAny as string[] | undefined
-    if (any && !auth.hasAnyPermission(any)) return { name: 'forbidden' }
-    return true
-  })
+  // 生产守卫本身接线（不是测试里抄一份判断）：真实守卫被改坏，这组矩阵必须变红。
+  router.beforeEach(authGuard)
   return router
 }
 

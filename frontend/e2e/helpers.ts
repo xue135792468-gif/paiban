@@ -92,6 +92,39 @@ export interface ConstraintSeed {
   courses: { id: number; name: string }[]
 }
 
+export interface AccountSeed {
+  username: string
+  displayName: string
+  password: string
+  /**
+   * 预置身份编码（super_admin / admin / teacher）。多角色账号只在权限回归里
+   * 用来证明「改姓名不会丢身份」，正常建号仍是一个身份。
+   */
+  roles: string[]
+  teacherId?: number
+  /** 已拿到的管理员 token；省略时用默认管理员登录一次。 */
+  token?: string
+}
+
+/**
+ * 通过公开 API 建一个密码账号。种子与权限矩阵 spec 共用这一处：
+ * 各 spec 自建 `createAccount` 会随 helper 改动悄悄漂移，
+ * `scripts/check-e2e-helpers.sh` 也会把重复定义拦下。
+ */
+export async function createAccount(
+  context: APIRequestContext,
+  account: AccountSeed,
+): Promise<{ id: number; roles: string[] }> {
+  const token = account.token ?? (await apiLogin(context))
+  return apiCall(context, token, 'post', '/users', {
+    username: account.username,
+    displayName: account.displayName,
+    password: account.password,
+    roleCodes: account.roles,
+    teacherId: account.teacherId,
+  })
+}
+
 /**
  * Semester + timetable + two teachers and two courses for the constraint page.
  * The constraint specs assert entry cards by teacher/course name, so the seeded
@@ -183,12 +216,13 @@ export async function seedSchool(context: APIRequestContext): Promise<SeedResult
   })
 
   const username = `e2e_${suffix}`
-  await apiCall(context, token, 'post', '/users', {
+  await createAccount(context, {
     username,
     password: 'teacher123',
     displayName: `张老师${suffix}`,
-    roleCodes: ['teacher'],
+    roles: ['teacher'],
     teacherId: teacher.id,
+    token,
   })
 
   return {
@@ -402,12 +436,13 @@ export async function seedWorkbenchScenario(context: APIRequestContext): Promise
   })
 
   const username = `wbe2e_${suffix}`
-  await apiCall(context, token, 'post', '/users', {
+  await createAccount(context, {
     username,
     password: 'teacher123',
     displayName: `张老师${suffix}`,
-    roleCodes: ['teacher'],
+    roles: ['teacher'],
     teacherId: teacher.id,
+    token,
   })
 
   // 求解后强制把这节课摆到周三第 1 节，保证种子的授课日期是确定事实。
