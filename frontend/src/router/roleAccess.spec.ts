@@ -93,6 +93,7 @@ describe('老师只有只读课表权限', () => {
     expect(await landingPermission('/rules')).toBe('forbidden')
     expect(await landingPermission('/settings/general')).toBe('forbidden')
     expect(await landingPermission('/settings/users')).toBe('forbidden')
+    expect(await landingPermission('/settings/account-audit')).toBe('forbidden')
   })
 
   it('菜单里没有排课规则与设置，工作台落到课表页', async () => {
@@ -121,6 +122,9 @@ describe('教务管理员碰不到账号与集成配置', () => {
 
     await router.push('/settings/users')
     expect(router.currentRoute.value.name).toBe('forbidden')
+
+    await router.push('/settings/account-audit')
+    expect(router.currentRoute.value.name).toBe('forbidden')
   })
 
   it('菜单里仍有设置入口，因为业务设置归教务', () => {
@@ -135,6 +139,8 @@ describe('超级管理员全权', () => {
 
     await router.push('/settings/users')
     expect(router.currentRoute.value.name).toBe('users')
+    await router.push('/settings/account-audit')
+    expect(router.currentRoute.value.name).toBe('account-audit')
     await router.push('/settings/general')
     expect(router.currentRoute.value.name).toBe('settings')
   })

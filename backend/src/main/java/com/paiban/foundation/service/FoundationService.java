@@ -265,7 +265,12 @@ public class FoundationService {
 
     @Transactional(readOnly = true)
     public List<AuditLogDto> auditLogs() {
-        return auditLogs.findTop100ByOrderByCreatedAtDesc().stream()
+        // 票 02：账号事件只在账号审计页（audit:view:account）出现。这个通用接口由
+        // foundation:manage 打开，教务管理员也持有，所以过滤放在数据库查询里，
+        // 而不是让有权限的人拿到账号操作再在前端隐藏。
+        return auditLogs.findRecentOutsideCategory(
+                        "ACCOUNT", org.springframework.data.domain.PageRequest.of(0, 100))
+                .stream()
                 .map(log -> new AuditLogDto(
                         log.getId(), log.getActor(), log.getAction(), log.getEntityType(),
                         log.getDetail(), log.getSuccessRows(), log.getFailedRows(), log.getCreatedAt()))

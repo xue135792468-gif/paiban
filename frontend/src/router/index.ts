@@ -203,6 +203,13 @@ export const routes: RouteRecordRaw[] = [
             meta: { title: '账号', permission: 'user:manage' },
           },
           {
+            // 票 02：账号审计只给持有「账号审计查看」的超级管理员。
+            path: 'account-audit',
+            name: 'account-audit',
+            component: () => import('@/views/AccountAuditView.vue'),
+            meta: { title: '账号审计', permission: 'audit:view:account' },
+          },
+          {
             path: 'recycle-bin',
             name: 'recycle-bin',
             component: () => import('@/views/RecentDeletionsView.vue'),

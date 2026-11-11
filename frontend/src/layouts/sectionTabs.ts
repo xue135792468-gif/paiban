@@ -20,13 +20,17 @@ export function workbenchTabs(can: Can): PageTabItem[] {
 }
 
 /**
- * Tabs of 设置. 账号 needs `user:manage` (超级管理员 only) and 最近删除 needs
- * `foundation:manage`; 教务管理员 keeps the business settings tab.
+ * Tabs of 设置. 账号 needs `user:manage` and 账号审计 needs `audit:view:account`
+ * (both 超级管理员 only), 最近删除 needs `foundation:manage`; 教务管理员 keeps the
+ * business settings tab.
  */
 export function settingsTabs(can: Can): PageTabItem[] {
   const tabs: PageTabItem[] = [{ label: '设置', to: '/settings/general' }]
   if (can('user:manage')) {
     tabs.push({ label: '账号', to: '/settings/users' })
+  }
+  if (can('audit:view:account')) {
+    tabs.push({ label: '账号审计', to: '/settings/account-audit' })
   }
   if (can('foundation:manage')) {
     tabs.push({ label: '最近删除', to: '/settings/recycle-bin' })

@@ -23,6 +23,7 @@
 
 - 实施准备：已建立独立集成工作树并纳入原规格与8张票。
 - 01：**implemented（施工完成、待放行）**。设置字段权限切片已合入4fa09b6，前端角色与入口切片已合入1d6b895，角色迁移/种子/超管保护后端切片与 `RoleUpgradeDataPreservationTest` 已合入56a98c9。双轴复查（Standards 8 项 / Spec 5 项）已在 `codex/dingtalk-t01-review` 逐项整改并复核：S1–S8、F1–F5 与两项额外 QC 全部处置，逐项结论见 `t01-review.md`，红绿与命令证据见 `t01-review-fixes-delivery.md`。整合后的真实验证：旧库升级保全 1/1、正式 E2E 4/4（含多角色「只改姓名不丢身份」回归，并做过变异敏感性）。票面仍未置 done，其余票等待 01 放行。
+- 02：**implemented（施工完成、待双轴复核）**。审计复用 `audit_log`（V61 加 `category` / `target_user_id` / `before_json` / `after_json` 与索引），六类现有账号动作逐目标落审计（批量导入逐账号 `ACCOUNT_IMPORT`），预留 03/04 三类动作；账号审计页 `/settings/account-audit` 与 `/api/account-audits` 走 `audit:view:account`，过滤分页在数据库层；旧 `foundation/audit-logs` 在数据库层排除账号事件，教务不能从旁路读到。交付与实测数字见 `t02-delivery.md`；e2e 由独立 QA 提供（`frontend/e2e/account-audit.spec.ts`），待整合后运行。
 
 01 的双轴复核及统筹处置已经放行，详见 `t01-review.md`「整改后复核」。状态暂保留 implemented，整个规格最终完整 verify 通过后统一置 done。下一施工票为 02。
 

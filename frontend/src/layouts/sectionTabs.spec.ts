@@ -13,7 +13,7 @@ const SUPER_ADMIN = [
   'user:manage',
   'foundation:manage',
   'integration:manage',
-  'audit:view',
+  'audit:view:account',
 ]
 
 describe('课表工作台页签', () => {
@@ -30,10 +30,11 @@ describe('课表工作台页签', () => {
 })
 
 describe('设置页签', () => {
-  it('超级管理员能看到设置、账号与最近删除', () => {
+  it('超级管理员能看到设置、账号、账号审计与最近删除', () => {
     expect(settingsTabs(can(SUPER_ADMIN)).map((tab) => tab.to)).toEqual([
       '/settings/general',
       '/settings/users',
+      '/settings/account-audit',
       '/settings/recycle-bin',
     ])
   })
@@ -43,5 +44,14 @@ describe('设置页签', () => {
       can(['settings:manage', 'foundation:manage', 'scheduling:run', 'substitution:approve']),
     )
     expect(tabs.map((tab) => tab.to)).toEqual(['/settings/general', '/settings/recycle-bin'])
+  })
+
+  it('账号审计页签只看 audit:view:account，不看 user:manage', () => {
+    const tabs = settingsTabs(can(['settings:manage', 'user:manage', 'foundation:manage']))
+    expect(tabs.map((tab) => tab.to)).toEqual([
+      '/settings/general',
+      '/settings/users',
+      '/settings/recycle-bin',
+    ])
   })
 })

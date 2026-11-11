@@ -28,7 +28,7 @@ public final class Permissions {
     public static final String SUBSTITUTION_VIEW_CLASS = "substitution:view:class";
     public static final String SETTINGS_MANAGE = "settings:manage";
     public static final String INTEGRATION_MANAGE = "integration:manage";
-    /** 账号审计查看：只有超级管理员持有（票 01 新增；审计页在票 02 落地）。 */
+    /** 账号审计查看：只有超级管理员持有（票 01 新增，票 02 落地审计页与接口）。 */
     public static final String AUDIT_ACCOUNT_VIEW = "audit:view:account";
     public static final String ONBOARDING_MANAGE = "onboarding:manage";
     public static final String EXPORT_TIMETABLE = "export:timetable";

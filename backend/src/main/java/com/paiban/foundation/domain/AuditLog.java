@@ -34,6 +34,21 @@ public class AuditLog {
     @Column(length = 1000)
     private String detail;
 
+    /** 票 02：事件分类。账号事件为 {@code ACCOUNT}；旧日志为 null（按基础日志看待）。 */
+    @Column(length = 20)
+    private String category;
+
+    /** 票 02：稳定的目标账号 ID；非账号事件与批量摘要为 null。 */
+    @Column(name = "target_user_id")
+    private Long targetUserId;
+
+    /** 票 02：账号 allowlist 快照（JSON 文本）。不存密码、哈希、token 或原请求。 */
+    @Column(name = "before_json", columnDefinition = "TEXT")
+    private String beforeJson;
+
+    @Column(name = "after_json", columnDefinition = "TEXT")
+    private String afterJson;
+
     @Column(name = "success_rows", nullable = false)
     private int successRows;
 
