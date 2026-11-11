@@ -10,8 +10,12 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 import com.paiban.common.settings.SettingsService;
 import java.util.List;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
@@ -96,6 +100,53 @@ class HttpDingTalkClientTest {
                 .isInstanceOf(DingTalkApiException.class)
                 .hasMessageContaining("结构");
         server.verify();
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("incompleteDirectoryResponses")
+    void unidentifiedRowsOrPaginationCannotBecomeACompleteDirectory(
+            String description, boolean departments, String response) {
+        expectToken();
+        String endpoint = departments ? "/topapi/v2/department/listsub" : "/topapi/v2/user/list";
+        server.expect(requestTo(containsString(endpoint)))
+                .andRespond(withSuccess(response, MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> {
+            if (departments) {
+                client().listSubDepartments(1);
+            } else {
+                client().listUsers(1, 0, 100);
+            }
+        }).isInstanceOf(DingTalkApiException.class).hasMessageContaining("结构");
+        server.verify();
+    }
+
+    static Stream<Arguments> incompleteDirectoryResponses() {
+        return Stream.of(
+                Arguments.of("成员记录缺少UID", false,
+                        """
+                        {"errcode":0,"result":{"list":[{"name":"unknown"}],"has_more":false}}"""),
+                Arguments.of("成员记录没有对象结构", false,
+                        """
+                        {"errcode":0,"result":{"list":[null],"has_more":false}}"""),
+                Arguments.of("成员UID类型错误", false,
+                        """
+                        {"errcode":0,"result":{"list":[{"userid":123}],"has_more":false}}"""),
+                Arguments.of("成员UID空白", false,
+                        """
+                        {"errcode":0,"result":{"list":[{"userid":"  "}],"has_more":false}}"""),
+                Arguments.of("分页结束标志缺失", false,
+                        """
+                        {"errcode":0,"result":{"list":[]}}"""),
+                Arguments.of("分页结束标志类型错误", false,
+                        """
+                        {"errcode":0,"result":{"list":[],"has_more":"false"}}"""),
+                Arguments.of("子部门记录缺少ID", true,
+                        """
+                        {"errcode":0,"result":[{"name":"unknown"}]}"""),
+                Arguments.of("子部门记录没有对象结构", true,
+                        """
+                        {"errcode":0,"result":[null]}"""));
     }
 
     @Test

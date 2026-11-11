@@ -166,8 +166,15 @@ public class IntegrationController {
                 suspected.add(new DingTalkSyncDecisions.Decision(dto.userId(), action, dto.teacherId()));
             }
         }
+        List<DingTalkSyncDecisions.DeactivationSelection> deactivations = new ArrayList<>();
+        if (request.deactivationSelections() != null) {
+            for (DingTalkSyncDtos.DeactivationSelectionDto selection : request.deactivationSelections()) {
+                deactivations.add(selection == null ? null : new DingTalkSyncDecisions.DeactivationSelection(
+                        selection.accountId(), selection.teacherId(), selection.dingtalkUserId()));
+            }
+        }
         return DingTalkSyncDecisions.of(
-                request.excludedDepartments(), request.excludedUserIds(), suspected);
+                request.excludedDepartments(), request.excludedUserIds(), suspected, deactivations);
     }
 
     @GetMapping("/integrations/dingtalk/logs")

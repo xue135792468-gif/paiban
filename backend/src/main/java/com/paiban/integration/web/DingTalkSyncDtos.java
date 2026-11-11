@@ -67,12 +67,22 @@ public final class DingTalkSyncDtos {
 
     /**
      * Selection sent to the preview and confirm endpoints. All fields are optional:
-     * an empty body means "everything readable, no suspected merges".
+     * an empty body means "everything readable, no suspected merges, no account deactivation".
      */
     public record ConfirmRequest(
             List<String> excludedDepartments,
             List<String> excludedUserIds,
-            List<SuspectedDecisionDto> suspectedDecisions) {}
+            List<SuspectedDecisionDto> suspectedDecisions,
+            List<DeactivationSelectionDto> deactivationSelections) {
+        public ConfirmRequest(
+                List<String> excludedDepartments,
+                List<String> excludedUserIds,
+                List<SuspectedDecisionDto> suspectedDecisions) {
+            this(excludedDepartments, excludedUserIds, suspectedDecisions, List.of());
+        }
+    }
+
+    public record DeactivationSelectionDto(Long accountId, Long teacherId, String dingtalkUserId) {}
 
     /** {@code action} is MERGE, CREATE or SKIP; MERGE requires {@code teacherId}. */
     public record SuspectedDecisionDto(String userId, String action, Long teacherId) {}

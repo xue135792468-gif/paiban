@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -77,13 +78,14 @@ public class HttpDingTalkClient implements DingTalkClient {
             throw DingTalkApiException.incomplete("列出子部门 (dept_id=" + departmentId + ")");
         }
         for (Object item : items) {
-            if (item instanceof Map<?, ?> department && department.get("dept_id") instanceof Number id) {
-                Object parent = department.get("parent_id");
-                departments.add(new DingDepartment(
-                        id.longValue(),
-                        string(department.get("name")),
-                        parent instanceof Number parentId ? parentId.longValue() : null));
+            if (!(item instanceof Map<?, ?> department) || !(department.get("dept_id") instanceof Number id)) {
+                throw DingTalkApiException.incomplete("列出子部门 (dept_id=" + departmentId + ")");
             }
+            Object parent = department.get("parent_id");
+            departments.add(new DingDepartment(
+                    id.longValue(),
+                    string(department.get("name")),
+                    parent instanceof Number parentId ? parentId.longValue() : null));
         }
         return departments;
     }
@@ -109,19 +111,23 @@ public class HttpDingTalkClient implements DingTalkClient {
             throw DingTalkApiException.incomplete("拉取钉钉部门用户 (dept_id=" + departmentId + ")");
         }
         for (Object item : items) {
-            if (item instanceof Map<?, ?> user) {
-                users.add(new DingUser(
-                        string(user.get("userid")),
-                        string(user.get("name")),
-                        string(user.get("mobile")),
-                        // user/list does not return email; field customisation is backlog.
-                        null,
-                        string(user.get("job_number")),
-                        isActive(user.get("active")),
-                        List.of()));
+            if (!(item instanceof Map<?, ?> user) || !(user.get("userid") instanceof String userId)
+                    || !StringUtils.hasText(userId)) {
+                throw DingTalkApiException.incomplete("拉取钉钉部门用户 (dept_id=" + departmentId + ")");
             }
+            users.add(new DingUser(
+                    userId,
+                    string(user.get("name")),
+                    string(user.get("mobile")),
+                    // Email enrichment remains deferred.
+                    null,
+                    string(user.get("job_number")),
+                    isActive(user.get("active")),
+                    List.of()));
         }
-        boolean hasMore = Boolean.TRUE.equals(resultMap.get("has_more"));
+        if (!(resultMap.get("has_more") instanceof Boolean hasMore)) {
+            throw DingTalkApiException.incomplete("拉取钉钉部门用户 (dept_id=" + departmentId + ")");
+        }
         long nextCursor;
         if (resultMap.get("next_cursor") instanceof Number next) {
             nextCursor = next.longValue();
