@@ -22,7 +22,7 @@ test('发布 → 撤回（提示未来调代）→ 编辑 → 重新发布，历
   const token = await apiLogin(api)
 
   // 先造一条未来日期的生效调代，撤回确认框必须点名它。
-  // 调代现在直接生效：教师指定代课人提交后立刻是 EFFECTIVE。
+  // 票 05 恢复审批：教师提交后停在「待审批」，教务批准后才生效。
   const entries = await classEntries(api, seed.classId)
   const entry = entries.find((item) => item.dayOfWeek != null && item.id != null)
   expect(entry).toBeTruthy()
@@ -34,7 +34,11 @@ test('发布 → 撤回（提示未来调代）→ 编辑 → 重新发布，历
     reason: '撤回 e2e：临时有事',
     expectedSubstituteTeacherId: seed.substituteTeacherId,
   })
-  expect(request.status).toBe('EFFECTIVE')
+  expect(request.status).toBe('SUBMITTED')
+  const approved = await apiCall(api, token, 'post', `/substitution-requests/${request.id}/approve`, {
+    substituteTeacherId: seed.substituteTeacherId,
+  })
+  expect(approved.status).toBe('EFFECTIVE')
 
   await uiLogin(page, 'admin', 'admin123')
   await page.goto(`/workbench/drafts/${draftId}`)

@@ -23,8 +23,14 @@
       </el-table-column>
       <el-table-column prop="className" label="行政班" min-width="110" />
       <el-table-column prop="courseName" label="课程" width="90" />
-      <el-table-column v-if="requests.some((item) => item.type === 'COVER')" label="代课教师" width="110">
-        <template #default="{ row }">{{ row.substituteTeacherName || '待定' }}</template>
+      <el-table-column v-if="requests.some((item) => item.type === 'COVER')" label="代课教师" width="150">
+        <template #default="{ row }">
+          <div v-if="changedTeacher(row)">
+            <div>期望：{{ row.expectedSubstituteTeacherName }}</div>
+            <div>实际：{{ row.substituteTeacherName }}</div>
+          </div>
+          <span v-else>{{ row.substituteTeacherName || row.expectedSubstituteTeacherName || '待定' }}</span>
+        </template>
       </el-table-column>
       <el-table-column label="状态" width="100">
         <template #default="{ row }">
@@ -32,9 +38,13 @@
         </template>
       </el-table-column>
       <el-table-column prop="reason" label="原因" min-width="150" show-overflow-tooltip />
-      <el-table-column label="操作" width="150">
+      <el-table-column label="审批意见" min-width="150" show-overflow-tooltip>
+        <template #default="{ row }">{{ row.approvalComment || '—' }}</template>
+      </el-table-column>
+      <el-table-column label="操作" width="200">
         <template #default="{ row }">
           <el-button v-if="row.type === 'SWAP'" link type="warning" @click="openPlans(row)">方案</el-button>
+          <el-button v-if="row.status === 'SUBMITTED'" link type="danger" @click="withdraw(row)">撤回</el-button>
           <el-button link type="primary" @click="openHistory(row.id)">流转记录</el-button>
         </template>
       </el-table-column>
@@ -75,12 +85,34 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import { http } from '@/api/http'
+import { serverMessage } from '@/api/errors'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import type { HistoryRow, Plan, RequestRow } from './types'
 import { formatTime, statusLabel, statusType, typeLabel } from './types'
 
 defineProps<{ requests: RequestRow[] }>()
+const emit = defineEmits<{ changed: [] }>()
+
+/** 管理员批准时可以换人：期望和实际不一致时两个都写清楚。 */
+function changedTeacher(row: RequestRow) {
+  return Boolean(
+    row.expectedSubstituteTeacherName
+      && row.substituteTeacherName
+      && row.expectedSubstituteTeacherName !== row.substituteTeacherName,
+  )
+}
+
+async function withdraw(row: RequestRow) {
+  try {
+    await http.post(`/substitution-requests/${row.id}/withdraw`)
+    ElMessage.success('已撤回申请')
+    emit('changed')
+  } catch (error) {
+    ElMessage.error(serverMessage(error, '撤回失败'))
+  }
+}
 
 const historyVisible = ref(false)
 const history = ref<HistoryRow[]>([])
