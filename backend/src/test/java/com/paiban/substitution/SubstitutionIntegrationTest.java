@@ -30,7 +30,7 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
     private SubstitutionRepository substitutions;
 
     private record Context(ScheduleFixture.Result fixture, String teacherToken, String substituteToken,
-                           String headTeacherToken, long teacherA, long teacherB, long classId,
+                           String classHeadToken, long teacherA, long teacherB, long classId,
                            long entryId, LocalDate date, String username) {}
 
     private Context prepare(String token, String suffix) {
@@ -75,12 +75,13 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
                 .map(item -> ((Number) item.get("headTeacherId")).longValue())
                 .findFirst()
                 .orElseThrow();
+        // 班主任角色已下线（票 01）：这位班主任现在是普通老师账号，只用于对照「按本班」不再扩权。
         String headUsername = "head_" + suffix;
         as(token).body(Map.of(
                         "username", headUsername,
                         "password", "teacher123",
                         "displayName", "班主任",
-                        "roleCodes", List.of("head_teacher"),
+                        "roleCodes", List.of("teacher"),
                         "teacherId", headTeacherId))
                 .when().post("/api/users").then().statusCode(200);
 
