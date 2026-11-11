@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { isPastDate, statusLabel, statusType, today } from './types'
+import { isPastDate, statusLabel, statusType, teacherOptionLabel, today } from './types'
+
+describe('教师选项标签', () => {
+  it('同名异 ID 可区分，唯一姓名保持原文', () => {
+    const teachers = [
+      { id: 1, name: '李老师' },
+      { id: 2, name: '李老师' },
+      { id: 3, name: '王老师' },
+    ]
+
+    expect(teacherOptionLabel(teachers[0], teachers)).toBe('李老师（档案 #1）')
+    expect(teacherOptionLabel(teachers[1], teachers)).toBe('李老师（档案 #2）')
+    expect(teacherOptionLabel(teachers[2], teachers)).toBe('王老师')
+  })
+})
 
 describe('types date utils', () => {
   it('today 返回本地日期分量拼出的 YYYY-MM-DD', () => {

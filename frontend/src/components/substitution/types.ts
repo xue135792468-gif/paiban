@@ -4,6 +4,17 @@ export interface Teacher {
   subject?: string
 }
 
+/** 只在实际选项里存在同名异 ID 时补档案编号，避免改变唯一姓名的既有文案。 */
+export function teacherOptionLabel(
+  teacher: Pick<Teacher, 'id' | 'name'>,
+  teachers: ReadonlyArray<Pick<Teacher, 'id' | 'name'>>,
+): string {
+  const ambiguous = teachers.some(
+    (candidate) => candidate.id !== teacher.id && candidate.name === teacher.name,
+  )
+  return ambiguous ? `${teacher.name}（档案 #${teacher.id}）` : teacher.name
+}
+
 export interface Entry {
   id: number
   classId: number

@@ -108,9 +108,25 @@
   均显式指向该目录。
 - 不处理 reviewer 报告中的其他判断项；收到主控后续确认的整改清单前不扩写集。
 
+## 同族同名教师选项显示
+
+- `SubstitutionRequestForm.vue` 的期望代课 select 与 `SubstitutionApprovalPanel.vue`
+  的改人批准 select 都改用 `types.ts` 的小纯 helper `teacherOptionLabel`。helper 只在实际
+  option 列表中存在同名但不同 ID 时渲染 `姓名（档案 #id）`；唯一姓名仍为原文。
+- 两个 option 的 `value` 继续使用原 `teacher.id`，默认选中、筛选、提交 payload、权限与
+  后端接口均未改变。MineTable 已确认的期望/实际与同名档案编号展示保持不变。
+- `types.spec.ts` 增加一个纯函数公开契约例：同名异 ID 分别为
+  `李老师（档案 #1）`、`李老师（档案 #2）`，唯一姓名 `王老师` 不附编号。
+- 同一轮首次执行四份定向日志时，共享 `types.ts` 的参数少一个逗号，四份均以 esbuild
+  transform 失败、0 test、exit 1 结束。这是语法实现错误，不冒充行为 red 或环境故障；
+  修正后重新串行执行，原日志保留。
+- 修正后串行 1 worker 单文件结果：types 6/6、Mine 4/4、RequestForm 3/3、
+  Panel 4/4，全部 exit 0。四文件定向 ESLint 与 `vue-tsc -b` 均 exit 0。
+- 追加改动相对 `80ed7f1` 的后端 diff 为空，未重跑 Maven；未运行 E2E、服务、全量或网络。
+
 ### 当前最终范围
 
-- 前端定向 Vitest：`types.spec.ts` 5/5、`SubstitutionMineTable.spec.ts` 4/4，均 exit 0。
+ - 前端定向 Vitest：`types.spec.ts` 6/6、MineTable 4/4、RequestForm 3/3、ApprovalPanel 4/4，均 exit 0。
 - 前端静态校验：本票修改的 Vue/TS、组件测试、两个 E2E 与共享 helper 跑定向 ESLint；
   Vue/TS 项目执行 `vue-tsc -b`，二者均 exit 0。
 - 后端定向 Maven：ApprovalIntegrationTest、ApprovalConcurrencyTest、ExpiryRace、
