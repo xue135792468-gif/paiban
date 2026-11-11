@@ -157,3 +157,24 @@
 - 覆盖内容：免登失败说明页（含 `data-reason-code = DINGTALK_CALL_FAILED` 断言）、`?mode=password` 跳过循环并完成密码登录、已绑 `dd-001` 教师免登取得同一账号（`POST /api/auth/dingtalk` 200 + `/auth/me` 一致）。
 
 本条取代上文「未验证项」中的 Playwright 一项：**真实浏览器 E2E 已验证通过**。仍未由本切片执行的是后端 Maven 测试与全量 `scripts/verify.sh`（由主线程在整票收尾时负责）。
+
+## 第四轮：UserStory19 老师默认落点（2026-11-11）
+
+规格 `spec.md:53`「作为老师，我想默认看到自己的课表」在真实截图里未满足：老师登录后落在总览。统筹决定做最小补足，t03-wire 的「既有落点」工程约束让位给这条上位 UserStory。
+
+- 判据与导航 / 课表页同一套**能力**判断（不看 role 字符串）：已关联 `teacherId`、有 `timetable:view:own`、且 `!canManageDrafts`（无 `scheduling:run` / `timetable:edit`）。
+- 仅在**无显式 redirect** 且 fallback 为 `'/'` 时生效，落到 `workbenchLandingPath(...)`（同样排除管理者后即 `/workbench/timetable`，与 `navigation.ts` 共用同一函数）。
+- 显式 `?redirect=` 照旧优先；管理员 Home / onboarding 既有分支不变；新的 `router.replace` 前同样复核 `isCurrent`，自动登录传入的 `isActive` 保护继续生效。
+- 未改导航权限代码、未改 Home、未新增页面。
+
+### 新增回归（1 条，公开路由级）
+
+「老师登录后默认落到自己的课表（UserStory19），显式 redirect 仍然优先」：密码登录后路由为 `/workbench/timetable`；带 `/login?redirect=/substitution` 时仍去 `/substitution`。`LoginView.spec.ts` 由 17 → 18 条，6 个目标文件由 44 → **45** 条。
+
+### 真实红 → 绿
+
+- 红：把 `useLoginLanding.ts` 临时还原成补丁前版本 → `AssertionError: expected '/' to be '/workbench/timetable'`，`1 failed | 17 skipped`，exit 1；随后按文件哈希（`F5959A4E…`）还原。日志 `.scratch/dingtalk-multiuser/logs/t03-teacher-landing-red.log`。
+- 绿：`LoginView.spec.ts` 18 passed，exit 0（`t03-teacher-landing-green.log`）；6 个目标 spec 串行 `--no-file-parallelism --maxWorkers=1` → **6 files / 45 tests passed，exit 0**，日志 `.scratch/dingtalk-multiuser/logs/t03-ui-final-verified.log`（12,691 B，覆盖旧的 44 条口径）。
+- `npx vue-tsc -b` exit 0；`npm run lint` exit 0（均在前一轮 Vitest 结束后串行执行，未并发重活）。
+
+主线程另加的 `me.permissions` / 菜单隐藏断言属其写集，本切片未 stage、未改动；真实浏览器需由主线程按当前冻结源码复跑。

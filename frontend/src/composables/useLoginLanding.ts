@@ -1,4 +1,6 @@
 import { useRoute, useRouter } from 'vue-router'
+import { canManageDrafts } from '@/constants/permissions'
+import { workbenchLandingPath } from '@/layouts/navigation'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 
@@ -17,6 +19,17 @@ export function useLoginLanding() {
     // 避免已经在别处登录（如切到密码入口）的用户被这次旧落地再带走。
     const redirect = (route.query.redirect as string) || fallback
     if (redirect === '/') {
+      // UserStory19：老师默认看到自己的课表。判据与导航/课表页同一套能力（不看 role 字符串）：
+      // 已关联教师档案、能看本人课表、且不是排课/编辑管理者。
+      const isOwnTimetableTeacher =
+        auth.user?.teacherId != null &&
+        auth.hasPermission('timetable:view:own') &&
+        !canManageDrafts((permission) => auth.hasPermission(permission))
+      if (isOwnTimetableTeacher) {
+        if (!isCurrent()) return
+        router.replace(workbenchLandingPath((permission) => auth.hasPermission(permission)))
+        return
+      }
       try {
         const { data } = await http.get('/onboarding/status')
         if (!isCurrent()) return

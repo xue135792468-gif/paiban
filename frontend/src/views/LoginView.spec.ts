@@ -55,6 +55,8 @@ async function mountLogin(initialPath = '/login') {
     routes: [
       { path: '/login', name: 'login', component: LoginView },
       { path: '/', name: 'home', component: { template: '<div data-testid="home-page">首页</div>' } },
+      { path: '/workbench/timetable', name: 'timetable', component: { template: '<div data-testid="timetable-page">课表</div>' } },
+      { path: '/substitution', name: 'substitution', component: { template: '<div data-testid="substitution-page">调代</div>' } },
       {
         path: '/onboarding',
         name: 'onboarding',
@@ -337,6 +339,45 @@ describe('LoginView: 钉钉免登原因码说明页与管理员密码入口', ()
     expect(router.currentRoute.value.path).toBe('/login')
     expect(router.currentRoute.value.query.mode).toBe('password')
     wrapper.unmount()
+  })
+  it('老师登录后默认落到自己的课表（UserStory19），显式 redirect 仍然优先', async () => {
+    setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130.0.0.0')
+    const teacher = {
+      id: 12,
+      username: 'li_teacher',
+      displayName: '李老师',
+      enabled: true,
+      loginType: 'PASSWORD' as const,
+      teacherId: 7,
+      roles: ['teacher'],
+      permissions: [
+        'timetable:view:own',
+        'timetable:view',
+        'assignment:view:own',
+        'substitution:submit',
+      ],
+    }
+    httpMock.post.mockResolvedValueOnce({ data: { token: 'teacher-token', user: teacher } })
+
+    const { wrapper, router } = await mountLogin('/login')
+    await wrapper.findAll('input')[0].setValue('li_teacher')
+    await wrapper.findAll('input')[1].setValue('secret-pass')
+    await wrapper.find('button.submit').trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.path).toBe('/workbench/timetable')
+    wrapper.unmount()
+
+    // 带显式 redirect 时仍按 redirect 落地，不被默认个人课表规则抢走
+    httpMock.post.mockResolvedValueOnce({ data: { token: 'teacher-token-2', user: teacher } })
+    const second = await mountLogin('/login?redirect=/substitution')
+    await second.wrapper.findAll('input')[0].setValue('li_teacher')
+    await second.wrapper.findAll('input')[1].setValue('secret-pass')
+    await second.wrapper.find('button.submit').trigger('click')
+    await flushPromises()
+
+    expect(second.router.currentRoute.value.path).toBe('/substitution')
+    second.wrapper.unmount()
   })
   it('点击「我是管理员，用密码登录」写入 ?mode=password 并显示密码表单；带 ?mode=password 刷新不触发自动免登循环', async () => {
     installFakeDingTalk()
