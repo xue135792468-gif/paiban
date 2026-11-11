@@ -127,7 +127,8 @@ Immutable SHA 以外，未 amend、未 push、未部署。
 - 批准前重验：教师被停用 409、发布基线被撤回 409、提交后当前安排变忙 409；均零生效行、
   状态仍 `SUBMITTED`。
 - 权限：老师不能批准/驳回（403）；教务管理员可批准并记录 `approverUserId`。
-- 旧调用方：四条既有套件 45 例全绿（原日期、多周、再次调整、三视图、旧格式覆盖、
+- 旧调用方：四条既有套件 32 例，加本票新审批 `SubstitutionApprovalIntegrationTest` 13 例，
+  合计 45 例全绿（原日期、多周、再次调整、三视图、旧格式覆盖、
   工作台直接生效、快照失效、并发凭证等原断言未删）。
 
 未覆盖 / 交后续：
@@ -135,8 +136,9 @@ Immutable SHA 以外，未 amend、未 push、未部署。
 - 真实 PostgreSQL：本机无 Docker，未跑 `PostgresContainerIT`；以上均为 H2
   `MODE=PostgreSQL` + Flyway + `ddl-auto=validate`。不声称 PG 已验证。
 - 未跑全量 `scripts/verify.sh`、Playwright/E2E、真实服务或外网。
-- 前端（待审批面板、我的调代状态与撤回按钮、提交表单去 SWAP）由前端执行者完成；
-  `frontend/e2e/withdraw.spec.ts` 仍按旧「提交即 EFFECTIVE」编写，需前端票内改为「提交+批准」。
+- 前端（待审批面板、我的调代状态与撤回按钮、提交表单去 SWAP）由前端执行者完成。
+  本后端分支当时所见 `frontend/e2e/withdraw.spec.ts` 仍是旧「提交即 EFFECTIVE」；
+  该文件已由前端 UI-07ccd 更新，以那张票为准。
 - 钉钉通知（提交后给谁、批准/驳回结果、驳回理由、去重）与工作台旧通知收口属 06。
 - 迁移只在小库验证升到 V63；生产升级/回滚未执行。
 
