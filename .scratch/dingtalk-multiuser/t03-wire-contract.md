@@ -11,7 +11,7 @@
 
 ## C：所有UID写入的保护
 
-- 具体小模块 `DingTalkBindingPolicy`（位于identity.service），提供 `requiresExplicitFirstBinding(Teacher)`，含已有启用和停用管理员关联账号。预置管理员角色是super_admin/admin，端点权限仍只用Permissions常量。
+- 具体小模块 `DingTalkBindingPolicy`（位于identity.service），提供 `requiresExplicitFirstBinding(Teacher)`，含已有启用和停用管理员关联账号。按管理权限能力识别而非仅super_admin/admin名字：实际库可保留自定义角色，UserService也能分配它们。标量查询关联角色的管理权限集合（用户/集成/基础/学期/授课任务/规则/排课/发布/审批/设置/学校/引导/账号审计等），不把老师的全课表只读或提交申请能力当管理员。复用Permissions常量，遵循ADR-0006。
 - 人工create/update教师都先拿AccountMutationGuard锚点，再读取/刷新旧教师，在任何字段变更前校验UID变化；人工变更UID需`integration:manage`。UID未传或规范化后未变的普通档案编辑不误拒；不能先修改managed字段再refresh。
 - 无人值守事件拿同一锚点后匹配，不改非空UID；对未绑定但关联管理员账号的档案不自动绑定。同步的key命中/显式同名合并也不自动首次绑定受保护档案，本版统一跳过该行并给出“须超级管理员在教师档案确认”原因，避免预演宣称可填、确认却偷填。超管直接在现有教师编辑UID字段明确绑定是本版可信确认路径；不新增审批队列。
 - `DingTalkMergeRules`保持纯字段规则；保护尽量在planner/应用入口统一判定，不能保留未受保护的apply分支。已有FoundationImportService教师导入UID参数是null，不虚称它有独立UID列；仍审查所有setDingtalkUserId来源及AI/导入是否会间接绕过。
