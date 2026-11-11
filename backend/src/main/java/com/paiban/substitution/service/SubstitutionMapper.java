@@ -69,14 +69,21 @@ public class SubstitutionMapper {
         String courseName = courses.findById(request.getCourseId()).map(Course::getName).orElse(null);
         String originalTeacher = teachers.findById(request.getOriginalTeacherId())
                 .map(Teacher::getName).orElse(null);
-        Long substituteId = request.getEntryId() == null
-                ? request.getExpectedSubstituteTeacherId()
-                : substitutions.findFirstByEntryIdAndEffectiveDateAndStatus(
-                                request.getEntryId(), request.getEffectiveDate(), Substitution.EFFECTIVE)
-                        .map(Substitution::getSubstituteTeacherId)
-                        .orElse(request.getExpectedSubstituteTeacherId());
+        // 待审批：期望代课人；已生效：实际批准的人（finalTeacherId 优先，
+        // 旧数据没有该字段时回退到生效行，再回退到期望人）。
+        Long substituteId = request.getFinalTeacherId() != null
+                ? request.getFinalTeacherId()
+                : request.getEntryId() == null
+                        ? request.getExpectedSubstituteTeacherId()
+                        : substitutions.findFirstByEntryIdAndEffectiveDateAndStatus(
+                                        request.getEntryId(), request.getEffectiveDate(), Substitution.EFFECTIVE)
+                                .map(Substitution::getSubstituteTeacherId)
+                                .orElse(request.getExpectedSubstituteTeacherId());
         String substituteTeacher = substituteId == null ? null : teachers.findById(substituteId)
                 .map(Teacher::getName).orElse(null);
+        String expectedTeacher = request.getExpectedSubstituteTeacherId() == null ? null
+                : teachers.findById(request.getExpectedSubstituteTeacherId())
+                        .map(Teacher::getName).orElse(null);
         String targetPeriodLabel = request.getTargetPeriodId() == null ? null
                 : periods.findById(request.getTargetPeriodId())
                         .map(period -> label(period.getDayOfWeek(), period.getPeriodNo()))
@@ -103,7 +110,13 @@ public class SubstitutionMapper {
                 typeOf(request),
                 request.getReason(),
                 request.getStatus(),
-                request.getCreatedAt());
+                request.getCreatedAt(),
+                request.getExpectedSubstituteTeacherId(),
+                expectedTeacher,
+                request.getApproverUserId(),
+                request.getApprovedAt(),
+                request.getApprovalComment(),
+                request.getOperatorUserId());
     }
 
     public SubstitutionRecordDto toRecordDto(Substitution substitution) {
