@@ -61,13 +61,14 @@ import org.springframework.transaction.support.TransactionTemplate;
  *       批准与驳回并发，只有一方成功，最终状态、生效行、历史与审计互相自洽。</li>
  * </ol>
  *
- * <p>这些断言只走公开 HTTP 契约（状态码 + 落库/历史/审计回查），HTTP 用例不假设谁先拿到
- * 学期行锁：胜出方归属由响应决定，断言按「胜出方」而非固定顺序判断。
+ * <p>本类分两类交织：第 1、2 条是服务层强制旧快照——同一 EntityManager 先读出 SUBMITTED，
+ * 另一事务提交终态后再让旧快照走 approve，证明锁后 refresh 与状态守卫本身，不靠线程赛跑，
+ * 也不用 sleep 拟合时序；其后的落库/历史/审计回查与第 3–5 条同口径。第 3、4、5 条是 HTTP
+ * 不变量：只断言状态码与落库/历史/审计的稳定不变量，胜出方归属由响应决定，不假设谁先拿到
+ * 学期行锁。
  *
- * <p><b>运行边界</b>：第 2、5 条依赖 {@code POST /api/substitution-requests/{id}/withdraw}
- * 与驳回的完整实现（票 05 施工中），只按契约用 HTTP 字符串路径准备，不引用尚未存在的
- * 服务方法。检查点 {@code 16851f2} 上可直接运行的只有第 1、3、4 条；第 2、5 条须在
- * 完整实现合入后再跑。
+ * <p><b>运行边界</b>：撤回、驳回与惰性作废在核心 {@code 8f457ac} 已落地，本类五例都能在并入
+ * 该核心后运行；第 2、5 条仍走 HTTP 字符串路径调用公开端点，不引用未公开的服务方法。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -164,8 +165,7 @@ class SubstitutionApprovalConcurrencyTest extends ApiIntegrationTest {
                     .isEqualTo(SubstitutionRequest.EFFECTIVE);
             firstCommitted.countDown();
         } finally {
-            pool.shutdown();
-            assertThat(pool.awaitTermination(60, TimeUnit.SECONDS)).isTrue();
+            releaseAndShutdown(pool, staleLoaded, firstCommitted);
         }
 
         ApiException refusal = lateRefusal.get(60, TimeUnit.SECONDS);
@@ -221,8 +221,7 @@ class SubstitutionApprovalConcurrencyTest extends ApiIntegrationTest {
                     .body("status", equalTo("WITHDRAWN"));
             withdrawn.countDown();
         } finally {
-            pool.shutdown();
-            assertThat(pool.awaitTermination(60, TimeUnit.SECONDS)).isTrue();
+            releaseAndShutdown(pool, staleLoaded, withdrawn);
         }
 
         ApiException refusal = lateRefusal.get(60, TimeUnit.SECONDS);
@@ -546,6 +545,33 @@ class SubstitutionApprovalConcurrencyTest extends ApiIntegrationTest {
             } catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
             }
+        }
+    }
+
+    /**
+     * 任何路径都先释放 latch 再停线程池，避免 worker 永远阻塞在 await 上。
+     *
+     * <p>释放后必须让 worker <b>正常跑完</b>（还要在旧快照上调用 approve 并读回拒绝），
+     * 所以这里先 {@code shutdown()} 优雅等待；只有超时才 {@code shutdownNow()} 中断，
+     * 否则中断会和「latch 刚放行」抢时序，把等待中的 worker 打断成 ExecutionException。
+     */
+    private static void releaseAndShutdown(ExecutorService pool, CountDownLatch... latches) {
+        for (CountDownLatch latch : latches) {
+            latch.countDown();
+        }
+        pool.shutdown();
+        try {
+            if (pool.awaitTermination(60, TimeUnit.SECONDS)) {
+                return;
+            }
+            pool.shutdownNow();
+            if (!pool.awaitTermination(10, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("并发线程未在 60 秒内结束");
+            }
+        } catch (InterruptedException ex) {
+            pool.shutdownNow();
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("等待并发线程结束时被中断", ex);
         }
     }
 
