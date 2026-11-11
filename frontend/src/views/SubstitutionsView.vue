@@ -19,7 +19,7 @@
 
     <div v-else-if="noSemester" class="no-semester" data-testid="substitution-no-semester">
       <h3>当前没有进行中的学期</h3>
-      <p>请先在「学期管理」中创建并设置当前学期，之后这里会显示代课申请与审批记录。</p>
+      <p>请由教务管理员在「学期管理」中创建并设置当前学期，之后这里会显示代课申请与审批记录。</p>
     </div>
 
     <template v-else-if="booted">
