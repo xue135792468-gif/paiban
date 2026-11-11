@@ -66,6 +66,8 @@ public class UserService {
      */
     @Transactional
     public UserSummary create(CreateUserRequest request, AccountAuditAction source) {
+        // Role/teacher associations must not appear halfway through a first DingTalk binding.
+        accountMutationGuard.lock();
         if (users.existsByUsername(request.username())) {
             throw ApiException.conflict("用户名已存在: " + request.username());
         }
@@ -104,6 +106,10 @@ public class UserService {
             throw ApiException.conflict(losesSuperAdmin
                     ? "不能降级最后一个启用的超级管理员，请先提升其他超级管理员"
                     : "不能停用最后一个启用的超级管理员，请先启用其他超级管理员");
+        }
+        if ((losesSuperAdmin || willDisable)
+                && accountMutationGuard.isLastEnabledPasswordSuperAdmin(user)) {
+            throw ApiException.conflict("必须保留一个启用的密码超级管理员，请先创建其他密码超级管理员");
         }
 
         // 校验通过后，所有字段都落在同一个 managed 实体上：不要在中途再 refresh，
@@ -216,6 +222,9 @@ public class UserService {
         }
         if (accountMutationGuard.isLastEnabledSuperAdmin(user)) {
             throw ApiException.conflict("不能停用最后一个启用的超级管理员，请先启用其他超级管理员");
+        }
+        if (accountMutationGuard.isLastEnabledPasswordSuperAdmin(user)) {
+            throw ApiException.conflict("必须保留一个启用的密码超级管理员，请先创建其他密码超级管理员");
         }
         applyDisable(user, action);
     }

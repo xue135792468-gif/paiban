@@ -50,7 +50,9 @@ ADR-0006 要求预置角色只用于初始化，权限判断不写角色字符�
 6. 事件命中受保护未绑定档案 → UID 仍 null 且姓名不被改；事件带不同 UID 命中已绑定档案 → UID 保持原值、手机照常更新。
 7. 普通老师（`teacher` 角色）key 命中 → 确认后正常绑上 UID。
 
-红绿（日志在 `.scratch/dingtalk-multiuser/logs/`，退出码取自日志内 BUILD 结果；Windows 下 `echo $?` 不可信，故以 surefire 汇总为准）：
+施工与敏感性验证（原日志在 `.scratch/dingtalk-multiuser/logs/`，已归档集成`logs/t03-binding/`）：
+
+主线程复核说明：下面的HTTP“红”是实现后临时移除保护的**变异验证**，证明公开HTTP断言能抓到错误；不是施工前的首个TDD红例，不应混称。原worker以BUILD/surefire汇总判断，报告exit0；主线程核实raw计数与BUILD SUCCESS，不把它冒称为自己捕获的子进程退出码。整合后由主线程直接捕获真实Maven退出码再验收。
 
 | 阶段 | 命令 | 结果 |
 |---|---|---|

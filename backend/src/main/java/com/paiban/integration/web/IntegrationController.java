@@ -211,11 +211,8 @@ public class IntegrationController {
 
     @PostMapping("/auth/dingtalk")
     public LoginResponse login(@Valid @RequestBody DingTalkLoginRequest request) {
-        if (!settings.dingtalkEnabled()) {
-            throw ApiException.badRequest("钉钉集成未启用");
-        }
         String username = authProvider.authenticate(new AuthCredentials(null, null, request.authCode()))
-                .orElseThrow(() -> ApiException.unauthorized("钉钉免登失败，请确认账号已同步"));
+                .orElseThrow(() -> ApiException.unauthorized("钉钉登录暂时不可用，请联系超级管理员"));
         return authService.issueFor(username);
     }
 }
