@@ -5,6 +5,7 @@ import com.paiban.foundation.domain.AuditLogRepository;
 import com.paiban.identity.domain.AppUser;
 import com.paiban.identity.domain.AppUserRepository;
 import com.paiban.identity.domain.AccountAuditAction;
+import com.paiban.identity.domain.LoginType;
 import com.paiban.identity.domain.Role;
 import com.paiban.identity.domain.RoleRepository;
 import com.paiban.identity.web.IdentityDtos.CreateUserRequest;
@@ -72,6 +73,8 @@ public class UserService {
         user.setUsername(request.username());
         user.setDisplayName(request.displayName());
         user.setPasswordHash(passwordEncoder.encode(request.password()));
+        // 手工建号永远是密码账号；钉钉免登账号只能由免登流程创建（票 03-A3）。
+        user.setLoginType(LoginType.PASSWORD);
         user.setTeacherId(request.teacherId());
         user.setCreatedAt(Instant.now());
         user.setRoles(resolveRoles(request.roleCodes()));
@@ -147,6 +150,11 @@ public class UserService {
         // 与停用共用同一个锚点锁并重读：重置密码只改哈希，但整行更新会把读到的
         // 旧 enabled 一并写回，可能把并发停用的账号「复活」。
         AppUser user = accountMutationGuard.lockAndRefresh(id);
+        // 票 03：钉钉免登账号没有密码。拒绝必须发生在写哈希与写审计之前——
+        // 否则数据库的组合约束只会给出 500，还可能留下一条「重置成功」的假事件。
+        if (user.getLoginType() == LoginType.DINGTALK) {
+            throw ApiException.conflict("该账号是钉钉免登账号，没有密码；请在钉钉中打开");
+        }
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         // 密码本身（及其哈希）不进审计：前后快照只描述账号的可见状态。
         accountAudits.record(
@@ -369,7 +377,8 @@ public class UserService {
                 user.isEnabled(),
                 user.getTeacherId(),
                 roleCodes,
-                permissions);
+                permissions,
+                user.getLoginType().name());
     }
 
     private Set<Role> resolveRoles(List<String> roleCodes) {
