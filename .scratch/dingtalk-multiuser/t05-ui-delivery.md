@@ -7,6 +7,10 @@
 已先 fast-forward 合并集成 tip `10b3e8b4045390265d63dee74e3389473ec51016`（仅文档）。
 本票提交：`644b7d3`（feat(dingtalk-t05): restore substitution approval flow in UI）。
 扩展写集提交：`777e0c6`（fix(dingtalk-t05): align substitution copy and E2E with approval）。
+边界修复提交：`467cc7a`（fix(dingtalk-t05): guard no-semester entry and split list errors）。
+已普通合并 05 core 集成：`e3b990f39a22caef0b275157777b1aa36327cb11`，merge commit
+`2b826553c5799ad0cfd05b34c97978bafc38ec49`（后端 V63/审批服务/集成测试、main 新增
+无学期浏览器例、准备文档）。
 
 ## 写集
 
@@ -87,6 +91,31 @@
 - `substitution.spec.ts` 的「提交即生效」矛盾已消除，原业务断言未删除。
 - 扩展后定向 `npx eslint e2e/substitution.spec.ts src/layouts/SubstitutionLayout.vue` exit 0；
   `npx vue-tsc -b --pretty false` exit 0；commit 前钩子通过（本地日期/e2e helper/模块边界）。
+
+## 无学期与错误竞态补齐（467cc7a）
+
+- `SubstitutionsView` 初始化先 `GET /semesters/current`：
+  - 204/空体：只显示 `data-testid="substitution-no-semester"` 说明，**不**请求
+    `/classes`、`/teachers/options`、`/substitution-requests`，不挂载会自行取课表的表单/记录子组件；
+    点「刷新」会重新检查学期是否已设置。
+  - 200：才并行取教师与班级，再挂载页签并加载列表。
+  - 其它网络/服务错误：原样显示可读原因，不伪装成「没有学期」，也不继续发依赖请求。
+- 我的列表与待批列表改为 `mineError`/`pendingError` 独立状态；成功只清自己的 error。
+- 公开 DOM 回归新增：204 只发一次 current 且无依赖请求；500 显示真实原因且不出现「没有学期」；
+  受控 deferred「pending 先失败、mine 后成功」仍看到待批错误（无 sleep）。
+- 结果：`src/views/SubstitutionsView.spec.ts` 5 tests passed，`VITEST_EXIT=0`（合并 e3b990f 后复跑）；
+  定向 eslint `LINT_EXIT=0`；`vue-tsc -b` `TSC_EXIT=0`。
+- main 的 `dingtalk-login.spec.ts` 无学期分支已随 e3b990f 合入，断言
+  `getByTestId('substitution-no-semester')` 与 `/substitution/requests`；本票未编辑该文件。
+
+## 审批 E2E 路由与浏览器卫生（覆盖 427 后的 467cc7a）
+
+- `substitution-approval.spec.ts` 所有入口改为 `/substitution/requests`（`/substitution` 是
+  管理端调代工作台，不挂申请/待批页）。
+- 两个 case 均用 `try/finally` dispose 自己的 API context；beforeEach 收集 console error 与
+  pageerror，afterEach 断言为空；列表状态（待审批/已撤回/已生效/已驳回/期望·实际/理由）为主要断言。
+- 审批 UI 使用公开 helper `createAccount` 建独立「教务管理员」账号（role `admin`）登录，不再
+  以超级管理员 admin 充数；第三位无课教师用于改人批准。仍只写不跑，由 main 统一执行。
 
 ## 运行时与进程
 
