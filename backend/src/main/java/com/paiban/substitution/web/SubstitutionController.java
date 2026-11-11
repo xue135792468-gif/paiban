@@ -1,13 +1,16 @@
 package com.paiban.substitution.web;
 
 import com.paiban.identity.domain.Permissions;
+import com.paiban.substitution.service.SubstitutionApprovalService;
 import com.paiban.substitution.service.SubstitutionPlanService;
 import com.paiban.substitution.service.SubstitutionQueryService;
 import com.paiban.substitution.service.SubstitutionRecommendationService;
 import com.paiban.substitution.service.SubstitutionRequestService;
+import com.paiban.substitution.web.SubstitutionDtos.ApproveSubstitutionRequest;
 import com.paiban.substitution.web.SubstitutionDtos.CreateSubstitutionRequest;
 import com.paiban.substitution.web.SubstitutionDtos.GeneratePlansResponse;
 import com.paiban.substitution.web.SubstitutionDtos.HistoryDto;
+import com.paiban.substitution.web.SubstitutionDtos.RejectSubstitutionRequest;
 import com.paiban.substitution.web.SubstitutionDtos.RecommendationResponse;
 import com.paiban.substitution.web.SubstitutionDtos.SubstitutionPlanDto;
 import com.paiban.substitution.web.SubstitutionDtos.SubstitutionRecordDto;
@@ -34,16 +37,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class SubstitutionController {
 
     private final SubstitutionRequestService requests;
+    private final SubstitutionApprovalService approvals;
     private final SubstitutionPlanService plans;
     private final SubstitutionQueryService queries;
     private final SubstitutionRecommendationService recommendations;
 
     public SubstitutionController(
             SubstitutionRequestService requests,
+            SubstitutionApprovalService approvals,
             SubstitutionPlanService plans,
             SubstitutionQueryService queries,
             SubstitutionRecommendationService recommendations) {
         this.requests = requests;
+        this.approvals = approvals;
         this.plans = plans;
         this.queries = queries;
         this.recommendations = recommendations;
@@ -71,6 +77,32 @@ public class SubstitutionController {
     @GetMapping("/substitution-requests/{id}")
     public SubstitutionRequestDto detail(@PathVariable Long id, Principal principal) {
         return requests.detail(principal.getName(), id);
+    }
+
+    /** 批准待审批申请：可不换人直接批准，也可换一位代课人（同样当场校验）。 */
+    @PostMapping("/substitution-requests/{id}/approve")
+    @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_APPROVE + "')")
+    public SubstitutionRequestDto approve(
+            @PathVariable Long id,
+            @RequestBody(required = false) ApproveSubstitutionRequest body,
+            Principal principal) {
+        return approvals.approve(principal.getName(), id, body);
+    }
+
+    /** 驳回待审批申请：理由必填，老师会在「我的调代」看到这句话。 */
+    @PostMapping("/substitution-requests/{id}/reject")
+    @PreAuthorize("hasAuthority('" + Permissions.SUBSTITUTION_APPROVE + "')")
+    public SubstitutionRequestDto reject(
+            @PathVariable Long id,
+            @Valid @RequestBody RejectSubstitutionRequest body,
+            Principal principal) {
+        return approvals.reject(principal.getName(), id, body);
+    }
+
+    /** 撤回自己的待审批申请（仅申请人本人、仅 SUBMITTED）。 */
+    @PostMapping("/substitution-requests/{id}/withdraw")
+    public SubstitutionRequestDto withdraw(@PathVariable Long id, Principal principal) {
+        return approvals.withdraw(principal.getName(), id);
     }
 
     @GetMapping("/substitution-requests/{id}/history")
