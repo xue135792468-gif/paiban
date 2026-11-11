@@ -23,11 +23,22 @@
   与 `FakeDingTalkClient.stuckUserListCursor`（旧预演也没有候选字段）。日志 `logs/a-red.log`，
   SHA256 `6A493C1ACA0ED0D297563169009B67A6DD674680B387C8CC3A747015D0A15415`，exit 1。
 - 绿：`./mvnw -B -DforkCount=0 -Dtest="DingTalkSyncPreviewDeactivationIntegrationTest,HttpDingTalkClientTest,DingTalkDirectoryLoaderTest,DingTalkIntegrationTest" test`
-  → **48 通过 / 0 失败，BUILD SUCCESS，exit 0**：
+  → **48 通过 / 0 失败，BUILD SUCCESS，exit 0**（顶部消息修正前的一轮，未与新用例相加）：
   - 预演候选与完整性 6（完整缺失候选/零写/排除/局部失败/坏游标/协议失败）
   - HTTP adapter 5（缺 result/list、hasMore 无 cursor、缺 result 子部门、合法空页）
   - Loader 14、既有预演/确认 23
-  日志 `logs/a-targeted.log`，SHA256 `B1B44D179EEC2F17F0E5A99DD7E281079680D96528CD84130E75847CCBEAE1F0`。
+  日志 `logs/a-targeted.log` / 复跑 `logs/a-targeted-final.log`，后者 SHA256
+  `945D0F1A6CCB6DBC58B70EE8AB63182CF39857DBCAD114B284428F5D04FF7414`。
+
+## 复查修正：不完整扫描的顶部消息
+
+- 主模型复查发现：`preview.message` 无条件追加「将停用账号 0」，部分扫描时顶部摘要会被读成
+  「没有要停用的人」。已补公开断言（部分扫描消息含「扫描不完整」且不含「将停用账号」）。
+- 红：该断言失败（message 缺「扫描不完整」），日志 `logs/a-msg-red.log`，SHA256
+  `846A2BFB61620C201CBE8140AE4ACE1E21C5889F85DF724E892E3D999AD3DB47`，exit 1。
+- 修：仅 `scanComplete=true` 时追加停用数量；不完整时写「扫描不完整，本次不生成停用名单」。
+- 绿：仅复跑受影响的预演类 → **6 通过 / 0 失败，BUILD SUCCESS，exit 0**，日志 `logs/a-msg-green.log`，
+  SHA256 `62C1BD2504D1856557372A605B78161A1DE58ABC9EBAA6EB20E0B0AA8A2A14F8`。本轮 6 与前面 48 不叠加。
 
 ## 边界与未验证
 

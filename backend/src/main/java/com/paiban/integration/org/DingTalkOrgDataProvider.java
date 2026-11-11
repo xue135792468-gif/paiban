@@ -99,12 +99,15 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
         DingTalkSyncPlan plan = planner.plan(directory, decisions);
         DingTalkDeactivationPlanner.DeactivationPlan deactivationPlan = deactivationPlanner.plan(directory);
         long elapsed = elapsedMs(startedAt);
+        // 扫描不完整时不能把「0 个候选」写进顶部摘要，否则会被读成「没有要停用的人」。
+        String deactivationNote = deactivationPlan.scanComplete()
+                ? "，将停用账号 " + deactivationPlan.candidates().size()
+                : "，扫描不完整，本次不生成停用名单";
         String message = "预演完成：扫描 " + directory.departmentsScanned() + " 个部门 / "
                 + directory.usersScanned() + " 人，耗时 " + elapsed + " ms；新增 "
                 + plan.count(Category.CREATE) + "，补齐 " + plan.count(Category.MERGE)
                 + "，疑似同名 " + plan.count(Category.SUSPECTED)
-                + "，跳过 " + plan.count(Category.SKIP)
-                + "，将停用账号 " + deactivationPlan.candidates().size();
+                + "，跳过 " + plan.count(Category.SKIP) + deactivationNote;
         log.info(
                 "钉钉通讯录预演：扫描部门 {} 个 / 用户 {} 人 / 耗时 {} ms（跳过特殊部门 {}，不可读部门 {}），"
                         + "新增 {}，补齐 {}，疑似同名 {}，跳过 {}",

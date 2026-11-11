@@ -170,6 +170,10 @@ class DingTalkSyncPreviewDeactivationIntegrationTest extends ApiIntegrationTest 
         assertThat(preview.get("success")).isEqualTo(true);
         assertThat(preview.get("scanComplete")).isEqualTo(false);
         assertThat((String) preview.get("deactivationWarning")).contains("部门");
+        // 部分扫描时顶部 message 也不能出现「将停用账号 0」这种会被读成「没有要停用的人」的误导。
+        assertThat((String) preview.get("message"))
+                .contains("扫描不完整")
+                .doesNotContain("将停用账号");
         assertThat(candidates(preview)).isEmpty();
     }
 
