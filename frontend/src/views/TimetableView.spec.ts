@@ -112,3 +112,61 @@ describe('TimetableView 老师默认看自己的课表', () => {
     wrapper.unmount()
   })
 })
+
+describe('TimetableView 学校还没有当前学期', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/semesters/current') {
+        // 引导期允许存在 Teacher 却没有任何当前学期，后端返回 204。
+        return Promise.resolve({ status: 204, data: null })
+      }
+      if (url === '/teachers/options') {
+        return Promise.resolve({
+          status: 200,
+          data: [
+            { id: 7, name: '张老师' },
+            { id: 9, name: '李老师' },
+          ],
+        })
+      }
+      if (url === '/courses') {
+        return Promise.resolve({ status: 200, data: [] })
+      }
+      // 没有当前学期时，任何依赖学期的接口（班级、作息、课表）都会 400。
+      return Promise.reject({
+        response: { status: 400, data: { status: 400, message: '没有当前学期' } },
+      })
+    })
+  })
+
+  it('老师没有当前学期时显示空态而不是抛错，切全校也不再请求依赖学期的接口', async () => {
+    const wrapper = await mountView(['timetable:view', 'timetable:view:own', 'substitution:submit'], {
+      teacherId: 7,
+      roles: ['teacher'],
+    })
+
+    const urlsAfterMount = httpMock.get.mock.calls.map((call) => String(call[0]))
+    expect(urlsAfterMount).toContain('/semesters/current')
+    expect(urlsAfterMount).toContain('/teachers/options')
+    expect(urlsAfterMount).not.toContain('/classes')
+    expect(urlsAfterMount.filter((url) => url.startsWith('/timetable/'))).toEqual([])
+
+    expect(wrapper.text()).toContain('学校尚未设置当前学期，请联系教务处')
+    expect(wrapper.text()).toContain('张老师')
+
+    const schoolRadio = wrapper
+      .findAll('input[type="radio"]')
+      .find((input) => (input.element as HTMLInputElement).value === 'school')
+    expect(schoolRadio).toBeTruthy()
+    await schoolRadio!.setValue(true)
+    await flushPromises()
+
+    const urlsAfterSchool = httpMock.get.mock.calls.map((call) => String(call[0]))
+    expect(urlsAfterSchool.filter((url) => url.startsWith('/timetable/'))).toEqual([])
+    expect(urlsAfterSchool).not.toContain('/classes')
+    expect(wrapper.text()).toContain('学校尚未设置当前学期，请联系教务处')
+
+    wrapper.unmount()
+  })
+})
