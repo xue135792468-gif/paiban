@@ -20,9 +20,10 @@
 ## A：可信外部身份与短事务配对/开号
 
 - 以 `dingtalk-official-research.md` 为主源依据：企业token保留，H5 `/topapi/v2/user/getuserinfo` body code换userid，`/topapi/v2/user/get` body userid/language查姓名。扩现有DingTalkClient与Fake Adapter，不引入OAuth扫码/通用SDK平台。真实HTTP Adapter必须有本地stub协议/坏响应/脱敏测试。
-- 外部身份完成后才进独立Spring bean短事务：锚点→锁后教师/账号查询刷新，UID优先；重复UID安全拒绝；未绑定同名候选计数必须考虑歧义，不能过滤掉竞争绑定后假称唯一。软删档案不参与；Teacher.active不替代account.enabled。
+- 外部身份完成后才进独立Spring bean短事务：锚点→锁后教师/账号查询刷新，UID优先；重复UID安全拒绝。同名候选严格按原规格在“未绑定UID且未软删”的档案中计数；已绑定另一UID者按规格不属于该集合。不得按active或管理员保护标记进一步过滤后假称唯一：先计数，再对唯一候选检查保护。锁后重新查询，不能沿用竞争绑定前的旧候选。Teacher.active不替代account.enabled。
 - C的受保护档案唯一同名也返回ADMIN_BINDING_REQUIRED，普通教师按原规格自动配对。仅停用账号拒绝且不留下配对，不建影子账号；有多个启用历史账号按稳定ID复用，不能任意返回顺序。两个UID抢同一教师不得覆盖先到者。
 - 自动账号名称≤64且不会碰撞后复用不相关账号；锚点内检查/生成，并发同UID只一号。账号创建+绑定+各自审计同事务；使用现有AccountAuditService，操作者“系统（钉钉免登）”，before/after严格allowlist，可追加登录类型/绑定UID业务字段，绝不放凭据/hash。
+- 审计快照具体追加 `loginType`、`dingtalkUserId`，让BIND前后能看到UID差异；旧JSON缺失字段保持null（未知），不反推或改写历史记录。旧6参快照构造器兼容，自动新快照由当前真实账号/教师生成。
 - 真实外部异常映射固定安全code/message；不保留跨网络事务。AuthProvider既有Optional形状可保留成功接口，用专用异常表达失败；结构化异常可在集成Controller专用handler处理，避免污染所有既有API错误协议。
 
 ## B：前端与浏览器准备
