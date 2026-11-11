@@ -2,6 +2,8 @@ package com.paiban.substitution.service;
 
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.AdminClassRepository;
+import com.paiban.foundation.domain.AuditLog;
+import com.paiban.foundation.domain.AuditLogRepository;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
 import com.paiban.foundation.domain.TeacherRepository;
@@ -36,6 +38,7 @@ public class SubstitutionRequestService {
 
     private final SubstitutionRequestRepository requests;
     private final SubstitutionHistoryRepository history;
+    private final AuditLogRepository auditLogs;
     private final SubstitutionRepository substitutions;
     private final TimetableEntryRepository entries;
     private final AdminClassRepository adminClasses;
@@ -52,6 +55,7 @@ public class SubstitutionRequestService {
     public SubstitutionRequestService(
             SubstitutionRequestRepository requests,
             SubstitutionHistoryRepository history,
+            AuditLogRepository auditLogs,
             SubstitutionRepository substitutions,
             TimetableEntryRepository entries,
             AdminClassRepository adminClasses,
@@ -66,6 +70,7 @@ public class SubstitutionRequestService {
             Clock clock) {
         this.requests = requests;
         this.history = history;
+        this.auditLogs = auditLogs;
         this.substitutions = substitutions;
         this.entries = entries;
         this.adminClasses = adminClasses;
@@ -105,15 +110,6 @@ public class SubstitutionRequestService {
                 || body.effectiveDate().isAfter(semester.getEndDate())) {
             throw ApiException.badRequest("调代日期不在学期范围内");
         }
-        // 同一实例同一时间最多一笔「待处理」申请；已生效的安排可以再次调整
-        // （旧生效行退出 + 新行生效），不再以「已有生效调代」直接拒绝。
-        boolean pending = requests.findByEntryIdAndEffectiveDate(entry.getId(), body.effectiveDate())
-                .stream()
-                .anyMatch(existing -> SubstitutionRequest.SUBMITTED.equals(existing.getStatus()));
-        if (pending) {
-            throw ApiException.conflict("该课节已有待处理的申请，不能重复提交");
-        }
-
         String type = normalizeType(body.type());
         Long targetPeriodId = null;
         if (Substitution.TYPE_SWAP.equals(type)) {
@@ -129,6 +125,12 @@ public class SubstitutionRequestService {
         // 先拿学期行锁，再读当前安排与校验：排队期间课表可能已被别人改动，
         // 一切判定都以锁后状态为准。
         effects.lockSemester(semesterId);
+        // 同一实例同一时间最多一笔「待审批」申请。查重必须在学期行锁之后：
+        // 锁前查询会让两个并发提交都看到「没有待批」然后各写一张。
+        Long raced = SubstitutionLookups.activeRequestFor(requests, entry.getId(), body.effectiveDate());
+        if (raced != null) {
+            throw ApiException.conflict("该课节已有待处理的申请，不能重复提交");
+        }
         PlanSnapshot snapshot = snapshots.build(semesterId);
         // 该实例当前的实际安排（含已生效的调课/代课）：再次调整以它为起点，
         // 代课只换教师，因此沿用它的槽位（被调课挪过日期/节次时尤其重要）。
@@ -145,6 +147,8 @@ public class SubstitutionRequestService {
         request.setCourseId(entry.getCourseId());
         request.setOriginalTeacherId(entry.getTeacherId());
         request.setRequesterTeacherId(user.getTeacherId());
+        // 真实操作账号：老师自助时就是本人账号，管理员代发时是管理员账号。
+        request.setOperatorUserId(user.getId());
         request.setPreviousTeacherId(current.teacherId());
         request.setEffectiveDate(body.effectiveDate());
         request.setPeriodId(current.periodId());
@@ -161,24 +165,20 @@ public class SubstitutionRequestService {
         effects.recordHistory(saved.getId(), null, SubstitutionRequest.SUBMITTED, username, null);
 
         verifyCoverOrReject(username, saved, body.expectedSubstituteTeacherId(), snapshot);
-        // 票 15 Q5：审批链删除后，自助路径「创建即直接生效」同样受开课截止约束，
-        // 与管理端 confirmDirect 保持一致；按当前实际落点节次取开课时刻。
+        // 提交同样受开课截止约束（与管理端 confirmDirect 一致）；提交后停在「待审批」，
+        // 不产生生效行、不写生效历史、不发通知——批准时按当前课表重验后才生效。
         new DeadlineChecker(clock::instant).requireBeforeDeadline(
                 LessonDeadline.earliest(List.of(new LessonDeadline.ChangedSlot(
                         body.effectiveDate(),
                         SubstitutionLookups.periodStart(periods, current.periodId())))),
                 SubstitutionMapper.label(current.dayOfWeek(), current.periodNo())
                         + "（" + body.effectiveDate() + "）");
-        saved.setFinalTeacherId(body.expectedSubstituteTeacherId());
-        saved.setStatus(SubstitutionRequest.EFFECTIVE);
-        saved.setUpdatedAt(Instant.now());
-        effects.recordHistory(saved.getId(), SubstitutionRequest.SUBMITTED,
-                SubstitutionRequest.EFFECTIVE, username, null);
-        // 再次调整：旧生效行退出，新行接管当前安排（同一实例只留一条 EFFECTIVE）。
-        effects.retireEffectiveRowAt(entry.getId(), body.effectiveDate());
-        Substitution substitution = effects.createCoverSubstitution(
-                saved, body.expectedSubstituteTeacherId(), current);
-        effects.notifyEffective(saved, substitution);
+        auditLogs.save(new AuditLog(username, "SUBSTITUTION_REQUEST_SUBMITTED", "SUBSTITUTION",
+                "requestId=" + saved.getId() + ", entryId=" + saved.getEntryId()
+                        + ", lessonDate=" + saved.getEffectiveDate()
+                        + ", requesterTeacherId=" + saved.getRequesterTeacherId()
+                        + ", expectedSubstituteTeacherId=" + saved.getExpectedSubstituteTeacherId(),
+                1, 0));
         return mapper.toDto(saved);
     }
 
@@ -266,7 +266,8 @@ public class SubstitutionRequestService {
                     .limit(5)
                     .map(issue -> issue.code() + ": " + issue.message())
                     .collect(Collectors.joining("；"));
-            audits.failure(username, "SUBSTITUTION_COVER_VERIFY_FAILED", "SUBSTITUTION", detail, true);
+            // 失败审计保留，但不发告警通知：票 05 的提交/审批路径不新增任何持锁外发。
+            audits.failure(username, "SUBSTITUTION_COVER_VERIFY_FAILED", "SUBSTITUTION", detail, false);
             throw ApiException.conflict("代课未通过校验，整单不生效：" + detail);
         }
     }
