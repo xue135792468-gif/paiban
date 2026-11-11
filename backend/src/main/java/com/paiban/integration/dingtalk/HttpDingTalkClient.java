@@ -12,6 +12,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -37,7 +40,14 @@ public class HttpDingTalkClient implements DingTalkClient {
 
     @Autowired
     public HttpDingTalkClient(SettingsService settings) {
-        this(settings, RestClient.create());
+        this(settings, boundedRestClient());
+    }
+
+    private static RestClient boundedRestClient() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5_000);
+        factory.setReadTimeout(15_000);
+        return RestClient.builder().requestFactory(factory).build();
     }
 
     /** 测试 seam：允许注入带有本地 stub 的 RestClient，绝不访问真实钉钉。 */
@@ -48,17 +58,59 @@ public class HttpDingTalkClient implements DingTalkClient {
 
     @Override
     public String exchangeAuthCode(String authCode) {
-        Map<?, ?> response = restClient.post()
-                .uri(API + "/v1.0/oauth/users/auth")
-                .header("x-acs-dingtalk-access-token", accessToken())
-                .body(Map.of("authCode", authCode))
-                .retrieve()
-                .body(Map.class);
-        Object userId = response == null ? null : response.get("userId");
-        if (userId == null) {
-            throw new IllegalStateException("钉钉未返回 userId");
+        Map<?, ?> result = identityResult(
+                "/topapi/v2/user/getuserinfo", Map.of("code", authCode), "获取钉钉免登身份");
+        if (!(result.get("userid") instanceof String userId) || !StringUtils.hasText(userId)) {
+            throw DingTalkApiException.incomplete("获取钉钉免登身份");
         }
-        return userId.toString();
+        return userId;
+    }
+
+    private LinkedMultiValueMap<String, String> identityForm(Map<String, String> parameters) {
+        LinkedMultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("access_token", accessToken());
+        parameters.forEach(form::add);
+        return form;
+    }
+
+    @Override
+    public DingUser getUser(String userId) {
+        Map<?, ?> result = identityResult(
+                "/topapi/v2/user/get", Map.of("userid", userId, "language", "zh_CN"), "获取钉钉用户详情");
+        if (!(result.get("userid") instanceof String verifiedId) || !userId.equals(verifiedId)
+                || !(result.get("name") instanceof String name) || !StringUtils.hasText(name)) {
+            throw DingTalkApiException.incomplete("获取钉钉用户详情");
+        }
+        return new DingUser(verifiedId, name, null, null, null);
+    }
+
+    /** Both identity endpoints require an explicit successful vendor status and result. */
+    private Map<?, ?> identityResult(String path, Map<String, String> parameters, String action) {
+        try {
+            Map<?, ?> response = restClient.post()
+                    .uri(OAPI + path)
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(identityForm(parameters))
+                    .retrieve()
+                    .body(Map.class);
+            if (response == null || !(response.get("errcode") instanceof Number code)) {
+                throw DingTalkApiException.incomplete(action);
+            }
+            if (code.doubleValue() != 0) {
+                int subCode = response.get("sub_code") instanceof Number sub ? sub.intValue() : 0;
+                throw new DingTalkApiException(action, code.intValue(), subCode, null);
+            }
+            if (!(response.get("result") instanceof Map<?, ?> result)) {
+                throw DingTalkApiException.incomplete(action);
+            }
+            return result;
+        } catch (DingTalkApiException ex) {
+            // Keep numeric diagnostics, never forward a vendor error body or a cause
+            // that could contain the one-use code, application secret or token.
+            throw new DingTalkApiException(action, ex.errorCode(), ex.subCode(), null);
+        } catch (RuntimeException ex) {
+            throw new DingTalkApiException(action, -1, 0, "钉钉身份调用未完成，请重试或联系超级管理员");
+        }
     }
 
     @Override

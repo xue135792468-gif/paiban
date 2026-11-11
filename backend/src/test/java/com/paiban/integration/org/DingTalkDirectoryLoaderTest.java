@@ -251,6 +251,11 @@ class DingTalkDirectoryLoaderTest {
         }
 
         @Override
+        public DingUser getUser(String userId) {
+            return delegate.getUser(userId);
+        }
+
+        @Override
         public String exchangeAuthCode(String authCode) {
             return delegate.exchangeAuthCode(authCode);
         }
@@ -297,6 +302,11 @@ class DingTalkDirectoryLoaderTest {
         }
 
         @Override
+        public DingUser getUser(String userId) {
+            return delegate.getUser(userId);
+        }
+
+        @Override
         public String exchangeAuthCode(String authCode) {
             return delegate.exchangeAuthCode(authCode);
         }
@@ -336,6 +346,11 @@ class DingTalkDirectoryLoaderTest {
         }
 
         @Override
+        public DingUser getUser(String userId) {
+            return delegate.getUser(userId);
+        }
+
+        @Override
         public String exchangeAuthCode(String authCode) {
             return delegate.exchangeAuthCode(authCode);
         }
@@ -371,6 +386,11 @@ class DingTalkDirectoryLoaderTest {
             this.delegate = delegate;
             this.childrenBarrier = childrenBarrier;
             this.usersBarrier = usersBarrier;
+        }
+
+        @Override
+        public DingUser getUser(String userId) {
+            return delegate.getUser(userId);
         }
 
         @Override

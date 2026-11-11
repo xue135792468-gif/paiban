@@ -109,6 +109,14 @@ public class FakeDingTalkClient implements DingTalkClient {
     }
 
     @Override
+    public synchronized DingUser getUser(String userId) {
+        return allUsers().stream()
+                .filter(user -> Objects.equals(user.userId(), userId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("测试目录中没有此用户"));
+    }
+
+    @Override
     public synchronized List<DingDepartment> listSubDepartments(long departmentId) {
         return departments.values().stream()
                 .filter(department -> Objects.equals(department.parentId(), departmentId))
