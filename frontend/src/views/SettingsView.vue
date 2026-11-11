@@ -30,7 +30,11 @@
     <SubstitutionPolicyCard v-model="form" />
     <SubstitutionRecipientsCard />
 
-    <el-card id="dingtalk-integration" shadow="never">
+    <!--
+      票 01：钉钉参数与通讯录同步只归超级管理员（integration:manage）。教务管理员
+      连区块都看不到，读取接口也不必打——后端同样会对它返回 403。
+    -->
+    <el-card v-if="canManageIntegration" id="dingtalk-integration" shadow="never">
       <template #header>
         <div class="card-head">
           <span class="card-title">钉钉集成</span>
@@ -177,6 +181,7 @@ import DingTalkSyncPreview from '@/components/DingTalkSyncPreview.vue'
 import DingtalkIntegrationActions from '@/components/settings/DingtalkIntegrationActions.vue'
 import { resetTour, startTour } from '@/onboarding/tour'
 import { serverMessage } from '@/api/errors'
+import { useAuthStore } from '@/stores/auth'
 import type {
   DingTalkConfig,
   SyncConfirmRequest,
@@ -211,6 +216,9 @@ const confirming = ref(false)
 const uploading = ref(false)
 const loadingLogs = ref(false)
 const router = useRouter()
+const auth = useAuthStore()
+
+const canManageIntegration = computed(() => auth.hasPermission('integration:manage'))
 
 const logoName = computed(() => {
   const path = form.value['school.logo-path']
@@ -262,6 +270,13 @@ async function saveSettings() {
     // Read-only setting: the logo is written by the upload endpoint.
     const payload = { ...form.value }
     delete payload['school.logo-path']
+    // 集成配置（钉钉参数）只有超级管理员能改：没有该权限时，即使读取响应里带了
+    // 空值也不能把它跟普通设置一起提交，否则后端会整单拒绝这次保存。
+    if (!canManageIntegration.value) {
+      Object.keys(payload)
+        .filter((key) => key.startsWith('integration.'))
+        .forEach((key) => delete payload[key])
+    }
     const { data } = await http.put('/settings', payload)
     Object.keys(data).forEach((key) => {
       form.value[key] = data[key]
@@ -358,7 +373,11 @@ async function uploadLogo(upload: UploadFile) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadSettings(), loadDingtalk(), loadLogs()])
+  const jobs = [loadSettings()]
+  if (canManageIntegration.value) {
+    jobs.push(loadDingtalk(), loadLogs())
+  }
+  await Promise.all(jobs)
 })
 </script>
 

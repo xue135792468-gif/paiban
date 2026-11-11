@@ -59,3 +59,38 @@ describe('UserAdminView: disable and enable', () => {
     wrapper.unmount()
   })
 })
+
+describe('UserAdminView: 改身份只有三个选项', () => {
+  it('编辑弹窗只列出超级管理员、教务管理员与老师', async () => {
+    const wrapper = mount(UserAdminView, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text() === '编辑')!.trigger('click')
+    await flushPromises()
+
+    const labels = wrapper.findAllComponents({ name: 'ElOption' }).map((option) => option.props('label'))
+    expect(labels).toEqual(['超级管理员', '教务管理员', '老师'])
+    wrapper.unmount()
+  })
+
+  it('把老师提升为教务管理员时只提交这一个身份', async () => {
+    const wrapper = mount(UserAdminView, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+
+    await wrapper.findAll('button').filter((button) => button.text() === '编辑')[1].trigger('click')
+    await flushPromises()
+
+    const identitySelect = wrapper.findComponent({ name: 'ElSelect' })
+    identitySelect.vm.$emit('update:modelValue', 'admin')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text() === '保存')!.trigger('click')
+    await flushPromises()
+
+    expect(httpMock.put).toHaveBeenCalledWith('/users/2', {
+      displayName: '王老师',
+      roleCodes: ['admin'],
+      teacherId: undefined,
+    })
+    wrapper.unmount()
+  })
+})

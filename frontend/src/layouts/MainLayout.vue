@@ -69,6 +69,7 @@ import { QuestionFilled } from '@element-plus/icons-vue'
 import { HELP_GROUPS } from '@/help/docs'
 import { helpLink, type HelpSlug } from '@/help/links'
 import { MENU_GROUPS, visibleMenuGroups } from '@/layouts/navigation'
+import { primaryRoleLabel } from '@/constants/roles'
 import { useAuthStore } from '@/stores/auth'
 import { hasSeenTour, startTour, type TourStage } from '@/onboarding/tour'
 
@@ -113,12 +114,7 @@ function openHelp(slug: HelpSlug) {
 }
 
 const initials = computed(() => (auth.displayName || '?').slice(0, 1))
-const roleLabel = computed(() => {
-  if (auth.hasRole('admin')) return '教务管理员'
-  if (auth.hasRole('head_teacher')) return '班主任'
-  if (auth.hasRole('teacher')) return '教师'
-  return ''
-})
+const roleLabel = computed(() => primaryRoleLabel(auth.roles))
 
 function onCommand(command: string) {
   if (command === 'logout') {
