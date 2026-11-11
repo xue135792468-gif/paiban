@@ -526,4 +526,37 @@ class SubstitutionApprovalIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(200)
                 .body("status", equalTo("SUBMITTED"));
     }
+
+    @Test
+    void onlyAdminsWithApprovalPermissionCanDecideApplications() {
+        String token = adminToken();
+        String suffix = TestData.suffix();
+        Fixture fixture = prepare(token, suffix);
+        long requestId = submit(fixture);
+
+        // 老师只有提交权：批准与驳回都必须被权限层挡住。
+        as(fixture.teacherToken()).body(Map.of()).when()
+                .post("/api/substitution-requests/" + requestId + "/approve")
+                .then().statusCode(403);
+        as(fixture.teacherToken()).body(Map.of("reason", "我自己批")).when()
+                .post("/api/substitution-requests/" + requestId + "/reject")
+                .then().statusCode(403);
+
+        // 教务管理员（非超管）同样能审批（规格：超级或教务管理员都能批准）。
+        String schoolAdminUsername = "t5a_" + suffix;
+        as(token).body(Map.of(
+                        "username", schoolAdminUsername,
+                        "password", PASSWORD,
+                        "displayName", "教务管理员",
+                        "roleCodes", List.of("admin")))
+                .when().post("/api/users").then().statusCode(200);
+        String schoolAdminToken = login(schoolAdminUsername, PASSWORD);
+
+        as(schoolAdminToken).body(Map.of("comment", "教务批准")).when()
+                .post("/api/substitution-requests/" + requestId + "/approve")
+                .then().statusCode(200)
+                .body("status", equalTo("EFFECTIVE"))
+                .body("approverUserId", notNullValue());
+        assertThat(substitutions.findByRequestId(requestId)).hasSize(1);
+    }
 }
