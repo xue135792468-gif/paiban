@@ -324,10 +324,11 @@ class AdminSubstitutionIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void headTeacherScopeIsNotExpanded() {
+    void plainTeacherCannotUseTheManagerWorkbench() {
         Fixture fx = fixture();
-        // 班主任属于 fixture 班级 A；教师自助权限有，但没有审批/全校课表权限。
-        String head = roleUser(TestData.suffix(), fx.headTeacherId(), "head_teacher");
+        // 票 01：老师（含原班主任）有全校课表只读 + 自助提交，但没有审批权限；
+        // 工作台的管理组合是「全校课表 + 提交 + 审批」，缺一即拒绝。
+        String head = roleUser(TestData.suffix(), fx.headTeacherId(), "teacher");
 
         as(head).queryParam("entryId", fx.entryAId())
                 .queryParam("lessonDate", fx.lessonDate().toString())
@@ -339,9 +340,12 @@ class AdminSubstitutionIntegrationTest extends ApiIntegrationTest {
                         "substituteTeacherId", fx.teacherCId()))
                 .when().post("/api/substitution-workbench/previews")
                 .then().statusCode(403);
-        // 数据范围不扩大：调代记录仍必须指定本班。
+        // 数据范围不扩大：班主任角色已下线，普通老师连全局调代记录都读不到；
+        // 本人记录只走自助接口。
         as(head).when().get("/api/substitutions")
-                .then().statusCode(400);
+                .then().statusCode(403);
+        as(head).when().get("/api/substitutions/my")
+                .then().statusCode(200);
     }
 
     // ------------------------------------------------------- 5/6: 候选与硬冲突

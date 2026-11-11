@@ -58,13 +58,14 @@ class IdentityDataInitializerTest {
     private PasswordEncoder passwordEncoder;
 
     @Test
-    void firstStartCreatesExactlyOneAdminAccountWithTheAdminRole() {
+    void firstStartCreatesExactlyOneAdminAccountWithTheSuperAdminRole() {
         assertThat(userRepository.count())
                 .as("a clean database contains only the bootstrap administrator")
                 .isEqualTo(1);
 
         AppUser admin = userRepository.findByUsername("admin").orElseThrow();
-        assertThat(roleCodes(admin)).containsExactly("admin");
+        // 票 01：预置的 admin 账号是超级管理员；`admin` 编码留给了教务管理员。
+        assertThat(roleCodes(admin)).containsExactly("super_admin");
         assertThat(admin.getDisplayName()).isNotBlank();
         assertThat(passwordEncoder.matches("admin123", admin.getPasswordHash()))
                 .as("local/test profiles keep the documented admin/admin123 bootstrap credential")
@@ -72,10 +73,16 @@ class IdentityDataInitializerTest {
 
         assertThat(roleRepository.findAll())
                 .extracting(Role::getCode)
-                .containsExactlyInAnyOrder("admin", "teacher", "head_teacher");
+                .containsExactlyInAnyOrder("super_admin", "admin", "teacher");
         assertThat(roleRepository.findByCode("admin").orElseThrow().getPermissions())
-                .as("the admin role receives the whole permission catalogue")
-                .hasSize((int) permissionRepository.count());
+                .as("教务管理员 = 全部权限减去账号管理、集成配置、账号审计查看与两个退休的按本班查看")
+                .hasSize((int) permissionRepository.count() - 5);
+        assertThat(roleRepository.findByCode("super_admin").orElseThrow().getPermissions())
+                .as("超级管理员除两个退休的按本班查看外拥有全部权限")
+                .hasSize((int) permissionRepository.count() - 2)
+                .extracting(com.paiban.identity.domain.Permission::getCode)
+                .contains("user:manage", "integration:manage", "audit:view:account")
+                .doesNotContain("timetable:view:class", "substitution:view:class");
     }
 
     @Test
@@ -87,12 +94,15 @@ class IdentityDataInitializerTest {
         String passwordHash = before.getPasswordHash();
         Set<String> roleCodes = roleCodes(before);
         int adminPermissionCount = roleRepository.findByCode("admin").orElseThrow().getPermissions().size();
+        int superAdminPermissionCount =
+                roleRepository.findByCode("super_admin").orElseThrow().getPermissions().size();
 
         // Exactly what a container restart does: run the seeding entry point again.
         seedRunner.run(new DefaultApplicationArguments());
 
         assertThat(userRepository.count()).isEqualTo(users);
-        assertThat(userRepository.findAllByRolesCode("admin")).hasSize(1);
+        assertThat(userRepository.findAllByRolesCode("super_admin")).hasSize(1);
+        assertThat(userRepository.findAllByRolesCode("admin")).isEmpty();
         assertThat(roleRepository.count()).isEqualTo(roles);
         assertThat(permissionRepository.count()).isEqualTo(permissions);
 
@@ -104,6 +114,11 @@ class IdentityDataInitializerTest {
         assertThat(roleCodes(after)).isEqualTo(roleCodes);
         assertThat(roleRepository.findByCode("admin").orElseThrow().getPermissions())
                 .hasSize(adminPermissionCount);
+        // 重启不能把退休的按本班查看权限加回来。
+        assertThat(roleRepository.findByCode("super_admin").orElseThrow().getPermissions())
+                .hasSize(superAdminPermissionCount)
+                .extracting(com.paiban.identity.domain.Permission::getCode)
+                .doesNotContain("timetable:view:class", "substitution:view:class");
     }
 
     @Test

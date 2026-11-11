@@ -1,10 +1,8 @@
 package com.paiban.identity.domain;
 
-import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -21,14 +19,14 @@ public interface AppUserRepository extends JpaRepository<AppUser, Long> {
     List<AppUser> findAllByRolesCode(String roleCode);
 
     /**
-     * Locks every row holding the role for the rest of the transaction. The
-     * "last enabled administrator" check must count against a frozen set; otherwise two
-     * concurrent disables each see the other admin as still enabled and both succeed.
-     * The sub-select keeps the {@code FOR UPDATE} on {@code app_user} only.
+     * Counts the <b>other</b> enabled holders of a role straight from the database.
+     *
+     * <p>票 01：这个数字决定「最后一个启用超管」能否被降级 / 停用，所以不能用实体查询：
+     * 调用方可能已经把目标和管理员预加载进持久化上下文，实体查询会返回一级缓存里的旧
+     * {@code enabled = true}，两个并发动作就会各自以为还有别人。标量 count 不进缓存。
      */
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select u from AppUser u where u.id in "
-            + "(select holder.id from AppUser holder join holder.roles role where role.code = :roleCode) "
-            + "order by u.id")
-    List<AppUser> findRoleHoldersForUpdate(@Param("roleCode") String roleCode);
+    @Query("select count(u) from AppUser u join u.roles role "
+            + "where role.code = :roleCode and u.enabled = true and u.id <> :excludeUserId")
+    long countEnabledRoleHoldersExcluding(
+            @Param("roleCode") String roleCode, @Param("excludeUserId") Long excludeUserId);
 }

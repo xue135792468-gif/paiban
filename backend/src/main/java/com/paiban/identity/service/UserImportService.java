@@ -134,7 +134,8 @@ public class UserImportService {
                 rowErrors.add(new ImportError(row.rowNumber(), "初始密码", "密码至少 6 位"));
             }
             if (role == null) {
-                rowErrors.add(new ImportError(row.rowNumber(), "角色", "只能是 admin / teacher / head_teacher"));
+                rowErrors.add(new ImportError(row.rowNumber(), "角色",
+                        "只能是 超级管理员 / 教务管理员 / 老师（super_admin / admin / teacher）"));
             }
             Long teacherId = null;
             if (!employeeNo.isEmpty()) {
@@ -207,9 +208,10 @@ public class UserImportService {
 
     private String normalizeRole(String value) {
         String normalized = switch (value) {
+            case "超级管理员", "super_admin" -> "super_admin";
             case "教务管理员", "管理员", "admin" -> "admin";
-            case "教师", "teacher" -> "teacher";
-            case "班主任", "head_teacher" -> "head_teacher";
+            case "老师", "教师", "teacher" -> "teacher";
+            // 班主任已下线（票 01）：名单里出现就按非法角色拒绝，不做静默降级。
             default -> null;
         };
         return normalized != null && roles.findByCode(normalized).isPresent() ? normalized : null;

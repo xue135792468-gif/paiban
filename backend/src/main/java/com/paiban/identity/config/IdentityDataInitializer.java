@@ -21,8 +21,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Seeds the permission catalogue, the three phase-1 roles and the bootstrap
+ * Seeds the permission catalogue, the three preset roles and the bootstrap
  * administrator. Idempotent: safe to run on every startup.
+ *
+ * <p>票 01（钉钉多用户）：预置角色改为超级管理员 / 教务管理员 / 老师，班主任下线。
+ * 这里只负责「角色 → 权限」的对应关系，<b>不再改动已有账号的角色</b>：
+ * 旧 {@code admin} 账号迁成超级管理员是升级迁移（V60）的一次性动作，
+ * 每次启动重复执行会把管理员擅自升回超管。
  */
 @Configuration
 public class IdentityDataInitializer {
@@ -59,6 +64,7 @@ public class IdentityDataInitializer {
         PERMISSION_NAMES.put(Permissions.SUBSTITUTION_VIEW_CLASS, "查看本班调代记录");
         PERMISSION_NAMES.put(Permissions.SETTINGS_MANAGE, "设置中心");
         PERMISSION_NAMES.put(Permissions.INTEGRATION_MANAGE, "集成配置");
+        PERMISSION_NAMES.put(Permissions.AUDIT_ACCOUNT_VIEW, "账号审计查看");
         PERMISSION_NAMES.put(Permissions.ONBOARDING_MANAGE, "初始化向导");
         PERMISSION_NAMES.put(Permissions.EXPORT_TIMETABLE, "导出课表");
     }
@@ -90,34 +96,51 @@ public class IdentityDataInitializer {
                 code, permissionRepository.findByCode(code)
                         .orElseGet(() -> permissionRepository.save(new Permission(code, name)))));
 
-        Role admin = upsertRole(roleRepository, "admin", "教务管理员", Set.copyOf(permissions.values()));
+        // 两个「按本班查看」的权限点随班主任下线退休：保留在权限目录里，但不给任何预置角色。
+        Set<Permission> retiredScoped = Set.of(
+                permissions.get(Permissions.TIMETABLE_VIEW_CLASS),
+                permissions.get(Permissions.SUBSTITUTION_VIEW_CLASS));
 
+        // 超级管理员：除退休的按本班查看外，全部权限。
+        Set<Permission> superAdminPermissions = new java.util.HashSet<>(permissions.values());
+        superAdminPermissions.removeAll(retiredScoped);
+        Role superAdmin = upsertRole(
+                roleRepository, "super_admin", "超级管理员", superAdminPermissions);
+
+        // 教务管理员：全部权限减去账号管理、集成配置、账号审计查看。编码保留 `admin`。
+        Set<Permission> schoolAdminPermissions = new java.util.HashSet<>(superAdminPermissions);
+        schoolAdminPermissions.remove(permissions.get(Permissions.USER_MANAGE));
+        schoolAdminPermissions.remove(permissions.get(Permissions.INTEGRATION_MANAGE));
+        schoolAdminPermissions.remove(permissions.get(Permissions.AUDIT_ACCOUNT_VIEW));
+        upsertRole(roleRepository, "admin", "教务管理员", schoolAdminPermissions);
+
+        // 老师：原有个人权限 + 只读的「查看全部课表」。本班课表/本班调代权限点保留在目录里但不分配。
         Set<Permission> teacherPermissions = Set.of(
+                permissions.get(Permissions.TIMETABLE_VIEW),
                 permissions.get(Permissions.TIMETABLE_VIEW_OWN),
                 permissions.get(Permissions.ASSIGNMENT_VIEW_OWN),
                 permissions.get(Permissions.SUBSTITUTION_SUBMIT),
                 permissions.get(Permissions.SUBSTITUTION_VIEW_OWN));
-        Role teacher = upsertRole(roleRepository, "teacher", "教师", teacherPermissions);
+        upsertRole(roleRepository, "teacher", "老师", teacherPermissions);
 
-        Set<Permission> headTeacherPermissions = new java.util.HashSet<>(teacherPermissions);
-        headTeacherPermissions.add(permissions.get(Permissions.TIMETABLE_VIEW_CLASS));
-        headTeacherPermissions.add(permissions.get(Permissions.SUBSTITUTION_VIEW_CLASS));
-        upsertRole(roleRepository, "head_teacher", "班主任", headTeacherPermissions);
+        // 班主任角色下线：老库由 V60 迁移处理，这里只清掉升级后可能残留的空壳，
+        // 避免列表里再出现第四种身份。
+        roleRepository.findByCode("head_teacher").ifPresent(roleRepository::delete);
 
         if (!userRepository.existsByUsername("admin")) {
             String password = bootstrapPassword(environment, configuredAdminPassword);
             AppUser user = new AppUser();
             user.setUsername("admin");
-            user.setDisplayName("教务管理员");
+            user.setDisplayName("超级管理员");
             user.setPasswordHash(passwordEncoder.encode(password));
             user.setCreatedAt(Instant.now());
-            user.getRoles().add(admin);
+            user.getRoles().add(superAdmin);
             userRepository.save(user);
             logBootstrapAccount(password);
         } else {
             log.debug("管理员账号已存在，跳过创建（重复启动不会重置密码）");
         }
-        log.info("身份目录已就绪：{} 项权限，角色 admin/teacher/head_teacher", permissions.size());
+        log.info("身份目录已就绪：{} 项权限，角色 super_admin/admin/teacher", permissions.size());
     }
 
     /**

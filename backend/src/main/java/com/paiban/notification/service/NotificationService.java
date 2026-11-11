@@ -150,7 +150,10 @@ public class NotificationService {
     public void onTimetablePublished(TimetablePublishedEvent event) {
         List<Long> recipients = new ArrayList<>();
         users.allUsers().stream()
-                .filter(user -> user.getTeacherId() != null || users.hasPermission(user, com.paiban.identity.domain.Permissions.TIMETABLE_VIEW))
+                // 票 01：老师的角色现在也有「查看全部课表」，不能再用它当管理员判据——
+                // 否则任何只读账号都会被当成管理端收件人。管理端以「编辑课表」为准。
+                .filter(user -> user.getTeacherId() != null
+                        || users.hasPermission(user, com.paiban.identity.domain.Permissions.TIMETABLE_EDIT))
                 .forEach(user -> recipients.add(user.getId()));
         String semesterName = semesters.require(event.semesterId()).getName();
         notify(

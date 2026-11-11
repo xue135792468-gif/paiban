@@ -76,7 +76,7 @@ class TimetablePublishIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void teacherSeesOwnTimetableOnlyAndHeadTeacherSeesOwnClass() {
+    void teacherReadsTheWholeSchoolTimetableReadOnly() {
         String token = adminToken();
         ScheduleFixture.Result fixture = ScheduleFixture.solved(token, 5);
         publish(token, fixture.draftId());
@@ -91,26 +91,22 @@ class TimetablePublishIntegrationTest extends ApiIntegrationTest {
                 .when().post("/api/users").then().statusCode(200);
         String teacherToken = login(teacherUser, "teacher123");
 
+        // 票 01：老师拿「查看全部课表」，个人视角与全校视角都只读打开。
         as(teacherToken).when().get("/api/timetable/teacher/" + fixture.teacherId())
                 .then().statusCode(200);
         as(teacherToken).when().get("/api/timetable/teacher/" + fixture.otherTeacherId())
-                .then().statusCode(403);
-        as(teacherToken).when().get("/api/timetable/school")
-                .then().statusCode(403);
-
-        String headUser = "ht_" + TestData.suffix();
-        as(token).body(Map.of(
-                        "username", headUser,
-                        "password", "teacher123",
-                        "displayName", "班主任",
-                        "roleCodes", List.of("head_teacher"),
-                        "teacherId", headTeacherOf(token, fixture.classId())))
-                .when().post("/api/users").then().statusCode(200);
-        String headToken = login(headUser, "teacher123");
-
-        as(headToken).when().get("/api/timetable/class/" + fixture.classId())
                 .then().statusCode(200);
-        as(headToken).when().get("/api/timetable/class/" + fixture.otherClassId())
+        as(teacherToken).when().get("/api/timetable/school")
+                .then().statusCode(200);
+        as(teacherToken).when().get("/api/timetable/class/" + fixture.classId())
+                .then().statusCode(200);
+        as(teacherToken).when().get("/api/timetable/class/" + fixture.otherClassId())
+                .then().statusCode(200);
+
+        // 只读：草稿与发布仍然要管理权限。
+        as(teacherToken).when().get("/api/timetable-drafts")
+                .then().statusCode(403);
+        as(teacherToken).when().post("/api/timetable-drafts/" + fixture.draftId() + "/publish")
                 .then().statusCode(403);
     }
 
@@ -156,14 +152,4 @@ class TimetablePublishIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(409);
     }
 
-    private long headTeacherOf(String token, long classId) {
-        Response response = as(token).when().get("/api/classes")
-                .then().statusCode(200).extract().response();
-        List<Map<String, Object>> classes = response.jsonPath().getList("$");
-        return classes.stream()
-                .filter(item -> ((Number) item.get("id")).longValue() == classId)
-                .map(item -> ((Number) item.get("headTeacherId")).longValue())
-                .findFirst()
-                .orElseThrow();
-    }
 }
