@@ -57,7 +57,16 @@ test('钉钉免登失败展示说明页，「我是管理员，用密码登录�
     await installFakeWindowDd(context, 'fake:UNKNOWN_EMP')
     const page = await context.newPage()
     const browserErrors = trackBrowserErrors(page)
-    await page.goto('/login')
+    const [dingtalkAuthResp] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' && response.url().endsWith('/api/auth/dingtalk'),
+      ),
+      page.goto('/login'),
+    ])
+    // 先钉住真实响应，再断页面文案：只看 fallback 展示可能是假绿。
+    expect(dingtalkAuthResp.status()).toBe(401)
+    expect((await dingtalkAuthResp.json()).code).toBe('DINGTALK_CALL_FAILED')
 
     const notice = page.getByTestId('dingtalk-login-notice')
     await expect(notice).toBeVisible()
