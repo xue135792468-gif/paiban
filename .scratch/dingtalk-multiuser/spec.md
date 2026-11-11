@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: in-progress
 
 # 钉钉免登与多用户管理 规格
 

@@ -4,7 +4,7 @@
 
 **Blocked by:** —
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] 新增权限点「账号审计查看」，只给超级管理员
 - [ ] 迁移：原 `admin` 账号 → 超级管理员；持有班主任角色的账号 → 老师；删除班主任角色（版本号按 AGENTS.md 续号，当前 rule-groups 占 V56–V58、计划 V59）
