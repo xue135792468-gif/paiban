@@ -66,6 +66,8 @@ public class UserService {
      */
     @Transactional
     public UserSummary create(CreateUserRequest request, AccountAuditAction source) {
+        // Role/teacher associations must not appear halfway through a first DingTalk binding.
+        accountMutationGuard.lock();
         if (users.existsByUsername(request.username())) {
             throw ApiException.conflict("用户名已存在: " + request.username());
         }
