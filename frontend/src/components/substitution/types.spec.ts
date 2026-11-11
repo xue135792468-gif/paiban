@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isPastDate, today } from './types'
+import { isPastDate, statusLabel, statusType, today } from './types'
 
 describe('types date utils', () => {
   it('today 返回本地日期分量拼出的 YYYY-MM-DD', () => {
@@ -28,5 +28,24 @@ describe('types date utils', () => {
 
   it('isPastDate 处理空值返回 false', () => {
     expect(isPastDate('')).toBe(false)
+  })
+})
+
+describe('调代申请状态展示', () => {
+  it('五种审批状态各有中文说法，旧取消状态保留', () => {
+    expect(statusLabel('SUBMITTED')).toBe('待审批')
+    expect(statusLabel('EFFECTIVE')).toBe('已生效')
+    expect(statusLabel('REJECTED')).toBe('已驳回')
+    expect(statusLabel('WITHDRAWN')).toBe('已撤回')
+    expect(statusLabel('EXPIRED')).toBe('已作废')
+    expect(statusLabel('CANCELLED')).toBe('已取消')
+  })
+
+  it('状态标签颜色区分待批、驳回与作废', () => {
+    expect(statusType('SUBMITTED')).toBe('warning')
+    expect(statusType('EFFECTIVE')).toBe('success')
+    expect(statusType('REJECTED')).toBe('danger')
+    expect(statusType('WITHDRAWN')).toBe('info')
+    expect(statusType('EXPIRED')).toBe('info')
   })
 })
