@@ -80,7 +80,7 @@ Standards共8项（主要问题为公共E2E交互/真实守卫测试接线）；
 - **F3 已处置**：新增 `t01-review-fixes-delivery.md` 记录整合验证与红绿；`execution.md` 更新 01
   进度为「整改完成待放行」，票仍为 `implemented`，未置 done，未改写各切片当时的历史记录。
 - **F4 已处置**：票面核对清单把 `SubstitutionPlanService` 的判据拆成 `plansFor`（`SUBSTITUTION_APPROVE`
-  或本人）、`pickTarget` 与置换方案确认（`MANAGER_PERMISSIONS` 三项）。
+  或本人）、`swapTargets` 与置换方案确认（`MANAGER_PERMISSIONS` 三项）。
 - **F5 已处置**：只改本轮新 ADR-0035 的措辞（沿用权限编码/判断入口、不新增按角色名鉴权分支、
   只把「只读当管理」的判据按动作收紧），历史 ADR 一字未动。
 - **额外 QC 已处置**：正式 spec 增加教师 `radio` 的 `toBeChecked`；`screenshots.capture` 使用
@@ -89,3 +89,29 @@ Standards共8项（主要问题为公共E2E交互/真实守卫测试接线）；
 主模型的独立复现（只改姓名后 `roles` 由三条变 `['admin']`，E2E 1 失败，log
 SHA256 `3CCB697D803117EA93E96E053C597C68CE2AD5AE09BF197D0EB5BB7E88AA1A44`）作为 F2 的额外实证，
 不并入本票正式 E2E 的 4 条计数。
+
+## 整改后复核（56a98c9…6a13c52）
+
+### Standards
+
+独立审查确认原 S1–S8 全部关闭，无新增硬违规、凭证/事务/隔离回归。新增三项低风险判断：
+
+- `roles.ts:46` 的 `isPresetRoleCode` 全仓无调用，建议删除。
+- `SettingsService.java:206` 同时公开单项 put 与整批 putAll，建议把 put 私有化以免误解事务。
+- `dingtalk-roles.spec.ts:20` 的上下文 wrapper 与 `Parameters<typeof createAccount>[1]` 类型较绕，建议可选 context 或直接 AccountSeed。
+
+统筹处置：删除死导出；直接标注 AccountSeed。保留 wrapper，因为它承担创建/销毁 API 上下文，非纯转发；不把 context 变成可选参数以免扩大公共接口。保留公开 put：IntegrationController、DingtalkConfigLifecycleService、logo/收件人保存及多个测试均有真实单项调用；单项与整批事务各自完整，REQUIRED 自调用共享外层事务正确。私有化会破坏现有调用，并不能改善当前原子性。不采纳该建议，不留作未完工事项。
+
+Standards：原8项关闭；新增3项均低风险判断，其中2项已清理、1项有据不采纳，硬违规0。
+
+### Spec
+
+独立审查确认 F1/F2/F3/F5 关闭；无遗漏、无越界、无新增行为错误。F4 仍有一处低风险证据引用错误：清单写 SubstitutionPlanService.pickTarget，实际方法为 swapTargets（源码167行，MANAGER_PERMISSIONS判断172–173行）。
+
+统筹已核对源码并把票面及本轮交付记录统一更正为 swapTargets。只修证据指针，权限行为未改。
+
+Spec：原5项关闭；复核1项低风险文档引用已修，剩余0。
+
+### 放行
+
+统筹核对整改 diff、后端 surefire XML 和真实页面截图。后续仅删无调用导出、显式类型标注、文档方法名修正，不改运行行为；不为这些机械整理新增镜像测试或重复整轮验收。正常提交钩子检查。01复核放行，允许02开工；依项目规则完整 verify 留至全规格施工/整改结束后一次执行，01暂保持 implemented 而非 done。

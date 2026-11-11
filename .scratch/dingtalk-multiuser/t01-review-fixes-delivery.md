@@ -35,7 +35,7 @@
   只把只读当管理的判据按动作收紧」。历史 ADR 未改。
 - `.scratch/dingtalk-multiuser/spec.md`（F1）：story 22 按已确认决定澄清。
 - `.scratch/dingtalk-multiuser/issues/01-roles-reshape.md`（F4）：核对清单拆分
-  `SubstitutionPlanService.plansFor` / `pickTarget` / 置换方案确认的判据。
+  `SubstitutionPlanService.plansFor` / `swapTargets` / 置换方案确认的判据。
 - `.scratch/dingtalk-multiuser/execution.md`（F3）：01 进度改为「整改完成待放行」。
 
 ## 红 → 绿（真实执行）

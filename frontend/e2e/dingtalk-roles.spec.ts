@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { apiCall, apiLogin, createAccount, newContext, seedSchool, uiLogin } from './helpers'
+import type { AccountSeed } from './helpers'
 import { capture } from './screenshots'
 
 /**
@@ -18,7 +19,7 @@ async function menuText(page: Page): Promise<string> {
 
 /** 用管理员 token 建一个密码账号，用完即销毁 API 上下文（建号动作在 helpers.ts）。 */
 async function createAccountAsAdmin(
-  account: Parameters<typeof createAccount>[1],
+  account: AccountSeed,
 ): Promise<{ id: number; roles: string[] }> {
   const api = await newContext()
   try {

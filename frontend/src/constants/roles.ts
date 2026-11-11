@@ -42,7 +42,3 @@ export function primaryRoleLabel(roles: string[]): string {
   const code = primaryRoleCode(roles)
   return code ? presetRoleLabel(code) : ''
 }
-
-export function isPresetRoleCode(code: string): boolean {
-  return LABELS.has(code)
-}
