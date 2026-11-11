@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { apiCall, apiLogin, newContext, seedSchool, uiLogin } from './helpers'
+import { capture } from './screenshots'
 
 /**
  * 票 01 权限矩阵（真实页面）：超级管理员 / 教务管理员 / 老师三种身份，
@@ -53,6 +54,7 @@ test('超级管理员：能看到钉钉配置与账号页，改身份只给三�
   const options = page.getByRole('option')
   await expect(options).toHaveCount(3)
   await expect(options).toHaveText(['超级管理员', '教务管理员', '老师'])
+  await capture(page, 'dingtalk-t01-super-admin-roles')
 })
 
 test('教务管理员：看不到钉钉配置与账号页，业务设置照常保存', async ({ page }) => {
@@ -73,6 +75,7 @@ test('教务管理员：看不到钉钉配置与账号页，业务设置照常�
   )
   await page.getByRole('button', { name: '保存设置' }).click()
   expect((await saved).status()).toBe(200)
+  await capture(page, 'dingtalk-t01-academic-settings')
 
   await page.goto('/settings/users')
   await expect(page).toHaveURL(/\/403$/)
@@ -103,6 +106,7 @@ test('老师：默认自己的课表、能看全校课表，但没有草稿、�
   // 默认落到自己的教师课表，同时保留全校视图的只读入口。
   await expect(page.locator('.toolbar .el-select')).toContainText(teacherName)
   await expect(page.getByText('全校', { exact: true })).toBeVisible()
+  await capture(page, 'dingtalk-t01-teacher-timetable')
 
   await page.goto('/settings/general')
   await expect(page).toHaveURL(/\/403$/)

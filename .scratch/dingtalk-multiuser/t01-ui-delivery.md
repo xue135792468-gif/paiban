@@ -8,7 +8,7 @@
 
 ## 测试 seam
 
-与用户事前确认的边界一致：
+按规格及统筹安排，通过以下公开行为验证前端权限：
 
 1. **纯函数**：身份清单与页签规则（`constants/roles.ts`、`layouts/sectionTabs.ts`）。
 2. **页面组件公开行为**：`SettingsView`（钉钉区块可见性、提交内容）、`UserAdminView`（改身份三选一）、`TimetableView`（老师默认自己的课表）、`SettingsLayout` / `WorkbenchLayout`（页签）。
