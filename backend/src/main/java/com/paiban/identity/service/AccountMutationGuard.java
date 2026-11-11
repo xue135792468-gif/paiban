@@ -3,6 +3,7 @@ package com.paiban.identity.service;
 import com.paiban.common.web.ApiException;
 import com.paiban.identity.domain.AppUser;
 import com.paiban.identity.domain.AppUserRepository;
+import com.paiban.identity.domain.LoginType;
 import com.paiban.identity.domain.Role;
 import com.paiban.identity.domain.RoleRepository;
 import jakarta.persistence.EntityManager;
@@ -83,6 +84,23 @@ public class AccountMutationGuard {
     public boolean isLastEnabledSuperAdmin(AppUser target) {
         return holdsSuperAdmin(target)
                 && users.countEnabledRoleHoldersExcluding(SUPER_ADMIN_ROLE, target.getId()) == 0;
+    }
+
+    /** 锚点锁内保留密码恢复入口；标量查询不使用调用方预加载的账号快照。 */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean isLastEnabledPasswordSuperAdmin(AppUser target) {
+        if (!target.isEnabled() || target.getLoginType() != LoginType.PASSWORD
+                || !holdsSuperAdmin(target)) {
+            return false;
+        }
+        return entityManager.createQuery(
+                        "select count(u) from AppUser u join u.roles role "
+                                + "where role.code = :roleCode and u.enabled = true "
+                                + "and u.loginType = :loginType and u.id <> :excluded", Long.class)
+                .setParameter("roleCode", SUPER_ADMIN_ROLE)
+                .setParameter("loginType", LoginType.PASSWORD)
+                .setParameter("excluded", target.getId())
+                .getSingleResult() == 0;
     }
 
     public static boolean holdsSuperAdmin(AppUser user) {
