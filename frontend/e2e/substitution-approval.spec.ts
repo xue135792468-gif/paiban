@@ -11,6 +11,7 @@ import {
   solveAndPublish,
   uiLogin,
 } from './helpers'
+import { capture } from './screenshots'
 
 /**
  * 票 05：老师自助只申请代课，提交后停在「待审批」；教务在待审批里批准（可改人）
@@ -55,7 +56,11 @@ async function pickFirstOption(select: Locator) {
 async function submitCover(page: Page, date: string, reason: string, substituteName: string) {
   await pickDate(page, date)
   await pickFirstOption(page.locator('.el-form-item', { hasText: '我的课节' }).locator('.el-select'))
-  await pickOption(page, 'expected-substitute', substituteName)
+  await pickOption(
+    page.locator('.el-form-item', { hasText: '期望代课' }),
+    'expected-substitute',
+    substituteName,
+  )
   await page.getByPlaceholder('如：家中有事，需要请假半天').fill(reason)
   await page.getByRole('button', { name: '提交申请' }).click()
   await expect(page.getByText('申请已提交，等待教务审批')).toBeVisible()
@@ -117,6 +122,7 @@ test.describe('代课申请与审批', () => {
       const dialog = page.locator('.el-dialog', { hasText: '批准代课申请' })
       await expect(dialog).toBeVisible()
       await pickOption(dialog, 'approval-teacher', otherTeacher.name)
+      await capture(page, 't05-review-fixes-approval-changed-teacher')
       await dialog.locator('[data-testid="approve-comment"]').fill('同意，改由王老师代课')
       await page.locator('[data-testid="approve-confirm"]').click()
       await expect(page.getByText('已批准，代课已生效')).toBeVisible()
@@ -130,6 +136,7 @@ test.describe('代课申请与审批', () => {
       await expect(page.locator('.el-table').getByText(`期望：${expectedTeacherName}`)).toBeVisible()
       await expect(page.locator('.el-table').getByText(`实际：${otherTeacher.name}`)).toBeVisible()
       await expect(page.locator('.el-table').getByText('同意，改由王老师代课')).toBeVisible()
+      await capture(page, 't05-review-fixes-teacher-effective-expected-actual')
     } finally {
       await api.dispose()
     }
