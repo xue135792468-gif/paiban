@@ -1,4 +1,4 @@
-import type { AccountSnapshot } from '@/api/accountAudit'
+import type { AccountAuditEntry, AccountSnapshot } from '@/api/accountAudit'
 import { presetRoleLabel } from '@/constants/roles'
 
 /**
@@ -42,7 +42,11 @@ export function describeAccountState(snapshot: AccountSnapshot | null): string {
 export function describeAccountChange(
   before: AccountSnapshot | null,
   after: AccountSnapshot | null,
+  action?: string,
 ): string {
+  if (action === 'ACCOUNT_RESET_PASSWORD') {
+    return '密码已重置（内容不记录）'
+  }
   if (!before) {
     return after ? `新建：${describeAccountState(after)}` : '—'
   }
@@ -66,4 +70,51 @@ export function describeAccountChange(
     changes.push(`关联教师：${teacherText(before)} → ${teacherText(after)}`)
   }
   return changes.length > 0 ? changes.join('；') : '—'
+}
+
+type AuditRow = Pick<
+  AccountAuditEntry,
+  | 'action'
+  | 'targetUserId'
+  | 'targetUsername'
+  | 'targetDisplayName'
+  | 'detail'
+  | 'successRows'
+  | 'failedRows'
+  | 'before'
+  | 'after'
+>
+
+/** 批量导入没有单一目标账号，整批摘要不是某个人的事件。 */
+function isBatchSummary(entry: AuditRow): boolean {
+  return entry.action === 'ACCOUNT_IMPORT' && entry.targetUserId == null
+}
+
+/**
+ * 目标账号列：逐账号事件显示人；整批摘要与升级前的历史记录明确区分。
+ * 历史行没有记录目标 ID，不能从描述文本猜人。
+ */
+export function describeAuditTarget(entry: AuditRow): string {
+  if (entry.targetUserId != null) {
+    const username = entry.targetUsername ?? ''
+    const displayName = entry.targetDisplayName ?? username
+    return username ? `${displayName}（${username}）` : displayName
+  }
+  return isBatchSummary(entry) ? '整批摘要' : '历史记录（未记录目标账号）'
+}
+
+/**
+ * 变更列：逐账号事件翻译前后快照；历史记录保留可读原文；整批摘要给出成功 / 失败数。
+ * 旧原文只作为文本渲染，不解析、不 v-html。
+ */
+export function describeAuditRowChange(entry: AuditRow): string {
+  if (entry.targetUserId != null) {
+    return describeAccountChange(entry.before, entry.after, entry.action)
+  }
+  const detail = entry.detail?.trim()
+  if (isBatchSummary(entry)) {
+    const counts = `成功 ${entry.successRows ?? 0}，失败 ${entry.failedRows ?? 0}`
+    return detail ? `整批摘要：${counts}；${detail}` : `整批摘要：${counts}`
+  }
+  return detail ? `历史记录：${detail}` : '历史记录（未记录变更明细）'
 }

@@ -42,3 +42,6 @@
 ## 备注
 
 变异验证后恢复源码时，Maven 增量编译曾因文件时间戳回退沿用旧的 class（出现一次假失败）；touch 源文件后重编译即 11/11 绿，源码无净变化。
+
+复查补正（2026-11-11）：上述 112 通过不成立——`ExtendedLifecycleIntegrationTest` 两条既有断言仍在通用日志里找
+`DISABLE_USER/ENABLE_USER`，在 4eb1886 上实测 2 失败。已在 `t02-review-fixes-delivery.md` 修正并复跑。

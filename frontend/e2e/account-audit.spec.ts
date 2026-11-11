@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
-import type { Locator, Page } from '@playwright/test'
-import { API, apiCall, apiLogin, createAccount, newContext, uiLogin } from './helpers'
+import type { Locator } from '@playwright/test'
+import { API, apiCall, apiLogin, createAccount, newContext, pickOption, uiLogin } from './helpers'
 import { capture } from './screenshots'
 
 /**
@@ -22,14 +22,6 @@ test.beforeEach(({ page }) => {
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error}`))
 })
-
-/** 只点当前可见下拉里的唯一选项：同名/同串选项不唯一时直接失败，不靠 first() 蒙。 */
-async function clickOption(page: Page, name: string | RegExp): Promise<void> {
-  const option = page.getByRole('option', { name })
-  await expect(option).toHaveCount(1)
-  await expect(option).toBeVisible()
-  await option.click()
-}
 
 /** 「变更前 → 变更后」是本表最后一列；只读这一列，动作名里的「停用」不会混进来。 */
 function changeCell(row: Locator): Locator {
@@ -77,7 +69,7 @@ test('超级管理员：按目标账号看到建号、改身份、停用三条�
     expect(recorded.items.map((item: any) => item.action).sort()).toEqual([
       'ACCOUNT_CREATE',
       'ACCOUNT_DISABLE',
-      'ACCOUNT_UPDATE',
+      'ACCOUNT_ROLE_CHANGE',
     ])
     const stamps = recorded.items.map((item: any) => String(item.createdAt))
     for (let index = 1; index < stamps.length; index += 1) {
@@ -95,23 +87,27 @@ test('超级管理员：按目标账号看到建号、改身份、停用三条�
     const distractorRows = page.getByRole('row').filter({ hasText: distractor })
     await expect(distractorRows).toHaveCount(1)
 
-    const accountFilter = page.getByRole('combobox', { name: '目标账号', exact: true })
-    await accountFilter.click()
-    await page.keyboard.type(username)
-    const filtered = page.waitForResponse(
-      (response) =>
-        response.request().method() === 'GET' &&
-        response.url().includes(`/api${AUDIT_PATH}`) &&
-        response.url().includes(`targetUserId=${created.id}`),
-    )
-    await clickOption(page, new RegExp(username))
-    expect((await filtered).status()).toBe(200)
+    // 目标账号下拉只接受完整可见标签（含停用标记），由公共 helper 精确选中。
+    const [filtered] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'GET' &&
+          response.url().includes(`/api${AUDIT_PATH}`) &&
+          response.url().includes(`targetUserId=${created.id}`),
+      ),
+      pickOption(
+        page.locator('body'),
+        'account-audit-target-filter',
+        `${username}（${displayName}） · 已停用`,
+      ),
+    ])
+    expect(filtered.status()).toBe(200)
 
     const rows = page.getByRole('row').filter({ hasText: username })
     await expect(rows).toHaveCount(3)
     await expect(distractorRows).toHaveCount(0)
     await expect(rows.nth(0)).toContainText('停用账号')
-    await expect(rows.nth(1)).toContainText('修改账号')
+    await expect(rows.nth(1)).toContainText('改身份')
     await expect(rows.nth(2)).toContainText('手工创建账号')
     await expect(rows.nth(0)).toContainText(displayName)
 
@@ -129,16 +125,16 @@ test('超级管理员：按目标账号看到建号、改身份、停用三条�
     expect(disableChange.indexOf('启用')).toBeLessThan(disableChange.indexOf('停用'))
     await capture(page, 'dingtalk-t02-account-audit-target')
 
-    const actionFilter = page.getByRole('combobox', { name: '动作类型', exact: true })
-    await actionFilter.click()
-    const reloaded = page.waitForResponse(
-      (response) =>
-        response.request().method() === 'GET' &&
-        response.url().includes(`/api${AUDIT_PATH}`) &&
-        response.url().includes('action=ACCOUNT_DISABLE'),
-    )
-    await clickOption(page, '停用账号')
-    expect((await reloaded).status()).toBe(200)
+    const [reloaded] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'GET' &&
+          response.url().includes(`/api${AUDIT_PATH}`) &&
+          response.url().includes('action=ACCOUNT_DISABLE'),
+      ),
+      pickOption(page.locator('body'), 'account-audit-action-filter', '停用账号'),
+    ])
+    expect(reloaded.status()).toBe(200)
 
     await expect(rows).toHaveCount(1)
     await expect(rows.first()).toContainText(username)

@@ -18,6 +18,10 @@ export interface AccountAuditEntry {
   targetUserId: number | null
   targetUsername: string | null
   targetDisplayName: string | null
+  /** 旧记录的原文描述（纯文本展示）；新事件也有可读摘要。 */
+  detail?: string | null
+  successRows?: number
+  failedRows?: number
   before: AccountSnapshot | null
   after: AccountSnapshot | null
 }

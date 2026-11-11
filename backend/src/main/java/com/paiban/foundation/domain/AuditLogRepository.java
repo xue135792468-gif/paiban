@@ -17,16 +17,17 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
      */
     @Query(value = "select a from AuditLog a"
             + " where a.category = :category"
-            + " and (:action is null or a.action = :action)"
+            + " and (:action is null or a.action = :action or a.action = :legacyAction)"
             + " and (:targetUserId is null or a.targetUserId = :targetUserId)"
             + " order by a.createdAt desc, a.id desc",
             countQuery = "select count(a) from AuditLog a"
                     + " where a.category = :category"
-                    + " and (:action is null or a.action = :action)"
+                    + " and (:action is null or a.action = :action or a.action = :legacyAction)"
                     + " and (:targetUserId is null or a.targetUserId = :targetUserId)")
     Page<AuditLog> search(
             @Param("category") String category,
             @Param("action") String action,
+            @Param("legacyAction") String legacyAction,
             @Param("targetUserId") Long targetUserId,
             Pageable pageable);
 

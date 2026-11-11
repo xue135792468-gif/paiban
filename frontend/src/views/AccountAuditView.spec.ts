@@ -126,4 +126,61 @@ describe('AccountAuditView', () => {
     )
     wrapper.unmount()
   })
+
+  it('历史记录、整批摘要与重置密码按事实展示，未知动作不露英文码', async () => {
+    const snapshot = {
+      username: 'zhang',
+      displayName: '张三',
+      enabled: true,
+      teacherId: null,
+      teacherName: null,
+      roleCodes: ['teacher'],
+    }
+    mocks.listAccountAudits.mockResolvedValue(
+      pageOf([
+        entry({
+          id: 1,
+          action: 'ACCOUNT_RESET_PASSWORD',
+          targetUserId: 2,
+          targetUsername: 'zhang',
+          targetDisplayName: '张三',
+          before: snapshot,
+          after: snapshot,
+        }),
+        entry({
+          id: 2,
+          action: 'ACCOUNT_IMPORT',
+          targetUserId: null,
+          targetUsername: null,
+          targetDisplayName: null,
+          before: null,
+          after: null,
+          detail: '文件: users.xlsx, 成功 2 行',
+          successRows: 2,
+          failedRows: 0,
+        }),
+        entry({
+          id: 3,
+          action: 'LEGACY_UNKNOWN',
+          targetUserId: null,
+          targetUsername: null,
+          targetDisplayName: null,
+          before: null,
+          after: null,
+          detail: '升级前的未知动作',
+        }),
+      ]),
+    )
+
+    const wrapper = await mountView()
+    const text = wrapper.text()
+    expect(text).toContain('密码已重置（内容不记录）')
+    expect(text).toContain('整批摘要')
+    expect(text).toContain('成功 2，失败 0')
+    expect(text).toContain('历史记录（未记录目标账号）')
+    expect(text).toContain('历史记录：升级前的未知动作')
+    expect(text).toContain('其他账号操作')
+    expect(text).not.toContain('LEGACY_UNKNOWN')
+    wrapper.unmount()
+  })
 })

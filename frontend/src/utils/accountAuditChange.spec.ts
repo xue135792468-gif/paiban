@@ -4,6 +4,8 @@ import {
   accountRoleLabel,
   describeAccountChange,
   describeAccountState,
+  describeAuditRowChange,
+  describeAuditTarget,
 } from './accountAuditChange'
 import type { AccountSnapshot } from '@/api/accountAudit'
 
@@ -67,5 +69,43 @@ describe('账号审计的中文快照', () => {
 
   it('重置密码这类看不见的变化不编造内容', () => {
     expect(describeAccountChange(base, base)).toBe('—')
+  })
+
+  it('重置密码明确说明已重置，且内容不记录', () => {
+    expect(describeAccountChange(base, base, 'ACCOUNT_RESET_PASSWORD')).toBe(
+      '密码已重置（内容不记录）',
+    )
+  })
+
+  it('历史记录与整批摘要只展示旧原文，不猜目标账号', () => {
+    const legacy = {
+      action: 'ACCOUNT_DISABLE',
+      targetUserId: null,
+      targetUsername: null,
+      targetDisplayName: null,
+      detail: '停用用户「旧存档」(legacy_zhang)',
+      successRows: 1,
+      failedRows: 0,
+      before: null,
+      after: null,
+    }
+    expect(describeAuditTarget(legacy)).toBe('历史记录（未记录目标账号）')
+    expect(describeAuditRowChange(legacy)).toBe('历史记录：停用用户「旧存档」(legacy_zhang)')
+
+    const summary = {
+      action: 'ACCOUNT_IMPORT',
+      targetUserId: null,
+      targetUsername: null,
+      targetDisplayName: null,
+      detail: '文件: users.xlsx, 成功 2 行',
+      successRows: 2,
+      failedRows: 1,
+      before: null,
+      after: null,
+    }
+    expect(describeAuditTarget(summary)).toBe('整批摘要')
+    expect(describeAuditRowChange(summary)).toBe(
+      '整批摘要：成功 2，失败 1；文件: users.xlsx, 成功 2 行',
+    )
   })
 })

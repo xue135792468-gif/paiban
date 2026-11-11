@@ -1,6 +1,7 @@
 package com.paiban.identity;
 
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.hasSize;
@@ -89,7 +90,7 @@ class AccountAuditIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void identityChangeRecordsBeforeAndAfterOfTheTargetAccount() {
+    void identityChangeIsItsOwnActionAndRecordsBeforeAndAfterOfTheTargetAccount() {
         String token = adminToken();
         String username = createTrackedUser(token, "teacher");
         long id = userId(token, username);
@@ -98,15 +99,89 @@ class AccountAuditIntegrationTest extends ApiIntegrationTest {
                 .when().put("/api/users/" + id)
                 .then().statusCode(200);
 
-        as(token).queryParam("action", "ACCOUNT_UPDATE").when().get("/api/account-audits")
+        as(token).queryParam("action", "ACCOUNT_ROLE_CHANGE").when().get("/api/account-audits")
                 .then().statusCode(200)
                 .body("total", equalTo(1))
+                .body("items[0].action", equalTo("ACCOUNT_ROLE_CHANGE"))
                 .body("items[0].targetUserId", equalTo((int) id))
                 .body("items[0].targetUsername", equalTo(username))
                 .body("items[0].before.roleCodes", contains("teacher"))
                 .body("items[0].after.roleCodes", contains("admin"))
                 .body("items[0].before.enabled", equalTo(true))
                 .body("items[0].after.enabled", equalTo(true));
+        as(token).queryParam("action", "ACCOUNT_UPDATE").when().get("/api/account-audits")
+                .then().statusCode(200)
+                .body("total", equalTo(0));
+    }
+
+    /** 只改姓名 / 关联教师而身份不变，是「修改资料」；不得冒用「改身份」。 */
+    @Test
+    void profileOnlyChangeIsAnUpdateNotARoleChange() {
+        String token = adminToken();
+        String username = createTrackedUser(token, "teacher");
+        long id = userId(token, username);
+
+        as(token).body(Map.of("displayName", "改过资料"))
+                .when().put("/api/users/" + id)
+                .then().statusCode(200);
+
+        as(token).queryParam("action", "ACCOUNT_UPDATE").when().get("/api/account-audits")
+                .then().statusCode(200)
+                .body("total", equalTo(1))
+                .body("items[0].action", equalTo("ACCOUNT_UPDATE"))
+                .body("items[0].before.displayName", equalTo(username))
+                .body("items[0].after.displayName", equalTo("改过资料"))
+                .body("items[0].after.roleCodes", contains("teacher"));
+        as(token).queryParam("action", "ACCOUNT_ROLE_CHANGE").when().get("/api/account-audits")
+                .then().statusCode(200)
+                .body("total", equalTo(0));
+    }
+
+    /**
+     * 复合编辑（改名 + 改身份 + 停用）必须形成两条连续、不重叠的事件：
+     * 第一条从旧资料到新资料（启用状态仍是旧值），第二条从新资料 + 旧启用状态到新资料 + 新启用状态。
+     * 第二条不能把整单初始快照再传一次，否则身份变化被记两遍、前后口径重叠。
+     */
+    @Test
+    void compositeEditRecordsConsecutiveNonOverlappingEvents() {
+        String token = adminToken();
+        String username = createTrackedUser(token, "teacher");
+        long id = userId(token, username);
+
+        as(token).body(Map.of(
+                        "displayName", "复核改名",
+                        "roleCodes", List.of("admin"),
+                        "enabled", false))
+                .when().put("/api/users/" + id)
+                .then().statusCode(200);
+
+        as(token).when().queryParam("targetUserId", id).get("/api/account-audits")
+                .then().statusCode(200)
+                .body("total", equalTo(3))
+                .body("items[0].action", equalTo("ACCOUNT_DISABLE"))
+                .body("items[0].before.displayName", equalTo("复核改名"))
+                .body("items[0].before.roleCodes", contains("admin"))
+                .body("items[0].before.enabled", equalTo(true))
+                .body("items[0].after.displayName", equalTo("复核改名"))
+                .body("items[0].after.roleCodes", contains("admin"))
+                .body("items[0].after.enabled", equalTo(false))
+                .body("items[1].action", equalTo("ACCOUNT_ROLE_CHANGE"))
+                .body("items[1].before.displayName", equalTo(username))
+                .body("items[1].before.roleCodes", contains("teacher"))
+                .body("items[1].before.enabled", equalTo(true))
+                .body("items[1].after.displayName", equalTo("复核改名"))
+                .body("items[1].after.roleCodes", contains("admin"))
+                .body("items[1].after.enabled", equalTo(true))
+                .body("items[2].action", equalTo("ACCOUNT_CREATE"));
+
+        as(token).queryParam("action", "ACCOUNT_DISABLE").queryParam("targetUserId", id)
+                .when().get("/api/account-audits")
+                .then().statusCode(200)
+                .body("total", equalTo(1));
+        as(token).queryParam("action", "ACCOUNT_ROLE_CHANGE").queryParam("targetUserId", id)
+                .when().get("/api/account-audits")
+                .then().statusCode(200)
+                .body("total", equalTo(1));
     }
 
     @Test
@@ -125,6 +200,7 @@ class AccountAuditIntegrationTest extends ApiIntegrationTest {
                 .body("total", equalTo(2))
                 .body("items[0].action", equalTo("ACCOUNT_RESET_PASSWORD"))
                 .body("items[0].targetUserId", equalTo((int) id))
+                .body("items[0].detail", containsString("重置密码"))
                 .extract().asString();
         assertThat(body).doesNotContain(newPassword, "password", "passwordHash", "$2a$", "$2b$");
 
@@ -223,8 +299,10 @@ class AccountAuditIntegrationTest extends ApiIntegrationTest {
         }
         as(token).when().get("/api/account-audits/actions")
                 .then().statusCode(200)
-                .body("size()", is(9))
+                .body("size()", is(10))
                 .body("find { it.code == 'ACCOUNT_CREATE' }.label", equalTo("手工创建账号"))
+                .body("find { it.code == 'ACCOUNT_ROLE_CHANGE' }.label", equalTo("改身份"))
+                .body("find { it.code == 'ACCOUNT_UPDATE' }.label", equalTo("修改资料"))
                 // 后续票据的写入入口已预留：只出现在动作目录，不产生假实现。
                 .body("collect { it.code }", org.hamcrest.Matchers.hasItems(
                         "ACCOUNT_DINGTALK_AUTO_PROVISION",
@@ -261,6 +339,52 @@ class AccountAuditIntegrationTest extends ApiIntegrationTest {
         as(token).queryParam("action", "ACCOUNT_CREATE").when().get("/api/account-audits")
                 .then().statusCode(200)
                 .body("items.targetUsername", org.hamcrest.Matchers.hasItem(username));
+    }
+
+    /**
+     * 升级前写入的账号事件用的是旧动作码（V60 及以前）：DISABLE_USER / ENABLE_USER，以及批量导入的
+     * IMPORT。它们没有目标账号 ID 与快照，但旧描述必须原样可读；动作筛选要按规范码命中这些历史行，
+     * DTO 也只返回规范码，让页面能翻译成中文。
+     */
+    @Test
+    void legacyAccountCodesAreReadOnlyAliasesOfTheirCanonicalActions() {
+        String token = adminToken();
+        insertLegacyAccountEvent("DISABLE_USER", "停用用户「旧存档」(legacy_zhang)");
+        insertLegacyAccountEvent("ENABLE_USER", "启用用户「旧存档」(legacy_zhang)");
+        insertLegacyAccountEvent("IMPORT", "文件: users.xlsx, 成功 2 行");
+        insertLegacyAccountEvent("LEGACY_UNKNOWN", "升级前的未知动作");
+
+        as(token).queryParam("action", "ACCOUNT_DISABLE").when().get("/api/account-audits")
+                .then().statusCode(200)
+                .body("total", equalTo(1))
+                .body("items[0].action", equalTo("ACCOUNT_DISABLE"))
+                .body("items[0].detail", equalTo("停用用户「旧存档」(legacy_zhang)"))
+                .body("items[0].successRows", equalTo(1))
+                .body("items[0].failedRows", equalTo(0))
+                // 历史行没有记录目标账号：保持 null，不能从文本猜人，也不能用当前账号伪造快照。
+                .body("items[0].targetUserId", nullValue())
+                .body("items[0].targetUsername", nullValue())
+                .body("items[0].before", nullValue())
+                .body("items[0].after", nullValue());
+
+        as(token).queryParam("action", "ACCOUNT_ENABLE").when().get("/api/account-audits")
+                .then().statusCode(200)
+                .body("total", equalTo(1))
+                .body("items[0].action", equalTo("ACCOUNT_ENABLE"));
+        as(token).queryParam("action", "ACCOUNT_IMPORT").when().get("/api/account-audits")
+                .then().statusCode(200)
+                .body("total", equalTo(1))
+                .body("items[0].action", equalTo("ACCOUNT_IMPORT"))
+                .body("items[0].successRows", equalTo(2));
+
+        // 整页不因未知历史码报错；已知旧码一律以规范码出现。
+        List<String> actions = as(token).when().get("/api/account-audits")
+                .then().statusCode(200)
+                .body("total", equalTo(4))
+                .extract().jsonPath().getList("items.action");
+        assertThat(actions).containsExactly(
+                "LEGACY_UNKNOWN", "ACCOUNT_IMPORT", "ACCOUNT_ENABLE", "ACCOUNT_DISABLE");
+        assertThat(actions).doesNotContain("DISABLE_USER", "ENABLE_USER", "IMPORT");
     }
 
     @Test
@@ -399,6 +523,13 @@ class AccountAuditIntegrationTest extends ApiIntegrationTest {
         createUser(adminToken, username, PASSWORD, role);
         createdUsernames.add(username);
         return username;
+    }
+
+    private void insertLegacyAccountEvent(String action, String detail) {
+        jdbc.update("insert into audit_log"
+                        + "(actor, action, entity_type, detail, success_rows, failed_rows, created_at, category)"
+                        + " values (?, ?, 'APP_USER', ?, ?, 0, current_timestamp, 'ACCOUNT')",
+                "admin", action, detail, "IMPORT".equals(action) ? 2 : 1);
     }
 
     private long userId(String token, String username) {

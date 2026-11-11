@@ -95,6 +95,7 @@ public class AccountAuditService {
         Page<AuditLog> found = auditLogs.search(
                 CATEGORY,
                 action == null ? null : action.code(),
+                action == null ? null : AccountAuditAction.legacyCodeFor(action.code()),
                 targetUserId,
                 PageRequest.of(safePage - 1, safeSize));
         return new AccountAuditPage(
@@ -149,10 +150,13 @@ public class AccountAuditService {
                 log.getId(),
                 log.getCreatedAt(),
                 log.getActor(),
-                log.getAction(),
+                AccountAuditAction.canonicalCode(log.getAction()),
                 log.getTargetUserId(),
                 subject == null ? null : subject.username(),
                 subject == null ? null : subject.displayName(),
+                log.getDetail(),
+                log.getSuccessRows(),
+                log.getFailedRows(),
                 before,
                 after);
     }

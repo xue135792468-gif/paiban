@@ -6,6 +6,9 @@
         <p class="subtitle">
           每一次账号操作都留一条记录：谁做的、对哪个账号、做了什么、改之前和改之后。
         </p>
+        <p class="subtitle">
+          升级前未记录目标账号 ID 或逐账号明细的记录，无法按账号精确筛选。
+        </p>
       </div>
       <el-button :loading="loading" @click="load">刷新</el-button>
     </div>
@@ -17,6 +20,7 @@
             <el-select
               v-model="actionFilter"
               aria-label="动作类型"
+              data-testid="account-audit-action-filter"
               clearable
               placeholder="全部动作"
               class="filter-select"
@@ -34,6 +38,7 @@
             <el-select
               v-model="targetFilter"
               aria-label="目标账号"
+              data-testid="account-audit-target-filter"
               clearable
               filterable
               placeholder="全部账号"
@@ -61,17 +66,14 @@
           <el-table-column prop="actor" label="操作者" min-width="120" />
           <el-table-column label="目标账号" min-width="170">
             <template #default="{ row }">
-              <span v-if="row.targetUserId">
-                {{ row.targetDisplayName }}（{{ row.targetUsername }}）
-              </span>
-              <span v-else class="muted">—</span>
+              <span :class="{ muted: !row.targetUserId }">{{ describeAuditTarget(row) }}</span>
             </template>
           </el-table-column>
           <el-table-column label="动作" width="140">
             <template #default="{ row }">{{ actionLabel(row.action) }}</template>
           </el-table-column>
           <el-table-column label="变更" min-width="320">
-            <template #default="{ row }">{{ describeAccountChange(row.before, row.after) }}</template>
+            <template #default="{ row }">{{ describeAuditRowChange(row) }}</template>
           </el-table-column>
         </el-table>
 
@@ -102,7 +104,7 @@ import {
   type AccountAuditEntry,
   type AccountOption,
 } from '@/api/accountAudit'
-import { describeAccountChange } from '@/utils/accountAuditChange'
+import { describeAuditRowChange, describeAuditTarget } from '@/utils/accountAuditChange'
 import { formatDateTime } from '@/utils/datetime'
 
 const pageSize = 20
@@ -119,7 +121,8 @@ const accounts = ref<AccountOption[]>([])
 let requestSeq = 0
 
 function actionLabel(code: string): string {
-  return actionOptions.value.find((option) => option.code === code)?.label ?? code
+  // 已知动作按目录翻译；未知历史码给中文兜底，页面不裸露英文码。
+  return actionOptions.value.find((option) => option.code === code)?.label ?? '其他账号操作'
 }
 
 function accountOptionLabel(account: AccountOption): string {

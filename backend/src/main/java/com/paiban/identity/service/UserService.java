@@ -111,36 +111,39 @@ public class UserService {
 
         // 校验通过后，所有字段都落在同一个 managed 实体上：不要在中途再 refresh，
         // 否则本次尚未 flush 的姓名 / 教师 / 角色改动会被数据库旧值覆盖。
-        boolean changed = false;
+        boolean roleChanged = nextRoles != null && !sameRoleCodes(user.getRoles(), nextRoles);
+        boolean profileChanged = false;
         if (request.displayName() != null) {
-            changed |= !request.displayName().equals(user.getDisplayName());
+            profileChanged |= !request.displayName().equals(user.getDisplayName());
             user.setDisplayName(request.displayName());
         }
         if (request.teacherId() != null) {
-            changed |= !request.teacherId().equals(user.getTeacherId());
+            profileChanged |= !request.teacherId().equals(user.getTeacherId());
             user.setTeacherId(request.teacherId());
         }
         if (nextRoles != null) {
-            changed |= !sameRoleCodes(user.getRoles(), nextRoles);
             user.setRoles(nextRoles);
+        }
+        // 第一条事件只描述身份 / 资料阶段：启用状态仍是旧值。角色真正变化才写「改身份」，
+        // 只改姓名或关联教师写「修改资料」；两条都没有就不伪造事件。
+        if (roleChanged || profileChanged) {
+            accountAudits.record(
+                    actorName(),
+                    roleChanged ? AccountAuditAction.ROLE_CHANGE : AccountAuditAction.UPDATE,
+                    user.getId(),
+                    before,
+                    accountAudits.snapshotOf(user));
         }
         // An enabled flag sent with the edit form is not a free write: it goes through
         // the same guards and audit as the dedicated disable/enable endpoints, so this
         // route cannot pause yourself or the last administrator silently.
+        // 启停阶段从刚写好的资料（或原资料）出发，形成与上一条连续、不重叠的链。
         if (request.enabled() != null && request.enabled() != user.isEnabled()) {
             if (request.enabled()) {
                 applyEnable(user);
             } else {
                 applyDisable(user);
             }
-        }
-        if (changed) {
-            accountAudits.record(
-                    actorName(),
-                    AccountAuditAction.UPDATE,
-                    user.getId(),
-                    before,
-                    accountAudits.snapshotOf(user));
         }
         return toSummary(user);
     }

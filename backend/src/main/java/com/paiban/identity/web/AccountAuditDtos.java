@@ -25,6 +25,10 @@ public final class AccountAuditDtos {
             Long targetUserId,
             String targetUsername,
             String targetDisplayName,
+            /** 旧记录的原文描述，只作为纯文本展示；不含原请求或实体序列化。 */
+            String detail,
+            int successRows,
+            int failedRows,
             AccountSnapshot before,
             AccountSnapshot after) {}
 
