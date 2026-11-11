@@ -113,7 +113,7 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
         long elapsed = elapsedMs(startedAt);
         // 扫描不完整时不能把「0 个候选」写进顶部摘要，否则会被读成「没有要停用的人」。
         String deactivationNote = deactivationPlan.scanComplete()
-                ? "，将停用账号 " + deactivationPlan.candidates().size()
+                ? "，停用候选账号 " + deactivationPlan.candidates().size()
                 : "，扫描不完整，本次不生成停用名单";
         String message = "预演完成：扫描 " + directory.departmentsScanned() + " 个部门 / "
                 + directory.usersScanned() + " 人，耗时 " + elapsed + " ms；新增 "
