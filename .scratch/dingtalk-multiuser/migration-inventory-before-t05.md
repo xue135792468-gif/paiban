@@ -77,3 +77,7 @@ refs 数量独立复核为177。以 git hash-object 核对同名 V24：当前集
 ## 03末尾刷新（2026-11-11约22:24）
 
 Gemini3.8只读扫描报告：181 refs、14 worktrees（含物理未跟踪迁移），最高V62，V63未占用；历史refs另有V25/V28/V59同版本不同内容，旧import-repairs未跟踪V24仍保留。不得据此声称所有旧分支可无冲突合并。主线程独立核对当前集成物理V60/V61/V62、无V63；本次05唯一新迁移候选仍V63。子代理未修改文件、未跑测试或真实服务；这只是占号盘点，不是升级验收。
+
+## checkpoint阶段再次刷新（2026-11-11约23:37）
+
+Gemini3.8完成184 refs、17物理worktrees扫描，均无失败；最高V63，仅本票backend分支/工作树的V63__substitution_request_approval.sql占用，其他任务最高V62。主线程独立读取checkpoint为16851f22f296f665fabbb88915f84b88523625e0，并用git hash-object核对V63为69e299ca4aba6302d51b0518cdbbcbe0286e9777，与报告一致。只证明该时刻占号无新冲突，不代替最终合并检查或真实PG升级演练。

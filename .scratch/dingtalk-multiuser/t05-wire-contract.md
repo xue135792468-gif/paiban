@@ -7,7 +7,7 @@
 - 老师自助仅 COVER，提交只保存 SUBMITTED，不立即生效；工作台仍直接生效。旧 Create DTO shape 保留，SWAP 仍明确拒绝。
 - `POST /api/substitution-requests/{id}/approve` 接收可选 `{substituteTeacherId, comment}`；未给人选用期望人。期望人不可覆盖，最终人记录实际批准选择。
 - `POST .../{id}/reject` 接收必填 `{reason}`；`POST .../{id}/withdraw` 无体，仅申请人且仅 SUBMITTED 可撤。
-- 状态为 SUBMITTED/EFFECTIVE/REJECTED/WITHDRAWN/EXPIRED；legacy CANCELLED 保留历史展示，不等同撤回申请。
+- 自助审批主链状态为 SUBMITTED/EFFECTIVE/REJECTED/WITHDRAWN/EXPIRED；CANCELLED 保留既有生效安排被系统撤销时的展示，不等同申请人撤回。这里的legacy指既有代码与发布撤回语义，不限于上线前旧行；例如管理员撤回已发布基线后，新近已生效安排仍按既有流程转CANCELLED，不能伪装成尚未审批的EXPIRED或删除原回归断言。
 - 管理待批复用 GET 的显式 `status=SUBMITTED`；`mine=true` 认实际 operatorUserId。不得擅改共享查询默认值。
 - DTO 追加 expectedSubstituteTeacherId/Name、approverUserId、approvedAt、approvalComment、operatorUserId。既有 substituteTeacherId/Name 表示已生效实际人或待批期望人，保留旧构造器兼容。
 
