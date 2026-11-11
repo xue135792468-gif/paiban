@@ -1,4 +1,6 @@
-# 04-C2 确认停用纵向 tracer（红例起点，尚未验收）
+# 04-C2 确认停用纵向 tracer（红绿过程记录）
+
+整票最终实测与放行结论见 `t04-delivery.md`、`t04-review.md`。下文保留各阶段当时的施工计划和红绿记录，不代表当前未合入。
 
 源码基点 `34103a6fbe0153c646162d5d23b5b6ce7436bf0c`。主线程独立编写一个公开 HTTP tracer，文件 `backend/src/test/java/com/paiban/integration/DingTalkSyncDeactivationIntegrationTest.java`。没有批量提前写未来测试；先让这一条与最小确认事务形成红→绿，再逐个扩展失败边界。
 
