@@ -97,6 +97,9 @@ const previewFixture = {
   elapsedMs: 12,
   skippedDepartmentNames: [],
   summary: { create: 1, merge: 0, suspected: 0, skip: 0 },
+  scanComplete: true,
+  deactivationWarning: null,
+  deactivations: [],
   departments: [
     {
       department: '全校教职工',
@@ -148,7 +151,12 @@ describe('SettingsView: 钉钉同步超时', () => {
 
     expect(httpMock.post).toHaveBeenCalledWith(
       '/integrations/dingtalk/sync/confirm',
-      { excludedDepartments: [], excludedUserIds: [], suspectedDecisions: [] },
+      {
+        excludedDepartments: [],
+        excludedUserIds: [],
+        suspectedDecisions: [],
+        deactivationSelections: [],
+      },
       { timeout: 180000 },
     )
     wrapper.unmount()
