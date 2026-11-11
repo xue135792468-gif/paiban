@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import {
   apiCall,
   apiLogin,
@@ -6,6 +6,7 @@ import {
   createAccount,
   dateFor,
   newContext,
+  pickFirstVisibleOption,
   pickOption,
   seedSchool,
   solveAndPublish,
@@ -43,19 +44,11 @@ async function pickDate(page: Page, date: string) {
   await dateInput.press('Tab')
 }
 
-/** 课节选项由当天的课表生成，测试只取第一条；等旧面板收起再点。 */
-async function pickFirstOption(select: Locator) {
-  await select.click()
-  const dropdown = select.page().locator('.el-select-dropdown:visible').last()
-  const option = dropdown.locator('.el-select-dropdown__item').first()
-  await expect(option).toBeVisible()
-  await option.evaluate((element) => (element as HTMLElement).click())
-  await expect(dropdown).toBeHidden()
-}
-
 async function submitCover(page: Page, date: string, reason: string, substituteName: string) {
   await pickDate(page, date)
-  await pickFirstOption(page.locator('.el-form-item', { hasText: '我的课节' }).locator('.el-select'))
+  await pickFirstVisibleOption(
+    page.locator('.el-form-item', { hasText: '我的课节' }).locator('.el-select'),
+  )
   await pickOption(
     page.locator('.el-form-item', { hasText: '期望代课' }),
     'expected-substitute',

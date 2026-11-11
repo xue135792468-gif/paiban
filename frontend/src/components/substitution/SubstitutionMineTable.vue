@@ -26,8 +26,18 @@
       <el-table-column v-if="requests.some((item) => item.type === 'COVER')" label="代课教师" width="150">
         <template #default="{ row }">
           <div v-if="changedTeacher(row)">
-            <div>期望：{{ row.expectedSubstituteTeacherName }}</div>
-            <div>实际：{{ row.substituteTeacherName }}</div>
+            <div>
+              期望：{{ row.expectedSubstituteTeacherName }}
+              <template v-if="sameSubstituteTeacherName(row)">
+                （档案编号：{{ row.expectedSubstituteTeacherId }}）
+              </template>
+            </div>
+            <div>
+              实际：{{ row.substituteTeacherName }}
+              <template v-if="sameSubstituteTeacherName(row)">
+                （档案编号：{{ row.substituteTeacherId }}）
+              </template>
+            </div>
           </div>
           <span v-else>{{ row.substituteTeacherName || row.expectedSubstituteTeacherName || '待定' }}</span>
         </template>
@@ -98,10 +108,14 @@ const emit = defineEmits<{ changed: [] }>()
 /** 管理员批准时可以换人：期望和实际不一致时两个都写清楚。 */
 function changedTeacher(row: RequestRow) {
   return Boolean(
-    row.expectedSubstituteTeacherName
-      && row.substituteTeacherName
-      && row.expectedSubstituteTeacherName !== row.substituteTeacherName,
+    row.expectedSubstituteTeacherId != null
+      && row.substituteTeacherId != null
+      && row.expectedSubstituteTeacherId !== row.substituteTeacherId,
   )
+}
+
+function sameSubstituteTeacherName(row: RequestRow) {
+  return row.expectedSubstituteTeacherName === row.substituteTeacherName
 }
 
 async function withdraw(row: RequestRow) {

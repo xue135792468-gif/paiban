@@ -32,13 +32,13 @@ describe('types date utils', () => {
 })
 
 describe('调代申请状态展示', () => {
-  it('五种审批状态各有中文说法，旧取消状态保留', () => {
+  it('五种审批状态与系统撤销各有中文说法', () => {
     expect(statusLabel('SUBMITTED')).toBe('待审批')
     expect(statusLabel('EFFECTIVE')).toBe('已生效')
     expect(statusLabel('REJECTED')).toBe('已驳回')
     expect(statusLabel('WITHDRAWN')).toBe('已撤回')
     expect(statusLabel('EXPIRED')).toBe('已作废')
-    expect(statusLabel('CANCELLED')).toBe('已取消')
+    expect(statusLabel('CANCELLED')).toBe('系统撤销')
   })
 
   it('状态标签颜色区分待批、驳回与作废', () => {

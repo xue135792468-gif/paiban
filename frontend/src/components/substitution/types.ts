@@ -152,7 +152,7 @@ export interface Recommendation {
 const STATUS_LABELS: Record<string, string> = {
   SUBMITTED: '待审批',
   EFFECTIVE: '已生效',
-  CANCELLED: '已取消',
+  CANCELLED: '系统撤销',
   PROPOSED: '待选择',
   EXPIRED: '已作废',
   REJECTED: '已驳回',

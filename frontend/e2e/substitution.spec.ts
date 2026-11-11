@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import {
   apiCall,
   apiLogin,
@@ -6,6 +6,7 @@ import {
   dateFor,
   isoDate,
   newContext,
+  pickFirstVisibleOption,
   seedSchool,
   shiftDate,
   solveAndPublish,
@@ -54,25 +55,12 @@ test('场景 2：教师提交代课 → 教务审批生效 → 统计与课表�
   await dateInput.fill(effectiveDate)
   await dateInput.press('Tab')
 
-  /**
-   * Element Plus 的 popper 是 teleport 到 body 的：选完一个下拉后它还要播收起的
-   * 过渡动画，此时 `.el-select-dropdown:visible` 仍会先匹配到那张正在消失的旧面板
-   * （里面的首项是 is-selected），点它会一直重试到超时。所以每次都等旧面板真正
-   * 隐藏，再取 `.last()`（刚打开的那张），并用元素自身 click 绕过稳定性检查。
-   */
-  async function pickFirstOption(select: Locator) {
-    await select.click()
-    const dropdown = page.locator('.el-select-dropdown:visible').last()
-    const option = dropdown.locator('.el-select-dropdown__item').first()
-    await expect(option).toBeVisible()
-    await option.evaluate((element) => (element as HTMLElement).click())
-    await expect(dropdown).toBeHidden()
-  }
-
-  await pickFirstOption(page.locator('.el-form-item', { hasText: '我的课节' }).locator('.el-select'))
+  await pickFirstVisibleOption(
+    page.locator('.el-form-item', { hasText: '我的课节' }).locator('.el-select'),
+  )
 
   // 提交时必须指定代课教师（后端要求），选中另一位教师；提交后停在待审批。
-  await pickFirstOption(
+  await pickFirstVisibleOption(
     page.locator('.el-form-item', { hasText: '期望代课' }).locator('.el-select'),
   )
 

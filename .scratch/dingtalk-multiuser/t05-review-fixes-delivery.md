@@ -32,6 +32,20 @@
   `家中有事，先撤回再提交`，不会与第二次提交行混淆。
 - 教师在最终页的正确行断言全部完成后才调用本票固定文件名截图，截图不承担断言。
 
+## 两轴确认项 C/D/E
+
+- C：`CANCELLED` 的展示从“已取消”改为“系统撤销”，并同步既有 types 与 MineTable
+  断言。全仓检索本票 UI/E2E 的旧“已取消”文案后，除两个测试期望外只有
+  `withdraw.spec.ts` 的说明注释和 API 状态 `CANCELLED` 断言，没有依赖旧用户文案；
+  因而未扩该 E2E 写集，业务断言保持。
+- D：`changedTeacher` 改为比较 `expectedSubstituteTeacherId` 与 `substituteTeacherId`；
+  同名但 ID 不同时仍并列显示期望/实际，并在该场景附“档案编号：ID”。不同名的既有
+  期望/实际文案继续由原组件断言覆盖。没有扩后端字段或选人器。
+- E：把 approval spec 与既有 substitution spec 中相同的首项下拉交互集中到
+  `frontend/e2e/helpers.ts` 的唯一新导出 `pickFirstVisibleOption`。只替换上述两处，
+  保留点击后等待 dropdown 隐藏的行为；删除已不用的局部 helper 与 `Locator` import，
+  未修改 `pickOption` 签名。该项由主控真实 E2E 验证，不另写镜像测试。
+
 ## 主控视觉 QA
 
 主控实际执行 `view_image` 查看首轮成功的无学期截图，确认教师身份下原文案“请先在
@@ -47,6 +61,9 @@
 |---|---|---|
 | 真实红（主控） | `E:/排课系统/.worktrees/dingtalk-integration/.scratch/dingtalk-multiuser/logs/t05-browser-run1/playwright.log` 与 `E:/排课系统/.worktrees/dingtalk-integration/.scratch/dingtalk-multiuser/.runtime/t05-browser-run1/test-results/` 下两份 approval error-context | 完整 6 条 Playwright：4 passed / 2 failed，exit 1；源码一致标记 `SOURCE_IDENTICAL=1`，服务均退出 |
 | 第二轮红（主控） | `E:/排课系统/.worktrees/dingtalk-integration/.scratch/dingtalk-multiuser/logs/t05-browser-run2/playwright.log` 与同 integration 工作树 `.scratch/dingtalk-multiuser/.runtime/t05-browser-run2/test-results/` 下首个 approval case 的 error-context | 完整 6 条 Playwright：5 passed / 1 failed，真实 exit 1；首例整表文本 strict mode 命中 2 行，驳回例已通过；端口 28405/25405 与 Java 进程均归零 |
+| C 真实红 → 绿 | `.runtime/logs/t05-c-status-red.log`、`t05-c-status-green.log` | red：exit 1，`已取消` != `系统撤销`；green：exit 0，types spec 5/5 |
+| D 真实红 → 绿 | `.runtime/logs/t05-d-same-name-red.log`、`t05-d-same-name-green.log` | red：exit 1，同名异 ID 仅渲染单个姓名；green：exit 0，MineTable spec 4/4 |
+| C/D/E 静态校验 | `.runtime/logs/t05-cde-eslint.log`、`t05-cde-vue-tsc.log` | 定向 ESLint exit 0；`vue-tsc -b` exit 0。E2E 另由上述 ESLint 覆盖，不能据 vue-tsc 声称已类型验证 E2E |
 | 第一轮本次验证 | 对 Vue 与 E2E 两个文件一起运行定向 ESLint；原始日志为 `E:/排课系统/.worktrees/dingtalk-t05-review-fixes/.runtime/logs/t05-targeted-eslint.log` | exit 0 |
 
 两轮都没有伪造单测或镜像测试。第二轮修复后，主控下一轮只需复跑受影响的
