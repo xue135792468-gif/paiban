@@ -146,3 +146,14 @@
 ### 仍未运行
 
 - 真实浏览器 Playwright 全栈（主线程整合后执行）；后端 Maven 测试与 `scripts/verify.sh`。
+
+## 真实浏览器 E2E（主线程执行，本切片冻结后）
+
+主线程在本工作树、对冻结的 4 个前端文件跑完 `frontend/e2e/dingtalk-login.spec.ts`：
+
+- 结果：**2 passed（1.0m）**，进程真实 exit 0；`28303` / `25303` 端口跑完后无监听。
+- 前后一致性：跑前跑后 4 个前端文件 SHA256 完全相同（`LoginView.vue` C3ACEBCC…、`LoginView.spec.ts` D469EE45…、`useLoginLanding.ts` A3097FFD…、`e2e/dingtalk-login.spec.ts` E6DFE5A4…），即验证的就是本切片提交的字节。
+- 日志：`.scratch/dingtalk-multiuser/logs/t03-browser-e2e.log`；截图 3 张在 `.scratch/dingtalk-multiuser/evidence/t03-browser/`，由主线程归档与提交，本切片不 stage 图片与日志。
+- 覆盖内容：免登失败说明页（含 `data-reason-code = DINGTALK_CALL_FAILED` 断言）、`?mode=password` 跳过循环并完成密码登录、已绑 `dd-001` 教师免登取得同一账号（`POST /api/auth/dingtalk` 200 + `/auth/me` 一致）。
+
+本条取代上文「未验证项」中的 Playwright 一项：**真实浏览器 E2E 已验证通过**。仍未由本切片执行的是后端 Maven 测试与全量 `scripts/verify.sh`（由主线程在整票收尾时负责）。
