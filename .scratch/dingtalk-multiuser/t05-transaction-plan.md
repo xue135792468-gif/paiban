@@ -26,3 +26,7 @@
 - TDD 采用已确认的 HTTP→落库/历史/效果边界；必要并发测试强制旧快照交错，再补公开 HTTP 不变量。不能靠不稳定线程时序声称“后到者必失败”。
 
 用户可见流程及截止、撤回、改人批准、驳回、工作台直接生效均须有定向证据。旧即时生效测试需通过真实审批再验证后续行为，不能把原有日期/再次调整覆盖删掉以求绿。
+
+05首个切片复读补充：`verifyCoverOrReject`原来传`audits.failure(..., true)`，其REQUIRES_NEW失败审计仍会调用`notifications.substitutionVerifyAlert`。05本申请服务/新审批入口应传alert=false，保留失败审计但不在失败分支偷发旧告警；工作台其它旧失败触发器留给06统一收口。撞课拒绝回归可断无新增通知记录，不只检查成功路径已删除notifyEffective。
+
+2026-11-12早期QA发现的清扫竞态：expireOverdue的pending查询在学期锁前，查询命中的申请在等锁期间可能已被批准/撤回/驳回；refresh后必须重新确认仍SUBMITTED且已过截止，再保存EXPIRED。不能只重验截止，否则会把已EFFECTIVE的申请改成EXPIRED而效果仍生效。生产writer已在8f457ac修正；主线程独立质量工作树补可控Clock+latch交错回归（cab9002，受控破坏时红、原字节恢复后绿），与并发writer原五例分开计数。没有生产私有方法调用次数断言，不靠sleep时序。
