@@ -79,7 +79,7 @@ test('钉钉免登失败展示说明页，「我是管理员，用密码登录�
 
     await uiLogin(page, 'admin', 'admin123', { loginPath: '/login?mode=password' })
     await capture(page, 'dingtalk-t03-password-fallback-logged-in')
-    expect(browserErrors.filter((msg) => !msg.includes('status of 4'))).toEqual([])
+    expect(browserErrors.filter((msg) => !msg.includes('status of 401'))).toEqual([])
   } finally {
     await context.close()
     await apiCall(api, token, 'put', '/integrations/dingtalk/config', { enabled: false })
@@ -165,8 +165,24 @@ test('已绑定UID老师免登并取得同一账号', async ({ browser }) => {
     const me = await apiCall(api, authBody.token, 'get', '/auth/me')
     expect(me.id).toBe(authBody.user.id)
     expect(me.teacherId).toBe(targetTeacherId)
+    if (expectedExistingAccountId == null) {
+      expect(me.roles).toEqual(['teacher'])
+      expect(me.permissions).not.toContain('settings:manage')
+      expect(me.permissions).not.toContain('constraint:manage')
+    }
 
     await page.waitForURL((url) => !url.pathname.startsWith('/login'))
+    if (expectedExistingAccountId == null) {
+      await expect(page).toHaveURL(/\/workbench\/timetable$/)
+    }
+    const menu = page.getByTestId('layout-menu')
+    if (!me.permissions.includes('settings:manage')) {
+      await expect(menu).not.toContainText('设置')
+      await expect(menu).not.toContainText('AI 助手')
+    }
+    if (!me.permissions.includes('constraint:manage')) {
+      await expect(menu).not.toContainText('排课规则')
+    }
     await capture(page, 'dingtalk-t03-auto-provision-logged-in')
     expect(browserErrors).toEqual([])
   } finally {
