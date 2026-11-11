@@ -59,3 +59,25 @@
 另：复查基线发现 `ExtendedLifecycleIntegrationTest` 两条旧断言仍在通用日志里找 `DISABLE_USER/ENABLE_USER`，自 4eb1886 起即为红（实测 2 失败）。已改为在账号审计接口断言 `ACCOUNT_DISABLE/ACCOUNT_ENABLE`，复跑 2/2 绿。
 
 证据日志（未提交）：`.scratch/dingtalk-multiuser/logs/`；截图：`.scratch/dingtalk-multiuser/acceptance/dingtalk-t02-*.png`。
+
+## 整改后双轴复核与放行
+
+固定比较 `4eb1886...1591071`，两个独立只读 reviewer 逐项复核；主模型核验日志与截图后放行本票。
+
+### Standards
+
+原 S1–S3 全部关闭，硬违规 0。新增判断 3 项（全低）：ACCOUNT 分类常量重复、E2E body scope、任务临时目录。
+
+- 分类码是固定存储协议值，不是可修改文案；目前仅两处，且 HTTP 权限回归覆盖旧接口不得返回 ACCOUNT。暂不为抽常量扩展 foundation 公共接口，保留该低风险维护建议。
+- body 是共享 picker 的 Locator scope；控件由唯一 testid 定位，真实浏览器三条通过，目前没有匹配歧义。暂不为容器选择单独修改用例。
+- 临时目录列入任务卫生清理，服务已退出、端口已释放；最终任务结束会再次检查。
+
+最严重判断项为分类码重复，无阻断项；审查闸门通过。
+
+### Spec
+
+原 F1–F4 全部关闭，新增遗漏、越界、实现错误均 0。历史从未记录的目标 ID/快照不可恢复，已如实披露；不伪造关联。
+
+本轮实测以整改交付记录为准：后端定向 38、前端 21、真实浏览器 3 全部通过。主要日志已复制到集成工作树 `logs/t02-review/`，四张截图已跟踪。112 是初次 15 类定向测试的真实通过数，不包含当时漏跑的 ExtendedLifecycle 类，不能误写为 112 不成立。
+
+票保持 implemented，完整规格最终冻结源码并通过全量 verify 后才置 done。下一施工改取依赖已满足的 04；03 身份首次绑定的产品问题仍待答复。
