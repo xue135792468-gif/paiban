@@ -183,4 +183,71 @@ describe('AccountAuditView', () => {
     expect(text).not.toContain('LEGACY_UNKNOWN')
     wrapper.unmount()
   })
+
+  it('展示钉钉自动开号与钉钉配对事件的登录方式及钉钉UID前后差异，不渲染未知字段', async () => {
+    mocks.listAccountAuditActions.mockResolvedValue([
+      { code: 'DINGTALK_AUTO_PROVISION', label: '钉钉免登自动开号' },
+      { code: 'DINGTALK_LINK', label: '钉钉配对' },
+    ])
+    mocks.listAccountAudits.mockResolvedValue(
+      pageOf([
+        entry({
+          id: 10,
+          actor: '系统（钉钉免登）',
+          action: 'DINGTALK_LINK',
+          targetUserId: 2,
+          targetUsername: 'dd_zhang',
+          targetDisplayName: '张三',
+          before: {
+            username: 'dd_zhang',
+            displayName: '张三',
+            enabled: true,
+            teacherId: 7,
+            teacherName: '张三',
+            roleCodes: ['teacher'],
+            loginType: 'DINGTALK',
+            dingtalkUserId: null,
+          },
+          after: {
+            username: 'dd_zhang',
+            displayName: '张三',
+            enabled: true,
+            teacherId: 7,
+            teacherName: '张三',
+            roleCodes: ['teacher'],
+            loginType: 'DINGTALK',
+            dingtalkUserId: 'dd-uid-77',
+            ...({ secretHash: 'never-show-this' } as Record<string, unknown>),
+          },
+        }),
+        entry({
+          id: 11,
+          actor: '系统（钉钉免登）',
+          action: 'DINGTALK_AUTO_PROVISION',
+          targetUserId: 2,
+          targetUsername: 'dd_zhang',
+          targetDisplayName: '张三',
+          before: null,
+          after: {
+            username: 'dd_zhang',
+            displayName: '张三',
+            enabled: true,
+            teacherId: 7,
+            teacherName: '张三',
+            roleCodes: ['teacher'],
+            loginType: 'DINGTALK',
+            dingtalkUserId: 'dd-uid-77',
+          },
+        }),
+      ]),
+    )
+
+    const wrapper = await mountView()
+    const text = wrapper.text()
+    expect(text).toContain('系统（钉钉免登）')
+    expect(text).toContain('钉钉UID：未绑定 → dd-uid-77')
+    expect(text).toContain('登录方式：钉钉免登')
+    expect(text).not.toContain('never-show-this')
+    wrapper.unmount()
+  })
 })

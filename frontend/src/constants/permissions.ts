@@ -17,6 +17,11 @@ export const WORKBENCH_MANAGER_PERMISSIONS = [
  */
 export const DRAFT_MANAGER_PERMISSIONS = ['scheduling:run', 'timetable:edit'] as const
 
+/**
+ * 票 01/03：钉钉集成配置与教师钉钉 UserID 人工变更只归超级管理员。
+ */
+export const INTEGRATION_MANAGE_PERMISSION = 'integration:manage'
+
 export function canManageDrafts(has: (permission: string) => boolean): boolean {
   return DRAFT_MANAGER_PERMISSIONS.some((permission) => has(permission))
 }

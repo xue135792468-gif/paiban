@@ -108,4 +108,35 @@ describe('账号审计的中文快照', () => {
       '整批摘要：成功 2，失败 1；文件: users.xlsx, 成功 2 行',
     )
   })
+
+  it('自动开号与钉钉配对按 allowlist 展示登录方式与钉钉UID，忽略任意凭据或未知对象键', () => {
+    const autoProvisioned = {
+      ...base,
+      loginType: 'DINGTALK' as const,
+      dingtalkUserId: 'dd-zhang-007',
+      passwordHash: '$2a$10$secret',
+      accessToken: 'leak-token',
+    } as AccountSnapshot & Record<string, unknown>
+
+    const text = describeAccountChange(null, autoProvisioned)
+    expect(text).toBe(
+      '新建：身份：老师；状态：启用；关联教师：张三（#7）；登录方式：钉钉免登；钉钉UID：dd-zhang-007',
+    )
+    expect(text).not.toContain('$2a$10$secret')
+    expect(text).not.toContain('leak-token')
+
+    const linkedChange = describeAccountChange(
+      { ...base, loginType: 'DINGTALK', dingtalkUserId: null },
+      { ...base, loginType: 'DINGTALK', dingtalkUserId: 'dd-zhang-007' },
+      'DINGTALK_LINK',
+    )
+    expect(linkedChange).toBe('钉钉UID：未绑定 → dd-zhang-007')
+
+    // 旧快照 loginType 缺失（null/undefined=未知）时，不反推或误报登录方式变更
+    const legacyToNew = describeAccountChange(
+      { ...base, loginType: null, dingtalkUserId: null },
+      { ...base, displayName: '张三改名', loginType: 'PASSWORD', dingtalkUserId: null },
+    )
+    expect(legacyToNew).toBe('姓名：张三 → 张三改名')
+  })
 })

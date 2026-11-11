@@ -1,4 +1,5 @@
 import { http } from './http'
+import type { LoginType } from '@/stores/auth'
 
 /** 票 02：账号审计查看接口。后端只返回 allowlist 快照，不含密码、哈希或 token。 */
 export interface AccountSnapshot {
@@ -8,6 +9,8 @@ export interface AccountSnapshot {
   teacherId: number | null
   teacherName: string | null
   roleCodes: string[]
+  loginType?: LoginType | null
+  dingtalkUserId?: string | null
 }
 
 export interface AccountAuditEntry {

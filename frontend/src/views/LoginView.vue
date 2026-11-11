@@ -14,43 +14,76 @@
     <div class="form-panel">
       <el-card class="login-card" shadow="never">
         <h2>登录</h2>
-        <p class="hint">使用学校分配的账号登录</p>
-        <el-form ref="formRef" :model="form" :rules="rules" label-position="top" @submit.prevent="submit">
-          <el-form-item label="用户名" prop="username">
-            <el-input v-model="form.username" placeholder="请输入用户名" size="large" autocomplete="username" />
-          </el-form-item>
-          <el-form-item label="密码" prop="password">
-            <el-input
-              v-model="form.password"
-              type="password"
-              placeholder="请输入密码"
-              size="large"
-              show-password
-              autocomplete="current-password"
-              @keyup.enter="submit"
-            />
-          </el-form-item>
-          <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="error" />
-          <el-button type="primary" size="large" class="submit" :loading="loading" @click="submit">
-            登录
-          </el-button>
-        </el-form>
-        <p class="footer-hint">首次部署请使用初始化管理员账号，并尽快修改密码</p>
+        <div
+          v-if="dingtalkNotice && !isPasswordMode"
+          class="dingtalk-notice"
+          data-testid="dingtalk-login-notice"
+          :data-reason-code="dingtalkNotice.code"
+        >
+          <el-alert
+            :title="dingtalkNotice.title"
+            :description="dingtalkNotice.description"
+            type="warning"
+            :closable="false"
+            show-icon
+            class="notice-alert"
+          />
+          <div class="notice-actions">
+            <el-button
+              link
+              type="primary"
+              data-testid="switch-password-login"
+              @click="switchToPasswordMode"
+            >
+              我是管理员，用密码登录
+            </el-button>
+          </div>
+        </div>
+        <template v-else>
+          <p class="hint">使用学校分配的账号登录</p>
+          <el-form ref="formRef" :model="form" :rules="rules" label-position="top" @submit.prevent="submit">
+            <el-form-item label="用户名" prop="username">
+              <el-input v-model="form.username" placeholder="请输入用户名" size="large" autocomplete="username" />
+            </el-form-item>
+            <el-form-item label="密码" prop="password">
+              <el-input
+                v-model="form.password"
+                type="password"
+                placeholder="请输入密码"
+                size="large"
+                show-password
+                autocomplete="current-password"
+                @keyup.enter="submit"
+              />
+            </el-form-item>
+            <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="error" />
+            <el-button type="primary" size="large" class="submit" :loading="loading" @click="submit">
+              登录
+            </el-button>
+          </el-form>
+          <p class="footer-hint">首次部署请使用初始化管理员账号，并尽快修改密码</p>
+        </template>
       </el-card>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { http } from '@/api/http'
 import { useLoginLanding } from '@/composables/useLoginLanding'
 import { serverMessage } from '@/api/errors'
+import {
+  extractDingTalkErrorCode,
+  resolveDingTalkLoginNotice,
+  type DingTalkLoginNotice,
+} from '@/composables/useDingTalkLoginNotice'
 
 const auth = useAuthStore()
+const route = useRoute()
 const router = useRouter()
 const { landAfterLogin } = useLoginLanding()
 
@@ -62,6 +95,10 @@ const rules: FormRules = {
 }
 const loading = ref(false)
 const error = ref('')
+const dingtalkNotice = ref<DingTalkLoginNotice | null>(null)
+const isPasswordMode = computed(() => route.query.mode === 'password')
+
+const DINGTALK_READY_TIMEOUT_MS = 5000
 
 function loadDingTalkSdk(): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -72,7 +109,11 @@ function loadDingTalkSdk(): Promise<any> {
     }
     const script = document.createElement('script')
     script.src = 'https://g.alicdn.com/dingding/dingtalk-jsapi/3.0.25/dingtalk.open.js'
-    script.onload = () => resolve((window as any).dd)
+    script.onload = () => {
+      const loaded = (window as any).dd
+      if (loaded) resolve(loaded)
+      else reject(new Error('钉钉 JSAPI 未初始化'))
+    }
     script.onerror = () => reject(new Error('钉钉 JSAPI 加载失败'))
     document.head.appendChild(script)
   })
@@ -82,41 +123,86 @@ function requestAuthCode(dd: any, corpId: string): Promise<string> {
   return new Promise((resolve, reject) => {
     if (typeof dd.getAuthCode === 'function') {
       dd.getAuthCode({ corpId })
-        .then((result: any) => resolve(result.authCode ?? result.code))
+        .then((result: any) => {
+          const code = result?.authCode ?? result?.code
+          if (code) resolve(code)
+          else reject(new Error('未获取到钉钉免登授权码'))
+        })
         .catch(reject)
+      return
+    }
+    if (!dd?.runtime?.permission?.requestAuthCode) {
+      reject(new Error('钉钉免登接口不可用'))
       return
     }
     dd.runtime.permission.requestAuthCode({
       corpId,
-      onSuccess: (result: any) => resolve(result.code),
+      onSuccess: (result: any) => {
+        if (result?.code) resolve(result.code)
+        else reject(new Error('未获取到钉钉免登授权码'))
+      },
       onFail: reject,
     })
   })
 }
 
+function waitForDingTalkReady(dd: any): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (!dd || typeof dd.ready !== 'function') {
+      reject(new Error('钉钉容器未就绪'))
+      return
+    }
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      reject(new Error('钉钉免登准备超时'))
+    }, DINGTALK_READY_TIMEOUT_MS)
+    if (typeof dd.error === 'function') {
+      dd.error((err: unknown) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        reject(err ?? new Error('钉钉容器初始化失败'))
+      })
+    }
+    dd.ready(() => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve()
+    })
+  })
+}
+
+async function switchToPasswordMode() {
+  dingtalkNotice.value = null
+  error.value = ''
+  await router.replace({
+    path: route.path || '/login',
+    query: { ...route.query, mode: 'password' },
+  })
+}
+
 /** Inside the DingTalk workspace the same SPA logs in through the H5免登 flow. */
 async function tryDingTalkLogin() {
+  if (isPasswordMode.value) return
   if (!/DingTalk/i.test(navigator.userAgent)) return
   try {
     const { data: config } = await http.get('/auth/dingtalk/config')
-    if (!config?.enabled || !config.corpId) return
+    if (!config?.enabled || !config.corpId) {
+      dingtalkNotice.value = resolveDingTalkLoginNotice('DINGTALK_DISABLED')
+      return
+    }
     const dd = await loadDingTalkSdk()
-    await new Promise<void>((resolve, reject) => {
-      dd.ready(async () => {
-        try {
-          const authCode = await requestAuthCode(dd, config.corpId)
-          const { data } = await http.post('/auth/dingtalk', { authCode })
-          auth.setSession(data.token, data.user)
-          ElMessage.success('钉钉免登成功')
-          router.replace('/')
-          resolve()
-        } catch (ex) {
-          reject(ex)
-        }
-      })
-    })
-  } catch {
-    // stay on the password form
+    await waitForDingTalkReady(dd)
+    const authCode = await requestAuthCode(dd, config.corpId)
+    const { data } = await http.post('/auth/dingtalk', { authCode })
+    auth.setSession(data.token, data.user)
+    ElMessage.success('钉钉免登成功')
+    await landAfterLogin()
+  } catch (ex: unknown) {
+    dingtalkNotice.value = resolveDingTalkLoginNotice(extractDingTalkErrorCode(ex))
   }
 }
 
@@ -218,6 +304,17 @@ async function submit() {
 }
 .error {
   margin-bottom: 16px;
+}
+.dingtalk-notice {
+  margin-top: 12px;
+}
+.notice-alert {
+  margin-bottom: 16px;
+}
+.notice-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
 }
 .submit {
   width: 100%;

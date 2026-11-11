@@ -17,6 +17,17 @@ export function accountEnabledLabel(enabled: boolean): string {
   return enabled ? '启用' : '停用'
 }
 
+export function accountLoginTypeLabel(loginType?: string | null): string {
+  if (loginType === 'DINGTALK') return '钉钉免登'
+  if (loginType === 'PASSWORD') return '密码登录'
+  return '—'
+}
+
+function dingtalkUidText(uid?: string | null): string {
+  const trimmed = uid?.trim()
+  return trimmed ? trimmed : '未绑定'
+}
+
 function teacherText(snapshot: AccountSnapshot): string {
   if (!snapshot.teacherId) {
     return '未关联'
@@ -34,6 +45,12 @@ export function describeAccountState(snapshot: AccountSnapshot | null): string {
   const parts = [`身份：${accountRoleLabel(snapshot.roleCodes)}`, `状态：${accountEnabledLabel(snapshot.enabled)}`]
   if (snapshot.teacherId) {
     parts.push(`关联教师：${teacherText(snapshot)}`)
+  }
+  if (snapshot.loginType) {
+    parts.push(`登录方式：${accountLoginTypeLabel(snapshot.loginType)}`)
+  }
+  if (snapshot.dingtalkUserId?.trim()) {
+    parts.push(`钉钉UID：${snapshot.dingtalkUserId.trim()}`)
   }
   return parts.join('；')
 }
@@ -68,6 +85,18 @@ export function describeAccountChange(
   // 按稳定 ID 判定换绑：同名不同 ID 也要显示变化。
   if (before.teacherId !== after.teacherId) {
     changes.push(`关联教师：${teacherText(before)} → ${teacherText(after)}`)
+  }
+  const beforeLoginType = before.loginType ?? null
+  const afterLoginType = after.loginType ?? null
+  if (beforeLoginType && afterLoginType && beforeLoginType !== afterLoginType) {
+    changes.push(
+      `登录方式：${accountLoginTypeLabel(beforeLoginType)} → ${accountLoginTypeLabel(afterLoginType)}`,
+    )
+  }
+  const beforeUid = before.dingtalkUserId?.trim() || null
+  const afterUid = after.dingtalkUserId?.trim() || null
+  if (beforeUid !== afterUid) {
+    changes.push(`钉钉UID：${dingtalkUidText(beforeUid)} → ${dingtalkUidText(afterUid)}`)
   }
   return changes.length > 0 ? changes.join('；') : '—'
 }
