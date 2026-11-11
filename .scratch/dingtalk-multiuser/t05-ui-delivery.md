@@ -6,6 +6,7 @@
 基点：`e091d0f20745b4a8ccb95e52d353857999e4d2b0`
 已先 fast-forward 合并集成 tip `10b3e8b4045390265d63dee74e3389473ec51016`（仅文档）。
 本票提交：`644b7d3`（feat(dingtalk-t05): restore substitution approval flow in UI）。
+扩展写集提交：`777e0c6`（fix(dingtalk-t05): align substitution copy and E2E with approval）。
 
 ## 写集
 
@@ -17,9 +18,10 @@
 - `frontend/src/views/HomeView.vue` + spec（新）
 - `frontend/e2e/substitution-approval.spec.ts`（新，未运行）
 - `frontend/e2e/withdraw.spec.ts`（兼容更新，未运行）
+- `frontend/e2e/substitution.spec.ts`（主控扩展授权：改为真实 approve 后保留原断言，未运行）
+- `frontend/src/layouts/SubstitutionLayout.vue`（主控扩展授权：仅副标题文案）
 
-未改后端、migration、ADR、shared navigation/permissions、其他文档；未改 James 后端树或
-integration 树。
+未改后端、migration、ADR、导航/权限/接口；未改 James 后端树或 integration 树。
 
 ## 行为
 
@@ -74,13 +76,17 @@ integration 树。
   老师看到已驳回和理由。
 - `withdraw.spec.ts`：教师提交断言 `SUBMITTED`，管理员真实 `approve` 后断言 `EFFECTIVE`；
   原日期/多周/再次调整/历史断言保留未删。
+- `substitution.spec.ts`（扩展）：UI 提交后断言「待审批」，用真实教师 token 取本人申请，
+  管理员调用 `POST .../approve` 后断言 `EFFECTIVE`；统计、调代记录、一次性日期、多周与
+  管理员「代」标记等原业务断言全部保留。
 
-## 已知待主控处理
+## 扩展写集补齐（主控 2026-11-12 授权）
 
-- `frontend/e2e/substitution.spec.ts` 仍断言「提交即 EFFECTIVE / 调代已直接生效」；不在本票
-  写集（caller map 只点名 withdraw.spec.ts），合并后续会失败，需主控指派兼容改造。
-- `frontend/src/layouts/SubstitutionLayout.vue` 副标题仍写「直接生效并保留记录」；属于共享布局，
-  未改，建议主控决定归属。
+- `SubstitutionLayout.vue` 副标题改为：「教师提交的代课申请由教务审批后生效；管理员也可在
+  调课工作台直接调整并确认，全部保留记录。」导航/权限/接口未动；纯文案未新增镜像测试。
+- `substitution.spec.ts` 的「提交即生效」矛盾已消除，原业务断言未删除。
+- 扩展后定向 `npx eslint e2e/substitution.spec.ts src/layouts/SubstitutionLayout.vue` exit 0；
+  `npx vue-tsc -b --pretty false` exit 0；commit 前钩子通过（本地日期/e2e helper/模块边界）。
 
 ## 运行时与进程
 
