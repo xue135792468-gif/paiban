@@ -12,6 +12,9 @@ import com.paiban.integration.domain.DingUser;
 import com.paiban.integration.org.DingTalkSyncPlan.Category;
 import com.paiban.integration.org.DingTalkSyncPlan.Item;
 import java.time.Instant;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -168,6 +171,7 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
         OrgSyncResult result = transactionTemplate.execute(status -> {
             accountMutationGuard.lock();
             DingTalkSyncPlan plan = planner.plan(directory, decisions);
+            validateSelectedDeactivations(directory, decisions);
             int accountDisabled = 0;
             for (DingTalkSyncDecisions.DeactivationSelection selection : decisions.deactivationSelections()) {
                 users.disableForSync(selection.accountId());
@@ -192,6 +196,23 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
                 result.skipped(),
                 result.suspected());
         return result;
+    }
+
+    /** Caller holds the account anchor; use the same raw-directory candidates as preview. */
+    private void validateSelectedDeactivations(DingTalkDirectory directory, DingTalkSyncDecisions decisions) {
+        if (decisions.deactivationSelections().isEmpty()) {
+            return;
+        }
+        Map<Long, DingTalkDeactivationPlanner.Candidate> current = deactivationPlanner.plan(directory)
+                .candidates().stream()
+                .collect(Collectors.toMap(DingTalkDeactivationPlanner.Candidate::accountId, candidate -> candidate));
+        for (DingTalkSyncDecisions.DeactivationSelection selection : decisions.deactivationSelections()) {
+            DingTalkDeactivationPlanner.Candidate candidate = current.get(selection.accountId());
+            if (candidate == null || !Objects.equals(candidate.teacherId(), selection.teacherId())
+                    || !Objects.equals(candidate.dingtalkUserId(), selection.dingtalkUserId())) {
+                throw ApiException.conflict("停用名单或绑定已变化，请重新预演通讯录");
+            }
+        }
     }
 
     /** Writes exactly the CREATE/MERGE items inside the caller's transaction. */

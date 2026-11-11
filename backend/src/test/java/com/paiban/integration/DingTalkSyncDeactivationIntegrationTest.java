@@ -16,6 +16,8 @@ import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -132,6 +134,50 @@ class DingTalkSyncDeactivationIntegrationTest extends ApiIntegrationTest {
                 .when().get("/api/account-audits")
                 .then().statusCode(200).body("total", equalTo(0));
     }
+
+    @ParameterizedTest(name = "旧选择遇到{0}时须重新预演")
+    @EnumSource(BindingChange.class)
+    void changedBindingCannotReuseTheOldAccountSelection(BindingChange change) {
+        String admin = adminToken();
+        String oldUid = "sync04-binding-original";
+        String newUid = "sync04-binding-new";
+        String teacherName = "绑定变更原教师";
+        long teacherId = teacher(admin, teacherName, oldUid);
+        long accountId = linkedAccount(admin, "sync04-binding-" + TestData.suffix(), teacherId);
+        Map<String, Object> oldSelection = Map.of(
+                "accountId", accountId, "teacherId", teacherId, "dingtalkUserId", oldUid);
+        as(admin).when().post("/api/integrations/dingtalk/sync/preview")
+                .then().statusCode(200)
+                .body("deactivations.find { it.accountId == " + accountId + " }.teacherId",
+                        equalTo((int) teacherId))
+                .body("deactivations.find { it.accountId == " + accountId + " }.dingtalkUserId",
+                        equalTo(oldUid));
+
+        long currentTeacherId = teacherId;
+        if (change == BindingChange.ACCOUNT_TEACHER) {
+            currentTeacherId = teacher(admin, "新关联教师", newUid);
+            as(admin).body(Map.of("teacherId", currentTeacherId))
+                    .when().put("/api/users/" + accountId).then().statusCode(200);
+        } else {
+            as(admin).body(Map.of("name", teacherName, "dingtalkUserId", newUid))
+                    .when().put("/api/teachers/" + teacherId).then().statusCode(200);
+        }
+
+        // The new binding is also absent from the directory. Checking only the
+        // account ID would wrongly accept the old administrator confirmation.
+        as(admin).body(Map.of("deactivationSelections", List.of(oldSelection)))
+                .when().post("/api/integrations/dingtalk/sync/confirm")
+                .then().statusCode(409).body("message", containsString("重新预演"));
+        as(admin).when().get("/api/users")
+                .then().statusCode(200)
+                .body("find { it.id == " + accountId + " }.enabled", equalTo(true))
+                .body("find { it.id == " + accountId + " }.teacherId", equalTo((int) currentTeacherId));
+        as(admin).queryParam("action", "ACCOUNT_SYNC_DISABLE")
+                .when().get("/api/account-audits")
+                .then().statusCode(200).body("total", equalTo(0));
+    }
+
+    private enum BindingChange { ACCOUNT_TEACHER, TEACHER_UID }
 
     private void configureIntegration() {
         as(adminToken()).body(Map.of(
