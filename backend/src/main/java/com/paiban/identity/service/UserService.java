@@ -17,7 +17,6 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -27,27 +26,24 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class UserService {
 
-    /** 票 01：超级管理员是这个系统里唯一能救回账号的身份，最后一个不能被降级或停用。 */
-    private static final String SUPER_ADMIN_ROLE = "super_admin";
-
     private final AppUserRepository users;
     private final RoleRepository roles;
     private final PasswordEncoder passwordEncoder;
     private final AccountAuditService accountAudits;
-    /** 用于在锚点锁之后刷新目标账号，丢掉调用方预加载的旧快照。 */
-    private final jakarta.persistence.EntityManager entityManager;
+    /** 角色锚点锁 + 锁后重读 + 超管计数（票 04 抽出，供本服务与通讯录同步共用）。 */
+    private final AccountMutationGuard accountMutationGuard;
 
     public UserService(
             AppUserRepository users,
             RoleRepository roles,
             PasswordEncoder passwordEncoder,
             AccountAuditService accountAudits,
-            jakarta.persistence.EntityManager entityManager) {
+            AccountMutationGuard accountMutationGuard) {
         this.users = users;
         this.roles = roles;
         this.passwordEncoder = passwordEncoder;
         this.accountAudits = accountAudits;
-        this.entityManager = entityManager;
+        this.accountMutationGuard = accountMutationGuard;
     }
 
     @Transactional(readOnly = true)
@@ -89,21 +85,19 @@ public class UserService {
     public UserSummary update(Long id, UpdateUserRequest request) {
         // 改身份和改启用状态都可能拿掉「最后一个启用超管」，所以先拿锚点锁再读实体：
         // 反过来（先改 managed entity 再查锁）会触发自动 flush，判断用的是已经被改过的快照。
-        lockSuperAdminAnchor();
-        AppUser user = getFresh(id);
+        AppUser user = accountMutationGuard.lockAndRefresh(id);
         AccountSnapshot before = accountAudits.snapshotOf(user);
         Set<Role> nextRoles = request.roleCodes() == null ? null : resolveRoles(request.roleCodes());
         AppUser current = currentOrNull();
 
         // 先判定、后落笔：两处改动（降级、停用）都可能让启用中的超管归零，共用同一个判断。
-        boolean losesSuperAdmin = holdsSuperAdmin(user) && nextRoles != null
+        boolean losesSuperAdmin = AccountMutationGuard.holdsSuperAdmin(user) && nextRoles != null
                 && nextRoles.stream().noneMatch(this::isSuperAdmin);
         boolean willDisable = Boolean.FALSE.equals(request.enabled()) && user.isEnabled();
         if (willDisable && current != null && current.getId().equals(id)) {
             throw ApiException.conflict("不能停用当前登录的账号");
         }
-        if ((losesSuperAdmin || willDisable) && holdsSuperAdmin(user)
-                && !hasAnotherEnabledSuperAdmin(user)) {
+        if ((losesSuperAdmin || willDisable) && accountMutationGuard.isLastEnabledSuperAdmin(user)) {
             throw ApiException.conflict(losesSuperAdmin
                     ? "不能降级最后一个启用的超级管理员，请先提升其他超级管理员"
                     : "不能停用最后一个启用的超级管理员，请先启用其他超级管理员");
@@ -142,7 +136,7 @@ public class UserService {
             if (request.enabled()) {
                 applyEnable(user);
             } else {
-                applyDisable(user);
+                applyDisable(user, AccountAuditAction.DISABLE);
             }
         }
         return toSummary(user);
@@ -152,8 +146,7 @@ public class UserService {
     public void resetPassword(Long id, String newPassword) {
         // 与停用共用同一个锚点锁并重读：重置密码只改哈希，但整行更新会把读到的
         // 旧 enabled 一并写回，可能把并发停用的账号「复活」。
-        lockSuperAdminAnchor();
-        AppUser user = getFresh(id);
+        AppUser user = accountMutationGuard.lockAndRefresh(id);
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         // 密码本身（及其哈希）不进审计：前后快照只描述账号的可见状态。
         accountAudits.record(
@@ -174,8 +167,38 @@ public class UserService {
      */
     @Transactional
     public void disable(Long id) {
-        lockSuperAdminAnchor();
-        AppUser user = getFresh(id);
+        disable(id, AccountAuditAction.DISABLE);
+    }
+
+    /**
+     * 票 04：通讯录同步确认的停用入口。守卫、锁与幂等与手工停用完全相同，
+     * 审计只写一条「同步停用」——不会再落一条普通停用事件。
+     *
+     * <p>操作者必须是当前登录的管理员：同步确认是管理员发起的动作，没有登录主体时
+     * 明确失败，避免把动作记成 {@code system}。
+     */
+    @Transactional
+    public void disableForSync(Long id) {
+        requireCurrentOperator();
+        disable(id, AccountAuditAction.SYNC_DISABLE);
+    }
+
+    @Transactional
+    public void enable(Long id) {
+        AppUser user = accountMutationGuard.lockAndRefresh(id);
+        if (user.isEnabled()) {
+            return;
+        }
+        applyEnable(user);
+    }
+
+    /**
+     * 停用的唯一实现：锁内自检「停自己」与「最后一个启用超管」，已停用幂等返回。
+     * {@code action} 只允许手工停用或同步停用，由两个公开入口各自固定，不开放任意动作。
+     */
+    private void disable(Long id, AccountAuditAction action) {
+        requireDisableAction(action);
+        AppUser user = accountMutationGuard.lockAndRefresh(id);
         AppUser current = currentOrNull();
         if (current != null && current.getId().equals(id)) {
             throw ApiException.conflict("不能停用当前登录的账号");
@@ -183,28 +206,24 @@ public class UserService {
         if (!user.isEnabled()) {
             return;
         }
-        if (holdsSuperAdmin(user) && !hasAnotherEnabledSuperAdmin(user)) {
+        if (accountMutationGuard.isLastEnabledSuperAdmin(user)) {
             throw ApiException.conflict("不能停用最后一个启用的超级管理员，请先启用其他超级管理员");
         }
-        applyDisable(user);
+        applyDisable(user, action);
     }
 
-    @Transactional
-    public void enable(Long id) {
-        lockSuperAdminAnchor();
-        AppUser user = getFresh(id);
-        if (user.isEnabled()) {
-            return;
+    private void requireDisableAction(AccountAuditAction action) {
+        if (action != AccountAuditAction.DISABLE && action != AccountAuditAction.SYNC_DISABLE) {
+            throw new IllegalArgumentException("账号停用只接受手工停用或同步停用动作");
         }
-        applyEnable(user);
     }
 
     /** 只有一个入口改启用状态：调用方负责锁、刷新与校验，这里只落值与审计。 */
-    private void applyDisable(AppUser user) {
+    private void applyDisable(AppUser user, AccountAuditAction action) {
         AccountSnapshot before = accountAudits.snapshotOf(user);
         user.setEnabled(false);
         accountAudits.record(
-                actorName(), AccountAuditAction.DISABLE, user.getId(), before, accountAudits.snapshotOf(user));
+                actorName(), action, user.getId(), before, accountAudits.snapshotOf(user));
     }
 
     private void applyEnable(AppUser user) {
@@ -214,45 +233,8 @@ public class UserService {
                 actorName(), AccountAuditAction.ENABLE, user.getId(), before, accountAudits.snapshotOf(user));
     }
 
-    /**
-     * 串行化所有「可能让最后一个启用超管消失」的写入。锁的是稳定的角色行，
-     * 因为当超管集合为空时 app_user 上没有行可锁。
-     *
-     * <p>拿不到这一行说明种子 / 迁移没把 {@code super_admin} 建起来：此时既不能串行化，
-     * 也不能用「没有其他超管」的假象放行，所以明确失败（fail closed），
-     * 绝不把 {@code Optional} 丢掉后继续无锁改账号。
-     */
-    private void lockSuperAdminAnchor() {
-        if (roles.findByCodeForUpdate(SUPER_ADMIN_ROLE).isEmpty()) {
-            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "超级管理员角色缺失，账号变更已中止");
-        }
-    }
-
-    /**
-     * 锁内读目标账号，并强制从数据库刷新一次：调用方可能早就把这条记录加载进持久化上下文，
-     * 拿一级缓存里的 {@code enabled}/{@code roles} 判断会让并发的停用 / 降级互相看不见。
-     */
-    private AppUser getFresh(Long id) {
-        AppUser user = get(id);
-        entityManager.refresh(user);
-        return user;
-    }
-
-    private boolean holdsSuperAdmin(AppUser user) {
-        return user.getRoles().stream().anyMatch(this::isSuperAdmin);
-    }
-
     private boolean isSuperAdmin(Role role) {
-        return SUPER_ADMIN_ROLE.equals(role.getCode());
-    }
-
-    /**
-     * 锁内直接问数据库「除目标之外还有没有启用中的超管」。标量 count 不经过一级缓存，
-     * 因此不会把预加载的旧快照当成事实。调用方必须已经持有 {@link #lockSuperAdminAnchor()} 的锁。
-     */
-    private boolean hasAnotherEnabledSuperAdmin(AppUser target) {
-        return users.countEnabledRoleHoldersExcluding(SUPER_ADMIN_ROLE, target.getId()) > 0;
+        return AccountMutationGuard.isSuperAdminRole(role);
     }
 
     /** The caller, or null when there is no usable principal (startup, CLI, tests). */
@@ -263,6 +245,15 @@ public class UserService {
             return null;
         }
         return users.findByUsername(authentication.getName()).orElse(null);
+    }
+
+    /** 同步停用要求真实管理员身份：没有登录主体就明确失败，而不是记成 system。 */
+    private AppUser requireCurrentOperator() {
+        AppUser current = currentOrNull();
+        if (current == null) {
+            throw ApiException.unauthorized("同步停用需要当前登录的管理员");
+        }
+        return current;
     }
 
     /** 审计里的操作者：登录账号的用户名；无登录主体（启动 / 命令行）时写 system。 */
@@ -317,7 +308,7 @@ public class UserService {
         // 票 01：升级后旧 admin 账号都是超级管理员，管理类通知的收件人不能因此消失。
         java.util.LinkedHashSet<AppUser> result = new java.util.LinkedHashSet<>();
         result.addAll(users.findAllByRolesCode("admin"));
-        result.addAll(users.findAllByRolesCode(SUPER_ADMIN_ROLE));
+        result.addAll(users.findAllByRolesCode(AccountMutationGuard.SUPER_ADMIN_ROLE));
         return List.copyOf(result);
     }
 
