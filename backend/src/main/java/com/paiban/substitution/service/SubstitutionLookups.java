@@ -4,6 +4,7 @@ import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
 import com.paiban.foundation.domain.TeacherRepository;
+import com.paiban.identity.domain.AppUser;
 import com.paiban.substitution.domain.Substitution;
 import com.paiban.substitution.domain.SubstitutionRepository;
 import com.paiban.substitution.domain.SubstitutionRequest;
@@ -25,6 +26,19 @@ final class SubstitutionLookups {
     static SubstitutionRequest requireRequest(SubstitutionRequestRepository requests, Long requestId) {
         return requests.findById(requestId)
                 .orElseThrow(() -> ApiException.notFound("调代申请不存在: " + requestId));
+    }
+
+    /**
+     * 「是不是本人」的唯一判据：先认真实操作账号（票 05 起新申请都写 operatorUserId），
+     * 旧行没有操作账号时才回退到「非空的申请人教师关系」。
+     * 两个 null 永远不会相等——账号没绑教师不会因此变成任何申请的主人。
+     */
+    static boolean isOwn(SubstitutionRequest request, AppUser user) {
+        if (request.getOperatorUserId() != null) {
+            return request.getOperatorUserId().equals(user.getId());
+        }
+        return user.getTeacherId() != null
+                && user.getTeacherId().equals(request.getRequesterTeacherId());
     }
 
     static void requireTeacher(TeacherRepository teachers, Long teacherId) {

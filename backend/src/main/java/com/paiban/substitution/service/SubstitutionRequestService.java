@@ -39,6 +39,7 @@ public class SubstitutionRequestService {
     private final SubstitutionRequestRepository requests;
     private final SubstitutionHistoryRepository history;
     private final AuditLogRepository auditLogs;
+    private final SubstitutionApprovalService approvals;
     private final SubstitutionRepository substitutions;
     private final TimetableEntryRepository entries;
     private final AdminClassRepository adminClasses;
@@ -56,6 +57,7 @@ public class SubstitutionRequestService {
             SubstitutionRequestRepository requests,
             SubstitutionHistoryRepository history,
             AuditLogRepository auditLogs,
+            SubstitutionApprovalService approvals,
             SubstitutionRepository substitutions,
             TimetableEntryRepository entries,
             AdminClassRepository adminClasses,
@@ -71,6 +73,7 @@ public class SubstitutionRequestService {
         this.requests = requests;
         this.history = history;
         this.auditLogs = auditLogs;
+        this.approvals = approvals;
         this.substitutions = substitutions;
         this.entries = entries;
         this.adminClasses = adminClasses;
@@ -182,19 +185,21 @@ public class SubstitutionRequestService {
         return mapper.toDto(saved);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<SubstitutionRequestDto> list(
             String username, Long semesterId, String status, boolean mineOnly) {
         AppUser user = users.getByUsername(username);
         boolean admin = users.hasPermission(user, com.paiban.identity.domain.Permissions.SUBSTITUTION_VIEW);
         Long resolved = semesterId != null ? semesterId : semesters.requireCurrent().getId();
+        // 列表可能触发作废，所以是普通可写事务：先把过了开课时刻的待批单作废，
+        // 再按最新状态重查，避免刚变 EXPIRED 的行仍出现在「待审批」里。
+        approvals.expireOverdue(resolved, user);
         List<SubstitutionRequest> result;
         if (mineOnly || !admin) {
-            if (user.getTeacherId() == null) {
-                return List.of();
-            }
-            result = requests.findBySemesterIdAndRequesterTeacherIdOrderByCreatedAtDesc(
-                    resolved, user.getTeacherId());
+            // 本人列表认真实操作账号（旧行回退到非空教师关系），不再只按教师档案查。
+            result = requests.findBySemesterIdOrderByCreatedAtDesc(resolved).stream()
+                    .filter(request -> SubstitutionLookups.isOwn(request, user))
+                    .toList();
         } else if (status != null && !status.isBlank()) {
             result = requests.findBySemesterIdAndStatusOrderByCreatedAtDesc(resolved, status);
         } else {
@@ -211,7 +216,7 @@ public class SubstitutionRequestService {
         SubstitutionRequest request = SubstitutionLookups.requireRequest(requests, requestId);
         AppUser user = users.getByUsername(username);
         if (!users.hasPermission(user, com.paiban.identity.domain.Permissions.SUBSTITUTION_VIEW)
-                && !Objects.equals(user.getTeacherId(), request.getRequesterTeacherId())) {
+                && !SubstitutionLookups.isOwn(request, user)) {
             throw ApiException.forbidden("不能查看他人的调代申请");
         }
         return mapper.toDto(request);
@@ -221,12 +226,16 @@ public class SubstitutionRequestService {
     public List<HistoryDto> history(String username, Long requestId) {
         SubstitutionRequest request = SubstitutionLookups.requireRequest(requests, requestId);
         AppUser user = users.getByUsername(username);
-        boolean requester = Objects.equals(user.getTeacherId(), request.getRequesterTeacherId())
-                || Objects.equals(user.getTeacherId(), request.getOriginalTeacherId());
+        boolean requester = SubstitutionLookups.isOwn(request, user)
+                || (user.getTeacherId() != null
+                        && user.getTeacherId().equals(request.getOriginalTeacherId()));
         boolean substitute = user.getTeacherId() != null
                 && substitutions.findByRequestId(requestId).stream()
                         .anyMatch(item -> user.getTeacherId().equals(item.getSubstituteTeacherId()));
-        boolean headTeacher = user.getTeacherId() != null
+        // 班主任历史分支必须同时持有「本班调代记录」权限；身份字段本身不构成授权。
+        boolean headTeacher = users.hasPermission(
+                        user, com.paiban.identity.domain.Permissions.SUBSTITUTION_VIEW_CLASS)
+                && user.getTeacherId() != null
                 && adminClasses.findById(request.getAdminClassId())
                         .map(adminClass -> user.getTeacherId().equals(adminClass.getHeadTeacherId()))
                         .orElse(false);

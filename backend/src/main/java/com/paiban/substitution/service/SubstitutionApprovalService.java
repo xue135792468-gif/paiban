@@ -210,6 +210,38 @@ public class SubstitutionApprovalService {
         return mapper.toDto(saved);
     }
 
+    /** 撤回：只有申请人本人、且只在待审批时可撤；不需要审批权限。 */
+    public SubstitutionRequestDto withdraw(String username, Long requestId) {
+        SubstitutionRequestDto dto = transaction.execute(
+                status -> withdrawLocked(username, requestId));
+        if (dto == null) {
+            throw ApiException.conflict("撤回未完成，请重试");
+        }
+        return dto;
+    }
+
+    private SubstitutionRequestDto withdrawLocked(String username, Long requestId) {
+        AppUser user = users.getByUsername(username);
+        SubstitutionRequest request = lockRequest(requestId);
+        if (!SubstitutionLookups.isOwn(request, user)) {
+            throw ApiException.forbidden("只能撤回自己的调代申请");
+        }
+        requireStillPending(request);
+        Instant now = clock.instant();
+        request.setStatus(SubstitutionRequest.WITHDRAWN);
+        request.setUpdatedAt(now);
+        SubstitutionRequest saved = requests.save(request);
+        effects.recordHistory(saved.getId(), SubstitutionRequest.SUBMITTED,
+                SubstitutionRequest.WITHDRAWN, username, null);
+        auditLogs.save(new AuditLog(username, "SUBSTITUTION_REQUEST_WITHDRAWN", "SUBSTITUTION",
+                "requestId=" + saved.getId()
+                        + ", entryId=" + saved.getEntryId()
+                        + ", lessonDate=" + saved.getEffectiveDate()
+                        + ", operatorUserId=" + user.getId(),
+                1, 0));
+        return mapper.toDto(saved);
+    }
+
     /** 开课后仍未处理：作废并留痕，随后由外层把 409 返回给调用方。 */
     private void expire(SubstitutionRequest request, String username) {
         request.setStatus(SubstitutionRequest.EXPIRED);
@@ -222,6 +254,61 @@ public class SubstitutionApprovalService {
                         + ", entryId=" + request.getEntryId()
                         + ", lessonDate=" + request.getEffectiveDate(),
                 1, 0));
+    }
+
+    /**
+     * 惰性清扫：把已经过了开课时刻、仍停在待审批的申请作废（只处理调用者有权看到的记录）。
+     * 列表用它保证「待审批」不会长期挂着早已上过的课；写入与请求同事务提交，
+     * 因此返回的列表重查后看不到刚作废的行。
+     */
+    public int expireOverdue(Long semesterId, AppUser viewer) {
+        boolean allVisible = users.hasPermission(viewer, Permissions.SUBSTITUTION_VIEW);
+        Integer expired = transaction.execute(status -> {
+            List<SubstitutionRequest> pending = requests.findBySemesterIdAndStatusOrderByCreatedAtDesc(
+                    semesterId, SubstitutionRequest.SUBMITTED);
+            int count = 0;
+            boolean semesterLocked = false;
+            for (SubstitutionRequest candidate : pending) {
+                if (!allVisible && !SubstitutionLookups.isOwn(candidate, viewer)) {
+                    continue;
+                }
+                if (!overdue(candidate)) {
+                    continue;
+                }
+                if (!semesterLocked) {
+                    effects.lockSemester(semesterId);
+                    semesterLocked = true;
+                }
+                SubstitutionRequest row = requests.findWithLockById(candidate.getId()).orElse(null);
+                if (row == null) {
+                    continue;
+                }
+                entityManager.refresh(row);
+                // 锁后复查：锁前读到的待批列表可能已经过时，另一位管理员可能在这期间
+                // 把同一张单批准/驳回/撤回了；这里必须同时重验仍是 SUBMITTED 且确实过期，
+                // 否则会把已生效的申请改成 EXPIRED，留下「状态 EXPIRED + 生效行 EFFECTIVE」。
+                if (!SubstitutionRequest.SUBMITTED.equals(row.getStatus()) || !overdue(row)) {
+                    continue;
+                }
+                expire(row, viewer.getUsername());
+                count++;
+            }
+            return count;
+        });
+        return expired == null ? 0 : expired;
+    }
+
+    private boolean overdue(SubstitutionRequest request) {
+        Instant deadline;
+        try {
+            deadline = LessonDeadline.earliest(List.of(new LessonDeadline.ChangedSlot(
+                    request.getEffectiveDate(),
+                    SubstitutionLookups.periodStart(periods, request.getPeriodId()))));
+        } catch (ApiException | LessonDeadline.MissingStartTimeException ex) {
+            // 课节时间缺失等异常留给批准路径给出明确原因，这里不猜、不作废。
+            return false;
+        }
+        return !LessonDeadline.canConfirm(clock.instant(), deadline);
     }
 
     private AppUser requireApprover(String username) {
