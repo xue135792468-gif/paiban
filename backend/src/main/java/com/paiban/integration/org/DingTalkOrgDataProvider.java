@@ -11,6 +11,8 @@ import com.paiban.integration.dingtalk.DingTalkApiException;
 import com.paiban.integration.domain.DingUser;
 import com.paiban.integration.org.DingTalkSyncPlan.Category;
 import com.paiban.integration.org.DingTalkSyncPlan.Item;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
@@ -52,6 +54,7 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
     private final FoundationService foundation;
     private final AccountMutationGuard accountMutationGuard;
     private final UserService users;
+    private final EntityManager entityManager;
     private final TransactionTemplate transactionTemplate;
 
     public DingTalkOrgDataProvider(
@@ -65,6 +68,7 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
             FoundationService foundation,
             AccountMutationGuard accountMutationGuard,
             UserService users,
+            EntityManager entityManager,
             PlatformTransactionManager transactionManager) {
         this.settings = settings;
         this.directoryLoader = directoryLoader;
@@ -76,6 +80,7 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
         this.foundation = foundation;
         this.accountMutationGuard = accountMutationGuard;
         this.users = users;
+        this.entityManager = entityManager;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -170,6 +175,7 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
         }
         OrgSyncResult result = transactionTemplate.execute(status -> {
             accountMutationGuard.lock();
+            lockSelectedTeachers(decisions);
             DingTalkSyncPlan plan = planner.plan(directory, decisions);
             validateSelectedDeactivations(directory, decisions);
             int accountDisabled = 0;
@@ -198,7 +204,24 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
         return result;
     }
 
-    /** Caller holds the account anchor; use the same raw-directory candidates as preview. */
+    /**
+     * UID writers outside account management still update these same database rows.
+     * Lock them before either planner reads teachers, so binding validation and the
+     * account stop are atomic with those updates. A fixed order prevents overlapping
+     * selections from acquiring teacher rows in opposite orders.
+     */
+    private void lockSelectedTeachers(DingTalkSyncDecisions decisions) {
+        for (Long teacherId : decisions.deactivationSelections().stream()
+                .map(DingTalkSyncDecisions.DeactivationSelection::teacherId).distinct().sorted().toList()) {
+            Teacher teacher = entityManager.find(Teacher.class, teacherId, LockModeType.PESSIMISTIC_WRITE);
+            if (teacher == null) {
+                throw ApiException.conflict("停用名单或绑定已变化，请重新预演通讯录");
+            }
+            entityManager.refresh(teacher, LockModeType.PESSIMISTIC_WRITE);
+        }
+    }
+
+    /** Caller holds account/selected teacher locks; use the same candidates as preview. */
     private void validateSelectedDeactivations(DingTalkDirectory directory, DingTalkSyncDecisions decisions) {
         if (decisions.deactivationSelections().isEmpty()) {
             return;
