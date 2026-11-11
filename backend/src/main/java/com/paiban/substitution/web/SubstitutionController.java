@@ -99,6 +99,12 @@ public class SubstitutionController {
         return approvals.reject(principal.getName(), id, body);
     }
 
+    /** 撤回自己的待审批申请（仅申请人本人、仅 SUBMITTED）。 */
+    @PostMapping("/substitution-requests/{id}/withdraw")
+    public SubstitutionRequestDto withdraw(@PathVariable Long id, Principal principal) {
+        return approvals.withdraw(principal.getName(), id);
+    }
+
     @GetMapping("/substitution-requests/{id}/history")
     public List<HistoryDto> history(@PathVariable Long id, Principal principal) {
         return requests.history(principal.getName(), id);
