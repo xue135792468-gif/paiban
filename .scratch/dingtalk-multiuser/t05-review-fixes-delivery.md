@@ -6,8 +6,8 @@
 
 ## 已确认问题与整改
 
-- 主控对 candidate `661b3` 实跑完整 6 条 Playwright，得到 4 passed / 2 failed、exit 1。
-  两个失败的根因相同：`submitCover` 把 Playwright `Page` 传给只接受 `Locator` 的
+- 主控对 candidate `6611b3c4b0e2ea91478c9cd227fe31ad102b545e` 实跑完整 6 条 Playwright，
+  得到 4 passed / 2 failed、exit 1。两个失败的根因相同：`submitCover` 把 Playwright `Page` 传给只接受 `Locator` 的
   `pickOption`，在 `scope.page()` 处抛 `TypeError`，尚未进入审批。
 - E2E 现将“期望代课”表单项的 `.el-form-item` Locator 传给既有 `pickOption` helper。
   `data-testid="expected-substitute"` 位于该表单项内，选择器和原有 helper 均未改变。
@@ -28,7 +28,7 @@
 
 | 阶段 | 证据 | 结果 |
 |---|---|---|
-| 真实红（主控） | `E:/排课系统/.scratch/dingtalk-multiuser/logs/t05-browser-run1/playwright.log` 与 `E:/排课系统/runtime/t05-browser-run1/test-results/` 下两份 approval error-context | 完整 6 条 Playwright：4 passed / 2 failed，exit 1；源码一致标记 `SOURCE_IDENTICAL=1`，服务均退出 |
+| 真实红（主控） | `E:/排课系统/.worktrees/dingtalk-integration/.scratch/dingtalk-multiuser/logs/t05-browser-run1/playwright.log` 与 `E:/排课系统/.worktrees/dingtalk-integration/.scratch/dingtalk-multiuser/.runtime/t05-browser-run1/test-results/` 下两份 approval error-context | 完整 6 条 Playwright：4 passed / 2 failed，exit 1；源码一致标记 `SOURCE_IDENTICAL=1`，服务均退出 |
 | 本次验证 | 对 Vue 与 E2E 两个文件一起运行定向 ESLint；原始日志为 `E:/排课系统/.worktrees/dingtalk-t05-review-fixes/.runtime/logs/t05-targeted-eslint.log` | exit 0 |
 
 本轮没有伪造单测或镜像测试。修复后的完整 6 条 Playwright 由主控统一复跑，本工作树按
