@@ -1,9 +1,12 @@
 package com.paiban.integration.auth;
 
 import com.paiban.common.settings.SettingsService;
+import com.paiban.integration.dingtalk.DingTalkApiException;
 import com.paiban.integration.dingtalk.DingTalkClient;
 import com.paiban.integration.domain.DingUser;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -13,6 +16,8 @@ import org.springframework.util.StringUtils;
  */
 @Component
 public class DingTalkAuthProvider implements AuthProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(DingTalkAuthProvider.class);
 
     private final SettingsService settings;
     private final DingTalkClient client;
@@ -47,6 +52,11 @@ public class DingTalkAuthProvider implements AuthProvider {
             if (identity == null || !userId.equals(identity.userId())) {
                 throw DingTalkLoginFailure.DINGTALK_CALL_FAILED.exception();
             }
+        } catch (DingTalkApiException ex) {
+            // The adapter has already stripped vendor text and credentials; keep only the
+            // two numeric diagnostics so a real tenant failure is diagnosable server-side.
+            log.warn("钉钉免登外部调用失败：errcode={}，sub_code={}", ex.errorCode(), ex.subCode());
+            throw DingTalkLoginFailure.DINGTALK_CALL_FAILED.exception();
         } catch (RuntimeException ex) {
             throw DingTalkLoginFailure.DINGTALK_CALL_FAILED.exception();
         }
