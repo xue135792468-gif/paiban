@@ -2,19 +2,27 @@
 
 2026-11-11，分支 `codex/dingtalk-t04-ui`，工作树 `.worktrees/dingtalk-t04-ui`。
 
-开工前已 fast-forward 合并 `codex/dingtalk-multiuser` 最新提交 `73ddd1f`（`t04-wire-contract.md`），并执行 `scripts/doctor.sh` 核实可用物理内存约 5.0 GB、端口空闲。
+开工前合并 `codex/dingtalk-multiuser` 最新提交（含 `439c9eb`），并执行 `scripts/doctor.sh` 核实可用物理内存约 5.0 GB、端口空闲。
 
 ## 范围与边界
 
 - 本切片为 **04-B 前端切片 + 真实 API Playwright 用例准备**，严格遵循 `.scratch/dingtalk-multiuser/t04-wire-contract.md`。
 - 只修改前端契约与组件文件：
   - `frontend/src/api/integration.ts`
-  - `frontend/src/components/DingTalkSyncPreview.vue`（351 行，≤ 600 行限制）
+  - `frontend/src/components/DingTalkSyncPreview.vue`（实际 455 行，≤ 600 行限制）
   - `frontend/src/components/DingTalkSyncPreview.spec.ts`（新增组件单测）
   - `frontend/src/views/SettingsView.spec.ts`（补齐 `previewFixture` 的 `scanComplete`/`deactivationWarning`/`deactivations` 字段及 `confirm` 请求载荷中的 `deactivationSelections: []`）
   - `frontend/e2e/dingtalk-sync.spec.ts`（新增票 04 真实 API 端到端用例，待 A/C 后端整合后运行）
+  - `.scratch/dingtalk-multiuser/logs/t04-ui-vitest.log`（13 条定向 Vitest 原始日志）
   - `.scratch/dingtalk-multiuser/t04-ui-delivery.md`（本交付记录）
 - 未修改 `backend/**`、其他票据、旧 ADR，未将 `.scratch/dingtalk-multiuser/issues/04-sync-deactivation.md` 标为 done/implemented。
+
+## 初审整改记录（相对 `91d1020`）
+
+1. **E2E 候选取消隔离**：在 `frontend/e2e/dingtalk-sync.spec.ts` 中捕获 `/api/integrations/dingtalk/sync/preview` 的真实响应 `deactivations`，对除本测试目标 `accountB` 之外的所有候选逐一点击取消勾选，避免全量套件中其他 spec 残留已绑定账号被一并停用或导致计数偏差。
+2. **去除 `runSql` 旁路**：`frontend/e2e/dingtalk-sync.spec.ts` 改用公开 `POST /teachers` 直接传入 `dingtalkUserId` 造数，`finally` 中通过 `PUT /teachers/{id}` 传 `dingtalkUserId: ''` 清除绑定，删除 `runSql` 导入与调用。
+3. **组件测试 seam 纯化**：`frontend/src/components/DingTalkSyncPreview.spec.ts` 删除全部 `toHaveBeenCalledTimes`、`not.toHaveBeenCalled` 与 `mock.calls` 内部调用断言，只验证公开 DOM 与 emitted `confirm` payload；部分扫描用例将 `ElMessageBox.confirm` 模拟为取消，验证无需走停用确认仍正常 emit 导入载荷（二次确认弹窗文案由 E2E 对真实 `.el-message-box` 断言）。
+4. **精确行数与原始日志落盘**：修正 `DingTalkSyncPreview.vue` 行数为实测 455 行，并将 3 个文件 13 条定向 Vitest 的原始输出落盘至 `.scratch/dingtalk-multiuser/logs/t04-ui-vitest.log`。
 
 ## 接口与交互实现要点（对照 `t04-wire-contract.md`）
 
@@ -46,7 +54,7 @@
 
 均在 `E:/排课系统/.worktrees/dingtalk-t04-ui/frontend`（或工作树根）通过 GitPortable Bash 串行执行：
 
-1. `npx vitest run --no-file-parallelism src/api/integration.spec.ts src/components/DingTalkSyncPreview.spec.ts src/views/SettingsView.spec.ts` → **3 files / 13 tests passed, exit 0**
+1. `npx vitest run --no-file-parallelism src/api/integration.spec.ts src/components/DingTalkSyncPreview.spec.ts src/views/SettingsView.spec.ts > ../.scratch/dingtalk-multiuser/logs/t04-ui-vitest.log 2>&1` → **3 files / 13 tests passed, exit 0**
 2. `npm run lint`（`eslint . --max-warnings 0`） → **exit 0**
 3. `npx vue-tsc -b` → **exit 0**
 4. `npx vite build` → **exit 0**

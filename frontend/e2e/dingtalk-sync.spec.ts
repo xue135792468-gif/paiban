@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { APIRequestContext } from '@playwright/test'
-import { apiCall, apiLogin, createAccount, newContext, runSql, uiLogin } from './helpers'
+import { apiCall, apiLogin, createAccount, newContext, uiLogin } from './helpers'
 import { capture } from './screenshots'
 
 let browserErrors: string[] = []
@@ -80,8 +80,7 @@ test('钉钉同步预演「将停用」候选：逐个排除、二次确认停�
   const api: APIRequestContext = await newContext()
   const token = await apiLogin(api)
   const suffix = Math.random().toString(36).slice(2, 8)
-  let teacherAId: number | null = null
-  let teacherBId: number | null = null
+  const seededTeachers: Array<{ id: number; name: string; employeeNo: string }> = []
 
   await apiCall(api, token, 'put', '/integrations/dingtalk/config', {
     enabled: true,
@@ -95,19 +94,15 @@ test('钉钉同步预演「将停用」候选：逐个排除、二次确认停�
     const teacherA = await apiCall(api, token, 'post', '/teachers', {
       name: `离职排除${suffix}`,
       employeeNo: `DA-${suffix}`,
+      dingtalkUserId: `dd-gone-a-${suffix}`,
     })
+    seededTeachers.push({ id: teacherA.id, name: teacherA.name, employeeNo: teacherA.employeeNo })
     const teacherB = await apiCall(api, token, 'post', '/teachers', {
       name: `离职停用${suffix}`,
       employeeNo: `DB-${suffix}`,
+      dingtalkUserId: `dd-gone-b-${suffix}`,
     })
-    teacherAId = teacherA.id
-    teacherBId = teacherB.id
-
-    await runSql(
-      api,
-      `UPDATE teacher SET dingtalk_user_id = 'dd-gone-a-${suffix}' WHERE id = ${teacherA.id};` +
-        `UPDATE teacher SET dingtalk_user_id = 'dd-gone-b-${suffix}' WHERE id = ${teacherB.id};`,
-    )
+    seededTeachers.push({ id: teacherB.id, name: teacherB.name, employeeNo: teacherB.employeeNo })
 
     const accountA = await createAccount(api, {
       username: `depart_a_${suffix}`,
@@ -131,7 +126,21 @@ test('钉钉同步预演「将停用」候选：逐个排除、二次确认停�
 
     const card = page.locator('#dingtalk-integration')
     await expect(card).toBeVisible()
-    await card.getByRole('button', { name: '预演同步' }).click()
+    const [previewResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          response.url().includes('/api/integrations/dingtalk/sync/preview'),
+      ),
+      card.getByRole('button', { name: '预演同步' }).click(),
+    ])
+    expect(previewResponse.status()).toBe(200)
+    const previewBody = await previewResponse.json()
+    const candidateIds: number[] = (previewBody.deactivations ?? []).map(
+      (item: { accountId: number }) => item.accountId,
+    )
+    expect(candidateIds).toContain(accountA.id)
+    expect(candidateIds).toContain(accountB.id)
 
     const preview = card.locator('.org-sync-preview')
     await expect(preview).toBeVisible()
@@ -141,8 +150,12 @@ test('钉钉同步预演「将停用」候选：逐个排除、二次确认停�
     await expect(deactivationSection.getByRole('row').filter({ hasText: `depart_a_${suffix}` })).toHaveCount(1)
     await expect(deactivationSection.getByRole('row').filter({ hasText: `depart_b_${suffix}` })).toHaveCount(1)
 
-    // 排除 accountA，只保留 accountB 待停用
-    await preview.getByTestId(`dingtalk-deactivate-checkbox-${accountA.id}`).click()
+    // 捕获真实预演候选后，除本测试 accountB 外逐一取消所有候选（含 accountA 及其他 spec 可能留下的候选）
+    for (const candidateId of candidateIds) {
+      if (candidateId !== accountB.id) {
+        await preview.getByTestId(`dingtalk-deactivate-checkbox-${candidateId}`).click()
+      }
+    }
     await expect(preview.getByTestId('dingtalk-deactivation-tag')).toContainText('将停用 1')
     await capture(page, 'dingtalk-t04-sync-deactivation-preview')
 
@@ -203,11 +216,12 @@ test('钉钉同步预演「将停用」候选：逐个排除、二次确认停�
 
     expect(browserErrors).toEqual([])
   } finally {
-    if (teacherAId !== null && teacherBId !== null) {
-      await runSql(
-        api,
-        `UPDATE teacher SET dingtalk_user_id = NULL WHERE id IN (${teacherAId}, ${teacherBId});`,
-      ).catch(() => undefined)
+    for (const teacher of seededTeachers) {
+      await apiCall(api, token, 'put', `/teachers/${teacher.id}`, {
+        name: teacher.name,
+        employeeNo: teacher.employeeNo,
+        dingtalkUserId: '',
+      }).catch(() => undefined)
     }
     await apiCall(api, token, 'put', '/integrations/dingtalk/config', { enabled: false }).catch(
       () => undefined,
