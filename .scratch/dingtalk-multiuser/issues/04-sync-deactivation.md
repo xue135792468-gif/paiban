@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] 预演仍严格只读（ADR-0024），返回「将停用」分类与名单
 - [ ] 确认时支持排除；停用每个账号写「同步停用」审计
