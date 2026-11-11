@@ -59,6 +59,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Calendar, ChatDotRound, List, Timer } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
+import { primaryRoleLabel } from '@/constants/roles'
 import { useAuthStore } from '@/stores/auth'
 
 interface Hint {
@@ -90,12 +91,7 @@ const today = computed(() =>
   new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }),
 )
 
-const roleLabel = computed(() => {
-  if (auth.hasRole('admin')) return '教务管理员'
-  if (auth.hasRole('head_teacher')) return '班主任'
-  if (auth.hasRole('teacher')) return '教师'
-  return ''
-})
+const roleLabel = computed(() => primaryRoleLabel(auth.roles))
 
 const quickLinks = computed(() => {
   const links = []

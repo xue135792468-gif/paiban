@@ -4,6 +4,7 @@ import ElementPlus, { ElMessageBox } from 'element-plus'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import SettingsView from './SettingsView.vue'
+import { useAuthStore } from '@/stores/auth'
 
 const httpMock = vi.hoisted(() => ({
   get: vi.fn(),
@@ -41,9 +42,25 @@ beforeEach(() => {
   httpMock.delete.mockResolvedValue({ data: {} })
 })
 
-async function mountView() {
+const SUPER_ADMIN_PERMISSIONS = [
+  'settings:manage',
+  'user:manage',
+  'foundation:manage',
+  'integration:manage',
+  'audit:view:account',
+]
+
+async function mountView(permissions: string[] = SUPER_ADMIN_PERMISSIONS) {
   const pinia = createPinia()
   setActivePinia(pinia)
+  useAuthStore(pinia).user = {
+    id: 1,
+    username: 'tester',
+    displayName: '测试账号',
+    enabled: true,
+    roles: ['super_admin'],
+    permissions,
+  }
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [{ path: '/:pathMatch(.*)*', component: { template: '<div />' } }],
@@ -154,6 +171,49 @@ describe('SettingsView: 钉钉同步超时', () => {
 
     release?.({ data: previewFixture })
     await flushPromises()
+    wrapper.unmount()
+  })
+})
+
+describe('SettingsView: 钉钉配置只对集成配置权限可见', () => {
+  it('教务管理员看不到钉钉区块，也不会请求集成配置接口', async () => {
+    const wrapper = await mountView(['settings:manage', 'foundation:manage'])
+
+    expect(wrapper.find('#dingtalk-integration').exists()).toBe(false)
+    const urls = httpMock.get.mock.calls.map((call) => String(call[0]))
+    expect(urls.some((url) => url.includes('/integrations/dingtalk'))).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('超级管理员能看到钉钉区块', async () => {
+    const wrapper = await mountView()
+
+    expect(wrapper.find('#dingtalk-integration').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('教务保存设置时不回写钉钉字段，避免整单被拒', async () => {
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/settings') {
+        return Promise.resolve({
+          data: {
+            'school.name': '本校',
+            'substitution.max-plan-teachers': '5',
+            'integration.dingtalk.event-token': '',
+          },
+        })
+      }
+      return Promise.resolve({ data: [] })
+    })
+    const wrapper = await mountView(['settings:manage', 'foundation:manage'])
+
+    await wrapper.get('.toolbar .el-button').trigger('click')
+    await flushPromises()
+
+    expect(httpMock.put).toHaveBeenCalledWith('/settings', {
+      'school.name': '本校',
+      'substitution.max-plan-teachers': '5',
+    })
     wrapper.unmount()
   })
 })

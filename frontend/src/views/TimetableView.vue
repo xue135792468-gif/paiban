@@ -183,6 +183,10 @@ const auth = useAuthStore()
 const canExport = computed(() => auth.hasPermission('export:timetable'))
 const canViewAll = computed(() => auth.hasPermission('timetable:view'))
 const canViewClassScope = computed(() => auth.hasPermission('timetable:view:class'))
+// 票 01：老师新增的「查看全部课表」只是只读扩权，不是排课/编辑能力。
+const canManageSchedule = computed(
+  () => auth.hasPermission('scheduling:run') || auth.hasPermission('timetable:edit'),
+)
 const headClasses = computed(() =>
   classes.value.filter((item) => item.headTeacherId != null && item.headTeacherId === auth.user?.teacherId),
 )
@@ -386,7 +390,11 @@ onMounted(async () => {
     published.value = publishRes.data?.published ? publishRes.data : null
   }
   targetId.value = targets.value.length > 0 ? targets.value[0].id : null
-  if (!canViewAll.value) {
+  if (!canManageSchedule.value && auth.user?.teacherId != null) {
+    // 老师默认先看到自己的课表；行政班 / 全校是额外的只读入口，不是落地页。
+    mode.value = 'teacher'
+    targetId.value = auth.user.teacherId
+  } else if (!canViewAll.value) {
     if (canViewClassScope.value && headClasses.value.length > 0) {
       mode.value = 'class'
       targetId.value = headClasses.value[0].id
