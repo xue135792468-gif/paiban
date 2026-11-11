@@ -169,7 +169,7 @@ public class IntegrationController {
         List<DingTalkSyncDecisions.DeactivationSelection> deactivations = new ArrayList<>();
         if (request.deactivationSelections() != null) {
             for (DingTalkSyncDtos.DeactivationSelectionDto selection : request.deactivationSelections()) {
-                deactivations.add(new DingTalkSyncDecisions.DeactivationSelection(
+                deactivations.add(selection == null ? null : new DingTalkSyncDecisions.DeactivationSelection(
                         selection.accountId(), selection.teacherId(), selection.dingtalkUserId()));
             }
         }

@@ -179,6 +179,43 @@ class DingTalkSyncDeactivationIntegrationTest extends ApiIntegrationTest {
 
     private enum BindingChange { ACCOUNT_TEACHER, TEACHER_UID }
 
+    @ParameterizedTest(name = "非法停用选择 {0} 不得产生写入")
+    @EnumSource(InvalidSelection.class)
+    void malformedOrRepeatedSelectionsAreRejectedBeforeWriting(InvalidSelection invalid) {
+        String admin = adminToken();
+        long teacherId = teacher(admin, "非法选择保护教师", "sync04-invalid");
+        long accountId = linkedAccount(admin, "sync04-invalid-" + TestData.suffix(), teacherId);
+        Map<String, Object> selection = new java.util.HashMap<>(Map.of(
+                "accountId", accountId, "teacherId", teacherId, "dingtalkUserId", "sync04-invalid"));
+        List<Map<String, Object>> selections;
+        switch (invalid) {
+            case NULL_ITEM -> selections = java.util.Collections.singletonList(null);
+            case DUPLICATE -> selections = List.of(selection, selection);
+            default -> {
+                switch (invalid) {
+                    case MISSING_ACCOUNT -> selection.remove("accountId");
+                    case NEGATIVE_ACCOUNT -> selection.put("accountId", -1);
+                    case MISSING_TEACHER -> selection.remove("teacherId");
+                    case MISSING_UID -> selection.remove("dingtalkUserId");
+                    case BLANK_UID -> selection.put("dingtalkUserId", " ");
+                    default -> throw new IllegalArgumentException("Unhandled case: " + invalid);
+                }
+                selections = List.of(selection);
+            }
+        }
+        as(admin).body(Map.of("deactivationSelections", selections))
+                .when().post("/api/integrations/dingtalk/sync/confirm")
+                .then().statusCode(400);
+        as(admin).when().get("/api/users").then().statusCode(200)
+                .body("find { it.id == " + accountId + " }.enabled", equalTo(true));
+        as(admin).queryParam("action", "ACCOUNT_SYNC_DISABLE")
+                .when().get("/api/account-audits").then().statusCode(200).body("total", equalTo(0));
+    }
+
+    private enum InvalidSelection {
+        NULL_ITEM, DUPLICATE, MISSING_ACCOUNT, NEGATIVE_ACCOUNT, MISSING_TEACHER, MISSING_UID, BLANK_UID
+    }
+
     private void configureIntegration() {
         as(adminToken()).body(Map.of(
                         "enabled", true,
