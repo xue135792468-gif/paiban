@@ -2,9 +2,11 @@ package com.paiban.integration;
 
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.containsString;
 
 import com.paiban.identity.domain.AppUserRepository;
 import com.paiban.integration.dingtalk.FakeDingTalkClient;
+import com.paiban.integration.dingtalk.DingTalkApiException;
 import com.paiban.support.ApiIntegrationTest;
 import com.paiban.support.TestData;
 import io.restassured.response.Response;
@@ -42,6 +44,7 @@ class DingTalkSyncDeactivationIntegrationTest extends ApiIntegrationTest {
     void resetExternalDirectoryAndSettings() {
         resetIntegrationSettings();
         fakeDingTalk.clearDirectory();
+        configureIntegration();
     }
 
     @AfterEach
@@ -58,14 +61,6 @@ class DingTalkSyncDeactivationIntegrationTest extends ApiIntegrationTest {
     @Test
     void confirmationDisablesOnlySelectedAccountAndRevokesItsExistingSession() {
         String admin = adminToken();
-        as(admin).body(Map.of(
-                        "enabled", true,
-                        "appKey", "sync04-test-key",
-                        "appSecret", "sync04-test-secret",
-                        "agentId", "1000"))
-                .when().put("/api/integrations/dingtalk/config")
-                .then().statusCode(200);
-
         long selectedTeacher = teacher(admin, "待停用教师", "sync04-selected");
         long excludedTeacher = teacher(admin, "本次排除教师", "sync04-excluded");
         String selectedName = "sync04-selected-" + TestData.suffix();
@@ -112,6 +107,40 @@ class DingTalkSyncDeactivationIntegrationTest extends ApiIntegrationTest {
                 .body("items[0].actor", equalTo("admin"))
                 .body("items[0].before.enabled", equalTo(true))
                 .body("items[0].after.enabled", equalTo(false));
+    }
+
+    @Test
+    void incompleteRescanRejectsAnOldSelectionWithoutStoppingTheAccount() {
+        String admin = adminToken();
+        long teacherId = teacher(admin, "不完整扫描保护教师", "sync04-partial");
+        long accountId = linkedAccount(admin, "sync04-partial-" + TestData.suffix(), teacherId);
+        fakeDingTalk.failUserList(1L,
+                new DingTalkApiException("读取测试部门", 41, 0, "部门暂时不可读"));
+
+        as(admin).body(Map.of("deactivationSelections", List.of(Map.of(
+                        "accountId", accountId,
+                        "teacherId", teacherId,
+                        "dingtalkUserId", "sync04-partial"))))
+                .when().post("/api/integrations/dingtalk/sync/confirm")
+                .then().statusCode(409)
+                .body("message", containsString("扫描不完整"));
+
+        as(admin).when().get("/api/users")
+                .then().statusCode(200)
+                .body("find { it.id == " + accountId + " }.enabled", equalTo(true));
+        as(admin).queryParam("action", "ACCOUNT_SYNC_DISABLE")
+                .when().get("/api/account-audits")
+                .then().statusCode(200).body("total", equalTo(0));
+    }
+
+    private void configureIntegration() {
+        as(adminToken()).body(Map.of(
+                        "enabled", true,
+                        "appKey", "sync04-test-key",
+                        "appSecret", "sync04-test-secret",
+                        "agentId", "1000"))
+                .when().put("/api/integrations/dingtalk/config")
+                .then().statusCode(200);
     }
 
     private long teacher(String token, String name, String externalId) {

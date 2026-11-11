@@ -1,6 +1,7 @@
 package com.paiban.integration.org;
 
 import com.paiban.common.settings.SettingsService;
+import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.foundation.service.FoundationService;
@@ -161,6 +162,9 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
             return new OrgSyncResult(false, 0, 0, 0, 0, 0, 0, 0, elapsed, message);
         }
 
+        if (!decisions.deactivationSelections().isEmpty() && !directory.complete()) {
+            throw ApiException.conflict("扫描不完整，不能执行账号停用，请重新预演通讯录");
+        }
         OrgSyncResult result = transactionTemplate.execute(status -> {
             accountMutationGuard.lock();
             DingTalkSyncPlan plan = planner.plan(directory, decisions);
