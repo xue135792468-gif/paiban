@@ -46,6 +46,25 @@
   保留点击后等待 dropdown 隐藏的行为；删除已不用的局部 helper 与 `Locator` import，
   未修改 `pickOption` 签名。该项由主控真实 E2E 验证，不另写镜像测试。
 
+## A/B 与锁内权限快照
+
+- A：`SubstitutionMapper` 只有请求自身为 `EFFECTIVE` 且 `finalTeacherId` 为空时，才按
+  entry/date 回退查旧兼容生效行；`SUBMITTED/REJECTED/WITHDRAWN/EXPIRED` 等未批准状态
+  统一返回该请求的 expected 人。真正批准或系统撤销已有 `finalTeacherId` 时继续返回 final，
+  历史格式与其它 mapper 契约未改。
+- B：`reject` 与 `withdraw` 复用现有 `Outcome` 和 `overdue`：锁后 refresh、待批检查与
+  角色/归属判断完成后再判断真实截止；已过课时则同事务保存 `EXPIRED`、一次历史和一次
+  expiry audit，事务提交后外层返回 409。withdraw 先核 owner 再判断过期，非 owner 不会
+  借过期路径修改别人的申请；重复调用因已非 `SUBMITTED` 而不再追加历史或审计。截止时间
+  不可确定时沿用现有 `overdue=false` 策略。
+- Standards P3：`approve`/`reject` 都改为先完成学期与申请锁、refresh request，再由
+  新 `requireCurrentUser` 取当前账号并显式 `entityManager.refresh`，之后才判断审批权限；
+  `withdraw` 同样锁后 refresh 当前账号再判 owner。保留学期→申请锁序，核 enabled，未改
+  JWT、UserService 全局行为或 JPA clear 策略。
+- 既有 `SubstitutionApprovalIntegrationTest` 保留原 13 例，新增 1 条重复生效后的
+  SUBMITTED DTO 回归和 2 条课后 reject/withdraw HTTP 回归，共 16 例；主控独立 AuthSnapshot
+  test 由不可变 QA commit 合入，未改写。
+
 ## 主控视觉 QA
 
 主控实际执行 `view_image` 查看首轮成功的无学期截图，确认教师身份下原文案“请先在
@@ -64,6 +83,9 @@
 | C 真实红 → 绿 | `.runtime/logs/t05-c-status-red.log`、`t05-c-status-green.log` | red：exit 1，`已取消` != `系统撤销`；green：exit 0，types spec 5/5 |
 | D 真实红 → 绿 | `.runtime/logs/t05-d-same-name-red.log`、`t05-d-same-name-green.log` | red：exit 1，同名异 ID 仅渲染单个姓名；green：exit 0，MineTable spec 4/4 |
 | C/D/E 静态校验 | `.runtime/logs/t05-cde-eslint.log`、`t05-cde-vue-tsc.log` | 定向 ESLint exit 0；`vue-tsc -b` exit 0。E2E 另由上述 ESLint 覆盖，不能据 vue-tsc 声称已类型验证 E2E |
+| A/B 公开 HTTP red | `.runtime/logs/t05-ab-integration-red.log` | exit 1，16 tests / 3 failures / 0 errors；A 实际返回旧生效人而非 expected；课后 reject、withdraw 旧实现均错误返回 200 |
+| 锁内权限快照 red | 主控权威日志 `E:/排课系统/.worktrees/dingtalk-integration/.scratch/dingtalk-multiuser/logs/t05-authz-snapshot/`；本树复核 `.runtime/logs/t05-authz-snapshot-red.log` | 均为 1 failure / 0 errors、exit 1；失败为 revoked permission 未拒绝。按主控口径不重复把本地复跑充当唯一行为 red |
+| 最终四类 green | `.runtime/logs/t05-final-four-classes-green.log` | `SubstitutionApprovalIntegrationTest` + `SubstitutionApprovalConcurrencyTest` + `SubstitutionExpiryRaceIntegrationTest` + `SubstitutionApprovalAuthorizationSnapshotTest`：23 tests / 0 failures / 0 errors，exit 0 |
 | 第一轮本次验证 | 对 Vue 与 E2E 两个文件一起运行定向 ESLint；原始日志为 `E:/排课系统/.worktrees/dingtalk-t05-review-fixes/.runtime/logs/t05-targeted-eslint.log` | exit 0 |
 
 两轮都没有伪造单测或镜像测试。第二轮修复后，主控下一轮只需复跑受影响的
@@ -71,6 +93,11 @@
 也未提前声称首例已绿。
 
 ## 验证边界
+
+当前最终验证以本文件“红 → 绿证据”的 C/D/E、A/B、锁快照和四类 green 行为准；
+下面先保留前两轮整改当时的执行边界。
+
+### 历史阶段记录
 
 - 仅对 `frontend/src/views/SubstitutionsView.vue` 与
   `frontend/e2e/substitution-approval.spec.ts` 一起执行定向 ESLint。
@@ -80,3 +107,15 @@
 - 临时 JSON、ESLint 日志与缓存均置于本工作树 `.runtime/`；shell、Git hook 和 npm cache
   均显式指向该目录。
 - 不处理 reviewer 报告中的其他判断项；收到主控后续确认的整改清单前不扩写集。
+
+### 当前最终范围
+
+- 前端定向 Vitest：`types.spec.ts` 5/5、`SubstitutionMineTable.spec.ts` 4/4，均 exit 0。
+- 前端静态校验：本票修改的 Vue/TS、组件测试、两个 E2E 与共享 helper 跑定向 ESLint；
+  Vue/TS 项目执行 `vue-tsc -b`，二者均 exit 0。
+- 后端定向 Maven：ApprovalIntegrationTest、ApprovalConcurrencyTest、ExpiryRace、
+  AuthorizationSnapshot 四类合并运行 23 tests / 0 failures / 0 errors，exit 0。
+- 主控下一轮只跑受影响 4 条 E2E：approval 2 条、substitution 1 条、withdraw 1 条，
+  用于验证 row 作用域、共享首项 dropdown helper、系统撤销和既有审批链；login 2 条源未变，
+  已由 run2 覆盖。
+- 未运行 Playwright、全量 `verify.sh`、服务或外网；不宣称 05 放行。

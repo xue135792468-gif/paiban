@@ -110,8 +110,8 @@ public class SubstitutionApprovalService {
 
     private Outcome approveLocked(
             String username, Long requestId, ApproveSubstitutionRequest body) {
-        AppUser user = requireApprover(username);
         SubstitutionRequest request = lockRequest(requestId);
+        AppUser user = requireApprover(username);
         requireStillPending(request);
 
         TimetableEntry entry = request.getEntryId() == null ? null
@@ -178,19 +178,26 @@ public class SubstitutionApprovalService {
         if (reason.length() > MAX_COMMENT) {
             throw ApiException.badRequest("驳回理由不能超过 " + MAX_COMMENT + " 字");
         }
-        SubstitutionRequestDto dto = transaction.execute(
+        Outcome outcome = transaction.execute(
                 status -> rejectLocked(username, requestId, reason));
-        if (dto == null) {
+        if (outcome == null) {
             throw ApiException.conflict("驳回未完成，请重试");
         }
-        return dto;
+        if (outcome.conflictAfterCommit() != null) {
+            throw ApiException.conflict(outcome.conflictAfterCommit());
+        }
+        return outcome.dto();
     }
 
-    private SubstitutionRequestDto rejectLocked(
+    private Outcome rejectLocked(
             String username, Long requestId, String reason) {
-        AppUser user = requireApprover(username);
         SubstitutionRequest request = lockRequest(requestId);
+        AppUser user = requireApprover(username);
         requireStillPending(request);
+        if (overdue(request)) {
+            expire(request, username);
+            return new Outcome(null, "已到开课时刻，该申请已作废");
+        }
         Instant now = clock.instant();
         request.setStatus(SubstitutionRequest.REJECTED);
         request.setApproverUserId(user.getId());
@@ -207,26 +214,33 @@ public class SubstitutionApprovalService {
                         + ", approverUserId=" + user.getId()
                         + ", reason=" + reason,
                 1, 0));
-        return mapper.toDto(saved);
+        return new Outcome(mapper.toDto(saved), null);
     }
 
     /** 撤回：只有申请人本人、且只在待审批时可撤；不需要审批权限。 */
     public SubstitutionRequestDto withdraw(String username, Long requestId) {
-        SubstitutionRequestDto dto = transaction.execute(
+        Outcome outcome = transaction.execute(
                 status -> withdrawLocked(username, requestId));
-        if (dto == null) {
+        if (outcome == null) {
             throw ApiException.conflict("撤回未完成，请重试");
         }
-        return dto;
+        if (outcome.conflictAfterCommit() != null) {
+            throw ApiException.conflict(outcome.conflictAfterCommit());
+        }
+        return outcome.dto();
     }
 
-    private SubstitutionRequestDto withdrawLocked(String username, Long requestId) {
-        AppUser user = users.getByUsername(username);
+    private Outcome withdrawLocked(String username, Long requestId) {
         SubstitutionRequest request = lockRequest(requestId);
+        AppUser user = requireCurrentUser(username);
         if (!SubstitutionLookups.isOwn(request, user)) {
             throw ApiException.forbidden("只能撤回自己的调代申请");
         }
         requireStillPending(request);
+        if (overdue(request)) {
+            expire(request, username);
+            return new Outcome(null, "已到开课时刻，该申请已作废");
+        }
         Instant now = clock.instant();
         request.setStatus(SubstitutionRequest.WITHDRAWN);
         request.setUpdatedAt(now);
@@ -239,7 +253,7 @@ public class SubstitutionApprovalService {
                         + ", lessonDate=" + saved.getEffectiveDate()
                         + ", operatorUserId=" + user.getId(),
                 1, 0));
-        return mapper.toDto(saved);
+        return new Outcome(mapper.toDto(saved), null);
     }
 
     /** 开课后仍未处理：作废并留痕，随后由外层把 409 返回给调用方。 */
@@ -312,9 +326,19 @@ public class SubstitutionApprovalService {
     }
 
     private AppUser requireApprover(String username) {
-        AppUser user = users.getByUsername(username);
+        AppUser user = requireCurrentUser(username);
         if (!users.hasPermission(user, Permissions.SUBSTITUTION_APPROVE)) {
             throw ApiException.forbidden("只有管理员可以审批调代申请");
+        }
+        return user;
+    }
+
+    /** 锁后重新读取账号，不能继续信任权限检查前的一级缓存快照。 */
+    private AppUser requireCurrentUser(String username) {
+        AppUser user = users.getByUsername(username);
+        entityManager.refresh(user);
+        if (!user.isEnabled()) {
+            throw ApiException.forbidden("账号已停用");
         }
         return user;
     }
