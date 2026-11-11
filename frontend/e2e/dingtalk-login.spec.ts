@@ -1,10 +1,19 @@
 import { expect, test } from '@playwright/test'
-import type { APIRequestContext, BrowserContext } from '@playwright/test'
-import { apiCall, apiLogin, newContext } from './helpers'
+import type { APIRequestContext, BrowserContext, Page } from '@playwright/test'
+import { apiCall, apiLogin, newContext, uiLogin } from './helpers'
 import { capture } from './screenshots'
 
 const DINGTALK_UA =
   'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 DingTalk/7.5.10'
+
+function trackBrowserErrors(page: Page): string[] {
+  const errors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text())
+  })
+  page.on('pageerror', (error) => errors.push(`pageerror: ${error}`))
+  return errors
+}
 
 async function installFakeWindowDd(context: BrowserContext, authCode: string) {
   await context.addInitScript((code: string) => {
@@ -27,7 +36,7 @@ async function installFakeWindowDd(context: BrowserContext, authCode: string) {
  * 票 03 真实浏览器准备：
  * 1. 钉钉 UA 下免登失败展示结构化说明页，不静默退回密码表单；点击「我是管理员，用密码登录」
  *    进入 `/login?mode=password` 跳过自动免登，刷新不循环，并可用管理员密码登录。
- * 2. 已绑定钉钉 UID 的教师首次在钉钉内打开应用，经 `fake:EMP001` 免登自动开号进入系统。
+ * 2. 已绑定钉钉 UID（`dd-001`）的教师在钉钉内打开应用，经 `fake:EMP001` 免登并取得同一账号。
  */
 test('钉钉免登失败展示说明页，「我是管理员，用密码登录」带 ?mode=password 跳过循环并完成密码登录', async ({
   browser,
@@ -47,6 +56,7 @@ test('钉钉免登失败展示说明页，「我是管理员，用密码登录�
   try {
     await installFakeWindowDd(context, 'fake:UNKNOWN_EMP')
     const page = await context.newPage()
+    const browserErrors = trackBrowserErrors(page)
     await page.goto('/login')
 
     const notice = page.getByTestId('dingtalk-login-notice')
@@ -65,26 +75,21 @@ test('钉钉免登失败展示说明页，「我是管理员，用密码登录�
     await expect(notice).toHaveCount(0)
     await expect(page.getByPlaceholder('请输入用户名')).toBeVisible()
 
-    await page.getByPlaceholder('请输入用户名').fill('admin')
-    await page.getByPlaceholder('请输入密码').fill('admin123')
-    await page.getByRole('button', { name: '登录' }).click()
-    await page.waitForURL((url) => !url.pathname.startsWith('/login'))
+    await uiLogin(page, 'admin', 'admin123', { loginPath: '/login?mode=password' })
     await capture(page, 'dingtalk-t03-password-fallback-logged-in')
+    expect(browserErrors.filter((msg) => !msg.includes('status of 4'))).toEqual([])
   } finally {
     await context.close()
-    await apiCall(api, token, 'put', '/integrations/dingtalk/config', { enabled: false }).catch(
-      () => undefined,
-    )
+    await apiCall(api, token, 'put', '/integrations/dingtalk/config', { enabled: false })
     await api.dispose()
   }
 })
 
-test('已绑定钉钉 UID 的老师在钉钉 UA 下通过假免登码自动开号进入系统', async ({ browser }) => {
+test('已绑定UID老师免登并取得同一账号', async ({ browser }) => {
   const api: APIRequestContext = await newContext()
   const token = await apiLogin(api)
   const suffix = Math.random().toString(36).slice(2, 8)
-  let seededTeacherId: number | null = null
-  const existingUsersWithDd001: Array<{ id: number; name: string; employeeNo: string | null }> = []
+  let createdOwnTeacher: { id: number; name: string; employeeNo: string } | null = null
 
   await apiCall(api, token, 'put', '/integrations/dingtalk/config', {
     enabled: true,
@@ -97,54 +102,81 @@ test('已绑定钉钉 UID 的老师在钉钉 UA 下通过假免登码自动开�
 
   const context = await browser.newContext({ userAgent: DINGTALK_UA })
   try {
-    // 确保没有其他教师残留占用 dd-001
+    // 只读查找当前已绑定 dd-001 的教师，不修改其它 spec 的教师数据
     const allTeachers = await apiCall(api, token, 'get', '/teachers')
-    for (const teacher of allTeachers) {
-      if (teacher.dingtalkUserId === 'dd-001') {
-        existingUsersWithDd001.push({
-          id: teacher.id,
-          name: teacher.name,
-          employeeNo: teacher.employeeNo ?? null,
-        })
-        await apiCall(api, token, 'put', `/teachers/${teacher.id}`, {
-          name: teacher.name,
-          employeeNo: teacher.employeeNo ?? null,
-          dingtalkUserId: '',
-        })
-      }
+    const boundTeachers = allTeachers.filter((teacher: any) => teacher.dingtalkUserId === 'dd-001')
+    if (boundTeachers.length > 1) {
+      throw new Error(`precondition failed: multiple teachers bound to dd-001 (${boundTeachers.map((t: any) => t.id).join(',')})`)
     }
 
-    const seeded = await apiCall(api, token, 'post', '/teachers', {
-      name: `免登张老师${suffix}`,
-      employeeNo: `DT-${suffix}`,
-      dingtalkUserId: 'dd-001',
-    })
-    seededTeacherId = seeded.id
+    let targetTeacherId: number
+    if (boundTeachers.length === 1) {
+      targetTeacherId = boundTeachers[0].id
+    } else {
+      const seeded = await apiCall(api, token, 'post', '/teachers', {
+        name: `免登张老师${suffix}`,
+        employeeNo: `DT-${suffix}`,
+        dingtalkUserId: 'dd-001',
+      })
+      createdOwnTeacher = { id: seeded.id, name: seeded.name, employeeNo: seeded.employeeNo }
+      targetTeacherId = seeded.id
+    }
+
+    const usersBefore: Array<{
+      id: number
+      teacherId?: number | null
+      enabled: boolean
+      loginType?: string
+    }> = await apiCall(api, token, 'get', '/users')
+    const linkedBefore = usersBefore.filter((u) => u.teacherId === targetTeacherId)
+    const enabledBefore = linkedBefore
+      .filter((u) => u.enabled)
+      .sort((a, b) => a.id - b.id)
+    if (linkedBefore.length > 0 && enabledBefore.length === 0) {
+      throw new Error(
+        `precondition failed: teacher #${targetTeacherId} bound to dd-001 only has disabled accounts; refusing to mutate foreign fixture`,
+      )
+    }
+    const expectedExistingAccountId = enabledBefore.length > 0 ? enabledBefore[0].id : null
 
     await installFakeWindowDd(context, 'fake:EMP001')
     const page = await context.newPage()
-    await page.goto('/login')
+    const browserErrors = trackBrowserErrors(page)
+
+    const [dingtalkAuthResp] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' && response.url().endsWith('/api/auth/dingtalk'),
+      ),
+      page.goto('/login'),
+    ])
+    expect(dingtalkAuthResp.status()).toBe(200)
+    const authBody = await dingtalkAuthResp.json()
+    expect(authBody.token).toBeTruthy()
+    expect(authBody.user?.teacherId).toBe(targetTeacherId)
+    if (expectedExistingAccountId != null) {
+      expect(authBody.user?.id).toBe(expectedExistingAccountId)
+    } else {
+      expect(authBody.user?.loginType).toBe('DINGTALK')
+    }
+
+    const me = await apiCall(api, authBody.token, 'get', '/auth/me')
+    expect(me.id).toBe(authBody.user.id)
+    expect(me.teacherId).toBe(targetTeacherId)
+
     await page.waitForURL((url) => !url.pathname.startsWith('/login'))
     await capture(page, 'dingtalk-t03-auto-provision-logged-in')
+    expect(browserErrors).toEqual([])
   } finally {
     await context.close()
-    if (seededTeacherId != null) {
-      await apiCall(api, token, 'put', `/teachers/${seededTeacherId}`, {
-        name: `免登张老师${suffix}`,
-        employeeNo: `DT-${suffix}`,
+    if (createdOwnTeacher != null) {
+      await apiCall(api, token, 'put', `/teachers/${createdOwnTeacher.id}`, {
+        name: createdOwnTeacher.name,
+        employeeNo: createdOwnTeacher.employeeNo,
         dingtalkUserId: '',
-      }).catch(() => undefined)
+      })
     }
-    for (const prev of existingUsersWithDd001) {
-      await apiCall(api, token, 'put', `/teachers/${prev.id}`, {
-        name: prev.name,
-        employeeNo: prev.employeeNo,
-        dingtalkUserId: 'dd-001',
-      }).catch(() => undefined)
-    }
-    await apiCall(api, token, 'put', '/integrations/dingtalk/config', { enabled: false }).catch(
-      () => undefined,
-    )
+    await apiCall(api, token, 'put', '/integrations/dingtalk/config', { enabled: false })
     await api.dispose()
   }
 })

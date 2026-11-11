@@ -25,7 +25,7 @@ export function accountLoginTypeLabel(loginType?: string | null): string {
 
 function dingtalkUidText(uid?: string | null): string {
   const trimmed = uid?.trim()
-  return trimmed ? trimmed : '未绑定'
+  return trimmed ? trimmed : '—'
 }
 
 function teacherText(snapshot: AccountSnapshot): string {
@@ -95,7 +95,11 @@ export function describeAccountChange(
   }
   const beforeUid = before.dingtalkUserId?.trim() || null
   const afterUid = after.dingtalkUserId?.trim() || null
-  if (beforeUid !== afterUid) {
+  const isLegacyUnknownBefore = before.loginType == null && before.dingtalkUserId == null
+  if (
+    beforeUid !== afterUid &&
+    (!isLegacyUnknownBefore || action === 'DINGTALK_LINK')
+  ) {
     changes.push(`钉钉UID：${dingtalkUidText(beforeUid)} → ${dingtalkUidText(afterUid)}`)
   }
   return changes.length > 0 ? changes.join('；') : '—'

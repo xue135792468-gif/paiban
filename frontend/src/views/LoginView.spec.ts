@@ -91,22 +91,22 @@ describe('LoginView: 钉钉免登原因码说明页与管理员密码入口', ()
     {
       code: 'ACCOUNT_DISABLED',
       expectedTitle: '账号已停用',
-      expectedDetail: '请联系教务处或超级管理员',
+      expectedDetail: '超级管理员',
     },
     {
       code: 'DINGTALK_DISABLED',
       expectedTitle: '钉钉免登未启用',
-      expectedDetail: '请联系超级管理员或教务处',
+      expectedDetail: '超级管理员',
     },
     {
       code: 'DINGTALK_CALL_FAILED',
       expectedTitle: '钉钉登录暂时无法完成',
-      expectedDetail: '请联系教务处或超级管理员',
+      expectedDetail: '超级管理员',
     },
     {
       code: 'ADMIN_BINDING_REQUIRED',
       expectedTitle: '需超级管理员确认绑定',
-      expectedDetail: '超级管理员',
+      expectedDetail: '教师管理',
     },
   ])('按稳定原因码 $code 展示友好说明，不显示密码输入框或原始供应商异常', async ({ code, expectedTitle, expectedDetail }) => {
     installFakeDingTalk()
@@ -127,6 +127,9 @@ describe('LoginView: 钉钉免登原因码说明页与管理员密码入口', ()
     expect(notice.exists()).toBe(true)
     expect(notice.text()).toContain(expectedTitle)
     expect(notice.text()).toContain(expectedDetail)
+    if (code === 'ADMIN_BINDING_REQUIRED') {
+      expect(notice.text()).not.toContain('钉钉同步')
+    }
     expect(notice.text()).not.toContain('access_token=')
     expect(notice.text()).not.toContain('secret123')
     expect(wrapper.find('input[type="password"]').exists()).toBe(false)

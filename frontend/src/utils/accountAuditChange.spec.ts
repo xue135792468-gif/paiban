@@ -130,13 +130,14 @@ describe('账号审计的中文快照', () => {
       { ...base, loginType: 'DINGTALK', dingtalkUserId: 'dd-zhang-007' },
       'DINGTALK_LINK',
     )
-    expect(linkedChange).toBe('钉钉UID：未绑定 → dd-zhang-007')
+    expect(linkedChange).toBe('钉钉UID：— → dd-zhang-007')
 
-    // 旧快照 loginType 缺失（null/undefined=未知）时，不反推或误报登录方式变更
+    // 旧快照 loginType/dingtalkUserId 为 null/undefined（未知）时，不贴「未绑定」标签，也不反推或虚报旧未知到新快照的变更
     const legacyToNew = describeAccountChange(
       { ...base, loginType: null, dingtalkUserId: null },
-      { ...base, displayName: '张三改名', loginType: 'PASSWORD', dingtalkUserId: null },
+      { ...base, displayName: '张三改名', loginType: 'PASSWORD', dingtalkUserId: 'dd-existing' },
     )
     expect(legacyToNew).toBe('姓名：张三 → 张三改名')
+    expect(legacyToNew).not.toContain('未绑定')
   })
 })

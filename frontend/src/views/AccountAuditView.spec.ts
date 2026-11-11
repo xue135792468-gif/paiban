@@ -245,7 +245,7 @@ describe('AccountAuditView', () => {
     const wrapper = await mountView()
     const text = wrapper.text()
     expect(text).toContain('系统（钉钉免登）')
-    expect(text).toContain('钉钉UID：未绑定 → dd-uid-77')
+    expect(text).toContain('钉钉UID：— → dd-uid-77')
     expect(text).toContain('登录方式：钉钉免登')
     expect(text).not.toContain('never-show-this')
     wrapper.unmount()
