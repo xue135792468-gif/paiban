@@ -26,4 +26,12 @@ run2针对同一spec再次两条通过、退出0、SOURCE_IDENTICAL=1；不与ru
 
 ## 下一道闸门
 
-固定整票源码做Standards/Spec两轴独立code-review；确认问题统一修复并增量复核后才07放行，08仍仅准备。原八票最终full verify尚未执行，真实PG/租户/手机未验，未推送/部署。被拒绝清理按09保留。
+原两轴与b253112增量均已完成，主控判定见t07-review.md；只剩旧角色测试两行精确定位的补充复核，完成后才07放行，08仍仅准备。原八票最终full verify尚未执行，真实PG/租户/手机未验，未推送/部署。被拒绝清理按09保留。
+
+## 复查整改后的主控回归
+
+fixer候选b253112独立合入2ec7608，Git树与候选相同，后端净diff为0。新输入/预算用例及原组件/设置页最终24通过，eslint/vue-tsc/E2E tsc退出0；17份日志/清单逐文件SHA归档到logs/t07-review-fixes，并另以实际源字面量比较确认三处测试Super凭据原值完全一致。首红5例有效行为失败、另2例编码fixture污染；中间2编码失败的原log被覆盖，原件不在，仅保留先前host/主控片段，不补造。delivery已由主控校正分类。
+
+主控直接受影响四spec（账号审计/角色/钉钉登录/连接探测）首轮10通过1失败、退出1、SOURCE_IDENTICAL=1。失败是旧role spec的账号导航模糊匹配；原日志与trace在logs/t07-review-fixes-browser-run1及.runtime同名test-results，失败PNG逐SHA归档到evidence/t07-review-fixes-browser-run1/role-tab-strict-mode.png。
+
+只改角色spec正/负两行定位为.page-tab[href="/settings/users"]，源补丁存logs/t07-review-fixes-browser-run2/source-selector-patch.txt。第二轮四spec共11通过、退出0、SOURCE_IDENTICAL=1；不与首轮相加。日志/源码前后清单见logs/t07-review-fixes-browser-run2，trace在.runtime对应目录。主控实看角色弹窗仅超级管理员/教务管理员/老师三项；最新成功/拒绝两张探测PNG与docs手册原图SHA完全相同，无须改图。28417/25417监听0，带本轮标记的Java/Node/Chrome/headless进程0。

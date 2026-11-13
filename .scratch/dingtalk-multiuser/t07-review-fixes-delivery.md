@@ -39,7 +39,7 @@ J7、Spec P3-2。未重新裁决 J1/J2/J3/J5/J6 与 Spec P3-1，未扩大整改�
 
 | 阶段 | 命令（工作目录） | 结果 | 证据 |
 |---|---|---|---|
-| 首红（新增用例后、改源码前） | `frontend: npx vitest run --no-file-parallelism src/components/settings/DingtalkConnectionProbe.spec.ts src/views/SettingsView.spec.ts` | `Tests 7 failed / 17 passed`，shell 退出码 1。可核行为的真实红 5 条：三条探测 POST 无 timeout 第三参数（组件两条 + `SettingsView` 一条）、纯空白 AppKey 仍未禁用按钮、请求预算断言拿不到 timeout；另 2 条（空白 secret 复用、带尾空格 key）同样暴露真实行为红，但失败输出里 Expected 已是乱码，按 fixture 污染记录，不据此单独宣称行为红 | `.runtime/logs/vitest-red.log`（保留）。该次未落独立 `.exit` 文件，退出码来自当时终端输出，未补造 |
+| 首红（新增用例后、改源码前） | `frontend: npx vitest run --no-file-parallelism src/components/settings/DingtalkConnectionProbe.spec.ts src/views/SettingsView.spec.ts` | `Tests 7 failed / 17 passed`，shell 退出码 1。可核行为的真实红 5 条：三条探测 POST 无 timeout 第三参数（组件两条 + `SettingsView` 一条）、纯空白 AppKey 仍未禁用按钮、请求预算断言拿不到 timeout；另 2 条（空白 secret 复用、带尾空格 key）的 Expected 已被编码写坏，按 fixture 污染记录，不计可验证行为红；正确期望的最终绿回归已覆盖（主控校正分类，不补造原始证据） | `.runtime/logs/vitest-red.log`（保留）。该次未落独立 `.exit` 文件，退出码来自当时终端输出，未补造 |
 | 编码修复后的中间态 | 同一条 vitest 命令 | `Tests 2 failed / 22 passed`，两条失败都是中文期望被写成乱码（Received 已是正确文案），非行为失败 | 原日志曾写入 `.runtime/logs/vitest-green.log`，**已被随后的同名运行覆盖**；原件不在了，仅有当时终端输出，未事后补造 |
 | 最终绿 | 同一条 vitest 命令 | `Test Files 2 passed`、`Tests 24 passed`，退出码 0；运行前后 10 个受控文件 SHA-256 完全一致 | `.runtime/logs/vitest-final-run1.log` / `vitest-final-run1.exit`=`0`；`final-source-before.tsv` / `final-source-after.tsv` |
 | ESLint | `frontend: npx eslint --no-warn-ignored --max-warnings 0` 八个改动文件 | 通过 | `.runtime/logs/eslint-run1.log` / `eslint-run1.exit`=`0` |

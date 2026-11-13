@@ -41,7 +41,7 @@ test('超级管理员：能看到钉钉配置与账号页，改身份只给三�
 
   await page.goto('/settings/general')
   await expect(page.locator('#dingtalk-integration')).toBeVisible()
-  await expect(page.locator('.page-tab').filter({ hasText: '账号' })).toBeVisible()
+  await expect(page.locator('.page-tab[href="/settings/users"]')).toBeVisible()
 
   await page.goto('/settings/users')
   await expect(page.getByRole('heading', { name: '用户管理' })).toBeVisible()
@@ -69,7 +69,7 @@ test('教务管理员：看不到钉钉配置与账号页，业务设置照常�
 
   await page.goto('/settings/general')
   await expect(page.locator('#dingtalk-integration')).toHaveCount(0)
-  await expect(page.locator('.page-tab').filter({ hasText: '账号' })).toHaveCount(0)
+  await expect(page.locator('.page-tab[href="/settings/users"]')).toHaveCount(0)
 
   const saved = page.waitForResponse(
     (response) => response.url().includes('/api/settings') && response.request().method() === 'PUT',
