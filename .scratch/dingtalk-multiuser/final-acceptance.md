@@ -35,3 +35,9 @@ Standards小delta新Hard0/Judgement0，原J4 P3不采纳不变；Spec小delta尚
 后端1265项，0失败/0错误/7跳过，即1258通过，BUILD SUCCESS；RoleReshape四项在全套上下文通过，后端源冻结证据已补强，整体放行仍须最终full绿色。前端lint/build通过；单元106文件中105通过/1失败，803项中802通过/1失败。唯一productTrim.spec.ts:92的设置子路由精确旧列表漏掉账号审计account-audit，这是票02新增路由的契约测试遗漏，不应删实际路由来迎合断言。后置仓库检查/Playwright尚未执行，不借此宣布前端或完整门禁通过。
 
 唯一worker只修这一unit文件，保留精确路由集合并新增audit:view:account权限断言，产品与后端不改。定向/小delta补核后，先独立运行此前被阻断的后置检查和全部浏览器测试，集中消化尚未覆盖的旧回归；最后再串行完整verify。全量成功前原八票状态不done，未push/部署。
+
+## 第二轮unit修正已整合，进入尚未执行的验证
+
+候选d9b0a5b与接收8d924e0；只修productTrim.spec.ts，保留完整路由集合精确断言并补账号审计name/权限，不改产品/后端。独立merger核3份日志复制SHA一致，20项定向通过；source-hashes编辑对照的限制已校正交付说明。两轴补核与主控处置见whole-review.md：无待施工硬问题，Standards两P3建议不采纳，Spec原验证P2仍待实际冻结重跑。
+
+主控remaining-guards-run1实际完成verify中的8项后置仓库检查，全部EXIT=0/SOURCE_IDENTICAL=1；1071个受检对象与95e4f88匹配。此为独立静态检查轮，不是完整verify或浏览器通过。后续统一runner在新集成源串行targeted20与全E2E，浏览器使用28518/25518；之后才最终完整verify，源不再施工时才统一done。

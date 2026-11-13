@@ -66,3 +66,5 @@
 2026-11-13 修复候选两轴补核完成：Standards新发现0；Spec两P3前提复核后撤回，剩P2仅验证收据缺口。主控允许完整重跑以关闭该缺口；通过前08仍in-progress、原01–07仍implemented。源仅修1项测试，产品未变；原始失败、raw和corrigendum全部保留，入口final-acceptance.md。
 
 2026-11-13 第二轮full：后端与lint/build通过，Vitest唯一旧路由契约列表遗漏account-audit导致退出1；1071源对象稳定且匹配7775658。唯一worker修1个unit测试，后置检查和浏览器全套需先覆盖，最后完整重跑。新源验证通过前不done，见final-acceptance.md。
+
+2026-11-13 路由unit修正已整合8d924e0，两轴代码补核及处置完成；8项后置检查已通过，下一为冻结集成targeted20→全E2E，再最终完整verify。全部源验证通过前原八票不done，入口final-acceptance.md。

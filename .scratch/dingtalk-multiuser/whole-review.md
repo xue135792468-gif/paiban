@@ -179,3 +179,40 @@ Standards：H1/J1/J2/J3已关闭；Hard各级0，Judgement仅J4 P3，按此前�
 
 
 原Spec替代轴核V2/Role/test profile/reset后自行修订：P0=0/P1=0/P2=1/P3=0。唯一P2为验证缺口，待本次完整门禁实际exit0、全部受检源before/after一致后关闭；未确认新的实施规格缺陷。两轴源码补核至此完成，允许验证重跑。Standards原J4不采纳、Spec原菜单P3说明已记录，均非待施工事项。
+
+## 路由unit修正的两轴增量（95e4f88…d9b0a5b）
+
+候选d9b0a5b，接收8d924e0。源仅productTrim.spec.ts，blob714aa18d81f92c49cefefd6a9f7c4f0712b33ed4；产品路由/权限/后端均未变。Spec原始报告误写候选工作树，主控原样复制到集成并核SHA256相同；不将产物路径错误当作代码行为问题。Spec原文“1265 pass 7 skip”是转述记法不精确：实际为总1265中1258通过/7跳过，0失败/错误；原文不改。
+
+### Standards原文
+# Standards 轴增量复核：unit-fix（raw，≤10 行）
+基点：base 95e4f88...candidate d9b0a5b2（`git diff --stat` 仅 frontend/src/router/productTrim.spec.ts + .scratch/dingtalk-multiuser/final-unit-fix-delivery.md；产品 router 源未改，diff 中无 router hunk）。
+断言对照（精确度净增强，未削弱）：settings 由 3 项 toEqual 精确列表 → 4 项 toEqual 精确列表（general/users/account-audit/recycle-bin），新增 `settings[2].name` 与 `settings[2].meta?.permission === "audit:view:account"` 精确断言；同文件其余 workbench/data/substitution/legacy 精确断言逐字未动；无 toEqual→toContain、无快照放宽、无 skip/only、无新增 timeout 或 toPass。
+规范核对（CODING_STANDARDS 测试条）：顺序独立✔（本用例不依赖执行序）；无外网/fake 需求✔；E2E 替代问题不适用（纯 router 单测）；迁移/审计双写/事务/权限常量/前端 SFC 拆分各条不适用于本增量；未触代码风格与空白检查条。
+Hard：0（无硬违规）。
+Judgement：P3×2 ——（a）`settings[2]` 位置索引耦合顺序，虽上一行 toEqual 已钉死顺序，仍建议 find(r=>r.path==='account-audit') 自解释，可留待后续；（b）注释/交付文档重复票号语义，属可接受文档重复。
+Fowler 基线：无 Duplicated Code / Mysterious Name / Speculative Generality / Middle Man 命中（新增仅 3 行断言，无抽象）；既有 `mainChildren[6]` 索引为存量，不计增量。
+未验边界：20 项定向 pass、803→全量绿、source-hash bec5→714 为编辑前后对照（非运行冻结）均由主控 runner 合入后统一复核；真实 router 定义与权限常量未读（超出本次只读范围）；未运行任何构建/测试/网络。
+结论：增量仅测试精度修正，可合入集成；无阻断项；原 J4 P3「不采纳」整体结论不重开。
+
+
+### Spec原文
+
+# 独立复查 · Spec 轴小 delta（productTrim.spec.ts 路由列表）
+- 基点 95e4f88eb99e523181e4ac8f04739cf330a9aa4e → 候选 d9b0a5b208f5aa1f0b2b2140635c87f57d97743d；`git diff base...candidate` 仅 frontend/src/router/productTrim.spec.ts + .scratch/dingtalk-multiuser/final-unit-fix-delivery.md，产品 router 源码未动。
+- 规格对齐：spec:105「新增权限点账号审计查看，只给超级管理员」、spec:153「审计查看页只有持该权限的人能打开」——settings 下缺 account-audit 属测试快照过期，补列表是纠偏，非放宽。
+- 实现对齐：router/index.ts:205-211 name=account-audit、meta.permission=audit:view:account，位于 users 之后、recycle-bin 之前 → settings[2] 指向正确；guard.ts:19-20 按 to.meta.permission 调 hasPermission，断言 meta 等同 route guard 入参，未以「UI 是否可见」替代权限语义。
+- 逐项强断言：settings 路径精确 toEqual 四项（原 general/users/recycle-bin 保留且卡顺序）；新增 name 与 meta.permission 两处精确断言；其余断言逐字未改。
+- 缺失/越界：本 delta 无。未新增权限判定点、未改产品代码、未触碰其它快照；roleAccess/navigation 语义由各自 spec 覆盖。
+- 计数：P0 0 / P1 0 / P2 1 / P3 0。P2 为证据边界：source before bec5ad3 → after 714aa18 仅为编辑对照，非 runtime 冻结；targeted 20 pass / exit 0 依赖其日志，完整冻结由主控统一 runner（targeted20 → E2E 全套）产出（沿用上轮 sourceRole P2，不重开原 P3/J4）。
+- 未验证：本 delta 未复跑测试/构建/网络；full 侧 1265 pass 7 skip 与 lint/build 为主控转述，未独立复核；E2E 全套与 803 项 Vitest 全绿仍待统一 runner。
+- 结论：断言收紧后与规格和 router 实现一致，无覆盖净损失，可接受进入统一冻结复跑。
+
+
+### 主控处置
+
+Standards新增Hard0、Judgement2条P3。两条均不采纳、非延期、不伪称修复：(a)本用例上一条精确断言已经钉住四项顺序，settings[2]刻意对应该固定位置，符合本文件原有位置契约；增加find不修复任何可达错误。(b)源注释简述新增路由上下文，交付文档记录红绿/边界，职责不同，并非需抽象去重的代码逻辑。整体未决Hard0；未采纳判断建议为原J4与本次(a)/(b)，都保持P3原级别。
+
+Spec缺失/越界/实现错均0，P2=1仍为既有验证缺口而非待施工代码缺陷。worker的bec5→714是编辑基线对照，真实文件20:31:25落盘早于20:31:50测试启动，预先记录待跑714；它不是成对runtime冻结收据。主控统一预检将串行集成targeted20→allE2E并保存全部1071源before/after，最终完整verify仍需绿色；此之前不done。
+
+主控后置检查预检remaining-guards-run1已实际8项全部退出0，SOURCE_IDENTICAL=1，1071源对象与95e4f88匹配。该轮只跑检查，不冒称执行浏览器；unit修正不改变这些检查所读产品源码，最终完整门禁仍会统一再验。全部确认代码问题已处置，允许冻结集成继续验证。

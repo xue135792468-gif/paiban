@@ -13,6 +13,8 @@ router 产品源码未改。
 red：主控 integration feature/logs/final-full-run2/verify.log（真实完整红，未复演）。
 green：npx vitest run --no-file-parallelism 跑 productTrim.spec.ts + roleAccess.spec.ts + navigation.spec.ts，
 exit 0，Test Files 3 passed、Tests 20 passed（日志 logs/final-unit-fix/vitest.log / vitest-exit.log）。
-source before bec5ad3294400b92036e7176b1bbef1f1ee30067 → after 714aa18d81f92c49cefefd6a9f7c4f0712b33ed4（收据 source-hashes.txt）。
+source-hashes 语义：source_before=bec5ad32…（修改前编辑基线/旧代码）；source_after=714aa18d…（新代码）。
+该收据 20:31:25 落盘，早于 20:31:50 测试启动，故 after 是预先记录的待跑源，也是本次实际所跑源；
+它是编辑基线对照，不是运行前后冻结收据，不据此声称 SOURCE_IDENTICAL；运行前后强冻结由主控统一预检 runner 覆盖。
 
 边界：只改测试，未跑全量/Maven/E2E，不 push/部署，不删路径与缓存。
