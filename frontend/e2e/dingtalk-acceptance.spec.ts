@@ -6,6 +6,7 @@ import {
   classEntries,
   createAccount,
   dateFor,
+  fillDateInput,
   installFakeWindowDd,
   newContext,
   pickFirstVisibleOption,
@@ -78,9 +79,7 @@ test('手机首次免登提交 → 独立教务电脑改人批准 → 手机我�
     await teacherPage.goto('/substitution/requests')
     await expect(teacherPage.getByRole('tab', { name: '我的调代' })).toBeVisible()
     await expect(teacherPage.getByRole('tab', { name: '待审批' })).toHaveCount(0)
-    const dateInput = teacherPage.getByRole('combobox', { name: '请假日期' })
-    await dateInput.fill(date)
-    await dateInput.press('Tab')
+    await fillDateInput(teacherPage.getByRole('combobox', { name: '请假日期' }), date)
     await pickFirstVisibleOption(
       teacherPage.locator('.el-form-item', { hasText: '我的课节' }).locator('.el-select'),
     )

@@ -113,14 +113,6 @@ public class NotificationService {
                 "/substitutions/my?requestId=" + request.getId());
     }
 
-    public void substitutionPlanFailed(Long requesterTeacherId, String details) {
-        // Retired by ticket 06; failure audits remain the operational record.
-    }
-
-    public void substitutionVerifyAlert(String details) {
-        // Retired by ticket 06; failure audits remain the operational record.
-    }
-
     private List<Target> approvalTarget(SubstitutionRequest request) {
         return request.getOperatorUserId() == null
                 ? List.of()

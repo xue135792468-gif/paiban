@@ -4,6 +4,7 @@ import {
   apiLogin,
   classEntries,
   dateFor,
+  fillDateInput,
   isoDate,
   newContext,
   pickFirstVisibleOption,
@@ -52,8 +53,7 @@ test('场景 2：教师提交代课 → 教务审批生效 → 统计与课表�
   await page.keyboard.press('Escape')
   await expect(datePanel).toBeHidden()
 
-  await dateInput.fill(effectiveDate)
-  await dateInput.press('Tab')
+  await fillDateInput(dateInput, effectiveDate)
 
   await pickFirstVisibleOption(
     page.locator('.el-form-item', { hasText: '我的课节' }).locator('.el-select'),
