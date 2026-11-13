@@ -18,3 +18,5 @@
 03 数字诊断整改目录 `E:/排课系统/.worktrees/dingtalk-t03-review-fixes/feature/.tmp/` 也须保留。主线程询问收尾事实后，worker 明确报告空目录非递归删除及随后递归删除两种命令均被自动审批拒绝，原因仅为 `blocked by policy`；文件未删除。主线程已独立只读列到 hsperfdata、两个 Tomcat 目录及两个 Mockito jar，不再尝试任何删除或整树移除。源码已通过 `75d0f42e896216e80e65fa88044c2a08f87052dc` 合入，日志已归档 `logs/t03-review-fixes/`。
 
 03 UI收尾追加：`E:/排课系统/.worktrees/dingtalk-t03-ui/.scratch/dingtalk-multiuser/.runtime/` 与该feature下 `evidence/`（截图副本）的一次联合清理命令在执行前被自动审批拒绝，原因仅为 `blocked by policy`。未执行删除，也不能声称命令内的哈希归档复核已运行；此前独立只读检查确认runtime无reparse point、UI HEAD为集成祖先，原始日志/截图此前已分别归档。保留这两个目录及整个UI工作树，不换命令/代理重试或借整树移除绕过。原feature证据归档继续保留，功能源码已全部合入。
+
+2026-11-13 追加：06 isolation 合并 worker 报告，对集成树 `E:/排课系统/.worktrees/dingtalk-integration/.runtime/t06-merge-isolation/` 空目录的删除也被自动审批审查拒绝，仅返回 `blocked by policy`。主控随后独立只读核实路径存在、目录项为 0，merge `3bec31a` 与工作树源状态不受影响。该尝试违反本次明确的“不删除”任务边界；不再执行任何 Remove-Item/rmdir/unlink 或自动 finally 清理，空目录也保留，不换方法重试。
