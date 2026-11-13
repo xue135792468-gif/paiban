@@ -1,3 +1,5 @@
+> 2026-11-13 08已施工：07最终双轴放行文档b7cac2e。主控负责dingtalk-t08-chain后端整链；Galileo负责dingtalk-t08-upgrade存量迁移；Dalton负责dingtalk-t08-browser手机/电脑真实UI整链。基于同源016859b，结束合最新集成。原八票最终全量仍未跑，未push/部署。
+
 # 08 分工与启动门槛（准备，未施工）
 
 07双轴与主控放行前，不认领08、不创建施工候选；当前只把可独立任务边界写清。基础规格、旧列投影例外与Fake身份格式见t08-acceptance-plan.md，审批/通知契约沿用t05/t06最终记录。
