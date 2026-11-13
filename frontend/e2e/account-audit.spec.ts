@@ -1,6 +1,15 @@
 import { expect, test } from '@playwright/test'
 import type { Locator } from '@playwright/test'
-import { API, apiCall, apiLogin, createAccount, newContext, pickOption, uiLogin } from './helpers'
+import {
+  API,
+  SUPER_ADMIN,
+  apiCall,
+  apiLogin,
+  createAccount,
+  newContext,
+  pickOption,
+  uiLogin,
+} from './helpers'
 import { capture } from './screenshots'
 
 /**
@@ -8,7 +17,6 @@ import { capture } from './screenshots'
  * 造数走 `/users` create/update/disable（`createAccount` 是唯一的建号 helper），
  * 不 mock 页面接口、不读组件内部状态；筛选控件只认约定的可访问名称。
  */
-const SUPER_ADMIN = { username: 'admin', password: 'admin123' }
 const ACCOUNT_PASSWORD = 'teacher123'
 const AUDIT_PATH = '/account-audits'
 

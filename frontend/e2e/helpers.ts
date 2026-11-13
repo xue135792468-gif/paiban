@@ -6,6 +6,12 @@ import { expect, request, type APIRequestContext, type Locator, type Page } from
  */
 export const API = process.env.PAIBAN_E2E_API ?? 'http://127.0.0.1:8080/api'
 
+/**
+ * 超级管理员测试凭据：账号审计、权限矩阵和钉钉探针 spec 共用这一份，
+ * `apiLogin` 的默认参数也引用它；改口令只改这里。
+ */
+export const SUPER_ADMIN = { username: 'admin', password: 'admin123' }
+
 const TOUR_KEYS = ['paiban.tour.seen', 'paiban.tour.advanced']
 
 /**
@@ -31,10 +37,23 @@ export async function uiLogin(
   await page.waitForURL((url) => !url.pathname.startsWith('/login'))
 }
 
+/**
+ * 收集浏览器端 console error 与未捕获 pageerror；spec 结束时断言为空，
+ * 避免前端运行时错误被「功能断言通过」掩盖。
+ */
+export function trackBrowserErrors(page: Page): string[] {
+  const errors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text())
+  })
+  page.on('pageerror', (error) => errors.push(`pageerror: ${error}`))
+  return errors
+}
+
 export async function apiLogin(
   context: APIRequestContext,
-  username = 'admin',
-  password = 'admin123',
+  username: string = SUPER_ADMIN.username,
+  password: string = SUPER_ADMIN.password,
 ): Promise<string> {
   const response = await context.post(`${API}/auth/login`, { data: { username, password } })
   if (!response.ok()) {

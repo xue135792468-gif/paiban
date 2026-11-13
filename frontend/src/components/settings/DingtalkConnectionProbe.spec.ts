@@ -40,11 +40,15 @@ describe('DingtalkConnectionProbe', () => {
     await wrapper.get('[data-testid="dingtalk-probe"]').trigger('click')
     await flushPromises()
 
-    expect(httpMock.post).toHaveBeenCalledWith('/integrations/dingtalk/test-connection', {
-      appKey: 'new-key',
-      appSecret: 'new-secret',
-      useSavedSecret: false,
-    })
+    expect(httpMock.post).toHaveBeenCalledWith(
+      '/integrations/dingtalk/test-connection',
+      {
+        appKey: 'new-key',
+        appSecret: 'new-secret',
+        useSavedSecret: false,
+      },
+      { timeout: 60_000 },
+    )
     const result = wrapper.get('[data-testid="dingtalk-probe-result"]')
     expect(result.text()).toContain('访问令牌')
     expect(result.text()).toContain('根部门')
@@ -90,11 +94,15 @@ describe('DingtalkConnectionProbe', () => {
     await wrapper.get('[data-testid="dingtalk-probe"]').trigger('click')
     await flushPromises()
 
-    expect(httpMock.post).toHaveBeenCalledWith('/integrations/dingtalk/test-connection', {
-      appKey: 'saved-key',
-      appSecret: '',
-      useSavedSecret: true,
-    })
+    expect(httpMock.post).toHaveBeenCalledWith(
+      '/integrations/dingtalk/test-connection',
+      {
+        appKey: 'saved-key',
+        appSecret: '',
+        useSavedSecret: true,
+      },
+      { timeout: 60_000 },
+    )
     wrapper.unmount()
   })
 
@@ -223,6 +231,83 @@ describe('DingtalkConnectionProbe', () => {
     })
     await flushPromises()
     expect(probe.text()).toContain('测试连接')
+    wrapper.unmount()
+  })
+
+  it('treats a whitespace-only AppKey as empty instead of enabling the probe', async () => {
+    const wrapper = mountProbe({
+      appKey: '   ',
+      appSecret: 'secret',
+      hasSecret: true,
+      savedAppKey: 'saved-key',
+    })
+
+    const probe = wrapper.get('[data-testid="dingtalk-probe"]')
+    expect(probe.attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).not.toContain('请为新 AppKey 输入对应的 AppSecret')
+    await probe.trigger('click')
+    await flushPromises()
+
+    expect(httpMock.post).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('reuses the saved secret when only whitespace is typed into the secret field', async () => {
+    httpMock.post.mockResolvedValue({
+      data: { success: true, code: 'OK', message: '测试成功' },
+    })
+    const wrapper = mountProbe({
+      appKey: 'saved-key',
+      appSecret: '   ',
+      hasSecret: true,
+      savedAppKey: 'saved-key',
+    })
+
+    expect(wrapper.text()).toContain('留空将复用已保存的 AppSecret')
+    await wrapper.get('[data-testid="dingtalk-probe"]').trigger('click')
+    await flushPromises()
+
+    expect(httpMock.post).toHaveBeenCalledWith(
+      '/integrations/dingtalk/test-connection',
+      {
+        appKey: 'saved-key',
+        appSecret: '   ',
+        useSavedSecret: true,
+      },
+      { timeout: 60_000 },
+    )
+    wrapper.unmount()
+  })
+
+  it('never borrows the saved secret for an AppKey that differs only by whitespace', async () => {
+    const wrapper = mountProbe({
+      appKey: 'saved-key ',
+      appSecret: '   ',
+      hasSecret: true,
+      savedAppKey: 'saved-key',
+    })
+
+    expect(wrapper.text()).not.toContain('留空将复用已保存的 AppSecret')
+    expect(wrapper.text()).toContain('请为新 AppKey 输入对应的 AppSecret')
+    const probe = wrapper.get('[data-testid="dingtalk-probe"]')
+    expect(probe.attributes('disabled')).toBeDefined()
+    await probe.trigger('click')
+    await flushPromises()
+    expect(httpMock.post).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('gives the probe request more budget than the serial backend worst case', async () => {
+    httpMock.post.mockResolvedValue({
+      data: { success: true, code: 'OK', message: '测试成功' },
+    })
+    const wrapper = mountProbe({ appKey: 'key', appSecret: 'secret' })
+
+    await wrapper.get('[data-testid="dingtalk-probe"]').trigger('click')
+    await flushPromises()
+
+    const config = httpMock.post.mock.calls[0]?.[2] as { timeout?: number } | undefined
+    expect(config?.timeout).toBeGreaterThan(40_000)
     wrapper.unmount()
   })
 })

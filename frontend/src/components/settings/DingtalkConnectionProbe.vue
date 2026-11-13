@@ -48,6 +48,12 @@ interface ProbeResult {
 
 const SUCCESS_MESSAGE = '测试成功：当前凭据可获取访问令牌并读取根部门。本次测试不会保存配置。'
 
+/**
+ * 后端探测串行两跳，各自 5 秒连接 + 15 秒读取，最坏约 40 秒；全局默认 30 秒会在
+ * 慢网下先中断，把阶段原因变成通用的「无法连接服务器」。只有本探测放宽到 60 秒。
+ */
+const PROBE_TIMEOUT_MS = 60_000
+
 const props = defineProps<{
   hasSecret: boolean
   savedAppKey: string
@@ -58,14 +64,26 @@ const appSecret = defineModel<string>('appSecret', { required: true })
 const testing = ref(false)
 const result = ref<ProbeResult | null>(null)
 let requestGeneration = 0
+/** 空判断只看有没有实际内容：纯空白等同于没填；发送与 AppKey 比较仍用原值。 */
+function hasText(value: string): boolean {
+  return value.trim().length > 0
+}
 const canReuseSavedSecret = computed(
-  () => props.hasSecret && !appSecret.value && Boolean(appKey.value) && appKey.value === props.savedAppKey,
+  () =>
+    props.hasSecret &&
+    !hasText(appSecret.value) &&
+    hasText(appKey.value) &&
+    appKey.value === props.savedAppKey,
 )
 const requiresNewSecret = computed(
-  () => props.hasSecret && Boolean(appKey.value) && !appSecret.value && appKey.value !== props.savedAppKey,
+  () =>
+    props.hasSecret &&
+    hasText(appKey.value) &&
+    !hasText(appSecret.value) &&
+    appKey.value !== props.savedAppKey,
 )
 const canTest = computed(
-  () => Boolean(appKey.value) && (Boolean(appSecret.value) || canReuseSavedSecret.value),
+  () => hasText(appKey.value) && (hasText(appSecret.value) || canReuseSavedSecret.value),
 )
 
 watch([appKey, appSecret], () => {
@@ -78,11 +96,15 @@ async function testConnection() {
   testing.value = true
   result.value = null
   try {
-    const { data } = await http.post<ProbeResult>('/integrations/dingtalk/test-connection', {
-      appKey: appKey.value,
-      appSecret: appSecret.value,
-      useSavedSecret: canReuseSavedSecret.value,
-    })
+    const { data } = await http.post<ProbeResult>(
+      '/integrations/dingtalk/test-connection',
+      {
+        appKey: appKey.value,
+        appSecret: appSecret.value,
+        useSavedSecret: canReuseSavedSecret.value,
+      },
+      { timeout: PROBE_TIMEOUT_MS },
+    )
     if (generation === requestGeneration) {
       result.value = data.success ? { ...data, message: SUCCESS_MESSAGE } : data
     }

@@ -243,11 +243,15 @@ describe('SettingsView: 钉钉测试连接边界', () => {
     await wrapper.get('[data-testid="dingtalk-probe"]').trigger('click')
     await flushPromises()
 
-    expect(httpMock.post).toHaveBeenCalledWith('/integrations/dingtalk/test-connection', {
-      appKey: 'probe-key',
-      appSecret: 'probe-secret',
-      useSavedSecret: false,
-    })
+    expect(httpMock.post).toHaveBeenCalledWith(
+      '/integrations/dingtalk/test-connection',
+      {
+        appKey: 'probe-key',
+        appSecret: 'probe-secret',
+        useSavedSecret: false,
+      },
+      { timeout: 60_000 },
+    )
     expect(httpMock.put).not.toHaveBeenCalled()
     expect(httpMock.delete).not.toHaveBeenCalled()
     expect(wrapper.get('[data-testid="dingtalk-save"]').attributes('disabled')).toBeUndefined()

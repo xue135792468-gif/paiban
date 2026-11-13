@@ -1,6 +1,14 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { apiCall, apiLogin, createAccount, newContext, seedSchool, uiLogin } from './helpers'
+import {
+  SUPER_ADMIN,
+  apiCall,
+  apiLogin,
+  createAccount,
+  newContext,
+  seedSchool,
+  uiLogin,
+} from './helpers'
 import type { AccountSeed } from './helpers'
 import { capture } from './screenshots'
 
@@ -11,7 +19,6 @@ import { capture } from './screenshots'
  * 后端三角色迁移、integration:manage 字段过滤与 user:manage 守卫都已整合进
  * `codex/dingtalk-multiuser`，这条 spec 在集成分支上跑（见 t01-ui-delivery.md）。
  */
-const SUPER_ADMIN = { username: 'admin', password: 'admin123' }
 
 async function menuText(page: Page): Promise<string> {
   return (await page.locator('[data-testid="layout-menu"]').innerText()).replace(/\s+/g, ' ')
