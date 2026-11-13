@@ -1,0 +1,38 @@
+# Verification run receipt (schema 1).
+# The archived bytes are authoritative; see receipt-SHA256SUMS.txt.
+# A recorded non-zero command exit or source drift is preserved history,
+# not a damaged receipt. Integrity here is not a claim that the gate passed.
+RECEIPT_SCHEMA=1
+RECEIPT_TOOL=scripts/verification_receipts.py
+RUN_ID=retro-quick-20261114
+MODE=quick
+MODE_FLAG=--quick
+COMMAND=bash scripts/verify.sh --quick
+ROOT=.
+START_UTC=2026-11-13T17:52:17Z
+END_UTC=2026-11-13T17:57:51Z
+HEAD_BEFORE=d6ef18b3d775b353f4cd617a415db8e516de3f3b
+HEAD_AFTER=d6ef18b3d775b353f4cd617a415db8e516de3f3b
+HEAD_IDENTICAL=1
+SOURCE_SCOPE=backend frontend scripts .githooks
+SOURCE_FILES=1076
+SOURCE_BEFORE=source-before.txt
+SOURCE_AFTER=source-after.txt
+SOURCE_BEFORE_SHA256=4014422a7c2dea969bf03bd51e4f8fa6d4147cbae66d4aa13021820ceafc0590
+SOURCE_AFTER_SHA256=94eb598e2bab20f2ea226295103140784e7feb8eb2f01ea5c14ca3c6aa3c3e31
+SOURCE_IDENTICAL=1
+SOURCE_DRIFT_FILES=0
+SOURCE_DRIFT_SAMPLE=
+SOURCE_DRIFT_MISSING=0
+SOURCE_DRIFT_UNTRACKED=0
+COMMAND_EXIT_CODE=0
+TOOL_EXIT_CODE=0
+LOG_RAW=.runtime/verification/retro-quick-20261114/verify.log
+LOG_BYTES=12228
+LOG_SHA256=dd0ef335e315a5bfe87d5e2825064720190d4f9b3d9680ae724a6b3fd32fd727
+LOG_LINES_TOTAL=184
+LOG_SUMMARY=log-summary.txt
+LOG_SUMMARY_KIND=metadata-only
+ARCHIVE_FILES=5
+CHECKSUM_TABLE=receipt-SHA256SUMS.txt
+NOTES=raw verify.log stays local and is never archived; the archive keeps a metadata-only log digest plus source snapshots; skipped steps (for example real PostgreSQL) are only what scripts/verify.sh printed

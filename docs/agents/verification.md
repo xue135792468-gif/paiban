@@ -2,7 +2,7 @@
 
 ## 选择入口
 
-日常迭代使用 `scripts/verify.sh --quick` 或模块定向命令。收据工具需要 Python 3.9+。最终冻结验证使用：
+日常迭代使用 `scripts/verify.sh --quick` 或模块定向命令。收据工具需要 Bash 4.4+ 和 Python 3.9+，验证宿主为本机 Git Bash 与 CI Linux。最终冻结验证使用：
 
 ```bash
 bash scripts/verify-run.sh <run-id> --full

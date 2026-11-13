@@ -1,6 +1,6 @@
 # 复盘 1–3 验收
 
-Status: in-progress
+Status: done
 
 基点 `88b8ce1fa9f59756ea36dfeac199e5b915643d7a`；交付分支 `codex/retro-verification`。实施范围见 [plan.md](plan.md)。本批不推送、不部署，不改原钉钉八票的业务源码。
 
@@ -29,12 +29,20 @@ Status: in-progress
 
 收据：[Docker 前置拒绝](../verification/retro-deploy-preflight-20261114/receipt.txt)。
 
-真实 `--quick`：待独立复查后执行。完整后端测试、Playwright、真实 PostgreSQL、钉钉租户/真机不在本批验收中冒称通过；原八票的既有完整验收记录仍在原目录。
+真实 `--quick` 已完成，执行源码 `d6ef18b3d775b353f4cd617a415db8e516de3f3b`，本地时间 2026-11-14 01:52:17–01:57:51，命令与工具退出均为 0。八项仓库检查、前端 lint/build、106 文件的 803 项单测、后端 `-DskipTests compile` 全部通过；1076 个源文件前后一致，无漂移。构建有 bundle 体积以及既有 Java deprecated/unchecked 告警，未阻断。
+
+收据：[真实快速门禁](../verification/retro-quick-20261114/receipt.txt)。两份归档在 Git 索引中共 12 文件，`--staged` 实际校验 0 mismatch / 0 missing / 0 unlisted / 0 metadata problems；正常 pre-commit 将再次校验，提交后再查 HEAD。
+
+完整后端测试、Playwright、真实 PostgreSQL、钉钉租户/真机不在本批验收中冒称通过；原八票的既有完整验收记录仍在原目录。
 
 ## 独立复查
 
-Standards / Spec：候选 `4af5646` 的首轮已完成；逐项发现与主控处置见 [review.md](review.md)。正确性问题修复后通过上述回归，待固定修复 SHA 的定向复核与真实快速门禁。
+Standards / Spec：首轮候选 `4af5646`，修复定向复核候选 `d6ef18b`；两轴均确认修复有效、无新阻塞。逐项发现、处置和低优先取舍见 [review.md](review.md)。
 
 ## 交付边界
 
-原 `backend/`、`frontend/` 相对基点无业务变更。原 DingTalk09 被拒绝的清理路径未重试；本批只清理自身新建夹具与进程。所有测试的 fake 编排、真实快速门禁、外部服务验收分开记录。
+原 `backend/`、`frontend/` 相对基点无业务变更。实跑后仅提交文档和收据，交付前核对当前源与测试快照相同。未推送、未部署。所有测试的 fake 编排、真实快速门禁、外部服务验收分开记录。
+
+本批两名实施 worker 与两名评审者均结束；`retro-verify-order`、`retro-verify-receipts` 临时工作树及其临时分支已移除，共享 `.tools` 与 `frontend/node_modules` 仍存在。失败/成功原始日志保存在交付工作树 `.runtime/retro-verification/`，仅作本地证据。
+
+**清理阻塞**：自动审批在执行前拒绝了本批运行临时目录/缓存清理，仅返回 `blocked by policy`，未提供进一步原因；该命令未执行，以下路径保留，不用其他方法重试：本工作树 `.runtime/retro-verification/tmp`、两次 `.runtime/verification/<run-id>/{tmp,npm-cache,screenshots}`、`.runtime/retro-receipts/cases`、`.runtime/retro-order`、`scripts/__pycache__`、`scripts/tests/__pycache__`。这不影响已通过的源/收据校验。原 DingTalk09 的拒绝路径从未触碰。
