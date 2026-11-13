@@ -201,6 +201,7 @@ import DingtalkIntegrationActions from '@/components/settings/DingtalkIntegratio
 import { resetTour, startTour } from '@/onboarding/tour'
 import { serverMessage } from '@/api/errors'
 import { useAuthStore } from '@/stores/auth'
+import { INTEGRATION_MANAGE_PERMISSION } from '@/constants/permissions'
 import type { DingTalkConfig, SyncConfirmRequest, SyncPreview, SyncResult } from '@/api/integration'
 
 interface SyncLog {
@@ -233,7 +234,7 @@ const loadingLogs = ref(false)
 const router = useRouter()
 const auth = useAuthStore()
 
-const canManageIntegration = computed(() => auth.hasPermission('integration:manage'))
+const canManageIntegration = computed(() => auth.hasPermission(INTEGRATION_MANAGE_PERMISSION))
 const canViewDeliveryLogs = computed(() => auth.hasPermission('substitution:view'))
 
 const logoName = computed(() => {

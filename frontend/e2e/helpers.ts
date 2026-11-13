@@ -71,6 +71,15 @@ export function trackBrowserErrors(page: Page): string[] {
   return errors
 }
 
+/**
+ * 日期选择器统一交互：填入日期后按 Tab 让控件收敛。各 spec 不要再各写一份
+ * `fill` + `press('Tab')`；日期值与后续断言仍由调用方负责。
+ */
+export async function fillDateInput(input: Locator, date: string): Promise<void> {
+  await input.fill(date)
+  await input.press('Tab')
+}
+
 export async function apiLogin(
   context: APIRequestContext,
   username: string = SUPER_ADMIN.username,

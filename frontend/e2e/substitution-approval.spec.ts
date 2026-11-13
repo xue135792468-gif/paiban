@@ -5,11 +5,13 @@ import {
   classEntries,
   createAccount,
   dateFor,
+  fillDateInput,
   newContext,
   pickFirstVisibleOption,
   pickOption,
   seedSchool,
   solveAndPublish,
+  trackBrowserErrors,
   uiLogin,
 } from './helpers'
 import { capture } from './screenshots'
@@ -27,25 +29,15 @@ const ACCOUNT_PASSWORD = 'teacher123'
 let browserErrors: string[] = []
 
 test.beforeEach(({ page }) => {
-  browserErrors = []
-  page.on('console', (message) => {
-    if (message.type() === 'error') browserErrors.push(message.text())
-  })
-  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error}`))
+  browserErrors = trackBrowserErrors(page)
 })
 
 test.afterEach(() => {
   expect(browserErrors).toEqual([])
 })
 
-async function pickDate(page: Page, date: string) {
-  const dateInput = page.getByRole('combobox', { name: '请假日期' })
-  await dateInput.fill(date)
-  await dateInput.press('Tab')
-}
-
 async function submitCover(page: Page, date: string, reason: string, substituteName: string) {
-  await pickDate(page, date)
+  await fillDateInput(page.getByRole('combobox', { name: '请假日期' }), date)
   await pickFirstVisibleOption(
     page.locator('.el-form-item', { hasText: '我的课节' }).locator('.el-select'),
   )

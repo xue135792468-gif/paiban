@@ -1,16 +1,12 @@
 import { expect, test } from '@playwright/test'
 import type { APIRequestContext } from '@playwright/test'
-import { apiCall, apiLogin, createAccount, newContext, uiLogin } from './helpers'
+import { apiCall, apiLogin, createAccount, newContext, trackBrowserErrors, uiLogin } from './helpers'
 import { capture } from './screenshots'
 
 let browserErrors: string[] = []
 
 test.beforeEach(({ page }) => {
-  browserErrors = []
-  page.on('console', (message) => {
-    if (message.type() === 'error') browserErrors.push(message.text())
-  })
-  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error}`))
+  browserErrors = trackBrowserErrors(page)
 })
 
 /**

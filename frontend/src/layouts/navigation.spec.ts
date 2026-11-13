@@ -61,11 +61,12 @@ describe('导航落地页按权限解析', () => {
     expect(dataLandingPath(() => false)).toBe('/403')
   })
 
-  it('只改两个入口的落地页，其余保持原路径', () => {
+  it('只改需按权限解析的入口，其余保持原路径（完整管理组合仍进调代工作台）', () => {
     const can = () => true
     expect(resolveMenuPath('/', can)).toBe('/')
     expect(resolveMenuPath('/rules', can)).toBe('/rules')
     expect(resolveMenuPath('/settings', can)).toBe('/settings')
+    expect(resolveMenuPath('/substitution', can)).toBe('/substitution')
   })
 })
 
@@ -87,7 +88,7 @@ describe('侧边导航可见性', () => {
     expect(targets(teacher)).toEqual({
       '/': '/',
       '/workbench': '/workbench/timetable',
-      '/substitution': '/substitution',
+      '/substitution': '/substitution/requests',
       '/data': '/data/assignments',
     })
   })

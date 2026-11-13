@@ -8,6 +8,7 @@ import {
   createAccount,
   newContext,
   pickOption,
+  trackBrowserErrors,
   uiLogin,
 } from './helpers'
 import { capture } from './screenshots'
@@ -24,11 +25,7 @@ const AUDIT_PATH = '/account-audits'
 let browserErrors: string[] = []
 
 test.beforeEach(({ page }) => {
-  browserErrors = []
-  page.on('console', (message) => {
-    if (message.type() === 'error') browserErrors.push(message.text())
-  })
-  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error}`))
+  browserErrors = trackBrowserErrors(page)
 })
 
 /** 「变更前 → 变更后」是本表最后一列；只读这一列，动作名里的「停用」不会混进来。 */

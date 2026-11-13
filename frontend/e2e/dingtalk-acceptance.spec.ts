@@ -6,6 +6,7 @@ import {
   classEntries,
   createAccount,
   dateFor,
+  fillDateInput,
   installFakeWindowDd,
   newContext,
   pickFirstVisibleOption,
@@ -75,12 +76,15 @@ test('手机首次免登提交 → 独立教务电脑改人批准 → 手机我�
     ownedAccountId = auth.user.id
     expect(auth.user).toMatchObject({ teacherId: seed.teacherId, roles: ['teacher'], loginType: 'DINGTALK' })
     await teacherPage.waitForURL((url) => !url.pathname.startsWith('/login'))
-    await teacherPage.goto('/substitution/requests')
+    // 手机默认落到本人课表后，走真实可见导航进入「我的调代」，不再 page.goto 绕过入口。
+    await teacherPage.getByRole('button', { name: '打开导航', exact: true }).click()
+    const navDrawer = teacherPage.getByRole('dialog', { name: '导航', exact: true })
+    await navDrawer.getByRole('menuitem', { name: '调代课', exact: true }).click()
+    await expect(teacherPage).toHaveURL(/\/substitution\/requests(?:\?.*)?$/)
+    await expect(navDrawer).toBeHidden()
     await expect(teacherPage.getByRole('tab', { name: '我的调代' })).toBeVisible()
     await expect(teacherPage.getByRole('tab', { name: '待审批' })).toHaveCount(0)
-    const dateInput = teacherPage.getByRole('combobox', { name: '请假日期' })
-    await dateInput.fill(date)
-    await dateInput.press('Tab')
+    await fillDateInput(teacherPage.getByRole('combobox', { name: '请假日期' }), date)
     await pickFirstVisibleOption(
       teacherPage.locator('.el-form-item', { hasText: '我的课节' }).locator('.el-select'),
     )

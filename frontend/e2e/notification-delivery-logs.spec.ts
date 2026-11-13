@@ -6,6 +6,7 @@ import {
   newContext,
   seedSchool,
   seedWorkbenchScenario,
+  trackBrowserErrors,
   uiLogin,
 } from './helpers'
 import { capture } from './screenshots'
@@ -15,11 +16,7 @@ const TEST_PASSWORD = 'teacher123'
 let browserErrors: string[] = []
 
 test.beforeEach(({ page }) => {
-  browserErrors = []
-  page.on('console', (message) => {
-    if (message.type() === 'error') browserErrors.push(message.text())
-  })
-  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error}`))
+  browserErrors = trackBrowserErrors(page)
 })
 
 test.afterEach(() => {
