@@ -8,10 +8,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.springframework.context.ApplicationContext;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 /**
@@ -30,6 +32,7 @@ public class DatabaseResetExtension implements BeforeEachCallback {
     @Override
     public void beforeEach(ExtensionContext context) {
         ApplicationContext applicationContext = SpringExtension.getApplicationContext(context);
+        awaitNotificationExecutor(applicationContext);
         DataSource dataSource = applicationContext.getBean(DataSource.class);
         try (Connection connection = dataSource.getConnection();
                 Statement statement = connection.createStatement()) {
@@ -60,5 +63,29 @@ public class DatabaseResetExtension implements BeforeEachCallback {
             }
         }
         return tables;
+    }
+
+    private void awaitNotificationExecutor(ApplicationContext applicationContext) {
+        ThreadPoolTaskExecutor executor;
+        try {
+            executor = applicationContext.getBean(
+                    "notificationExecutor", ThreadPoolTaskExecutor.class);
+        } catch (RuntimeException ignored) {
+            return;
+        }
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (executor.getActiveCount() > 0
+                || executor.getThreadPoolExecutor().getQueue().size() > 0) {
+            if (System.nanoTime() >= deadline) {
+                throw new IllegalStateException(
+                        "通知 executor 未在 10 秒内空闲，拒绝重置测试数据库");
+            }
+            try {
+                Thread.sleep(25);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("等待通知 executor 空闲时被中断", ex);
+            }
+        }
     }
 }

@@ -2,6 +2,7 @@ package com.paiban.notification.service;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 public final class NotificationTemplates {
 
@@ -17,8 +18,17 @@ public final class NotificationTemplates {
     public static final String SUBSTITUTION_VERIFY_ALERT = "SUBSTITUTION_VERIFY_ALERT";
     public static final String SUBSTITUTION_PLAN_FAILED = "SUBSTITUTION_PLAN_FAILED";
     public static final String TIMETABLE_PUBLISHED = "TIMETABLE_PUBLISHED";
+    public static final String SUBSTITUTION_APPROVAL_APPROVED =
+            "SUBSTITUTION_APPROVAL_APPROVED";
+    public static final String SUBSTITUTION_APPROVAL_REJECTED =
+            "SUBSTITUTION_APPROVAL_REJECTED";
 
     private static final Map<String, Template> TEMPLATES = new LinkedHashMap<>();
+    private static final Set<String> ACTIVE = Set.of(
+            SUBSTITUTION_APPROVAL_APPROVED,
+            SUBSTITUTION_APPROVAL_REJECTED,
+            SUBSTITUTION_EFFECTIVE_SUBSTITUTE,
+            SUBSTITUTION_SWAP_EFFECTIVE);
 
     static {
         TEMPLATES.put(SUBSTITUTION_EFFECTIVE_ORIGINAL, new Template(
@@ -55,11 +65,23 @@ public final class NotificationTemplates {
         TEMPLATES.put(SUBSTITUTION_VERIFY_ALERT, new Template(
                 "调课方案校验失败",
                 "一笔调课方案在批准前校验失败，已整单拒绝：[[${details}]]。请检查课表数据。"));
+        TEMPLATES.put(SUBSTITUTION_APPROVAL_APPROVED, new Template(
+                "代课申请已批准",
+                "您申请的 [[${className}]] [[${date}]] [[${periodLabel}]] [[${courseName}]] 代课已批准，"
+                        + "接课教师：[[${substituteTeacher}]]。审批意见：[[${comment}]]"));
+        TEMPLATES.put(SUBSTITUTION_APPROVAL_REJECTED, new Template(
+                "代课申请已驳回",
+                "您申请的 [[${className}]] [[${date}]] [[${periodLabel}]] [[${courseName}]] 代课已驳回。"
+                        + "驳回理由：[[${comment}]]"));
     }
 
     private NotificationTemplates() {}
 
     public static Template get(String code) {
         return TEMPLATES.get(code);
+    }
+
+    public static boolean isActive(String code) {
+        return ACTIVE.contains(code);
     }
 }

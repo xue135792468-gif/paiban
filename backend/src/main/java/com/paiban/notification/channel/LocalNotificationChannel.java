@@ -6,6 +6,7 @@ import com.paiban.notification.domain.Notification;
 import com.paiban.notification.domain.NotificationLog;
 import com.paiban.notification.domain.NotificationLogRepository;
 import com.paiban.notification.domain.NotificationRepository;
+import com.paiban.notification.service.NotificationRecipientResolver;
 import java.time.Instant;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -21,14 +22,17 @@ public class LocalNotificationChannel implements NotificationChannel {
     private final NotificationRepository notifications;
     private final NotificationLogRepository logs;
     private final ObjectMapper objectMapper;
+    private final NotificationRecipientResolver recipients;
 
     public LocalNotificationChannel(
             NotificationRepository notifications,
             NotificationLogRepository logs,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            NotificationRecipientResolver recipients) {
         this.notifications = notifications;
         this.logs = logs;
         this.objectMapper = objectMapper;
+        this.recipients = recipients;
     }
 
     @Override
@@ -40,7 +44,16 @@ public class LocalNotificationChannel implements NotificationChannel {
     public boolean send(Message message) {
         try {
             String variables = objectMapper.writeValueAsString(message.variables());
-            for (Long recipient : message.recipientUserIds()) {
+            NotificationRecipientResolver.ResolvedTargets resolved = recipients.resolve(message.targets());
+            if (resolved.localUserIds().isEmpty()) {
+                log(message, "local", false,
+                        "没有可用的本地收件账号",
+                        message.targets().stream()
+                                .map(NotificationRecipientResolver::failureRecipient)
+                                .toList());
+                return false;
+            }
+            for (Long recipient : resolved.localUserIds()) {
                 Notification notification = new Notification();
                 notification.setRecipientUserId(recipient);
                 notification.setTemplateCode(message.templateCode());
@@ -51,19 +64,26 @@ public class LocalNotificationChannel implements NotificationChannel {
                 notification.setCreatedAt(Instant.now());
                 notifications.save(notification);
             }
-            log(message, "local", true, null);
+            log(message, "local", true, null, resolved.localUserIds());
             return true;
         } catch (JsonProcessingException | RuntimeException ex) {
-            log(message, "local", false, ex.getMessage());
+            log(message, "local", false, "本地通知写入失败", message.targets().stream()
+                    .map(NotificationRecipientResolver::failureRecipient)
+                    .toList());
             return false;
         }
     }
 
-    private void log(Message message, String channel, boolean success, String error) {
+    private void log(
+            Message message,
+            String channel,
+            boolean success,
+            String error,
+            java.util.List<?> recipients) {
         NotificationLog entry = new NotificationLog();
         entry.setChannel(channel);
         entry.setPlatform("system");
-        entry.setRecipient(truncate(message.recipientUserIds().toString()));
+        entry.setRecipient(truncate(recipients.toString()));
         entry.setTemplateCode(message.templateCode());
         entry.setContent(message.content());
         entry.setSuccess(success);

@@ -171,6 +171,14 @@ public class SubstitutionEffects {
         notifications.substitutionEffective(request, substitution, variables(request));
     }
 
+    public void notifyApprovalApproved(SubstitutionRequest request) {
+        notifications.approvalApproved(request, request.getApprovalComment());
+    }
+
+    public void notifyApprovalRejected(SubstitutionRequest request) {
+        notifications.approvalRejected(request, request.getApprovalComment());
+    }
+
     public void notifySwap(SubstitutionRequest request, List<PlanMove> moves) {
         Map<Long, String> details = new LinkedHashMap<>();
         for (PlanMove move : moves) {
