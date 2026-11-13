@@ -1,4 +1,4 @@
-# 05 双轴复查与整改记录（进行中）
+# 05 双轴复查与整改记录（单票放行，整特性全量待执行）
 
 2026-11-12。固定比较：`git diff 10b3e8b4045390265d63dee74e3389473ec51016...6611b3c4b0e2ea91478c9cd227fe31ad102b545e`。两端均已解析，差异非空；完整施工与提交记录见交付文档。原始审源的物理快照为工作树 `dingtalk-t05-review-snapshot`，后续整改另行增量复核。
 
@@ -71,6 +71,12 @@ Duplicated Code：判断项/possible smell，`substitution-approval.spec.ts:46-5
 - 第二轮日志、截图、trace 分别位于 `logs/t05-browser-run2/`、`evidence/t05-browser-run2/`、`.runtime/t05-browser-run2/test-results/`。未覆盖或删除首轮失败。
 
 ## 放行状态
+
+**2026-11-13 单票放行。** 两路最终增量见 [Standards](t05-standards-delta-raw.md) 与 [Spec](t05-spec-delta-raw.md)，固定审源 `6611b3c...849a385`。原 Standards 六项及 Spec 六项均关闭，原始计数和优先级保持。Spec 增量 P1/P2/P3 均为 0；Standards 增量硬违反均为 0，另有一个 P3 Duplicated Code 判断项。
+
+主控对该判断项作明确不采纳决定：reject/withdraw 的三行过期分支保持各动作的显式事务流程；真正的截止规则已共用 `overdue`、状态/历史/审计写入已共用 `expire`。现阶段进一步抽取不会消除独立业务规则，当前两条公开 HTTP 回归已守住一致性。此为已裁定的启发式建议，并非延期的已确认缺陷，不把原始判断项改写为零。后续规则确实扩展时再评估抽取。
+
+源码候选、后端/前端定向与主控浏览器证据已核对。允许进入 06；05 暂记 implemented，原八票最后一次全量 verify 通过后才统一置 done。以下各阶段“未放行”说明属于历史快照。
 
 2026-11-13 程序验收更新：整改源码固定 `849a3856fd125391afe72679d26b1ea221e02b8c`，普通合入集成为 `3cb51de399bea852ad6a0c78954fc534fb5f144e`，源码树一致。后端四类组合 23 条通过、退出 0；同名选择追加后的前端四文件 17 条通过、lint/类型检查退出 0。主控第三轮受影响浏览器四条全部通过、退出 0，前后源码哈希相同；隔离端口与本次 Java 均已结束。未重复执行源码未变且第二轮已通过的两条免登例。
 
