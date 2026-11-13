@@ -18,3 +18,11 @@
 唯一fixer仍Turing：已绿的第一批H1/J1/J2/J3保留独立提交与R6后端12项证据，不重跑不混入新UI。第二阶段只补窄屏可见导航按钮/抽屉，复用原visibleMenuGroups及其route target；优先共享小菜单组件，桌面aside/testid不变；不改变默认本人课表或任何权限。原08整链也应改为真实点击导航进入申请页。
 
 新阶段先静态，主控跑新红例转绿及受影响浏览器，再做两轴新源增量。真正手机/租户与PG仍未验，全量尚未跑，08当前不放行。
+
+## 后续方案与测试语义校正
+
+主控首个新测试把“数据管理”这个名称当成管理权限，禁止它出现，是测试期望错误。spec角色段明确Teacher保留本人授课任务，IdentityDataInitializer授予assignment:view:own，既有菜单会解析到只读/data/assignments。因此新test改为该合法入口可见，只禁止设置/排课规则/AI助手；不更改角色或过滤合法菜单来迎合测试。R1真实失败发生在打开导航按钮缺失，早于这段后续断言，原红例依然只证明真实入口缺口，不把错误预期计为第二个产品红。
+
+主控也核到旧resolveMenuPath仅处理workbench/data，并没有Teacher的/substitution自助落点。为避免在Layout另造手机专用权限/路由映射，方案改为在现有集中resolver中统一：有submit但缺完整管理组合者→已有/substitution/requests，完整管理组合仍→/substitution；默认免登仍本人课表，route表/权限点不改。桌面/手机共用相同visibleGroups和activeMenu，既有桌面Teacher菜单也直接到合法自助页。新增中央导航回归与原整链真实点击是必要接缝，不复制路由权限算法。
+
+R1受检全部1007个源文件Git对象已独立对提交56ce4f76400a8b157c5654c9bd984556e79d60cf逐一比对，0差异/0额外文件，RED_SOURCE_EQUALS_COMMIT=1，回执见logs/whole-mobile-navigation-red1/committed-source-proof.txt。随后给新spec增加drawer截图及上述合法入口期望校正，保留原导航红断言，不回写原始日志。

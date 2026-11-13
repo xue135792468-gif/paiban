@@ -9,7 +9,7 @@ import {
 } from './helpers'
 import { capture } from './screenshots'
 
-test('手机免登默认本人课表后，可通过可见导航往返我的调代且不展示管理入口', async ({ browser }) => {
+test('手机免登默认本人课表后，可通过可见导航往返我的调代且不展示无权限入口', async ({ browser }) => {
   const api = await newContext()
   const superAdmin = await apiLogin(api)
   const caseId = `nav_${Math.random().toString(36).slice(2, 10)}`
@@ -52,9 +52,12 @@ test('手机免登默认本人课表后，可通过可见导航往返我的调�
     await toggle.click()
     const drawer = page.getByRole('dialog', { name: '导航', exact: true })
     await expect(drawer).toBeVisible()
-    for (const name of ['设置', '数据管理', '排课规则', 'AI 助手']) {
+    // Teachers retain assignment:view:own: 数据管理 leads to their read-only assignments.
+    await expect(drawer.getByRole('menuitem', { name: '数据管理', exact: true })).toBeVisible()
+    for (const name of ['设置', '排课规则', 'AI 助手']) {
       await expect(drawer.getByRole('menuitem', { name, exact: true })).toHaveCount(0)
     }
+    await capture(page, 'whole-mobile-navigation-drawer')
     await drawer.getByRole('menuitem', { name: '调代课', exact: true }).click()
     await expect(page).toHaveURL(/\/substitution\/requests(?:\?.*)?$/)
     await expect(drawer).toBeHidden()
