@@ -1,5 +1,7 @@
 # 接手说明（2026-10-25 会话交接）
 
+> **2026-11-13 06 复查整改未放行**：固定审源 `90bd973`；后续 `1f145ca` 仅补文档、源码相同。原 Standards 3个P2硬问题/2个P3判断建议，Spec 1个P1，逐项判定见 [06复查](dingtalk-multiuser/t06-review.md)，由单一fixer统一整改。主控33后端/6真实浏览器绿是原候选证据，不代表新增反例已通过；[主控QC](dingtalk-multiuser/t06-main-acceptance.md) 还要求记录页文案收口。整改与增量复核后才07；07/08仍仅准备，最终八票全量未跑，未推送/部署。下方进度为历史快照。
+
 > **2026-11-13 钉钉多用户 06 施工中**：05 已单票放行；06 的 transport 已合入 `8a0ed26`，core / ui / log-api 仍独立施工，主控整体验收与双轴尚未完成。先看 [06 施工协调](dingtalk-multiuser/t06-coordination.md) 与 [质量闸门](dingtalk-multiuser/t06-quality-plan.md)，不得仅凭一个切片绿色就进入07。07/08 仍仅有准备文档；未运行最终全量、未推送、未部署。
 
 > **2026-11-13 钉钉多用户 05 已单票放行**：整改候选 `849a385` 已合入 `3cb51de`，后端/前端定向、主控浏览器与双轴增量均已收口，见 [05 复查与最终判定](dingtalk-multiuser/t05-review.md)。01/02/04/03/05 为 implemented，最终全量后才 done。下一张 06 通知票，必须执行 [提交后交付边界](dingtalk-multiuser/t06-delivery-boundary.md) 和 [只读发送记录入口](dingtalk-multiuser/t06-admin-log-plan.md)；07/08 尚未施工。下方 05 未放行的段落为历史快照；未推送、未部署。
