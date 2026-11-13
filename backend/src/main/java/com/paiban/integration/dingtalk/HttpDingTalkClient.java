@@ -198,24 +198,25 @@ public class HttpDingTalkClient implements DingTalkClient {
             String absolute = link == null || link.startsWith("http")
                     ? link
                     : settings.publicBaseUrl() + link;
-            restClient.post()
+            Map<?, ?> response = restClient.post()
                     .uri(OAPI + "/topapi/message/corpconversation/asyncsend_v2?access_token=" + accessToken())
                     .body(Map.of(
                             "agent_id", settings.dingtalkAgentId(),
                             "userid_list", dingtalkUserId,
                             "msg", Map.of(
-                                    "msgtype", "actionCard",
-                                    "actionCard", Map.of(
+                                    "msgtype", "action_card",
+                                    "action_card", Map.of(
                                             "title", title,
-                                            "text", markdown,
-                                            "singleTitle", "查看详情",
-                                            "singleURL", absolute == null ? "" : absolute))))
+                                            "markdown", markdown,
+                                            "single_title", "查看详情",
+                                            "single_url", absolute == null ? "" : absolute))))
                     .retrieve()
-                    .toBodilessEntity();
-            return true;
+                    .body(Map.class);
+            return response != null
+                    && response.get("errcode") instanceof Number code
+                    && code.doubleValue() == 0;
         } catch (RuntimeException ex) {
-            log.warn("DingTalk notification failed for {}: {}", dingtalkUserId,
-                    DingTalkApiException.redact(ex.getMessage()));
+            log.warn("DingTalk work notification delivery failed");
             return false;
         }
     }
