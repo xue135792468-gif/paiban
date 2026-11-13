@@ -16,14 +16,22 @@
         </el-form-item>
         <el-form-item label="学校 Logo">
           <div class="logo-row">
-            <el-upload :auto-upload="false" :show-file-list="false" accept="image/png,image/jpeg" :on-change="uploadLogo">
+            <el-upload
+              :auto-upload="false"
+              :show-file-list="false"
+              accept="image/png,image/jpeg"
+              :on-change="uploadLogo"
+            >
               <el-button :loading="uploading">上传图片</el-button>
             </el-upload>
             <span class="logo-path">{{ logoName || '未上传' }}</span>
           </div>
         </el-form-item>
         <el-form-item label="外部访问地址">
-          <el-input v-model="form['public.base-url']" placeholder="如 https://paiban.school.cn，用于通知里的跳转链接" />
+          <el-input
+            v-model="form['public.base-url']"
+            placeholder="如 https://paiban.school.cn，用于通知里的跳转链接"
+          />
         </el-form-item>
       </el-form>
     </el-card>
@@ -48,17 +56,12 @@
           <el-switch v-model="dingtalk.enabled" />
           <span class="hint inline">关闭后系统完整可用，仅使用本地账号与系统内通知。</span>
         </el-form-item>
-        <el-form-item label="AppKey">
-          <el-input v-model="dingtalk.appKey" placeholder="钉钉企业内部应用 AppKey" />
-        </el-form-item>
-        <el-form-item label="AppSecret">
-          <el-input
-            v-model="dingtalk.appSecret"
-            type="password"
-            show-password
-            :placeholder="dingtalk.hasSecret ? '已配置，不修改请留空' : '请输入 AppSecret'"
-          />
-        </el-form-item>
+        <DingtalkConnectionProbe
+          v-model:app-key="dingtalk.appKey"
+          v-model:app-secret="dingtalk.appSecret"
+          :has-secret="dingtalk.hasSecret"
+          :saved-app-key="savedDingtalkAppKey"
+        />
         <el-form-item label="AgentId">
           <el-input v-model="dingtalk.agentId" placeholder="微应用 AgentId" />
         </el-form-item>
@@ -82,8 +85,20 @@
           @cleared="reloadDingtalk"
         />
       </el-form>
-      <el-alert v-if="syncResult" :title="syncResult.message" :type="syncResult.success ? 'success' : 'error'" :closable="false" show-icon class="sync-result" />
-      <DingTalkSyncPreview v-if="syncPreview" :preview="syncPreview" :confirming="confirming" @confirm="confirmSync" />
+      <el-alert
+        v-if="syncResult"
+        :title="syncResult.message"
+        :type="syncResult.success ? 'success' : 'error'"
+        :closable="false"
+        show-icon
+        class="sync-result"
+      />
+      <DingTalkSyncPreview
+        v-if="syncPreview"
+        :preview="syncPreview"
+        :confirming="confirming"
+        @confirm="confirmSync"
+      />
     </el-card>
 
     <el-card shadow="never">
@@ -151,7 +166,10 @@
         <el-switch
           :model-value="form['ai.features.natural-language-constraints'] === 'true'"
           data-testid="settings-natural-language-switch"
-          @update:model-value="(value: string | number | boolean) => (form['ai.features.natural-language-constraints'] = value ? 'true' : 'false')"
+          @update:model-value="
+            (value: string | number | boolean) =>
+              (form['ai.features.natural-language-constraints'] = value ? 'true' : 'false')
+          "
         />
       </div>
     </el-card>
@@ -178,16 +196,12 @@ import InfoTooltip from '@/components/InfoTooltip.vue'
 import NotificationDeliveryLogsCard from '@/components/settings/NotificationDeliveryLogsCard.vue'
 import SubstitutionPolicyCard from '@/components/settings/SubstitutionPolicyCard.vue'
 import DingTalkSyncPreview from '@/components/DingTalkSyncPreview.vue'
+import DingtalkConnectionProbe from '@/components/settings/DingtalkConnectionProbe.vue'
 import DingtalkIntegrationActions from '@/components/settings/DingtalkIntegrationActions.vue'
 import { resetTour, startTour } from '@/onboarding/tour'
 import { serverMessage } from '@/api/errors'
 import { useAuthStore } from '@/stores/auth'
-import type {
-  DingTalkConfig,
-  SyncConfirmRequest,
-  SyncPreview,
-  SyncResult,
-} from '@/api/integration'
+import type { DingTalkConfig, SyncConfirmRequest, SyncPreview, SyncResult } from '@/api/integration'
 
 interface SyncLog {
   id: number
@@ -197,7 +211,7 @@ interface SyncLog {
 }
 
 const form = ref<Record<string, string>>({})
-const dingtalk = reactive<DingTalkConfig>({
+const dingtalk = reactive<DingTalkConfig & { appSecret: string }>({
   enabled: false,
   appKey: '',
   appSecret: '',
@@ -206,6 +220,7 @@ const dingtalk = reactive<DingTalkConfig>({
   corpId: '',
   syncStrategy: 'dingtalk',
 })
+const savedDingtalkAppKey = ref('')
 const logs = ref<SyncLog[]>([])
 const syncResult = ref<SyncResult | null>(null)
 const syncPreview = ref<SyncPreview | null>(null)
@@ -247,6 +262,7 @@ async function loadSettings() {
 async function loadDingtalk() {
   const { data } = await http.get('/integrations/dingtalk/config')
   Object.assign(dingtalk, data)
+  savedDingtalkAppKey.value = data.appKey ?? ''
   dingtalk.appSecret = ''
 }
 
@@ -303,6 +319,7 @@ async function saveDingtalk() {
     if (dingtalk.appSecret) payload.appSecret = dingtalk.appSecret
     const { data } = await http.put('/integrations/dingtalk/config', payload)
     Object.assign(dingtalk, data)
+    savedDingtalkAppKey.value = data.appKey ?? ''
     dingtalk.appSecret = ''
     ElMessage.success('钉钉配置已保存')
   } catch (e: any) {
@@ -316,11 +333,9 @@ async function previewSync() {
   previewing.value = true
   syncResult.value = null
   try {
-    const { data } = await http.post<SyncPreview>(
-      '/integrations/dingtalk/sync/preview',
-      undefined,
-      { timeout: DINGTALK_SYNC_TIMEOUT_MS },
-    )
+    const { data } = await http.post<SyncPreview>('/integrations/dingtalk/sync/preview', undefined, {
+      timeout: DINGTALK_SYNC_TIMEOUT_MS,
+    })
     syncPreview.value = data
     if (!data.success) {
       ElMessage.error(data.message)
@@ -335,11 +350,9 @@ async function previewSync() {
 async function confirmSync(request: SyncConfirmRequest) {
   confirming.value = true
   try {
-    const { data } = await http.post<SyncResult>(
-      '/integrations/dingtalk/sync/confirm',
-      request,
-      { timeout: DINGTALK_SYNC_TIMEOUT_MS },
-    )
+    const { data } = await http.post<SyncResult>('/integrations/dingtalk/sync/confirm', request, {
+      timeout: DINGTALK_SYNC_TIMEOUT_MS,
+    })
     syncResult.value = data
     if (data.success) {
       ElMessage.success(data.message)

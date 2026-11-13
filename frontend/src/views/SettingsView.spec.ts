@@ -141,11 +141,9 @@ describe('SettingsView: 钉钉同步超时', () => {
     await wrapper.find('[data-testid="dingtalk-preview"]').trigger('click')
     await flushPromises()
 
-    expect(httpMock.post).toHaveBeenCalledWith(
-      '/integrations/dingtalk/sync/preview',
-      undefined,
-      { timeout: 180000 },
-    )
+    expect(httpMock.post).toHaveBeenCalledWith('/integrations/dingtalk/sync/preview', undefined, {
+      timeout: 180000,
+    })
 
     await wrapper.find('[data-testid="dingtalk-confirm"]').trigger('click')
     await flushPromises()
@@ -189,8 +187,10 @@ describe('SettingsView: 钉钉配置只对集成配置权限可见', () => {
     const wrapper = await mountView(['settings:manage', 'foundation:manage'])
 
     expect(wrapper.find('#dingtalk-integration').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="dingtalk-probe"]').exists()).toBe(false)
     const urls = httpMock.get.mock.calls.map((call) => String(call[0]))
     expect(urls.some((url) => url.includes('/integrations/dingtalk'))).toBe(false)
+    expect(httpMock.post).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 
@@ -223,6 +223,56 @@ describe('SettingsView: 钉钉配置只对集成配置权限可见', () => {
       'school.name': '本校',
       'substitution.max-plan-teachers': '5',
     })
+    wrapper.unmount()
+  })
+})
+
+describe('SettingsView: 钉钉测试连接边界', () => {
+  it('测试当前未保存参数时不保存、不清空，也不锁住独立保存操作', async () => {
+    let resolveProbe: ((value: unknown) => void) | undefined
+    httpMock.post.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveProbe = resolve
+        }),
+    )
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="dingtalk-probe-app-key"]').setValue('probe-key')
+    await wrapper.get('[data-testid="dingtalk-probe-app-secret"]').setValue('probe-secret')
+    await wrapper.get('[data-testid="dingtalk-probe"]').trigger('click')
+    await flushPromises()
+
+    expect(httpMock.post).toHaveBeenCalledWith('/integrations/dingtalk/test-connection', {
+      appKey: 'probe-key',
+      appSecret: 'probe-secret',
+      useSavedSecret: false,
+    })
+    expect(httpMock.put).not.toHaveBeenCalled()
+    expect(httpMock.delete).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="dingtalk-save"]').attributes('disabled')).toBeUndefined()
+
+    resolveProbe?.({ data: { success: true, code: 'OK', message: '测试成功' } })
+    await flushPromises()
+    expect(httpMock.put).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('保存既有空 Secret 时继续沿用空白不覆盖语义', async () => {
+    httpMock.put.mockResolvedValue({ data: dingtalkConfig })
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="dingtalk-save"]').trigger('click')
+    await flushPromises()
+
+    expect(httpMock.put).toHaveBeenCalledWith('/integrations/dingtalk/config', {
+      enabled: true,
+      appKey: 'ding-key',
+      agentId: '123',
+      corpId: 'corp-1',
+      syncStrategy: 'dingtalk',
+    })
+    expect(httpMock.put.mock.calls[0][1]).not.toHaveProperty('appSecret')
     wrapper.unmount()
   })
 })
