@@ -12,11 +12,11 @@
 
 |工作树/分支后缀|范围|当前状态|
 |---|---|---|
-|dingtalk-t06-core|通知渠道/事务异步、业务 hooks、测试 reset、业务集成、ADR0014|施工中；两条纵向正例日志已绿，待可构建 checkpoint 提交，然后继续剩余业务场景|
+|dingtalk-t06-core|通知渠道/事务异步、业务 hooks、测试 reset、业务集成、ADR0014|0256581 已以内部 checkpoint 合入 1dd5bcc；剩余业务场景、既有回归与最终交付仍收口中|
 |dingtalk-t06-transport|HttpDingTalkClient.sendWorkNotification、HTTP stub、交付|完成并合入；worker 已关闭|
 |dingtalk-t06-ui|设置页、策略卡、发送记录卡/API、组件测试与 E2E 源|6563767 已合入 c423d26；定向与静态检查已绿，浏览器尚未执行|
 |dingtalk-t06-log-api|notification/web、NotificationDeliveryLogQueryService、独立 API 集成测试|施工中；不修改 NotificationLogRepository 或 core 文件|
-|dingtalk-t06-isolation|只写独立故障测试与交付|从 core 稳定 checkpoint 0256581 建树；首条故障测试已准备，尚未运行 Maven，等查询 worker 释放测试槽|
+|dingtalk-t06-isolation|只写独立故障测试与交付|三项已绿，d82a935 已合入 3bec31a；最后 core 源整合后主控统一复验，worker 已关闭|
 
 core 不修改上述查询文件；UI 不写 Java，transport 不写其它集成行为。NotificationDeliveryIsolationIntegrationTest 由独立 QA 负责，计划见 t06-isolation-qa-plan.md。UI 合并补丁检查曾命中文档两处 Markdown 行尾空白（退出2），主控已移除；不是源码或测试失败，原始 merger 结果保留。
 
