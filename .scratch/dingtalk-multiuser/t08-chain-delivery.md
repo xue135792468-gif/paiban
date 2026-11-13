@@ -12,6 +12,6 @@ FakeDingTalkClient仅在既有fake=true装配下增加隔离身份：fake:accept
 
 - fake-red：源码冻结，退出1；2条中1通过、1错误（旧Fake拒绝新身份）。这是新身份能力的公开边界红例，未声称产品业务回归。
 - chain-run1：源码冻结，退出1；Fake两条通过，整链一条失败。失败是主控测试把既有channel标识误写为大写DINGTALK；实际契约为小写dingtalk。这是测试期望写错，不是已复现产品缺陷；未改产品通道标识来迁就测试。此前认证/审批/课表/审计/外发两对象断言已执行。
-- chain-run2：退出0，全部5条通过（Fake身份2、整链1、既有DingTalkIntegrationTest 2），0失败/错误/跳过，SOURCE_IDENTICAL=1。原有目录同步及免登回归保持。
+- chain-run2：退出0，全部26条通过（Fake身份2、整链1、既有DingTalkIntegrationTest 23），0失败/错误/跳过，SOURCE_IDENTICAL=1。原有目录同步及免登回归保持。
 
 每次原始日志、独立退出码和源前后哈希留在专属.runtime/t08-chain，结束归档至logs/t08-chain。没有full verify、真实租户送达、真实PostgreSQL或部署证据；不进行任何已被拒绝的删除，自己启动的测试进程结束时核对关闭。
