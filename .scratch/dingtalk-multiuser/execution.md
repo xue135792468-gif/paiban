@@ -58,3 +58,5 @@
 05已从e091d0f启动：codex/dingtalk-t05-backend与codex/dingtalk-t05-ui独立写集；主模型负责锁/事务/权限取舍和测试调度。当前后端定向TDD优先，前端先准备红测试，避免内存不足并发重测。契约与旧调用方保全见t05-wire-contract、t05-transaction-plan、t05-caller-regression-map。06/07研究准备不等于施工。
 
 2026-11-13 最终源已整合至7413a01，实际受影响浏览器32项通过，手机默认课表到申请的真实入口M1关闭；专项、兼容性说明和最终评审入口见t08-main-acceptance.md、whole-review.md。最后frontier为冻结源串行完整verify，完成前原八票均不标done。未push/部署，09拒绝删除保留。
+
+2026-11-13 首轮完整verify真实失败，后端1265项仅RoleReshape角色目录断言1失败，退出1且源冻结；前端阶段未执行，08不done。只修测试断言范围的独立worker已启动，修复/复查后需新完整门禁，入口final-acceptance.md。
