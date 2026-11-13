@@ -1,5 +1,7 @@
 # 接手说明（2026-10-25 会话交接）
 
+> **2026-11-13 钉钉07已整合、待双轴放行**：后端5ba87a7已合入5c91976，前端文案QC e6c1d27；主控处理旧Mockito上下文兼容回归与实际页面文案/间距。当前真实运行与尚未完成事项见[07主控验收](dingtalk-multiuser/t07-main-acceptance.md)及[协调](dingtalk-multiuser/t07-coordination.md)。07仍in-progress，08仅准备；01/02/04/03/05/06为implemented。最终八票全量未跑，未推送/部署；下方07未施工均为历史快照。
+
 > **2026-11-13 钉钉06已单票放行，下一张07**：最终源877dee9与修复候选70ab6a7相同，双轴增量无新增问题，原发现与主控QC均已处置，见[06最终复查](dingtalk-multiuser/t06-review.md)和[验收](dingtalk-multiuser/t06-main-acceptance.md)。01/02/04/03/05/06均implemented；07配置探测与说明书进入frontier，接口/分工见t07-wire-contract.md、t07-coordination.md。08仍仅准备；最终全量未跑，未推送/部署。下方06未放行是历史快照；清理拒绝按09保留，不绕过。
 
 > **2026-11-13 06 复查整改未放行**：固定审源 `90bd973`；后续 `1f145ca` 仅补文档、源码相同。原 Standards 3个P2硬问题/2个P3判断建议，Spec 1个P1，逐项判定见 [06复查](dingtalk-multiuser/t06-review.md)，由单一fixer统一整改。主控33后端/6真实浏览器绿是原候选证据，不代表新增反例已通过；[主控QC](dingtalk-multiuser/t06-main-acceptance.md) 还要求记录页文案收口。整改与增量复核后才07；07/08仍仅准备，最终八票全量未跑，未推送/部署。下方进度为历史快照。

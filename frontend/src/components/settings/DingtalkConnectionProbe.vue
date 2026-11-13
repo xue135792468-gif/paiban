@@ -26,6 +26,7 @@
     </el-form-item>
     <el-alert
       v-if="result"
+      class="probe-result"
       data-testid="dingtalk-probe-result"
       :title="result.message"
       :type="result.success ? 'success' : 'error'"
@@ -105,6 +106,9 @@ async function testConnection() {
 </script>
 
 <style scoped>
+.probe-result {
+  margin-bottom: 18px;
+}
 .hint {
   color: var(--paiban-muted);
   font-size: 12px;

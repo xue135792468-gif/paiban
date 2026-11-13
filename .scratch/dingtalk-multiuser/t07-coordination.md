@@ -2,6 +2,8 @@
 
 2026-11-13。06已于e7d0bfc双轴放行；backend与ui工作树基于同源877dee9启动，结束前合入最新集成分支。本文件记录分工，不代表07验收完成。
 
+> 当前整合：UI f3b0d49已合入59d8ca7；后端Sagan主体后由主控接手最终编译及Fake上下文兼容修复，最终候选5ba87a7合入5c91976。主控前端文案QC已提交e6c1d27；run1真实浏览器通过后补结果横幅间距，run2复验。当前验收见t07-main-acceptance.md，接下来整票双轴；07未放行，08仍仅准备。已结束两施工worker、两merger与UI顾问，不重复派原任务。
+
 - 固定接口：t07-wire-contract.md；方案与资料：t07-probe-plan.md、t07-manual-official-research.md。整体 spec.md、票07、CODING_STANDARDS.md 优先。
 - 后端 worker：integration/web 的配置原子保存与探测入口、独立 probe 服务/HTTP 适配器及对应 backend 测试。读取保存凭据时取得一致快照，网络在事务外；不改运行客户端缓存、绑定、通讯录或通知。用 HTTP 验证非法保存无部分写入、权限、探测无数据库副作用；用本地 HTTP stub 验证真实供应商请求契约。
 - 前端 worker：SettingsView 与必要的独立连接测试组件/组合函数、对应组件测试及专用 E2E。使用当前表单，不先保存；请求期间修改输入必须使旧结果失效（包括晚返回），不误导用户。保存与探测各自 loading。保留同步/清除与06发送记录行为，遵守 SFC 体积基线。
