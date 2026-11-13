@@ -1,34 +1,16 @@
 import { expect, test } from '@playwright/test'
-import type { APIRequestContext, BrowserContext } from '@playwright/test'
+import type { APIRequestContext } from '@playwright/test'
 import {
   API,
+  DINGTALK_UA,
   apiCall,
   apiLogin,
   newContext,
+  installFakeWindowDd,
   trackBrowserErrors,
   uiLogin,
 } from './helpers'
 import { capture } from './screenshots'
-
-const DINGTALK_UA =
-  'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 DingTalk/7.5.10'
-
-async function installFakeWindowDd(context: BrowserContext, authCode: string) {
-  await context.addInitScript((code: string) => {
-    localStorage.setItem('paiban.tour.seen', '1')
-    localStorage.setItem('paiban.tour.advanced', '1')
-    ;(window as any).dd = {
-      ready: (cb: () => void) => cb(),
-      runtime: {
-        permission: {
-          requestAuthCode: ({ onSuccess }: { onSuccess: (res: { code: string }) => void }) => {
-            onSuccess({ code })
-          },
-        },
-      },
-    }
-  }, authCode)
-}
 
 /**
  * 票 03 真实浏览器准备：
@@ -57,8 +39,7 @@ test('钉钉免登失败展示说明页，「我是管理员，用密码登录�
     const browserErrors = trackBrowserErrors(page)
     const [dingtalkAuthResp] = await Promise.all([
       page.waitForResponse(
-        (response) =>
-          response.request().method() === 'POST' && response.url().endsWith('/api/auth/dingtalk'),
+        (response) => response.request().method() === 'POST' && response.url().endsWith('/api/auth/dingtalk'),
       ),
       page.goto('/login'),
     ])
@@ -115,7 +96,9 @@ test('已绑定UID老师免登并取得同一账号', async ({ browser }) => {
     const allTeachers = await apiCall(api, token, 'get', '/teachers')
     const boundTeachers = allTeachers.filter((teacher: any) => teacher.dingtalkUserId === 'dd-001')
     if (boundTeachers.length > 1) {
-      throw new Error(`precondition failed: multiple teachers bound to dd-001 (${boundTeachers.map((t: any) => t.id).join(',')})`)
+      throw new Error(
+        `precondition failed: multiple teachers bound to dd-001 (${boundTeachers.map((t: any) => t.id).join(',')})`,
+      )
     }
 
     let targetTeacherId: number
@@ -138,9 +121,7 @@ test('已绑定UID老师免登并取得同一账号', async ({ browser }) => {
       loginType?: string
     }> = await apiCall(api, token, 'get', '/users')
     const linkedBefore = usersBefore.filter((u) => u.teacherId === targetTeacherId)
-    const enabledBefore = linkedBefore
-      .filter((u) => u.enabled)
-      .sort((a, b) => a.id - b.id)
+    const enabledBefore = linkedBefore.filter((u) => u.enabled).sort((a, b) => a.id - b.id)
     if (linkedBefore.length > 0 && enabledBefore.length === 0) {
       throw new Error(
         `precondition failed: teacher #${targetTeacherId} bound to dd-001 only has disabled accounts; refusing to mutate foreign fixture`,
@@ -154,8 +135,7 @@ test('已绑定UID老师免登并取得同一账号', async ({ browser }) => {
 
     const [dingtalkAuthResp] = await Promise.all([
       page.waitForResponse(
-        (response) =>
-          response.request().method() === 'POST' && response.url().endsWith('/api/auth/dingtalk'),
+        (response) => response.request().method() === 'POST' && response.url().endsWith('/api/auth/dingtalk'),
       ),
       page.goto('/login'),
     ])
