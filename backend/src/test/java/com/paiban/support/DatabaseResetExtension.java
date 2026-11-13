@@ -66,13 +66,8 @@ public class DatabaseResetExtension implements BeforeEachCallback {
     }
 
     private void awaitNotificationExecutor(ApplicationContext applicationContext) {
-        ThreadPoolTaskExecutor executor;
-        try {
-            executor = applicationContext.getBean(
-                    "notificationExecutor", ThreadPoolTaskExecutor.class);
-        } catch (RuntimeException ignored) {
-            return;
-        }
+        ThreadPoolTaskExecutor executor = applicationContext.getBean(
+                "notificationExecutor", ThreadPoolTaskExecutor.class);
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         while (executor.getActiveCount() > 0
                 || executor.getThreadPoolExecutor().getQueue().size() > 0) {

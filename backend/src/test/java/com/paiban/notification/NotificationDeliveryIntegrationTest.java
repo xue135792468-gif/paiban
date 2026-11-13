@@ -2,10 +2,9 @@ package com.paiban.notification;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.equalTo;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.after;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -156,6 +155,73 @@ class NotificationDeliveryIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void delegatedApprovalSeparatesActualOperatorExpectedTeacherAndFinalTeacher() {
+        String admin = adminToken();
+        LocalDate monday = ScheduleFixture.nextMonday();
+        ScheduleFixture.Result schedule = ScheduleFixture.publishedIn(
+                admin, 5, TestData.semesterStarting(admin, monday));
+        Map<String, Object> entry = ScheduleFixture.classEntries(admin, schedule.classId()).stream()
+                .filter(row -> ((Number) row.get("teacherId")).longValue() == schedule.teacherId())
+                .findFirst()
+                .orElseThrow();
+        long entryId = ((Number) entry.get("id")).longValue();
+        LocalDate lessonDate = monday.plusDays(
+                ((Number) entry.get("dayOfWeek")).longValue() - 1L);
+        long expectedTeacherId = TestData.teacher(admin, "期望代课" + TestData.suffix());
+        long finalTeacherId = TestData.teacher(admin, "最终代课" + TestData.suffix());
+
+        String operatorUsername = "delegate_operator_" + TestData.suffix();
+        as(admin).body(Map.of(
+                        "username", operatorUsername,
+                        "password", PASSWORD,
+                        "displayName", "代发操作人",
+                        "roleCodes", List.of("super_admin"),
+                        "teacherId", schedule.otherTeacherId()))
+                .when().post("/api/users").then().statusCode(200);
+        String operatorToken = login(operatorUsername, PASSWORD);
+        bindDingTalkUser(schedule.teacherId(), "uid-original");
+        bindDingTalkUser(schedule.otherTeacherId(), "uid-operator");
+        bindDingTalkUser(expectedTeacherId, "uid-expected");
+        bindDingTalkUser(finalTeacherId, "uid-final");
+
+        long requestId = as(operatorToken).body(Map.of(
+                        "entryId", entryId,
+                        "effectiveDate", lessonDate.toString(),
+                        "reason", "管理员代发",
+                        "expectedSubstituteTeacherId", expectedTeacherId))
+                .when().post("/api/substitution-requests")
+                .then().statusCode(200)
+                .body("status", equalTo("SUBMITTED"))
+                .extract().jsonPath().getLong("id");
+        when(dingTalkClient.sendWorkNotification(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(true);
+        settingsService.put(SettingsService.DINGTALK_ENABLED, "true");
+
+        as(admin).body(Map.of(
+                        "comment", "批准时换人",
+                        "substituteTeacherId", finalTeacherId))
+                .when().post("/api/substitution-requests/" + requestId + "/approve")
+                .then().statusCode(200)
+                .body("status", equalTo("EFFECTIVE"))
+                .body("substituteTeacherId", equalTo((int) finalTeacherId));
+
+        awaitDeliveryLogs(2);
+        assertThat(notificationLogs.findAll())
+                .filteredOn(log -> "SUBSTITUTION_APPROVAL_APPROVED".equals(
+                        log.getTemplateCode()))
+                .singleElement()
+                .satisfies(log -> assertThat(log.getRecipient()).isEqualTo("uid-operator"));
+        assertThat(notificationLogs.findAll())
+                .filteredOn(log -> "SUBSTITUTION_EFFECTIVE_SUBSTITUTE".equals(
+                        log.getTemplateCode()))
+                .singleElement()
+                .satisfies(log -> assertThat(log.getRecipient()).isEqualTo("uid-final"));
+        assertThat(notificationLogs.findAll())
+                .extracting(NotificationLog::getRecipient)
+                .doesNotContain("uid-original", "uid-expected");
+    }
+
+    @Test
     void failedDingTalkStopsAtThreeAttemptsThenUsesLocalFallback() {
         String admin = adminToken();
         Fixture fx = prepare(admin, true, "uid-applicant", "uid-substitute");
@@ -234,8 +300,8 @@ class NotificationDeliveryIntegrationTest extends ApiIntegrationTest {
         assertThat(notificationLogs.findAll())
                 .filteredOn(log -> "SUBSTITUTION_EFFECTIVE_SUBSTITUTE".equals(
                         log.getTemplateCode()))
-                .singleElement()
-                .satisfies(log -> assertThat(log.isSuccess()).isFalse());
+                .hasSize(2)
+                .allSatisfy(log -> assertThat(log.isSuccess()).isFalse());
         assertThat(localNotifications.findAll())
                 .noneMatch(notification -> "SUBSTITUTION_EFFECTIVE_SUBSTITUTE".equals(
                         notification.getTemplateCode()));

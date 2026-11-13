@@ -1,10 +1,6 @@
 package com.paiban.integration.notification;
 
 import com.paiban.common.settings.SettingsService;
-import com.paiban.foundation.domain.Teacher;
-import com.paiban.foundation.domain.TeacherRepository;
-import com.paiban.identity.domain.AppUser;
-import com.paiban.identity.service.UserService;
 import com.paiban.integration.dingtalk.DingTalkClient;
 import com.paiban.notification.channel.NotificationChannel;
 import com.paiban.notification.domain.NotificationLog;
