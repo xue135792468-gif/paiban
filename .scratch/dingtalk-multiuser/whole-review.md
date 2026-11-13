@@ -1,3 +1,4 @@
+> 2026-11-13 最终处置：整特性及所有源delta复核完成，确认硬问题/M1与两项旧回归断言均已关闭。主控在c20d118冻结源完整verify实际EXIT=0，1071源before/after与Git对象一致，Spec原P2验证缺口正式关闭。Standards原J4与unit(a)/(b)三条P3建议不采纳、非延期，原级别与原稿保留；已无待施工或待验证的本地放行项。见[最终验收](final-acceptance.md)及[直接收据](acceptance/final-full-run3/README.md)。真实PG/租户/手机仍未验，未push/部署；下方均为阶段记录。
 # 整特性双轴复查与主控闸门
 
 固定候选be48fc0e3b08013c4ffbd7d716d9385169ce6e8d，起点2e5e585f6ed80d5024af6b734162a70829b067cf。两原轴只读独立执行；下面保留候选报告原文，主控裁定另见whole-review-owner-decisions.md。原预审及Spec自行更正文件均保留。当前未放行：确认项由唯一fixer Turing整改，独立增量与受影响浏览器/最后完整门禁待完成。

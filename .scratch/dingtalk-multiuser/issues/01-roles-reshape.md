@@ -4,7 +4,7 @@
 
 **Blocked by:** —
 
-**Status:** implemented
+**Status:** done
 
 - [x] 新增权限点「账号审计查看」，只给超级管理员
 - [x] 迁移：原 `admin` 账号 → 超级管理员；持有班主任角色的账号 → 老师；删除班主任角色（版本号按 AGENTS.md 续号，当前 rule-groups 占 V56–V58、计划 V59）
@@ -79,3 +79,7 @@
 - 定向命令（H2，`-DforkCount=0`）：见下方交付回执；**真实 PostgreSQL 与真实钉钉未运行**。
 - 审计 HTTP 矩阵在票 02 补齐、审批 HTTP 矩阵在票 05 恢复，本票只用权限点钉住（不为它们造 stub 端点）。
 - 前端菜单 / 改身份三项 / E2E 由前端切片 `t01-ui-delivery` 承接，设置字段隔离由 `t01-settings-delivery` 承接。
+
+## Comments
+
+2026-11-13：源码完成、双轴及整改复核关闭，最后冻结完整verify通过，状态done。仅完成本地实现与验收，未推送/部署；原始失败、直接退出/源码收据及外部验收边界见[最终验收](../final-acceptance.md)。

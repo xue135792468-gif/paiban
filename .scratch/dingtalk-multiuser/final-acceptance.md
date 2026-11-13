@@ -1,8 +1,38 @@
-# 钉钉多用户：本地最终验收
+# 钉钉多用户：本地最终验收完成
 
-> 当前：全部已发现施工问题已修复并复查；后置检查、集成定向及浏览器全套预检通过，唯一本地剩余闸门是最终完整verify。原八票暂不done，未push/部署；以下保留各轮失败及修复历史。
+2026-11-13，原规格01–08八票全部done。集成分支`codex/dingtalk-multiuser`，起点`2e5e585f6ed80d5024af6b734162a70829b067cf`；最后完整验收源`c20d1182f71ec3dc87512cc86d030d360385681c`。主控实际执行`scripts/verify.sh --full`，host退出0、`==> verify: ok`；以下是当前结论，后方失败/修复过程为保留的历史记录。
 
-本地集成分支codex/dingtalk-multiuser，起点2e5e585f6ed80d5024af6b734162a70829b067cf。01–07专项及双轴已放行，08专项（后端整链、H2旧库升级、手机真实菜单到审批整链）完成。最后源码和评审证据见whole-review.md、t08-main-acceptance.md；尚未统一done、未push/部署。
+|门禁|本轮实际结果|
+|---|---|
+|后端Maven verify|总1265：1258通过、7跳过、0失败/错误；包含H2旧库升级5项、真实HTTP钉钉整链1项|
+|前端lint / build|全部通过|
+|前端单元|106文件、803项全部通过|
+|仓库检查|verify中的8项后置检查全部通过|
+|Playwright|155项全部通过，0失败/跳过（21.2m）|
+|源码证明|HEAD前后均为上述审源，1071个受检文件before/after相同；Git对象差异0、额外0|
+
+运行采用项目推荐的`VITEST_MAX_WORKERS=4`与`PAIBAN_MVN_EXTRA_ARGS=-DforkCount=0`，隔离端口28080/25173；直接退出码、摘要、跳过原因、源清单及原始22份日志的SHA表见[已跟踪收据](acceptance/final-full-run3/README.md)。本轮单一完整门禁通过，没有把此前分段绿色拼成整体通过。通过后收口只改票面、文档与验收收据，应用/测试源码不再变化。
+
+|票|交付|状态|
+|---|---|---|
+|[01](issues/01-roles-reshape.md)|三角色、字段权限与超管保护|done|
+|[02](issues/02-account-audit.md)|账号操作审计与受控查看页|done|
+|[03](issues/03-dingtalk-auto-provision.md)|免登、自动配对与管理员首次绑定保护|done|
+|[04](issues/04-sync-deactivation.md)|通讯录预演、排除及确认停用|done|
+|[05](issues/05-substitution-approval.md)|老师申请、教务审批、期望/最终教师与状态历史|done|
+|[06](issues/06-notification-narrowing.md)|通知收敛、异步发送边界与发送记录|done|
+|[07](issues/07-dingtalk-settings-and-guide.md)|安全配置、连接诊断与学校图文说明|done|
+|[08](issues/08-end-to-end-acceptance.md)|HTTP整链、H2升级保全、手机真实导航及全量验收|done|
+
+双轴整特性复查与逐次delta均已处置，详见[完整复查](whole-review.md)。确认的硬问题、主控新增手机入口M1及两个旧回归断言均关闭；Spec运行冻结证据P2由本次完整退出0及源证明正式关闭。Standards原J4及unit两条P3判断建议由主控不采纳、非延期，原稿和理由保留，不伪称已代码修复。菜单对少数组合自定义角色的落点变化已说明，预置角色权限和默认本人课表不变。
+
+7项后端跳过分别为真实AI密钥缺失2项、真实工作簿参数缺失2项、未开性能基准2项、无Docker的PostgresContainerIT 1项。H2旧库演练保全21张非空业务表的旧列逐值数据及授权有意变更，仍不证明真实PostgreSQL；学校钉钉租户、H5实机和通知实际送达尚未验收，执行清单见[学校说明书](../../../docs/runbooks/dingtalk-school-setup.md)。本分支未推送、未部署，生产发布不在本轮完成范围。
+
+测试服务及浏览器进程已退出，四个本任务隔离端口无监听。自动审批此前拒绝临时缓存清理，仅给出`blocked by policy`，相关缓存/工作树保留，见[09](issues/09-temporary-cache-cleanup.md)；09不属于原八张功能票，未伪称已清理。
+
+## 历史过程（原始记录保留）
+
+下方为各阶段写作时点，当前状态以本页顶部结论与最后完整门禁收据为准。
 
 ## 首轮完整门禁：失败，保留原始记录
 
