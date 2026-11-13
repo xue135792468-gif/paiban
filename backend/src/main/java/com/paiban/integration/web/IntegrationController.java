@@ -13,16 +13,20 @@ import com.paiban.integration.domain.DingUser;
 import com.paiban.integration.org.DingTalkOrgDataProvider;
 import com.paiban.integration.org.DingTalkSyncDecisions;
 import com.paiban.integration.org.OrgSyncResult;
+import com.paiban.integration.service.DingTalkConnectionProbeService;
 import com.paiban.integration.web.DingTalkSyncDtos.ConfirmRequest;
 import com.paiban.integration.web.DingTalkSyncDtos.SyncPreviewDto;
 import com.paiban.integration.web.DingTalkSyncDtos.SuspectedDecisionDto;
 import com.paiban.integration.web.IntegrationDtos.DingTalkConfigDto;
 import com.paiban.integration.web.IntegrationDtos.DingTalkEventRequest;
 import com.paiban.integration.web.IntegrationDtos.DingTalkLoginRequest;
+import com.paiban.integration.web.IntegrationDtos.DingTalkTestConnectionRequest;
+import com.paiban.integration.web.IntegrationDtos.DingTalkTestConnectionResponse;
 import com.paiban.integration.service.DingtalkConfigLifecycleService;
 import com.paiban.integration.web.IntegrationDtos.UpdateDingTalkConfigRequest;
 import jakarta.validation.Valid;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -45,6 +49,7 @@ public class IntegrationController {
     private final AuthService authService;
     private final FoundationService foundation;
     private final DingtalkConfigLifecycleService dingtalkLifecycle;
+    private final DingTalkConnectionProbeService probeService;
 
     public IntegrationController(
             SettingsService settings,
@@ -52,13 +57,15 @@ public class IntegrationController {
             DingTalkOrgDataProvider orgProvider,
             AuthService authService,
             FoundationService foundation,
-            DingtalkConfigLifecycleService dingtalkLifecycle) {
+            DingtalkConfigLifecycleService dingtalkLifecycle,
+            DingTalkConnectionProbeService probeService) {
         this.settings = settings;
         this.authProvider = authProvider;
         this.orgProvider = orgProvider;
         this.authService = authService;
         this.foundation = foundation;
         this.dingtalkLifecycle = dingtalkLifecycle;
+        this.probeService = probeService;
     }
 
     /**
@@ -96,28 +103,42 @@ public class IntegrationController {
     @PutMapping("/integrations/dingtalk/config")
     @PreAuthorize("hasAuthority('" + Permissions.INTEGRATION_MANAGE + "')")
     public DingTalkConfigDto update(@RequestBody UpdateDingTalkConfigRequest request) {
+        if (request.syncStrategy() != null
+                && !List.of("dingtalk", "local").contains(request.syncStrategy())) {
+            throw ApiException.badRequest("同步策略只能是 dingtalk 或 local");
+        }
+
+        Map<String, String> values = new LinkedHashMap<>();
         if (request.enabled() != null) {
-            settings.put(SettingsService.DINGTALK_ENABLED, String.valueOf(request.enabled()));
+            values.put(SettingsService.DINGTALK_ENABLED, String.valueOf(request.enabled()));
         }
         if (request.appKey() != null) {
-            settings.put(SettingsService.DINGTALK_APP_KEY, request.appKey());
+            values.put(SettingsService.DINGTALK_APP_KEY, request.appKey());
         }
         if (request.appSecret() != null && !request.appSecret().isBlank()) {
-            settings.put(SettingsService.DINGTALK_APP_SECRET, request.appSecret());
+            values.put(SettingsService.DINGTALK_APP_SECRET, request.appSecret());
         }
         if (request.agentId() != null) {
-            settings.put(SettingsService.DINGTALK_AGENT_ID, request.agentId());
+            values.put(SettingsService.DINGTALK_AGENT_ID, request.agentId());
         }
         if (request.corpId() != null) {
-            settings.put(SettingsService.DINGTALK_CORP_ID, request.corpId());
+            values.put(SettingsService.DINGTALK_CORP_ID, request.corpId());
         }
         if (request.syncStrategy() != null) {
-            if (!List.of("dingtalk", "local").contains(request.syncStrategy())) {
-                throw ApiException.badRequest("同步策略只能是 dingtalk 或 local");
-            }
-            settings.put(SettingsService.DINGTALK_SYNC_STRATEGY, request.syncStrategy());
+            values.put(SettingsService.DINGTALK_SYNC_STRATEGY, request.syncStrategy());
+        }
+        if (!values.isEmpty()) {
+            settings.putAll(values);
         }
         return config();
+    }
+
+    @PostMapping("/integrations/dingtalk/test-connection")
+    @PreAuthorize("hasAuthority('" + Permissions.INTEGRATION_MANAGE + "')")
+    public DingTalkTestConnectionResponse testConnection(
+            @RequestBody DingTalkTestConnectionRequest request) {
+        var code = probeService.probe(request.appKey(), request.appSecret(), request.useSavedSecret());
+        return new DingTalkTestConnectionResponse(code.success(), code.name(), code.message());
     }
 
     @PostMapping("/integrations/dingtalk/sync")

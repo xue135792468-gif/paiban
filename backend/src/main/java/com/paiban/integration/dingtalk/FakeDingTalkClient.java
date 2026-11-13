@@ -5,10 +5,12 @@ import com.paiban.integration.domain.DingUser;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -19,8 +21,14 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConditionalOnProperty(name = "paiban.integration.dingtalk.fake", havingValue = "true")
-public class FakeDingTalkClient implements DingTalkClient {
+public class FakeDingTalkClient implements DingTalkClient, DingTalkProbeClient {
 
+    /**
+     * E2E convention: a secret such as {@code fake-probe:TOKEN_REJECTED} selects that
+     * probe outcome without a test-only HTTP endpoint. Ordinary fake passwords use the
+     * configurable default set by {@link #alwaysReturnProbe(DingTalkProbeCode)}.
+     */
+    public static final String PROBE_RESULT_PREFIX = "fake-probe:";
     public static final long ROOT_DEPARTMENT_ID = 1L;
 
     private final Map<Long, DingDepartment> departments = new LinkedHashMap<>();
@@ -28,6 +36,9 @@ public class FakeDingTalkClient implements DingTalkClient {
     private final Map<Long, DingTalkApiException> userListFailures = new ConcurrentHashMap<>();
     private final Map<Long, Integer> userListCalls = new ConcurrentHashMap<>();
     private final Set<Long> stuckCursorDepartments = ConcurrentHashMap.newKeySet();
+    private final AtomicReference<DingTalkProbeCode> probeResult =
+            new AtomicReference<>(DingTalkProbeCode.OK);
+    private final List<ProbeCall> probeCalls = new java.util.concurrent.CopyOnWriteArrayList<>();
     private int pageSizeLimit = 100;
 
     public FakeDingTalkClient() {
@@ -37,8 +48,19 @@ public class FakeDingTalkClient implements DingTalkClient {
     public synchronized void resetToDefault() {
         clearDirectory();
         pageSizeLimit = 100;
+        probeResult.set(DingTalkProbeCode.OK);
+        probeCalls.clear();
         addUser(ROOT_DEPARTMENT_ID, new DingUser("dd-001", "张三", "13800000001", null, "EMP001"));
         addUser(ROOT_DEPARTMENT_ID, new DingUser("dd-002", "李四", "13800000002", null, "EMP002"));
+    }
+
+    public FakeDingTalkClient alwaysReturnProbe(DingTalkProbeCode result) {
+        probeResult.set(result);
+        return this;
+    }
+
+    public List<ProbeCall> probeCalls() {
+        return List.copyOf(probeCalls);
     }
 
     /** Empties the tree but keeps the root department, for tests that build their own. */
@@ -145,9 +167,26 @@ public class FakeDingTalkClient implements DingTalkClient {
         return dingtalkUserId != null && !dingtalkUserId.isBlank();
     }
 
+    @Override
+    public DingTalkProbeCode probe(String appKey, String appSecret) {
+        probeCalls.add(new ProbeCall(appKey, appSecret));
+        if (appSecret != null && appSecret.startsWith(PROBE_RESULT_PREFIX)) {
+            try {
+                String requested = appSecret.substring(PROBE_RESULT_PREFIX.length())
+                        .trim().toUpperCase(Locale.ROOT);
+                return DingTalkProbeCode.valueOf(requested);
+            } catch (IllegalArgumentException ex) {
+                return DingTalkProbeCode.INVALID_RESPONSE;
+            }
+        }
+        return probeResult.get();
+    }
+
     private List<DingUser> allUsers() {
         return usersByDepartment.values().stream()
                 .flatMap(users -> users.values().stream())
                 .toList();
     }
+
+    public record ProbeCall(String appKey, String appSecret) {}
 }
