@@ -9,7 +9,9 @@
         data-testid="dingtalk-probe-app-secret"
         type="password"
         show-password
-        :placeholder="hasSecret ? '已配置，不修改请留空' : '请输入 AppSecret'"
+        :placeholder="
+          canReuseSavedSecret ? '已配置，留空可复用已保存密钥' : '请输入与当前 AppKey 配套的 AppSecret'
+        "
       />
       <span v-if="canReuseSavedSecret" class="hint block"> 留空将复用已保存的 AppSecret </span>
       <span v-else-if="requiresNewSecret" class="hint block">
@@ -43,7 +45,7 @@ interface ProbeResult {
   message: string
 }
 
-const SUCCESS_MESSAGE = '测试成功：当前凭据可获取访问令牌并读取根部门。'
+const SUCCESS_MESSAGE = '测试成功：当前凭据可获取访问令牌并读取根部门。本次测试不会保存配置。'
 
 const props = defineProps<{
   hasSecret: boolean
@@ -59,7 +61,7 @@ const canReuseSavedSecret = computed(
   () => props.hasSecret && !appSecret.value && Boolean(appKey.value) && appKey.value === props.savedAppKey,
 )
 const requiresNewSecret = computed(
-  () => props.hasSecret && !appSecret.value && appKey.value !== props.savedAppKey,
+  () => props.hasSecret && Boolean(appKey.value) && !appSecret.value && appKey.value !== props.savedAppKey,
 )
 const canTest = computed(
   () => Boolean(appKey.value) && (Boolean(appSecret.value) || canReuseSavedSecret.value),

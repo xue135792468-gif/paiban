@@ -133,7 +133,7 @@ sudo ./scripts/install.sh --domain 你的域名      # 会重建镜像并滚动�
 | 页面 502 | 后端还没起好或崩了 | `docker compose -f docker-compose.prod.yml logs backend --tail=100` |
 | 登录后操作报 `403 Invalid CORS request` | 跨域没配 | `.env` 里把公网地址写进 `PAIBAN_CORS_ALLOWED_ORIGINS`，重启 backend |
 | 上传/导入报 413 | 文件超过 20MB | 调 `deploy/nginx/conf.d/paiban.conf` 的 `client_max_body_size` |
-| 钉钉同步报 `errcode=88` | 出口 IP 不在白名单 | 把服务器公网 IPv4 加入钉钉应用的白名单 |
+| 钉钉同步被拒绝 | 需要按实际安全错误码排查；通用88不能单独证明IP问题 | 60020核对服务器出口IP白名单；其他原因按[钉钉接入手册](dingtalk-school-setup.md)排查 |
 | PDF 导出中文变方框 | 字体缺失 | 后端镜像已内置 `fonts-noto-cjk`；若自行改过镜像需补装 |
 
 > 本机没有 Docker 时，`docker compose ... config` 之类命令不可用；这是正常现象，不代表配置有错。
@@ -142,7 +142,7 @@ sudo ./scripts/install.sh --domain 你的域名      # 会重建镜像并滚动�
 
 ## 7. 这个版本的边界（先知道，免得误会）
 
-- **单校单管理员**：只有一个管理账号；教师的账号需要管理员在「教师」页面里建，只能看自己的课表、提交调代。
+- **单校多用户**：超级管理员负责账号和集成配置，教务管理员负责排课与审批；老师可看本人及全校只读课表、申请代课。钉钉首次登录的配对与自动开号条件见接入手册。
 - **数据只有一份**：没有多租户隔离，一台服务器就是一所学校。
 - **AI 与钉钉是可选的**：不配也不影响排课、发布、调代；配了才有 AI 导入和通讯录同步。
 - **没有自动更新**：升级要手动执行第 5 节的命令。

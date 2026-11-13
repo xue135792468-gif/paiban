@@ -49,6 +49,7 @@ describe('DingtalkConnectionProbe', () => {
     expect(result.text()).toContain('访问令牌')
     expect(result.text()).toContain('根部门')
     expect(result.text()).not.toContain('通知')
+    expect(result.text()).toContain('本次测试不会保存配置')
     wrapper.unmount()
   })
 
@@ -107,11 +108,16 @@ describe('DingtalkConnectionProbe', () => {
 
     const probe = wrapper.get('[data-testid="dingtalk-probe"]')
     expect(wrapper.text()).toContain('请为新 AppKey 输入对应的 AppSecret')
+    expect(wrapper.get('[data-testid="dingtalk-probe-app-secret"]').attributes('placeholder')).toBe(
+      '请输入与当前 AppKey 配套的 AppSecret',
+    )
     expect(probe.attributes('disabled')).toBeDefined()
     await probe.trigger('click')
     await flushPromises()
 
     expect(httpMock.post).not.toHaveBeenCalled()
+    await wrapper.get('[data-testid="dingtalk-probe-app-key"]').setValue('')
+    expect(wrapper.text()).not.toContain('请为新 AppKey 输入对应的 AppSecret')
     wrapper.unmount()
   })
 
