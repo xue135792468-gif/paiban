@@ -4,7 +4,9 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** in-progress
+
+2026-11-13：06双轴增量放行（e7d0bfc）后启动；backend/ui独立写集基于同源877dee9，交付前合入最新集成分支。见t07-coordination.md；说明书由主控整合实际截图。未验收，不能据准备文档或切片绿色标为完成。
 
 - [ ] 测试连接：换 access token + 读部门根节点；不写库、不发通知；失败原因可读（凭证错误 / 网络不通 / 权限不足）
 - [ ] 钉钉区块对教务管理员隐藏，接口 403

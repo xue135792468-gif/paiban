@@ -1,6 +1,6 @@
 # 07 施工边界与协调
 
-2026-11-13。06 双轴放行后才开始执行；本文件先记录分工，不代表施工或验收完成。
+2026-11-13。06已于e7d0bfc双轴放行；backend与ui工作树基于同源877dee9启动，结束前合入最新集成分支。本文件记录分工，不代表07验收完成。
 
 - 固定接口：t07-wire-contract.md；方案与资料：t07-probe-plan.md、t07-manual-official-research.md。整体 spec.md、票07、CODING_STANDARDS.md 优先。
 - 后端 worker：integration/web 的配置原子保存与探测入口、独立 probe 服务/HTTP 适配器及对应 backend 测试。读取保存凭据时取得一致快照，网络在事务外；不改运行客户端缓存、绑定、通讯录或通知。用 HTTP 验证非法保存无部分写入、权限、探测无数据库副作用；用本地 HTTP stub 验证真实供应商请求契约。
