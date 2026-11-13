@@ -1,4 +1,4 @@
-import { expect, request, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+import { expect, request, type APIRequestContext, type BrowserContext, type Locator, type Page } from '@playwright/test'
 
 /**
  * API origin used by direct calls. Defaults to the Playwright config's backend;
@@ -11,6 +11,27 @@ export const API = process.env.PAIBAN_E2E_API ?? 'http://127.0.0.1:8080/api'
  * `apiLogin` 的默认参数也引用它；改口令只改这里。
  */
 export const SUPER_ADMIN = { username: 'admin', password: 'admin123' }
+
+export const DINGTALK_UA =
+  'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 DingTalk/7.5.10'
+
+/** Fake only the vendor SDK; the application still calls its real authentication endpoint. */
+export async function installFakeWindowDd(context: BrowserContext, authCode: string) {
+  await context.addInitScript((code: string) => {
+    localStorage.setItem('paiban.tour.seen', '1')
+    localStorage.setItem('paiban.tour.advanced', '1')
+    ;(window as any).dd = {
+      ready: (cb: () => void) => cb(),
+      runtime: {
+        permission: {
+          requestAuthCode: ({ onSuccess }: { onSuccess: (res: { code: string }) => void }) => {
+            onSuccess({ code })
+          },
+        },
+      },
+    }
+  }, authCode)
+}
 
 const TOUR_KEYS = ['paiban.tour.seen', 'paiban.tour.advanced']
 
@@ -188,7 +209,10 @@ export async function seedConstraintScenario(context: APIRequestContext): Promis
 }
 
 /** Seeds a minimal, solvable school through the public API. */
-export async function seedSchool(context: APIRequestContext): Promise<SeedResult> {
+export async function seedSchool(
+  context: APIRequestContext,
+  options: { teacherAccount?: boolean } = {},
+): Promise<SeedResult> {
   const token = await apiLogin(context)
   const suffix = Math.random().toString(36).slice(2, 8)
 
@@ -235,14 +259,16 @@ export async function seedSchool(context: APIRequestContext): Promise<SeedResult
   })
 
   const username = `e2e_${suffix}`
-  await createAccount(context, {
-    username,
-    password: 'teacher123',
-    displayName: `张老师${suffix}`,
-    roles: ['teacher'],
-    teacherId: teacher.id,
-    token,
-  })
+  if (options.teacherAccount !== false) {
+    await createAccount(context, {
+      username,
+      password: 'teacher123',
+      displayName: `张老师${suffix}`,
+      roles: ['teacher'],
+      teacherId: teacher.id,
+      token,
+    })
+  }
 
   return {
     semesterId: semester.id,
@@ -337,7 +363,7 @@ export function dateFor(dayOfWeek: number): string {
 export async function classEntries(
   context: APIRequestContext,
   classId: number,
-): Promise<Array<{ id: number; dayOfWeek: number; periodNo: number; courseName: string }>> {
+): Promise<Array<{ id: number; teacherId: number; dayOfWeek: number; periodNo: number; courseName: string }>> {
   const token = await apiLogin(context)
   return apiCall(context, token, 'get', `/timetable/class/${classId}`)
 }
