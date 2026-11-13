@@ -1,3 +1,5 @@
+> 2026-11-13 最新：原八票源码均已整合，含08的固定审源be48fc0、接收单2c09fdb；主控验收见t08-main-acceptance.md（HANDOFF中链接为dingtalk-multiuser/t08-main-acceptance.md）。01–07为implemented，08三项专项验收已具备，仍待整特性两轴终审、统一fixer整改与最终一次full verify，不能标done。Standards预审H1交Turing；Spec预审四项观察已由原轴自行核对撤回，原稿/更正均保留。未push/部署，真实PG/租户/手机未验，09删除拒绝继续保留。
+
 > 2026-11-13 08已施工：07最终双轴放行文档b7cac2e。主控负责dingtalk-t08-chain后端整链；Galileo负责dingtalk-t08-upgrade存量迁移；Dalton负责dingtalk-t08-browser手机/电脑真实UI整链。基于同源016859b，结束合最新集成。原八票最终全量仍未跑，未push/部署。
 
 # 08 分工与启动门槛（准备，未施工）
