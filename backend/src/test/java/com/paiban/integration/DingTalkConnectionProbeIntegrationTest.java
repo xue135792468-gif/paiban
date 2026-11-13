@@ -5,7 +5,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.containsString;
 
-import com.paiban.integration.dingtalk.FakeDingTalkClient;
+import com.paiban.integration.dingtalk.FakeDingTalkProbeClient;
 import com.paiban.integration.dingtalk.DingTalkProbeCode;
 import com.paiban.foundation.domain.AuditLogRepository;
 import com.paiban.notification.domain.NotificationLogRepository;
@@ -25,7 +25,7 @@ class DingTalkConnectionProbeIntegrationTest extends ApiIntegrationTest {
     private static final String USER_PASSWORD = "probe-user-pass";
 
     @Autowired
-    private FakeDingTalkClient fakeDingTalk;
+    private FakeDingTalkProbeClient fakeProbe;
 
     @Autowired
     private AuditLogRepository auditLogs;
@@ -35,7 +35,7 @@ class DingTalkConnectionProbeIntegrationTest extends ApiIntegrationTest {
 
     @BeforeEach
     void resetFake() {
-        fakeDingTalk.resetToDefault();
+        fakeProbe.resetToDefault();
         resetIntegrationSettings();
     }
 
@@ -59,7 +59,7 @@ class DingTalkConnectionProbeIntegrationTest extends ApiIntegrationTest {
                 .body("enabled", equalTo(false))
                 .body("appKey", equalTo(""))
                 .body("hasSecret", equalTo(false));
-        List<FakeDingTalkClient.ProbeCall> calls = fakeDingTalk.probeCalls();
+        List<FakeDingTalkProbeClient.ProbeCall> calls = fakeProbe.probeCalls();
         assertThat(calls).singleElement().satisfies(call -> {
             assertThat(call.appKey()).isEqualTo("unsaved-key");
             assertThat(call.appSecret()).isEqualTo("unsaved-secret");
@@ -109,7 +109,7 @@ class DingTalkConnectionProbeIntegrationTest extends ApiIntegrationTest {
                 .then()
                 .statusCode(200)
                 .body("success", equalTo(true));
-        List<FakeDingTalkClient.ProbeCall> calls = fakeDingTalk.probeCalls();
+        List<FakeDingTalkProbeClient.ProbeCall> calls = fakeProbe.probeCalls();
         org.assertj.core.api.Assertions.assertThat(calls).hasSize(1);
         org.assertj.core.api.Assertions.assertThat(calls.get(0).appSecret()).isEqualTo("old-secret");
     }
@@ -123,7 +123,7 @@ class DingTalkConnectionProbeIntegrationTest extends ApiIntegrationTest {
         probe(token, "new-key", "new-secret", true).statusCode(200)
                 .body("success", equalTo(true));
         assertThat(lastProbeCall()).isEqualTo(
-                new FakeDingTalkClient.ProbeCall("new-key", "new-secret"));
+                new FakeDingTalkProbeClient.ProbeCall("new-key", "new-secret"));
 
         // Empty secret without explicit reuse is a parameter error.
         probe(token, "saved-key", "", false).statusCode(400);
@@ -132,13 +132,13 @@ class DingTalkConnectionProbeIntegrationTest extends ApiIntegrationTest {
         // A changed key, including a non-identical whitespace variant, cannot borrow it.
         probe(token, "changed-key", "", true).statusCode(400);
         probe(token, "saved-key ", "", true).statusCode(400);
-        assertThat(fakeDingTalk.probeCalls()).hasSize(1);
+        assertThat(fakeProbe.probeCalls()).hasSize(1);
 
         // The exact saved pair is the only reuse path.
         probe(token, "saved-key", "", true).statusCode(200)
                 .body("success", equalTo(true));
         assertThat(lastProbeCall()).isEqualTo(
-                new FakeDingTalkClient.ProbeCall("saved-key", "saved-secret"));
+                new FakeDingTalkProbeClient.ProbeCall("saved-key", "saved-secret"));
     }
 
     @Test
@@ -150,7 +150,7 @@ class DingTalkConnectionProbeIntegrationTest extends ApiIntegrationTest {
                 .statusCode(200);
 
         probe(token, "saved-key", "", true).statusCode(400);
-        assertThat(fakeDingTalk.probeCalls()).isEmpty();
+        assertThat(fakeProbe.probeCalls()).isEmpty();
     }
 
     @Test
@@ -169,8 +169,8 @@ class DingTalkConnectionProbeIntegrationTest extends ApiIntegrationTest {
                 .statusCode(200)
                 .body("success", equalTo(true));
 
-        assertThat(fakeDingTalk.probeCalls()).containsExactly(
-                new FakeDingTalkClient.ProbeCall("super-key", "super-secret"));
+        assertThat(fakeProbe.probeCalls()).containsExactly(
+                new FakeDingTalkProbeClient.ProbeCall("super-key", "super-secret"));
     }
 
     @Test
@@ -181,7 +181,7 @@ class DingTalkConnectionProbeIntegrationTest extends ApiIntegrationTest {
                 DingTalkProbeCode.DEPARTMENT_REJECTED,
                 DingTalkProbeCode.NETWORK_ERROR,
                 DingTalkProbeCode.INVALID_RESPONSE)) {
-            fakeDingTalk.alwaysReturnProbe(code);
+            fakeProbe.alwaysReturnProbe(code);
             probe(token, "unsaved-key", "unsaved-secret", false).statusCode(200)
                     .body("success", equalTo(false))
                     .body("code", equalTo(code.name()))
@@ -197,7 +197,7 @@ class DingTalkConnectionProbeIntegrationTest extends ApiIntegrationTest {
                 .body("success", equalTo(false))
                 .body("code", equalTo("TOKEN_REJECTED"));
         assertThat(lastProbeCall()).isEqualTo(
-                new FakeDingTalkClient.ProbeCall("e2e-key", "fake-probe:TOKEN_REJECTED"));
+                new FakeDingTalkProbeClient.ProbeCall("e2e-key", "fake-probe:TOKEN_REJECTED"));
     }
 
     @Test
@@ -260,8 +260,8 @@ class DingTalkConnectionProbeIntegrationTest extends ApiIntegrationTest {
                 .statusCode(200);
     }
 
-    private FakeDingTalkClient.ProbeCall lastProbeCall() {
-        List<FakeDingTalkClient.ProbeCall> calls = fakeDingTalk.probeCalls();
+    private FakeDingTalkProbeClient.ProbeCall lastProbeCall() {
+        List<FakeDingTalkProbeClient.ProbeCall> calls = fakeProbe.probeCalls();
         return calls.get(calls.size() - 1);
     }
 }
