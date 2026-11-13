@@ -97,6 +97,9 @@ public class FakeDingTalkClient implements DingTalkClient {
 
     @Override
     public String exchangeAuthCode(String authCode) {
+        if (authCode != null && authCode.startsWith("fake:acceptance:")) {
+            return acceptanceIdentity(authCode.substring("fake:acceptance:".length())).userId();
+        }
         if (authCode != null && authCode.startsWith("fake:")) {
             String employeeNo = authCode.substring("fake:".length());
             return allUsers().stream()
@@ -110,6 +113,9 @@ public class FakeDingTalkClient implements DingTalkClient {
 
     @Override
     public synchronized DingUser getUser(String userId) {
+        if (userId != null && userId.startsWith("dd-acceptance-")) {
+            return acceptanceIdentity(userId.substring("dd-acceptance-".length()));
+        }
         return allUsers().stream()
                 .filter(user -> Objects.equals(user.userId(), userId))
                 .findFirst()
@@ -149,5 +155,14 @@ public class FakeDingTalkClient implements DingTalkClient {
         return usersByDepartment.values().stream()
                 .flatMap(users -> users.values().stream())
                 .toList();
+    }
+
+    /** Isolated fake-only identities never enter the synchronizable directory. */
+    private static DingUser acceptanceIdentity(String caseId) {
+        if (!caseId.matches("[A-Za-z0-9_-]{1,40}")) {
+            throw new IllegalArgumentException("无效的验收身份");
+        }
+        return new DingUser("dd-acceptance-" + caseId, "验收申请人-" + caseId,
+                null, null, "ACC-" + caseId);
     }
 }
