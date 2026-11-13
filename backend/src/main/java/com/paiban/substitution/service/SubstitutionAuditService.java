@@ -2,7 +2,6 @@ package com.paiban.substitution.service;
 
 import com.paiban.foundation.domain.AuditLog;
 import com.paiban.foundation.domain.AuditLogRepository;
-import com.paiban.notification.service.NotificationService;
 import com.paiban.substitution.domain.SubstitutionPlan;
 import com.paiban.substitution.domain.SubstitutionPlanRepository;
 import org.slf4j.Logger;
@@ -23,15 +22,12 @@ public class SubstitutionAuditService {
 
     private final AuditLogRepository auditLogs;
     private final SubstitutionPlanRepository plans;
-    private final NotificationService notifications;
 
     public SubstitutionAuditService(
             AuditLogRepository auditLogs,
-            SubstitutionPlanRepository plans,
-            NotificationService notifications) {
+            SubstitutionPlanRepository plans) {
         this.auditLogs = auditLogs;
         this.plans = plans;
-        this.notifications = notifications;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -39,9 +35,6 @@ public class SubstitutionAuditService {
                             String detail, boolean alert, Long requesterTeacherId) {
         plans.findById(planId).ifPresent(plan -> plan.setStatus(status));
         record(actor, action, "SUBSTITUTION_PLAN", detail, alert);
-        if (requesterTeacherId != null) {
-            notifications.substitutionPlanFailed(requesterTeacherId, detail);
-        }
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -56,9 +49,6 @@ public class SubstitutionAuditService {
         }
         auditLogs.save(new AuditLog(actor, action, entityType, safe, 0, 1));
         log.error("substitution plan rejected: {}", safe);
-        if (alert) {
-            notifications.substitutionVerifyAlert(safe);
-        }
     }
 
     /** Marks a plan expired/rejected without an alarm; used for stale-plan conflicts. */

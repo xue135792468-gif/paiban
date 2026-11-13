@@ -11,6 +11,7 @@ import com.paiban.identity.domain.AppUser;
 import com.paiban.identity.domain.Permissions;
 import com.paiban.identity.service.UserService;
 import com.paiban.substitution.domain.SubstitutionRequest;
+import com.paiban.substitution.domain.Substitution;
 import com.paiban.substitution.domain.SubstitutionRequestRepository;
 import com.paiban.substitution.plan.PlanMove;
 import com.paiban.substitution.plan.PlanSnapshot;
@@ -147,7 +148,7 @@ public class SubstitutionApprovalService {
         Instant now = clock.instant();
         // 再次调整：同一实例的旧生效行退出，新行接管（同一时刻只留一条 EFFECTIVE）。
         effects.retireEffectiveRowAt(entry.getId(), request.getEffectiveDate());
-        effects.createCoverSubstitution(request, finalTeacherId, current);
+        Substitution substitution = effects.createCoverSubstitution(request, finalTeacherId, current);
         request.setFinalTeacherId(finalTeacherId);
         request.setStatus(SubstitutionRequest.EFFECTIVE);
         request.setApproverUserId(user.getId());
@@ -165,6 +166,8 @@ public class SubstitutionApprovalService {
                         + ", finalSubstituteTeacherId=" + finalTeacherId
                         + ", approverUserId=" + user.getId(),
                 1, 0));
+        effects.notifyApprovalApproved(saved);
+        effects.notifyEffective(saved, substitution);
         return new Outcome(mapper.toDto(saved), null);
     }
 
@@ -214,6 +217,7 @@ public class SubstitutionApprovalService {
                         + ", approverUserId=" + user.getId()
                         + ", reason=" + reason,
                 1, 0));
+        effects.notifyApprovalRejected(saved);
         return new Outcome(mapper.toDto(saved), null);
     }
 
