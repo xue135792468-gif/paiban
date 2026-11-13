@@ -15,5 +15,3 @@
 - [ ] ADR-0014 追加说明（部分推翻）
 
 2026-11-13：05经双轴增量与主控浏览器放行后启动。工程边界见t06-delivery-boundary、主源协议与t06-admin-log-plan。按规格故事40补管理员只读发送记录，旧个人通知中心不恢复。
-
-2026-11-13：core 施工与定向证据见 [t06-core-delivery](../t06-core-delivery.md)；整票仍等待 API/UI/isolation QA 合并和独立双轴评审。
