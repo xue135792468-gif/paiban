@@ -36,6 +36,7 @@ class NotificationDeliveryIsolationIntegrationTest extends ApiIntegrationTest {
     private static final String PASSWORD = "teacher123";
     private static final String APPROVAL_ACTION = "SUBSTITUTION_REQUEST_APPROVED";
     private static final String REJECTION_CONSTRAINT = "ck_qa_reject_substitution_approval_audit";
+    private static final String LOCAL_DELIVERY_CONSTRAINT = "ck_qa_reject_local_delivery_log";
 
     @MockitoBean
     private DingTalkClient dingTalkClient;
@@ -295,6 +296,115 @@ class NotificationDeliveryIsolationIntegrationTest extends ApiIntegrationTest {
         }
     }
 
+    @Test
+    void localDeliveryLogFailureRollsBackPartialRowsWithoutRollingBackApproval()
+            throws Exception {
+        String admin = adminToken();
+        Fixture fixture = prepare(admin);
+
+        boolean constraintInstalled = false;
+        try {
+            jdbc.execute("alter table notification_log add constraint "
+                    + LOCAL_DELIVERY_CONSTRAINT + " check (channel <> 'local')");
+            constraintInstalled = true;
+
+            as(admin)
+                    .body(Map.of("comment", "本地通知跨表原子性"))
+                    .when().post("/api/substitution-requests/" + fixture.requestId() + "/approve")
+                    .then()
+                    .statusCode(200)
+                    .body("status", equalTo("EFFECTIVE"));
+            awaitNotificationExecutorIdle();
+
+            assertThat(requestStatus(fixture.requestId())).isEqualTo("EFFECTIVE");
+            assertThat(count("select count(*) from substitution where request_id = ?",
+                    fixture.requestId())).isOne();
+            assertThat(count("select count(*) from notification")).isZero();
+            assertThat(count("select count(*) from notification_log"
+                    + " where channel = 'local' or success = true")).isZero();
+            assertThat(count("select count(*) from notification_log"
+                    + " where channel = 'notification' and success = false"
+                    + " and error_message = 'DELIVERY_EXCEPTION'")).isEqualTo(2);
+        } finally {
+            if (constraintInstalled) {
+                jdbc.execute("alter table notification_log drop constraint "
+                        + LOCAL_DELIVERY_CONSTRAINT);
+            }
+            awaitNotificationExecutorIdle();
+        }
+    }
+
+    @Test
+    void clearingQueuedTeacherSchedulingEligibilityDoesNotSuppressEnabledAccountDelivery()
+            throws Exception {
+        String admin = adminToken();
+        Fixture fixture = prepare(admin);
+        CopyOnWriteArrayList<ExternalNotification> externalNotifications =
+                new CopyOnWriteArrayList<>();
+        when(dingTalkClient.sendWorkNotification(anyString(), anyString(), anyString(), anyString()))
+                .thenAnswer(invocation -> {
+                    externalNotifications.add(new ExternalNotification(
+                            invocation.getArgument(0),
+                            invocation.getArgument(1),
+                            invocation.getArgument(2),
+                            invocation.getArgument(3)));
+                    return true;
+                });
+        settingsService.put(SettingsService.DINGTALK_ENABLED, "true");
+
+        CountDownLatch releaseWorker = new CountDownLatch(1);
+        CountDownLatch workerStarted = new CountDownLatch(1);
+        notificationExecutor.execute(() -> {
+            workerStarted.countDown();
+            awaitRelease(releaseWorker);
+        });
+        try {
+            assertThat(workerStarted.await(10, TimeUnit.SECONDS))
+                    .as("专用通知 worker 应先进入可控阻塞")
+                    .isTrue();
+
+            as(admin)
+                    .body(Map.of("comment", "关闭排课资格不改变账号可用性"))
+                    .when().post("/api/substitution-requests/" + fixture.requestId() + "/approve")
+                    .then()
+                    .statusCode(200)
+                    .body("status", equalTo("EFFECTIVE"));
+            awaitQueuedNotificationCount(2);
+
+            setTeacherActive(fixture.applicantTeacherId(), false);
+            setTeacherActive(fixture.substituteTeacherId(), false);
+
+            assertThat(accountEnabled(fixture.applicantUserId())).isTrue();
+            assertThat(accountEnabled(fixture.substituteUserId())).isTrue();
+            assertThat(teacherUid(fixture.applicantTeacherId())).isEqualTo(fixture.applicantUid());
+            assertThat(teacherUid(fixture.substituteTeacherId())).isEqualTo(fixture.substituteUid());
+
+            releaseWorker.countDown();
+            awaitExternalNotifications(externalNotifications, 2);
+            awaitNotificationExecutorIdle();
+
+            assertThat(externalNotifications)
+                    .extracting(ExternalNotification::userId)
+                    .containsExactlyInAnyOrder(fixture.applicantUid(), fixture.substituteUid());
+            assertThat(count("select count(*) from notification_log"
+                    + " where success = true and template_code in (?, ?)",
+                    "SUBSTITUTION_APPROVAL_APPROVED",
+                    "SUBSTITUTION_EFFECTIVE_SUBSTITUTE")).isEqualTo(2);
+            assertThat(externalNotifications)
+                    .filteredOn(notification -> fixture.applicantUid().equals(notification.userId()))
+                    .singleElement()
+                    .satisfies(notification -> assertThat(notification.markdown())
+                            .contains("代课已批准", "关闭排课资格不改变账号可用性"));
+            assertThat(externalNotifications)
+                    .filteredOn(notification -> fixture.substituteUid().equals(notification.userId()))
+                    .singleElement()
+                    .satisfies(notification -> assertThat(notification.markdown()).isNotBlank());
+        } finally {
+            releaseWorker.countDown();
+            awaitNotificationExecutorIdle();
+        }
+    }
+
     private Fixture prepare(String admin) {
         LocalDate monday = ScheduleFixture.nextMonday();
         ScheduleFixture.Result schedule = ScheduleFixture.publishedIn(
@@ -346,6 +456,7 @@ class NotificationDeliveryIsolationIntegrationTest extends ApiIntegrationTest {
         return new Fixture(
                 requestId,
                 applicantUserId,
+                schedule.teacherId(),
                 substituteUserId,
                 substituteTeacherId,
                 applicantUid,
@@ -376,6 +487,19 @@ class NotificationDeliveryIsolationIntegrationTest extends ApiIntegrationTest {
                 Boolean.class,
                 userId);
         return Boolean.TRUE.equals(enabled);
+    }
+
+    private void setTeacherActive(long teacherId, boolean active) {
+        Teacher teacher = teachers.findById(teacherId).orElseThrow();
+        teacher.setActive(active);
+        teachers.saveAndFlush(teacher);
+    }
+
+    private String teacherUid(long teacherId) {
+        return jdbc.queryForObject(
+                "select dingtalk_user_id from teacher where id = ?",
+                String.class,
+                teacherId);
     }
 
     private void addApprovalRejectionConstraint() {
@@ -456,6 +580,7 @@ class NotificationDeliveryIsolationIntegrationTest extends ApiIntegrationTest {
     private record Fixture(
             long requestId,
             long applicantUserId,
+            long applicantTeacherId,
             long substituteUserId,
             long substituteTeacherId,
             String applicantUid,

@@ -22,10 +22,7 @@ public class NotificationDeliveryWorker {
             gateway.deliver(delivery);
         } catch (RuntimeException ex) {
             try {
-                failures.record(
-                        delivery,
-                        "DELIVERY_EXCEPTION",
-                        "通知发送失败，请稍后查看发送记录");
+                failures.record(delivery, "DELIVERY_EXCEPTION");
             } catch (RuntimeException ignored) {
                 // A log-store outage must not turn a committed approval into an HTTP failure.
             }

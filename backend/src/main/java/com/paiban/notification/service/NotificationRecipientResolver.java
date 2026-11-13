@@ -68,7 +68,7 @@ public class NotificationRecipientResolver {
             LinkedHashSet<Long> localUserIds,
             Map<String, DingTalkRecipient> dingtalkByUid) {
         Teacher teacher = teachers.findById(target.id())
-                .filter(value -> value.getDeletedAt() == null && value.isActive())
+                .filter(value -> value.getDeletedAt() == null)
                 .orElse(null);
         if (teacher == null) {
             return;
@@ -94,7 +94,7 @@ public class NotificationRecipientResolver {
             return;
         }
         Teacher teacher = teachers.findById(user.getTeacherId())
-                .filter(value -> value.getDeletedAt() == null && value.isActive())
+                .filter(value -> value.getDeletedAt() == null)
                 .orElse(null);
         if (teacher == null || !StringUtils.hasText(teacher.getDingtalkUserId())) {
             return;

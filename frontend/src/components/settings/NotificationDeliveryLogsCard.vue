@@ -8,7 +8,7 @@
     >
       <el-collapse-item title="查看发送结果" name="logs">
         <el-alert
-          title="失败记录只显示固定安全说明，不展示第三方原始错误或响应内容。"
+          title="“钉钉已受理”表示钉钉已接受发送请求，“系统已保存”表示通知已写入站内记录。两者都不代表对方已实际收到或已读；失败时仅显示固定安全说明。"
           type="info"
           :closable="false"
           show-icon
@@ -42,7 +42,11 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column prop="templateCode" label="模板" width="135" show-overflow-tooltip />
+            <el-table-column label="类型" width="135" show-overflow-tooltip>
+              <template #default="{ row }">
+                {{ templateTypeLabel(row.templateCode) }}
+              </template>
+            </el-table-column>
             <el-table-column prop="content" label="内容" min-width="200" show-overflow-tooltip />
           </el-table>
           <div v-if="total > pageSize" class="pagination-row">
@@ -81,6 +85,24 @@ const logs = ref<NotificationDeliveryLog[]>([])
 const total = ref(0)
 const page = ref(1)
 let requestSeq = 0
+
+const templateLabels: Record<string, string> = {
+  SUBSTITUTION_APPROVAL_APPROVED: '审批批准',
+  SUBSTITUTION_APPROVAL_REJECTED: '审批驳回',
+  SUBSTITUTION_EFFECTIVE_ORIGINAL: '代课通知',
+  SUBSTITUTION_EFFECTIVE_SUBSTITUTE: '代课通知',
+  SUBSTITUTION_EFFECTIVE_HEAD_TEACHER: '代课通知',
+  SUBSTITUTION_EFFECTIVE_ADMIN: '代课通知',
+  SUBSTITUTION_SWAP_EFFECTIVE: '调课通知',
+  SUBSTITUTION_SWAP_HEAD_TEACHER: '调课通知',
+  SUBSTITUTION_SWAP_ADMIN: '调课通知',
+  SUBSTITUTION_VERIFY_ALERT: '调代校验提醒',
+  SUBSTITUTION_PLAN_FAILED: '调代方案失败',
+}
+
+function templateTypeLabel(templateCode: string): string {
+  return templateLabels[templateCode] ?? templateCode
+}
 
 function deliveryStatus(row: NotificationDeliveryLog): { label: string; type: TagType } {
   if (!row.success) {

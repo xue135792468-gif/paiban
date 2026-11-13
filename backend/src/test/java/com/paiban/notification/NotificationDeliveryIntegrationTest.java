@@ -4,9 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.paiban.common.settings.SettingsService;
@@ -21,6 +21,7 @@ import com.paiban.notification.service.NotificationTemplates;
 import com.paiban.substitution.domain.Substitution;
 import com.paiban.substitution.domain.SubstitutionRepository;
 import com.paiban.support.ApiIntegrationTest;
+import com.paiban.support.NotificationExecutorTestSupport;
 import com.paiban.support.ScheduleFixture;
 import com.paiban.support.TestData;
 import io.restassured.response.Response;
@@ -34,11 +35,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -61,6 +64,9 @@ class NotificationDeliveryIntegrationTest extends ApiIntegrationTest {
     private NotificationService notifications;
     @Autowired
     private PlatformTransactionManager transactionManager;
+    @Autowired
+    @Qualifier("notificationExecutor")
+    private ThreadPoolTaskExecutor notificationExecutor;
 
     private CountDownLatch releaseDingTalk = new CountDownLatch(0);
 
@@ -333,8 +339,8 @@ class NotificationDeliveryIntegrationTest extends ApiIntegrationTest {
             assertThat(expected).hasMessage("force rollback");
         }
 
-        verify(dingTalkClient, after(500).never()).sendWorkNotification(
-                anyString(), anyString(), anyString(), anyString());
+        NotificationExecutorTestSupport.awaitIdle(notificationExecutor);
+        verifyNoInteractions(dingTalkClient);
         assertThat(notificationLogs.findAll()).isEmpty();
         assertThat(localNotifications.findAll()).isEmpty();
     }
@@ -351,8 +357,8 @@ class NotificationDeliveryIntegrationTest extends ApiIntegrationTest {
                 Map.of("semesterName", "旧模板"),
                 "/timetable");
 
-        verify(dingTalkClient, after(500).never()).sendWorkNotification(
-                anyString(), anyString(), anyString(), anyString());
+        NotificationExecutorTestSupport.awaitIdle(notificationExecutor);
+        verifyNoInteractions(dingTalkClient);
         assertThat(notificationLogs.findAll()).isEmpty();
     }
 

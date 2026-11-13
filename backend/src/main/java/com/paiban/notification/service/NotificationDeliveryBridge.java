@@ -29,10 +29,7 @@ public class NotificationDeliveryBridge {
             worker.deliver(event.delivery());
         } catch (RuntimeException ex) {
             try {
-                failures.record(
-                        event.delivery(),
-                        "DELIVERY_QUEUE_REJECTED",
-                        "通知队列繁忙，发送未开始");
+                failures.record(event.delivery(), "DELIVERY_QUEUE_REJECTED");
             } catch (RuntimeException ignored) {
                 // Keep the business response independent from notification infrastructure.
             }

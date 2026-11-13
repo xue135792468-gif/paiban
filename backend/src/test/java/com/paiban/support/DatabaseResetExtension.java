@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -66,21 +65,7 @@ public class DatabaseResetExtension implements BeforeEachCallback {
     }
 
     private void awaitNotificationExecutor(ApplicationContext applicationContext) {
-        ThreadPoolTaskExecutor executor = applicationContext.getBean(
-                "notificationExecutor", ThreadPoolTaskExecutor.class);
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-        while (executor.getActiveCount() > 0
-                || executor.getThreadPoolExecutor().getQueue().size() > 0) {
-            if (System.nanoTime() >= deadline) {
-                throw new IllegalStateException(
-                        "通知 executor 未在 10 秒内空闲，拒绝重置测试数据库");
-            }
-            try {
-                Thread.sleep(25);
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("等待通知 executor 空闲时被中断", ex);
-            }
-        }
+        NotificationExecutorTestSupport.awaitIdle(applicationContext.getBean(
+                "notificationExecutor", ThreadPoolTaskExecutor.class));
     }
 }
