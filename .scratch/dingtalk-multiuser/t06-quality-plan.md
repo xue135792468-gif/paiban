@@ -19,7 +19,7 @@
 
 ## 放行顺序
 
-1. 主控查四个 worker（core / transport / ui / log-api）的提交、红绿日志、进程和实际写集，merger 子代理顺序整合；不把编译或 Fake 当真租户证明。log-api 仅写 notification/web、独立查询 service 与 API 测试，core 不修改这些路径，避免共享源码改写。
+1. 主控查四个施工 worker（core / transport / ui / log-api）及独立 isolation QA 的提交、日志、进程和实际写集，merger 子代理顺序整合；不把编译或 Fake 当真租户证明。log-api 仅写 notification/web、独立查询 service 与 API 测试，QA 只写独立故障测试，core 不修改这些路径，避免共享源码改写。
 2. 在固定候选上运行必要的整合定向与浏览器检查，记录真实退出码；源码变化使受影响证据失效时重跑该部分。
 3. 固定 `git diff 23b789f...<candidate>` 和提交列表，两轴独立 code-review。保留各轴原始数量/优先级，逐项判断及修复，不合并排名。
 4. 修复后增量复核，单票放行才启动 07。完整 verify 留到八票整合、最终双轴整改和文档落盘后一次执行。

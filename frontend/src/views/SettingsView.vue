@@ -28,7 +28,7 @@
       </el-form>
     </el-card>
     <SubstitutionPolicyCard v-model="form" />
-    <SubstitutionRecipientsCard />
+    <NotificationDeliveryLogsCard v-if="canViewDeliveryLogs" />
 
     <!--
       票 01：钉钉参数与通讯录同步只归超级管理员（integration:manage）。教务管理员
@@ -175,8 +175,8 @@ import { ElMessage, type UploadFile } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { DINGTALK_SYNC_TIMEOUT_MS, http } from '@/api/http'
 import InfoTooltip from '@/components/InfoTooltip.vue'
+import NotificationDeliveryLogsCard from '@/components/settings/NotificationDeliveryLogsCard.vue'
 import SubstitutionPolicyCard from '@/components/settings/SubstitutionPolicyCard.vue'
-import SubstitutionRecipientsCard from '@/components/settings/SubstitutionRecipientsCard.vue'
 import DingTalkSyncPreview from '@/components/DingTalkSyncPreview.vue'
 import DingtalkIntegrationActions from '@/components/settings/DingtalkIntegrationActions.vue'
 import { resetTour, startTour } from '@/onboarding/tour'
@@ -219,6 +219,7 @@ const router = useRouter()
 const auth = useAuthStore()
 
 const canManageIntegration = computed(() => auth.hasPermission('integration:manage'))
+const canViewDeliveryLogs = computed(() => auth.hasPermission('substitution:view'))
 
 const logoName = computed(() => {
   const path = form.value['school.logo-path']
