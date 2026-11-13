@@ -27,3 +27,11 @@ Standards小delta新Hard0/Judgement0，原J4 P3不采纳不变；Spec小delta尚
 替代轴确认断言纠偏、不弱化，原始P2=1（验证收据缺口）、P3=2（累积/null假设）见whole-review.md原文和主控逐项处置。P2保持待验证，下一冻结完整门禁的直接exit及source-before/after相同才能关闭；两条P3前提已核，非施工项。没有待修产品/规格代码缺陷，可进入用于关闭验证缺口的完整重跑，但通过前不done、不发布。
 
 原Spec轴更正已到：两条P3撤回为非缺陷，最新计数P2=1/P3=0，仅验证缺口待下一完整门禁关闭；原始报告和更正均保留，见whole-review.md。全部整改与评审说明已落盘，进入新的冻结完整门禁，不复写首轮失败。
+
+## 第二轮完整门禁：后端通过，前端旧路由断言失败
+
+实际审源777565898cb275cad9c05eb2341804372dacfdff；主控host退出1，verify.exit.txt=EXIT=1，SOURCE_IDENTICAL=1。1071个受检文件的Git对象与该提交完全相同，source-object-proof.txt中差异0/额外0。日志logs/final-full-run2；没有覆盖第一轮。
+
+后端1265项，0失败/0错误/7跳过，即1258通过，BUILD SUCCESS；RoleReshape四项在全套上下文通过，后端源冻结证据已补强，整体放行仍须最终full绿色。前端lint/build通过；单元106文件中105通过/1失败，803项中802通过/1失败。唯一productTrim.spec.ts:92的设置子路由精确旧列表漏掉账号审计account-audit，这是票02新增路由的契约测试遗漏，不应删实际路由来迎合断言。后置仓库检查/Playwright尚未执行，不借此宣布前端或完整门禁通过。
+
+唯一worker只修这一unit文件，保留精确路由集合并新增audit:view:account权限断言，产品与后端不改。定向/小delta补核后，先独立运行此前被阻断的后置检查和全部浏览器测试，集中消化尚未覆盖的旧回归；最后再串行完整verify。全量成功前原八票状态不done，未push/部署。
