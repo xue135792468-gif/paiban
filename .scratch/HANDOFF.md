@@ -1,3 +1,4 @@
+> 2026-11-13 最新收口：原八票最终源已整合7413a01，手机真实入口M1经主控12 spec/32项回归通过并关闭；双轴最终源复查及裁定见[dingtalk-multiuser/whole-review.md](dingtalk-multiuser/whole-review.md)，专项事实见[t08-main-acceptance](dingtalk-multiuser/t08-main-acceptance.md)。当前仅剩冻结源串行完整verify，完成前不标done。未push/部署，真实PG/租户/手机未验；09拒绝清理原样保留。下方为各阶段快照。
 > 2026-11-13 最新补查：08手机真实入口重开。默认本人课表在窄屏无侧栏/其他导航，原E2E直接goto掩盖缺口；主控真实红例1失败且源冻结，详见dingtalk-multiuser/whole-mobile-navigation-qc.md（feature目录内为同名文件）。唯一fixer Turing第一批H1重构及Java定向已交付，第二阶段补手机导航并改原整链为真实点击。原三阶段截图不是全移动端导航验收。最终full未跑，08不放行，未push/部署，09拒绝清理保留。
 
 > 2026-11-13 最新：原八票源码均已整合，含08的固定审源be48fc0、接收单2c09fdb；主控验收见t08-main-acceptance.md（HANDOFF中链接为dingtalk-multiuser/t08-main-acceptance.md）。01–07为implemented，08三项专项验收已具备，仍待整特性两轴终审、统一fixer整改与最终一次full verify，不能标done。Standards预审H1交Turing；Spec预审四项观察已由原轴自行核对撤回，原稿/更正均保留。未push/部署，真实PG/租户/手机未验，09删除拒绝继续保留。

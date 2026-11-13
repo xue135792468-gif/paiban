@@ -26,3 +26,7 @@
 主控也核到旧resolveMenuPath仅处理workbench/data，并没有Teacher的/substitution自助落点。为避免在Layout另造手机专用权限/路由映射，方案改为在现有集中resolver中统一：有submit但缺完整管理组合者→已有/substitution/requests，完整管理组合仍→/substitution；默认免登仍本人课表，route表/权限点不改。桌面/手机共用相同visibleGroups和activeMenu，既有桌面Teacher菜单也直接到合法自助页。新增中央导航回归与原整链真实点击是必要接缝，不复制路由权限算法。
 
 R1受检全部1007个源文件Git对象已独立对提交56ce4f76400a8b157c5654c9bd984556e79d60cf逐一比对，0差异/0额外文件，RED_SOURCE_EQUALS_COMMIT=1，回执见logs/whole-mobile-navigation-red1/committed-source-proof.txt。随后给新spec增加drawer截图及上述合法入口期望校正，保留原导航红断言，不回写原始日志。
+
+## 2026-11-13 手机入口关闭
+
+真实RED 1失败→最终12 spec/32项全部通过，EXIT=0、SOURCE_IDENTICAL=1；整合后1008个源对象与7413a01相同。原整链改真实菜单点击，未删除入口断言或改变权限迎合测试。证据logs/whole-fixes-browser-run1与t08-main-acceptance。M1已关闭，全量尚待。手机菜单与桌面共享同一导航解析；自定义submit+approve但缺完整工作台权限的账号改为直接落requests，待审批页签仍在，交付说明已记录。

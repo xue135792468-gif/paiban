@@ -34,3 +34,13 @@ H2/Fake不证明真实PostgreSQL或钉钉租户送达；真实手机/租户清�
 接收单中“run2 HEAD引用陈旧”表述不准确：真实浏览器运行时HEAD就是527ca2f，结束后主控才FF合入纯文档26edaa6并提交fecb656；原始source-refs记录当时HEAD正确。源码清单before/after/postcommit相同，Git对象证明的是所列受检源，不包括后来新增文档或整棵Git树。保留接收单原文，以此处时间线校正。
 
 升级切片没有独立逐轮exit文件或before/after哈希清单，实际退出码来自worker报告；归档日志确有5项通过和BUILD SUCCESS，提交源码哈希一致，mtime与提交关系能辅助对应，但不能据日志正文伪称独立host退出码/源码冻结收据。最终完整门禁会在冻结全部最终源后生成直接退出码与前后Git对象清单，届时才可补强此层证据。旧列捕获实际用ResultSetMetaData（SELECT * WHERE 1=0），不是接收单概述中的information_schema；保全断言本身不受影响。
+
+## 2026-11-13 最终源与手机入口验收
+
+最终修复源52cbf131382f769a25dc5e7b781ad4f8abcbebce已合入261be4a，二者tree相同；接收单7413a01。主控在冻结源上实际完成12个spec、32项浏览器测试，全部通过，EXIT=0、SOURCE_IDENTICAL=1；运行记录logs/whole-fixes-browser-run1。整合后1008个受检源对象与7413a01逐一对应，差异0、额外文件0，POST_INTEGRATION_SOURCE_IDENTICAL=1。没有把旧轮次相加。
+
+M1真实导航缺口已关闭：默认本人课表→打开导航→调代课→申请→电脑教务改人批准→手机期望/实际/已生效；原整链不再用直接URL绕过入口。新增往返导航、合法本人数据入口、无管理入口断言，以及tour/global-scroll等受影响回归均通过。28518/25518监听0，本任务标记Java/Node/Chrome进程0。新四张手册图全部来自本轮真实截图，复制后SHA256一致，主控已实际核图；替换的是手册展示图，历史证据保留。
+
+兼容性说明：集中resolveMenuPath使有substitution:submit但缺完整工作台管理权限组合的账号从菜单直接进入/substitution/requests。包括拥有submit+approve、但缺timetable:view等权限的自定义角色，其待审批页签仍可用。预置三角色权限不变，默认免登仍本人课表，无权限扩张。该P3行为提示已采纳并记录，不另改产品来维持中间落点。
+
+至此专项已具备，最后完整verify尚待串行执行；真实PG、钉钉租户、手机送达未验，未push/部署。旧段落是各阶段当时事实，以本节为最新专项事实。
