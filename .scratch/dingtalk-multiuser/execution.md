@@ -2,6 +2,8 @@
 
 日期：2026-11-11（Asia/Shanghai）
 
+> 2026-11-13 最新：06已单票放行，见t06-review.md / t06-main-acceptance.md。原八票01/02/04/03/05/06均implemented，当前frontier=07；08仅准备。07工程分工见t07-coordination.md。下方未放行文字均为历史快照；最终full verify未跑、未推送/部署。
+
 > 2026-11-13 当前 frontier：01/02/04/03/05 均 implemented 且单票复查放行；05 最终见 t05-review.md。06 已从 05 放行源启动四个独立写集工作树（core / transport / ui / log-api），接口与质量闸门见 t06-wire-contract.md / t06-quality-plan.md；07/08 仍仅准备。以下进度段按发生时间保留，不据旧“待放行”文字重新施工。原八票最终全量尚未执行；未推送、未部署。
 
 > 06 当前已整合，独立QA也已合入；主控源码90bd973后端33与浏览器6通过。两轴复查及主控QC1/QC2待统一整改，尚未单票放行，具体见 t06-main-acceptance.md；这不改变07/08的准备状态。
