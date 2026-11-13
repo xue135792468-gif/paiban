@@ -1,0 +1,2 @@
+# Preserve original receipt bytes; recognize their existing CRLF endings.
+* -text whitespace=cr-at-eol
