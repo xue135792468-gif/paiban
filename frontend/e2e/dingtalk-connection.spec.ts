@@ -103,6 +103,23 @@ test('超级管理员用未保存参数测试，看到精确成功结果且配�
     await expect(reloadedCard).toContainText('请为新 AppKey 输入对应的 AppSecret')
     await expect(reloadedCard.getByTestId('dingtalk-probe')).toBeDisabled()
     await expect(reloadedCard.getByTestId('dingtalk-probe-result')).toHaveCount(0)
+
+    // Fake-only outcome selection still passes through the real controller and UI.
+    await reloadedCard.getByTestId('dingtalk-probe-app-secret').fill('fake-probe:TOKEN_REJECTED')
+    const [rejectedProbe] = await Promise.all([
+      page.waitForResponse(
+        (response) => response.request().method() === 'POST' && response.url().includes(`/api${PROBE_PATH}`),
+      ),
+      reloadedCard.getByTestId('dingtalk-probe').click(),
+    ])
+    expect(rejectedProbe.status()).toBe(200)
+    expect(await rejectedProbe.json()).toMatchObject({ success: false, code: 'TOKEN_REJECTED' })
+    const rejectedResult = reloadedCard.getByTestId('dingtalk-probe-result')
+    await expect(rejectedResult).toContainText('获取访问令牌')
+    await expect(rejectedResult).not.toContainText('fake-probe:')
+    await rejectedResult.scrollIntoViewIfNeeded()
+    await capture(page, 't07-connection-rejected')
+    expect((await apiCall(api, token, 'get', '/integrations/dingtalk/config')).appKey).toBe('saved-e2e-key')
     expect(browserErrors).toEqual([])
   } finally {
     await apiCall(api, token, 'put', '/integrations/dingtalk/config', {
