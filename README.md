@@ -236,10 +236,13 @@ backend / frontend，再执行 `pg_restore --clean --if-exists`，并在存在
 ## 测试
 
 ```bash
-scripts/verify.sh          # 后端 verify + 前端 lint/build
+scripts/verify.sh          # 仓库/前端快检查，再后端 verify
 scripts/verify.sh --full   # 追加 Playwright 验收场景
+scripts/verify-run.sh <run-id> --full # 冻结验证，自动生成运行收据
 scripts/verify-deploy.sh   # 部署脚本测试（无需 Docker；CI 的 deploy-scripts job）
 ```
+
+冻结验证需要 Python 3；收据目录、退出码及 Git 字节校验见 [验证与运行收据](docs/agents/verification.md)。
 
 `scripts/verify-deploy.sh` 依次运行 `scripts/tests/test-*.sh`（compose 拓扑、doctor 退出码、
 密钥自愈、一键启动、生产配置与备份脚本），打印每个套件名并在第一个失败处停止；

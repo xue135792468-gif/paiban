@@ -17,6 +17,12 @@ bash scripts/check-local-dates.sh
 bash scripts/check-e2e-helpers.sh
 bash scripts/check-module-boundaries.sh
 
+# Receipt integrity is checked against staged Git bytes, only when an archive changes.
+staged_receipts=$(git diff --cached --name-only -- .scratch/verification)
+if [[ -n "$staged_receipts" ]]; then
+  bash scripts/check-verification-receipts.sh --staged
+fi
+
 if git diff --cached --name-only --diff-filter=ACMR | grep -qE '^backend/.*\.java$'; then
   bash scripts/check-blank-checks.sh
 fi
