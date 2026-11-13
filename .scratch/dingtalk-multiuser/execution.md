@@ -2,6 +2,8 @@
 
 日期：2026-11-11（Asia/Shanghai）
 
+> 2026-11-13 当前 frontier：01/02/04/03/05 均 implemented 且单票复查放行；05 最终见 t05-review.md。06 已从 05 放行源启动三个独立写集工作树（core / transport / ui），接口与质量闸门见 t06-wire-contract.md / t06-quality-plan.md；07/08 仍仅准备。以下进度段按发生时间保留，不据旧“待放行”文字重新施工。原八票最终全量尚未执行；未推送、未部署。
+
 用户已调用 implement-spec 授权完整八票实现，要求重要或高风险票完成后先双轴 code-review 再进入下一票。仅交付集成分支，不包含生产部署。
 
 - 集成分支：`codex/dingtalk-multiuser`，起点 `2e5e585f6ed80d5024af6b734162a70829b067cf`。
