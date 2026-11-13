@@ -48,6 +48,7 @@ const SUPER_ADMIN_PERMISSIONS = [
   'foundation:manage',
   'integration:manage',
   'audit:view:account',
+  'substitution:view',
 ]
 
 async function mountView(permissions: string[] = SUPER_ADMIN_PERMISSIONS) {
@@ -222,6 +223,35 @@ describe('SettingsView: 钉钉配置只对集成配置权限可见', () => {
       'school.name': '本校',
       'substitution.max-plan-teachers': '5',
     })
+    wrapper.unmount()
+  })
+})
+
+describe('SettingsView: 调代通知发送记录入口', () => {
+  it('超级管理员看到发送记录入口', async () => {
+    const wrapper = await mountView()
+
+    expect(wrapper.text()).toContain('通知发送记录')
+    wrapper.unmount()
+  })
+
+  it('教务管理员看到折叠入口，不再加载旧额外收件人，展开时才查询日志', async () => {
+    const wrapper = await mountView(['settings:manage', 'substitution:view'])
+    const requestedUrls = httpMock.get.mock.calls.map((call) => String(call[0]))
+
+    expect(wrapper.text()).toContain('通知发送记录')
+    expect(wrapper.text()).not.toContain('调代通知收件人')
+    expect(requestedUrls).not.toContain('/settings/substitution-recipients')
+    expect(requestedUrls).not.toContain('/notification-delivery-logs')
+    wrapper.unmount()
+  })
+
+  it('老师不渲染发送记录入口，也不会请求日志接口', async () => {
+    const wrapper = await mountView(['substitution:view:own'])
+    const requestedUrls = httpMock.get.mock.calls.map((call) => String(call[0]))
+
+    expect(wrapper.text()).not.toContain('通知发送记录')
+    expect(requestedUrls.some((url) => url.includes('/notification-delivery-logs'))).toBe(false)
     wrapper.unmount()
   })
 })

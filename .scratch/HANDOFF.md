@@ -1,5 +1,7 @@
 # 接手说明（2026-10-25 会话交接）
 
+> **2026-11-13 钉钉多用户 06 施工中**：05 已单票放行；06 的 transport 已合入 `8a0ed26`，core / ui / log-api 仍独立施工，主控整体验收与双轴尚未完成。先看 [06 施工协调](dingtalk-multiuser/t06-coordination.md) 与 [质量闸门](dingtalk-multiuser/t06-quality-plan.md)，不得仅凭一个切片绿色就进入07。07/08 仍仅有准备文档；未运行最终全量、未推送、未部署。
+
 > **2026-11-13 钉钉多用户 05 已单票放行**：整改候选 `849a385` 已合入 `3cb51de`，后端/前端定向、主控浏览器与双轴增量均已收口，见 [05 复查与最终判定](dingtalk-multiuser/t05-review.md)。01/02/04/03/05 为 implemented，最终全量后才 done。下一张 06 通知票，必须执行 [提交后交付边界](dingtalk-multiuser/t06-delivery-boundary.md) 和 [只读发送记录入口](dingtalk-multiuser/t06-admin-log-plan.md)；07/08 尚未施工。下方 05 未放行的段落为历史快照；未推送、未部署。
 >
 > **2026-11-12 钉钉多用户 05 评审整改中**：05 候选已整合至 `c487df3`，原始双轴审源固定 `6611b3c`；发现与逐项判定见 [05 复查](dingtalk-multiuser/t05-review.md)，当前**未放行**。统一整改分支 `codex/dingtalk-t05-review-fixes` 正在修 DTO、全部处理入口的截止与持锁后身份读取，以及前端展示/测试问题；独立权限快照 QA 在 `6f05e18` 已复现，待修复转绿。浏览器失败原始记录和前后源哈希已保留，不能把组件通过当作审批浏览器已完整通过。最新协调入口为 [施工快照](dingtalk-multiuser/t05-coordination.md)。06–08 仍仅有准备材料；发送记录只读入口的规格缺口方案见 [06 准备](dingtalk-multiuser/t06-admin-log-plan.md)，05 通过后才施工。本轮仍未推送、未部署。
