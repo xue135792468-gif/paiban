@@ -82,8 +82,10 @@ active 逻辑。
 
 ## 合并与未验事项
 
-- 收口前正常 merge `codex/dingtalk-multiuser` 最新（`7dc5657`，仅 docs；
-  `fecb656` 已是其祖先，无冲突），不 reset/amend 已交付提交，保留 hooks。
+- 收口前正常 merge `codex/dingtalk-multiuser` 最新：合并时集成分支已从 `7dc5657`
+  推进到 `55e20e7`（`7dc5657` + 保留审查报告的 docs + 独立 604 行升级验收测试与
+  截图），`fecb656` 为两分支共同祖先、无冲突；不 reset/amend 已交付提交，保留
+  hooks。内容提交 `6871b6c`，合并提交 `1da9f37`。
 - **未验证**：受影响浏览器 e2e 未实跑（主控将串行跑 9 spec / 20 test）；未跑
   `verify.sh --full`、Playwright、Vitest；未验证 PostgreSQL 真实库与真实钉钉
   租户/手机送达。以上属主控集成阶段职责，本交付不宣称整特性放行。
