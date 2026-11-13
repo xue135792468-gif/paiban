@@ -1,5 +1,7 @@
 # 接手说明（2026-10-25 会话交接）
 
+> **2026-11-13 钉钉07原双轴已完成、统一整改中**：固定审源64a8885；逐项判定与原始计数见[07复查](dingtalk-multiuser/t07-review.md)。单一fixer Planck在dingtalk-t07-review-fixes修公共helper、空白输入、测试凭据去重和探测请求预算，后端已验业务源保持。主控受影响浏览器与独立增量复核后才07放行，08仅准备；不能据原浏览器绿色跳过本轮helper改动的回归。最终全量未跑，未推送/部署。
+
 > **2026-11-13 钉钉07已整合、待双轴放行**：后端5ba87a7已合入5c91976，前端文案QC e6c1d27；主控处理旧Mockito上下文兼容回归与实际页面文案/间距。当前真实运行与尚未完成事项见[07主控验收](dingtalk-multiuser/t07-main-acceptance.md)及[协调](dingtalk-multiuser/t07-coordination.md)。07仍in-progress，08仅准备；01/02/04/03/05/06为implemented。最终八票全量未跑，未推送/部署；下方07未施工均为历史快照。
 
 > **2026-11-13 钉钉06已单票放行，下一张07**：最终源877dee9与修复候选70ab6a7相同，双轴增量无新增问题，原发现与主控QC均已处置，见[06最终复查](dingtalk-multiuser/t06-review.md)和[验收](dingtalk-multiuser/t06-main-acceptance.md)。01/02/04/03/05/06均implemented；07配置探测与说明书进入frontier，接口/分工见t07-wire-contract.md、t07-coordination.md。08仍仅准备；最终全量未跑，未推送/部署。下方06未放行是历史快照；清理拒绝按09保留，不绕过。

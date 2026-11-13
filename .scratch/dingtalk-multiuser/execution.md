@@ -2,6 +2,8 @@
 
 日期：2026-11-11（Asia/Shanghai）
 
+> 2026-11-13 最新frontier仍07：原两轴已完成并主控判定，详见t07-review.md；单一fixer Planck在dingtalk-t07-review-fixes收口确认项，之后主控四组E2E与两轴增量。原始验收与截图见t07-main-acceptance.md，尚非单票放行。08只准备，t08-coordination-plan.md仅分工门槛；Gemini旧库机械摘录已证不可靠，文件加主控警示，施工仅读真实源/元数据。最终全量未跑，未push/部署。以下未放行与开工记录均按发生时点保留。
+
 > 2026-11-13 最新：06已单票放行，见t06-review.md / t06-main-acceptance.md。原八票01/02/04/03/05/06均implemented，当前frontier=07；08仅准备。07工程分工见t07-coordination.md。下方未放行文字均为历史快照；最终full verify未跑、未推送/部署。
 
 07现已认领in-progress，后端Sagan与前端Linnaeus分别在dingtalk-t07-backend、dingtalk-t07-ui执行；主控负责手册和整合浏览器。基点源码877dee9、06放行文档e7d0bfc。尚未合入07源码，未运行07验收。
