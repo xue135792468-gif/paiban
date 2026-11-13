@@ -125,3 +125,57 @@ Standards：H1/J1/J2/J3已关闭；Hard各级0，Judgement仅J4 P3，按此前�
 
 
 主控放行最终源复查，进入唯一剩余的本地完整门禁；不是部署放行。261be4a与52cbf13整树相同，7413a01多一份接收单，受检1008个源对象相同。
+
+## 首轮完整门禁失败后的Standards小delta原文
+
+首轮完整门禁已实际运行并失败，详见final-acceptance.md；下文“full仍未跑”仅指修复后候选的新完整门禁尚未运行，不抹去首轮失败。
+# Standards 全量门禁修复 delta 复核（32c91e9…97cade5，只读）
+
+- 基点 `d0309daf18ba62aee181d8e6e05200704ecfbfaf`（首轮 full 1265/1 fail/0 error/7 skip，EXIT1，SOURCE_IDENTICAL1）；固定候选 `97cade5427433b407730d343ad476ad2eef16b0c`；交付 diff `32c91e9…97cade5` 仅 2 文件（`RoleReshapeIntegrationTest.java` + `final-gate-fix-delivery.md`，66+/5−）。测试 blob 实测 `0d4923a9ca59f735a500ca83e4c5993c8c29c821`，与此前 9eb8ff5 审查源逐字相同（9eb 被 amend，不视为额外改动）。只读 `git show`/`rev-parse`，未 checkout、未改源。
+- **Hard：新增 0（P1/P2/P3 全 0）。** 无产品/迁移/配置改动；V60、`DatabaseResetExtension` 保留身份表的行为均不变，仅测试口径修正。
+- **Judgement：新增 0（P1/P2/P3 全 0）。** 未引入新 smell；`containsInAnyOrder` 换 `hasItem/not` 有实际用途（旧导入已移除），无遗留未用导入。
+- 口径核对（无弱化）：预置三 code 用 `filteredOn(PRESET_ROLE_CODES::contains).containsExactlyInAnyOrder("super_admin","admin","teacher")`，既是精确集合又能卡住重复；三个 name 仍 `contains("超级管理员"/"教务管理员"/"老师")`；全目录 `code` `not(hasItem("head_teacher"))`；自定义角色 code/name 经真实 HTTP 断言可见，未禁止自定义显示名；未用 `hasItems` 代替严格集合判断，也未把「三身份」扩成「只许三行」。
+- 独立复现：用例内 `roleRepository.save(new Role("legacy_custom_"+TestData.suffix(), ...))` 自建输入，不依赖其它测试类顺序或残留（符合《测试》「不依赖执行顺序/共享可变全局设置」），旧断言在此输入下确定性失败。
+- **证据边界**：R6 报告 red 1 fail（自建 legacy_custom 触发旧断言）、green 6 pass（AiImport 2 先跑 + Role 4）均为交付方日志 `logs/final-gate-fix`，本轴未复跑；源 before/after 冻结未取得独立收据，不作冻结主张。full 仍未跑、真实 PG/钉钉租户/手机未验证，不宣称全量通过。
+- 原轴计数不变：整体 Hard P1 0/P2 0/P3 0（H1 已关）；Judgement P3=1，仅 **J4**（主控不采纳、非延期、未修复）。原 Spec 菜单 P3 说明不重开。
+
+
+主控记法校正：本次修复增量实际比较32c91e9...97cade5；d0309da是首轮失败的运行基点。Standards原文“R6报告red/green”是标签误用，该段准确路径为logs/final-gate-fix的red1失败/green6通过，不是此前Notification定向R6的12项；原稿保留，以日志路径和实际计数区分。
+
+原Spec reviewer在有界时间与收拢请求后仍未交付本小delta，主控已关停并安排独立replacement；不把未完成审查记为0。此前Spec整特性和手机导航已完成的原始报告仍有效，新小delta待替代报告。
+
+## Spec替代复核原文（首轮门禁测试修复）
+
+# 独立复查 · Spec 轴小 delta（RoleReshapeIntegrationTest）
+- 基点 32c91e9 → 候选 97cade5（HEAD 9794836 仅多接收单）；diff 仅 RoleReshapeIntegrationTest.java + final-gate-fix-delivery.md，产品码 / V60 / DatabaseResetExtension / AiImport 未变。
+- 结论：P0 0 / P1 0 / P2 1 / P3 2。旧「全目录恰好三项」是越界断言（spec:98-104 只约束三预置角色；spec:159 迁移须「其余数据不动」，自定义角色保留合法），收紧为子集精确是纠偏，非弱化。
+- 预置 code：filteredOn(PRESET).containsExactlyInAnyOrder(三项) → 恰好三项，重复与冒名可拦。
+- name：findAll{code==X}.name contains(精确值) 三处，各要求唯一命中。
+- head_teacher：整份 code 数组 not(hasItem)，只按 code 排除，不按名称限制自定义角色。
+- custom：用例内自种 legacy_custom_<suffix>/历史自定义角色，经 GET /api/roles 断言可见，不依赖他类顺序。
+- P2：red/green 仅存当轮源 hash 与 exit 日志，无运行前后冻结收据；依约束未重跑，green 6 pass 不可独立复核。
+- P3：自种 role 行写入被 reset 保留的身份表且不清理，跨轮累积（对其它套件影响未扫）。
+- P3：filteredOn 用 Set.of(...).contains，目录若出现 null code 抛 NPE 而非断言失败（仍判红，但噪声）。
+- 未验证：未跑测试/构建/全量；RoleUpgradeDataPreservationTest 存在但未读，本 delta 未触碰迁移保全；旧菜单 P3 与 Standards J4 未重开。
+
+
+### 主控处置（原级别与原始计数不改写）
+
+原替代轴P2=1/P3=2均保留原文。P2是已披露的验证证明缺口，不是产品或测试断言的规格错误；本次完整重跑必须产生直接退出码、前后全部受检源清单和hash相同的收据，成功后才关闭，不能凭定向报告关闭。允许执行该验证本身，票据仍不done。
+
+两条P3由主控核前提：test profile是jdbc:h2:mem:paiban_test，DB_CLOSE_DELAY=-1只延至本JVM退出，并不跨独立Maven轮次持久化。DatabaseResetExtension有意保留身份六表，本用例自种1条合法custom正是被测输入；同轮后续套件兼容由完整门禁实际验证，不因“未扫”先改全局reset或删测试输入。V2__identity.sql:11-15明确code NOT NULL UNIQUE，Role实体非空、test ddl-auto validate；真实持久化HTTP目录的null code前提不可达，若将来契约损坏仍报错而非误绿。两条均不采纳为施工项，不延期、不伪称改代码修复；原轴可另补更正原前提。不能为这类假设增加重复测试/无效null容错。
+
+### Spec原轴独立更正（原raw保留）
+
+# 复核修正案 · 两条 P3 前提独立核对（原 raw 保留不改）
+- 实读依据：V2__identity.sql:11-15 `code VARCHAR(64) NOT NULL UNIQUE`；Role.java:30 `@Column(nullable = false, unique = true, length = 64)`；application.yml:105 `jdbc:h2:mem:paiban_test...DB_CLOSE_DELAY=-1`、:111 `ddl-auto: validate`；DatabaseResetExtension.java:23/29 明确保留 role 等身份表。
+- P3-1「跨轮累积」→ 撤回跨轮部分：内存库随 Maven fork 退出即销毁，残留只可能存在于同一轮同 JVM 的类之间，不可能跨 Maven 轮次叠加。
+- P3-1 限缩保留：用例自种 legacy_custom_<suffix> 未清理，仅可能影响同一 full 轮中后跑的身份/角色用例；由新 full 实跑定性，不预先断言为产品缺陷。
+- reset 保留身份表是本次 given（目录含自定义角色正是被测输入，旧 AiImport 基础导入已种 custom），非测试卫生缺陷。
+- P3-2「null code 触发 NPE」→ 撤回为缺陷：NOT NULL UNIQUE + nullable=false 下真实持久化→HTTP 目录不可达；若将来破坏约束，测试以异常报红而非漏绿，属 fail-loud。
+- P3-2 限缩保留：filteredOn(Set.of(..)::contains) 遇 null 抛 NPE 而非 assertion failure，仅影响失败可读性，无覆盖损失。
+- 计数修订：P0 0 / P1 0 / P2 1（证据未冻结，待 full 产 EXIT + source before/after）/ P3 0（原两条各降为上述限缩备注）。
+- 未复核边界：未跑任何测试/构建；未读 RoleUpgradeDataPreservationTest、e2e 与全 repo，本修正仅基于所列文件静态核对。
+
+
+原Spec替代轴核V2/Role/test profile/reset后自行修订：P0=0/P1=0/P2=1/P3=0。唯一P2为验证缺口，待本次完整门禁实际exit0、全部受检源before/after一致后关闭；未确认新的实施规格缺陷。两轴源码补核至此完成，允许验证重跑。Standards原J4不采纳、Spec原菜单P3说明已记录，均非待施工事项。

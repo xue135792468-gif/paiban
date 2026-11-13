@@ -60,3 +60,7 @@
 2026-11-13 最终源已整合至7413a01，实际受影响浏览器32项通过，手机默认课表到申请的真实入口M1关闭；专项、兼容性说明和最终评审入口见t08-main-acceptance.md、whole-review.md。最后frontier为冻结源串行完整verify，完成前原八票均不标done。未push/部署，09拒绝删除保留。
 
 2026-11-13 首轮完整verify真实失败，后端1265项仅RoleReshape角色目录断言1失败，退出1且源冻结；前端阶段未执行，08不done。只修测试断言范围的独立worker已启动，修复/复查后需新完整门禁，入口final-acceptance.md。
+
+2026-11-13 首轮full唯一测试失败修复已交97cade5并接收9794836，强断言与产品源码未放松。red1fail→green6pass，缺独立before/after收据已明示；Standards小delta0新问题，Spec尚待；新完整门禁未跑。详见final-acceptance.md。
+
+2026-11-13 修复候选两轴补核完成：Standards新发现0；Spec两P3前提复核后撤回，剩P2仅验证收据缺口。主控允许完整重跑以关闭该缺口；通过前08仍in-progress、原01–07仍implemented。源仅修1项测试，产品未变；原始失败、raw和corrigendum全部保留，入口final-acceptance.md。

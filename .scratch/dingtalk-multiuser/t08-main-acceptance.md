@@ -44,3 +44,5 @@ M1真实导航缺口已关闭：默认本人课表→打开导航→调代课→
 兼容性说明：集中resolveMenuPath使有substitution:submit但缺完整工作台管理权限组合的账号从菜单直接进入/substitution/requests。包括拥有submit+approve、但缺timetable:view等权限的自定义角色，其待审批页签仍可用。预置三角色权限不变，默认免登仍本人课表，无权限扩张。该P3行为提示已采纳并记录，不另改产品来维持中间落点。
 
 至此专项已具备，最后完整verify尚待串行执行；真实PG、钉钉租户、手机送达未验，未push/部署。旧段落是各阶段当时事实，以本节为最新专项事实。
+
+2026-11-13 首轮全量失败与1测试修复已接收，两轴小delta补核完成；仅剩验证缺口待下一冻结full，统一入口[final-acceptance.md](final-acceptance.md)，专项数字仍以本文件各轮证据为准。

@@ -1,0 +1,11 @@
+# 独立复查 · Spec 轴小 delta（RoleReshapeIntegrationTest）
+- 基点 32c91e9 → 候选 97cade5（HEAD 9794836 仅多接收单）；diff 仅 RoleReshapeIntegrationTest.java + final-gate-fix-delivery.md，产品码 / V60 / DatabaseResetExtension / AiImport 未变。
+- 结论：P0 0 / P1 0 / P2 1 / P3 2。旧「全目录恰好三项」是越界断言（spec:98-104 只约束三预置角色；spec:159 迁移须「其余数据不动」，自定义角色保留合法），收紧为子集精确是纠偏，非弱化。
+- 预置 code：filteredOn(PRESET).containsExactlyInAnyOrder(三项) → 恰好三项，重复与冒名可拦。
+- name：findAll{code==X}.name contains(精确值) 三处，各要求唯一命中。
+- head_teacher：整份 code 数组 not(hasItem)，只按 code 排除，不按名称限制自定义角色。
+- custom：用例内自种 legacy_custom_<suffix>/历史自定义角色，经 GET /api/roles 断言可见，不依赖他类顺序。
+- P2：red/green 仅存当轮源 hash 与 exit 日志，无运行前后冻结收据；依约束未重跑，green 6 pass 不可独立复核。
+- P3：自种 role 行写入被 reset 保留的身份表且不清理，跨轮累积（对其它套件影响未扫）。
+- P3：filteredOn 用 Set.of(...).contains，目录若出现 null code 抛 NPE 而非断言失败（仍判红，但噪声）。
+- 未验证：未跑测试/构建/全量；RoleUpgradeDataPreservationTest 存在但未读，本 delta 未触碰迁移保全；旧菜单 P3 与 Standards J4 未重开。
