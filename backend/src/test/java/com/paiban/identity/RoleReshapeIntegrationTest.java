@@ -2,13 +2,19 @@ package com.paiban.identity;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
-import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.not;
 
+import com.paiban.identity.domain.Role;
+import com.paiban.identity.domain.RoleRepository;
 import com.paiban.support.ApiIntegrationTest;
+import com.paiban.support.TestData;
 import io.restassured.response.Response;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -22,15 +28,35 @@ import org.springframework.test.context.ActiveProfiles;
 @ActiveProfiles("test")
 class RoleReshapeIntegrationTest extends ApiIntegrationTest {
 
+    /** 票 01 的三个预置角色；退休的 head_teacher 不在其中，下面按 code 显式排除它。 */
+    private static final Set<String> PRESET_ROLE_CODES = Set.of("super_admin", "admin", "teacher");
+
+    @Autowired
+    private RoleRepository roleRepository;
+
     @Test
     void presetRolesAreSuperAdminSchoolAdminAndTeacher() {
-        as(adminToken()).when().get("/api/roles")
-                .then().statusCode(200)
-                .body("code", containsInAnyOrder("super_admin", "admin", "teacher"))
+        // 身份表被 DatabaseResetExtension 有意保留，角色目录里本来就可能存在历史自定义角色。
+        // 这里在本用例内显式种一个，独立复现该输入，不依赖其它测试类的执行顺序。
+        String legacyCode = "legacy_custom_" + TestData.suffix();
+        roleRepository.save(new Role(legacyCode, "历史自定义角色"));
+
+        Response response = as(adminToken()).when().get("/api/roles");
+        response.then().statusCode(200)
                 .body("findAll { it.code == 'super_admin' }.name", contains("超级管理员"))
                 // `admin` 编码保留，名字改成教务管理员（规格：升级后原 admin 账号变超管）
                 .body("findAll { it.code == 'admin' }.name", contains("教务管理员"))
-                .body("findAll { it.code == 'teacher' }.name", contains("老师"));
+                .body("findAll { it.code == 'teacher' }.name", contains("老师"))
+                // 退休的班主任角色：整份目录（含任何自定义角色）都不允许再出现。
+                .body("code", not(hasItem("head_teacher")))
+                // 自定义角色经真实 HTTP 可见：目录保留历史角色，而不是只剩三种预置角色。
+                .body("findAll { it.code == '" + legacyCode + "' }.name", contains("历史自定义角色"));
+
+        List<String> codes = response.jsonPath().getList("code", String.class);
+        // 预置角色在目录里恰好三项（同时卡住重复与冒名）；其余编码只能是保留下来的自定义角色。
+        assertThat(codes).filteredOn(PRESET_ROLE_CODES::contains)
+                .containsExactlyInAnyOrder("super_admin", "admin", "teacher");
+        assertThat(codes).contains(legacyCode);
     }
 
     @Test
