@@ -73,12 +73,13 @@ public class SubstitutionMapper {
         // 旧数据没有该字段时回退到生效行，再回退到期望人）。
         Long substituteId = request.getFinalTeacherId() != null
                 ? request.getFinalTeacherId()
-                : request.getEntryId() == null
-                        ? request.getExpectedSubstituteTeacherId()
-                        : substitutions.findFirstByEntryIdAndEffectiveDateAndStatus(
+                : SubstitutionRequest.EFFECTIVE.equals(request.getStatus())
+                        && request.getEntryId() != null
+                        ? substitutions.findFirstByEntryIdAndEffectiveDateAndStatus(
                                         request.getEntryId(), request.getEffectiveDate(), Substitution.EFFECTIVE)
                                 .map(Substitution::getSubstituteTeacherId)
-                                .orElse(request.getExpectedSubstituteTeacherId());
+                                .orElse(request.getExpectedSubstituteTeacherId())
+                        : request.getExpectedSubstituteTeacherId();
         String substituteTeacher = substituteId == null ? null : teachers.findById(substituteId)
                 .map(Teacher::getName).orElse(null);
         String expectedTeacher = request.getExpectedSubstituteTeacherId() == null ? null

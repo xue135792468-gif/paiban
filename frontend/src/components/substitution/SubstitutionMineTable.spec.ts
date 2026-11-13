@@ -55,6 +55,7 @@ describe('我的调代申请列表', () => {
       row({
         id: 2,
         status: 'EFFECTIVE',
+        expectedSubstituteTeacherId: 2,
         expectedSubstituteTeacherName: '李老师',
         substituteTeacherId: 3,
         substituteTeacherName: '王老师',
@@ -71,10 +72,28 @@ describe('我的调代申请列表', () => {
     expect(text).toContain('已驳回')
     expect(text).toContain('已撤回')
     expect(text).toContain('已作废')
-    expect(text).toContain('已取消')
+    expect(text).toContain('系统撤销')
     expect(text).toContain('该时段已安排教研')
     expect(text).toContain('期望：李老师')
     expect(text).toContain('实际：王老师')
+  })
+
+  it('期望与实际教师同名但 ID 不同时，按档案编号并列展示', async () => {
+    const wrapper = await mountTable([
+      row({
+        status: 'EFFECTIVE',
+        expectedSubstituteTeacherId: 41,
+        expectedSubstituteTeacherName: '李老师',
+        substituteTeacherId: 42,
+        substituteTeacherName: '李老师',
+      }),
+    ])
+
+    const dataRow = wrapper.find('.el-table__row')
+    expect(dataRow.exists()).toBe(true)
+    const rowText = dataRow.text().replace(/\s+/g, ' ')
+    expect(rowText).toContain('期望：李老师 （档案编号：41）')
+    expect(rowText).toContain('实际：李老师 （档案编号：42）')
   })
 
   it('只有待审批的申请能撤回，撤回成功后提示并通知刷新', async () => {

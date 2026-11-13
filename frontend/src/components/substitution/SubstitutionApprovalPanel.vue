@@ -41,7 +41,12 @@
       <el-form label-width="90px">
         <el-form-item label="代课教师">
           <el-select v-model="approveTeacherId" data-testid="approval-teacher" style="width: 240px">
-            <el-option v-for="teacher in teachers" :key="teacher.id" :label="teacher.name" :value="teacher.id" />
+            <el-option
+              v-for="teacher in teachers"
+              :key="teacher.id"
+              :label="teacherOptionLabel(teacher, teachers)"
+              :value="teacher.id"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="审批意见">
@@ -97,6 +102,7 @@ import { ElMessage } from 'element-plus'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
+import { teacherOptionLabel } from './types'
 import type { RequestRow, Teacher } from './types'
 
 const props = defineProps<{

@@ -43,7 +43,12 @@
           placeholder="请选择代课教师"
           style="width: 260px"
         >
-          <el-option v-for="teacher in otherTeachers" :key="teacher.id" :label="teacher.name" :value="teacher.id" />
+          <el-option
+            v-for="teacher in otherTeachers"
+            :key="teacher.id"
+            :label="teacherOptionLabel(teacher, otherTeachers)"
+            :value="teacher.id"
+          />
         </el-select>
       </el-form-item>
       <el-form-item label="请假原因">
@@ -63,7 +68,7 @@ import { ElMessage } from 'element-plus'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
 import type { Entry, Teacher } from './types'
-import { isPastDate, today, weekdayOf } from './types'
+import { isPastDate, teacherOptionLabel, today, weekdayOf } from './types'
 import { isoOf } from './workbench/swapTargetRules'
 
 const props = defineProps<{ myTeacherId: number | null; teachers: Teacher[] }>()

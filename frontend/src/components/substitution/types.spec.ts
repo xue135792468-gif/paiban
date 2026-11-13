@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { isPastDate, statusLabel, statusType, today } from './types'
+import { isPastDate, statusLabel, statusType, teacherOptionLabel, today } from './types'
+
+describe('教师选项标签', () => {
+  it('同名异 ID 可区分，唯一姓名保持原文', () => {
+    const teachers = [
+      { id: 1, name: '李老师' },
+      { id: 2, name: '李老师' },
+      { id: 3, name: '王老师' },
+    ]
+
+    expect(teacherOptionLabel(teachers[0], teachers)).toBe('李老师（档案 #1）')
+    expect(teacherOptionLabel(teachers[1], teachers)).toBe('李老师（档案 #2）')
+    expect(teacherOptionLabel(teachers[2], teachers)).toBe('王老师')
+  })
+})
 
 describe('types date utils', () => {
   it('today 返回本地日期分量拼出的 YYYY-MM-DD', () => {
@@ -32,13 +46,13 @@ describe('types date utils', () => {
 })
 
 describe('调代申请状态展示', () => {
-  it('五种审批状态各有中文说法，旧取消状态保留', () => {
+  it('五种审批状态与系统撤销各有中文说法', () => {
     expect(statusLabel('SUBMITTED')).toBe('待审批')
     expect(statusLabel('EFFECTIVE')).toBe('已生效')
     expect(statusLabel('REJECTED')).toBe('已驳回')
     expect(statusLabel('WITHDRAWN')).toBe('已撤回')
     expect(statusLabel('EXPIRED')).toBe('已作废')
-    expect(statusLabel('CANCELLED')).toBe('已取消')
+    expect(statusLabel('CANCELLED')).toBe('系统撤销')
   })
 
   it('状态标签颜色区分待批、驳回与作废', () => {

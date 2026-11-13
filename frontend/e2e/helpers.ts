@@ -361,6 +361,21 @@ export async function pickOption(
   await option.evaluate((element) => (element as HTMLElement).click())
 }
 
+/**
+ * Picks the first item in an Element Plus select. Its teleported popper keeps the
+ * closing dropdown visible during the transition, so wait for it to hide before
+ * reading the dropdown opened by the next select.
+ */
+export async function pickFirstVisibleOption(select: Locator): Promise<void> {
+  const page = select.page()
+  await select.click()
+  const dropdown = page.locator('.el-select-dropdown:visible').last()
+  const option = dropdown.locator('.el-select-dropdown__item').first()
+  await expect(option).toBeVisible()
+  await option.evaluate((element) => (element as HTMLElement).click())
+  await expect(dropdown).toBeHidden()
+}
+
 export interface WorkbenchSeed {
   semesterId: number
   classId: number

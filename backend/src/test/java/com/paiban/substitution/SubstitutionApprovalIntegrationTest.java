@@ -213,6 +213,42 @@ class SubstitutionApprovalIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void submittedRequestUsesItsExpectedTeacherWhenAnotherCoverIsAlreadyEffective() {
+        String token = adminToken();
+        String suffix = TestData.suffix();
+        Fixture fixture = prepare(token, suffix);
+        long firstRequestId = submit(fixture);
+        as(token).body(Map.of()).when()
+                .post("/api/substitution-requests/" + firstRequestId + "/approve")
+                .then().statusCode(200).body("status", equalTo(SubstitutionRequest.EFFECTIVE));
+
+        String nextTeacherName = "再次调整期望" + suffix;
+        long nextTeacherId = TestData.teacher(token, nextTeacherName);
+        long secondRequestId = as(fixture.teacherToken()).body(Map.of(
+                        "entryId", fixture.entryId(),
+                        "effectiveDate", fixture.date().toString(),
+                        "reason", "第二次调整期望代课人",
+                        "expectedSubstituteTeacherId", nextTeacherId))
+                .when().post("/api/substitution-requests")
+                .then().statusCode(200)
+                .body("status", equalTo(SubstitutionRequest.SUBMITTED))
+                .body("expectedSubstituteTeacherId", equalTo((int) nextTeacherId))
+                .body("expectedSubstituteTeacherName", equalTo(nextTeacherName))
+                .body("substituteTeacherId", equalTo((int) nextTeacherId))
+                .body("substituteTeacherName", equalTo(nextTeacherName))
+                .extract().jsonPath().getLong("id");
+
+        as(fixture.teacherToken()).when()
+                .get("/api/substitution-requests/" + secondRequestId)
+                .then().statusCode(200)
+                .body("status", equalTo(SubstitutionRequest.SUBMITTED))
+                .body("expectedSubstituteTeacherId", equalTo((int) nextTeacherId))
+                .body("expectedSubstituteTeacherName", equalTo(nextTeacherName))
+                .body("substituteTeacherId", equalTo((int) nextTeacherId))
+                .body("substituteTeacherName", equalTo(nextTeacherName));
+    }
+
+    @Test
     void rejectionNeedsAReasonAndLeavesNoEffect() {
         String token = adminToken();
         Fixture fixture = prepare(token, TestData.suffix());
@@ -255,6 +291,33 @@ class SubstitutionApprovalIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void rejectingAfterTheLessonStartedExpiresItWithoutARejectedHistory() {
+        String token = adminToken();
+        Fixture fixture = prepare(token, TestData.suffix());
+        long requestId = submit(fixture);
+        String url = "/api/substitution-requests/" + requestId + "/reject";
+
+        now.set(lessonStart(fixture).plusSeconds(60));
+        as(token).body(Map.of("reason", "课后才处理")).when().post(url)
+                .then().statusCode(409).body("message", containsString("作废"));
+
+        as(fixture.teacherToken()).when().get("/api/substitution-requests/" + requestId)
+                .then().statusCode(200).body("status", equalTo(SubstitutionRequest.EXPIRED));
+        assertThat(substitutions.findByRequestId(requestId)).isEmpty();
+
+        // 再调一次只看到已处理状态，不能重复追加 EXPIRED 历史或审计。
+        as(token).body(Map.of("reason", "重复驳回")).when().post(url).then().statusCode(409);
+        assertThat(history.findByRequestIdOrderByCreatedAtAsc(requestId))
+                .extracting(SubstitutionHistory::getToStatus)
+                .containsExactly(SubstitutionRequest.SUBMITTED, SubstitutionRequest.EXPIRED);
+        assertThat(auditLogs.findAll())
+                .filteredOn(log -> actionOf(log).startsWith("SUBSTITUTION_REQUEST_"))
+                .extracting(SubstitutionApprovalIntegrationTest::actionOf)
+                .containsExactlyInAnyOrder(
+                        "SUBSTITUTION_REQUEST_SUBMITTED", "SUBSTITUTION_REQUEST_EXPIRED");
+    }
+
+    @Test
     void onlyTheRequesterCanWithdrawAndOnlyWhilePending() {
         String token = adminToken();
         Fixture fixture = prepare(token, TestData.suffix());
@@ -289,6 +352,36 @@ class SubstitutionApprovalIntegrationTest extends ApiIntegrationTest {
         assertThat(history.findByRequestIdOrderByCreatedAtAsc(requestId))
                 .extracting(SubstitutionHistory::getToStatus)
                 .containsExactly(SubstitutionRequest.SUBMITTED, SubstitutionRequest.WITHDRAWN);
+    }
+
+    @Test
+    void withdrawingAfterTheLessonStartedChecksOwnerBeforeExpiring() {
+        String token = adminToken();
+        Fixture fixture = prepare(token, TestData.suffix());
+        long requestId = submit(fixture);
+        String url = "/api/substitution-requests/" + requestId + "/withdraw";
+
+        now.set(lessonStart(fixture).plusSeconds(60));
+        // 非申请人不能借过期路径修改或作废别人的申请。
+        as(fixture.otherTeacherToken()).when().post(url).then().statusCode(403);
+        as(fixture.teacherToken()).when().get("/api/substitution-requests/" + requestId)
+                .then().statusCode(200).body("status", equalTo(SubstitutionRequest.SUBMITTED));
+
+        as(fixture.teacherToken()).when().post(url)
+                .then().statusCode(409).body("message", containsString("作废"));
+        as(fixture.teacherToken()).when().get("/api/substitution-requests/" + requestId)
+                .then().statusCode(200).body("status", equalTo(SubstitutionRequest.EXPIRED));
+        assertThat(substitutions.findByRequestId(requestId)).isEmpty();
+
+        as(fixture.teacherToken()).when().post(url).then().statusCode(409);
+        assertThat(history.findByRequestIdOrderByCreatedAtAsc(requestId))
+                .extracting(SubstitutionHistory::getToStatus)
+                .containsExactly(SubstitutionRequest.SUBMITTED, SubstitutionRequest.EXPIRED);
+        assertThat(auditLogs.findAll())
+                .filteredOn(log -> actionOf(log).startsWith("SUBSTITUTION_REQUEST_"))
+                .extracting(SubstitutionApprovalIntegrationTest::actionOf)
+                .containsExactlyInAnyOrder(
+                        "SUBSTITUTION_REQUEST_SUBMITTED", "SUBSTITUTION_REQUEST_EXPIRED");
     }
 
     @Test
