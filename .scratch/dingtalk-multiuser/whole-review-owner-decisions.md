@@ -15,6 +15,10 @@
 
 统一fixer Turing，工作树dingtalk-whole-review-fixes，从已验fecb656开始，结束前合入集成最新；只改已确认写集。静态与后端定向后由主控串行跑受影响浏览器，再独立增量核对。没有把未采纳的判断建议标为“已修复”。
 
+含08的固定候选be48fc0终审见whole-standards-final-raw.md：本轴仍Hard P2=1，Judgement P3增为4（新增J4）；最坏仍H1 P2，不与Spec轴混排。
+
+J4（四个spec重复配置开关）主控不采纳，非延期：这些是不同场景的显式配置种子，payload及是否留空/保留已存密钥正是探针等用例的被测条件。HTTP写入已经共用apiCall，关闭通常只一条调用；增造enable/disable薄包装会把不同fixture输入藏进默认凭据或重复参数传递。CODING要求共享UI交互，而此处未复制公共交互函数，也未发现产品行为问题。原判断建议仍保留P3，不标“已修复”，不另开无执行计划的延期票。
+
 ## Spec
 
 原报告confirmed P0/P1/P2=0、P3观察总数写为3；正文实际四条，原轴已在whole-spec-preliminary-corrigendum.md自行更正为4并独立核对后全部撤回，未决0。主控未合并发现或改严重度，原文仍保留whole-spec-preliminary-raw.md。原轴正对含08的be48fc0新固定快照终审，本更正不等于最终放行。
