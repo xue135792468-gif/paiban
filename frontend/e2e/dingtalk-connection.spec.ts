@@ -1,9 +1,17 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { API, apiCall, apiLogin, createAccount, newContext, uiLogin } from './helpers'
+import {
+  API,
+  SUPER_ADMIN,
+  apiCall,
+  apiLogin,
+  createAccount,
+  newContext,
+  trackBrowserErrors,
+  uiLogin,
+} from './helpers'
 import { capture } from './screenshots'
 
-const SUPER_ADMIN = { username: 'admin', password: 'admin123' }
 const ACCOUNT_PASSWORD = 'teacher123'
 const PROBE_PATH = '/integrations/dingtalk/test-connection'
 
@@ -15,15 +23,6 @@ function trackProbeRequests(page: Page): string[] {
     }
   })
   return requests
-}
-
-function trackBrowserErrors(page: Page): string[] {
-  const errors: string[] = []
-  page.on('console', (message) => {
-    if (message.type() === 'error') errors.push(message.text())
-  })
-  page.on('pageerror', (error) => errors.push(`pageerror: ${error}`))
-  return errors
 }
 
 test('超级管理员用未保存参数测试，看到精确成功结果且配置未落库', async ({ page }) => {

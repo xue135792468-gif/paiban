@@ -1,19 +1,17 @@
 import { expect, test } from '@playwright/test'
-import type { APIRequestContext, BrowserContext, Page } from '@playwright/test'
-import { API, apiCall, apiLogin, newContext, uiLogin } from './helpers'
+import type { APIRequestContext, BrowserContext } from '@playwright/test'
+import {
+  API,
+  apiCall,
+  apiLogin,
+  newContext,
+  trackBrowserErrors,
+  uiLogin,
+} from './helpers'
 import { capture } from './screenshots'
 
 const DINGTALK_UA =
   'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 DingTalk/7.5.10'
-
-function trackBrowserErrors(page: Page): string[] {
-  const errors: string[] = []
-  page.on('console', (message) => {
-    if (message.type() === 'error') errors.push(message.text())
-  })
-  page.on('pageerror', (error) => errors.push(`pageerror: ${error}`))
-  return errors
-}
 
 async function installFakeWindowDd(context: BrowserContext, authCode: string) {
   await context.addInitScript((code: string) => {
