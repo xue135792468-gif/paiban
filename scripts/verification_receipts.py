@@ -438,9 +438,12 @@ LOG_MARKERS = (
     "BUILD FAILURE",
     "Tests run:",
     "ERROR",
-    " SKIPPED",
     "==> verify: ok",
 )
+
+
+def log_line_count(data):
+    return data.count(b"\n") + int(bool(data) and not data.endswith(b"\n"))
 
 
 def build_log_summary(log_rel, log_bytes):
@@ -451,7 +454,7 @@ def build_log_summary(log_rel, log_bytes):
     stays in .runtime and is deliberately not copied.
     """
     lines = log_bytes.split(b"\n")
-    total = len(lines) - 1 if log_bytes.endswith(b"\n") else len(lines)
+    total = log_line_count(log_bytes)
     out = [
         "# metadata-only log digest; the raw log stays local and is never archived",
         "# no log text is stored here, only counts and hashes",
@@ -465,6 +468,17 @@ def build_log_summary(log_rel, log_bytes):
         count = sum(1 for line in lines if marker.encode("utf-8") in line)
         key = re.sub(r"[^A-Z0-9]+", "_", marker.upper()).strip("_")
         out.append(f"LOG_LINES_WITH_{key}={count}")
+    skipped = sum(bool(re.search(rb"\bskip(?:ped|ping)?\b", line, re.IGNORECASE)) for line in lines)
+    out.append(f"LOG_LINES_WITH_SKIPPED={skipped}")
+    if b"Docker not found: skipping PostgresContainerIT" in log_bytes:
+        postgres_signal = "skipped-no-docker"
+    elif b"Docker is required for --deploy" in log_bytes:
+        postgres_signal = "blocked-no-docker"
+    elif b"-Dtestcontainers=true" in log_bytes:
+        postgres_signal = "requested-via-testcontainers"
+    else:
+        postgres_signal = "not-observed"
+    out.append(f"POSTGRES_CONTAINER_SIGNAL={postgres_signal}")
     out.append("LOG_EXCERPT=redacted-by-design")
     return ("\n".join(out) + "\n").encode("utf-8")
 
@@ -492,6 +506,91 @@ def parse_receipt_bytes(data):
         if sep:
             fields[key] = value
     return fields
+
+
+def parse_snapshot(data, label, head):
+    """Validate archived snapshot structure without reading any source paths."""
+    headers, entries, problems = {}, {}, []
+    for line in data.splitlines():
+        if not line or line.startswith(b"#"):
+            continue
+        key, sep, value = line.partition(b"=")
+        if sep and key in (b"SNAPSHOT", b"HEAD", b"SCOPE", b"FILES"):
+            if key in headers:
+                problems.append(f"duplicate snapshot header {key!r}")
+            headers[key] = value.decode("ascii", "replace")
+            continue
+        parts = line.split(b" ", 4)
+        if len(parts) != 5:
+            problems.append("malformed source row")
+            continue
+        state, digest, size, blob, path = parts
+        try:
+            state, digest, blob = (part.decode("ascii") for part in (state, digest, blob))
+            size = int(size)
+            if state not in ("tracked", "untracked", "missing") or size < 0:
+                raise ValueError()
+            if state == "missing":
+                if (digest, size, blob) != ("-", 0, "-"):
+                    raise ValueError()
+            elif not SHA256_RE.fullmatch(digest):
+                raise ValueError()
+            if state == "tracked" and not (
+                HEX40_RE.fullmatch(blob) or (label == "after" and blob == "-")
+            ):
+                raise ValueError()
+            if label == "before" and state != "tracked":
+                raise ValueError()
+        except (UnicodeError, ValueError):
+            problems.append("invalid source state, digest, size or Git binding")
+            continue
+        if (
+            not any(path.startswith(scope.encode() + b"/") for scope in SOURCE_SCOPES)
+            or any(part in (b".", b"..", b"") for part in path.split(b"/"))
+            or any(char in path for char in (b"\0", b"\t", b"\\"))
+        ):
+            problems.append("unsafe source path")
+            continue
+        if path in entries:
+            problems.append("duplicate source path")
+        entries[path] = (state, digest, size)
+    expected_headers = {
+        b"SNAPSHOT": label,
+        b"HEAD": head,
+        b"SCOPE": " ".join(SOURCE_SCOPES),
+        b"FILES": str(len(entries)),
+    }
+    for key, value in expected_headers.items():
+        if headers.get(key) != value:
+            problems.append(f"snapshot {key.decode()} does not match its contents or receipt")
+    return entries, problems
+
+
+def validate_snapshot_metadata(fields, read):
+    snapshots, problems = {}, []
+    for label in ("before", "after"):
+        name = f"source-{label}.txt"
+        data = read(name)
+        if data is None:
+            continue
+        entries, issues = parse_snapshot(data, label, fields.get(f"HEAD_{label.upper()}"))
+        snapshots[label] = entries
+        problems.extend(f"{name}: {issue}" for issue in issues)
+    if len(snapshots) != 2 or problems:
+        return problems
+    before, after = snapshots["before"], snapshots["after"]
+    drift = diff_snapshots(before, after)
+    head_identical = fields.get("HEAD_BEFORE") == fields.get("HEAD_AFTER")
+    expected = {
+        "SOURCE_FILES": str(len(before)),
+        "SOURCE_DRIFT_FILES": str(len(drift)),
+        "SOURCE_IDENTICAL": str(int(head_identical and not drift)),
+        "HEAD_IDENTICAL": str(int(head_identical)),
+    }
+    for key, value in expected.items():
+        if fields.get(key) != value:
+            problems.append(f"{key} does not match the archived source snapshots")
+    return problems
 
 
 def validate_receipt(run_id, read, names):
@@ -541,6 +640,8 @@ def validate_receipt(run_id, read, names):
         problems.append("MISSING receipt.txt")
         return {}, problems
     fields = parse_receipt_bytes(receipt)
+    if fields.get("ARCHIVE_VALID") == "0":
+        problems.append("archive was marked invalid by the runner")
     for key in REQUIRED_FIELDS:
         if key not in fields:
             problems.append(f"receipt.txt missing field {key}")
@@ -586,6 +687,13 @@ def validate_receipt(run_id, read, names):
         problems.append(f"SOURCE_AFTER {fields.get('SOURCE_AFTER')!r}")
     if fields.get("LOG_SUMMARY") != "log-summary.txt":
         problems.append(f"LOG_SUMMARY {fields.get('LOG_SUMMARY')!r}")
+    problems.extend(validate_snapshot_metadata(fields, read))
+    summary = read("log-summary.txt")
+    if summary is not None:
+        summary_fields = parse_receipt_bytes(summary)
+        for key in ("LOG_RAW", "LOG_BYTES", "LOG_SHA256", "LOG_LINES_TOTAL"):
+            if summary_fields.get(key) != fields.get(key):
+                problems.append(f"{key} differs between receipt and log summary")
     if fields.get("HEAD_BEFORE") != fields.get("HEAD_AFTER") and fields.get(
         "HEAD_IDENTICAL"
     ) != "0":
@@ -651,7 +759,7 @@ def resolve_output_path(root, rel, label):
     return resolved
 
 
-def child_env(root, runtime_dir, run_id):
+def child_env(runtime_dir):
     tmp = runtime_dir / "tmp"
     npm = runtime_dir / "npm-cache"
     shots = runtime_dir / "screenshots"
@@ -666,7 +774,6 @@ def child_env(root, runtime_dir, run_id):
     # Everything else (VITEST_MAX_WORKERS, PAIBAN_MVN_EXTRA_ARGS, E2E ports...)
     # is inherited from the caller on purpose: host escape hatches are not
     # general defaults and are the caller's decision.
-    env["PAIBAN_VERIFY_RUN_ID"] = run_id
     env["PAIBAN_VERIFY_RUN_DIR"] = native_path(runtime_dir)
     return env
 
@@ -711,6 +818,10 @@ def write_archive(archive_dir, files):
     archive_dir.mkdir(parents=True, exist_ok=False)
     for name in sorted(files):
         (archive_dir / name).write_bytes(files[name])
+    write_manifest(archive_dir, files)
+
+
+def write_manifest(archive_dir, files):
     manifest = b"".join(
         f"{sha256_hex(files[name])}  {name}\n".encode("utf-8") for name in sorted(files)
     )
@@ -765,7 +876,7 @@ def cmd_run(argv):
     print(f"VERIFY_RUN_COMMAND={command}")
     print(f"VERIFY_RUN_LOG_RAW={log_path}")
 
-    env = child_env(root, runtime_dir, run_id)
+    env = child_env(runtime_dir)
     started = utcnow()
     with log_path.open("wb") as log:
         proc = subprocess.run(
@@ -815,7 +926,7 @@ def cmd_run(argv):
     log_bytes = log_path.read_bytes()
     summary = build_log_summary(f"{runtime_rel}/verify.log", log_bytes)
     log_sha = sha256_hex(log_bytes)
-    log_lines = log_bytes.count(b"\n") + (0 if log_bytes.endswith(b"\n") or not log_bytes else 1)
+    log_lines = log_line_count(log_bytes)
 
     receipt_fields = [
         ("RECEIPT_SCHEMA", str(SCHEMA)),
@@ -881,6 +992,18 @@ def cmd_run(argv):
     for problem in problems:
         print(f"VERIFY_RUN_ARCHIVE_PROBLEM={problem}")
     if problems:
+        # Keep the failed archive invalid, but record the runner's actual exit.
+        # Other archived bytes are not repaired or replaced after a failed check.
+        failed_fields = [
+            (key, str(EXIT_ARCHIVE_INVALID) if key == "TOOL_EXIT_CODE" else value)
+            for key, value in receipt_fields
+        ]
+        files["receipt.txt"] = build_receipt(failed_fields + [("ARCHIVE_VALID", "0")])
+        try:
+            (archive_dir / "receipt.txt").write_bytes(files["receipt.txt"])
+            write_manifest(archive_dir, files)
+        except OSError as error:
+            print(f"VERIFY_RUN_ARCHIVE_UPDATE_FAILED={error}", file=sys.stderr)
         print(f"VERIFY_RUN_TOOL_EXIT_CODE={EXIT_ARCHIVE_INVALID}")
         return EXIT_ARCHIVE_INVALID
     print(f"VERIFY_RUN_TOOL_EXIT_CODE={tool_exit}")

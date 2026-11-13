@@ -18,13 +18,19 @@ bash scripts/verify-run.sh <run-id> --full
 
 源范围为 `backend/`、`frontend/`、`scripts/`、`.githooks/` 的 tracked 文件。HEAD 绑定代码版本，字节 SHA256 检查实际执行前后的文件内容；这是运行快照，不是修改前旧代码与修改后新代码的对照。工具不会自动 stage 或 commit。
 
+before/after 清单各有不同的阶段标签，因此两个清单文件的整体 SHA256 可以不同；`SOURCE_IDENTICAL` 比较的是逐个源文件的实际字节和 HEAD，清单整体哈希用于归档完整性。
+
 原始日志、TMP/TEMP、npm 缓存和截图都在当前工作树 `.runtime/verification/<run-id>/`；可归档元数据在 `.scratch/verification/<run-id>/`。run-id 为单段标识，已有运行不覆盖。输出路径解析到工作树外时停止。
+
+收据运行把 Playwright 内建失败截图/trace 放到 `playwright/` 子目录，自定义截图放到 `screenshots/`。中断后保留该运行的原始证据，使用新 run-id 重新验证；未生成有效收据的运行不能算通过。调用方仍需回收其启动的临时进程，不能将宿主强杀视为正常完成。
 
 ## 读取结果
 
 命令退出码与收据工具退出码分别记录。只有命令成功、源码前后一致且归档有效时工具才返回 0；源变化返回 86，其他命令失败保留原失败退出码。检查输出不能替代真实外部服务、手机或 PostgreSQL 的验收，原命令的跳过项仍须单列。
 
 归档只包含版本、时间、退出码、源码清单与日志摘要哈希等元数据；完整原始日志留在本地，不自动进入 Git。局部 `.gitattributes` 保留收据原始字节。
+
+摘要里的跳过计数是命中日志行数，不是测试用例数；PostgreSQL 的 `requested-via-testcontainers` 仅表示传入真实容器参数，不证明该测试通过。归档自检失败返回 67，标记无效，不得作为可提交的通过证据。
 
 提交收据时，pre-commit 会调用：
 

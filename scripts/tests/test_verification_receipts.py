@@ -49,12 +49,25 @@ FAKE_VERIFY = """#!/usr/bin/env bash
 # Fake gate payload used only by scripts/tests/test_verification_receipts.py.
 # It never invokes Maven, npm, Playwright or any real verification step.
 set -u
+if [[ "${FAKE_VERIFY_EMPTY:-}" == "1" ]]; then exit 0; fi
+if [[ "${FAKE_VERIFY_SKIP_LOG:-}" == "1" ]]; then
+  printf '==> Docker not found: skipping PostgresContainerIT (CI runs it; --deploy requires Docker)\\n'
+  printf '[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 3\\n'
+  exit 0
+fi
 printf '==> fake verify.sh %s\\n' "${1:-<default>}"
 printf 'fake: real PostgreSQL container test skipped\\r\\n'
 printf 'fake: one ordinary log line\\n'
 printf 'fake: request token=%s\\n' FAKE_TOKEN_DO_NOT_ARCHIVE
 if [[ -n "${FAKE_VERIFY_DRIFT:-}" ]]; then
   printf 'drift\\n' >> backend/src/app.txt
+fi
+if [[ "${FAKE_VERIFY_STAGE_NEW:-}" == "1" ]]; then
+  printf 'new source\\n' > backend/src/staged.txt
+  git add backend/src/staged.txt
+fi
+if [[ "${FAKE_VERIFY_CHANGE_HEAD:-}" == "1" ]]; then
+  git commit -q --allow-empty -m 'mid-run HEAD change'
 fi
 if [[ -n "${FAKE_VERIFY_ADD_UNTRACKED:-}" ]]; then
   printf 'new source\\n' > backend/src/untracked-during-run.txt
@@ -119,17 +132,19 @@ def _remove_tree(path):
             os.unlink(path)
 
 
-def safe_rmtree(path, root=None):
-    """Remove ``path`` only if it really resolves inside ``root``."""
+def safe_rmtree(path):
+    """Only remove this suite's fixture paths inside the current worktree."""
     target = Path(path)
-    boundary = Path(root or CASES_ROOT).resolve()
-    if not target.exists() and not _is_link_like(target):
-        return
+    boundary = CASES_ROOT.resolve()
+    if boundary == ROOT or not boundary.is_relative_to(ROOT):
+        raise AssertionError(f"fixture root resolves outside the worktree: {boundary}")
     resolved = target.resolve()
     if resolved == boundary or not resolved.is_relative_to(boundary):
         raise AssertionError(
             f"refusing to clean {target}: resolved {resolved} is outside {boundary}"
         )
+    if not target.exists() and not _is_link_like(target):
+        return
     _remove_tree(target)
 
 
@@ -375,6 +390,24 @@ class UsageTests(ReceiptCase):
 
 
 class RunTests(ReceiptCase):
+    def test_new_staged_source_is_drift_with_valid_receipt(self):
+        self.assertExit(
+            86, self.verify_run("staged-source", env={"FAKE_VERIFY_STAGE_NEW": "1"}), "staged drift"
+        )
+        fields = self.fields("staged-source")
+        self.assertEqual(fields["SOURCE_DRIFT_FILES"], "1")
+        self.assertExit(0, self.check_receipts("--worktree"), "staged drift receipt integrity")
+
+    def test_head_change_with_identical_file_bytes_is_drift(self):
+        self.assertExit(
+            86, self.verify_run("head-change", env={"FAKE_VERIFY_CHANGE_HEAD": "1"}), "HEAD drift"
+        )
+        fields = self.fields("head-change")
+        self.assertEqual(fields["HEAD_IDENTICAL"], "0")
+        self.assertEqual(fields["SOURCE_IDENTICAL"], "0")
+        self.assertEqual(fields["SOURCE_DRIFT_FILES"], "0")
+        self.assertExit(0, self.check_receipts("--worktree"), "HEAD drift receipt integrity")
+
     def test_success_archives_full_receipt(self):
         proc = self.verify_run("run-1")
         self.assertExit(0, proc, "successful run")
@@ -544,6 +577,64 @@ class RunTests(ReceiptCase):
 
 
 class ArchiveTests(ReceiptCase):
+    def test_explicitly_invalid_archive_is_never_accepted_after_resign(self):
+        self.assertExit(0, self.verify_run("invalid-archive"), "run")
+        archive = self.archive("invalid-archive")
+        receipt = archive / "receipt.txt"
+        receipt.write_bytes(receipt.read_bytes() + b"ARCHIVE_VALID=0\n")
+        self.refresh_manifest(archive)
+        checked = self.check_receipts("--worktree")
+        self.assertExit(1, checked, "explicit invalid archive")
+        self.assertIn("marked invalid", checked.stdout)
+
+    def test_summary_records_actual_postgres_skip_without_copying_log(self):
+        self.assertExit(
+            0, self.verify_run("skip-pg", env={"FAKE_VERIFY_SKIP_LOG": "1"}), "skip log"
+        )
+        summary = _read_fields(self.archive("skip-pg") / "log-summary.txt")
+        self.assertEqual(summary["LOG_LINES_WITH_SKIPPED"], "2")
+        self.assertEqual(summary["POSTGRES_CONTAINER_SIGNAL"], "skipped-no-docker")
+
+    def test_checker_recomputes_source_identity_after_manifest_resign(self):
+        self.assertExit(
+            86, self.verify_run("false-identity", env={"FAKE_VERIFY_DRIFT": "1"}), "drift run"
+        )
+        archive = self.archive("false-identity")
+        receipt = archive / "receipt.txt"
+        receipt.write_bytes(
+            receipt.read_bytes()
+            .replace(b"SOURCE_IDENTICAL=0\n", b"SOURCE_IDENTICAL=1\n")
+            .replace(b"SOURCE_DRIFT_FILES=1\n", b"SOURCE_DRIFT_FILES=0\n")
+            .replace(b"TOOL_EXIT_CODE=86\n", b"TOOL_EXIT_CODE=0\n")
+        )
+        self.refresh_manifest(archive)
+        checked = self.check_receipts("--worktree")
+        self.assertExit(1, checked, "re-signed false source identity")
+        self.assertIn("SOURCE_IDENTICAL", checked.stdout)
+
+    def test_checker_recomputes_source_file_count(self):
+        self.assertExit(0, self.verify_run("false-count"), "run")
+        archive = self.archive("false-count")
+        receipt = archive / "receipt.txt"
+        count = self.fields("false-count")["SOURCE_FILES"]
+        receipt.write_bytes(
+            receipt.read_bytes().replace(
+                f"SOURCE_FILES={count}\n".encode(), b"SOURCE_FILES=99999\n"
+            )
+        )
+        self.refresh_manifest(archive)
+        checked = self.check_receipts("--worktree")
+        self.assertExit(1, checked, "re-signed false source file count")
+        self.assertIn("SOURCE_FILES", checked.stdout)
+
+    def test_empty_log_has_zero_lines_in_both_metadata_files(self):
+        self.assertExit(0, self.verify_run("empty-log", env={"FAKE_VERIFY_EMPTY": "1"}), "empty log")
+        receipt = self.fields("empty-log")
+        summary = _read_fields(self.archive("empty-log") / "log-summary.txt")
+        self.assertEqual(receipt["LOG_LINES_TOTAL"], "0")
+        self.assertEqual(summary["LOG_LINES_TOTAL"], "0")
+        self.assertEqual(receipt["LOG_SHA256"], hashlib.sha256(b"").hexdigest())
+
     def test_log_archive_is_metadata_only(self):
         self.assertExit(0, self.verify_run("run-log"), "run")
         raw_log = (self.runtime("run-log") / "verify.log").read_bytes()
@@ -575,11 +666,7 @@ class ArchiveTests(ReceiptCase):
         archive = self.archive("run-crlf")
         # Rewrite one archived file with CRLF bytes and re-sign the manifest:
         # this is exactly the byte pattern a Windows-authored receipt can have.
-        crlf = (
-            b"# metadata-only log digest\r\n"
-            b"LOG_BYTES=0\r\n"
-            b"LOG_EXCERPT=redacted-by-design\r\n"
-        )
+        crlf = (archive / "log-summary.txt").read_bytes().replace(b"\n", b"\r\n")
         (archive / "log-summary.txt").write_bytes(crlf)
         self.refresh_manifest(archive)
         _git(self.repo, "add", ".scratch/verification/run-crlf")

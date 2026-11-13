@@ -85,11 +85,13 @@ write_fake() {
 write_fake "$FAKEBIN/npm" <<'FAKE'
 #!/usr/bin/env bash
 printf 'frontend npm %s\n' "$*" >> "$ORDER_LOG"
-if [[ "$*" == "run test:e2e" ]]; then
+if [[ "${1:-}" == "run" && "${2:-}" == "test:e2e" ]]; then
   printf 'e2e-env ISOLATED=%s BACKEND_PORT=%s FRONTEND_PORT=%s\n' \
     "${PAIBAN_E2E_ISOLATED:-unset}" \
     "${PAIBAN_E2E_BACKEND_PORT:-unset}" \
     "${PAIBAN_E2E_FRONTEND_PORT:-unset}" >> "$ORDER_LOG"
+  printf 'e2e-output argc=%s separator=%s option=%s dir=%s\n' \
+    "$#" "${3:-unset}" "${4:-unset}" "${5:-unset}" >> "$ORDER_LOG"
 fi
 if [[ -n "${FAKE_NPM_FAIL:-}" && "$*" == "${FAKE_NPM_FAIL}" ]]; then
   printf 'fake npm failure: %s\n' "$*" >&2
@@ -166,6 +168,7 @@ FAKE
   export FAKE_FAIL_CHECK FAKE_NPM_FAIL FAKE_DOCKER_READY \
     PAIBAN_MVN_EXTRA_ARGS PAIBAN_E2E_BACKEND_PORT PAIBAN_E2E_FRONTEND_PORT
   unset PAIBAN_E2E_ISOLATED 2>/dev/null || true
+  unset PAIBAN_VERIFY_RUN_DIR 2>/dev/null || true
 }
 
 run_verify() {
@@ -451,6 +454,17 @@ assert_exit 0 "extra maven args"
 assert_log_has "backend mvnw -B verify -DforkCount=0 -Dfoo=bar" \
   "extra maven args are split and appended"
 assert_count "backend mvnw" 1 "extra maven args run backend once"
+
+# 11. 收据运行将 Playwright 内建失败截图和 trace 输出交给 --output，路径须为一个参数。
+make_case full-artifacts
+PAIBAN_VERIFY_RUN_DIR="$CASE/运行 收据"
+export PAIBAN_VERIFY_RUN_DIR
+run_verify --full
+assert_exit 0 "--full with receipt artifact directory"
+assert_log_has "e2e-output argc=5 separator=-- option=--output dir=$PAIBAN_VERIFY_RUN_DIR/playwright" \
+  "receipt artifact path is passed as one quoted output argument"
+assert_count "frontend npm run test:e2e" 1 "receipt run starts e2e once"
+assert_last_line_is_e2e "receipt run keeps e2e last"
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [[ $FAIL -eq 0 ]]

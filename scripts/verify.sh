@@ -98,7 +98,13 @@ if [[ $MODE == full ]]; then
   fi
   # A stale Vite cache can make the esbuild service crash mid-run; drop it first.
   rm -rf frontend/node_modules/.vite
-  (cd frontend && npx playwright install chromium && npm run test:e2e)
+  E2E_ARGS=()
+  if [[ -n "${PAIBAN_VERIFY_RUN_DIR:-}" ]]; then
+    # The receipt runner validates this run directory. Include Playwright's
+    # built-in failure screenshots/traces, not only the custom screenshot helper.
+    E2E_ARGS=(-- --output "$PAIBAN_VERIFY_RUN_DIR/playwright")
+  fi
+  (cd frontend && npx playwright install chromium && npm run test:e2e "${E2E_ARGS[@]}")
 fi
 
 echo "==> verify: ok"

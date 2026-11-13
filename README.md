@@ -238,7 +238,7 @@ backend / frontend，再执行 `pg_restore --clean --if-exists`，并在存在
 ```bash
 scripts/verify.sh          # 仓库/前端快检查，再后端 verify
 scripts/verify.sh --full   # 追加 Playwright 验收场景
-scripts/verify-run.sh <run-id> --full # 冻结验证，自动生成运行收据
+bash scripts/verify-run.sh <run-id> --full # 冻结验证，自动生成运行收据
 scripts/verify-deploy.sh   # 部署脚本测试（无需 Docker；CI 的 deploy-scripts job）
 ```
 
