@@ -1,7 +1,7 @@
 # 06 前端交付（通知收敛与只读发送记录）
 
-日期：2026-11-13  
-分支：`codex/dingtalk-t06-ui`  
+日期：2026-11-13
+分支：`codex/dingtalk-t06-ui`
 工作树：`E:/排课系统/.worktrees/dingtalk-t06-ui`
 
 ## 起点与合并
