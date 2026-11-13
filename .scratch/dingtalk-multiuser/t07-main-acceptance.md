@@ -35,3 +35,7 @@ fixer候选b253112独立合入2ec7608，Git树与候选相同，后端净diff为
 主控直接受影响四spec（账号审计/角色/钉钉登录/连接探测）首轮10通过1失败、退出1、SOURCE_IDENTICAL=1。失败是旧role spec的账号导航模糊匹配；原日志与trace在logs/t07-review-fixes-browser-run1及.runtime同名test-results，失败PNG逐SHA归档到evidence/t07-review-fixes-browser-run1/role-tab-strict-mode.png。
 
 只改角色spec正/负两行定位为.page-tab[href="/settings/users"]，源补丁存logs/t07-review-fixes-browser-run2/source-selector-patch.txt。第二轮四spec共11通过、退出0、SOURCE_IDENTICAL=1；不与首轮相加。日志/源码前后清单见logs/t07-review-fixes-browser-run2，trace在.runtime对应目录。主控实看角色弹窗仅超级管理员/教务管理员/老师三项；最新成功/拒绝两张探测PNG与docs手册原图SHA完全相同，无须改图。28417/25417监听0，带本轮标记的Java/Node/Chrome/headless进程0。
+
+## 2026-11-13 主控最终07闸门
+
+固定最终审源016859bc35a31f2cf5c93e2280e395cbad2b6d62。补核见t07-standards-final-supplement.md、t07-spec-final-supplement.md：两行精确href仍保留超管正向与教务负向权限断言，两轴新增明确问题均0；原始计数和已裁定建议保持，不将判断建议伪称修复。受影响四组E2E最终11通过，POST_COMMIT_SOURCE_IDENTICAL=1；既有后端35及组件24的证据范围与失败历史不变。主控批准07为implemented，进入08；全量后才done。真实租户/手机/PG、全量及部署尚无通过证据。
