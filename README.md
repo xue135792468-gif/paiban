@@ -242,7 +242,7 @@ scripts/verify-run.sh <run-id> --full # 冻结验证，自动生成运行收据
 scripts/verify-deploy.sh   # 部署脚本测试（无需 Docker；CI 的 deploy-scripts job）
 ```
 
-冻结验证需要 Python 3；收据目录、退出码及 Git 字节校验见 [验证与运行收据](docs/agents/verification.md)。
+冻结验证需要 Python 3.9+；收据目录、退出码及 Git 字节校验见 [验证与运行收据](docs/agents/verification.md)。
 
 `scripts/verify-deploy.sh` 依次运行 `scripts/tests/test-*.sh`（compose 拓扑、doctor 退出码、
 密钥自愈、一键启动、生产配置与备份脚本），打印每个套件名并在第一个失败处停止；
