@@ -31,7 +31,9 @@ Status: done
 
 真实 `--quick` 已完成，执行源码 `d6ef18b3d775b353f4cd617a415db8e516de3f3b`，本地时间 2026-11-14 01:52:17–01:57:51，命令与工具退出均为 0。八项仓库检查、前端 lint/build、106 文件的 803 项单测、后端 `-DskipTests compile` 全部通过；1076 个源文件前后一致，无漂移。构建有 bundle 体积以及既有 Java deprecated/unchecked 告警，未阻断。
 
-收据：[真实快速门禁](../verification/retro-quick-20261114/receipt.txt)。两份归档在 Git 索引中共 12 文件，`--staged` 实际校验 0 mismatch / 0 missing / 0 unlisted / 0 metadata problems；正常 pre-commit 将再次校验，提交后再查 HEAD。
+收据：[真实快速门禁](../verification/retro-quick-20261114/receipt.txt)。两份归档在 Git 索引中共 12 文件，`--staged` 与正常 pre-commit 均实际校验通过。
+
+归档提交 `1d346c9b745727822354807ee855ae700e2abf89` 上，无参数 HEAD 校验实际读取 2 份收据的 12 个 Git 对象，0 mismatch / 0 missing / 0 unlisted / 0 metadata problems。独立按快速门禁 source-after 清单重算当前 1076 个源文件的字节 SHA256/长度，全部一致；相对测试源码 `d6ef18b` 的四个源范围 Git diff 为 0，相对基点的 backend/frontend diff 为 0。其后只更新本验收文档。
 
 完整后端测试、Playwright、真实 PostgreSQL、钉钉租户/真机不在本批验收中冒称通过；原八票的既有完整验收记录仍在原目录。
 
