@@ -276,7 +276,7 @@ public class SubstitutionRequestService {
                     .map(issue -> issue.code() + ": " + issue.message())
                     .collect(Collectors.joining("；"));
             // 失败审计保留，但不发告警通知：票 05 的提交/审批路径不新增任何持锁外发。
-            audits.failure(username, "SUBSTITUTION_COVER_VERIFY_FAILED", "SUBSTITUTION", detail, false);
+            audits.failure(username, "SUBSTITUTION_COVER_VERIFY_FAILED", "SUBSTITUTION", detail);
             throw ApiException.conflict("代课未通过校验，整单不生效：" + detail);
         }
     }

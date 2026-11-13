@@ -22,7 +22,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 
 /**
@@ -188,8 +187,7 @@ public class SubstitutionEffects {
                     + "（" + move.toDate() + "）";
             details.merge(move.teacherId(), text, (left, right) -> left + "；" + right);
         }
-        String summary = details.values().stream().collect(Collectors.joining("；"));
-        notifications.swapEffective(request, details, summary);
+        notifications.swapEffective(request, details);
     }
 
     public Map<String, Object> variables(SubstitutionRequest request) {

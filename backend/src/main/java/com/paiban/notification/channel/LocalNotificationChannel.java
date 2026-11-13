@@ -10,6 +10,8 @@ import com.paiban.notification.service.NotificationRecipientResolver;
 import java.time.Instant;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 /** In-system notification centre; always available, used as the fallback channel. */
 @Component
@@ -41,6 +43,7 @@ public class LocalNotificationChannel implements NotificationChannel {
     }
 
     @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean send(Message message) {
         try {
             String variables = objectMapper.writeValueAsString(message.variables());

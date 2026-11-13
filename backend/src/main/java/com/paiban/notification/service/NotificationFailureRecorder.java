@@ -19,7 +19,7 @@ public class NotificationFailureRecorder {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void record(NotificationDelivery delivery, String errorCode, String errorMessage) {
+    public void record(NotificationDelivery delivery, String errorCode) {
         List<NotificationLog> rows = delivery.targets().stream()
                 .map(target -> {
                     NotificationLog row = new NotificationLog();

@@ -11,9 +11,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Failure-path auditing runs in its own transaction: the approve call rejects the
- * whole plan and rolls back, but the audit row and the alarm must survive so an
- * operator can see what was refused and why.
+ * Failure-path auditing runs in its own transaction so the audit row survives
+ * when the rejected business action rolls back.
  */
 @Service
 public class SubstitutionAuditService {
@@ -32,17 +31,17 @@ public class SubstitutionAuditService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void planFailure(Long planId, String status, String actor, String action,
-                            String detail, boolean alert, Long requesterTeacherId) {
+                            String detail) {
         plans.findById(planId).ifPresent(plan -> plan.setStatus(status));
-        record(actor, action, "SUBSTITUTION_PLAN", detail, alert);
+        record(actor, action, "SUBSTITUTION_PLAN", detail);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void failure(String actor, String action, String entityType, String detail, boolean alert) {
-        record(actor, action, entityType, detail, alert);
+    public void failure(String actor, String action, String entityType, String detail) {
+        record(actor, action, entityType, detail);
     }
 
-    private void record(String actor, String action, String entityType, String detail, boolean alert) {
+    private void record(String actor, String action, String entityType, String detail) {
         String safe = detail == null ? "" : detail;
         if (safe.length() > 1000) {
             safe = safe.substring(0, 1000);
@@ -51,10 +50,10 @@ public class SubstitutionAuditService {
         log.error("substitution plan rejected: {}", safe);
     }
 
-    /** Marks a plan expired/rejected without an alarm; used for stale-plan conflicts. */
+    /** Marks a plan expired/rejected; used for stale-plan conflicts. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void expirePlan(Long planId, String status, String actor, String action, String detail) {
         plans.findById(planId).ifPresent(plan -> plan.setStatus(status));
-        record(actor, action, "SUBSTITUTION_PLAN", detail, false);
+        record(actor, action, "SUBSTITUTION_PLAN", detail);
     }
 }

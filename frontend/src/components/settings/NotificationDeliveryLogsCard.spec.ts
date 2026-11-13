@@ -25,7 +25,7 @@ function deliveryLog(overrides: Partial<NotificationDeliveryLog> = {}): Notifica
     platform: 'dingtalk',
     recipient: 'dd-001',
     recipientLabel: '张老师',
-    templateCode: 'SUBSTITUTION_EFFECTIVE',
+    templateCode: 'SUBSTITUTION_EFFECTIVE_SUBSTITUTE',
     content: '周一第 1 节 数学课由李老师代课',
     success: true,
     createdAt: '2026-11-13T01:02:03Z',
@@ -65,9 +65,51 @@ describe('NotificationDeliveryLogsCard', () => {
 
     expect(listMock).toHaveBeenCalledWith({ page: 0, size: 20 })
     expect(wrapper.text()).toContain('张老师')
-    expect(wrapper.text()).toContain('SUBSTITUTION_EFFECTIVE')
+    expect(wrapper.text()).toContain('类型')
+    expect(wrapper.text()).toContain('代课通知')
+    expect(wrapper.text()).not.toContain('SUBSTITUTION_EFFECTIVE_SUBSTITUTE')
     expect(wrapper.text()).toContain('周一第 1 节 数学课由李老师代课')
     expect(wrapper.text()).toContain('钉钉已受理')
+    expect(wrapper.text()).toContain('“钉钉已受理”表示钉钉已接受发送请求')
+    expect(wrapper.text()).toContain('“系统已保存”表示通知已写入站内记录')
+    expect(wrapper.text()).toContain('不代表对方已实际收到或已读')
+    wrapper.unmount()
+  })
+
+  it('把已知模板代码显示为业务类型，未知代码保留原值', async () => {
+    listMock.mockResolvedValue(
+      pageOf([
+        deliveryLog({
+          id: 1,
+          templateCode: 'SUBSTITUTION_APPROVAL_APPROVED',
+          content: '批准通知',
+        }),
+        deliveryLog({
+          id: 2,
+          templateCode: 'SUBSTITUTION_APPROVAL_REJECTED',
+          content: '驳回通知',
+        }),
+        deliveryLog({
+          id: 3,
+          templateCode: 'SUBSTITUTION_SWAP_EFFECTIVE',
+          content: '调课通知',
+        }),
+        deliveryLog({
+          id: 4,
+          templateCode: 'FUTURE_TEMPLATE_CODE',
+          content: '未知代码原值',
+        }),
+      ]),
+    )
+    const wrapper = await mountCard()
+    await expand(wrapper)
+
+    const rows = wrapper.findAll('.el-table__row')
+    const rowFor = (content: string) => rows.find((row) => row.text().includes(content))!
+    expect(rowFor('批准通知').text()).toContain('审批批准')
+    expect(rowFor('驳回通知').text()).toContain('审批驳回')
+    expect(rowFor('调课通知').text()).toContain('调课通知')
+    expect(rowFor('未知代码原值').text()).toContain('FUTURE_TEMPLATE_CODE')
     wrapper.unmount()
   })
 

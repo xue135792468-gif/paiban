@@ -85,8 +85,7 @@ public class NotificationService {
     /** One delivery per moved teacher, containing only that teacher's own moves. */
     public void swapEffective(
             SubstitutionRequest request,
-            Map<Long, String> detailsByTeacher,
-            String summary) {
+            Map<Long, String> detailsByTeacher) {
         String link = "/substitutions?requestId=" + request.getId();
         String className = adminClasses.findById(request.getAdminClassId())
                 .map(AdminClass::getName)
