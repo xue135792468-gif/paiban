@@ -216,3 +216,9 @@ Standards新增Hard0、Judgement2条P3。两条均不采纳、非延期、不伪
 Spec缺失/越界/实现错均0，P2=1仍为既有验证缺口而非待施工代码缺陷。worker的bec5→714是编辑基线对照，真实文件20:31:25落盘早于20:31:50测试启动，预先记录待跑714；它不是成对runtime冻结收据。主控统一预检将串行集成targeted20→allE2E并保存全部1071源before/after，最终完整verify仍需绿色；此之前不done。
 
 主控后置检查预检remaining-guards-run1已实际8项全部退出0，SOURCE_IDENTICAL=1，1071源对象与95e4f88匹配。该轮只跑检查，不冒称执行浏览器；unit修正不改变这些检查所读产品源码，最终完整门禁仍会统一再验。全部确认代码问题已处置，允许冻结集成继续验证。
+
+## 主控统一冻结预检实据
+
+remaining-e2e-run1实际host退出0：集成targeted3文件20项通过、全E2E155项通过/0跳过，HEAD前后1a1396b一致，1071个受检源before/after相同且对应Git对象差异0。路径logs/remaining-e2e-run1内有两层直接退出码、preflight.exit、source-stability与source-object-proof。此前8项后置检查也全0。不是拼接“完整verify通过”，最后完整闸门仍待。
+
+Spec所指runtime冻结收据现已真实取得，不再依赖编辑前后hash；按最终放行约定在完整verify实际EXIT=0后一起正式关闭该P2。已无待施工代码项，Standards原J4与unit(a)/(b)三条P3均按上文不采纳、非延期；原级别/原文保留。

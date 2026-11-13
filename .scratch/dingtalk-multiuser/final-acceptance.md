@@ -1,4 +1,6 @@
-# 最终完整门禁（待修复后重跑）
+# 钉钉多用户：本地最终验收
+
+> 当前：全部已发现施工问题已修复并复查；后置检查、集成定向及浏览器全套预检通过，唯一本地剩余闸门是最终完整verify。原八票暂不done，未push/部署；以下保留各轮失败及修复历史。
 
 本地集成分支codex/dingtalk-multiuser，起点2e5e585f6ed80d5024af6b734162a70829b067cf。01–07专项及双轴已放行，08专项（后端整链、H2旧库升级、手机真实菜单到审批整链）完成。最后源码和评审证据见whole-review.md、t08-main-acceptance.md；尚未统一done、未push/部署。
 
@@ -41,3 +43,11 @@ Standards小delta新Hard0/Judgement0，原J4 P3不采纳不变；Spec小delta尚
 候选d9b0a5b与接收8d924e0；只修productTrim.spec.ts，保留完整路由集合精确断言并补账号审计name/权限，不改产品/后端。独立merger核3份日志复制SHA一致，20项定向通过；source-hashes编辑对照的限制已校正交付说明。两轴补核与主控处置见whole-review.md：无待施工硬问题，Standards两P3建议不采纳，Spec原验证P2仍待实际冻结重跑。
 
 主控remaining-guards-run1实际完成verify中的8项后置仓库检查，全部EXIT=0/SOURCE_IDENTICAL=1；1071个受检对象与95e4f88匹配。此为独立静态检查轮，不是完整verify或浏览器通过。后续统一runner在新集成源串行targeted20与全E2E，浏览器使用28518/25518；之后才最终完整verify，源不再施工时才统一done。
+
+## 剩余验证预检全部通过（冻结源1a1396b）
+
+主控实际执行remaining-e2e-run1，先集成定向3文件20项通过/直接EXIT=0，再全Playwright 155项全部通过、0跳过（21.3m）/直接EXIT=0。整个runner host退出0，preflight.exit=0，SOURCE_IDENTICAL=1，HEAD前后同为1a1396b88e04bccdd125603189289b280f55b832。
+
+1071个受检源对象与该提交逐一一致，差异0/额外0，source-object-proof.txt=RUN_SOURCE_EQUALS_COMMIT=1。15份原始日志/退出/清单/doctor记录已有SHA256SUMS.txt；它提供真实运行前后的全源冻结证据，覆盖上轮worker仅记录编辑基线对照的限制。独立静态检查remaining-guards-run1的8项也均通过；不能将这些分段预检包装成完整verify已通过。
+
+28518/25518监听0，integration标记Java/Node/Chrome/headless进程0，预检进程全部结束。所有源/测试不再施工，收口说明提交后只运行最后完整verify（final-full-run3）；P2验证证据已补齐，按最终放行约定待完整闸门EXIT=0后正式关项。通过后只允许文档收口。
