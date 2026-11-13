@@ -11,6 +11,12 @@
 
 身份隔离前置：现有Fake默认EMP001/dd-001/张三与EMP002/dd-002/李四会被其他通讯录/免登spec使用，不能假设它们没有账号，更不能降级/改绑别的fixture来强行获得Teacher。08施工时评估最小Fake合成身份能力或等效隔离方案，保持默认两人目录及既有用例，不增加面向产品的测试控制端点。SDK可注入假authCode，但认证POST必须真的经过后端；不能route伪造JWT响应来声称整链。只对自己确切创建的账号/Teacher做收尾，不触碰他人的记录。
 
+### Fake身份隔离约定（准备，07放行前不施工）
+
+为使后端与浏览器独立写集能够协作，08建议最小Fake专用身份：authCode为`fake:acceptance:<caseId>`，仅现有FakeDingTalkClient识别，caseId为1–40位ASCII字母/数字/下划线/短横线。对应UID=`dd-acceptance-<caseId>`，姓名=`验收申请人-<caseId>`，工号=`ACC-<caseId>`。exchangeAuthCode与getUser共同按同一纯规则解析；不改真实HttpDingTalkClient，不增加HTTP测试控制端点、不伪造JWT、不把合成身份加入默认通讯录。默认EMP001/002及未知员工拒绝行为保持。
+
+两端先创建自己的唯一同名未绑定教师，再经真实认证POST自动配对；最终接课人与原期望人也用本用例唯一ID，不能利用共享默认老师。若施工发现与实际边界冲突，由主控先调整此约定再分发，不让两个worker改同一Fake文件。该节只是可执行输入，不是Fake已实现或任何通过证据。
+
 ## 存量升级
 
 复用RoleUpgradeDataPreservationTest的V59建旧库与业务种子思路，但新增覆盖**全部当前新迁移**的独立验收，不把旧V59→V60单票绿例冒充全特性升级。

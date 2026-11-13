@@ -85,7 +85,7 @@
 | 晚返回失效 | 红 | `1`；旧请求结果被显示 | `.runtime/red-06.log` |
 | 晚返回失效 | 绿 | `0`；6/6 | `.runtime/green-06.log` |
 | busy 防重复 | 已有绿回归 | `0`；7/7；原 Element Plus loading 已阻止第二次点击，未强造红 | `.runtime/red-07.log` |
-| 设置页边界回归 | 绿 | `0`；19 tests total across attempted set / 18 in `green-08` | `.runtime/green-08.log` |
+| 设置页边界回归 | 绿 | `0`；2 files / 18 passed（主控已对照原始日志纠正，不计为19） | `.runtime/green-08.log` |
 | 成功不得扩大验收声明 | 红 | `1`；显示服务端夸大成功文案 | `.runtime/red-09.log` |
 | 成功不得扩大验收声明 | 绿 | `0`；8/8 | `.runtime/green-09.log` |
 

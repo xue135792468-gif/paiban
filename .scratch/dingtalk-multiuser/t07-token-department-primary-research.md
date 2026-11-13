@@ -1,5 +1,7 @@
 # 票 07 令牌与根部门主源研究报告
 
+> 2026-11-13主控复核修正：下文“Body JSON / Form-Data”中的JSON支持未由主控取得的官方正文证明，不能把既有其他topapi请求或离线mock当作此接口的真实兼容性回执。官方apiId=52330实际可读示例为POST表单。07新增根部门探测采用application/x-www-form-urlencoded的dept_id=1；token沿用既有v1.0 JSON协议。MockRestServiceServer只证明实际RestClient请求构造/转换与离线响应处理，不证明真实网络、租户或JSON根部门兼容。
+
 日期：2026-11-11 | 约束：只读调研，07未施工，不跑测试，不读私钥，不调真实企业API。
 
 ## 1. 部门详情主源核实 (POST /topapi/v2/department/get)
