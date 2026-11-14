@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +28,8 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/api/settings")
 public class SettingsController {
+
+    private static final String DINGTALK_PREFIX = "integration.dingtalk.";
 
     private static final List<String> EDITABLE = List.of(
             SettingsService.SUBSTITUTION_SEARCH_WINDOW_DAYS,
@@ -64,7 +67,7 @@ public class SettingsController {
     @GetMapping
     @PreAuthorize("hasAuthority('" + Permissions.SETTINGS_MANAGE + "')")
     public Map<String, String> all() {
-        return settings.all();
+        return visibleSettings();
     }
 
     /**
@@ -80,13 +83,16 @@ public class SettingsController {
     @PreAuthorize("hasAuthority('" + Permissions.SETTINGS_MANAGE + "')")
     public Map<String, String> update(@RequestBody Map<String, String> values) {
         values.forEach((key, value) -> {
+            if (key.startsWith(DINGTALK_PREFIX) && !users.hasPermission(Permissions.INTEGRATION_MANAGE)) {
+                throw ApiException.forbidden("没有权限修改钉钉配置");
+            }
             if (!EDITABLE.contains(key)) {
                 throw ApiException.badRequest("不支持修改的配置项: " + key);
             }
             validate(key, value);
         });
-        values.forEach(settings::put);
-        return settings.all();
+        settings.putAll(values);
+        return visibleSettings();
     }
 
     @GetMapping("/substitution-recipients")
@@ -135,10 +141,19 @@ public class SettingsController {
             Path target = directory.resolve(filename).toAbsolutePath();
             Files.write(target, bytes);
             settings.put(SettingsService.SCHOOL_LOGO_PATH, target.toString());
-            return settings.all();
+            return visibleSettings();
         } catch (java.io.IOException ex) {
             throw ApiException.badRequest("保存 Logo 失败: " + ex.getMessage());
         }
+    }
+
+    /** Business settings remain available without disclosing the integration configuration. */
+    private Map<String, String> visibleSettings() {
+        Map<String, String> values = new LinkedHashMap<>(settings.all());
+        if (!users.hasPermission(Permissions.INTEGRATION_MANAGE)) {
+            values.keySet().removeIf(key -> key.startsWith(DINGTALK_PREFIX));
+        }
+        return values;
     }
 
     /** Validates the real file signature; SVG is rejected to avoid stored XSS. */

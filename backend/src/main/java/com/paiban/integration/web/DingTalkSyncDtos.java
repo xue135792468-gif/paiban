@@ -4,6 +4,7 @@ import com.paiban.integration.org.DingTalkSyncPlan;
 import com.paiban.integration.org.DingTalkSyncPlan.Category;
 import com.paiban.integration.org.DingTalkSyncPlan.FieldChange;
 import com.paiban.integration.org.DingTalkSyncPlan.Item;
+import com.paiban.integration.org.DingTalkDeactivationPlanner;
 import com.paiban.integration.org.DingTalkSyncPreview;
 import com.paiban.integration.domain.DingDepartment;
 import com.paiban.integration.domain.DingUser;
@@ -27,7 +28,19 @@ public final class DingTalkSyncDtos {
             long elapsedMs,
             List<String> skippedDepartmentNames,
             SummaryDto summary,
-            List<DepartmentGroupDto> departments) {}
+            List<DepartmentGroupDto> departments,
+            boolean scanComplete,
+            String deactivationWarning,
+            List<DeactivationCandidateDto> deactivations) {}
+
+    /** 票 04：预演里的「将停用」候选；confirm 会按 {@code accountId} 明确选择。 */
+    public record DeactivationCandidateDto(
+            Long accountId,
+            String accountName,
+            String displayName,
+            Long teacherId,
+            String teacherName,
+            String dingtalkUserId) {}
 
     public record SummaryDto(long create, long merge, long suspected, long skip) {}
 
@@ -54,12 +67,22 @@ public final class DingTalkSyncDtos {
 
     /**
      * Selection sent to the preview and confirm endpoints. All fields are optional:
-     * an empty body means "everything readable, no suspected merges".
+     * an empty body means "everything readable, no suspected merges, no account deactivation".
      */
     public record ConfirmRequest(
             List<String> excludedDepartments,
             List<String> excludedUserIds,
-            List<SuspectedDecisionDto> suspectedDecisions) {}
+            List<SuspectedDecisionDto> suspectedDecisions,
+            List<DeactivationSelectionDto> deactivationSelections) {
+        public ConfirmRequest(
+                List<String> excludedDepartments,
+                List<String> excludedUserIds,
+                List<SuspectedDecisionDto> suspectedDecisions) {
+            this(excludedDepartments, excludedUserIds, suspectedDecisions, List.of());
+        }
+    }
+
+    public record DeactivationSelectionDto(Long accountId, Long teacherId, String dingtalkUserId) {}
 
     /** {@code action} is MERGE, CREATE or SKIP; MERGE requires {@code teacherId}. */
     public record SuspectedDecisionDto(String userId, String action, Long teacherId) {}
@@ -87,7 +110,22 @@ public final class DingTalkSyncDtos {
                         plan.count(Category.MERGE),
                         plan.count(Category.SUSPECTED),
                         plan.count(Category.SKIP)),
-                departments);
+                departments,
+                preview.scanComplete(),
+                preview.deactivationWarning(),
+                preview.deactivations().stream()
+                        .map(DingTalkSyncDtos::deactivation)
+                        .toList());
+    }
+
+    private static DeactivationCandidateDto deactivation(DingTalkDeactivationPlanner.Candidate candidate) {
+        return new DeactivationCandidateDto(
+                candidate.accountId(),
+                candidate.accountName(),
+                candidate.displayName(),
+                candidate.teacherId(),
+                candidate.teacherName(),
+                candidate.dingtalkUserId());
     }
 
     private static String groupName(DingUser user) {

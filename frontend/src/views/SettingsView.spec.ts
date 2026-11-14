@@ -4,6 +4,7 @@ import ElementPlus, { ElMessageBox } from 'element-plus'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import SettingsView from './SettingsView.vue'
+import { useAuthStore } from '@/stores/auth'
 
 const httpMock = vi.hoisted(() => ({
   get: vi.fn(),
@@ -41,9 +42,26 @@ beforeEach(() => {
   httpMock.delete.mockResolvedValue({ data: {} })
 })
 
-async function mountView() {
+const SUPER_ADMIN_PERMISSIONS = [
+  'settings:manage',
+  'user:manage',
+  'foundation:manage',
+  'integration:manage',
+  'audit:view:account',
+  'substitution:view',
+]
+
+async function mountView(permissions: string[] = SUPER_ADMIN_PERMISSIONS) {
   const pinia = createPinia()
   setActivePinia(pinia)
+  useAuthStore(pinia).user = {
+    id: 1,
+    username: 'tester',
+    displayName: '测试账号',
+    enabled: true,
+    roles: ['super_admin'],
+    permissions,
+  }
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [{ path: '/:pathMatch(.*)*', component: { template: '<div />' } }],
@@ -80,6 +98,9 @@ const previewFixture = {
   elapsedMs: 12,
   skippedDepartmentNames: [],
   summary: { create: 1, merge: 0, suspected: 0, skip: 0 },
+  scanComplete: true,
+  deactivationWarning: null,
+  deactivations: [],
   departments: [
     {
       department: '全校教职工',
@@ -120,18 +141,21 @@ describe('SettingsView: 钉钉同步超时', () => {
     await wrapper.find('[data-testid="dingtalk-preview"]').trigger('click')
     await flushPromises()
 
-    expect(httpMock.post).toHaveBeenCalledWith(
-      '/integrations/dingtalk/sync/preview',
-      undefined,
-      { timeout: 180000 },
-    )
+    expect(httpMock.post).toHaveBeenCalledWith('/integrations/dingtalk/sync/preview', undefined, {
+      timeout: 180000,
+    })
 
     await wrapper.find('[data-testid="dingtalk-confirm"]').trigger('click')
     await flushPromises()
 
     expect(httpMock.post).toHaveBeenCalledWith(
       '/integrations/dingtalk/sync/confirm',
-      { excludedDepartments: [], excludedUserIds: [], suspectedDecisions: [] },
+      {
+        excludedDepartments: [],
+        excludedUserIds: [],
+        suspectedDecisions: [],
+        deactivationSelections: [],
+      },
       { timeout: 180000 },
     )
     wrapper.unmount()
@@ -154,6 +178,134 @@ describe('SettingsView: 钉钉同步超时', () => {
 
     release?.({ data: previewFixture })
     await flushPromises()
+    wrapper.unmount()
+  })
+})
+
+describe('SettingsView: 钉钉配置只对集成配置权限可见', () => {
+  it('教务管理员看不到钉钉区块，也不会请求集成配置接口', async () => {
+    const wrapper = await mountView(['settings:manage', 'foundation:manage'])
+
+    expect(wrapper.find('#dingtalk-integration').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="dingtalk-probe"]').exists()).toBe(false)
+    const urls = httpMock.get.mock.calls.map((call) => String(call[0]))
+    expect(urls.some((url) => url.includes('/integrations/dingtalk'))).toBe(false)
+    expect(httpMock.post).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('超级管理员能看到钉钉区块', async () => {
+    const wrapper = await mountView()
+
+    expect(wrapper.find('#dingtalk-integration').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('教务保存设置时不回写钉钉字段，避免整单被拒', async () => {
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/settings') {
+        return Promise.resolve({
+          data: {
+            'school.name': '本校',
+            'substitution.max-plan-teachers': '5',
+            'integration.dingtalk.event-token': '',
+          },
+        })
+      }
+      return Promise.resolve({ data: [] })
+    })
+    const wrapper = await mountView(['settings:manage', 'foundation:manage'])
+
+    await wrapper.get('.toolbar .el-button').trigger('click')
+    await flushPromises()
+
+    expect(httpMock.put).toHaveBeenCalledWith('/settings', {
+      'school.name': '本校',
+      'substitution.max-plan-teachers': '5',
+    })
+    wrapper.unmount()
+  })
+})
+
+describe('SettingsView: 钉钉测试连接边界', () => {
+  it('测试当前未保存参数时不保存、不清空，也不锁住独立保存操作', async () => {
+    let resolveProbe: ((value: unknown) => void) | undefined
+    httpMock.post.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveProbe = resolve
+        }),
+    )
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="dingtalk-probe-app-key"]').setValue('probe-key')
+    await wrapper.get('[data-testid="dingtalk-probe-app-secret"]').setValue('probe-secret')
+    await wrapper.get('[data-testid="dingtalk-probe"]').trigger('click')
+    await flushPromises()
+
+    expect(httpMock.post).toHaveBeenCalledWith(
+      '/integrations/dingtalk/test-connection',
+      {
+        appKey: 'probe-key',
+        appSecret: 'probe-secret',
+        useSavedSecret: false,
+      },
+      { timeout: 60_000 },
+    )
+    expect(httpMock.put).not.toHaveBeenCalled()
+    expect(httpMock.delete).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="dingtalk-save"]').attributes('disabled')).toBeUndefined()
+
+    resolveProbe?.({ data: { success: true, code: 'OK', message: '测试成功' } })
+    await flushPromises()
+    expect(httpMock.put).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('保存既有空 Secret 时继续沿用空白不覆盖语义', async () => {
+    httpMock.put.mockResolvedValue({ data: dingtalkConfig })
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="dingtalk-save"]').trigger('click')
+    await flushPromises()
+
+    expect(httpMock.put).toHaveBeenCalledWith('/integrations/dingtalk/config', {
+      enabled: true,
+      appKey: 'ding-key',
+      agentId: '123',
+      corpId: 'corp-1',
+      syncStrategy: 'dingtalk',
+    })
+    expect(httpMock.put.mock.calls[0][1]).not.toHaveProperty('appSecret')
+    wrapper.unmount()
+  })
+})
+
+describe('SettingsView: 调代通知发送记录入口', () => {
+  it('超级管理员看到发送记录入口', async () => {
+    const wrapper = await mountView()
+
+    expect(wrapper.text()).toContain('通知发送记录')
+    wrapper.unmount()
+  })
+
+  it('教务管理员看到折叠入口，不再加载旧额外收件人，展开时才查询日志', async () => {
+    const wrapper = await mountView(['settings:manage', 'substitution:view'])
+    const requestedUrls = httpMock.get.mock.calls.map((call) => String(call[0]))
+
+    expect(wrapper.text()).toContain('通知发送记录')
+    expect(wrapper.text()).not.toContain('调代通知收件人')
+    expect(requestedUrls).not.toContain('/settings/substitution-recipients')
+    expect(requestedUrls).not.toContain('/notification-delivery-logs')
+    wrapper.unmount()
+  })
+
+  it('老师不渲染发送记录入口，也不会请求日志接口', async () => {
+    const wrapper = await mountView(['substitution:view:own'])
+    const requestedUrls = httpMock.get.mock.calls.map((call) => String(call[0]))
+
+    expect(wrapper.text()).not.toContain('通知发送记录')
+    expect(requestedUrls.some((url) => url.includes('/notification-delivery-logs'))).toBe(false)
     wrapper.unmount()
   })
 })

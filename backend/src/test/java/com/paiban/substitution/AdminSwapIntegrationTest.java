@@ -562,14 +562,19 @@ class AdminSwapIntegrationTest extends ApiIntegrationTest {
         long planId = generated.jsonPath().getLong("plans[0].planId");
         long voucherId = preview(admin, fx, planId).jsonPath().getLong("voucherId");
 
-        // 预览后，另一位教师在高一2班的课走 COVER 生效：整份快照哈希变化。
+        // 预览后，另一位教师在高一2班的课走 COVER 提交并经批准生效：整份快照哈希变化。
         String mathTeacher = teacherUser(TestData.suffix() + "m", fx.teacherMathId());
         Response cover = as(mathTeacher).body(Map.of(
                         "entryId", classBMathEntry(admin, fx),
                         "effectiveDate", fx.wednesday().toString(),
                         "expectedSubstituteTeacherId", fx.teacherEnglishId()))
                 .when().post("/api/substitution-requests");
-        cover.then().statusCode(200);
+        cover.then().statusCode(200).body("status", equalTo("SUBMITTED"));
+        long coverRequestId = cover.jsonPath().getLong("id");
+        as(admin).body(Map.of()).when()
+                .post("/api/substitution-requests/" + coverRequestId + "/approve")
+                .then().statusCode(200)
+                .body("status", equalTo("EFFECTIVE"));
 
         // 确认被拒绝：整单零生效（环的生效行一条都没有）。
         as(admin).body(Map.of())

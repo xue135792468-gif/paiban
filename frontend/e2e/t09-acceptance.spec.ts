@@ -1,22 +1,17 @@
 import { expect, test } from '@playwright/test'
 import { capture } from './screenshots'
-import {
-  apiCall,
-  apiLogin,
-  newContext,
-  pickOption,
-  seedSchool,
-  seedWorkbenchScenario,
-  solveAndPublish,
-  uiLogin,
-} from './helpers'
+import { newContext, pickOption, seedWorkbenchScenario, uiLogin } from './helpers'
 
 /**
- * 票 09 收尾验收：帮助文档可见性、班主任数据范围的 UI 断言与关键页面截图。
+ * 票 09 收尾验收：帮助文档可见性、调代工作台交互与关键页面截图。
  *
  * 前票的 Playwright（admin-substitute / admin-swap / admin-swap-drag /
  * admin-reschedule / substitution / global-scroll）继续覆盖各自流程；
- * 本 spec 只补此前只有 HTTP 断言的班主任范围，并留档截图。
+ * 本 spec 只补帮助文档与工作台视觉，并留档截图。
+ *
+ * 票 01（钉钉多用户）下线了班主任身份：「本班课表 / 本班调代」两个权限点还留在
+ * 权限目录里，但不再分配给任何预置角色，也就不存在能登录的班主任账号，
+ * 原先那条「班主任只能看到自己授权班级」的 UI 用例随之退役。
  */
 
 test('帮助文档：管理员调代工作台标题、四主题小节与锚点跳转', async ({ page }) => {
@@ -50,52 +45,6 @@ test('帮助文档：管理员调代工作台标题、四主题小节与锚点�
     () => document.scrollingElement?.scrollTop ?? document.documentElement.scrollTop,
   )
   expect(windowY).toBeGreaterThan(0)
-})
-
-test('班主任只能看到自己授权班级的调代记录', async ({ page }) => {
-  const api = await newContext()
-  const seed = await seedSchool(api)
-  await solveAndPublish(api, seed)
-  const token = await apiLogin(api)
-
-  // 同年级再造一个班（未授权给班主任），并把李老师设为 seed 班级的班主任。
-  const classes = await apiCall(api, token, 'get', '/classes', undefined, {
-    semesterId: seed.semesterId,
-  })
-  const own = classes.find((row: any) => row.id === seed.classId)
-  const otherName = `高一2班-${Math.random().toString(36).slice(2, 8)}`
-  await apiCall(api, token, 'post', `/classes?semesterId=${seed.semesterId}`, {
-    gradeId: own.gradeId,
-    name: otherName,
-    studentCount: 45,
-  })
-  await apiCall(api, token, 'put', `/classes/${seed.classId}`, {
-    gradeId: own.gradeId,
-    name: own.name,
-    headTeacherId: seed.substituteTeacherId,
-    studentCount: own.studentCount,
-  })
-  const username = `head_${Math.random().toString(36).slice(2, 8)}`
-  await apiCall(api, token, 'post', '/users', {
-    username,
-    password: 'teacher123',
-    displayName: '班主任',
-    roleCodes: ['head_teacher'],
-    teacherId: seed.substituteTeacherId,
-  })
-
-  await uiLogin(page, username, 'teacher123')
-  await page.goto('/substitution/requests')
-  await page.getByRole('tab', { name: '调代记录' }).click()
-
-  // 班级筛选默认锁在自己的班；下拉里看不到未授权班级。
-  // （el-select 的占位符是 span 不是 input 属性，改用可见页签里第一个下拉定位。）
-  const classSelect = page.locator('.el-tab-pane:visible .el-select').first()
-  await expect(classSelect).toBeVisible()
-  await classSelect.click()
-  const dropdown = page.locator('.el-select-dropdown:visible').last()
-  await expect(dropdown.getByText(own.name, { exact: true })).toBeVisible()
-  await expect(dropdown.getByText(otherName)).toHaveCount(0)
 })
 
 test('关键页面留档截图：工作台、预览对照、帮助文档', async ({ page }) => {

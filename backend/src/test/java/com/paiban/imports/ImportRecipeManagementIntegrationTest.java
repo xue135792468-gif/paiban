@@ -151,7 +151,7 @@ class ImportRecipeManagementIntegrationTest extends ApiIntegrationTest {
                 .body("[0].name", equalTo("可删配方"))
                 .body("[0].enabled", equalTo(true));
 
-        List<String> actions = auditLogs.findTop100ByOrderByCreatedAtDesc().stream()
+        List<String> actions = auditLogs.findRecentOutsideCategory("ACCOUNT", org.springframework.data.domain.PageRequest.of(0, 100)).stream()
                 .map(AuditLog::getAction)
                 .toList();
         assertThat(actions).contains("DELETE_IMPORT_RECIPE", "RESTORE_IMPORT_RECIPE");

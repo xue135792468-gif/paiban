@@ -8,9 +8,11 @@ import com.paiban.integration.domain.DingUser;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -115,11 +117,12 @@ public class DingTalkDirectoryLoader {
         // depth-first order the serial walk produced so the merge order never depends on
         // which thread happened to finish first.
         List<Long> order = depthFirstOrder(childrenByParent);
+        boolean[] truncated = {false};
         Map<Long, UserLoad> users = fetch(
                 pool,
                 order,
                 this::loadUsers,
-                () -> new UserLoad(List.of(), true),
+                () -> new UserLoad(List.of(), true, false),
                 failedCalls);
 
         Map<String, DingUser> merged = new LinkedHashMap<>();
@@ -139,6 +142,11 @@ public class DingTalkDirectoryLoader {
                 // branch; the pages already read above are kept, exactly as before.
                 failedCalls.incrementAndGet();
             }
+            if (load.truncated()) {
+                // Ticket 04: a broken cursor can only ever mean "we did not see everyone";
+                // the missing-account comparison relies on this flag, so it must be explicit.
+                truncated[0] = true;
+            }
             for (DingUser user : load.users()) {
                 if (user.userId() == null || user.userId().isBlank()) {
                     continue;
@@ -150,7 +158,19 @@ public class DingTalkDirectoryLoader {
                 new ArrayList<>(merged.values()),
                 scanned,
                 new ArrayList<>(skipped.values()),
-                failedCalls.get());
+                failedCalls.get(),
+                incompleteReason(failedCalls.get(), truncated[0]));
+    }
+
+    private String incompleteReason(int failedDepartments, boolean truncated) {
+        List<String> reasons = new ArrayList<>();
+        if (failedDepartments > 0) {
+            reasons.add("有 " + failedDepartments + " 个部门未能完整读取");
+        }
+        if (truncated) {
+            reasons.add("用户列表分页未读完（游标重复或未推进）");
+        }
+        return reasons.isEmpty() ? null : String.join("；", reasons);
     }
 
     private List<Long> depthFirstOrder(Map<Long, List<Long>> childrenByParent) {
@@ -172,22 +192,25 @@ public class DingTalkDirectoryLoader {
         List<DingUser> collected = new ArrayList<>();
         try {
             long cursor = 0;
+            Set<Long> seenCursors = new HashSet<>();
+            seenCursors.add(cursor);
             while (true) {
                 DingUserPage page = client.listUsers(departmentId, cursor, PAGE_SIZE);
                 collected.addAll(page.users());
                 if (!page.hasMore()) {
-                    return new UserLoad(collected, false);
+                    return new UserLoad(collected, false, false);
                 }
                 long next = page.nextCursor();
-                if (next == cursor) {
-                    // A broken cursor must not turn into an infinite loop.
-                    return new UserLoad(collected, false);
+                if (next == cursor || !seenCursors.add(next)) {
+                    // A broken cursor must not turn into an infinite loop, and the caller
+                    // must not mistake the truncated page list for a complete directory.
+                    return new UserLoad(collected, false, true);
                 }
                 cursor = next;
             }
         } catch (DingTalkApiException ex) {
             if (ex.isDepartmentUnavailable()) {
-                return new UserLoad(collected, true);
+                return new UserLoad(collected, true, false);
             }
             throw ex;
         }
@@ -272,7 +295,7 @@ public class DingTalkDirectoryLoader {
     }
 
     /** One department's users plus whether the tenant refused the list mid-way. */
-    private record UserLoad(List<DingUser> users, boolean unavailable) {
+    private record UserLoad(List<DingUser> users, boolean unavailable, boolean truncated) {
     }
 
     @FunctionalInterface

@@ -59,6 +59,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Calendar, ChatDotRound, List, Timer } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
+import { primaryRoleLabel } from '@/constants/roles'
 import { useAuthStore } from '@/stores/auth'
 
 interface Hint {
@@ -90,12 +91,7 @@ const today = computed(() =>
   new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }),
 )
 
-const roleLabel = computed(() => {
-  if (auth.hasRole('admin')) return '教务管理员'
-  if (auth.hasRole('head_teacher')) return '班主任'
-  if (auth.hasRole('teacher')) return '教师'
-  return ''
-})
+const roleLabel = computed(() => primaryRoleLabel(auth.roles))
 
 const quickLinks = computed(() => {
   const links = []
@@ -105,7 +101,21 @@ const quickLinks = computed(() => {
   const timetablePath = '/workbench/timetable'
   links.push({ title: '课表查看', desc: '行政班 / 教师 / 全校', path: timetablePath, icon: Calendar })
   if (auth.hasPermission('substitution:submit')) {
-    links.push({ title: '调代课', desc: '代课与同班调课，直接生效', path: '/substitution', icon: ChatDotRound })
+    links.push(
+      auth.hasPermission('substitution:approve')
+        ? {
+            title: '调代课',
+            desc: '处理待审批的代课申请；调课去工作台直接调整',
+            path: '/substitution',
+            icon: ChatDotRound,
+          }
+        : {
+            title: '调代课',
+            desc: '提交代课申请，等待教务审批后生效',
+            path: '/substitution',
+            icon: ChatDotRound,
+          },
+    )
   }
   if (auth.hasAnyPermission(['assignment:manage', 'assignment:view:own'])) {
     links.push({ title: '授课任务', desc: '录入行政班课程与教师', path: '/data/assignments', icon: List })

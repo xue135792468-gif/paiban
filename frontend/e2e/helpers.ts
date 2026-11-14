@@ -1,10 +1,37 @@
-import { expect, request, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+import { expect, request, type APIRequestContext, type BrowserContext, type Locator, type Page } from '@playwright/test'
 
 /**
  * API origin used by direct calls. Defaults to the Playwright config's backend;
  * isolated local runs can point it at another port without touching the specs.
  */
 export const API = process.env.PAIBAN_E2E_API ?? 'http://127.0.0.1:8080/api'
+
+/**
+ * 超级管理员测试凭据：账号审计、权限矩阵和钉钉探针 spec 共用这一份，
+ * `apiLogin` 的默认参数也引用它；改口令只改这里。
+ */
+export const SUPER_ADMIN = { username: 'admin', password: 'admin123' }
+
+export const DINGTALK_UA =
+  'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 DingTalk/7.5.10'
+
+/** Fake only the vendor SDK; the application still calls its real authentication endpoint. */
+export async function installFakeWindowDd(context: BrowserContext, authCode: string) {
+  await context.addInitScript((code: string) => {
+    localStorage.setItem('paiban.tour.seen', '1')
+    localStorage.setItem('paiban.tour.advanced', '1')
+    ;(window as any).dd = {
+      ready: (cb: () => void) => cb(),
+      runtime: {
+        permission: {
+          requestAuthCode: ({ onSuccess }: { onSuccess: (res: { code: string }) => void }) => {
+            onSuccess({ code })
+          },
+        },
+      },
+    }
+  }, authCode)
+}
 
 const TOUR_KEYS = ['paiban.tour.seen', 'paiban.tour.advanced']
 
@@ -17,24 +44,46 @@ export async function uiLogin(
   page: Page,
   username: string,
   password: string,
-  options: { tour?: boolean } = {},
+  options: { tour?: boolean; loginPath?: string } = {},
 ): Promise<void> {
   if (!options.tour) {
     await page.addInitScript((keys: string[]) => {
       for (const key of keys) localStorage.setItem(key, '1')
     }, TOUR_KEYS)
   }
-  await page.goto('/login')
+  await page.goto(options.loginPath ?? '/login')
   await page.getByPlaceholder('请输入用户名').fill(username)
   await page.getByPlaceholder('请输入密码').fill(password)
   await page.getByRole('button', { name: '登录' }).click()
   await page.waitForURL((url) => !url.pathname.startsWith('/login'))
 }
 
+/**
+ * 收集浏览器端 console error 与未捕获 pageerror；spec 结束时断言为空，
+ * 避免前端运行时错误被「功能断言通过」掩盖。
+ */
+export function trackBrowserErrors(page: Page): string[] {
+  const errors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text())
+  })
+  page.on('pageerror', (error) => errors.push(`pageerror: ${error}`))
+  return errors
+}
+
+/**
+ * 日期选择器统一交互：填入日期后按 Tab 让控件收敛。各 spec 不要再各写一份
+ * `fill` + `press('Tab')`；日期值与后续断言仍由调用方负责。
+ */
+export async function fillDateInput(input: Locator, date: string): Promise<void> {
+  await input.fill(date)
+  await input.press('Tab')
+}
+
 export async function apiLogin(
   context: APIRequestContext,
-  username = 'admin',
-  password = 'admin123',
+  username: string = SUPER_ADMIN.username,
+  password: string = SUPER_ADMIN.password,
 ): Promise<string> {
   const response = await context.post(`${API}/auth/login`, { data: { username, password } })
   if (!response.ok()) {
@@ -92,6 +141,39 @@ export interface ConstraintSeed {
   courses: { id: number; name: string }[]
 }
 
+export interface AccountSeed {
+  username: string
+  displayName: string
+  password: string
+  /**
+   * 预置身份编码（super_admin / admin / teacher）。多角色账号只在权限回归里
+   * 用来证明「改姓名不会丢身份」，正常建号仍是一个身份。
+   */
+  roles: string[]
+  teacherId?: number
+  /** 已拿到的管理员 token；省略时用默认管理员登录一次。 */
+  token?: string
+}
+
+/**
+ * 通过公开 API 建一个密码账号。种子与权限矩阵 spec 共用这一处：
+ * 各 spec 自建 `createAccount` 会随 helper 改动悄悄漂移，
+ * `scripts/check-e2e-helpers.sh` 也会把重复定义拦下。
+ */
+export async function createAccount(
+  context: APIRequestContext,
+  account: AccountSeed,
+): Promise<{ id: number; roles: string[] }> {
+  const token = account.token ?? (await apiLogin(context))
+  return apiCall(context, token, 'post', '/users', {
+    username: account.username,
+    displayName: account.displayName,
+    password: account.password,
+    roleCodes: account.roles,
+    teacherId: account.teacherId,
+  })
+}
+
 /**
  * Semester + timetable + two teachers and two courses for the constraint page.
  * The constraint specs assert entry cards by teacher/course name, so the seeded
@@ -136,7 +218,10 @@ export async function seedConstraintScenario(context: APIRequestContext): Promis
 }
 
 /** Seeds a minimal, solvable school through the public API. */
-export async function seedSchool(context: APIRequestContext): Promise<SeedResult> {
+export async function seedSchool(
+  context: APIRequestContext,
+  options: { teacherAccount?: boolean } = {},
+): Promise<SeedResult> {
   const token = await apiLogin(context)
   const suffix = Math.random().toString(36).slice(2, 8)
 
@@ -183,13 +268,16 @@ export async function seedSchool(context: APIRequestContext): Promise<SeedResult
   })
 
   const username = `e2e_${suffix}`
-  await apiCall(context, token, 'post', '/users', {
-    username,
-    password: 'teacher123',
-    displayName: `张老师${suffix}`,
-    roleCodes: ['teacher'],
-    teacherId: teacher.id,
-  })
+  if (options.teacherAccount !== false) {
+    await createAccount(context, {
+      username,
+      password: 'teacher123',
+      displayName: `张老师${suffix}`,
+      roles: ['teacher'],
+      teacherId: teacher.id,
+      token,
+    })
+  }
 
   return {
     semesterId: semester.id,
@@ -284,7 +372,7 @@ export function dateFor(dayOfWeek: number): string {
 export async function classEntries(
   context: APIRequestContext,
   classId: number,
-): Promise<Array<{ id: number; dayOfWeek: number; periodNo: number; courseName: string }>> {
+): Promise<Array<{ id: number; teacherId: number; dayOfWeek: number; periodNo: number; courseName: string }>> {
   const token = await apiLogin(context)
   return apiCall(context, token, 'get', `/timetable/class/${classId}`)
 }
@@ -325,6 +413,21 @@ export async function pickOption(
   // force-clicking then hits a neighbour. Trigger the resolved option's own click
   // handler instead, so the exact element receives the event.
   await option.evaluate((element) => (element as HTMLElement).click())
+}
+
+/**
+ * Picks the first item in an Element Plus select. Its teleported popper keeps the
+ * closing dropdown visible during the transition, so wait for it to hide before
+ * reading the dropdown opened by the next select.
+ */
+export async function pickFirstVisibleOption(select: Locator): Promise<void> {
+  const page = select.page()
+  await select.click()
+  const dropdown = page.locator('.el-select-dropdown:visible').last()
+  const option = dropdown.locator('.el-select-dropdown__item').first()
+  await expect(option).toBeVisible()
+  await option.evaluate((element) => (element as HTMLElement).click())
+  await expect(dropdown).toBeHidden()
 }
 
 export interface WorkbenchSeed {
@@ -402,12 +505,13 @@ export async function seedWorkbenchScenario(context: APIRequestContext): Promise
   })
 
   const username = `wbe2e_${suffix}`
-  await apiCall(context, token, 'post', '/users', {
+  await createAccount(context, {
     username,
     password: 'teacher123',
     displayName: `张老师${suffix}`,
-    roleCodes: ['teacher'],
+    roles: ['teacher'],
     teacherId: teacher.id,
+    token,
   })
 
   // 求解后强制把这节课摆到周三第 1 节，保证种子的授课日期是确定事实。

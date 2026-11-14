@@ -22,6 +22,9 @@ import com.paiban.foundation.web.FoundationDtos.SaveCourseRequest;
 import com.paiban.foundation.web.FoundationDtos.SaveGradeRequest;
 import com.paiban.foundation.web.FoundationDtos.SaveTeacherRequest;
 import com.paiban.foundation.web.FoundationDtos.TeacherDto;
+import com.paiban.identity.service.AccountMutationGuard;
+import com.paiban.identity.service.DingTalkBindingPolicy;
+import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +43,9 @@ public class FoundationService {
     private final TeachingClassRepository teachingClasses;
     private final AuditLogRepository auditLogs;
     private final SemesterService semesters;
+    private final AccountMutationGuard accountMutationGuard;
+    private final DingTalkBindingPolicy dingTalkBindingPolicy;
+    private final EntityManager entityManager;
 
     public FoundationService(
             TeacherRepository teachers,
@@ -48,7 +54,10 @@ public class FoundationService {
             AdminClassRepository classes,
             TeachingClassRepository teachingClasses,
             AuditLogRepository auditLogs,
-            SemesterService semesters) {
+            SemesterService semesters,
+            AccountMutationGuard accountMutationGuard,
+            DingTalkBindingPolicy dingTalkBindingPolicy,
+            EntityManager entityManager) {
         this.teachers = teachers;
         this.courses = courses;
         this.grades = grades;
@@ -56,6 +65,9 @@ public class FoundationService {
         this.teachingClasses = teachingClasses;
         this.auditLogs = auditLogs;
         this.semesters = semesters;
+        this.accountMutationGuard = accountMutationGuard;
+        this.dingTalkBindingPolicy = dingTalkBindingPolicy;
+        this.entityManager = entityManager;
     }
 
     // ---------- teachers ----------
@@ -75,6 +87,9 @@ public class FoundationService {
 
     @Transactional
     public TeacherDto createTeacher(SaveTeacherRequest request) {
+        // 03-C：手工写钉钉 UID 与账号变更共用同一个锚点锁；校验必须在任何字段落笔之前。
+        accountMutationGuard.lock();
+        dingTalkBindingPolicy.validateManualBinding(null, request.dingtalkUserId());
         Teacher teacher = new Teacher();
         apply(teacher, request);
         teacher.setCreatedAt(Instant.now());
@@ -83,7 +98,12 @@ public class FoundationService {
 
     @Transactional
     public TeacherDto updateTeacher(Long id, SaveTeacherRequest request) {
+        // 锁序：锚点 -> 锁后重读原档案 -> 校验 UID 变化 -> 再落字段。
+        // 先重读再改，避免 refresh 把本次刚写入的姓名 / 工号覆盖回数据库旧值。
+        accountMutationGuard.lock();
         Teacher teacher = teachers.findById(id).orElseThrow(() -> ApiException.notFound("教师不存在: " + id));
+        entityManager.refresh(teacher);
+        dingTalkBindingPolicy.validateManualBinding(teacher, request.dingtalkUserId());
         apply(teacher, request);
         return toDto(teacher);
     }
@@ -265,7 +285,12 @@ public class FoundationService {
 
     @Transactional(readOnly = true)
     public List<AuditLogDto> auditLogs() {
-        return auditLogs.findTop100ByOrderByCreatedAtDesc().stream()
+        // 票 02：账号事件只在账号审计页（audit:view:account）出现。这个通用接口由
+        // foundation:manage 打开，教务管理员也持有，所以过滤放在数据库查询里，
+        // 而不是让有权限的人拿到账号操作再在前端隐藏。
+        return auditLogs.findRecentOutsideCategory(
+                        "ACCOUNT", org.springframework.data.domain.PageRequest.of(0, 100))
+                .stream()
                 .map(log -> new AuditLogDto(
                         log.getId(), log.getActor(), log.getAction(), log.getEntityType(),
                         log.getDetail(), log.getSuccessRows(), log.getFailedRows(), log.getCreatedAt()))

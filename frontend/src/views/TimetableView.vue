@@ -126,6 +126,7 @@ import { ElMessage } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
+import { canManageDrafts } from '@/constants/permissions'
 import { useAuthStore } from '@/stores/auth'
 import InfoTooltip from '@/components/InfoTooltip.vue'
 import { serverMessage } from '@/api/errors'
@@ -183,6 +184,8 @@ const auth = useAuthStore()
 const canExport = computed(() => auth.hasPermission('export:timetable'))
 const canViewAll = computed(() => auth.hasPermission('timetable:view'))
 const canViewClassScope = computed(() => auth.hasPermission('timetable:view:class'))
+// 票 01：老师新增的「查看全部课表」只是只读扩权，不是排课/编辑能力。
+const canManageSchedule = computed(() => canManageDrafts((permission) => auth.hasPermission(permission)))
 const headClasses = computed(() =>
   classes.value.filter((item) => item.headTeacherId != null && item.headTeacherId === auth.user?.teacherId),
 )
@@ -198,6 +201,8 @@ const teachers = ref<Option[]>([])
 const courses = ref<Course[]>([])
 const published = ref<PublishInfo | null | undefined>(undefined)
 const loading = ref(false)
+// 引导期允许学校还没有当前学期；没有它时任何依赖学期的接口都会 400。
+const currentSemesterId = ref<number | null>(null)
 
 const palette = ['#AEC6CF', '#FFD1DC', '#B5EAD7', '#FFDAC1', '#C7CEEA', '#E2F0CB', '#F1C0E8', '#FDFD96']
 
@@ -234,11 +239,15 @@ const showSchedulingGuide = computed(
   () => !published.value && auth.hasPermission('scheduling:run'),
 )
 
-const emptyDescription = computed(() =>
-  !published.value
-    ? '当前学期还没有发布课表，可在「课表工作台」发布后再查看；如基础数据尚未录入，可从初始化向导开始。'
-    : '当前查看对象在所选日期没有课节，试试切换查看对象或日期。',
-)
+const emptyDescription = computed(() => {
+  if (currentSemesterId.value == null) {
+    return '学校尚未设置当前学期，请联系教务处。'
+  }
+  if (!published.value) {
+    return '当前学期还没有发布课表，可在「课表工作台」发布后再查看；如基础数据尚未录入，可从初始化向导开始。'
+  }
+  return '当前查看对象在所选日期没有课节，试试切换查看对象或日期。'
+})
 
 const schoolGroups = computed(() => {
   const map = new Map<number, { classId: number; className: string; cells: Record<string, Entry> }>()
@@ -320,6 +329,11 @@ function onModeChange() {
 }
 
 async function load() {
+  if (currentSemesterId.value == null) {
+    // 没有当前学期时班级/作息/课表接口都会 400，不发这些依赖请求。
+    entries.value = []
+    return
+  }
   loading.value = true
   try {
     if (mode.value === 'school') {
@@ -367,26 +381,31 @@ async function exportFile(format: string) {
 }
 
 onMounted(async () => {
-  const [classRes, teacherRes, courseRes, currentRes] = await Promise.all([
-    http.get('/classes'),
+  // 教师/课程选项不依赖学期，可与当前学期查询并行；班级列表依赖学期，稍后再取。
+  const [teacherRes, courseRes, currentRes] = await Promise.all([
     http.get('/teachers/options'),
     http.get('/courses'),
     http.get('/semesters/current'),
   ])
-  classes.value = classRes.data
   teachers.value = teacherRes.data
   courses.value = courseRes.data
   if (currentRes.status !== 204 && currentRes.data) {
-    const semesterId = currentRes.data.id
-    const [periodRes, publishRes] = await Promise.all([
-      http.get(`/semesters/${semesterId}/periods`),
+    currentSemesterId.value = currentRes.data.id
+    const [classRes, periodRes, publishRes] = await Promise.all([
+      http.get('/classes'),
+      http.get(`/semesters/${currentSemesterId.value}/periods`),
       http.get('/timetable/publish-info'),
     ])
+    classes.value = classRes.data
     periods.value = periodRes.data
     published.value = publishRes.data?.published ? publishRes.data : null
   }
   targetId.value = targets.value.length > 0 ? targets.value[0].id : null
-  if (!canViewAll.value) {
+  if (!canManageSchedule.value && auth.user?.teacherId != null) {
+    // 老师默认先看到自己的课表；行政班 / 全校是额外的只读入口，不是落地页。
+    mode.value = 'teacher'
+    targetId.value = auth.user.teacherId
+  } else if (!canViewAll.value) {
     if (canViewClassScope.value && headClasses.value.length > 0) {
       mode.value = 'class'
       targetId.value = headClasses.value[0].id

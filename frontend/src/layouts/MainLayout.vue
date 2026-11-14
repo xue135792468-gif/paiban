@@ -5,20 +5,29 @@
         <span class="logo-mark">排</span>
         <span class="logo-text">排课系统</span>
       </div>
-      <el-menu :default-active="activeMenu" router class="menu" data-testid="layout-menu">
-        <template v-for="group in visibleGroups" :key="group.title">
-          <div class="group-title">{{ group.title }}</div>
-          <el-menu-item v-for="item in group.items" :key="item.path" :index="item.target" :data-tour="item.path">
-            <el-icon><component :is="item.icon" /></el-icon>
-            <span>{{ item.label }}</span>
-          </el-menu-item>
-        </template>
-      </el-menu>
+      <MainNavigationMenu
+        :groups="visibleGroups"
+        :active-menu="activeMenu"
+        menu-test-id="layout-menu"
+        :with-tour-anchors="true"
+      />
     </el-aside>
 
     <el-container>
       <el-header class="header" data-testid="layout-header">
-        <div class="page-title">{{ route.meta.title ?? '' }}</div>
+        <div class="header-left">
+          <el-button
+            class="nav-toggle"
+            circle
+            text
+            aria-label="打开导航"
+            data-testid="mobile-nav-toggle"
+            @click="navOpen = true"
+          >
+            <el-icon><Menu /></el-icon>
+          </el-button>
+          <div class="page-title">{{ route.meta.title ?? '' }}</div>
+        </div>
         <div class="header-right">
           <el-button circle text aria-label="帮助" data-testid="help-button" @click="helpOpen = true">
             <el-icon><QuestionFilled /></el-icon>
@@ -43,6 +52,23 @@
       </el-main>
     </el-container>
 
+    <el-drawer
+      v-model="navOpen"
+      title="导航"
+      direction="ltr"
+      size="240px"
+      destroy-on-close
+      data-testid="mobile-nav-drawer"
+    >
+      <MainNavigationMenu
+        :groups="visibleGroups"
+        :active-menu="activeMenu"
+        menu-test-id="mobile-layout-menu"
+        :with-tour-anchors="false"
+        @select="navOpen = false"
+      />
+    </el-drawer>
+
     <el-drawer v-model="helpOpen" title="帮助" direction="rtl" size="360px" data-testid="help-drawer">
       <div v-for="group in helpGroups" :key="group.title" class="help-group">
         <div class="help-group-title">{{ group.title }}</div>
@@ -65,10 +91,12 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { QuestionFilled } from '@element-plus/icons-vue'
+import { Menu, QuestionFilled } from '@element-plus/icons-vue'
+import MainNavigationMenu from '@/layouts/MainNavigationMenu.vue'
 import { HELP_GROUPS } from '@/help/docs'
 import { helpLink, type HelpSlug } from '@/help/links'
 import { MENU_GROUPS, visibleMenuGroups } from '@/layouts/navigation'
+import { primaryRoleLabel } from '@/constants/roles'
 import { useAuthStore } from '@/stores/auth'
 import { hasSeenTour, startTour, type TourStage } from '@/onboarding/tour'
 
@@ -105,6 +133,7 @@ const activeMenu = computed(() => {
 })
 
 const helpOpen = ref(false)
+const navOpen = ref(false)
 const helpGroups = HELP_GROUPS
 
 function openHelp(slug: HelpSlug) {
@@ -113,12 +142,7 @@ function openHelp(slug: HelpSlug) {
 }
 
 const initials = computed(() => (auth.displayName || '?').slice(0, 1))
-const roleLabel = computed(() => {
-  if (auth.hasRole('admin')) return '教务管理员'
-  if (auth.hasRole('head_teacher')) return '班主任'
-  if (auth.hasRole('teacher')) return '教师'
-  return ''
-})
+const roleLabel = computed(() => primaryRoleLabel(auth.roles))
 
 function onCommand(command: string) {
   if (command === 'logout') {
@@ -173,6 +197,14 @@ watch(
   },
 )
 
+// 抽屉在路由变化（点菜单项）后立即收起，避免旧路由下残留。
+watch(
+  () => route.fullPath,
+  () => {
+    navOpen.value = false
+  },
+)
+
 onMounted(() => {
   auth.refresh().catch(() => undefined)
 })
@@ -218,19 +250,14 @@ onUnmounted(() => {
   font-weight: 700;
   font-size: 17px;
 }
-.menu {
-  border-right: none;
-  padding: 8px;
-  /* 标识区固定，菜单占满剩余高度并独立滚动。 */
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
-.group-title {
-  padding: 16px 12px 6px;
-  font-size: 12px;
-  color: #9aa1b1;
-  letter-spacing: 0.08em;
+.nav-toggle {
+  display: none;
 }
 .header {
   background: #fff;
@@ -309,6 +336,9 @@ onUnmounted(() => {
   .aside {
     display: none;
   }
+  .nav-toggle {
+    display: inline-flex;
+  }
 }
 /* 更窄（≤520px）：收敛壳层留白，给内容让出宽度，避免横向滚动。 */
 @media (max-width: 520px) {
@@ -317,6 +347,17 @@ onUnmounted(() => {
   }
   .main {
     padding: 12px;
+  }
+  .header-right {
+    gap: 6px;
+    min-width: 0;
+  }
+  .page-title,
+  .user-name {
+    max-width: 96px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 </style>

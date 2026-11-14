@@ -29,7 +29,9 @@ http.interceptors.request.use((config) => {
 http.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const requestUrl = String(error.config?.url ?? '')
+    const isDingTalkAuth = /(^|\/)auth\/dingtalk(\/|$|\?)/.test(requestUrl)
+    if (error.response?.status === 401 && !isDingTalkAuth) {
       localStorage.removeItem('paiban_token')
       if (location.pathname !== '/login') {
         location.href = '/login'

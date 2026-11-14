@@ -320,14 +320,15 @@ class AdminSubstitutionIntegrationTest extends ApiIntegrationTest {
                         "expectedSubstituteTeacherId", fx.teacherCId()))
                 .when().post("/api/substitution-requests")
                 .then().statusCode(200)
-                .body("status", equalTo("EFFECTIVE"));
+                .body("status", equalTo("SUBMITTED"));
     }
 
     @Test
-    void headTeacherScopeIsNotExpanded() {
+    void plainTeacherCannotUseTheManagerWorkbench() {
         Fixture fx = fixture();
-        // 班主任属于 fixture 班级 A；教师自助权限有，但没有审批/全校课表权限。
-        String head = roleUser(TestData.suffix(), fx.headTeacherId(), "head_teacher");
+        // 票 01：老师（含原班主任）有全校课表只读 + 自助提交，但没有审批权限；
+        // 工作台的管理组合是「全校课表 + 提交 + 审批」，缺一即拒绝。
+        String head = roleUser(TestData.suffix(), fx.headTeacherId(), "teacher");
 
         as(head).queryParam("entryId", fx.entryAId())
                 .queryParam("lessonDate", fx.lessonDate().toString())
@@ -339,9 +340,12 @@ class AdminSubstitutionIntegrationTest extends ApiIntegrationTest {
                         "substituteTeacherId", fx.teacherCId()))
                 .when().post("/api/substitution-workbench/previews")
                 .then().statusCode(403);
-        // 数据范围不扩大：调代记录仍必须指定本班。
+        // 数据范围不扩大：班主任角色已下线，普通老师连全局调代记录都读不到；
+        // 本人记录只走自助接口。
         as(head).when().get("/api/substitutions")
-                .then().statusCode(400);
+                .then().statusCode(403);
+        as(head).when().get("/api/substitutions/my")
+                .then().statusCode(200);
     }
 
     // ------------------------------------------------------- 5/6: 候选与硬冲突
@@ -452,7 +456,7 @@ class AdminSubstitutionIntegrationTest extends ApiIntegrationTest {
                 .body("status", equalTo("EFFECTIVE"));
     }
 
-    /** 用高一2班的数学课制造一次快照变化：entryB 的当前教师本人提交（直接生效）。 */
+    /** 用高一2班的数学课制造一次快照变化：entryB 的当前教师本人提交并批准生效。 */
     private long otherCoverRequest(String admin, Fixture fx) {
         String mathTeacherToken = teacherUser("math" + TestData.suffix(), fx.teacherBId());
         Response response = as(mathTeacherToken).body(Map.of(
@@ -460,8 +464,13 @@ class AdminSubstitutionIntegrationTest extends ApiIntegrationTest {
                         "effectiveDate", fx.lessonDate().toString(),
                         "expectedSubstituteTeacherId", fx.teacherDId()))
                 .when().post("/api/substitution-requests");
-        response.then().statusCode(200);
-        return response.jsonPath().getLong("id");
+        response.then().statusCode(200).body("status", equalTo("SUBMITTED"));
+        long requestId = response.jsonPath().getLong("id");
+        as(admin).body(Map.of()).when()
+                .post("/api/substitution-requests/" + requestId + "/approve")
+                .then().statusCode(200)
+                .body("status", equalTo("EFFECTIVE"));
+        return requestId;
     }
 
     // ------------------------------------------------------------- 再次调整与旧格式
@@ -506,6 +515,10 @@ class AdminSubstitutionIntegrationTest extends ApiIntegrationTest {
                 .when().post("/api/substitution-requests");
         submitted.then().statusCode(200);
         long requestId = submitted.jsonPath().getLong("id");
+        as(admin).body(Map.of()).when()
+                .post("/api/substitution-requests/" + requestId + "/approve")
+                .then().statusCode(200)
+                .body("status", equalTo("EFFECTIVE"));
 
         Substitution row = substitutionRows.findByRequestId(requestId).get(0);
         row.setLessonDate(null);

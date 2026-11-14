@@ -255,7 +255,7 @@ class DraftLockIntegrationTest extends ApiIntegrationTest {
         assertThat(drafts.findById(seeded.draftId())).isPresent();
         assertThat(drafts.findById(seeded.draftId()).orElseThrow().getDeletedAt()).isNotNull();
         assertThat(draftLessons.findById(seeded.chineseA()).orElseThrow().isLocked()).isTrue();
-        assertThat(auditLogs.findTop100ByOrderByCreatedAtDesc())
+        assertThat(auditLogs.findRecentOutsideCategory("ACCOUNT", org.springframework.data.domain.PageRequest.of(0, 100)))
                 .anySatisfy(log -> {
                     assertThat(log.getAction()).isEqualTo("DELETE_TIMETABLE_DRAFT");
                     assertThat(log.getEntityType()).isEqualTo("TIMETABLE_DRAFT");

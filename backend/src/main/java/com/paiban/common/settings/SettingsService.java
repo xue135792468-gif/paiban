@@ -211,6 +211,15 @@ public class SettingsService {
         repository.save(setting);
     }
 
+    /**
+     * 「保存设置」是一次业务动作，不是 N 次独立写入：整批一个事务，
+     * 任何一项失败（含数据库列约束）都不留下半写结果。校验仍由控制器先做。
+     */
+    @Transactional
+    public void putAll(Map<String, String> values) {
+        values.forEach(this::put);
+    }
+
     @Transactional(readOnly = true)
     public Map<String, String> all() {
         Map<String, String> values = new LinkedHashMap<>();

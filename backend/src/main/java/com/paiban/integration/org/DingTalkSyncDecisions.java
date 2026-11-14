@@ -1,8 +1,11 @@
 package com.paiban.integration.org;
 
+import com.paiban.common.web.ApiException;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.springframework.util.StringUtils;
 
 /**
  * What the administrator chose on the preview screen. An empty instance is the
@@ -12,7 +15,8 @@ import java.util.Set;
 public record DingTalkSyncDecisions(
         Set<String> excludedDepartments,
         Set<String> excludedUserIds,
-        Map<String, SuspectedDecision> suspectedDecisions) {
+        Map<String, SuspectedDecision> suspectedDecisions,
+        List<DeactivationSelection> deactivationSelections) {
 
     public enum Action {
         /** Merge the DingTalk user into an existing same-name teacher. */
@@ -28,10 +32,39 @@ public record DingTalkSyncDecisions(
     /** Input form that names the DingTalk user the decision belongs to. */
     public record Decision(String userId, Action action, Long teacherId) {}
 
+    /** The account and binding the administrator actually selected in this preview. */
+    public record DeactivationSelection(Long accountId, Long teacherId, String dingtalkUserId) {}
+
+    public DingTalkSyncDecisions(
+            Set<String> excludedDepartments,
+            Set<String> excludedUserIds,
+            Map<String, SuspectedDecision> suspectedDecisions) {
+        this(excludedDepartments, excludedUserIds, suspectedDecisions, List.of());
+    }
+
     public DingTalkSyncDecisions {
         excludedDepartments = excludedDepartments == null ? Set.of() : Set.copyOf(excludedDepartments);
         excludedUserIds = excludedUserIds == null ? Set.of() : Set.copyOf(excludedUserIds);
         suspectedDecisions = suspectedDecisions == null ? Map.of() : Map.copyOf(suspectedDecisions);
+        deactivationSelections = validateSelections(deactivationSelections);
+    }
+
+    private static List<DeactivationSelection> validateSelections(List<DeactivationSelection> selections) {
+        if (selections == null) {
+            return List.of();
+        }
+        Set<Long> accountIds = new HashSet<>();
+        for (DeactivationSelection selection : selections) {
+            if (selection == null || selection.accountId() == null || selection.accountId() <= 0
+                    || selection.teacherId() == null || selection.teacherId() <= 0
+                    || !StringUtils.hasText(selection.dingtalkUserId())) {
+                throw ApiException.badRequest("停用选择必须包含有效的账号、教师和钉钉ID");
+            }
+            if (!accountIds.add(selection.accountId())) {
+                throw ApiException.badRequest("同一账号不能重复选择停用");
+            }
+        }
+        return List.copyOf(selections);
     }
 
     public static DingTalkSyncDecisions none() {
@@ -42,6 +75,14 @@ public record DingTalkSyncDecisions(
             List<String> excludedDepartments,
             List<String> excludedUserIds,
             List<Decision> suspectedDecisions) {
+        return of(excludedDepartments, excludedUserIds, suspectedDecisions, List.of());
+    }
+
+    public static DingTalkSyncDecisions of(
+            List<String> excludedDepartments,
+            List<String> excludedUserIds,
+            List<Decision> suspectedDecisions,
+            List<DeactivationSelection> deactivationSelections) {
         Map<String, SuspectedDecision> decisions = new java.util.LinkedHashMap<>();
         if (suspectedDecisions != null) {
             for (Decision decision : suspectedDecisions) {
@@ -50,7 +91,8 @@ public record DingTalkSyncDecisions(
                 }
             }
         }
-        return new DingTalkSyncDecisions(clean(excludedDepartments), clean(excludedUserIds), decisions);
+        return new DingTalkSyncDecisions(
+                clean(excludedDepartments), clean(excludedUserIds), decisions, deactivationSelections);
     }
 
     private static Set<String> clean(List<String> values) {

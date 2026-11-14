@@ -42,6 +42,15 @@ public class DingTalkApiException extends RuntimeException {
         return errorCode == DEPARTMENT_UNAVAILABLE;
     }
 
+    /**
+     * 票 04：HTTP 响应缺少必要结构（{@code result}/{@code list}）时的协议失败。
+     * 它绝不能退化成「合法的空目录」，否则缺失账号会被误判成整批离职。
+     */
+    public static DingTalkApiException incomplete(String action) {
+        return new DingTalkApiException(
+                action + " 的响应缺少必要结构（result/list），不能当作空目录", -1, 0, null);
+    }
+
     /** Throws when the response carries a non-zero DingTalk error code. */
     public static void check(Map<?, ?> response, String action) {
         if (response == null) {

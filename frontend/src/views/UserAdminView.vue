@@ -3,7 +3,7 @@
     <div class="toolbar">
       <div>
         <h2>用户管理</h2>
-        <p class="subtitle">创建本地账号并分配角色。教师登录后可查看个人课表并提交调代申请。</p>
+        <p class="subtitle">创建本地账号并分配身份。老师登录后可查看课表并提交代课申请。</p>
       </div>
       <div class="toolbar-actions">
         <el-button @click="importVisible = true">批量导入账号</el-button>
@@ -28,7 +28,7 @@
       <el-table v-loading="loading" :data="users" stripe>
         <el-table-column prop="username" label="用户名" min-width="140" />
         <el-table-column prop="displayName" label="姓名" min-width="120" />
-        <el-table-column label="角色" min-width="180">
+        <el-table-column label="身份" min-width="180">
           <template #default="{ row }">
             <el-tag v-for="role in row.roles" :key="role" size="small" class="role-tag" effect="plain">
               {{ roleName(role) }}
@@ -51,7 +51,14 @@
         <el-table-column label="操作" width="320" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="primary" @click="openReset(row)">重置密码</el-button>
+            <el-button
+              v-if="row.loginType !== 'DINGTALK'"
+              link
+              type="primary"
+              @click="openReset(row)"
+            >
+              重置密码
+            </el-button>
             <el-button
               v-if="row.enabled"
               link
@@ -86,9 +93,9 @@
         <el-form-item label="初始密码" required>
           <el-input v-model="createForm.password" type="password" show-password />
         </el-form-item>
-        <el-form-item label="角色" required>
-          <el-select v-model="createForm.roleCodes" multiple style="width: 100%">
-            <el-option v-for="role in roles" :key="role.code" :label="role.name" :value="role.code" />
+        <el-form-item label="身份" required>
+          <el-select v-model="createForm.identity" style="width: 100%">
+            <el-option v-for="role in presetRoles" :key="role.code" :label="role.label" :value="role.code" />
           </el-select>
         </el-form-item>
         <el-form-item label="关联教师">
@@ -111,9 +118,9 @@
         <el-form-item label="姓名">
           <el-input v-model="editForm.displayName" />
         </el-form-item>
-        <el-form-item label="角色">
-          <el-select v-model="editForm.roleCodes" multiple style="width: 100%">
-            <el-option v-for="role in roles" :key="role.code" :label="role.name" :value="role.code" />
+        <el-form-item label="身份">
+          <el-select v-model="editForm.identity" style="width: 100%">
+            <el-option v-for="role in presetRoles" :key="role.code" :label="role.label" :value="role.code" />
           </el-select>
         </el-form-item>
         <el-form-item label="关联教师">
@@ -149,21 +156,18 @@ import { Plus } from '@element-plus/icons-vue'
 import ImportDialog from '@/components/ImportDialog.vue'
 import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
+import { PRESET_ROLES, presetRoleLabel, primaryRoleCode } from '@/constants/roles'
+import type { LoginType } from '@/stores/auth'
 
 interface UserRow {
   id: number
   username: string
   displayName: string
   enabled: boolean
+  loginType?: LoginType
   teacherId?: number | null
   roles: string[]
   permissions: string[]
-}
-
-interface RoleRow {
-  id: number
-  code: string
-  name: string
 }
 
 interface TeacherOption {
@@ -172,18 +176,20 @@ interface TeacherOption {
 }
 
 const users = ref<UserRow[]>([])
-const roles = ref<RoleRow[]>([])
 const teachers = ref<TeacherOption[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const importVisible = ref(false)
+
+// 票 01：身份只有三种，直接来自产品清单，不再取决于后端角色表里还残留什么。
+const presetRoles = PRESET_ROLES
 
 const createVisible = ref(false)
 const createForm = reactive({
   username: '',
   displayName: '',
   password: '',
-  roleCodes: ['teacher'] as string[],
+  identity: 'teacher' as string,
   teacherId: undefined as number | undefined,
 })
 
@@ -192,22 +198,18 @@ const editForm = reactive({
   id: 0,
   username: '',
   displayName: '',
-  roleCodes: [] as string[],
+  identity: 'teacher' as string,
   teacherId: undefined as number | undefined,
 })
+/** 打开弹窗时的身份快照：只有用户显式换了身份才上送 roleCodes。 */
+let editIdentityBaseline = 'teacher'
 
 const resetVisible = ref(false)
 const resetPassword = ref('')
 const resetUserId = ref(0)
 
-const roleLabels: Record<string, string> = {
-  admin: '教务管理员',
-  teacher: '教师',
-  head_teacher: '班主任',
-}
-
 function roleName(code: string) {
-  return roleLabels[code] ?? code
+  return presetRoleLabel(code)
 }
 
 function teacherName(id: number) {
@@ -217,9 +219,8 @@ function teacherName(id: number) {
 async function load() {
   loading.value = true
   try {
-    const [userRes, roleRes] = await Promise.all([http.get('/users'), http.get('/roles')])
-    users.value = userRes.data
-    roles.value = roleRes.data
+    const { data } = await http.get('/users')
+    users.value = data
   } finally {
     loading.value = false
   }
@@ -236,7 +237,7 @@ function openCreate() {
     username: '',
     displayName: '',
     password: '',
-    roleCodes: ['teacher'],
+    identity: 'teacher',
     teacherId: undefined,
   })
   createVisible.value = true
@@ -245,7 +246,13 @@ function openCreate() {
 async function submitCreate() {
   saving.value = true
   try {
-    await http.post('/users', createForm)
+    await http.post('/users', {
+      username: createForm.username,
+      displayName: createForm.displayName,
+      password: createForm.password,
+      roleCodes: [createForm.identity],
+      teacherId: createForm.teacherId,
+    })
     ElMessage.success('用户已创建')
     createVisible.value = false
     await load()
@@ -257,11 +264,16 @@ async function submitCreate() {
 }
 
 function openEdit(row: UserRow) {
+  // 后端按字母序返回角色，直接取第一个会把三身份账号显示成教务管理员；
+  // 弹窗显示最高预置身份，编辑时也以它为基线判断「是否真的改了身份」。
+  const identity = primaryRoleCode(row.roles) ?? 'teacher'
+  editIdentityBaseline = identity
   Object.assign(editForm, {
     id: row.id,
     username: row.username,
     displayName: row.displayName,
-    roleCodes: [...row.roles],
+    // 迁移已把班主任账号改成老师；未知旧编码在这里落到老师的身份上。
+    identity,
     teacherId: row.teacherId ?? undefined,
   })
   editVisible.value = true
@@ -273,11 +285,16 @@ async function submitEdit() {
     // The edit dialog no longer carries the enabled switch: pausing and resuming an
     // account go through the row actions, so the server's self/last-admin guards and
     // the audit log always apply.
-    await http.put(`/users/${editForm.id}`, {
+    const payload: { displayName: string; teacherId?: number; roleCodes?: string[] } = {
       displayName: editForm.displayName,
-      roleCodes: editForm.roleCodes,
       teacherId: editForm.teacherId,
-    })
+    }
+    // 改姓名 / 关联教师不是改身份：不带 roleCodes，服务端保留原角色集合，
+    // 否则多角色账号会被静默压成弹窗里那一个身份（票 01 复查 F2）。
+    if (editForm.identity !== editIdentityBaseline) {
+      payload.roleCodes = [editForm.identity]
+    }
+    await http.put(`/users/${editForm.id}`, payload)
     ElMessage.success('已保存')
     editVisible.value = false
     await load()

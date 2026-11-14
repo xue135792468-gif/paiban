@@ -1,14 +1,23 @@
 package com.paiban.integration.org;
 
 import com.paiban.common.settings.SettingsService;
+import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.foundation.service.FoundationService;
+import com.paiban.identity.service.AccountMutationGuard;
+import com.paiban.identity.service.DingTalkBindingPolicy;
+import com.paiban.identity.service.UserService;
 import com.paiban.integration.dingtalk.DingTalkApiException;
 import com.paiban.integration.domain.DingUser;
 import com.paiban.integration.org.DingTalkSyncPlan.Category;
 import com.paiban.integration.org.DingTalkSyncPlan.Item;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -30,6 +39,10 @@ import org.springframework.transaction.support.TransactionTemplate;
  * transaction; only the teacher writes and the audit row run in one. Teachers that
  * are missing from this run are never deactivated automatically: tightening the
  * tenant's visibility must not empty the school roster.
+ *
+ * <p>03-C：没有任何无人值守路径可以给「关联管理员账号且尚未绑定」的档案首次绑定钉钉身份，
+ * 也不会把已有的非空 UID 改绑成另一个 —— 规划阶段整行跳过，写入阶段再按同一
+ * {@link DingTalkBindingPolicy} 拦一次，算作跳过而不是补写。
  */
 @Component
 public class DingTalkOrgDataProvider implements OrgDataProvider {
@@ -39,28 +52,43 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
     private final SettingsService settings;
     private final DingTalkDirectoryLoader directoryLoader;
     private final DingTalkSyncPlanner planner;
+    private final DingTalkDeactivationPlanner deactivationPlanner;
     private final DingTalkMergeRules rules;
     private final DingTalkTeacherMatcher matcher;
+    private final DingTalkBindingPolicy bindingPolicy;
     private final TeacherRepository teachers;
     private final FoundationService foundation;
+    private final AccountMutationGuard accountMutationGuard;
+    private final UserService users;
+    private final EntityManager entityManager;
     private final TransactionTemplate transactionTemplate;
 
     public DingTalkOrgDataProvider(
             SettingsService settings,
             DingTalkDirectoryLoader directoryLoader,
             DingTalkSyncPlanner planner,
+            DingTalkDeactivationPlanner deactivationPlanner,
             DingTalkMergeRules rules,
             DingTalkTeacherMatcher matcher,
+            DingTalkBindingPolicy bindingPolicy,
             TeacherRepository teachers,
             FoundationService foundation,
+            AccountMutationGuard accountMutationGuard,
+            UserService users,
+            EntityManager entityManager,
             PlatformTransactionManager transactionManager) {
         this.settings = settings;
         this.directoryLoader = directoryLoader;
         this.planner = planner;
+        this.deactivationPlanner = deactivationPlanner;
         this.rules = rules;
         this.matcher = matcher;
+        this.bindingPolicy = bindingPolicy;
         this.teachers = teachers;
         this.foundation = foundation;
+        this.accountMutationGuard = accountMutationGuard;
+        this.users = users;
+        this.entityManager = entityManager;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -94,12 +122,17 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
         }
         // An invalid merge decision is a caller error (400), not a failed fetch.
         DingTalkSyncPlan plan = planner.plan(directory, decisions);
+        DingTalkDeactivationPlanner.DeactivationPlan deactivationPlan = deactivationPlanner.plan(directory);
         long elapsed = elapsedMs(startedAt);
+        // 扫描不完整时不能把「0 个候选」写进顶部摘要，否则会被读成「没有要停用的人」。
+        String deactivationNote = deactivationPlan.scanComplete()
+                ? "，停用候选账号 " + deactivationPlan.candidates().size()
+                : "，扫描不完整，本次不生成停用名单";
         String message = "预演完成：扫描 " + directory.departmentsScanned() + " 个部门 / "
                 + directory.usersScanned() + " 人，耗时 " + elapsed + " ms；新增 "
                 + plan.count(Category.CREATE) + "，补齐 " + plan.count(Category.MERGE)
                 + "，疑似同名 " + plan.count(Category.SUSPECTED)
-                + "，跳过 " + plan.count(Category.SKIP);
+                + "，跳过 " + plan.count(Category.SKIP) + deactivationNote;
         log.info(
                 "钉钉通讯录预演：扫描部门 {} 个 / 用户 {} 人 / 耗时 {} ms（跳过特殊部门 {}，不可读部门 {}），"
                         + "新增 {}，补齐 {}，疑似同名 {}，跳过 {}",
@@ -121,7 +154,10 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
                 directory.failedDepartments(),
                 elapsed,
                 directory.skipped(),
-                plan);
+                plan,
+                deactivationPlan.scanComplete(),
+                deactivationPlan.warning(),
+                deactivationPlan.candidates());
     }
 
     /** Applies the plan built from the selected scope and audits the write. */
@@ -142,8 +178,21 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
             return new OrgSyncResult(false, 0, 0, 0, 0, 0, 0, 0, elapsed, message);
         }
 
-        DingTalkSyncPlan plan = planner.plan(directory, decisions);
-        OrgSyncResult result = transactionTemplate.execute(status -> apply(directory, plan, startedAt));
+        if (!decisions.deactivationSelections().isEmpty() && !directory.complete()) {
+            throw ApiException.conflict("扫描不完整，不能执行账号停用，请重新预演通讯录");
+        }
+        OrgSyncResult result = transactionTemplate.execute(status -> {
+            accountMutationGuard.lock();
+            lockSelectedTeachers(decisions);
+            DingTalkSyncPlan plan = planner.plan(directory, decisions);
+            validateSelectedDeactivations(directory, decisions);
+            int accountDisabled = 0;
+            for (DingTalkSyncDecisions.DeactivationSelection selection : decisions.deactivationSelections()) {
+                users.disableForSync(selection.accountId());
+                accountDisabled++;
+            }
+            return apply(directory, plan, startedAt, accountDisabled);
+        });
         if (result == null) {
             return OrgSyncResult.failed("同步未执行");
         }
@@ -163,11 +212,47 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
         return result;
     }
 
+    /**
+     * UID writers outside account management still update these same database rows.
+     * Lock them before either planner reads teachers, so binding validation and the
+     * account stop are atomic with those updates. A fixed order prevents overlapping
+     * selections from acquiring teacher rows in opposite orders.
+     */
+    private void lockSelectedTeachers(DingTalkSyncDecisions decisions) {
+        for (Long teacherId : decisions.deactivationSelections().stream()
+                .map(DingTalkSyncDecisions.DeactivationSelection::teacherId).distinct().sorted().toList()) {
+            Teacher teacher = entityManager.find(Teacher.class, teacherId, LockModeType.PESSIMISTIC_WRITE);
+            if (teacher == null) {
+                throw ApiException.conflict("停用名单或绑定已变化，请重新预演通讯录");
+            }
+            entityManager.refresh(teacher, LockModeType.PESSIMISTIC_WRITE);
+        }
+    }
+
+    /** Caller holds account/selected teacher locks; use the same candidates as preview. */
+    private void validateSelectedDeactivations(DingTalkDirectory directory, DingTalkSyncDecisions decisions) {
+        if (decisions.deactivationSelections().isEmpty()) {
+            return;
+        }
+        Map<Long, DingTalkDeactivationPlanner.Candidate> current = deactivationPlanner.plan(directory)
+                .candidates().stream()
+                .collect(Collectors.toMap(DingTalkDeactivationPlanner.Candidate::accountId, candidate -> candidate));
+        for (DingTalkSyncDecisions.DeactivationSelection selection : decisions.deactivationSelections()) {
+            DingTalkDeactivationPlanner.Candidate candidate = current.get(selection.accountId());
+            if (candidate == null || !Objects.equals(candidate.teacherId(), selection.teacherId())
+                    || !Objects.equals(candidate.dingtalkUserId(), selection.dingtalkUserId())) {
+                throw ApiException.conflict("停用名单或绑定已变化，请重新预演通讯录");
+            }
+        }
+    }
+
     /** Writes exactly the CREATE/MERGE items inside the caller's transaction. */
-    private OrgSyncResult apply(DingTalkDirectory directory, DingTalkSyncPlan plan, long startedAt) {
+    private OrgSyncResult apply(
+            DingTalkDirectory directory, DingTalkSyncPlan plan, long startedAt, int accountDisabled) {
         int created = 0;
         int updated = 0;
         int deactivated = 0;
+        int protectedSkipped = 0;
         for (Item item : plan.items()) {
             if (item.category() == Category.CREATE) {
                 Teacher fresh = new Teacher();
@@ -181,6 +266,13 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
                     // Deleted between planning and writing; nothing sensible to update.
                     continue;
                 }
+                // 03-C 第二道闸：规划阶段已整行跳过受保护档案，这里用同一 policy 再确认一次，
+                // 任何后续改动都留不下「无人值守首次绑定管理员档案」的旁路。
+                if (bindingPolicy.requiresExplicitFirstBinding(teacher)) {
+                    log.warn("跳过受保护教师档案的自动钉钉绑定：teacherId={}", teacher.getId());
+                    protectedSkipped++;
+                    continue;
+                }
                 rules.apply(teacher, item.user());
                 teachers.save(teacher);
                 updated++;
@@ -191,12 +283,13 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
                 deactivated++;
             }
         }
-        int skipped = (int) plan.count(Category.SKIP);
+        int skipped = (int) plan.count(Category.SKIP) + protectedSkipped;
         int suspected = (int) plan.count(Category.SUSPECTED);
         long elapsed = elapsedMs(startedAt);
         String message = "同步完成：扫描 " + directory.departmentsScanned() + " 个部门 / "
                 + directory.usersScanned() + " 人，耗时 " + elapsed + " ms；新增 " + created
-                + "，补齐 " + updated + "，停用 " + deactivated + "，跳过 " + skipped
+                + "，补齐 " + updated + "，教师档案停用 " + deactivated
+                + "，账号停用 " + accountDisabled + "，跳过 " + skipped
                 + "，疑似同名 " + suspected;
         foundation.audit("system", "DINGTALK_SYNC", "teacher", message, created + updated, 0);
         return new OrgSyncResult(
@@ -209,14 +302,17 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
                 directory.departmentsScanned(),
                 directory.usersScanned(),
                 elapsed,
-                message);
+                message,
+                accountDisabled);
     }
 
     @Transactional
     public void applyEvent(String type, DingUser user) {
-        if (user == null || user.userId() == null) {
+        if (user == null || !org.springframework.util.StringUtils.hasText(user.userId())) {
             return;
         }
+        // 先拿账号锚点再匹配：事件与手工改档案 / 同步共用同一锁序，避免读到刚被改过的绑定。
+        accountMutationGuard.lock();
         Teacher teacher = matcher.match(user).orElse(null);
         if ("user_leave".equalsIgnoreCase(type)) {
             if (teacher != null) {
@@ -230,12 +326,19 @@ public class DingTalkOrgDataProvider implements OrgDataProvider {
             }
             teacher = new Teacher();
             teacher.setCreatedAt(Instant.now());
+        } else if (bindingPolicy.requiresExplicitFirstBinding(teacher)) {
+            // 03-C：受保护档案整行跳过 —— 事件不是可信的首次绑定来源，信息也不改。
+            return;
         }
         setIfPresent(user.name(), teacher::setName);
         setIfPresent(user.jobNumber(), teacher::setEmployeeNo);
         setIfPresent(user.mobile(), teacher::setPhone);
         setIfPresent(user.email(), teacher::setEmail);
-        teacher.setDingtalkUserId(user.userId());
+        // 只在还没有绑定时补上；已有的非空 UID 绝不被事件改绑成另一个身份
+        // （按工号/手机命中的档案可能属于同名的另一个人）。
+        if (!org.springframework.util.StringUtils.hasText(teacher.getDingtalkUserId())) {
+            teacher.setDingtalkUserId(user.userId());
+        }
         teacher.setActive(true);
         teachers.save(teacher);
     }

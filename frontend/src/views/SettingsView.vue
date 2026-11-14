@@ -16,21 +16,33 @@
         </el-form-item>
         <el-form-item label="学校 Logo">
           <div class="logo-row">
-            <el-upload :auto-upload="false" :show-file-list="false" accept="image/png,image/jpeg" :on-change="uploadLogo">
+            <el-upload
+              :auto-upload="false"
+              :show-file-list="false"
+              accept="image/png,image/jpeg"
+              :on-change="uploadLogo"
+            >
               <el-button :loading="uploading">上传图片</el-button>
             </el-upload>
             <span class="logo-path">{{ logoName || '未上传' }}</span>
           </div>
         </el-form-item>
         <el-form-item label="外部访问地址">
-          <el-input v-model="form['public.base-url']" placeholder="如 https://paiban.school.cn，用于通知里的跳转链接" />
+          <el-input
+            v-model="form['public.base-url']"
+            placeholder="如 https://paiban.school.cn，用于通知里的跳转链接"
+          />
         </el-form-item>
       </el-form>
     </el-card>
     <SubstitutionPolicyCard v-model="form" />
-    <SubstitutionRecipientsCard />
+    <NotificationDeliveryLogsCard v-if="canViewDeliveryLogs" />
 
-    <el-card id="dingtalk-integration" shadow="never">
+    <!--
+      票 01：钉钉参数与通讯录同步只归超级管理员（integration:manage）。教务管理员
+      连区块都看不到，读取接口也不必打——后端同样会对它返回 403。
+    -->
+    <el-card v-if="canManageIntegration" id="dingtalk-integration" shadow="never">
       <template #header>
         <div class="card-head">
           <span class="card-title">钉钉集成</span>
@@ -44,17 +56,12 @@
           <el-switch v-model="dingtalk.enabled" />
           <span class="hint inline">关闭后系统完整可用，仅使用本地账号与系统内通知。</span>
         </el-form-item>
-        <el-form-item label="AppKey">
-          <el-input v-model="dingtalk.appKey" placeholder="钉钉企业内部应用 AppKey" />
-        </el-form-item>
-        <el-form-item label="AppSecret">
-          <el-input
-            v-model="dingtalk.appSecret"
-            type="password"
-            show-password
-            :placeholder="dingtalk.hasSecret ? '已配置，不修改请留空' : '请输入 AppSecret'"
-          />
-        </el-form-item>
+        <DingtalkConnectionProbe
+          v-model:app-key="dingtalk.appKey"
+          v-model:app-secret="dingtalk.appSecret"
+          :has-secret="dingtalk.hasSecret"
+          :saved-app-key="savedDingtalkAppKey"
+        />
         <el-form-item label="AgentId">
           <el-input v-model="dingtalk.agentId" placeholder="微应用 AgentId" />
         </el-form-item>
@@ -78,8 +85,20 @@
           @cleared="reloadDingtalk"
         />
       </el-form>
-      <el-alert v-if="syncResult" :title="syncResult.message" :type="syncResult.success ? 'success' : 'error'" :closable="false" show-icon class="sync-result" />
-      <DingTalkSyncPreview v-if="syncPreview" :preview="syncPreview" :confirming="confirming" @confirm="confirmSync" />
+      <el-alert
+        v-if="syncResult"
+        :title="syncResult.message"
+        :type="syncResult.success ? 'success' : 'error'"
+        :closable="false"
+        show-icon
+        class="sync-result"
+      />
+      <DingTalkSyncPreview
+        v-if="syncPreview"
+        :preview="syncPreview"
+        :confirming="confirming"
+        @confirm="confirmSync"
+      />
     </el-card>
 
     <el-card shadow="never">
@@ -147,7 +166,10 @@
         <el-switch
           :model-value="form['ai.features.natural-language-constraints'] === 'true'"
           data-testid="settings-natural-language-switch"
-          @update:model-value="(value: string | number | boolean) => (form['ai.features.natural-language-constraints'] = value ? 'true' : 'false')"
+          @update:model-value="
+            (value: string | number | boolean) =>
+              (form['ai.features.natural-language-constraints'] = value ? 'true' : 'false')
+          "
         />
       </div>
     </el-card>
@@ -171,18 +193,16 @@ import { ElMessage, type UploadFile } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { DINGTALK_SYNC_TIMEOUT_MS, http } from '@/api/http'
 import InfoTooltip from '@/components/InfoTooltip.vue'
+import NotificationDeliveryLogsCard from '@/components/settings/NotificationDeliveryLogsCard.vue'
 import SubstitutionPolicyCard from '@/components/settings/SubstitutionPolicyCard.vue'
-import SubstitutionRecipientsCard from '@/components/settings/SubstitutionRecipientsCard.vue'
 import DingTalkSyncPreview from '@/components/DingTalkSyncPreview.vue'
+import DingtalkConnectionProbe from '@/components/settings/DingtalkConnectionProbe.vue'
 import DingtalkIntegrationActions from '@/components/settings/DingtalkIntegrationActions.vue'
 import { resetTour, startTour } from '@/onboarding/tour'
 import { serverMessage } from '@/api/errors'
-import type {
-  DingTalkConfig,
-  SyncConfirmRequest,
-  SyncPreview,
-  SyncResult,
-} from '@/api/integration'
+import { useAuthStore } from '@/stores/auth'
+import { INTEGRATION_MANAGE_PERMISSION } from '@/constants/permissions'
+import type { DingTalkConfig, SyncConfirmRequest, SyncPreview, SyncResult } from '@/api/integration'
 
 interface SyncLog {
   id: number
@@ -192,7 +212,7 @@ interface SyncLog {
 }
 
 const form = ref<Record<string, string>>({})
-const dingtalk = reactive<DingTalkConfig>({
+const dingtalk = reactive<DingTalkConfig & { appSecret: string }>({
   enabled: false,
   appKey: '',
   appSecret: '',
@@ -201,6 +221,7 @@ const dingtalk = reactive<DingTalkConfig>({
   corpId: '',
   syncStrategy: 'dingtalk',
 })
+const savedDingtalkAppKey = ref('')
 const logs = ref<SyncLog[]>([])
 const syncResult = ref<SyncResult | null>(null)
 const syncPreview = ref<SyncPreview | null>(null)
@@ -211,6 +232,10 @@ const confirming = ref(false)
 const uploading = ref(false)
 const loadingLogs = ref(false)
 const router = useRouter()
+const auth = useAuthStore()
+
+const canManageIntegration = computed(() => auth.hasPermission(INTEGRATION_MANAGE_PERMISSION))
+const canViewDeliveryLogs = computed(() => auth.hasPermission('substitution:view'))
 
 const logoName = computed(() => {
   const path = form.value['school.logo-path']
@@ -238,6 +263,7 @@ async function loadSettings() {
 async function loadDingtalk() {
   const { data } = await http.get('/integrations/dingtalk/config')
   Object.assign(dingtalk, data)
+  savedDingtalkAppKey.value = data.appKey ?? ''
   dingtalk.appSecret = ''
 }
 
@@ -262,6 +288,13 @@ async function saveSettings() {
     // Read-only setting: the logo is written by the upload endpoint.
     const payload = { ...form.value }
     delete payload['school.logo-path']
+    // 集成配置（钉钉参数）只有超级管理员能改：没有该权限时，即使读取响应里带了
+    // 空值也不能把它跟普通设置一起提交，否则后端会整单拒绝这次保存。
+    if (!canManageIntegration.value) {
+      Object.keys(payload)
+        .filter((key) => key.startsWith('integration.'))
+        .forEach((key) => delete payload[key])
+    }
     const { data } = await http.put('/settings', payload)
     Object.keys(data).forEach((key) => {
       form.value[key] = data[key]
@@ -287,6 +320,7 @@ async function saveDingtalk() {
     if (dingtalk.appSecret) payload.appSecret = dingtalk.appSecret
     const { data } = await http.put('/integrations/dingtalk/config', payload)
     Object.assign(dingtalk, data)
+    savedDingtalkAppKey.value = data.appKey ?? ''
     dingtalk.appSecret = ''
     ElMessage.success('钉钉配置已保存')
   } catch (e: any) {
@@ -300,11 +334,9 @@ async function previewSync() {
   previewing.value = true
   syncResult.value = null
   try {
-    const { data } = await http.post<SyncPreview>(
-      '/integrations/dingtalk/sync/preview',
-      undefined,
-      { timeout: DINGTALK_SYNC_TIMEOUT_MS },
-    )
+    const { data } = await http.post<SyncPreview>('/integrations/dingtalk/sync/preview', undefined, {
+      timeout: DINGTALK_SYNC_TIMEOUT_MS,
+    })
     syncPreview.value = data
     if (!data.success) {
       ElMessage.error(data.message)
@@ -319,11 +351,9 @@ async function previewSync() {
 async function confirmSync(request: SyncConfirmRequest) {
   confirming.value = true
   try {
-    const { data } = await http.post<SyncResult>(
-      '/integrations/dingtalk/sync/confirm',
-      request,
-      { timeout: DINGTALK_SYNC_TIMEOUT_MS },
-    )
+    const { data } = await http.post<SyncResult>('/integrations/dingtalk/sync/confirm', request, {
+      timeout: DINGTALK_SYNC_TIMEOUT_MS,
+    })
     syncResult.value = data
     if (data.success) {
       ElMessage.success(data.message)
@@ -358,7 +388,11 @@ async function uploadLogo(upload: UploadFile) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadSettings(), loadDingtalk(), loadLogs()])
+  const jobs = [loadSettings()]
+  if (canManageIntegration.value) {
+    jobs.push(loadDingtalk(), loadLogs())
+  }
+  await Promise.all(jobs)
 })
 </script>
 

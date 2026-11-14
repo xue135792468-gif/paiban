@@ -4,6 +4,17 @@ export interface Teacher {
   subject?: string
 }
 
+/** 只在实际选项里存在同名异 ID 时补档案编号，避免改变唯一姓名的既有文案。 */
+export function teacherOptionLabel(
+  teacher: Pick<Teacher, 'id' | 'name'>,
+  teachers: ReadonlyArray<Pick<Teacher, 'id' | 'name'>>,
+): string {
+  const ambiguous = teachers.some(
+    (candidate) => candidate.id !== teacher.id && candidate.name === teacher.name,
+  )
+  return ambiguous ? `${teacher.name}（档案 #${teacher.id}）` : teacher.name
+}
+
 export interface Entry {
   id: number
   classId: number
@@ -36,9 +47,19 @@ export interface RequestRow {
   entryId: number
   className: string
   courseName: string
+  originalTeacherId?: number
   originalTeacherName: string
+  /** 已生效时是实际接课教师，待审批时是期望代课教师。 */
   substituteTeacherName?: string
   substituteTeacherId?: number
+  /** 提交时老师期望的代课人；批准时可被管理员改人，二者都要能展示。 */
+  expectedSubstituteTeacherId?: number | null
+  expectedSubstituteTeacherName?: string | null
+  approverUserId?: number | null
+  approvedAt?: string | null
+  /** 审批意见；驳回时即驳回理由。 */
+  approvalComment?: string | null
+  operatorUserId?: number | null
   effectiveDate: string
   periodLabel: string
   targetPeriodId?: number | null
@@ -140,11 +161,13 @@ export interface Recommendation {
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  SUBMITTED: '已提交',
+  SUBMITTED: '待审批',
   EFFECTIVE: '已生效',
-  CANCELLED: '已取消',
+  CANCELLED: '系统撤销',
   PROPOSED: '待选择',
-  EXPIRED: '已过期',
+  EXPIRED: '已作废',
+  REJECTED: '已驳回',
+  WITHDRAWN: '已撤回',
 }
 
 export function statusLabel(status: string) {
@@ -153,8 +176,8 @@ export function statusLabel(status: string) {
 
 export function statusType(status: string): 'success' | 'danger' | 'warning' | 'info' {
   if (status === 'EFFECTIVE') return 'success'
-  if (status === 'EXPIRED') return 'danger'
-  if (status === 'PROPOSED') return 'warning'
+  if (status === 'REJECTED') return 'danger'
+  if (status === 'PROPOSED' || status === 'SUBMITTED') return 'warning'
   return 'info'
 }
 

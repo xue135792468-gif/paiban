@@ -1,4 +1,36 @@
+> 2026-11-13 最新完成：钉钉多用户原01–08八票全部done，本地施工、双轴及整改复查、冻结完整verify均完成。最终审源c20d118，统计与直接收据见[最终验收](dingtalk-multiuser/final-acceptance.md)；集成分支codex/dingtalk-multiuser。通过后仅票面/文档/收据收口，未push或部署；真实PostgreSQL、学校钉钉租户/手机送达未验。任务测试进程已退出；09自动审批拒绝的缓存/工作树原样保留，09不属于原八票。以下为历史快照。
+> 2026-11-13 最新：所有已发现施工问题和双轴复查均已处置，冻结集成的剩余预检全部通过；源码/测试不再施工，唯一本地frontier是最后完整verify（尚未运行完，不标done）。见[最终验收](dingtalk-multiuser/final-acceptance.md)。未push/部署，真实PG/钉钉租户/手机未验；任务测试进程已退出，09拒绝清理的缓存/工作树保留，下方为历史快照。
+> 2026-11-13 最新验证frontier：第二轮full旧路由unit遗漏已修并接收8d924e0，两轴复查处置完成、无待施工硬问题；后置仓库检查已通过。下一步冻结集成串行targeted unit→浏览器全套，再最终完整verify；原八票尚不done。见[最终验收](dingtalk-multiuser/final-acceptance.md)。未push/部署，真实PG/钉钉租户/手机未验；09清理拒绝继续保留，以下为历史快照。
+> 2026-11-13 最新：第二轮full后端及lint/build已通过，但旧路由unit漏account-audit，整门禁退出1；唯一worker仅修该unit，未改产品。下一步定向绿/小delta复查→补齐后置检查与浏览器全套→最终完整重跑。原八票不done，见[最终验收](dingtalk-multiuser/final-acceptance.md)。未push/部署；真实PG/钉钉租户/手机未验，09清理拒绝保留，下方为历史快照。
+> 2026-11-13 最新闸门：首轮完整门禁失败后的唯一测试修复已合入9794836并完成两轴补核，无待施工代码缺陷；剩验证收据缺口由下一冻结完整verify关闭。08仍in-progress、01–07仍implemented，详见[最终验收](dingtalk-multiuser/final-acceptance.md)。原始失败/复查/更正均保留。未push/部署，真实PG/钉钉租户/手机未验，09拒绝清理继续保留；下方为历史快照。
+> 2026-11-13 最新：d0309da首轮完整门禁后端1项失败，源冻结；08不放行。唯一失败为测试把整个角色目录精确当三个预置角色，未允许合法自定义角色。独立worker仅修测试，修后两轴补核及完整重跑尚待，见[最终验收](dingtalk-multiuser/final-acceptance.md)。手机入口M1已真实回归关闭，见[复查](dingtalk-multiuser/whole-review.md)与[专项](dingtalk-multiuser/t08-main-acceptance.md)。未push/部署，真实PG/租户/手机未验；09拒绝清理原样保留。下方为各阶段快照。
+> 2026-11-13 最新补查：08手机真实入口重开。默认本人课表在窄屏无侧栏/其他导航，原E2E直接goto掩盖缺口；主控真实红例1失败且源冻结，详见dingtalk-multiuser/whole-mobile-navigation-qc.md（feature目录内为同名文件）。唯一fixer Turing第一批H1重构及Java定向已交付，第二阶段补手机导航并改原整链为真实点击。原三阶段截图不是全移动端导航验收。最终full未跑，08不放行，未push/部署，09拒绝清理保留。
+
+> 2026-11-13 最新：原八票源码均已整合，含08的固定审源be48fc0、接收单2c09fdb；主控验收见t08-main-acceptance.md（HANDOFF中链接为dingtalk-multiuser/t08-main-acceptance.md）。01–07为implemented，08三项专项验收已具备，仍待整特性两轴终审、统一fixer整改与最终一次full verify，不能标done。Standards预审H1交Turing；Spec预审四项观察已由原轴自行核对撤回，原稿/更正均保留。未push/部署，真实PG/租户/手机未验，09删除拒绝继续保留。
+
+> 2026-11-13 08已施工：07最终双轴放行文档b7cac2e。主控负责dingtalk-t08-chain后端整链；Galileo负责dingtalk-t08-upgrade存量迁移；Dalton负责dingtalk-t08-browser手机/电脑真实UI整链。基于同源016859b，结束合最新集成。原八票最终全量仍未跑，未push/部署。
+
+> 2026-11-13 最新：07已由主控单票放行，固定最终审源016859b，双轴及增量见t07-review.md，验收见t07-main-acceptance.md。01/02/04/03/05/06/07均implemented，08为当前frontier；下方07未放行是历史快照。最后两行E2E定位补核无新问题，四组11项实际通过。最终八票全量未跑，未推送/部署；已拒绝清理继续按09保留。
+
 # 接手说明（2026-10-25 会话交接）
+
+> **2026-11-13 钉钉07原双轴已完成、统一整改中**：固定审源64a8885；逐项判定与原始计数见[07复查](dingtalk-multiuser/t07-review.md)。单一fixer Planck在dingtalk-t07-review-fixes修公共helper、空白输入、测试凭据去重和探测请求预算，后端已验业务源保持。主控受影响浏览器与独立增量复核后才07放行，08仅准备；不能据原浏览器绿色跳过本轮helper改动的回归。最终全量未跑，未推送/部署。
+
+> **2026-11-13 钉钉07已整合、待双轴放行**：后端5ba87a7已合入5c91976，前端文案QC e6c1d27；主控处理旧Mockito上下文兼容回归与实际页面文案/间距。当前真实运行与尚未完成事项见[07主控验收](dingtalk-multiuser/t07-main-acceptance.md)及[协调](dingtalk-multiuser/t07-coordination.md)。07仍in-progress，08仅准备；01/02/04/03/05/06为implemented。最终八票全量未跑，未推送/部署；下方07未施工均为历史快照。
+
+> **2026-11-13 钉钉06已单票放行，下一张07**：最终源877dee9与修复候选70ab6a7相同，双轴增量无新增问题，原发现与主控QC均已处置，见[06最终复查](dingtalk-multiuser/t06-review.md)和[验收](dingtalk-multiuser/t06-main-acceptance.md)。01/02/04/03/05/06均implemented；07配置探测与说明书进入frontier，接口/分工见t07-wire-contract.md、t07-coordination.md。08仍仅准备；最终全量未跑，未推送/部署。下方06未放行是历史快照；清理拒绝按09保留，不绕过。
+
+> **2026-11-13 06 复查整改未放行**：固定审源 `90bd973`；后续 `1f145ca` 仅补文档、源码相同。原 Standards 3个P2硬问题/2个P3判断建议，Spec 1个P1，逐项判定见 [06复查](dingtalk-multiuser/t06-review.md)，由单一fixer统一整改。主控33后端/6真实浏览器绿是原候选证据，不代表新增反例已通过；[主控QC](dingtalk-multiuser/t06-main-acceptance.md) 还要求记录页文案收口。整改与增量复核后才07；07/08仍仅准备，最终八票全量未跑，未推送/部署。下方进度为历史快照。
+
+> **2026-11-13 钉钉多用户 06 施工中**：05 已单票放行；06 的 transport 已合入 `8a0ed26`，core / ui / log-api 仍独立施工，主控整体验收与双轴尚未完成。先看 [06 施工协调](dingtalk-multiuser/t06-coordination.md) 与 [质量闸门](dingtalk-multiuser/t06-quality-plan.md)，不得仅凭一个切片绿色就进入07。07/08 仍仅有准备文档；未运行最终全量、未推送、未部署。
+
+> **2026-11-13 钉钉多用户 05 已单票放行**：整改候选 `849a385` 已合入 `3cb51de`，后端/前端定向、主控浏览器与双轴增量均已收口，见 [05 复查与最终判定](dingtalk-multiuser/t05-review.md)。01/02/04/03/05 为 implemented，最终全量后才 done。下一张 06 通知票，必须执行 [提交后交付边界](dingtalk-multiuser/t06-delivery-boundary.md) 和 [只读发送记录入口](dingtalk-multiuser/t06-admin-log-plan.md)；07/08 尚未施工。下方 05 未放行的段落为历史快照；未推送、未部署。
+>
+> **2026-11-12 钉钉多用户 05 评审整改中**：05 候选已整合至 `c487df3`，原始双轴审源固定 `6611b3c`；发现与逐项判定见 [05 复查](dingtalk-multiuser/t05-review.md)，当前**未放行**。统一整改分支 `codex/dingtalk-t05-review-fixes` 正在修 DTO、全部处理入口的截止与持锁后身份读取，以及前端展示/测试问题；独立权限快照 QA 在 `6f05e18` 已复现，待修复转绿。浏览器失败原始记录和前后源哈希已保留，不能把组件通过当作审批浏览器已完整通过。最新协调入口为 [施工快照](dingtalk-multiuser/t05-coordination.md)。06–08 仍仅有准备材料；发送记录只读入口的规格缺口方案见 [06 准备](dingtalk-multiuser/t06-admin-log-plan.md)，05 通过后才施工。本轮仍未推送、未部署。
+>
+> **2026-11-11 钉钉多用户八票独立集成**：按用户授权implement-spec施工，重要/高风险票先双轴复查。集成分支 `codex/dingtalk-multiuser`；spec与execution为规格/依赖入口。01、02、04、03已施工并经整改复核放行，状态implemented，最终完整门禁后才done；05已开始施工，06–08尚未施工。03真实浏览器与复查见 [交付](dingtalk-multiuser/t03-delivery.md) 和 [复查](dingtalk-multiuser/t03-review.md)。首次绑定保护已获用户确认并实现。研究准备文档不代表施工；本轮未推送、未部署。被自动审批拒绝的缓存清理见 [09遗留](dingtalk-multiuser/issues/09-temporary-cache-cleanup.md)，不得绕过删除限制。
+>
+> **接手请先看实际证据**：单票验收统计只在对应 delivery/review 文档，入口不复制。01 的 [复查](dingtalk-multiuser/t01-review.md)、02 的 [施工记录](dingtalk-multiuser/t02-delivery.md) 为当前入口；最终全规格验收仍待施工/整改结束后冻结源码执行。下方11-09“从未确认通讯录同步”的描述是历史快照，已被本次只读核验更新，见 execution.md「当前事实」，不能据此重复执行真实同步。
 
 > **2026-11-09 单用户交付包（异地部署）**：新增 `scripts/install.sh`（幂等一键安装：生成 `.env` 随机密钥 → 缺证书自签 → 构建启动 → 等 `/api/health` → 打印管理员密码）与 `scripts/package-single-user.sh`（`git archive HEAD` 出 tar.gz，剔除 `.scratch`/`docs/reports`/`manual-test`，根目录生成 `START-HERE.md`，不含 `.env`/证书/`node_modules`）。手册 [docs/runbooks/install-single-user.md](docs/runbooks/install-single-user.md) 写明要预先向使用方确认的信息、验收标准与故障排查。产物在 `dist/paiban-single-user-<UTC>.tar.gz`（约 1.5MB，`dist/` 已 gitignore，不入库）。**注意：install.sh 尚未在真实 Linux + Docker 上端到端跑过**（本机无 Docker），首次交付前应在一台临时 VPS 上验一遍；生产服务器已有 `.env` 与证书，重复执行只会重建镜像。
 

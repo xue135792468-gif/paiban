@@ -86,7 +86,7 @@ class DraftChangeIntegrationTest extends ApiIntegrationTest {
         assertThat(draftLessons.findById(b).orElseThrow().getPeriodId())
                 .isEqualTo(world.periods().get(0));
         assertThat(version(draftId)).isEqualTo(1);
-        assertThat(auditLogs.findTop100ByOrderByCreatedAtDesc())
+        assertThat(auditLogs.findRecentOutsideCategory("ACCOUNT", org.springframework.data.domain.PageRequest.of(0, 100)))
                 .anySatisfy(log -> {
                     assertThat(log.getAction()).isEqualTo("DRAFT_CHANGE");
                     assertThat(log.getEntityType()).isEqualTo("DRAFT_LESSON");

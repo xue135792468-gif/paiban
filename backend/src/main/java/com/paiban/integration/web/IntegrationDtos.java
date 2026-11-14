@@ -12,6 +12,10 @@ public final class IntegrationDtos {
     public record UpdateDingTalkConfigRequest(Boolean enabled, String appKey, String appSecret,
                                               String agentId, String corpId, String syncStrategy) {}
 
+    public record DingTalkTestConnectionRequest(String appKey, String appSecret, Boolean useSavedSecret) {}
+
+    public record DingTalkTestConnectionResponse(boolean success, String code, String message) {}
+
     public record DingTalkEventRequest(String type, String userId, String name, String mobile,
                                        String email, String jobNumber) {}
 

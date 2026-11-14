@@ -12,6 +12,7 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.springframework.context.ApplicationContext;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 /**
@@ -30,6 +31,7 @@ public class DatabaseResetExtension implements BeforeEachCallback {
     @Override
     public void beforeEach(ExtensionContext context) {
         ApplicationContext applicationContext = SpringExtension.getApplicationContext(context);
+        awaitNotificationExecutor(applicationContext);
         DataSource dataSource = applicationContext.getBean(DataSource.class);
         try (Connection connection = dataSource.getConnection();
                 Statement statement = connection.createStatement()) {
@@ -60,5 +62,10 @@ public class DatabaseResetExtension implements BeforeEachCallback {
             }
         }
         return tables;
+    }
+
+    private void awaitNotificationExecutor(ApplicationContext applicationContext) {
+        NotificationExecutorTestSupport.awaitIdle(applicationContext.getBean(
+                "notificationExecutor", ThreadPoolTaskExecutor.class));
     }
 }
