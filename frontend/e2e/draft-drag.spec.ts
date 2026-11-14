@@ -338,7 +338,7 @@ test('直接交换失败自动列方案；取消不改课；应用整环后一�
       response.url().endsWith(`/api/timetable-drafts/${seed.draftId}/cycle-plans/apply`),
   )
   const reload = waitForDraftReload(page, seed.draftId)
-  await page.locator('[data-testid="cycle-plan-0"] button').click()
+  await page.locator('[data-testid="cycle-plan-0"] [data-testid="cycle-plan-apply"]').click()
   await page.getByRole('button', { name: '确定' }).click()
   expect((await apply).status()).toBe(200)
   await reload
@@ -373,7 +373,7 @@ test('应用方案后加锁再撤销，提示先解锁且不误报成功', async
     response.url().endsWith(`/api/timetable-drafts/${seed.draftId}/cycle-plans/apply`),
   )
   const appliedReload = waitForDraftReload(page, seed.draftId)
-  await page.locator('[data-testid="cycle-plan-0"] button').click()
+  await page.locator('[data-testid="cycle-plan-0"] [data-testid="cycle-plan-apply"]').click()
   await page.getByRole('button', { name: '确定' }).click()
   await apply
   await appliedReload
