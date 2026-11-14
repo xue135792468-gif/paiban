@@ -77,6 +77,7 @@ class NotificationDeliveryIntegrationTest extends ApiIntegrationTest {
 
     private CountDownLatch releaseDingTalk = new CountDownLatch(0);
     private CountDownLatch releaseLocalFallback = new CountDownLatch(0);
+    private CountDownLatch localFallbackStarted = new CountDownLatch(0);
 
     @BeforeEach
     void resetNotificationSettings() {
@@ -307,12 +308,7 @@ class NotificationDeliveryIntegrationTest extends ApiIntegrationTest {
 
         // Expose the partial prefix: applicant success + cover remote-channel failure
         // are visible before the cover's local-fallback failure is committed.
-        releaseLocalFallback = new CountDownLatch(1);
-        doAnswer(invocation -> {
-            releaseLocalFallback.await(2, TimeUnit.SECONDS);
-            return invocation.callRealMethod();
-        }).when(localChannel).send(argThat(message ->
-                NotificationTemplates.SUBSTITUTION_EFFECTIVE_SUBSTITUTE.equals(message.templateCode())));
+        delayCoverFallback();
 
         as(admin).body(Map.of("comment", "停用账号不发送"))
                 .when().post("/api/substitution-requests/" + fx.requestId() + "/approve")
@@ -329,6 +325,9 @@ class NotificationDeliveryIntegrationTest extends ApiIntegrationTest {
         assertThat(localNotifications.findAll())
                 .noneMatch(notification -> "SUBSTITUTION_EFFECTIVE_SUBSTITUTE".equals(
                         notification.getTemplateCode()));
+        verify(localChannel, times(1)).send(argThat(message ->
+                NotificationTemplates.SUBSTITUTION_EFFECTIVE_SUBSTITUTE.equals(message.templateCode())));
+        assertThat(localFallbackStarted.getCount()).isZero();
     }
 
     @Test
@@ -402,6 +401,7 @@ class NotificationDeliveryIntegrationTest extends ApiIntegrationTest {
                 });
 
         Fixture withoutAccount = prepare(admin, false, null, null);
+        delayCoverFallback();
         as(admin).body(Map.of("comment", "无账号不伪造"))
                 .when().post("/api/substitution-requests/" + withoutAccount.requestId() + "/approve")
                 .then().statusCode(200);
@@ -412,6 +412,7 @@ class NotificationDeliveryIntegrationTest extends ApiIntegrationTest {
                 .filter(log -> !log.isSuccess())
                 .findFirst()
                 .orElseThrow();
+        assertThat(localFallbackStarted.getCount()).isZero();
         assertThat(coverFailure.isSuccess()).isFalse();
         assertThat(coverFailure.getRecipient())
                 .contains("teacher:" + withoutAccount.substituteTeacherId());
@@ -499,24 +500,24 @@ class NotificationDeliveryIntegrationTest extends ApiIntegrationTest {
         teachers.save(teacher);
     }
 
+    private void delayCoverFallback() {
+        releaseLocalFallback = new CountDownLatch(1);
+        localFallbackStarted = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            localFallbackStarted.countDown();
+            releaseLocalFallback.await(2, TimeUnit.SECONDS);
+            return invocation.callRealMethod();
+        }).when(localChannel).send(argThat(message ->
+                NotificationTemplates.SUBSTITUTION_EFFECTIVE_SUBSTITUTE.equals(message.templateCode())));
+    }
+
     private void awaitDeliveryLogs(int expected) {
         NotificationExecutorTestSupport.awaitIdle(notificationExecutor);
         assertThat(notificationLogs.count()).isGreaterThanOrEqualTo(expected);
     }
 
     private void awaitLocalNotifications(int expected) {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-        while (System.nanoTime() < deadline) {
-            if (localNotifications.count() >= expected) {
-                return;
-            }
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-                throw new AssertionError("等待本地通知时被中断", ex);
-            }
-        }
-        throw new AssertionError("10 秒内没有出现预期的本地通知");
+        NotificationExecutorTestSupport.awaitIdle(notificationExecutor);
+        assertThat(localNotifications.count()).isGreaterThanOrEqualTo(expected);
     }
 }
