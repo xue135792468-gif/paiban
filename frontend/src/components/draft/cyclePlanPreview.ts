@@ -35,6 +35,12 @@ export interface CyclePlanProjection {
   teacherIds: number[]
   projectedCount: number
   unmatchedCount: number
+  /**
+   * False when any step disagrees with the draft. Real apply rejects the whole plan in that
+   * case, so the preview refuses to move anything either: a part-projected plan would be
+   * shown as「应用后」while the server would never accept it.
+   */
+  available: boolean
 }
 
 const EMPTY_PROJECTION: CyclePlanProjection = {
@@ -42,9 +48,13 @@ const EMPTY_PROJECTION: CyclePlanProjection = {
   teacherIds: [],
   projectedCount: 0,
   unmatchedCount: 0,
+  available: true,
 }
 
 const DAY_NAMES = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日']
+
+/** Shown on the steps that are fine on their own while another step breaks the whole group. */
+const GROUP_BLOCKED_REASON = '整组未投影：方案另有课节与当前草稿不一致'
 
 export function dayName(dayOfWeek: number): string {
   return DAY_NAMES[dayOfWeek] ?? `周${dayOfWeek}`
@@ -64,8 +74,10 @@ function teacherNameOf(move: CyclePlanMove, lesson: DraftLesson | null): string 
 
 /**
  * Resolve a plan against the draft it was searched from. Every move is judged on the
- * same baseline, so a whole group (including an exchange) projects at once and a stale
- * move is reported instead of being guessed at. The inputs are never modified.
+ * same baseline, so a whole group (including an exchange) projects at once. Applying a
+ * plan is all-or-nothing — the server rejects the whole plan when any step disagrees —
+ * so one stale, mismatched or locked step leaves the group unprojected instead of
+ * showing a partial result as「应用后」. The inputs are never modified.
  */
 export function projectCyclePlan(
   lessons: DraftLesson[],
@@ -76,54 +88,48 @@ export function projectCyclePlan(
 
   const lessonById = new Map(lessons.map((lesson) => [lesson.id, lesson]))
   const periodById = new Map(periods.map((period) => [period.id, period]))
-  const moves: ProjectedMove[] = []
   const teacherIds: number[] = []
-  let projectedCount = 0
-  let unmatchedCount = 0
 
-  plan.moves.forEach((move) => {
+  /** Why this step disagrees with the draft; empty when the step itself is sound. */
+  function blocker(move: CyclePlanMove): string {
+    const lesson = lessonById.get(move.lessonId)
+    if (!lesson) return '课节已不在当前草稿'
+    if (lesson.periodId !== move.fromPeriodId) return '课节已不在方案预期的位置'
+    if (lesson.teacherId !== move.teacherId) return '任课教师与当前草稿不一致'
+    if (!periodById.get(move.toPeriodId)) return '目标节次不在当前作息表'
+    if (lesson.locked) return '课节已锁定，方案无法应用'
+    return ''
+  }
+
+  const blockers = plan.moves.map(blocker)
+  const available = blockers.every((reason) => reason === '')
+  const moves: ProjectedMove[] = plan.moves.map((move, index) => {
     const lesson = lessonById.get(move.lessonId) ?? null
     const targetPeriod = periodById.get(move.toPeriodId) ?? null
-    const teacherMismatch = lesson != null && lesson.teacherId !== move.teacherId
-
-    let projected = true
-    let reason = ''
-    if (!lesson) {
-      projected = false
-      reason = '课节已不在当前草稿'
-    } else if (lesson.periodId !== move.fromPeriodId) {
-      projected = false
-      reason = '课节已不在方案预期的位置'
-    } else if (teacherMismatch) {
-      projected = false
-      reason = '任课教师与当前草稿不一致'
-    } else if (!targetPeriod) {
-      projected = false
-      reason = '目标节次不在当前作息表'
-    }
+    const ownBlocker = blockers[index]
+    const reason = available ? '' : ownBlocker || GROUP_BLOCKED_REASON
 
     const teacherId = lesson?.teacherId ?? move.teacherId
     if (!teacherIds.includes(teacherId)) teacherIds.push(teacherId)
-    if (projected) projectedCount += 1
-    else unmatchedCount += 1
 
-    moves.push({
+    return {
       move,
       lesson,
       teacherId,
       teacherName: teacherNameOf(move, lesson),
-      teacherMismatch,
+      teacherMismatch: lesson != null && lesson.teacherId !== move.teacherId,
       courseName: lesson?.courseName ?? '课程',
       className: lesson?.className ?? '',
       fromLabel: periodCaption(periods, move.fromPeriodId),
       toLabel: periodCaption(periods, move.toPeriodId),
-      projected,
+      projected: available,
       reason,
-      targetPeriod: projected ? targetPeriod : null,
-    })
+      targetPeriod: available ? targetPeriod : null,
+    }
   })
 
-  return { moves, teacherIds, projectedCount, unmatchedCount }
+  const unmatchedCount = available ? 0 : moves.length
+  return { moves, teacherIds, projectedCount: available ? moves.length : 0, unmatchedCount, available }
 }
 
 /** Lessons the preview renders: the draft with every projected move applied at once. */

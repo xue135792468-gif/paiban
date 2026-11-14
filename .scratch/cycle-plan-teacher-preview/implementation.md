@@ -1,6 +1,8 @@
 # 联动方案教师课表预览：正式实现
 
-Status: in-progress
+Status: implemented
+
+当前为本地实现完成、待用户前端体验及发布门禁；不是已合并或部署。首轮 0e625e9 的四项确认问题已集中整改，最终检查与边界见 delivery.md，原始复查及处置见 review.md。
 
 用户已体验并接受原型，要求先按原型推进正式实现。原型参考：分支 codex/prototype-cycle-teacher-preview，提交 75961c6，frontend/src/components/draft/prototype-teacher-preview/index.html。可从相邻工作树只读查看，不复制静态原型进入生产。
 
@@ -27,7 +29,7 @@ Qwen（group/qwen3.8，不显式覆盖推理强度）负责正式施工及必要
 
 只 stage 本任务路径；不得触碰主仓库的未提交 AGENTS.md 和其他历史现场。临时文件放本工作树的忽略目录并在结束时清理，退出自启动临时进程。
 
-## 交付记录（施工 worker，未 commit）
+## 首轮施工记录（当时未 commit，后由主控保存为 0e625e9）
 
 改动文件（工作树 codex/cycle-teacher-preview，起点 c27af84，未提交）：
 
@@ -45,4 +47,4 @@ Qwen（group/qwen3.8，不显式覆盖推理强度）负责正式施工及必要
 
 已跑命令与结果：`npx vue-tsc --noEmit -p tsconfig.app.json` 0；定向 vitest（CyclePlanPanel / DraftGrid / cyclePlanPreview）44 passed 0；`npm run lint` 0；`npm run build` 0；`VITEST_MAX_WORKERS=4 npx vitest run` 821 passed 0；`scripts/check-sfc-size.sh` 0；`check-ticket-status / check-e2e-helpers / check-module-boundaries / check-migrations / check-local-dates` 均 0。
 
-未验证与限制：无浏览器与 Playwright 实跑（本机无 Docker，后端起不来；前端观感由用户验收）；未跑后端套件（本范围未改后端）；未 commit / push / merge / deploy；`frontend/dist/` 为构建产物（git 忽略）保留；本轮未启动常驻进程，调试用临时 spec 已删除。
+未验证与限制：按用户分工无浏览器与 Playwright 实跑，前端观感由用户验收；本机没有 Docker 不等于普通 H2 后端无法启动，原施工说明在此更正。未跑后端套件（本范围未改后端）；该记录形成时未 commit / push / merge / deploy；`frontend/dist/` 为构建产物（git 忽略）保留；本轮未启动常驻进程，调试用临时 spec 已删除。

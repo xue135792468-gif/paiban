@@ -11,11 +11,11 @@
         >
           ‹ 返回方案
         </el-button>
-        <h4 class="pv-title">{{ teacherName }} · 完整周课表</h4>
+        <h4 class="pv-title" data-testid="cycle-plan-preview-title">{{ teacherName }} · 完整周课表</h4>
         <span class="pv-sub">{{ kindLabel }} · 含该教师全部行政班</span>
         <span class="pv-spacer" />
         <el-radio-group v-model="modeProxy" size="small" data-testid="cycle-plan-preview-mode">
-          <el-radio-button value="after">应用后预览</el-radio-button>
+          <el-radio-button value="after" :disabled="!projection.available">应用后预览</el-radio-button>
           <el-radio-button value="current">当前安排</el-radio-button>
         </el-radio-group>
       </div>
@@ -37,9 +37,11 @@
 
       <p class="pv-notice" data-testid="cycle-plan-preview-notice">
         {{
-          isAfter
-            ? '当前显示：应用后预览。整组联动同时投影在当前草稿上，方案尚未生效，课表没有被修改。'
-            : '当前显示：草稿里的实际安排。高亮课节是本方案准备移动的课，括注写明移动后的位置。'
+          !projection.available
+            ? '当前显示：草稿里的实际安排。方案有课节与当前草稿不一致，整组都不会应用，因此不提供应用后预览。'
+            : isAfter
+              ? '当前显示：应用后预览。整组联动同时投影在当前草稿上，方案尚未生效，课表没有被修改。'
+              : '当前显示：草稿里的实际安排。高亮课节是本方案准备移动的课，括注写明移动后的位置。'
         }}
       </p>
     </div>
@@ -72,9 +74,9 @@
       <p v-else class="pv-empty">该教师在本方案中没有课节移动。</p>
     </section>
 
-    <p v-if="projection.unmatchedCount > 0" class="pv-warning" data-testid="cycle-plan-preview-unmatched">
-      本方案有 {{ projection.unmatchedCount }} 步与当前草稿不一致，未计入预览；共
-      {{ projection.moves.length }} 步，已投影 {{ projection.projectedCount }} 步。请刷新草稿或重新搜索方案。
+    <p v-if="!projection.available" class="pv-warning" data-testid="cycle-plan-preview-unmatched">
+      本方案 {{ projection.moves.length }} 步中没有一步投影：任一课节与当前草稿不符，服务端会整单拒绝。
+      请刷新草稿或重新搜索方案。
     </p>
   </div>
 </template>
@@ -113,13 +115,21 @@ const emit = defineEmits<{
   (e: 'back'): void
 }>()
 
+const projection = computed(() => projectCyclePlan(props.lessons, props.periods, props.plan))
+
+/**
+ * A plan that cannot be projected at all has no「应用后」to show, so the preview stays on the
+ * draft view whatever mode the panel asked for; the selector and the grid then agree.
+ */
+const effectiveMode = computed<CyclePlanPreviewMode>(() =>
+  projection.value.available ? props.mode : 'current',
+)
+const isAfter = computed(() => effectiveMode.value === 'after')
+
 const modeProxy = computed({
-  get: () => props.mode,
+  get: () => effectiveMode.value,
   set: (value: CyclePlanPreviewMode) => emit('update:mode', value),
 })
-
-const projection = computed(() => projectCyclePlan(props.lessons, props.periods, props.plan))
-const isAfter = computed(() => props.mode !== 'current')
 
 const teacherChips = computed(() =>
   projection.value.teacherIds.map((teacherId) => ({
@@ -154,12 +164,14 @@ const lessonNotes = computed(() => {
 
 /**
  * Applied view: an original slot left behind is annotated only when it really is
- * empty, because an exchange fills both sides with the other lesson.
+ * empty for this teacher, because an exchange fills both sides with the other lesson.
+ * Occupancy comes from the teacher's own week, not from the whole draft: another class
+ * of another teacher sitting in the freed slot must not erase the explanation.
  */
 const vacatedPeriods = computed(() => {
   const map: Record<number, string> = {}
   if (!isAfter.value) return map
-  const occupied = new Set(projectedLessons.value.map((lesson) => lesson.periodId))
+  const occupied = new Set(teacherLessons.value.map((lesson) => lesson.periodId))
   teacherMoves.value.forEach((row) => {
     if (!row.projected) return
     if (occupied.has(row.move.fromPeriodId)) return

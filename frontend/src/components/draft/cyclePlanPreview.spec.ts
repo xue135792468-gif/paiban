@@ -78,6 +78,7 @@ describe('projectCyclePlan', () => {
     const projection = projectCyclePlan(swapLessons, PERIODS, swapPlan)
     const after = applyProjectionToLessons(swapLessons, projection)
 
+    expect(projection.available).toBe(true)
     expect(projection.projectedCount).toBe(3)
     expect(projection.unmatchedCount).toBe(0)
     expect(after).toHaveLength(swapLessons.length)
@@ -127,20 +128,57 @@ describe('projectCyclePlan', () => {
     expect(lessonsForTeacher(after, 99).map((item) => item.id)).toEqual([22])
   })
 
-  it('课节位置与方案预期不符时单列未投影并说明原因', () => {
-    const moved = swapLessons.map((item) => (item.id === 11 ? { ...item, periodId: 103, dayOfWeek: 1, periodNo: 3 } : item))
-    const projection = projectCyclePlan(moved, PERIODS, swapPlan)
+  it('任一步与草稿不符就整组不投影，其余步骤也不动', () => {
+    const moved = swapLessons.map((item) =>
+      item.id === 11 ? { ...item, periodId: 103, dayOfWeek: 1, periodNo: 3 } : item,
+    )
+    const snapshot = JSON.stringify(moved)
 
-    expect(projection.projectedCount).toBe(2)
-    expect(projection.unmatchedCount).toBe(1)
+    const projection = projectCyclePlan(moved, PERIODS, swapPlan)
+    const after = applyProjectionToLessons(moved, projection)
+
+    // Apply is all-or-nothing on the server, so a partial「应用后」would be a false preview.
+    expect(projection.available).toBe(false)
+    expect(projection.projectedCount).toBe(0)
+    expect(projection.unmatchedCount).toBe(swapPlan.moves.length)
     const stale = projection.moves.find((row) => row.move.lessonId === 11)
     expect(stale?.projected).toBe(false)
     expect(stale?.reason).toContain('不在方案预期的位置')
-    // The stale move is left out rather than guessed at.
-    expect(applyProjectionToLessons(moved, projection).find((item) => item.id === 11)?.periodId).toBe(103)
+    // The steps that were sound on their own are reported as blocked by the group, not as projected.
+    const other = projection.moves.find((row) => row.move.lessonId === 13)
+    expect(other?.projected).toBe(false)
+    expect(other?.reason).toContain('整组未投影')
+    expect(after).toEqual(moved)
+    expect(JSON.stringify(moved)).toBe(snapshot)
   })
 
-  it('课节或目标时段不存在时同样单列，不静默计入', () => {
+  it('要移动的课已锁定时整组不可预览，不画可用的应用后课表', () => {
+    const locked = swapLessons.map((item) => (item.id === 13 ? { ...item, locked: true } : item))
+
+    const projection = projectCyclePlan(locked, PERIODS, swapPlan)
+    const after = applyProjectionToLessons(locked, projection)
+
+    expect(projection.available).toBe(false)
+    expect(projection.moves.find((row) => row.move.lessonId === 13)?.reason).toContain('已锁定')
+    expect(after.find((item) => item.id === 11)?.periodId).toBe(101)
+    expect(after.find((item) => item.id === 13)?.periodId).toBe(201)
+  })
+
+  it('任课教师元数据与草稿不符时整组不投影', () => {
+    const mismatched = plan([
+      { lessonId: 11, fromPeriodId: 101, toPeriodId: 102, teacherId: 77, courseId: 1, classId: 1 },
+      { lessonId: 13, fromPeriodId: 201, toPeriodId: 202, teacherId: 10, courseId: 3, classId: 3 },
+    ])
+
+    const projection = projectCyclePlan(swapLessons, PERIODS, mismatched)
+
+    expect(projection.available).toBe(false)
+    expect(projection.projectedCount).toBe(0)
+    expect(projection.moves.find((row) => row.move.lessonId === 11)?.reason).toContain('任课教师')
+    expect(applyProjectionToLessons(swapLessons, projection)).toEqual(swapLessons)
+  })
+
+  it('课节或目标时段不存在时整组不投影，不静默计入', () => {
     const ghost = plan([
       { lessonId: 999, fromPeriodId: 101, toPeriodId: 102, teacherId: 9, courseId: 1, classId: 1 },
       { lessonId: 13, fromPeriodId: 201, toPeriodId: 777, teacherId: 10, courseId: 3, classId: 3 },
@@ -148,6 +186,7 @@ describe('projectCyclePlan', () => {
 
     const projection = projectCyclePlan(swapLessons, PERIODS, ghost)
 
+    expect(projection.available).toBe(false)
     expect(projection.projectedCount).toBe(0)
     expect(projection.unmatchedCount).toBe(2)
     expect(projection.moves.map((row) => row.reason)).toEqual([
@@ -162,6 +201,7 @@ describe('projectCyclePlan', () => {
       teacherIds: [],
       projectedCount: 0,
       unmatchedCount: 0,
+      available: true,
     })
     expect(projectCyclePlan(swapLessons, PERIODS, null).moves).toEqual([])
   })

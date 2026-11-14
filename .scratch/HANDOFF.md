@@ -1,3 +1,5 @@
+> **2026-11-15 教师课表预览本地实现**：用户接受原型 75961c6 后，在 `codex/cycle-teacher-preview` 将姓名点击、完整教师周课表、当前/应用后切换、教师切换及窄屏返回接入真实草稿；一次独立双轴复查后集中整改四项确认问题。最终前端 826 单测、lint/build/typecheck 通过。见[交付与验证边界](cycle-plan-teacher-preview/delivery.md)及[复查处置](cycle-plan-teacher-preview/review.md)。用户自行验收前端观感，Playwright 和后端套件未跑，完整发布门禁待执行；本分支未推送、合并或部署。此前钉钉 #30 与验证工具 #31 已合并至 main c27af84，最终 push CI 43611615855 四 job 成功，仍未部署。下方旧“未push/合并”按历史时点保留；09 拒绝清理现场不动。
+>
 > 2026-11-13 最新完成：钉钉多用户原01–08八票全部done，本地施工、双轴及整改复查、冻结完整verify均完成。最终审源c20d118，统计与直接收据见[最终验收](dingtalk-multiuser/final-acceptance.md)；集成分支codex/dingtalk-multiuser。通过后仅票面/文档/收据收口，未push或部署；真实PostgreSQL、学校钉钉租户/手机送达未验。任务测试进程已退出；09自动审批拒绝的缓存/工作树原样保留，09不属于原八票。以下为历史快照。
 > 2026-11-13 最新：所有已发现施工问题和双轴复查均已处置，冻结集成的剩余预检全部通过；源码/测试不再施工，唯一本地frontier是最后完整verify（尚未运行完，不标done）。见[最终验收](dingtalk-multiuser/final-acceptance.md)。未push/部署，真实PG/钉钉租户/手机未验；任务测试进程已退出，09拒绝清理的缓存/工作树保留，下方为历史快照。
 > 2026-11-13 最新验证frontier：第二轮full旧路由unit遗漏已修并接收8d924e0，两轴复查处置完成、无待施工硬问题；后置仓库检查已通过。下一步冻结集成串行targeted unit→浏览器全套，再最终完整verify；原八票尚不done。见[最终验收](dingtalk-multiuser/final-acceptance.md)。未push/部署，真实PG/钉钉租户/手机未验；09清理拒绝继续保留，以下为历史快照。

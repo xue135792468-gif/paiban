@@ -269,6 +269,10 @@ describe('CyclePlanPanel', () => {
     stubNarrow(true)
     const wrapper = await mountPanel({ plans: [plan, { ...plan, token: 'tok-2' }] })
     const paneElement = wrapper.get('[data-testid="cycle-plan-list-pane"]').element
+    // jsdom scrolls nothing: this pins the wiring only — the element the panel saves and
+    // restores is the same `.list-pane` the narrow CSS bounds as the scroller. Real phone
+    // scrolling is checked by the user, not here.
+    expect(paneElement.classList.contains('list-pane')).toBe(true)
     Object.defineProperty(paneElement, 'scrollTop', { value: 0, writable: true, configurable: true })
     paneElement.scrollTop = 180
 
@@ -292,7 +296,7 @@ describe('CyclePlanPanel', () => {
     expect(wrapper.emitted('apply')).toBeUndefined()
   })
 
-  it('方案里的课节已不在预期位置时说明未投影，不静默计课', async () => {
+  it('方案里的课节已不在预期位置时整组不投影，只给当前课表', async () => {
     const stale = teacherLessons.map((item) =>
       item.id === 11 ? { ...item, periodId: 200, dayOfWeek: 1, periodNo: 2 } : item,
     )
@@ -302,10 +306,74 @@ describe('CyclePlanPanel', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-testid="cycle-plan-preview-unmatched"]').text()).toContain(
-      '1 步与当前草稿不一致',
+      '没有一步投影',
     )
     expect(wrapper.get('[data-testid="cycle-plan-preview-moves"]').text()).toContain('未投影')
+    // No partial「应用后」: the grid keeps the draft position and the notice says why.
+    expect(wrapper.get('[data-testid="cycle-plan-preview-notice"]').text()).toContain(
+      '不提供应用后预览',
+    )
+    expect(cellOf(wrapper, 11).attributes('data-period-id')).toBe('200')
+    expect(wrapper.text()).not.toContain('这节课已移至')
   })
+
+  it('要移动的课已锁定时不展示可用的应用后预览', async () => {
+    const locked = teacherLessons.map((item) => (item.id === 11 ? { ...item, locked: true } : item))
+    const wrapper = await mountPanel({ lessons: locked })
+
+    await wrapper.get('[data-testid="cycle-plan-teacher-0-9"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="cycle-plan-preview-notice"]').text()).toContain(
+      '不提供应用后预览',
+    )
+    expect(cellOf(wrapper, 11).attributes('data-period-id')).toBe('100')
+    const afterRadio = wrapper
+      .get('[data-testid="cycle-plan-preview-mode"]')
+      .findAll('input')[0]
+    expect((afterRadio.element as HTMLInputElement).disabled).toBe(true)
+  })
+
+  it('教师A原位置被别的班占据时仍写明课已移走', async () => {
+    // 张老师 (9) moves 周一第1节 → 周一第2节; 李老师 (10) already teaches 周一第1节 in
+    // another class. Only the teacher's own week decides whether the slot is empty for them.
+    const lessons = [
+      lesson(11, '数学', '张老师', { teacherId: 9, className: '高一(1)班', periodId: 100, dayOfWeek: 1, periodNo: 1 }),
+      lesson(12, '语文', '李老师', { teacherId: 10, className: '高一(2)班', periodId: 100, dayOfWeek: 1, periodNo: 1 }),
+    ]
+    const single: CyclePlan = { ...plan, kind: 'DIRECT', moves: [plan.moves[0]], affectedTeachers: 1 }
+    const wrapper = await mountPanel({ plans: [single], lessons })
+
+    await wrapper.get('[data-testid="cycle-plan-teacher-0-9"]').trigger('click')
+    await flushPromises()
+
+    const vacatedCell = wrapper.get('[data-period-id="100"]')
+    expect(vacatedCell.text()).toContain('这节课已移至 周一第2节')
+    expect(cellOf(wrapper, 11).attributes('data-period-id')).toBe('200')
+  })
+
+  it('教师自己的另一节课移入原位置时不画虚假空格说明', async () => {
+    const lessons = [
+      lesson(11, '数学', '张老师', { teacherId: 9, className: '高一(1)班', periodId: 100, dayOfWeek: 1, periodNo: 1 }),
+      lesson(12, '语文', '张老师', { teacherId: 9, className: '高一(2)班', periodId: 200, dayOfWeek: 1, periodNo: 2 }),
+    ]
+    const selfSwap: CyclePlan = {
+      ...plan,
+      moves: [
+        { lessonId: 11, fromPeriodId: 100, toPeriodId: 200, teacherId: 9, courseId: 1, classId: 1 },
+        { lessonId: 12, fromPeriodId: 200, toPeriodId: 100, teacherId: 9, courseId: 2, classId: 2 },
+      ],
+    }
+    const wrapper = await mountPanel({ plans: [selfSwap], lessons })
+
+    await wrapper.get('[data-testid="cycle-plan-teacher-0-9"]').trigger('click')
+    await flushPromises()
+
+    // The swap lands 语文 in 周一第1节, so nothing there reads as an emptied slot.
+    expect(wrapper.text()).not.toContain('这节课已移至')
+    expect(wrapper.get('[data-lesson-id="12"]').text()).toContain('语文')
+  })
+
 
   it('关闭面板再打开时回到方案列表，不残留上次的预览状态', async () => {
     const wrapper = await mountPanel()

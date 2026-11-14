@@ -412,7 +412,13 @@ watch(
   }
   .list-pane {
     width: 100%;
-    max-height: none;
+    /* `max-height: none` left the pane as tall as its cards, so the phone scrolled Element
+       Plus' overlay and never this element: the position saved on the way into the preview was
+       always 0. The pane stays the scroller here: 15vh above the dialog and 50px below it stay
+       with the viewport, and the remaining 170px belongs to the dialog padding, header, footer
+       and the pane's own edge. `vh` is the fallback for browsers without dynamic viewport units. */
+    max-height: calc(85vh - 170px);
+    max-height: calc(85dvh - 170px);
   }
   /* A phone gets one full-screen view: the preview replaces the plan list. */
   .panel-body.preview-full .list-pane {
