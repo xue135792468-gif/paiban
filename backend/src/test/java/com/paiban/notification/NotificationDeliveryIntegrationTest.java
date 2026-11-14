@@ -3,7 +3,9 @@ package com.paiban.notification;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -13,6 +15,7 @@ import com.paiban.common.settings.SettingsService;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.integration.dingtalk.DingTalkClient;
+import com.paiban.notification.channel.LocalNotificationChannel;
 import com.paiban.notification.domain.NotificationLog;
 import com.paiban.notification.domain.NotificationLogRepository;
 import com.paiban.notification.domain.NotificationRepository;
@@ -41,6 +44,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -51,6 +55,9 @@ class NotificationDeliveryIntegrationTest extends ApiIntegrationTest {
 
     @MockitoBean
     private DingTalkClient dingTalkClient;
+
+    @MockitoSpyBean
+    private LocalNotificationChannel localChannel;
 
     @Autowired
     private TeacherRepository teachers;
@@ -69,6 +76,7 @@ class NotificationDeliveryIntegrationTest extends ApiIntegrationTest {
     private ThreadPoolTaskExecutor notificationExecutor;
 
     private CountDownLatch releaseDingTalk = new CountDownLatch(0);
+    private CountDownLatch releaseLocalFallback = new CountDownLatch(0);
 
     @BeforeEach
     void resetNotificationSettings() {
@@ -78,6 +86,7 @@ class NotificationDeliveryIntegrationTest extends ApiIntegrationTest {
     @AfterEach
     void releaseBlockedDelivery() {
         releaseDingTalk.countDown();
+        releaseLocalFallback.countDown();
     }
 
     @Test
@@ -296,6 +305,15 @@ class NotificationDeliveryIntegrationTest extends ApiIntegrationTest {
                 .thenReturn(true);
         settingsService.put(SettingsService.DINGTALK_ENABLED, "true");
 
+        // Expose the partial prefix: applicant success + cover remote-channel failure
+        // are visible before the cover's local-fallback failure is committed.
+        releaseLocalFallback = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            releaseLocalFallback.await(2, TimeUnit.SECONDS);
+            return invocation.callRealMethod();
+        }).when(localChannel).send(argThat(message ->
+                NotificationTemplates.SUBSTITUTION_EFFECTIVE_SUBSTITUTE.equals(message.templateCode())));
+
         as(admin).body(Map.of("comment", "停用账号不发送"))
                 .when().post("/api/substitution-requests/" + fx.requestId() + "/approve")
                 .then().statusCode(200);
@@ -482,19 +500,8 @@ class NotificationDeliveryIntegrationTest extends ApiIntegrationTest {
     }
 
     private void awaitDeliveryLogs(int expected) {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-        while (System.nanoTime() < deadline) {
-            if (notificationLogs.count() >= expected) {
-                return;
-            }
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-                throw new AssertionError("等待通知记录时被中断", ex);
-            }
-        }
-        throw new AssertionError("10 秒内没有出现预期的通知记录");
+        NotificationExecutorTestSupport.awaitIdle(notificationExecutor);
+        assertThat(notificationLogs.count()).isGreaterThanOrEqualTo(expected);
     }
 
     private void awaitLocalNotifications(int expected) {
