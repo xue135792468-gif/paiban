@@ -1,6 +1,5 @@
 package com.paiban.timetable.service;
 
-import com.paiban.common.event.TimetablePublishedEvent;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.AuditLog;
 import com.paiban.foundation.domain.AuditLogRepository;
@@ -26,7 +25,6 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,7 +37,6 @@ public class TimetablePublishService {
     private final TimetablePublishRepository publishes;
     private final DraftValidator validator;
     private final PeriodRepository periods;
-    private final ApplicationEventPublisher events;
     private final AuditLogRepository auditLogs;
     private final SubstitutionRepository substitutions;
     private final Clock clock;
@@ -51,7 +48,6 @@ public class TimetablePublishService {
             TimetablePublishRepository publishes,
             DraftValidator validator,
             PeriodRepository periods,
-            ApplicationEventPublisher events,
             AuditLogRepository auditLogs,
             SubstitutionRepository substitutions,
             Clock clock) {
@@ -61,7 +57,6 @@ public class TimetablePublishService {
         this.publishes = publishes;
         this.validator = validator;
         this.periods = periods;
-        this.events = events;
         this.auditLogs = auditLogs;
         this.substitutions = substitutions;
         this.clock = clock;
@@ -143,7 +138,6 @@ public class TimetablePublishService {
                 baseline.size(),
                 0));
 
-        events.publishEvent(new TimetablePublishedEvent(draft.getSemesterId(), draftId, actor));
         return new PublishResultDto(
                 draftId, baseline.size(), now, saved.getId(),
                 cancelledFutureSubstitutions(draft.getSemesterId()));

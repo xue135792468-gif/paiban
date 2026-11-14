@@ -15,12 +15,32 @@ public record DingTalkDirectory(
         List<DingUser> users,
         List<DingDepartment> departments,
         List<DingDepartment> skipped,
-        int failedDepartments) {
+        int failedDepartments,
+        String incompleteReason) {
 
     public DingTalkDirectory {
         users = users == null ? List.of() : List.copyOf(users);
         departments = departments == null ? List.of() : List.copyOf(departments);
         skipped = skipped == null ? List.of() : List.copyOf(skipped);
+    }
+
+    /**
+     * Older callers (and tests that do not model a broken scan) only know the
+     * failed-department counter; an unreadable department still means incomplete.
+     */
+    public DingTalkDirectory(
+            List<DingUser> users,
+            List<DingDepartment> departments,
+            List<DingDepartment> skipped,
+            int failedDepartments) {
+        this(users, departments, skipped, failedDepartments, failedDepartments > 0
+                ? "有 " + failedDepartments + " 个部门未能完整读取"
+                : null);
+    }
+
+    /** Ticket 04: false means the missing-user comparison must not run at all. */
+    public boolean complete() {
+        return incompleteReason == null;
     }
 
     public int departmentsScanned() {

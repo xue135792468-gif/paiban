@@ -8,6 +8,7 @@ import com.paiban.foundation.domain.TeacherRepository;
 import com.paiban.foundation.web.ImportDtos.ImportError;
 import com.paiban.foundation.web.ImportDtos.ImportReport;
 import com.paiban.identity.domain.AppUserRepository;
+import com.paiban.identity.domain.AccountAuditAction;
 import com.paiban.identity.domain.RoleRepository;
 import com.paiban.identity.web.IdentityDtos.CreateUserRequest;
 import java.io.ByteArrayOutputStream;
@@ -41,19 +42,19 @@ public class UserImportService {
     private final RoleRepository roles;
     private final TeacherRepository teachers;
     private final UserService userService;
-    private final com.paiban.foundation.service.FoundationService foundation;
+    private final AccountAuditService accountAudits;
 
     public UserImportService(
             AppUserRepository users,
             RoleRepository roles,
             TeacherRepository teachers,
             UserService userService,
-            com.paiban.foundation.service.FoundationService foundation) {
+            AccountAuditService accountAudits) {
         this.users = users;
         this.roles = roles;
         this.teachers = teachers;
         this.userService = userService;
-        this.foundation = foundation;
+        this.accountAudits = accountAudits;
     }
 
     public ImportReport preview(MultipartFile file) {
@@ -134,7 +135,8 @@ public class UserImportService {
                 rowErrors.add(new ImportError(row.rowNumber(), "初始密码", "密码至少 6 位"));
             }
             if (role == null) {
-                rowErrors.add(new ImportError(row.rowNumber(), "角色", "只能是 admin / teacher / head_teacher"));
+                rowErrors.add(new ImportError(row.rowNumber(), "角色",
+                        "只能是 超级管理员 / 教务管理员 / 老师（super_admin / admin / teacher）"));
             }
             Long teacherId = null;
             if (!employeeNo.isEmpty()) {
@@ -168,13 +170,13 @@ public class UserImportService {
                         row.get("password"),
                         row.get("姓名"),
                         List.of(row.get("角色")),
-                        teacherId));
+                        teacherId), AccountAuditAction.IMPORT);
                 imported++;
             }
-            foundation.audit(
+            // 整批摘要也属于账号类事件：旧通用日志接口不再暴露它（票 02）。
+            accountAudits.recordSummary(
                     actor,
-                    "IMPORT",
-                    "users",
+                    AccountAuditAction.IMPORT,
                     "文件: " + file.getOriginalFilename() + ", 成功 " + imported + " 行",
                     imported,
                     table.rows().size() - imported);
@@ -207,9 +209,10 @@ public class UserImportService {
 
     private String normalizeRole(String value) {
         String normalized = switch (value) {
+            case "超级管理员", "super_admin" -> "super_admin";
             case "教务管理员", "管理员", "admin" -> "admin";
-            case "教师", "teacher" -> "teacher";
-            case "班主任", "head_teacher" -> "head_teacher";
+            case "老师", "教师", "teacher" -> "teacher";
+            // 班主任已下线（票 01）：名单里出现就按非法角色拒绝，不做静默降级。
             default -> null;
         };
         return normalized != null && roles.findByCode(normalized).isPresent() ? normalized : null;

@@ -20,7 +20,16 @@ public record OrgSyncResult(
         int departmentsScanned,
         int usersScanned,
         long elapsedMs,
-        String message) {
+        String message,
+        int accountDisabled) {
+
+    /** Legacy providers do not disable accounts; deactivated remains a teacher metric. */
+    public OrgSyncResult(
+            boolean success, int created, int updated, int deactivated, int skipped, int suspected,
+            int departmentsScanned, int usersScanned, long elapsedMs, String message) {
+        this(success, created, updated, deactivated, skipped, suspected,
+                departmentsScanned, usersScanned, elapsedMs, message, 0);
+    }
 
     public static OrgSyncResult ok(int created, int updated, int deactivated, String message) {
         return new OrgSyncResult(true, created, updated, deactivated, 0, 0, 0, 0, 0, message);

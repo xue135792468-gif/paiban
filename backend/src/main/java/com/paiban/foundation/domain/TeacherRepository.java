@@ -22,5 +22,8 @@ public interface TeacherRepository extends JpaRepository<Teacher, Long> {
 
     Optional<Teacher> findByDingtalkUserId(String dingtalkUserId);
 
+    /** Historical duplicates are possible; authentication must reject ambiguity explicitly. */
+    List<Teacher> findAllByDingtalkUserId(String dingtalkUserId);
+
     boolean existsByEmployeeNo(String employeeNo);
 }

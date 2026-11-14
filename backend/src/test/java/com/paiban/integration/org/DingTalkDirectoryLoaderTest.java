@@ -108,6 +108,32 @@ class DingTalkDirectoryLoaderTest {
     }
 
     @Test
+    void marksTheScanIncompleteWhenTheCursorDoesNotAdvance() {
+        client.clearDirectory();
+        client.addUser(1, new DingUser("u-1", "老师一", null, null, "E1"));
+        DingTalkDirectory directory = new DingTalkDirectoryLoader(
+                        new StuckCursorClient(client, false), 1)
+                .load();
+
+        assertThat(directory.complete()).isFalse();
+        assertThat(directory.incompleteReason()).contains("分页");
+        // The users that were read are still returned; only the completeness flag changes.
+        assertThat(directory.users()).extracting(DingUser::userId).contains("u-1");
+    }
+
+    @Test
+    void marksTheScanIncompleteWhenTheCursorLoopsBack() {
+        client.clearDirectory();
+        client.addUser(1, new DingUser("u-1", "老师一", null, null, "E1"));
+        DingTalkDirectory directory = new DingTalkDirectoryLoader(
+                        new StuckCursorClient(client, true), 1)
+                .load();
+
+        assertThat(directory.complete()).isFalse();
+        assertThat(directory.incompleteReason()).contains("分页");
+    }
+
+    @Test
     void skipsAnUnreadableDepartmentButKeepsTheRest() {
         client.clearDirectory();
         client.addDepartment(2, "全校教职工", 1).addDepartment(3, "食堂", 1);
@@ -129,6 +155,18 @@ class DingTalkDirectoryLoaderTest {
         client.failUserList(1, error);
 
         assertThatThrownBy(loader::load).isSameAs(error);
+    }
+
+    @Test
+    void abortsTheScanWhenAPageCarriesNoResult() {
+        client.clearDirectory();
+        DingTalkApiException incomplete =
+                DingTalkApiException.incomplete("拉取钉钉部门用户 (dept_id=1)");
+
+        assertThatThrownBy(() -> new DingTalkDirectoryLoader(
+                        new FailingClient(client, 1, incomplete), 1)
+                .load())
+                .isSameAs(incomplete);
     }
 
     @Test
@@ -213,6 +251,11 @@ class DingTalkDirectoryLoaderTest {
         }
 
         @Override
+        public DingUser getUser(String userId) {
+            return delegate.getUser(userId);
+        }
+
+        @Override
         public String exchangeAuthCode(String authCode) {
             return delegate.exchangeAuthCode(authCode);
         }
@@ -247,6 +290,90 @@ class DingTalkDirectoryLoaderTest {
         }
     }
 
+    /** Returns fixed, non-advancing cursors for the root department. */
+    private static final class StuckCursorClient implements DingTalkClient {
+
+        private final DingTalkClient delegate;
+        private final boolean loopBack;
+
+        private StuckCursorClient(DingTalkClient delegate, boolean loopBack) {
+            this.delegate = delegate;
+            this.loopBack = loopBack;
+        }
+
+        @Override
+        public DingUser getUser(String userId) {
+            return delegate.getUser(userId);
+        }
+
+        @Override
+        public String exchangeAuthCode(String authCode) {
+            return delegate.exchangeAuthCode(authCode);
+        }
+
+        @Override
+        public List<DingDepartment> listSubDepartments(long departmentId) {
+            return delegate.listSubDepartments(departmentId);
+        }
+
+        @Override
+        public DingUserPage listUsers(long departmentId, long cursor, int size) {
+            DingUserPage page = delegate.listUsers(departmentId, cursor, size);
+            if (departmentId != DingTalkDirectoryLoader.ROOT_DEPARTMENT_ID) {
+                return page;
+            }
+            long next = loopBack ? (cursor == 0 ? 1 : 0) : cursor;
+            return new DingUserPage(page.users(), true, next);
+        }
+
+        @Override
+        public boolean sendWorkNotification(String dingtalkUserId, String title, String markdown, String link) {
+            return delegate.sendWorkNotification(dingtalkUserId, title, markdown, link);
+        }
+    }
+
+    /** Fails one department's page with the supplied protocol error. */
+    private static final class FailingClient implements DingTalkClient {
+
+        private final DingTalkClient delegate;
+        private final long failingDepartment;
+        private final DingTalkApiException failure;
+
+        private FailingClient(DingTalkClient delegate, long failingDepartment, DingTalkApiException failure) {
+            this.delegate = delegate;
+            this.failingDepartment = failingDepartment;
+            this.failure = failure;
+        }
+
+        @Override
+        public DingUser getUser(String userId) {
+            return delegate.getUser(userId);
+        }
+
+        @Override
+        public String exchangeAuthCode(String authCode) {
+            return delegate.exchangeAuthCode(authCode);
+        }
+
+        @Override
+        public List<DingDepartment> listSubDepartments(long departmentId) {
+            return delegate.listSubDepartments(departmentId);
+        }
+
+        @Override
+        public DingUserPage listUsers(long departmentId, long cursor, int size) {
+            if (departmentId == failingDepartment) {
+                throw failure;
+            }
+            return delegate.listUsers(departmentId, cursor, size);
+        }
+
+        @Override
+        public boolean sendWorkNotification(String dingtalkUserId, String title, String markdown, String link) {
+            return delegate.sendWorkNotification(dingtalkUserId, title, markdown, link);
+        }
+    }
+
     /** Holds every non-root call until {@code parties} of them are inside at once. */
     private static final class BarrierClient implements DingTalkClient {
 
@@ -259,6 +386,11 @@ class DingTalkDirectoryLoaderTest {
             this.delegate = delegate;
             this.childrenBarrier = childrenBarrier;
             this.usersBarrier = usersBarrier;
+        }
+
+        @Override
+        public DingUser getUser(String userId) {
+            return delegate.getUser(userId);
         }
 
         @Override

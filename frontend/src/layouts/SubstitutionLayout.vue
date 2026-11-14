@@ -3,7 +3,7 @@
     <header class="page-head">
       <div>
         <h2>调代课</h2>
-        <p class="page-subtitle">按日期安排代课与调课，直接生效并保留记录。</p>
+        <p class="page-subtitle">教师提交的代课申请由教务审批后生效；管理员也可在调课工作台直接调整并确认，全部保留记录。</p>
       </div>
     </header>
     <PageTabs :items="tabs" />

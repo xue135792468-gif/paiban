@@ -16,7 +16,22 @@ public final class IdentityDtos {
                               boolean enabled,
                               Long teacherId,
                               List<String> roles,
-                              List<String> permissions) {}
+                              List<String> permissions,
+                              /** 票 03：PASSWORD / DINGTALK。后端总是返回有效值，前端可把缺失当 PASSWORD。 */
+                              String loginType) {
+
+        /** 旧构造器兼容：05 之前构造的 summary（含测试 fixture）一律按密码账号处理。 */
+        public UserSummary(
+                Long id,
+                String username,
+                String displayName,
+                boolean enabled,
+                Long teacherId,
+                List<String> roles,
+                List<String> permissions) {
+            this(id, username, displayName, enabled, teacherId, roles, permissions, "PASSWORD");
+        }
+    }
 
     public record LoginResponse(String token, long expiresInMinutes, UserSummary user) {}
 

@@ -43,7 +43,7 @@ class UserImportIntegrationTest extends ApiIntegrationTest {
                 List.of("用户名", "姓名", "初始密码", "角色", "教师工号"),
                 List.of(
                         List.of(usernameA, "导入甲", "secret123", "teacher", employeeNo),
-                        List.of("uimp_" + suffix + "_b", "导入乙", "secret123", "班主任", "")));
+                        List.of("uimp_" + suffix + "_b", "导入乙", "secret123", "教务管理员", "")));
 
         upload(token, "preview", file)
                 .then().statusCode(200)
@@ -59,7 +59,23 @@ class UserImportIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(200)
                 .body("find { it.username == '" + usernameA + "' }.teacherId", equalTo((int) teacherId))
                 .body("find { it.username == 'uimp_" + suffix + "_b' }.roles",
-                        org.hamcrest.Matchers.contains("head_teacher"));
+                        org.hamcrest.Matchers.contains("admin"));
+    }
+
+    @Test
+    void headTeacherIsNoLongerAnAcceptedRoleInTheImportSheet() throws IOException {
+        String token = adminToken();
+        String suffix = TestData.suffix();
+        byte[] file = ExcelFixtures.workbook(
+                List.of("用户名", "姓名", "初始密码", "角色", "教师工号"),
+                List.of(List.of("uimp_" + suffix + "_c", "旧班主任", "secret123", "班主任", "")));
+
+        // 班主任已下线（票 01）：名单里出现就按非法角色拒绝，不静默降级成老师。
+        upload(token, "preview", file)
+                .then().statusCode(200)
+                .body("validRows", equalTo(0))
+                .body("errorCount", org.hamcrest.Matchers.greaterThanOrEqualTo(1))
+                .body("errors.field", org.hamcrest.Matchers.hasItem("角色"));
     }
 
     @Test

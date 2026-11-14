@@ -88,17 +88,10 @@ class DingTalkIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void dingtalkLoginRequiresAnExistingLocalAccount() {
+    void dingtalkLoginReusesAnExistingLinkedPasswordAccount() {
         String token = adminToken();
         configure(token, true);
         as(token).when().post("/api/integrations/dingtalk/sync").then().statusCode(200);
-
-        // No local account linked to the teacher yet: rejected, never auto-provisioned.
-        io.restassured.RestAssured.given()
-                .contentType("application/json")
-                .body(Map.of("authCode", "fake:EMP001"))
-                .when().post("/api/auth/dingtalk")
-                .then().statusCode(401);
 
         Long teacherId = as(token).when().get("/api/teachers")
                 .then().statusCode(200).extract().jsonPath()

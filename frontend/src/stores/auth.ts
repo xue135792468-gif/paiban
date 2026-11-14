@@ -2,15 +2,20 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { http } from '@/api/http'
 
+export type LoginType = 'PASSWORD' | 'DINGTALK'
+
 export interface CurrentUser {
   id: number
   username: string
   displayName: string
   enabled: boolean
+  loginType?: LoginType
   teacherId?: number | null
   roles: string[]
   permissions: string[]
 }
+
+export type UserSummary = CurrentUser
 
 const TOKEN_KEY = 'paiban_token'
 const USER_KEY = 'paiban_user'

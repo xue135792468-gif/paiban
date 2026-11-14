@@ -12,11 +12,13 @@
 </template>
 
 <script setup lang="ts">
-import PageTabs, { type PageTabItem } from '@/components/layout/PageTabs.vue'
+import { computed } from 'vue'
+import PageTabs from '@/components/layout/PageTabs.vue'
+import { settingsTabs } from '@/layouts/sectionTabs'
+import { useAuthStore } from '@/stores/auth'
 
-const tabs: PageTabItem[] = [
-  { label: '设置', to: '/settings/general' },
-  { label: '账号', to: '/settings/users' },
-  { label: '最近删除', to: '/settings/recycle-bin' },
-]
+const auth = useAuthStore()
+
+// 票 01：账号页只对持「用户与角色管理」的超级管理员可见，教务管理员只有业务设置。
+const tabs = computed(() => settingsTabs((permission) => auth.hasPermission(permission)))
 </script>

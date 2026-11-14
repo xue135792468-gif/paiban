@@ -37,7 +37,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.context.ApplicationEventPublisher;
 
 /**
  * Two contracts the integration tests cannot reach on their own: publishing never
@@ -68,8 +67,6 @@ class TimetablePublishServiceTest {
     @Mock
     private PeriodRepository periods;
     @Mock
-    private ApplicationEventPublisher events;
-    @Mock
     private AuditLogRepository auditLogs;
     @Mock
     private SubstitutionRepository substitutions;
@@ -79,7 +76,7 @@ class TimetablePublishServiceTest {
     @BeforeEach
     void setUp() {
         service = new TimetablePublishService(
-                drafts, draftLessons, entries, publishes, validator, periods, events,
+                drafts, draftLessons, entries, publishes, validator, periods,
                 auditLogs, substitutions, CLOCK);
     }
 
@@ -182,7 +179,6 @@ class TimetablePublishServiceTest {
         verify(auditLogs).save(audit.capture());
         assertThat(audit.getValue().getAction()).isEqualTo("PUBLISH_TIMETABLE");
         verify(entries).saveAll(any());
-        verify(events).publishEvent(any(Object.class));
         verify(publishes, atLeastOnce()).save(any(TimetablePublish.class));
     }
 

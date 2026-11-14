@@ -3,6 +3,7 @@ package com.paiban.integration.org;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
+import com.paiban.identity.service.DingTalkBindingPolicy;
 import com.paiban.integration.domain.DingUser;
 import com.paiban.integration.org.DingTalkSyncPlan.Category;
 import com.paiban.integration.org.DingTalkSyncPlan.FieldChange;
@@ -24,19 +25,32 @@ import org.springframework.stereotype.Component;
  * only an explicit {@link DingTalkSyncDecisions.Action#MERGE} decision turns it into
  * a write. This is what keeps 47 Excel-imported teachers (no employee number, no
  * phone) from being duplicated by the first recursive sync.
+ *
+ * <p>03-C：档案关联管理员账号、且还没绑定钉钉时，key 命中和显式同名合并都不给它
+ * <b>首次</b>绑定 —— 整行 SKIP 并说明「须超级管理员在教师档案确认」，预演不宣称可补齐、
+ * 确认也不会偷写。可信的首次绑定只在超级管理员手工编辑教师档案时发生。
  */
 @Component
 public class DingTalkSyncPlanner {
 
+    /** 受保护档案被跳过时给管理员看的原因；预演与确认共用同一句话。 */
+    public static final String PROTECTED_BINDING_REASON =
+            "该教师档案关联管理员账号，须超级管理员在教师档案确认钉钉绑定";
+
     private final DingTalkTeacherMatcher matcher;
     private final TeacherRepository teachers;
     private final DingTalkMergeRules rules;
+    private final DingTalkBindingPolicy bindingPolicy;
 
     public DingTalkSyncPlanner(
-            DingTalkTeacherMatcher matcher, TeacherRepository teachers, DingTalkMergeRules rules) {
+            DingTalkTeacherMatcher matcher,
+            TeacherRepository teachers,
+            DingTalkMergeRules rules,
+            DingTalkBindingPolicy bindingPolicy) {
         this.matcher = matcher;
         this.teachers = teachers;
         this.rules = rules;
+        this.bindingPolicy = bindingPolicy;
     }
 
     public DingTalkSyncPlan plan(DingTalkDirectory directory, DingTalkSyncDecisions decisions) {
@@ -58,7 +72,9 @@ public class DingTalkSyncPlanner {
             if (matched.isPresent()) {
                 Teacher teacher = matched.get();
                 claimedTeachers.add(teacher.getId());
-                items.add(matchedItem(user, teacher));
+                items.add(protectedUnbound(teacher)
+                        ? skip(user, PROTECTED_BINDING_REASON, List.of())
+                        : matchedItem(user, teacher));
             } else {
                 unmatched.add(user);
             }
@@ -86,13 +102,20 @@ public class DingTalkSyncPlanner {
                             .orElseThrow(() -> ApiException.badRequest(
                                     "合并目标教师 " + decision.teacherId() + " 不是「" + user.name() + "」的同名候选"));
                     claimedTeachers.add(target.getId());
-                    items.add(confirmedMergeItem(user, target, candidates));
+                    items.add(protectedUnbound(target)
+                            ? skip(user, PROTECTED_BINDING_REASON, List.of())
+                            : confirmedMergeItem(user, target, candidates));
                 }
                 case CREATE -> items.add(createItem(user, plannedEmployeeNumbers));
                 case SKIP -> items.add(skip(user, "疑似同名，本次跳过", List.of()));
             }
         }
         return new DingTalkSyncPlan(items, directory.skipped(), directory.failedDepartments());
+    }
+
+    /** 03-C：还没绑定钉钉、背后却是管理员账号的档案，任何自动来源都不得首次绑定。 */
+    private boolean protectedUnbound(Teacher teacher) {
+        return bindingPolicy.requiresExplicitFirstBinding(teacher);
     }
 
     private Item matchedItem(DingUser user, Teacher teacher) {

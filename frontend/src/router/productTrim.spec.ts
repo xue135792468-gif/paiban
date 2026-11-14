@@ -88,8 +88,16 @@ describe('product trim routing', () => {
     ])
 
     const settings = mainChildren[6].children ?? []
-    // 票 03 adds the 7-day recycle bin under the settings shell.
-    expect(settings.map((route) => route.path)).toEqual(['general', 'users', 'recycle-bin'])
+    // 票 03 adds the 7-day recycle bin; 票 02 adds the account audit page.
+    expect(settings.map((route) => route.path)).toEqual([
+      'general',
+      'users',
+      'account-audit',
+      'recycle-bin',
+    ])
+    // 账号审计入口只对持有 audit:view:account 的账号开放。
+    expect(settings[2].name).toBe('account-audit')
+    expect(settings[2].meta?.permission).toBe('audit:view:account')
   })
 
   it('redirects every legacy entry to its new home', async () => {

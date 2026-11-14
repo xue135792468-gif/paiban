@@ -17,15 +17,20 @@ public record DingTalkSyncPreview(
         int failedDepartments,
         long elapsedMs,
         List<DingDepartment> skippedDepartmentDetails,
-        DingTalkSyncPlan plan) {
+        DingTalkSyncPlan plan,
+        boolean scanComplete,
+        String deactivationWarning,
+        List<DingTalkDeactivationPlanner.Candidate> deactivations) {
 
     public DingTalkSyncPreview {
         skippedDepartmentDetails =
                 skippedDepartmentDetails == null ? List.of() : List.copyOf(skippedDepartmentDetails);
         plan = plan == null ? new DingTalkSyncPlan(List.of(), List.of(), 0) : plan;
+        deactivations = deactivations == null ? List.of() : List.copyOf(deactivations);
     }
 
     public static DingTalkSyncPreview failed(String message) {
-        return new DingTalkSyncPreview(false, message, 0, 0, 0, 0, 0, List.of(), null);
+        return new DingTalkSyncPreview(
+                false, message, 0, 0, 0, 0, 0, List.of(), null, false, message, List.of());
     }
 }
