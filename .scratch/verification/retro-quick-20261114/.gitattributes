@@ -1,0 +1,3 @@
+# Verification receipts are byte-exact evidence.
+# '-text' disables EOL conversion so CRLF/LF survive add/commit/checkout.
+* -text whitespace=cr-at-eol

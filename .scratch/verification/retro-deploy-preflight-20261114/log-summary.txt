@@ -1,0 +1,13 @@
+# metadata-only log digest; the raw log stays local and is never archived
+# no log text is stored here, only counts and hashes
+LOG_RAW=.runtime/verification/retro-deploy-preflight-20261114/verify.log
+LOG_BYTES=154
+LOG_SHA256=780355eb63e2d313ac8db60fb735870eecb01f8d41c937b10f7308563721d30f
+LOG_LINES_TOTAL=2
+LOG_EMPTY=0
+LOG_LINES_WITH_BUILD_FAILURE=0
+LOG_LINES_WITH_TESTS_RUN=0
+LOG_LINES_WITH_ERROR=0
+LOG_LINES_WITH_SKIPPED=0
+LOG_LINES_WITH_VERIFY_OK=0
+LOG_EXCERPT=redacted-by-design
