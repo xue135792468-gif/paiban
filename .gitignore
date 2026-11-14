@@ -11,6 +11,7 @@ node_modules/
 .tools/
 
 # runtime data
+.runtime/
 data/
 *.db
 *.mv.db
@@ -20,6 +21,8 @@ logs/
 uploads/
 
 # test artifacts
+__pycache__/
+*.pyc
 test-results/
 playwright-report/
 blob-report/

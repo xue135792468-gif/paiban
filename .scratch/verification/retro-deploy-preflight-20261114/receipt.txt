@@ -1,0 +1,38 @@
+# Verification run receipt (schema 1).
+# The archived bytes are authoritative; see receipt-SHA256SUMS.txt.
+# A recorded non-zero command exit or source drift is preserved history,
+# not a damaged receipt. Integrity here is not a claim that the gate passed.
+RECEIPT_SCHEMA=1
+RECEIPT_TOOL=scripts/verification_receipts.py
+RUN_ID=retro-deploy-preflight-20261114
+MODE=deploy
+MODE_FLAG=--deploy
+COMMAND=bash scripts/verify.sh --deploy
+ROOT=.
+START_UTC=2026-11-13T17:23:41Z
+END_UTC=2026-11-13T17:23:41Z
+HEAD_BEFORE=4af564686f1c3420790008b169b487947f7266b1
+HEAD_AFTER=4af564686f1c3420790008b169b487947f7266b1
+HEAD_IDENTICAL=1
+SOURCE_SCOPE=backend frontend scripts .githooks
+SOURCE_FILES=1076
+SOURCE_BEFORE=source-before.txt
+SOURCE_AFTER=source-after.txt
+SOURCE_BEFORE_SHA256=009cc30f7480454553f4475fdf0f87089dc10edf1fe3c53d48cbc6ca6e5430f2
+SOURCE_AFTER_SHA256=ff5e058b4ed148dbfc123c6a331e5b2bcf783abdef7502f9508a7d54d3746a0c
+SOURCE_IDENTICAL=1
+SOURCE_DRIFT_FILES=0
+SOURCE_DRIFT_SAMPLE=
+SOURCE_DRIFT_MISSING=0
+SOURCE_DRIFT_UNTRACKED=0
+COMMAND_EXIT_CODE=1
+TOOL_EXIT_CODE=1
+LOG_RAW=.runtime/verification/retro-deploy-preflight-20261114/verify.log
+LOG_BYTES=154
+LOG_SHA256=780355eb63e2d313ac8db60fb735870eecb01f8d41c937b10f7308563721d30f
+LOG_LINES_TOTAL=2
+LOG_SUMMARY=log-summary.txt
+LOG_SUMMARY_KIND=metadata-only
+ARCHIVE_FILES=5
+CHECKSUM_TABLE=receipt-SHA256SUMS.txt
+NOTES=raw verify.log stays local and is never archived; the archive keeps a metadata-only log digest plus source snapshots; skipped steps (for example real PostgreSQL) are only what scripts/verify.sh printed
