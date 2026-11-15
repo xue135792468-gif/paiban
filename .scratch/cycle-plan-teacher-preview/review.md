@@ -96,3 +96,5 @@ Standards 的少量重复姓名/星期文案、类选择器等判断建议本轮
 PR #32 首次 run `43676022144`：backend、frontend、deploy-scripts 通过，e2e 失败。失败不是教师预览用例；本功能场景在 CI 通过。唯一失败是 `lifecycle.spec.ts:73` 全页查找「新建授课任务」时命中顶部工具栏与空状态卡两个按钮，Playwright strict mode 拒绝点击。该文件和产品页面均不在原功能 diff 中；同文件本地原样运行 2/2 通过，说明有加载时序差异，不能据此声称原断言必然失败。
 
 主控按 `CODING_STANDARDS.md:35` 的容器作用域要求，仅把按钮定位限定到 `.toolbar`；教师选择器仍原样断言已停用教师不可选，不新增等待、不放宽断言、不跳过、不改业务代码。修正后 `lifecycle.spec.ts --repeat-each=2` 实际 4/4 通过。原 CI 失败保留，不作为原功能门禁通过证据；整改后的冻结门禁另存新收据。
+
+这一行整改由两位 worker 分别只读复核：Standards 硬性违反 0、无新增判断建议，容器定位符合规范且单次点击不需新增公共 helper；Spec 缺失/范围扩张/逻辑错误均 0，停用教师不出现在选择器的核心断言原样保留。修正提交 `cdd2b7e` 的第二轮完整冻结门禁退出 0，收据为 `cycle-teacher-preview-ci-fix`，统计与边界见 delivery.md。

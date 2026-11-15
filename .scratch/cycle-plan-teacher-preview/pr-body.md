@@ -21,12 +21,12 @@
 
 - **Before:** 教师姓名只是文字；只能阅读方案中的移动列表。
   **After:** 真实 Playwright 点击路径「联动方案点教师姓名看课表」连续两次独立执行，均 `1 passed / 0 failed`，覆盖桌面/390×844 窄屏、教师/模式切换、返回与零写请求。
-- **冻结完整门禁：** `bash scripts/verify-run.sh cycle-teacher-preview-final --full` 退出 **0**，绑定 `587184c407968fb78b9c467439a480116b5c2d50`；源码前后一致、归档收据有效。
+- **冻结完整门禁：** `bash scripts/verify-run.sh cycle-teacher-preview-ci-fix --full` 退出 **0**，绑定 `cdd2b7ec97696bc116c51a7034d16a30cace7969`；源码前后一致、归档收据有效。
   - 前端 lint、build、typecheck 通过；Vitest **107 文件 / 826 项通过**。
   - 后端 **1265 项，0 失败 / 0 错误 / 7 跳过**。
   - Playwright **156 项通过**。
-- **复审：** 固定 `c27af84` 至最终产品源码 `0502c13` 的独立 Standards/Spec 增量复审无阻塞项；帮助文档已同步整组不投影。
-- 本机无 Docker，未跑 `--deploy`；真实 PostgreSQL 容器测试由 PR CI 执行。未做手机真机验收；390px 浏览器视口测试已通过。
+- **复审：** 固定 `c27af84` 至最终产品源码 `0502c13` 的独立 Standards/Spec 增量复审无阻塞项；帮助文档已同步整组不投影。CI 首轮暴露的一处旧生命周期用例同名按钮定位歧义已限定到工具栏，重复运行 4/4 通过，原业务断言未删。
+- 本机无 Docker，未跑 `--deploy`；首轮 PR CI 已实际跑通真实 PostgreSQL `PostgresContainerIT`（1/1）。未做手机真机验收；390px 浏览器视口测试已通过。
 
 ## Merge Danger
 

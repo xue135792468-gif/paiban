@@ -1,0 +1,14 @@
+# metadata-only log digest; the raw log stays local and is never archived
+# no log text is stored here, only counts and hashes
+LOG_RAW=.runtime/verification/cycle-teacher-preview-ci-fix/verify.log
+LOG_BYTES=1271932
+LOG_SHA256=bb0a4c5b66493ddc386920cf91cb24c5e77eac9b1de44a8c2999cb0fce58d287
+LOG_LINES_TOTAL=7427
+LOG_EMPTY=0
+LOG_LINES_WITH_BUILD_FAILURE=0
+LOG_LINES_WITH_TESTS_RUN=167
+LOG_LINES_WITH_ERROR=12
+LOG_LINES_WITH_VERIFY_OK=1
+LOG_LINES_WITH_SKIPPED=168
+POSTGRES_CONTAINER_SIGNAL=skipped-no-docker
+LOG_EXCERPT=redacted-by-design

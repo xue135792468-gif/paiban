@@ -41,7 +41,11 @@ Qwen 执行，主控未复跑前端检查；最终 lint/build/unit 的 native �
 - 收据 `cycle-teacher-preview-final`：HEAD 前后一致；源范围 1079 个 tracked 文件前后字节一致，drift/missing/untracked 均 0；归档有效，工具退出 0。
 - 原始日志留在 `.runtime/verification/cycle-teacher-preview-final/verify.log`；归档收据在 `.scratch/verification/cycle-teacher-preview-final/`。
 
-PR/CI 尚待执行。未自动合并、部署或操作生产数据；手机真机和最终视觉观感仍由用户验收。
+PR #32 首轮 CI run `43676022144` 的 backend / frontend / deploy-scripts 均通过，其中真实 PostgreSQL `PostgresContainerIT` **1/1 通过**；E2E 155 通过、1 失败，失败为 `lifecycle.spec.ts` 的同名按钮定位歧义，本功能用例已通过。主控将旧用例定位限定到 `.toolbar`，保留停用教师不可选的原断言；定向重复运行 4/4 通过，双轴复核均无问题，细节见 review.md。
+
+随后对修正提交 `cdd2b7ec97696bc116c51a7034d16a30cace7969` 再跑 `verify-run cycle-teacher-preview-ci-fix --full`：**退出 0**，前端 826、后端 1265（7 跳过）、Playwright 156 通过；源码前后一致、收据有效。最新原始日志在 `.runtime/verification/cycle-teacher-preview-ci-fix/verify.log`，归档在 `.scratch/verification/cycle-teacher-preview-ci-fix/`。两份收据均保留，不用较早版本冒充最新版本。
+
+PR/CI 尚待最终更新与通过。未自动合并、部署或操作生产数据；手机真机和最终视觉观感仍由用户验收。
 
 worker 报告临时调试 spec 已删除，无本轮启动的常驻进程；忽略的 frontend/dist 为构建产物，保留。主仓库原有 AGENTS.md 与其他任务现场未纳入本分支。
 
