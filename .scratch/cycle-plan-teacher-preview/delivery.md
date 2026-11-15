@@ -1,6 +1,6 @@
 # 教师课表预览实现交付
 
-用户接受原型 75961c6 后，正式施工保存在 codex/cycle-teacher-preview。基点 c27af84f449df5d572d6f2bdd9757799652e43c9，源码候选 0e625e9d7db4706bbdda4c90996a259927772e18。未推送、合并或部署。
+用户接受原型 75961c6 后，正式施工保存在 codex/cycle-teacher-preview。基点 c27af84f449df5d572d6f2bdd9757799652e43c9，首轮源码 0e625e9d7db4706bbdda4c90996a259927772e18；整改后的最终产品源码为 0502c137fe7997c4fd6f40b698c4ab6b5d6f8488，文档/验证收口提交为 587184c407968fb78b9c467439a480116b5c2d50。尚未推送、合并或部署。
 
 ## 实现
 
@@ -29,9 +29,19 @@ Qwen 执行，主控未复跑前端检查；最终 lint/build/unit 的 native �
 
 2026-11-15 已由 worker 在 Chromium 实际执行 `bash scripts/e2e.sh e2e/draft-drag.spec.ts -g "联动方案点教师姓名看课表"` 两次，均 **1 passed / 0 failed / 退出 0**；分别耗时 1.1 分钟、34.2 秒，使用隔离端口和 H2 内存库。用例覆盖点姓名、默认应用后、切当前安排、换教师、桌面关闭、390×844 窄屏返回与零写请求，并复核草稿未变。主控核对原始日志及退出码；完整日志保留在本工作树 `.runtime/cycle-teacher-preview/run1.log`、`run2.log`。没有修改断言、超时或跳过用例。
 
-以上是这条桌面/手机尺寸浏览器用例的通过证据，**不是手机真机、视觉观感或全部 Playwright 场景的验收**。E2E 不在 tsconfig.app 覆盖内，显式 ESLint 探查曾输出布尔 True 而非可绑定的数字退出码，因此不额外宣称其已获独立静态门禁证明。完整冻结门禁及 CI 待执行，结果以收据与交付更新为准。
+目标用例的桌面/手机尺寸浏览器证据不等于手机真机或视觉观感验收；全量 Playwright 另由下列冻结门禁覆盖。E2E 不在 tsconfig.app 覆盖内，显式 ESLint 探查曾输出布尔 True 而非可绑定的数字退出码，因此不额外宣称其已获独立静态门禁证明。
 
-本机无 Docker，未运行要求真实 PostgreSQL 容器的 `--deploy`；这不阻止普通 H2 `--full`。本轮未改后端，但发布前仍执行项目完整门禁。未自动合并、部署或操作生产数据。
+## 2026-11-15 冻结完整门禁
+
+`VITEST_MAX_WORKERS=4 bash scripts/verify-run.sh cycle-teacher-preview-final --full` **退出 0**，绑定 `587184c407968fb78b9c467439a480116b5c2d50`；实际命令 `bash scripts/verify.sh --full`，从 11:25:33 至 12:12:01（本地时间）。
+
+- 前端 lint、build、typecheck、仓库级检查均通过；Vitest **107 文件 / 826 项通过**。
+- 后端 `mvnw verify` **1265 项，0 失败 / 0 错误 / 7 跳过**，`BUILD SUCCESS`。本机无 Docker，真实 PostgreSQL 容器测试按既有规则留给 CI；未声称 `--deploy` 已跑。
+- Playwright **156 项通过，0 失败**，耗时 18.7 分钟。
+- 收据 `cycle-teacher-preview-final`：HEAD 前后一致；源范围 1079 个 tracked 文件前后字节一致，drift/missing/untracked 均 0；归档有效，工具退出 0。
+- 原始日志留在 `.runtime/verification/cycle-teacher-preview-final/verify.log`；归档收据在 `.scratch/verification/cycle-teacher-preview-final/`。
+
+PR/CI 尚待执行。未自动合并、部署或操作生产数据；手机真机和最终视觉观感仍由用户验收。
 
 worker 报告临时调试 spec 已删除，无本轮启动的常驻进程；忽略的 frontend/dist 为构建产物，保留。主仓库原有 AGENTS.md 与其他任务现场未纳入本分支。
 

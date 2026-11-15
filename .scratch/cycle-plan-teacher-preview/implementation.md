@@ -2,7 +2,7 @@
 
 Status: implemented
 
-当前为本地实现完成、待用户前端体验及发布门禁；不是已合并或部署。首轮 0e625e9 的四项确认问题已集中整改，最终检查与边界见 delivery.md，原始复查及处置见 review.md。
+当前为本地实现及完整 `--full` 门禁完成，待 PR/CI 与用户最终前端体验；不是已合并或部署。首轮 0e625e9 的四项确认问题已集中整改，最终源码为 0502c13；检查与边界见 delivery.md，原始复查及两轮独立复审见 review.md。
 
 用户已体验并接受原型，要求先按原型推进正式实现。原型参考：分支 codex/prototype-cycle-teacher-preview，提交 75961c6，frontend/src/components/draft/prototype-teacher-preview/index.html。可从相邻工作树只读查看，不复制静态原型进入生产。
 

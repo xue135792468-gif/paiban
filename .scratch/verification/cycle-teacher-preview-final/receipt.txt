@@ -1,0 +1,38 @@
+# Verification run receipt (schema 1).
+# The archived bytes are authoritative; see receipt-SHA256SUMS.txt.
+# A recorded non-zero command exit or source drift is preserved history,
+# not a damaged receipt. Integrity here is not a claim that the gate passed.
+RECEIPT_SCHEMA=1
+RECEIPT_TOOL=scripts/verification_receipts.py
+RUN_ID=cycle-teacher-preview-final
+MODE=full
+MODE_FLAG=--full
+COMMAND=bash scripts/verify.sh --full
+ROOT=.
+START_UTC=2026-11-15T03:25:33Z
+END_UTC=2026-11-15T04:12:01Z
+HEAD_BEFORE=587184c407968fb78b9c467439a480116b5c2d50
+HEAD_AFTER=587184c407968fb78b9c467439a480116b5c2d50
+HEAD_IDENTICAL=1
+SOURCE_SCOPE=backend frontend scripts .githooks
+SOURCE_FILES=1079
+SOURCE_BEFORE=source-before.txt
+SOURCE_AFTER=source-after.txt
+SOURCE_BEFORE_SHA256=63e9521f8bce62ad3e421d7e173c9d2a22b33139347c9ba6f7b464a43ed83560
+SOURCE_AFTER_SHA256=0cb053c53479894c50fe854e1fe9b60198b80cc0f701454ab01db4ab21549929
+SOURCE_IDENTICAL=1
+SOURCE_DRIFT_FILES=0
+SOURCE_DRIFT_SAMPLE=
+SOURCE_DRIFT_MISSING=0
+SOURCE_DRIFT_UNTRACKED=0
+COMMAND_EXIT_CODE=0
+TOOL_EXIT_CODE=0
+LOG_RAW=.runtime/verification/cycle-teacher-preview-final/verify.log
+LOG_BYTES=1273565
+LOG_SHA256=a2bb2c7766cf8961d205b300b35afa6bc2929f38bc55c8c855513ff7a065ee36
+LOG_LINES_TOTAL=7442
+LOG_SUMMARY=log-summary.txt
+LOG_SUMMARY_KIND=metadata-only
+ARCHIVE_FILES=5
+CHECKSUM_TABLE=receipt-SHA256SUMS.txt
+NOTES=raw verify.log stays local and is never archived; the archive keeps a metadata-only log digest plus source snapshots; skipped steps (for example real PostgreSQL) are only what scripts/verify.sh printed
