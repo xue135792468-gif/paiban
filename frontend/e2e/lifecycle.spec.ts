@@ -70,7 +70,7 @@ test.describe('删除 / 停用 / 最近删除', () => {
 
     // Ticket 03 acceptance: a disabled teacher must not be offered in a picker.
     await page.goto('/data/assignments')
-    await page.getByRole('button', { name: '新建授课任务' }).click()
+    await page.locator('.toolbar').getByRole('button', { name: '新建授课任务' }).click()
     const assignmentDialog = page.locator('.el-dialog').filter({ hasText: '新建授课任务' })
     await assignmentDialog.getByRole('combobox', { name: '* 教师' }).click()
     await expect(
