@@ -150,7 +150,7 @@
       :message="plansMessage"
       :plans="plans"
       :lessons="detail?.lessons ?? []"
-      :periods="detail?.periods ?? []"
+      :periods="detail?.periods ?? []" :courses="courses"
       :applying="planApplying"
       @apply="onApplyPlan"
       @cancel="closePlans"
