@@ -26,7 +26,7 @@
   - 后端 **1265 项，0 失败 / 0 错误 / 7 跳过**。
   - Playwright **156 项通过**。
 - **复审：** 固定 `c27af84` 至最终产品源码 `0502c13` 的独立 Standards/Spec 增量复审无阻塞项；帮助文档已同步整组不投影。CI 首轮暴露的一处旧生命周期用例同名按钮定位歧义已限定到工具栏，重复运行 4/4 通过，原业务断言未删。
-- 本机无 Docker，未跑 `--deploy`；首轮 PR CI 已实际跑通真实 PostgreSQL `PostgresContainerIT`（1/1）。未做手机真机验收；390px 浏览器视口测试已通过。
+- 本机无 Docker，未跑 `--deploy`；首轮 PR CI 已实际跑通真实 PostgreSQL `PostgresContainerIT`（1/1）。最终 run `43681565888` 的 backend / frontend / e2e / deploy-scripts 四 job 全部通过。未做手机真机验收；390px 浏览器视口测试已通过。
 
 ## Merge Danger
 
