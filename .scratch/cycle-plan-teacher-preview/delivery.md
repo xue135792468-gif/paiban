@@ -1,6 +1,6 @@
 # 教师课表预览实现交付
 
-用户接受原型 75961c6 后，正式施工保存在 codex/cycle-teacher-preview。基点 c27af84f449df5d572d6f2bdd9757799652e43c9，首轮源码 0e625e9d7db4706bbdda4c90996a259927772e18；整改后的最终产品源码为 0502c137fe7997c4fd6f40b698c4ab6b5d6f8488。最终 PR 提交为 `91656df45943fca619caf76ed529d5c4754765de`，已推送并创建 [PR #32](https://github.com/xue135792468-gif/paiban/pull/32)；尚未合并或部署。
+用户接受原型 75961c6 后，正式施工保存在 codex/cycle-teacher-preview。基点 c27af84f449df5d572d6f2bdd9757799652e43c9，首轮源码 0e625e9d7db4706bbdda4c90996a259927772e18；整改后的最终产品源码为 0502c137fe7997c4fd6f40b698c4ab6b5d6f8488。最终 PR 提交为 `fd56ba98abc64a58fa3e8c4b43c790a69c74adf3`，已推送并创建 [PR #32](https://github.com/xue135792468-gif/paiban/pull/32)；尚未合并或部署。
 
 ## 实现
 
@@ -45,7 +45,9 @@ PR #32 首轮 CI run `43676022144` 的 backend / frontend / deploy-scripts 均�
 
 随后对修正提交 `cdd2b7ec97696bc116c51a7034d16a30cace7969` 再跑 `verify-run cycle-teacher-preview-ci-fix --full`：**退出 0**，前端 826、后端 1265（7 跳过）、Playwright 156 通过；源码前后一致、收据有效。最新原始日志在 `.runtime/verification/cycle-teacher-preview-ci-fix/verify.log`，归档在 `.scratch/verification/cycle-teacher-preview-ci-fix/`。两份收据均保留，不用较早版本冒充最新版本。
 
-最终 PR run `43681565888` 在 `91656df45943fca619caf76ed529d5c4754765de` 上 **backend / frontend / e2e / deploy-scripts 四 job 全部通过**，PR 为 OPEN 且可合并。未自动合并、部署或操作生产数据；手机真机和最终视觉观感仍由用户验收。
+最终 PR run `43683100205` 在 `fd56ba98abc64a58fa3e8c4b43c790a69c74adf3` 上 **backend / frontend / e2e / deploy-scripts 四 job 全部通过**。补充真实浏览器逐步截图、控制台零错误、零写请求及锁定后整组不投影证据见 [prove-it.md](prove-it.md) 和 [acceptance/](acceptance/)。截图来自临时证据脚本，不能从已提交测试套件复跑；脚本已撤回，正式源码保持 CI 验收版本。
+
+未自动合并、部署或操作生产数据；手机真机和最终视觉观感仍由用户验收。
 
 worker 报告临时调试 spec 已删除，无本轮启动的常驻进程；忽略的 frontend/dist 为构建产物，保留。主仓库原有 AGENTS.md 与其他任务现场未纳入本分支。
 

@@ -26,7 +26,7 @@
   - 后端 **1265 项，0 失败 / 0 错误 / 7 跳过**。
   - Playwright **156 项通过**。
 - **复审：** 固定 `c27af84` 至最终产品源码 `0502c13` 的独立 Standards/Spec 增量复审无阻塞项；帮助文档已同步整组不投影。CI 首轮暴露的一处旧生命周期用例同名按钮定位歧义已限定到工具栏，重复运行 4/4 通过，原业务断言未删。
-- 本机无 Docker，未跑 `--deploy`；首轮 PR CI 已实际跑通真实 PostgreSQL `PostgresContainerIT`（1/1）。最终 run `43681565888` 的 backend / frontend / e2e / deploy-scripts 四 job 全部通过。未做手机真机验收；390px 浏览器视口测试已通过。
+- 本机无 Docker，未跑 `--deploy`；首轮 PR CI 已实际跑通真实 PostgreSQL `PostgresContainerIT`（1/1）。最终 run `43683100205` 的 backend / frontend / e2e / deploy-scripts 四 job 全部通过。真实浏览器逐步截图、零写请求与锁定后整组拒绝投影见交付目录的 `prove-it.md` / `acceptance/`；这些截图由临时证据脚本生成，正式测试套件仍以已提交 CI 用例为准。未做手机真机验收；390px 浏览器视口测试已通过。
 
 ## Merge Danger
 
@@ -36,4 +36,4 @@
 
 **Blast Radius:** 草稿联动方案面板与复用的 DraftGrid 显示属性
 
-新增 DraftGrid 属性均为可选、默认空；原 apply/cancel 与确认链路不变。窄屏滚动/全屏布局已通过 Chromium 视口回归，最终手机观感仍由用户验收。
+新增 DraftGrid 属性均为可选、默认空；原 apply/cancel 与确认链路不变。390×844 Chromium 视口已通过全屏、返回和零写入回归；滚动位置恢复有组件级回归，真实手机滚动与观感仍由用户验收。
