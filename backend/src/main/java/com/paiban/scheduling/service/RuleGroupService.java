@@ -7,6 +7,7 @@ import com.paiban.common.deletion.DeletionRestoreHandler;
 import com.paiban.common.deletion.RecentDeletion;
 import com.paiban.common.deletion.RecentDeletionWriter;
 import com.paiban.common.event.PeriodsChangedEvent;
+import com.paiban.common.event.SchoolDataWriteLock;
 import com.paiban.common.event.SemesterCreatedEvent;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.Course;
@@ -88,6 +89,7 @@ public class RuleGroupService implements DeletionRestoreHandler {
     private final RecentDeletionWriter deletionWriter;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final SchoolDataWriteLock schoolDataLock;
 
     public RuleGroupService(
             RuleGroupRepository groups,
@@ -101,7 +103,8 @@ public class RuleGroupService implements DeletionRestoreHandler {
             RuleLifecycleService ruleLifecycle,
             RecentDeletionWriter deletionWriter,
             ObjectMapper objectMapper,
-            Clock clock) {
+            Clock clock, SchoolDataWriteLock schoolDataLock) {
+        this.schoolDataLock = schoolDataLock;
         this.groups = groups;
         this.members = members;
         this.teachers = teachers;
@@ -277,6 +280,9 @@ public class RuleGroupService implements DeletionRestoreHandler {
     @Transactional
     public RuleGroupDto create(RuleGroupRequest request) {
         RuleGroupType type = parseType(request == null ? null : request.type());
+        if (type == RuleGroupType.TEACHER) {
+            schoolDataLock.acquire();
+        }
         String name = normalizeName(request.name());
         Long semesterId = normalizeSemester(type, request.semesterId());
         List<MemberSpec> specs = validateMembers(
@@ -306,12 +312,13 @@ public class RuleGroupService implements DeletionRestoreHandler {
 
     @Transactional
     public RuleGroupDto update(Long id, RuleGroupRequest request) {
+        schoolDataLock.acquire();
         RuleGroup group = requireLive(id);
         RuleGroupType requestedType = parseType(request == null ? null : request.type());
         if (requestedType != group.getGroupType()) {
             throw ApiException.badRequest("分组类型不可修改");
         }
-        String name = normalizeName(request.name());
+        String name = group.getName().equals(request.name()) ? group.getName() : normalizeName(request.name());
         String liveKey = liveKey(group.getGroupType(), name, group.getSemesterId());
         RuleGroup occupant = groups.findByLiveKey(liveKey).orElse(null);
         if (occupant != null && !occupant.getId().equals(group.getId())) {
@@ -389,6 +396,7 @@ public class RuleGroupService implements DeletionRestoreHandler {
 
     @Transactional
     public Map<String, Object> delete(Long id, String mode) {
+        schoolDataLock.acquire();
         RuleGroup group = requireLive(id);
         String resolvedMode = parseMode(mode);
         List<RuleGroupReferenceDto> references = referencesOf(id);

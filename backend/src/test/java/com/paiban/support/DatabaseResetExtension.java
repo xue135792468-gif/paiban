@@ -26,7 +26,7 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
 public class DatabaseResetExtension implements BeforeEachCallback {
 
     private static final Set<String> KEEP = Set.of(
-            "flyway_schema_history", "app_user", "role", "permission", "user_role", "role_permission");
+            "flyway_schema_history", "school_data_write_lock", "app_user", "role", "permission", "user_role", "role_permission");
 
     @Override
     public void beforeEach(ExtensionContext context) {

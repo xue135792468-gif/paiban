@@ -16,6 +16,7 @@ const courses = [
     allowConsecutive: false,
     color: '#4F6EF7',
     active: true,
+    weeklyHours: null,
   },
   {
     id: 10,
@@ -24,6 +25,7 @@ const courses = [
     allowConsecutive: true,
     color: '#10B981',
     active: true,
+    weeklyHours: 5,
   },
 ]
 
@@ -107,4 +109,28 @@ describe('CoursesView: course group suffix and filter', () => {
     expect(wrapper.text()).toContain('数学')
     wrapper.unmount()
   })
+})
+
+it('shows and clears the course default weekly hours through the edit form', async () => {
+  const wrapper = await mountView()
+  httpMock.put.mockResolvedValue({ data: {} })
+  const math = wrapper.findAll('tr').find((row) => row.text().includes('数学'))
+  expect(math?.text()).toContain('5')
+  expect(wrapper.text()).toContain('周课时数')
+  const edit = math?.findAll('button').find((button) => button.text() === '编辑')
+  if (!edit) throw new Error('找不到数学课程的编辑按钮')
+  await edit.trigger('click')
+  await flushPromises()
+  const input = document.body.querySelector<HTMLInputElement>('[role="dialog"] input[inputmode="numeric"]')
+  const dialog = input?.closest('[role="dialog"]')
+  expect(input?.value).toBe('5')
+  if (!input) throw new Error('周课时数输入框未渲染')
+  input.value = ''
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushPromises()
+  const save = [...(dialog?.querySelectorAll('button') ?? [])].find((button) => button.textContent?.trim() === '保存')
+  save?.click()
+  await flushPromises()
+  expect(httpMock.put).toHaveBeenCalledWith('/courses/10', expect.objectContaining({ weeklyHours: null }))
+  wrapper.unmount()
 })

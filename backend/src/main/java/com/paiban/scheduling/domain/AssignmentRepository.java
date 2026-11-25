@@ -15,6 +15,8 @@ public interface AssignmentRepository extends JpaRepository<Assignment, Long> {
      */
     List<Assignment> findBySemesterId(Long semesterId);
 
+    List<Assignment> findBySemesterIdAndRecycleSlotIsNotNull(Long semesterId);
+
     /**
      * Solver / import / capacity / snapshot: soft-deleted assignments and deliberately
      * disabled ones never reach the timetable.
@@ -42,8 +44,11 @@ public interface AssignmentRepository extends JpaRepository<Assignment, Long> {
      * database unique key still covers them, so excluding them here would turn the
      * duplicate into a raw constraint violation instead of a 409.
      */
+    @Query("select a from Assignment a where a.semesterId = :semesterId "
+            + "and a.teachingClassId = :teachingClassId and a.courseId = :courseId and a.recycleSlot is not null")
     Optional<Assignment> findBySemesterIdAndTeachingClassIdAndCourseId(
-            Long semesterId, Long teachingClassId, Long courseId);
+            @Param("semesterId") Long semesterId, @Param("teachingClassId") Long teachingClassId,
+            @Param("courseId") Long courseId);
 
     @Query("select count(a) from Assignment a where a.semesterId = :semesterId "
             + "and a.deletedAt is null and a.active = true")

@@ -60,6 +60,9 @@
             <span>{{ row.subject || '—' }}</span>
           </template>
         </el-table-column>
+        <el-table-column prop="weeklyHours" label="周课时数" width="100">
+          <template #default="{ row }">{{ row.weeklyHours ?? '—' }}</template>
+        </el-table-column>
         <el-table-column prop="allowConsecutive" label="允许连堂" width="110">
           <template #default="{ row }">
             <el-tag :type="row.allowConsecutive ? 'success' : 'info'" size="small">
@@ -109,6 +112,9 @@
         </el-form-item>
         <el-form-item label="所属学科" prop="subject">
           <el-input v-model="form.subject" placeholder="如：理科、文科、综合（选填）" />
+        </el-form-item>
+        <el-form-item label="周课时数" prop="weeklyHours">
+          <el-input v-model="form.weeklyHours" inputmode="numeric" clearable placeholder="1–20（选填）" />
         </el-form-item>
         <el-form-item prop="allowConsecutive">
           <template #label>
@@ -171,6 +177,7 @@ interface Course {
   allowConsecutive: boolean
   color?: string | null
   active?: boolean
+  weeklyHours?: number | null
 }
 
 const predefineColors = [
@@ -230,12 +237,14 @@ const defaultForm = {
   name: '',
   subject: '',
   allowConsecutive: false,
+  weeklyHours: '',
   color: '#4F6EF7',
 }
 
 const form = reactive({ ...defaultForm })
 
 const rules: FormRules = {
+  weeklyHours: [{ pattern: /^(?:[1-9]|1[0-9]|20)?$/, message: '请输入 1–20 的整数', trigger: 'blur' }],
   name: [{ required: true, message: '请输入课程名称', trigger: 'blur' }],
 }
 
@@ -264,6 +273,7 @@ function openEdit(row: Course) {
     name: row.name,
     subject: row.subject ?? '',
     allowConsecutive: Boolean(row.allowConsecutive),
+    weeklyHours: String(row.weeklyHours ?? ''),
     color: row.color ?? '#4F6EF7',
   })
   dialogVisible.value = true
@@ -272,13 +282,14 @@ function openEdit(row: Course) {
 
 async function submit() {
   if (!formRef.value) return
-  await formRef.value.validate()
+  if (!(await formRef.value.validate().catch(() => false))) return
   saving.value = true
   try {
     const payload = {
       name: form.name.trim(),
       subject: form.subject.trim() || null,
       allowConsecutive: form.allowConsecutive,
+      weeklyHours: form.weeklyHours === '' ? null : Number(form.weeklyHours),
       color: form.color.trim() || null,
     }
     if (editingId.value) {

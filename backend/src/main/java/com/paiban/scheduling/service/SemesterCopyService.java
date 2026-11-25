@@ -1,5 +1,6 @@
 package com.paiban.scheduling.service;
 
+import com.paiban.common.event.SchoolDataWriteLock;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.AdminClass;
 import com.paiban.foundation.domain.AdminClassRepository;
@@ -40,6 +41,7 @@ public class SemesterCopyService {
     private final GradeRepository grades;
     private final AdminClassRepository adminClasses;
     private final AssignmentRepository assignmentRepository;
+    private final SchoolDataWriteLock schoolDataLock;
 
     public SemesterCopyService(
             SemesterService semesters,
@@ -48,7 +50,9 @@ public class SemesterCopyService {
             PeriodRepository periods,
             GradeRepository grades,
             AdminClassRepository adminClasses,
-            AssignmentRepository assignmentRepository) {
+            AssignmentRepository assignmentRepository,
+            SchoolDataWriteLock schoolDataLock) {
+        this.schoolDataLock = schoolDataLock;
         this.semesters = semesters;
         this.foundation = foundation;
         this.assignments = assignments;
@@ -63,6 +67,8 @@ public class SemesterCopyService {
         if (sourceId.equals(targetId)) {
             throw ApiException.badRequest("不能从同一学期复制");
         }
+        // Acquire the roster lock before replacePeriods locks the target semester.
+        schoolDataLock.acquire();
         semesters.require(sourceId);
         semesters.require(targetId);
 

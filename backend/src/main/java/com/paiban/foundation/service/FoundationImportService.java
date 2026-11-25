@@ -60,7 +60,8 @@ public class FoundationImportService {
                 new Column("课程名称", true, 100),
                 new Column("学科", false, 100),
                 new Column("是否允许连堂", false, 10),
-                new Column("颜色", false, 20))));
+                new Column("颜色", false, 20),
+                new Column("周课时数", false, 10))));
         SPECS.put("grades", new Spec("grades", "年级", List.of(
                 new Column("年级名称", true, 100),
                 new Column("排序", false, 10))));
@@ -118,7 +119,8 @@ public class FoundationImportService {
 
         Table table;
         try {
-            table = ExcelTableReader.read(file.getInputStream());
+            table = ExcelTableReader.read(file.getInputStream(),
+                    "courses".equals(entity) ? Set.of("周课时数") : Set.of());
         } catch (IOException | RuntimeException ex) {
             throw ApiException.badRequest("无法解析 Excel 文件: " + ex.getMessage());
         }
@@ -243,6 +245,17 @@ public class FoundationImportService {
         if (!name.isEmpty() && courses.findByName(name).isPresent()) {
             errors.add(new ImportError(row, "课程名称", "课程名称已存在"));
         }
+        String weeklyHours = v.get("周课时数");
+        if (!weeklyHours.isEmpty()) {
+            try {
+                int hours = Integer.parseInt(weeklyHours);
+                if (hours < 1 || hours > 20) {
+                    errors.add(new ImportError(row, "周课时数", "周课时数必须在 1–20 之间"));
+                }
+            } catch (NumberFormatException ex) {
+                errors.add(new ImportError(row, "周课时数", "周课时数必须是整数"));
+            }
+        }
         v.put("是否允许连堂", String.valueOf(parseBoolean(row, "是否允许连堂", v.get("是否允许连堂"), errors)));
     }
 
@@ -303,7 +316,8 @@ public class FoundationImportService {
                     row.get("课程名称"),
                     row.get("学科"),
                     Boolean.parseBoolean(row.get("是否允许连堂")),
-                    row.get("颜色")));
+                    row.get("颜色"),
+                    intOrNull(row.get("周课时数"))));
             case "grades" -> foundation.createGrade(
                     semesterId, new SaveGradeRequest(row.get("年级名称"), intOrNull(row.get("排序"))));
             case "classes" -> {

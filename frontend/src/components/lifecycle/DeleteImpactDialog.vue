@@ -116,6 +116,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (event: 'update:modelValue', value: boolean): void
   (event: 'updated'): void
+  (event: 'deleted', batchId: string): void
 }>()
 
 const impact = ref<DeleteImpact | null>(null)
@@ -174,7 +175,8 @@ async function onDelete(mode: DeleteMode) {
   if (props.entityId == null) return
   submitting.value = 'delete'
   try {
-    await deleteEntity(props.entityType, props.entityId, mode)
+    const { batchId } = await deleteEntity(props.entityType, props.entityId, mode)
+    emit('deleted', batchId)
     ElMessage.success(`已删除，可在「最近删除」中恢复`)
     finish()
   } catch (e: unknown) {

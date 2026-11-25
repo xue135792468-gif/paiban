@@ -1,5 +1,6 @@
 package com.paiban.scheduling.service;
 
+import com.paiban.common.event.SchoolDataWriteLock;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.AdminClass;
 import com.paiban.foundation.domain.TeachingClass;
@@ -27,12 +28,17 @@ public class AssignmentService {
     private final TeachingClassRepository teachingClasses;
     private final FoundationService foundation;
     private final UserService users;
+    private final SchoolDataWriteLock schoolDataLock;
+
+    static final String DELETED_ASSIGNMENT_MESSAGE =
+            "该班级的这门课程已有授课任务在回收站，请到「设置 → 最近删除」恢复，或等待清理后再建。";
 
     public AssignmentService(
             AssignmentRepository assignments,
             TeachingClassRepository teachingClasses,
             FoundationService foundation,
-            UserService users) {
+            UserService users, SchoolDataWriteLock schoolDataLock) {
+        this.schoolDataLock = schoolDataLock;
         this.assignments = assignments;
         this.teachingClasses = teachingClasses;
         this.foundation = foundation;
@@ -96,6 +102,7 @@ public class AssignmentService {
 
     @Transactional
     public AssignmentDto create(Long semesterId, SaveAssignmentRequest request) {
+        schoolDataLock.acquire();
         AdminClass adminClass = foundation.requireAdminClass(request.classId());
         if (!adminClass.getSemesterId().equals(semesterId)) {
             throw ApiException.badRequest("班级不属于当前学期");
@@ -112,25 +119,34 @@ public class AssignmentService {
                 .orElseThrow(() -> ApiException.badRequest("班级缺少对应的教学班"));
         assignments.findBySemesterIdAndTeachingClassIdAndCourseId(
                         semesterId, teachingClass.getId(), request.courseId())
-                .ifPresent(existing -> {
-                    throw ApiException.conflict("该班级的这门课程已存在授课任务");
-                });
+                .ifPresent(this::rejectDuplicate);
 
+        Integer weeklyLessons = request.weeklyLessons() != null ? request.weeklyLessons() : course.weeklyHours();
+        if (weeklyLessons == null) {
+            throw ApiException.badRequest("请填写每周节数，或先设置该课程的默认周课时数");
+        }
         Assignment assignment = new Assignment();
         assignment.setSemesterId(semesterId);
         assignment.setAdminClassId(adminClass.getId());
         assignment.setTeachingClassId(teachingClass.getId());
         assignment.setCourseId(request.courseId());
         assignment.setTeacherId(request.teacherId());
-        assignment.setWeeklyLessons(request.weeklyLessons());
+        assignment.setWeeklyLessons(weeklyLessons);
         assignment.setCreatedAt(Instant.now());
         return toDtos(List.of(assignments.save(assignment)), semesterId).get(0);
     }
 
     @Transactional
     public AssignmentDto update(Long id, SaveAssignmentRequest request) {
+        schoolDataLock.acquire();
         Assignment assignment = assignments.findById(id)
                 .orElseThrow(() -> ApiException.notFound("授课任务不存在: " + id));
+        if (assignment.getDeletedAt() != null) {
+            throw ApiException.conflict(DELETED_ASSIGNMENT_MESSAGE);
+        }
+        if (request.weeklyLessons() == null) {
+            throw ApiException.badRequest("每周节数不能为空");
+        }
         AdminClass adminClass = foundation.requireAdminClass(request.classId());
         if (!adminClass.getSemesterId().equals(assignment.getSemesterId())) {
             throw ApiException.badRequest("班级不属于该授课任务所在学期");
@@ -146,15 +162,18 @@ public class AssignmentService {
         assignments.findBySemesterIdAndTeachingClassIdAndCourseId(
                         assignment.getSemesterId(), teachingClass.getId(), request.courseId())
                 .filter(existing -> !existing.getId().equals(id))
-                .ifPresent(existing -> {
-                    throw ApiException.conflict("该班级的这门课程已存在授课任务");
-                });
+                .ifPresent(this::rejectDuplicate);
         assignment.setAdminClassId(adminClass.getId());
         assignment.setTeachingClassId(teachingClass.getId());
         assignment.setCourseId(request.courseId());
         assignment.setTeacherId(request.teacherId());
         assignment.setWeeklyLessons(request.weeklyLessons());
         return toDtos(List.of(assignment), assignment.getSemesterId()).get(0);
+    }
+
+    private void rejectDuplicate(Assignment existing) {
+        throw ApiException.conflict(existing.getDeletedAt() != null
+                ? DELETED_ASSIGNMENT_MESSAGE : "该班级的这门课程已存在授课任务");
     }
 
     public List<AssignmentDto> toDtos(List<Assignment> list, Long semesterId) {

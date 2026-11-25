@@ -5,6 +5,8 @@ import com.paiban.common.deletion.DeletionRestoreHandler;
 import com.paiban.common.deletion.EntityType;
 import com.paiban.common.deletion.RecentDeletion;
 import com.paiban.common.deletion.RecentDeletionRepository;
+import com.paiban.common.event.HomeroomChangedEvent;
+import com.paiban.common.event.SchoolDataWriteLock;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.AdminClass;
 import com.paiban.foundation.domain.AdminClassRepository;
@@ -25,6 +27,8 @@ import com.paiban.foundation.web.LifecycleDtos.RestoreResultDto;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -32,6 +36,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -81,6 +86,9 @@ public class LifecycleService {
     private final Clock clock;
     private final List<DeletionRestoreHandler> restoreHandlers;
 
+    private final SchoolDataWriteLock schoolDataLock;
+    private final ApplicationEventPublisher events;
+
     public LifecycleService(
             TeacherRepository teachers,
             CourseRepository courses,
@@ -91,7 +99,9 @@ public class LifecycleService {
             AuditLogRepository auditLogs,
             JdbcTemplate jdbc,
             Clock clock,
-            List<DeletionRestoreHandler> restoreHandlers) {
+            List<DeletionRestoreHandler> restoreHandlers, ApplicationEventPublisher events, SchoolDataWriteLock schoolDataLock) {
+        this.schoolDataLock = schoolDataLock;
+        this.events = events;
         this.teachers = teachers;
         this.courses = courses;
         this.grades = grades;
@@ -133,6 +143,7 @@ public class LifecycleService {
 
     @Transactional
     public DeleteResultDto delete(EntityType type, Long id, DeleteMode mode) {
+        schoolDataLock.acquire();
         EntityRow primary = load(type, id);
         if (primary.deleted()) {
             throw ApiException.notFound(type.label() + "不存在: " + id);
@@ -177,6 +188,9 @@ public class LifecycleService {
                 + (targets.size() > 1 ? "，级联 " + (targets.size() - 1) + " 项" : "")
                 + "（批次 " + batchId + "）";
         audit("DELETE_" + type.name(), type.name(), detail, targets.size());
+        if (affectsHomeroom(type.name())) {
+            events.publishEvent(new HomeroomChangedEvent());
+        }
         return new DeleteResultDto(batchId, targets.size());
     }
 
@@ -216,6 +230,7 @@ public class LifecycleService {
 
     @Transactional
     public RestoreResultDto restore(String batchId, String actor) {
+        schoolDataLock.acquire();
         List<RecentDeletion> rows = recentDeletions.findByBatchIdOrderByIdAsc(batchId);
         if (rows.isEmpty()) {
             throw ApiException.notFound("删除批次不存在: " + batchId);
@@ -242,16 +257,35 @@ public class LifecycleService {
                 + (rows.size() > 1 ? "，一并恢复 " + (rows.size() - 1) + " 项" : "")
                 + "（批次 " + batchId + "）";
         audit("RESTORE_" + primary.getEntityType(), primary.getEntityType(), detail, rows.size());
+        if (rows.stream().anyMatch(row -> affectsHomeroom(row.getEntityType()))) {
+            events.publishEvent(new HomeroomChangedEvent());
+        }
         return new RestoreResultDto(batchId, rows.size());
     }
 
     /**
-     * Removes expired recycle markers. The business rows are intentionally kept:
-     * physical cleanup is a later ticket, and drafts/rules may still resolve ids.
+     * Releases expired assignment slots and removes their recycle markers.
+     * Historical rows stay available to drafts and rules.
      */
     @Transactional
     public int purgeExpired(Instant now) {
+        schoolDataLock.acquire();
+        LocalDateTime expiry = LocalDateTime.ofInstant(now, ZoneOffset.UTC);
+        jdbc.update("""
+                update assignment set recycle_slot = null
+                where deleted_at is not null and recycle_slot is not null
+                    and exists (select 1 from recent_deletion r
+                        where r.entity_type = 'ASSIGNMENT' and r.entity_id = assignment.id
+                            and r.restored_at is null and r.expires_at < ?)
+                    and not exists (select 1 from recent_deletion r
+                        where r.entity_type = 'ASSIGNMENT' and r.entity_id = assignment.id
+                            and r.restored_at is null and r.expires_at >= ?)
+                """, expiry, expiry);
         return (int) recentDeletions.deleteByRestoredAtIsNullAndExpiresAtBefore(now);
+    }
+
+    private boolean affectsHomeroom(String type) {
+        return "CLASS".equals(type) || "GRADE".equals(type) || "TEACHER".equals(type);
     }
 
     // ---------- reference counting ----------
@@ -466,7 +500,8 @@ public class LifecycleService {
                 row.setActive(false);
             });
             case ASSIGNMENT -> jdbc.update(
-                    "update assignment set deleted_at = ?, active = false where id = ?", now, id);
+                    "update assignment set deleted_at = ?, active = false where id = ?",
+                    LocalDateTime.ofInstant(now, ZoneOffset.UTC), id);
         }
     }
 

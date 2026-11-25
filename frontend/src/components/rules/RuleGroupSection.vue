@@ -49,7 +49,7 @@
         <el-form-item label="组名">
           <el-input
             v-model="formName"
-            maxlength="64"
+            :maxlength="maxNameLength"
             show-word-limit
             :placeholder="namePlaceholder"
             :data-testid="tid('rule-group-name-input')"
@@ -129,7 +129,11 @@ const formName = ref('')
 const formMemberIds = ref<number[]>([])
 const saving = ref(false)
 
-const validName = computed(() => formName.value.trim().length > 0 && formName.value.trim().length <= 64)
+const maxNameLength = computed(() => Math.max(64, editing.value?.name.length ?? 0))
+const validName = computed(() => {
+  const name = formName.value.trim()
+  return name.length > 0 && (name.length <= 64 || name === editing.value?.name)
+})
 
 const hintText = computed(
   () => props.hint
