@@ -108,8 +108,15 @@ test('教务管理员从任课方阵导入空学期、撤销删除、使用班�
       response.url().includes('/api/constraints') && response.request().method() === 'PUT' && response.ok())
     await page.getByTestId('rule-save').click()
     await ruleSaved
+    const ruleState = await apiCall(api, token, 'get', '/constraints/state', undefined, { semesterId })
+    const teacherRule = ruleState.configs.find((config: { type: string }) => config.type === 'TEACHER_UNAVAILABLE')
+    expect(teacherRule.entries).toHaveLength(1)
+    expect(teacherRule.entries[0].params.teacherGroupId).toBe(gradeGroup.id)
 
     await page.getByRole('menuitem', { name: '课表工作台', exact: true }).click()
+    const duration = page.getByRole('spinbutton')
+    await duration.fill('5')
+    await duration.press('Tab')
     const jobCreated = page.waitForResponse((response) =>
       new URL(response.url()).pathname === '/api/scheduling-jobs' && response.request().method() === 'POST' && response.ok())
     await page.getByRole('button', { name: '开始排课' }).click()
@@ -129,7 +136,7 @@ test('教务管理员从任课方阵导入空学期、撤销删除、使用班�
     await record('05-solved')
     await testInfo.attach('proof.json', { contentType: 'application/json', body: JSON.stringify({
       semesterId, gradeId: grade.id, className, teacherName, courseName, jobId: job.id,
-      draftId: finished.draftId, lessons: draft.lessons, unavailable, errors,
+      draftId: finished.draftId, lessons: draft.lessons, unavailable, rule: teacherRule.entries[0].params, errors,
     }, null, 2) })
     expect(errors).toEqual([])
   } finally {
