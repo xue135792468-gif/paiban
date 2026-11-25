@@ -1,6 +1,6 @@
 # 课程周课时数、任课表方阵导入与班主任自动分组
 
-Status: in-progress
+Status: done
 Feature: course-weekly-hours-and-teaching-matrix
 Date: 2026-11-26
 来源：产品所有者三轮 `/grill-with-docs` 访谈确认（Q1–Q12），决策记录见 ADR-0038。
@@ -111,3 +111,7 @@ Date: 2026-11-26
 
 - 仓库内先前的未定稿草稿（同一目录下的 `README.md`、`data-model.md`、`issues/01..07`）基于旧假设（如忽略人数与班主任、不自动补建实体、不支持方阵删除），已由本规格取代；后续拆票与实施一律以本 `spec.md` 与 ADR-0038 为准。
 - 注意事项：本特性若作为独立任务推进，请先核实所有活跃分支/worktree 的 Flyway 迁移号（当前其他分支已占至 V63，本特性从 V64 续号），并执行仓库完整门禁（含单文件体积检查、模块边界检查、本地日期检查与端到端测试）。
+
+## 验收
+
+01–05 均已完成。全量门禁、浏览器证据和 PostgreSQL 验证见 [05 交付记录](issues/05-matrix-export-help-and-acceptance.md#交付记录)。
