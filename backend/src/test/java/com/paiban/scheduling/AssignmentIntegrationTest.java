@@ -1,5 +1,6 @@
 package com.paiban.scheduling;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
@@ -19,6 +20,12 @@ import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 class AssignmentIntegrationTest extends ApiIntegrationTest {
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbc;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.paiban.foundation.service.LifecycleService lifecycle;
 
     private record Dataset(long semesterId, List<Long> classIds, List<Long> courseIds, List<Long> teacherIds) {}
 
@@ -48,6 +55,52 @@ class AssignmentIntegrationTest extends ApiIntegrationTest {
                 .when().post("/api/assignments");
         response.then().statusCode(200);
         return response.jsonPath().getLong("id");
+    }
+
+    @Test
+    void newAssignmentCopiesCourseDefaultWithoutChangingItRetroactively() {
+        String token = adminToken();
+        String suffix = TestData.suffix();
+        Dataset data = seed(token, suffix, 1, 1);
+        long course = data.courseIds().getFirst();
+        as(token).body(Map.of("name", "语文" + suffix, "weeklyHours", 5))
+                .when().put("/api/courses/" + course).then().statusCode(200);
+        as(token).body(Map.of("classId", data.classIds().getFirst(), "courseId", course,
+                        "teacherId", data.teacherIds().getFirst()))
+                .when().post("/api/assignments").then().statusCode(200)
+                .body("weeklyLessons", equalTo(5));
+        as(token).body(Map.of("name", "语文" + suffix, "weeklyHours", 2))
+                .when().put("/api/courses/" + course).then().statusCode(200);
+        as(token).queryParam("semesterId", data.semesterId()).when().get("/api/assignments")
+                .then().statusCode(200).body("[0].weeklyLessons", equalTo(5));
+    }
+
+    @Test
+    void recycleSlotCanBeRestoredAndThenReusedAfterExpiry() {
+        String token = adminToken();
+        Dataset data = seed(token, TestData.suffix(), 1, 2);
+        long classId = data.classIds().getFirst();
+        long courseId = data.courseIds().getFirst();
+        long teacherId = data.teacherIds().getFirst();
+        long id = createAssignment(token, classId, courseId, teacherId, 3);
+        long other = createAssignment(token, classId, data.courseIds().getLast(), teacherId, 2);
+        String batch = as(token).when().delete("/api/assignments/" + id).then().statusCode(200)
+                .extract().path("batchId");
+        var newTask = Map.of("classId", classId, "courseId", courseId, "teacherId", teacherId, "weeklyLessons", 3);
+        as(token).body(newTask).when().post("/api/assignments")
+                .then().statusCode(409).body("message", containsString("最近删除"));
+        as(token).body(newTask).when().put("/api/assignments/" + other)
+                .then().statusCode(409).body("message", containsString("最近删除"));
+        as(token).when().post("/api/recent-deletions/" + batch + "/restore").then().statusCode(200);
+        batch = as(token).when().delete("/api/assignments/" + id).then().statusCode(200)
+                .extract().path("batchId");
+        jdbc.update("update recent_deletion set expires_at = ? where batch_id = ?",
+                java.time.LocalDateTime.now(java.time.ZoneOffset.UTC).minusSeconds(1), batch);
+        lifecycle.purgeExpired(java.time.Instant.now());
+        long replacement = createAssignment(token, classId, courseId, teacherId, 3);
+        org.assertj.core.api.Assertions.assertThat(replacement).isNotEqualTo(id);
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
+                "select count(*) from assignment where id = ?", Integer.class, id)).isOne();
     }
 
     @Test

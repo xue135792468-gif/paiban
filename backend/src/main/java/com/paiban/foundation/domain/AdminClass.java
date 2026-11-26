@@ -18,6 +18,8 @@ import lombok.Setter;
 @NoArgsConstructor
 public class AdminClass {
 
+    public static final int DEFAULT_STUDENT_COUNT = 45;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -35,7 +37,7 @@ public class AdminClass {
     private Long headTeacherId;
 
     @Column(name = "student_count", nullable = false)
-    private int studentCount = 45;
+    private int studentCount = DEFAULT_STUDENT_COUNT;
 
     @Column(nullable = false)
     private boolean active = true;

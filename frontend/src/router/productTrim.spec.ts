@@ -82,10 +82,13 @@ describe('product trim routing', () => {
       'grades',
       'classes',
       'assignments',
+      'teaching-matrix',
       'import',
       'import/manual',
       'recipes',
     ])
+
+    expect(data.find((route) => route.name === 'teaching-matrix')?.meta?.permission).toBe('assignment:manage')
 
     const settings = mainChildren[6].children ?? []
     // 票 03 adds the 7-day recycle bin; 票 02 adds the account audit page.

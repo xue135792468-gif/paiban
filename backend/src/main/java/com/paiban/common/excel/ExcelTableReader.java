@@ -2,13 +2,16 @@ package com.paiban.common.excel;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.FormulaEvaluator;
 import org.apache.poi.ss.usermodel.Row;
@@ -157,6 +160,11 @@ public final class ExcelTableReader {
     }
 
     public static Table read(InputStream input) throws IOException {
+        return read(input, Set.of());
+    }
+
+    /** Reads the named numeric columns without applying Excel's display rounding. */
+    public static Table read(InputStream input, Set<String> exactNumberHeaders) throws IOException {
         try (Workbook workbook = WorkbookFactory.create(input)) {
             if (workbook.getNumberOfSheets() == 0) {
                 throw new IllegalArgumentException("Excel 中没有工作表");
@@ -192,7 +200,9 @@ public final class ExcelTableReader {
                 boolean hasContent = false;
                 for (Map.Entry<Integer, String> entry : headerByColumn.entrySet()) {
                     Cell cell = row == null ? null : row.getCell(entry.getKey());
-                    String value = cellValue(r, entry.getKey(), cell, formatter, evaluator, mergedValues);
+                    String number = exactNumberHeaders.contains(entry.getValue()) ? exactNumber(cell, evaluator) : null;
+                    String value = number == null
+                            ? cellValue(r, entry.getKey(), cell, formatter, evaluator, mergedValues) : number;
                     values.put(entry.getValue(), value);
                     if (!value.isBlank()) {
                         hasContent = true;
@@ -274,6 +284,27 @@ public final class ExcelTableReader {
             return "";
         }
         return formatter.formatCellValue(cell, evaluator).trim();
+    }
+
+    /** Returns the exact numeric value for a spreadsheet cell or numeric formula. */
+    public static String exactNumber(Cell cell, FormulaEvaluator evaluator) {
+        if (cell == null) {
+            return null;
+        }
+        if (cell.getCellType() == CellType.NUMERIC) {
+            return decimalText(cell.getNumericCellValue());
+        }
+        if (cell.getCellType() == CellType.FORMULA) {
+            var value = evaluator.evaluate(cell);
+            if (value != null && value.getCellType() == CellType.NUMERIC) {
+                return decimalText(value.getNumberValue());
+            }
+        }
+        return null;
+    }
+
+    private static String decimalText(double value) {
+        return BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
     }
 
     private static long key(int row, int column) {

@@ -156,6 +156,12 @@ export const routes: RouteRecordRaw[] = [
             meta: { title: '授课任务', permissionAny: ['assignment:manage', 'assignment:view:own'] },
           },
           {
+            path: 'teaching-matrix',
+            name: 'teaching-matrix',
+            component: () => import('@/views/TeachingMatrixView.vue'),
+            meta: { title: '任课表', permission: 'assignment:manage' },
+          },
+          {
             path: 'import',
             name: 'ai-import',
             component: () => import('@/views/AiDataImportView.vue'),

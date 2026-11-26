@@ -1,6 +1,7 @@
 package com.paiban.scheduling;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 
@@ -140,6 +141,62 @@ class RuleGroupIntegrationTest extends ApiIntegrationTest {
     }
 
     // ---------------------------------------------------- snapshot expansion
+
+    @Test
+    void homeroomGroupsFollowClassLifecycleAndSemesterSwitchUnlessTakenOver() {
+        String token = adminToken();
+        long semester = semesterWithPeriods(token);
+        long grade = TestData.grade(token, semester, "八年级");
+        long first = TestData.teacher(token, "班主任甲");
+        long second = TestData.teacher(token, "班主任乙");
+        var initialClass = Map.of("gradeId", grade, "name", "八（1）", "headTeacherId", first);
+        long classId = as(token).queryParam("semesterId", semester).body(initialClass)
+                .when().post("/api/classes").then().statusCode(200).extract().jsonPath().getLong("id");
+        long all = assertHomeroomGroup(token, "班主任", true, first);
+        assertHomeroomGroup(token, "八年级班主任", true, first);
+        saveTeacherGroupRule(token, semester, null, all, 1, 1).then().statusCode(200);
+
+        var replacement = Map.of("gradeId", grade, "name", "八（1）", "headTeacherId", second);
+        as(token).body(replacement).when().put("/api/classes/" + classId).then().statusCode(200);
+        assertHomeroomGroup(token, "班主任", true, second);
+        assertThat(teacherIds(configService.settings(semester))).containsExactly(second);
+
+        as(token).body(Map.of("type", "TEACHER", "name", "班主任",
+                        "members", List.of(Map.of("teacherId", first))))
+                .when().put("/api/rule-groups/" + all).then().statusCode(200).body("autoFilled", equalTo(false));
+        as(token).body(Map.of("gradeId", grade, "name", "八（1）"))
+                .when().put("/api/classes/" + classId).then().statusCode(200);
+        long gradeGroup = assertHomeroomGroup(token, "八年级班主任", true);
+        as(token).body(replacement).when().put("/api/classes/" + classId).then().statusCode(200);
+        String batch = as(token).when().delete("/api/classes/" + classId)
+                .then().statusCode(200).extract().path("batchId");
+        assertThat(assertHomeroomGroup(token, "八年级班主任", true)).isEqualTo(gradeGroup);
+        as(token).when().post("/api/recent-deletions/" + batch + "/restore").then().statusCode(200);
+        assertHomeroomGroup(token, "八年级班主任", true, second);
+        assertHomeroomGroup(token, "班主任", false, first);
+
+        long next = TestData.semester(token);
+        assertHomeroomGroup(token, "八年级班主任", true);
+        long nextGrade = TestData.grade(token, next, "九年级");
+        TestData.setCurrent(token, semester);
+        as(token).queryParam("semesterId", next)
+                .body(Map.of("gradeId", nextGrade, "name", "九（1）", "headTeacherId", second))
+                .when().post("/api/classes").then().statusCode(200);
+        assertHomeroomGroup(token, "八年级班主任", true, second);
+        TestData.setCurrent(token, next);
+        assertHomeroomGroup(token, "八年级班主任", true);
+        assertHomeroomGroup(token, "九年级班主任", true, second);
+        assertHomeroomGroup(token, "班主任", false, first);
+    }
+
+    private long assertHomeroomGroup(String token, String name, boolean automatic, Long... teachers) {
+        String group = "find { it.name == '" + name + "' }";
+        var response = as(token).queryParam("type", "TEACHER").when().get("/api/rule-groups");
+        response.then().statusCode(200).body(group + ".autoFilled", equalTo(automatic));
+        assertThat(response.jsonPath().getList(group + ".members.objectId", Long.class))
+                .containsExactlyInAnyOrder(teachers);
+        return response.jsonPath().getLong(group + ".id");
+    }
 
     @Test
     void aGroupRuleExpandsIntoSettingsMembers() {

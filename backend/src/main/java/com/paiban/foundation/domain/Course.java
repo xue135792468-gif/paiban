@@ -31,6 +31,9 @@ public class Course {
     @Column(name = "allow_consecutive", nullable = false)
     private boolean allowConsecutive;
 
+    @Column(name = "weekly_hours")
+    private Integer weeklyHours;
+
     @Column(length = 20)
     private String color;
 

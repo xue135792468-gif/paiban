@@ -46,6 +46,9 @@ public class Assignment {
     @Column(nullable = false)
     private boolean active = true;
 
+    @Column(name = "recycle_slot")
+    private Integer recycleSlot = 1;
+
     @Column(name = "deleted_at")
     private Instant deletedAt;
 }

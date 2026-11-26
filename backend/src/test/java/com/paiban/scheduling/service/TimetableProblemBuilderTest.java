@@ -57,7 +57,7 @@ class TimetableProblemBuilderTest {
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
                 new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
         when(foundation.coursesById()).thenReturn(Map.of(1L,
-                new CourseDto(1L, "语文", null, false, null, true)));
+                new CourseDto(1L, "语文", null, false, null, true, null)));
         when(foundation.teachersById()).thenReturn(Map.of(1L,
                 new TeacherDto(1L, "张三", null, null, null, null, true, null, null)));
 
@@ -105,7 +105,7 @@ class TimetableProblemBuilderTest {
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
                 new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
         when(foundation.coursesById()).thenReturn(Map.of(1L,
-                new CourseDto(1L, "语文", null, false, null, true)));
+                new CourseDto(1L, "语文", null, false, null, true, null)));
         when(foundation.teachersById()).thenReturn(Map.of(1L,
                 new TeacherDto(1L, "张三", null, null, null, null, true, null, null)));
 
@@ -142,7 +142,7 @@ class TimetableProblemBuilderTest {
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
                 new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
         when(foundation.coursesById()).thenReturn(Map.of(1L,
-                new CourseDto(1L, "语文", null, false, null, true)));
+                new CourseDto(1L, "语文", null, false, null, true, null)));
         when(foundation.teachersById()).thenReturn(Map.of(1L,
                 new TeacherDto(1L, "张三", null, null, null, null, true, null, null)));
 
@@ -175,7 +175,7 @@ class TimetableProblemBuilderTest {
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
                 new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
         when(foundation.coursesById()).thenReturn(Map.of(1L,
-                new CourseDto(1L, "语文", null, false, null, true)));
+                new CourseDto(1L, "语文", null, false, null, true, null)));
         when(foundation.teachersById()).thenReturn(Map.of(
                 1L, new TeacherDto(1L, "张三", null, null, null, null, true, null, null),
                 99L, new TeacherDto(99L, "李四", null, null, null, null, true, null, null)));
@@ -219,7 +219,7 @@ class TimetableProblemBuilderTest {
         when(foundation.classesById(1L)).thenReturn(Map.of(1L,
                 new ClassDto(1L, "八（1）班", 1L, "八年级", null, null, 45, null, true)));
         when(foundation.coursesById()).thenReturn(Map.of(1L,
-                new CourseDto(1L, "语文", null, false, null, true)));
+                new CourseDto(1L, "语文", null, false, null, true, null)));
         when(foundation.teachersById()).thenReturn(Map.of(1L,
                 new TeacherDto(1L, "张三", null, null, null, null, true, null, null)));
 

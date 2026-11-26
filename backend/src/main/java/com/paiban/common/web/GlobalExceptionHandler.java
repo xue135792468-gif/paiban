@@ -6,6 +6,7 @@ import java.util.Map;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
@@ -36,6 +37,11 @@ public class GlobalExceptionHandler {
         Map<String, Object> payload = errorPayload(HttpStatus.BAD_REQUEST, ex.getMessage());
         payload.put("errors", ex.getErrors());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(payload);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> invalidRequestBody() {
+        return body(HttpStatus.BAD_REQUEST, "请求格式错误，请检查字段和值的类型");
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
