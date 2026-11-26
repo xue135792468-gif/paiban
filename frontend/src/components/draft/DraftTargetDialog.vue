@@ -2,29 +2,35 @@
   <el-dialog
     :model-value="modelValue"
     title="选择位置"
-    width="640px"
+    width="680px"
     @update:model-value="emit('update:modelValue', $event)"
   >
-    <p class="hint">选择目标节次；灰色是当前所在位置，锁定或不可用的节次不能作为落点。</p>
+    <p class="hint">
+      选择目标节次；「本班已占用」可点击尝试对调，教师有课、禁排时段与已锁定节次不可选（悬停可看详情）。
+    </p>
     <div v-for="day in days" :key="day.day" class="day-row">
       <div class="day-name">{{ dayName(day.day) }}</div>
       <div class="period-list">
-        <button
+        <span
           v-for="period in day.periods"
           :key="period.id"
-          type="button"
-          class="period-chip"
-          :class="{ current: period.id === currentPeriodId }"
-          :data-period-id="period.id"
-          :disabled="period.id !== currentPeriodId && isBlocked(period.id)"
-          @click="pick(period.id)"
+          class="chip-wrap"
+          :title="stateOf(period).tooltip"
         >
-          <span>第{{ period.periodNo }}节</span>
-          <span v-if="period.id === currentPeriodId" class="chip-note">当前位置</span>
-          <span v-else-if="lockedIds.has(period.id)" class="chip-note">已锁定</span>
-          <span v-else-if="unavailableIds.has(period.id)" class="chip-note">不可用</span>
-          <span v-else class="chip-note">{{ period.label }}</span>
-        </button>
+          <button
+            type="button"
+            class="period-chip"
+            :class="stateOf(period).status"
+            :data-period-id="period.id"
+            :data-status="stateOf(period).status"
+            :title="stateOf(period).tooltip"
+            :disabled="stateOf(period).disabled"
+            @click="pick(period)"
+          >
+            <span>第{{ period.periodNo }}节</span>
+            <span class="chip-note">{{ stateOf(period).label }}</span>
+          </button>
+        </span>
       </div>
     </div>
   </el-dialog>
@@ -32,6 +38,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { TargetPeriodState } from './targetAvailability'
 import type { DraftPeriod } from './types'
 
 const props = withDefaults(
@@ -41,11 +48,13 @@ const props = withDefaults(
     currentPeriodId?: number | null
     lockedPeriodIds?: number[]
     unavailablePeriodIds?: number[]
+    periodStates?: Record<number, TargetPeriodState> | null
   }>(),
   {
     currentPeriodId: null,
     lockedPeriodIds: () => [],
     unavailablePeriodIds: () => [],
+    periodStates: null,
   },
 )
 
@@ -76,13 +85,29 @@ function dayName(day: number) {
   return ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'][day] ?? `周${day}`
 }
 
-function isBlocked(periodId: number) {
-  return lockedIds.value.has(periodId) || unavailableIds.value.has(periodId)
+function stateOf(period: DraftPeriod): TargetPeriodState {
+  const explicit = props.periodStates?.[period.id]
+  if (explicit) return explicit
+  if (period.id === props.currentPeriodId) {
+    return { status: 'current', disabled: true, label: '当前位置', tooltip: '当前所在位置' }
+  }
+  if (lockedIds.value.has(period.id)) {
+    return { status: 'locked', disabled: true, label: '已锁定', tooltip: '该时段课节已锁定' }
+  }
+  if (unavailableIds.value.has(period.id)) {
+    return { status: 'unavailable', disabled: true, label: '不可用', tooltip: '该时段不可用' }
+  }
+  return {
+    status: 'available',
+    disabled: false,
+    label: period.label || '可放置',
+    tooltip: `可移动到第${period.periodNo}节`,
+  }
 }
 
-function pick(periodId: number) {
-  if (periodId === props.currentPeriodId || isBlocked(periodId)) return
-  emit('select', periodId)
+function pick(period: DraftPeriod) {
+  if (stateOf(period).disabled) return
+  emit('select', period.id)
   emit('update:modelValue', false)
 }
 </script>
@@ -111,6 +136,9 @@ function pick(periodId: number) {
   gap: 8px;
   flex: 1;
 }
+.chip-wrap {
+  display: inline-flex;
+}
 .period-chip {
   border: 1px solid #dcdfe6;
   background: #fff;
@@ -122,6 +150,16 @@ function pick(periodId: number) {
   gap: 6px;
   align-items: center;
 }
+.period-chip:hover:not(:disabled) {
+  border-color: #409eff;
+}
+.period-chip.swappable {
+  border-color: #e6a23c;
+  background: #fdf6ec;
+}
+.period-chip.swappable .chip-note {
+  color: #b88230;
+}
 .period-chip.current {
   border-color: #409eff;
   color: #409eff;
@@ -129,8 +167,12 @@ function pick(periodId: number) {
 }
 .period-chip:disabled {
   cursor: not-allowed;
-  opacity: 0.55;
+  opacity: 0.6;
   background: #f5f7fa;
+}
+.period-chip.teacher-busy .chip-note,
+.period-chip.blocked .chip-note {
+  color: #b43b3b;
 }
 .chip-note {
   font-size: 11px;

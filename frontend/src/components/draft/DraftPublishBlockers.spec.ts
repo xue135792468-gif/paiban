@@ -82,12 +82,22 @@ describe('DraftPublishBlockers', () => {
     expect(push).toHaveBeenCalledWith('/admin/semesters')
   })
 
-  it('硬冲突只展示原因，不误导成别的入口', () => {
-    const wrapper = mountBlockers([
-      blocker({ code: 'HARD_CONFLICTS', message: '课表存在 3 处排课冲突', count: 3, action: 'NONE' }),
-    ])
+  it('硬冲突横幅提供「逐条定位」动作并触发定位事件', async () => {
+    const wrapper = mount(DraftPublishBlockers, {
+      props: {
+        blockers: [
+          blocker({ code: 'HARD_CONFLICTS', message: '课表存在 3 处排课冲突', count: 3, action: 'NONE' }),
+        ],
+        conflictTotal: 3,
+        activeConflictIndex: 0,
+      },
+      global: { plugins: [ElementPlus] },
+    })
 
     expect(wrapper.text()).toContain('课表存在 3 处排课冲突')
-    expect(wrapper.find('[data-testid=blocker-action-HARD_CONFLICTS]').exists()).toBe(false)
+    const btn = wrapper.get('[data-testid=blocker-action-HARD_CONFLICTS]')
+    expect(btn.text()).toContain('逐条定位（1/3）')
+    await btn.trigger('click')
+    expect(wrapper.emitted('locate-conflict')).toHaveLength(1)
   })
 })

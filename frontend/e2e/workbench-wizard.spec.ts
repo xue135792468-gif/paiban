@@ -461,8 +461,16 @@ test('代课候选：排除当前教师、同科排前、跨科标记、禁用�
   expect(names.indexOf(seed.sameSubjectFreeName)).toBeGreaterThanOrEqual(0)
   expect(names.indexOf(seed.sameSubjectFreeName)).toBeLessThan(names.indexOf(seed.crossSubjectFreeName))
 
-  // 忙碌候选：整行可见、radio 禁用、原因点出冲突班级。
+  // 忙碌候选默认折叠，展开后整行可见、radio 禁用、原因点出冲突班级。
+  const busyToggle = picker.getByTestId('toggle-busy-candidates')
+  await expect(busyToggle).toBeVisible()
+  await expect(busyToggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(busyToggle).toContainText('该时段有课（展开查看）')
   const busy = picker.getByTestId(`substitute-option-${seed.busyTeacherId}`)
+  await expect(busy).toHaveCount(0)
+
+  await busyToggle.click()
+  await expect(busyToggle).toHaveAttribute('aria-expanded', 'true')
   await expect(busy).toBeVisible()
   await expect(busy.locator('.bg')).toHaveText('该时段有课')
   await expect(busy).toContainText('该时段已有课')

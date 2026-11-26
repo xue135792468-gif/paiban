@@ -38,11 +38,12 @@
     <div v-else class="content-body">
       <el-alert
         v-if="showPrerequisiteHint"
-        title="排课前请先录入授课任务并配置作息表"
+        :title="missingPrerequisiteMessage"
         type="warning"
         :closable="false"
         show-icon
         class="hint-alert"
+        data-testid="prerequisite-hint"
       />
 
       <el-card shadow="never" class="section-card">
@@ -53,7 +54,11 @@
         </template>
         <el-form :inline="true" :model="submitForm" class="submit-form">
           <el-form-item label="排课年级">
-            <GradeScopePicker v-model="selectedGradeIds" :grades="grades" />
+            <GradeScopePicker
+              v-model="selectedGradeIds"
+              :grades="grades"
+              :partial-allowed="hasPublishedBaseline"
+            />
           </el-form-item>
           <el-form-item label="草稿名称">
             <el-input
@@ -77,91 +82,41 @@
               v-if="canRunScheduling"
               type="primary"
               :loading="submitting"
-              :disabled="isJobRunning"
+              :disabled="isJobRunning || partialScopeBlocked"
               @click="handleStartJob"
             >
               开始排课
             </el-button>
           </el-form-item>
         </el-form>
+        <el-alert
+          v-if="partialScopeBlocked"
+          type="warning"
+          :closable="false"
+          show-icon
+          class="partial-scope-alert"
+          data-testid="partial-scope-warning"
+          title="其他年级尚未发布课表，当前仅支持全校排课（不能单独保持其他年级不动）"
+        >
+          <template #default>
+            <div class="partial-scope-actions">
+              <span>请先全选全部年级进行整校排课，或先发布其他年级课表后再局部重排。</span>
+              <el-button link type="primary" @click="selectAllGrades">全选全部年级</el-button>
+            </div>
+          </template>
+        </el-alert>
       </el-card>
 
-      <el-card v-if="activeJob" shadow="never" class="section-card active-job-card">
-        <template #header>
-          <div class="active-job-header">
-            <div class="job-header-left">
-              <span class="card-title">当前排课任务</span>
-              <el-tag :type="getJobStatusTag(activeJob.status).type" effect="light">
-                {{ getJobStatusTag(activeJob.status).label }}
-              </el-tag>
-              <span v-if="activeJob.draftName" class="job-draft-name">
-                {{ activeJob.draftName }}
-              </span>
-            </div>
-            <div class="job-header-actions">
-              <el-button
-                v-if="isRunning(activeJob.status)"
-                type="danger"
-                plain
-                :loading="cancelling"
-                @click="handleCancelJob(activeJob.id)"
-              >
-                取消任务
-              </el-button>
-              <el-button
-                v-if="activeJob.status === 'COMPLETED' && activeJob.draftId"
-                type="primary"
-                @click="openDraftEditor(activeJob.draftId)"
-              >
-                打开草稿
-              </el-button>
-            </div>
-          </div>
-        </template>
-
-        <div class="active-job-body">
-          <div class="progress-wrapper">
-            <el-progress
-              :percentage="Math.min(100, Math.max(0, activeJob.progress))"
-              :status="
-                activeJob.status === 'COMPLETED'
-                  ? 'success'
-                  : activeJob.status === 'FAILED'
-                    ? 'exception'
-                    : undefined
-              "
-              :stroke-width="16"
-              striped
-              :striped-flow="isRunning(activeJob.status)"
-            />
-          </div>
-
-          <el-alert
-            v-if="activeJob.warmStartSource === 'NONE'"
-            title="该学期没有可用的已发布课表或完整导入草稿，本次将从零搜索，可能仍需人工调整；可加长求解时间或先导入草稿。"
-            type="warning"
-            :closable="false"
-            show-icon
-          />
-
-          <SchedulingJobMetrics :job="activeJob" />
-
-          <el-alert
-            v-if="activeJob.status === 'FAILED'"
-            type="error"
-            :closable="false"
-            show-icon
-            :title="activeJob.errorMessage || '排课任务求解失败，请检查排课约束与授课数据'"
-            class="job-error-alert"
-          />
-
-          <JobDiagnostics
-            v-if="activeJob.diagnostics?.length"
-            :diagnostics="activeJob.diagnostics"
-            @rerun="handleRerunDiagnosedGrades"
-          />
-        </div>
-      </el-card>
+      <ActiveJobCard
+        :active-job="activeJob"
+        :associated-draft="activeJobDraft"
+        :submit-error="submitError"
+        :cancelling="cancelling"
+        @cancel="handleCancelJob"
+        @open-draft="openDraftEditor"
+        @rerun="handleRerunDiagnosedGrades"
+        @clear-submit-error="submitError = null"
+      />
 
       <el-card shadow="never" class="section-card">
         <template #header>
@@ -251,10 +206,13 @@
               {{ row.draftName || '-' }}
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="110">
+          <el-table-column label="状态" width="170">
             <template #default="{ row }">
-              <el-tag :type="getJobStatusTag(row.status).type" effect="light">
-                {{ getJobStatusTag(row.status).label }}
+              <el-tag
+                :type="getJobStatusTag(row.status, isJobConflicted(row)).type"
+                effect="light"
+              >
+                {{ getJobStatusTag(row.status, isJobConflicted(row)).label }}
               </el-tag>
             </template>
           </el-table-column>
@@ -300,10 +258,14 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
-import SchedulingJobMetrics from '@/components/scheduling/SchedulingJobMetrics.vue'
+import ActiveJobCard from '@/components/scheduling/ActiveJobCard.vue'
 import GradeScopePicker from '@/components/scheduling/GradeScopePicker.vue'
-import JobDiagnostics from '@/components/scheduling/JobDiagnostics.vue'
-import { getJobStatusTag, isRunning, isTerminal } from '@/components/scheduling/jobStatus'
+import {
+  getJobStatusTag,
+  isCompletedWithConflicts,
+  isRunning,
+  isTerminal,
+} from '@/components/scheduling/jobStatus'
 import type { DraftItem, GradeOption, JobItem, Semester } from '@/components/scheduling/types'
 import { useAuthStore } from '@/stores/auth'
 import { serverMessage } from '@/api/errors'
@@ -320,7 +282,9 @@ const selectedGradeIds = ref<number[]>([])
 const drafts = ref<DraftItem[]>([])
 const jobs = ref<JobItem[]>([])
 const assignmentCount = ref<number | null>(null)
+const periodCount = ref<number | null>(null)
 const activeJob = ref<JobItem | null>(null)
+const submitError = ref<string | null>(null)
 
 const draftsLoading = ref(false)
 const jobsLoading = ref(false)
@@ -343,10 +307,48 @@ const isJobRunning = computed(() => {
   return isRunning(activeJob.value?.status)
 })
 
-const showPrerequisiteHint = computed(() => {
-  if (!semesterId.value) return false
-  return drafts.value.length === 0 || assignmentCount.value === 0
+const hasPublishedBaseline = computed(() =>
+  drafts.value.some((draft) => draft.status === 'PUBLISHED'),
+)
+
+const partialScopeBlocked = computed(() => {
+  const total = grades.value.length
+  const count = selectedGradeIds.value.length
+  return !hasPublishedBaseline.value && total > 1 && count > 0 && count < total
 })
+
+const activeJobDraft = computed(() => draftForJob(activeJob.value?.draftId))
+
+const missingPrerequisiteMessage = computed(() => {
+  if (!semesterId.value) return ''
+  const missingAssignments = assignmentCount.value === 0
+  const missingPeriods = periodCount.value === 0
+  if (missingAssignments && missingPeriods) {
+    return '排课前请先录入授课任务并配置作息表'
+  }
+  if (missingAssignments) {
+    return '排课前请先录入授课任务'
+  }
+  if (missingPeriods) {
+    return '排课前请先配置作息表'
+  }
+  return ''
+})
+
+const showPrerequisiteHint = computed(() => missingPrerequisiteMessage.value.length > 0)
+
+function draftForJob(draftId?: number | null): DraftItem | null {
+  if (!draftId) return null
+  return drafts.value.find((draft) => draft.id === draftId) ?? null
+}
+
+function isJobConflicted(job: JobItem): boolean {
+  return isCompletedWithConflicts(job, draftForJob(job.draftId))
+}
+
+function selectAllGrades() {
+  selectedGradeIds.value = grades.value.map((grade) => grade.id)
+}
 
 function stopPolling() {
   if (pollTimer) {
@@ -368,14 +370,18 @@ function startPolling(jobId: number) {
 
       if (isTerminal(data.status)) {
         stopPolling()
+        await Promise.all([loadDrafts(), loadHistory()])
         if (data.status === 'COMPLETED') {
-          ElMessage.success('排课已完成')
+          if (isCompletedWithConflicts(data, draftForJob(data.draftId))) {
+            ElMessage.warning('排课已完成，但存在冲突暂不可发布，请打开草稿处理冲突')
+          } else {
+            ElMessage.success('排课已完成')
+          }
         } else if (data.status === 'FAILED') {
           ElMessage.error(data.errorMessage ? `排课失败：${data.errorMessage}` : '排课失败')
         } else if (data.status === 'CANCELLED') {
           ElMessage.info('排课任务已取消')
         }
-        await Promise.all([loadDrafts(), loadHistory()])
       }
     } catch {
       stopPolling()
@@ -480,19 +486,35 @@ async function checkAssignments() {
   }
 }
 
+async function checkPeriods() {
+  if (!semesterId.value) {
+    periodCount.value = null
+    return
+  }
+  try {
+    const { data } = await http.get(`/semesters/${semesterId.value}/periods`)
+    periodCount.value = Array.isArray(data) ? data.length : 0
+  } catch {
+    periodCount.value = null
+  }
+}
+
 async function refreshSemesterData() {
   if (!semesterId.value) {
     drafts.value = []
     jobs.value = []
     assignmentCount.value = null
+    periodCount.value = null
     activeJob.value = null
+    submitError.value = null
     grades.value = []
     selectedGradeIds.value = []
     return
   }
-  await Promise.all([loadDrafts(), loadHistory(), checkAssignments(), loadGrades()])
+  await Promise.all([loadDrafts(), loadHistory(), checkAssignments(), checkPeriods(), loadGrades()])
   const running = jobs.value.find((j) => isRunning(j.status))
   if (running) {
+    submitError.value = null
     activeJob.value = running
     startPolling(running.id)
   } else {
@@ -505,6 +527,7 @@ async function refreshSemesterData() {
 async function onSemesterChange() {
   stopPolling()
   activeJob.value = null
+  submitError.value = null
   await refreshSemesterData()
 }
 
@@ -528,6 +551,7 @@ async function handleManualRefresh() {
 async function submitJob(gradeIds: number[], draftName?: string) {
   if (!semesterId.value) return
   submitting.value = true
+  submitError.value = null
   try {
     const { data } = await http.post<JobItem>(
       '/scheduling-jobs',
@@ -548,7 +572,11 @@ async function submitJob(gradeIds: number[], draftName?: string) {
       startPolling(data.id)
     }
   } catch (e: any) {
-    ElMessage.error(serverMessage(e, '提交排课任务失败'))
+    const message = serverMessage(e, '提交排课任务失败')
+    stopPolling()
+    activeJob.value = null
+    submitError.value = message
+    ElMessage.error(message)
   } finally {
     submitting.value = false
   }
@@ -733,52 +761,14 @@ h2 {
   margin-right: 20px;
 }
 
-.active-job-card {
-  border-color: #dbeafe;
-  background: #f8fafc;
+.partial-scope-alert {
+  margin-top: 12px;
 }
 
-.active-job-header {
+.partial-scope-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.job-header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
-}
-
-.card-title {
-  font-weight: 600;
-  font-size: 15px;
-}
-
-.job-draft-name {
-  color: var(--paiban-muted);
-  font-size: 14px;
-}
-
-.job-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.active-job-body {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.progress-wrapper {
-  padding: 4px 0;
-}
-
-.job-error-alert {
-  margin-top: 4px;
 }
 </style>

@@ -1,17 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { mondayOf, weekDates, weekdayLabel } from './swapTargetRules'
+import { mondayOf, nextMondayOf, weekDates, weekdayLabel } from './swapTargetRules'
 
 /**
  * 周课表的日期工具：列头日期与所选日期所在周严格对应。
  * 拖拽目标判定已迁到 dragTargets.spec.ts。
  */
 
-describe('mondayOf / weekDates / weekdayLabel', () => {
+describe('mondayOf / nextMondayOf / weekDates / weekdayLabel', () => {
   it('把任意日期归到所在周的周一', () => {
     expect(mondayOf('2026-03-04')).toBe('2026-03-02')
     expect(mondayOf('2026-03-02')).toBe('2026-03-02')
     expect(mondayOf('2026-03-08')).toBe('2026-03-02')
     expect(mondayOf('2026-12-31')).toBe('2026-12-28')
+  })
+
+  it('nextMondayOf 返回下一周的周一', () => {
+    expect(nextMondayOf('2026-03-02')).toBe('2026-03-09')
+    expect(nextMondayOf('2026-03-05')).toBe('2026-03-09')
+    expect(nextMondayOf('2026-12-31')).toBe('2027-01-04')
+    expect(nextMondayOf('invalid')).toBe('')
   })
 
   it('weekDates 返回周一到周五的实际日期，跨月也连续', () => {

@@ -319,11 +319,6 @@ class ConstraintMigrationIntegrationTest extends ApiIntegrationTest {
     @Test
     void omittedSemesterWithoutACurrentOneIsABadRequestOnAllThreeEndpoints() {
         String token = adminToken();
-        as(token).body(Map.of(
-                        "name", "无当前学期" + TestData.suffix(),
-                        "startDate", "2025-09-01",
-                        "endDate", "2026-01-20"))
-                .when().post("/api/semesters").then().statusCode(200);
 
         for (String path : List.of("/api/constraint-migration/preview",
                 "/api/constraint-migration/report")) {

@@ -65,6 +65,7 @@ public class PaibanConstraintProvider implements ConstraintProvider {
         addCourseThreshold(factory, constraints, s);
         addConsecutive(factory, constraints, s);
         addSpread(factory, constraints, s);
+        addDefaultSpread(factory, constraints, s);
         addProhibition(factory, constraints, s, ConstraintType.MAIN_SUBJECT_MORNING,
                 lesson -> {
                     Integer before = s.courseScalar(
@@ -235,9 +236,51 @@ public class PaibanConstraintProvider implements ConstraintProvider {
                             lesson -> lesson.getPeriod().getDayOfWeek(),
                             ConstraintCollectors.count())
                     .filter((classId, courseId, day, count) -> count > 1)
-                    .penalize(score(control))
+                    .penalize(score(control), (classId, courseId, day, count) ->
+                            control.hard() ? 1 : (count - 1))
                     .asConstraint(constraintName(type, control)));
         }
+    }
+
+    /**
+     * Baseline soft spread active only when {@link ConstraintSettings#defaultSpread()} is
+     * enabled: penalizes multiple lessons of the same course on one day (for courses without
+     * explicit daily/consecutive rules) and balances total class lessons across days so new
+     * semesters do not pack every lesson into Monday through Wednesday.
+     */
+    private void addDefaultSpread(ConstraintFactory f, List<Constraint> out, ConstraintSettings s) {
+        if (!s.defaultSpread()) {
+            return;
+        }
+        int spreadWeight = ConstraintType.COURSE_SPREAD.getDefaultWeight();
+        out.add(f.forEach(Lesson.class)
+                .filter(lesson -> lesson.getPeriod() != null
+                        && lesson.getCourseId() != null
+                        && hasNoExplicitDailySpreadRule(s, lesson.getCourseId()))
+                .groupBy(
+                        Lesson::getAdminClassId,
+                        Lesson::getCourseId,
+                        lesson -> lesson.getPeriod().getDayOfWeek(),
+                        ConstraintCollectors.count())
+                .filter((classId, courseId, day, count) -> count > 1)
+                .penalize(HardSoftScore.ofSoft(spreadWeight), (classId, courseId, day, count) -> count - 1)
+                .asConstraint("默认课程分散"));
+
+        out.add(f.forEach(Lesson.class)
+                .filter(lesson -> lesson.getPeriod() != null)
+                .groupBy(
+                        Lesson::getAdminClassId,
+                        lesson -> lesson.getPeriod().getDayOfWeek(),
+                        ConstraintCollectors.count())
+                .filter((classId, day, count) -> count > 1)
+                .penalize(HardSoftScore.ONE_SOFT, (classId, day, count) -> count * (count - 1) / 2)
+                .asConstraint("默认班级每日课时均衡"));
+    }
+
+    private boolean hasNoExplicitDailySpreadRule(ConstraintSettings s, Long courseId) {
+        return courseLooseControl(s, ConstraintType.COURSE_SPREAD, courseId) == null
+                && courseLooseControl(s, ConstraintType.SAME_COURSE_ONCE_PER_DAY, courseId) == null
+                && s.courseScalar(ConstraintType.CONSECUTIVE_LESSONS, courseId, "minConsecutive") == null;
     }
 
     private void addConsecutive(ConstraintFactory f, List<Constraint> out, ConstraintSettings s) {

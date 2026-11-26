@@ -64,6 +64,26 @@ class PaibanConstraintProviderTest {
         assertThat(solution.getScore().hardScore()).isZero();
     }
 
+    @Test
+    void defaultSpreadSoftScoreMatchesExcessCoursePlusDailyLoadBalance() {
+        ConstraintSettingsHolder.set(ConstraintSettings.defaults().withDefaultSpread(true));
+        Lesson first = new Lesson(1L, 101L, 501L, "语文", 10L, 500L, null, null, false, 40, 0);
+        first.setPeriod(MON1);
+        Lesson second = new Lesson(2L, 101L, 501L, "语文", 10L, 500L, null, null, false, 40, 1);
+        second.setPeriod(MON2);
+        Lesson otherCourse = new Lesson(3L, 102L, 502L, "数学", 11L, 500L, null, null, false, 40, 0);
+        PeriodSlot mon3 = new PeriodSlot(3L, 1, 3, false, false);
+        otherCourse.setPeriod(mon3);
+
+        TimetableSolution solution = new TimetableSolution(
+                List.of(first, second, otherCourse), List.of(MON1, MON2, mon3));
+        scoreManager().updateScore(solution);
+
+        assertThat(solution.getScore().hardScore()).isZero();
+        // 1 excess lesson of course 501 (50) + 3 lessons in class 500 on Mon (3*2/2 = 3) = -53.
+        assertThat(solution.getScore().softScore()).isEqualTo(-53);
+    }
+
     private static ScoreManager<TimetableSolution, HardSoftScore> scoreManager() {
         SolverConfig config = new SolverConfig()
                 .withSolutionClass(TimetableSolution.class)

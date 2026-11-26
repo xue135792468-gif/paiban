@@ -365,4 +365,21 @@ describe('DraftGrid', () => {
     expect(wrapper.findAll('.cell')[1].classes()).not.toContain('foreign-busy')
     expect(wrapper.text()).not.toContain('王老师在高一2班有课')
   })
+
+  it('高亮冲突课节时同时保留 conflict 与 highlight 标记', () => {
+    const wrapper = mountGrid({
+      periods: [period(1, 1), period(2, 1)],
+      lessons: [lesson(1, 1, 1), lesson(2, 2, 1)],
+      conflictLessonIds: [1],
+      highlightLessonIds: [1],
+    })
+
+    const cells = wrapper.findAll('.cell')
+    expect(cells[0].classes()).toContain('cell-highlight')
+    expect(cells[1].classes()).not.toContain('cell-highlight')
+    const card = wrapper.findAll('.lesson')[0]
+    expect(card.classes()).toContain('conflict')
+    expect(card.classes()).toContain('highlight')
+    expect(card.attributes('data-highlighted')).toBe('true')
+  })
 })

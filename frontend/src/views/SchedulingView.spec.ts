@@ -272,3 +272,126 @@ describe('草稿删除入口', () => {
     wrapper.unmount()
   })
 })
+
+describe('F-01 / F-02 / U-03：前置条件、局部重排拦截与提交失败状态', () => {
+  const GRADES = [
+    { id: 1, name: '高一' },
+    { id: 2, name: '高二' },
+  ]
+
+  function stubBaseData(options: {
+    assignments?: unknown[]
+    periods?: unknown[]
+    drafts?: unknown[]
+    jobs?: unknown[]
+  }) {
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/semesters') return Promise.resolve({ data: [SEMESTER] })
+      if (url === '/semesters/current') return Promise.resolve({ status: 200, data: SEMESTER })
+      if (url === '/grades') return Promise.resolve({ data: GRADES })
+      if (url === '/assignments') return Promise.resolve({ data: options.assignments ?? [{ id: 1 }] })
+      if (url === '/semesters/1/periods') return Promise.resolve({ data: options.periods ?? [{ id: 1 }] })
+      if (url === '/timetable-drafts') return Promise.resolve({ data: options.drafts ?? [] })
+      if (url === '/scheduling-jobs') return Promise.resolve({ data: options.jobs ?? [] })
+      return Promise.resolve({ data: [] })
+    })
+  }
+
+  it('U-03：无草稿但已有授课任务和作息表时，不显示缺少授课任务/作息表提示', async () => {
+    vi.clearAllMocks()
+    stubBaseData({ drafts: [], assignments: [{ id: 1 }], periods: [{ id: 1 }] })
+
+    const { wrapper } = await mountScheduling()
+    expect(wrapper.find('[data-testid="prerequisite-hint"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('U-03：仅当真正缺少授课任务或作息表时才显示对应提示', async () => {
+    vi.clearAllMocks()
+    stubBaseData({ drafts: [], assignments: [], periods: [{ id: 1 }] })
+
+    const { wrapper } = await mountScheduling()
+    expect(wrapper.get('[data-testid="prerequisite-hint"]').text()).toContain('请先录入授课任务')
+    expect(wrapper.get('[data-testid="prerequisite-hint"]').text()).not.toContain('作息表')
+    wrapper.unmount()
+  })
+
+  it('F-01：无已发布课表时选部分年级禁用开始排课，点击全选后恢复可用', async () => {
+    vi.clearAllMocks()
+    stubBaseData({ drafts: [] })
+
+    const { wrapper } = await mountScheduling()
+    wrapper.findComponent(GradeScopePicker).vm.$emit('update:modelValue', [1])
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="partial-scope-warning"]').text()).toContain(
+      '其他年级尚未发布课表',
+    )
+    expect(button(wrapper, '开始排课').attributes('disabled')).toBeDefined()
+
+    await button(wrapper, '全选全部年级').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="partial-scope-warning"]').exists()).toBe(false)
+    expect(button(wrapper, '开始排课').attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('F-01 & F-02：新提交 409 失败时清掉之前的已完成卡片并展示提交失败提示', async () => {
+    vi.clearAllMocks()
+    stubBaseData({
+      drafts: [
+        {
+          id: 20,
+          semesterId: 1,
+          name: '旧方案',
+          status: 'DRAFT',
+          scoreHard: -22,
+          scoreSoft: 0,
+          createdAt: '2026-01-01T00:00:00Z',
+          lessonCount: 10,
+        },
+      ],
+    })
+    httpMock.post.mockResolvedValueOnce({
+      data: {
+        id: 7,
+        semesterId: 1,
+        status: 'COMPLETED',
+        score: '-22hard/0soft',
+        progress: 100,
+        elapsedMs: 1000,
+        draftId: 20,
+        draftName: '旧方案',
+        solveSeconds: 60,
+        createdAt: '2026-01-01T00:00:00Z',
+        gradeIds: [1, 2],
+        diagnostics: [],
+      },
+    })
+
+    const { wrapper } = await mountScheduling()
+    await button(wrapper, '开始排课').trigger('click')
+    await flushPromises()
+
+    // F-02: 有硬冲突时展示警告态
+    expect(wrapper.get('[data-testid="active-job-status"]').text()).toBe(
+      '已完成，但存在冲突暂不可发布',
+    )
+
+    // F-01: 下一次提交 409 失败时，不能继续显示旧的已完成卡片和打开草稿按钮
+    httpMock.post.mockRejectedValueOnce({
+      response: {
+        status: 409,
+        data: { message: '其他年级还没有已排课表，无法保持不动' },
+      },
+    })
+    await button(wrapper, '开始排课').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="active-job-card"]').exists()).toBe(false)
+    const errCard = wrapper.get('[data-testid="job-submit-error"]')
+    expect(errCard.text()).toContain('其他年级还没有已排课表，无法保持不动')
+    expect(errCard.text()).not.toContain('打开草稿')
+    wrapper.unmount()
+  })
+})

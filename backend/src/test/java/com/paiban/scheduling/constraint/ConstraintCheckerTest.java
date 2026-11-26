@@ -135,6 +135,31 @@ class ConstraintCheckerTest {
                 .isEqualTo(40);
     }
 
+    @Test
+    void defaultSpreadSoftPenaltyAppliesOnlyWhenEnabledAndAvoidsDoubleCounting() {
+        PlanSnapshot snapshot = base()
+                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, 0L, 1, 1)
+                .lesson(PlanFixtures.CLASS_1, COURSE_1, TEACHER_1, 0L, 1, 2)
+                .lesson(PlanFixtures.CLASS_1, COURSE_2, TEACHER_2, 0L, 1, 3)
+                .build();
+        List<LessonView> views = viewsOn(snapshot, 1);
+
+        assertThat(ConstraintChecker.softPenalty(context(ConstraintSettings.defaults(), snapshot), views))
+                .isZero();
+
+        // 1 excess COURSE_1 lesson (50) + 3 lessons in CLASS_1 on day 1 -> 3*2/2 = 3 => 53.
+        ConstraintSettings spreadOn = ConstraintSettings.defaults().withDefaultSpread(true);
+        assertThat(ConstraintChecker.softPenalty(context(spreadOn, snapshot), views))
+                .isEqualTo(ConstraintType.COURSE_SPREAD.getDefaultWeight() + 3);
+
+        // Explicit COURSE_SPREAD rule on COURSE_1 (weight 70) must not be double-counted with default 50.
+        ConstraintSettings explicitSpread = settingsWith(
+                ConstraintType.COURSE_SPREAD, false, 70, Map.of("courseId", COURSE_1))
+                .withDefaultSpread(true);
+        assertThat(ConstraintChecker.softPenalty(context(explicitSpread, snapshot), views))
+                .isEqualTo(73);
+    }
+
     private static PlanFixtures.Builder base() {
         return PlanFixtures.builder()
                 .adminClass(PlanFixtures.CLASS_1, "高一1班", 45, null)

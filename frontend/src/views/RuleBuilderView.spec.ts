@@ -94,21 +94,27 @@ beforeEach(() => {
   })
 })
 
-async function mountView(): Promise<VueWrapper> {
+async function mountViewWithRouter(): Promise<{ wrapper: VueWrapper; router: ReturnType<typeof createRouter> }> {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: '/rules', component: { template: '<div />' } },
+      { path: '/rules', component: RuleBuilderView },
+      { path: '/other', component: { template: '<div />' } },
       { path: '/:pathMatch(.*)*', component: { template: '<div />' } },
     ],
   })
   await router.push('/rules')
   await router.isReady()
-  const wrapper = mount(RuleBuilderView, {
+  const wrapper = mount({ template: '<router-view />' }, {
     attachTo: document.body,
     global: { plugins: [router, ElementPlus, createPinia()] },
   })
   await flushPromises()
+  return { wrapper, router }
+}
+
+async function mountView(): Promise<VueWrapper> {
+  const { wrapper } = await mountViewWithRouter()
   return wrapper
 }
 
@@ -414,5 +420,73 @@ describe('RuleBuilderView: grouped list, search and impact', () => {
       .toContain('从以前的学期复制规则')
     expect(wrapper.get('[data-testid="rule-copy-confirm"]').attributes('disabled')).toBeDefined()
     wrapper.unmount()
+  })
+
+  it('shows sticky unsaved indicator and guards route leave & beforeunload when dirty', async () => {
+    const confirm = vi.spyOn(ElMessageBox, 'confirm')
+    const { wrapper, router } = await mountViewWithRouter()
+
+    // 未修改时：保存栏显示已保存，路由离开不拦截，beforeunload 不阻止
+    expect(wrapper.find('[data-testid="rule-unsaved-indicator"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="rule-saved-indicator"]').text()).toContain('当前规则已保存')
+    const cleanUnload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(cleanUnload)
+    expect(cleanUnload.defaultPrevented).toBe(false)
+
+    // 修改一条规则使页面进入 dirty 状态
+    await wrapper.findAll('[data-testid="rule-toggle"]')[0].trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="rule-unsaved-indicator"]').text()).toContain('有未保存的修改')
+
+    // beforeunload 拦截
+    const dirtyUnload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(dirtyUnload)
+    expect(dirtyUnload.defaultPrevented).toBe(true)
+
+    // 路由离开：取消则留在 /rules
+    confirm.mockRejectedValueOnce(new Error('cancel') as never)
+    await router.push('/other')
+    await flushPromises()
+    expect(confirm).toHaveBeenCalledTimes(1)
+    expect(router.currentRoute.value.path).toBe('/rules')
+
+    // 路由离开：确认则允许离开
+    confirm.mockResolvedValueOnce('confirm' as never)
+    await router.push('/other')
+    await flushPromises()
+    expect(confirm).toHaveBeenCalledTimes(2)
+    expect(router.currentRoute.value.path).toBe('/other')
+
+    // 卸载后移除 beforeunload 监听
+    wrapper.unmount()
+    const afterUnmount = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(afterUnmount)
+    expect(afterUnmount.defaultPrevented).toBe(false)
+  })
+
+  it('does not block leaving or beforeunload when there is no semester', async () => {
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/semesters') return Promise.resolve({ status: 200, data: [] })
+      if (url === '/semesters/current') return Promise.resolve({ status: 404, data: null })
+      if (url === '/teachers/options') return Promise.resolve({ data: [] })
+      if (url === '/courses') return Promise.resolve({ data: [] })
+      if (url === '/constraint-types') return Promise.resolve({ data: [] })
+      return Promise.resolve({ data: [] })
+    })
+    const confirm = vi.spyOn(ElMessageBox, 'confirm')
+    try {
+      const { wrapper, router } = await mountViewWithRouter()
+      const unloadEvent = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(unloadEvent)
+      expect(unloadEvent.defaultPrevented).toBe(false)
+
+      await router.push('/data/semesters')
+      await flushPromises()
+      expect(confirm).not.toHaveBeenCalled()
+      expect(router.currentRoute.value.path).toBe('/data/semesters')
+      wrapper.unmount()
+    } finally {
+      confirm.mockRestore()
+    }
   })
 })

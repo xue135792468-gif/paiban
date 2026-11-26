@@ -42,8 +42,37 @@
         课表加载失败：{{ timetableError }}
         <button type="button" class="retry" @click="emit('retry')">重试</button>
       </div>
-      <div v-else-if="entries.length === 0" class="empty">该教师本学期没有排课，或所选周没有课。</div>
+      <div v-else-if="entries.length === 0" class="empty">
+        <template v-if="semesterLessonCount === 0">
+          <span data-testid="no-semester-lessons">该教师本学期没有排课（可能尚未发布课表，或本学期未安排该教师授课）。</span>
+        </template>
+        <template v-else-if="semesterLessonCount !== null && semesterLessonCount > 0">
+          <span data-testid="no-week-lessons">
+            本周没有可调整的课（该教师本学期共有 {{ semesterLessonCount }} 节排课，本周可能已全部调出）。
+          </span>
+          <button v-if="nextMonday" type="button" class="retry" data-testid="jump-next-week" @click="jumpToNextWeek">
+            跳到下周（{{ nextMondayLabel }}）
+          </button>
+        </template>
+        <template v-else>
+          <span data-testid="no-week-lessons">本周没有可调整的课，或该教师本学期没有排课。</span>
+          <button v-if="nextMonday" type="button" class="retry" data-testid="jump-next-week" @click="jumpToNextWeek">
+            跳到下周（{{ nextMondayLabel }}）
+          </button>
+        </template>
+      </div>
       <template v-else>
+        <div v-if="allEntriesPast" class="callout" data-testid="week-no-adjustable-callout" role="status">
+          <div class="cw">
+            <span class="ic">!</span>
+            <span>本周剩余日期没有可调整的课，该教师本周有 {{ entries.length }} 节课已结束（今天之前的课不能调整）。</span>
+          </div>
+          <div v-if="nextMonday" class="callout-actions">
+            <button type="button" class="bt-inline" data-testid="jump-next-week" @click="jumpToNextWeek">
+              跳到下周（{{ nextMondayLabel }}）
+            </button>
+          </div>
+        </div>
         <div v-if="!narrow" class="wgrid" :class="{ dragging }" data-testid="workbench-timetable">
           <div class="gh">节次</div>
           <div v-for="day in days" :key="`head-${day.date}`" class="gh">
@@ -133,7 +162,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { isoOf, weekDates, weekdayLabel } from './swapTargetRules'
+import { dateOfDay, isoOf, mondayOf, monthDayCn, nextMondayOf, weekDates, weekdayLabel } from './swapTargetRules'
 import { isPastDate, today } from '../types'
 import type { Entry } from '../types'
 
@@ -150,10 +179,12 @@ const props = withDefaults(
     weekStart: string
     selectedEntryId: number | null
     dragInvalidReason: string
+    semesterLessonCount?: number | null
   }>(),
   {
     minDate: '',
     disabledDate: undefined,
+    semesterLessonCount: null,
   },
 )
 
@@ -174,6 +205,29 @@ function isPast(dateIso: string): boolean {
 function pickerDisabledDate(d: Date): boolean {
   if (props.disabledDate) return props.disabledDate(d)
   return isoOf(d) < (props.minDate || today())
+}
+
+const adjustableEntriesCount = computed(() =>
+  props.entries.filter((entry) => {
+    const entryDate = dateOfDay(props.weekStart, entry.dayOfWeek)
+    return entryDate !== '' && !isPast(entryDate)
+  }).length,
+)
+
+const allEntriesPast = computed(() => props.entries.length > 0 && adjustableEntriesCount.value === 0)
+
+const minAllowedDate = computed(() => props.minDate || today())
+
+const nextMonday = computed(() => {
+  const fromWeek = nextMondayOf(props.weekStart)
+  if (fromWeek && fromWeek >= minAllowedDate.value) return fromWeek
+  return nextMondayOf(mondayOf(minAllowedDate.value))
+})
+
+const nextMondayLabel = computed(() => (nextMonday.value ? monthDayCn(nextMonday.value) : ''))
+
+function jumpToNextWeek() {
+  if (nextMonday.value) emit('update:date', nextMonday.value)
 }
 
 const days = computed(() =>
@@ -321,263 +375,46 @@ onBeforeUnmount(cleanupDrag)
 </script>
 
 <style scoped>
-.panel {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  min-width: 0;
-  overflow: hidden;
-}
-.panel.cur {
-  border-left: 3px solid var(--brand);
-}
-.phead {
-  align-items: center;
-  border-bottom: 1px solid var(--line);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  min-width: 0;
-  padding: 16px 24px;
-}
-.idx {
-  align-items: center;
-  background: var(--brand-soft);
-  border-radius: 50%;
-  color: var(--brand);
-  display: grid;
-  flex: none;
-  font-size: 12px;
-  height: 22px;
-  place-items: center;
-  width: 22px;
-}
-.phead h2 {
-  font-size: 15px;
-  font-weight: 500;
-  margin: 0;
-}
-.hint {
-  color: var(--muted);
-  font-size: 12px;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.pbody {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  min-width: 0;
-  padding: 24px;
-}
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-.field {
-  display: flex;
-  flex-direction: column;
-  flex: 0 1 220px;
-  gap: 5px;
-  min-width: 0;
-}
-.field > span {
-  color: var(--muted);
-  font-size: 12px;
-}
-.empty {
-  color: var(--muted);
-  padding: 24px 0;
-  text-align: center;
-}
-.retry {
-  background: var(--surface);
-  border: 1px solid var(--line-2);
-  border-radius: 8px;
-  color: var(--text);
-  cursor: pointer;
-  font: inherit;
-  font-size: 12.5px;
-  margin-left: 8px;
-  padding: 2px 12px;
-}
-.retry:hover {
-  border-color: var(--brand);
-  color: var(--brand);
-}
-.wgrid {
-  background: var(--inset);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  display: grid;
-  gap: 8px;
-  grid-template-columns: 56px repeat(5, minmax(0, 1fr));
-  padding: 10px;
-}
-.wgrid.dragging {
-  user-select: none;
-}
-.wgrid.dragging .cell {
-  outline: 1px dashed var(--line-2);
-  outline-offset: -1px;
-}
-.gh {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.4;
-  text-align: center;
-}
-.gh b {
-  color: var(--text);
-  display: block;
-  font-size: 13px;
-  font-weight: 500;
-}
-.rp {
-  align-items: center;
-  color: var(--muted);
-  display: flex;
-  font-size: 12px;
-  justify-content: center;
-  text-align: center;
-}
-.cell {
-  min-height: 62px;
-  min-width: 0;
-}
-.cell.empty {
-  background: transparent;
-  border: 1px dashed var(--line-2);
-  border-radius: 8px;
-}
-.lesson {
-  background: var(--surface);
-  border: 1px solid var(--line-2);
-  border-radius: 8px;
-  color: var(--text);
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  font: inherit;
-  gap: 1px;
-  height: 100%;
-  justify-content: center;
-  min-height: 62px;
-  padding: 10px;
-  text-align: left;
-  width: 100%;
-}
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); min-width: 0; overflow: hidden; }
+.panel.cur { border-left: 3px solid var(--brand); }
+.phead { align-items: center; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 10px; min-width: 0; padding: 16px 24px; }
+.idx { align-items: center; background: var(--brand-soft); border-radius: 50%; color: var(--brand); display: grid; flex: none; font-size: 12px; height: 22px; place-items: center; width: 22px; }
+.phead h2 { font-size: 15px; font-weight: 500; margin: 0; }
+.hint { color: var(--muted); font-size: 12px; min-width: 0; overflow-wrap: anywhere; }
+.pbody { display: flex; flex-direction: column; gap: 24px; min-width: 0; padding: 24px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 12px; }
+.field { display: flex; flex-direction: column; flex: 0 1 220px; gap: 5px; min-width: 0; }
+.field > span { color: var(--muted); font-size: 12px; }
+.empty { color: var(--muted); padding: 24px 0; text-align: center; }
+.retry, .bt-inline { background: var(--surface); border: 1px solid var(--line-2); border-radius: 8px; color: var(--text); cursor: pointer; font: inherit; font-size: 12.5px; padding: 3px 12px; }
+.retry { margin-left: 8px; }
+.retry:hover, .bt-inline:hover { border-color: var(--brand); color: var(--brand); }
+.callout-actions { display: flex; align-items: center; gap: 8px; padding-left: 26px; }
+.wgrid { background: var(--inset); border: 1px solid var(--line); border-radius: var(--radius-sm); display: grid; gap: 8px; grid-template-columns: 56px repeat(5, minmax(0, 1fr)); padding: 10px; }
+.wgrid.dragging { user-select: none; }
+.wgrid.dragging .cell { outline: 1px dashed var(--line-2); outline-offset: -1px; }
+.gh { color: var(--muted); font-size: 12px; line-height: 1.4; text-align: center; }
+.gh b { color: var(--text); display: block; font-size: 13px; font-weight: 500; }
+.rp { align-items: center; color: var(--muted); display: flex; font-size: 12px; justify-content: center; text-align: center; }
+.cell { min-height: 62px; min-width: 0; }
+.cell.empty { background: transparent; border: 1px dashed var(--line-2); border-radius: 8px; }
+.lesson { background: var(--surface); border: 1px solid var(--line-2); border-radius: 8px; color: var(--text); cursor: pointer; display: flex; flex-direction: column; font: inherit; gap: 1px; height: 100%; justify-content: center; min-height: 62px; padding: 10px; text-align: left; width: 100%; }
 /* 只有网格课卡参与指针拖拽；列表项保持默认 touch-action，竖向滚动不被吃掉。 */
-.wgrid .lesson {
-  touch-action: none;
-}
-.lesson:hover {
-  border-color: var(--brand);
-}
-.lesson.chosen {
-  background: var(--brand-soft);
-  border-color: var(--brand);
-  box-shadow: inset 0 0 0 1px var(--brand);
-}
-.lesson.is-past {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-.lesson.is-past:hover {
-  border-color: var(--line-2);
-}
-.lesson .c {
-  font-size: 13px;
-  font-weight: 500;
-}
-.lesson .m {
-  color: var(--muted);
-  font-size: 12px;
-}
-.tag {
-  background: var(--warn-soft);
-  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
-  border-radius: 999px;
-  color: var(--warn);
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 16px;
-  padding: 0 6px;
-}
-.mlist {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.mlist .lesson {
-  min-height: 0;
-}
-.callout {
-  background: var(--warn-soft);
-  border: 1px solid color-mix(in srgb, var(--warn) 38%, transparent);
-  border-radius: var(--radius-sm);
-  color: var(--warn);
-  display: flex;
-  flex-direction: column;
-  font-size: 13px;
-  gap: 8px;
-  padding: 12px 14px;
-}
-.callout .cw {
-  align-items: flex-start;
-  display: flex;
-  gap: 8px;
-}
-.callout .ic {
-  align-items: center;
-  background: var(--warn);
-  border-radius: 50%;
-  color: var(--on-brand);
-  display: grid;
-  flex: none;
-  font-size: 12px;
-  font-weight: 500;
-  height: 18px;
-  margin-top: 2px;
-  place-items: center;
-  width: 18px;
-}
-.callout .cap {
-  color: var(--warn);
-  font-size: 12px;
-  opacity: 0.85;
-}
-.ghost {
-  background: var(--brand);
-  border-radius: 6px;
-  color: var(--on-brand);
-  font-size: 12px;
-  padding: 4px 10px;
-  pointer-events: none;
-  position: fixed;
-  transform: translate(-50%, -50%);
-  z-index: 2000;
-}
-@media (max-width: 900px) {
-  .phead {
-    padding: 12px 16px;
-  }
-  .pbody {
-    padding: 16px;
-  }
-}
-@media (max-width: 520px) {
-  .toolbar .field {
-    flex: 1 1 100%;
-  }
-  .phead {
-    padding: 12px 14px;
-  }
-  .pbody {
-    padding: 14px;
-  }
-}
+.wgrid .lesson { touch-action: none; }
+.lesson:hover { border-color: var(--brand); }
+.lesson.chosen { background: var(--brand-soft); border-color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand); }
+.lesson.is-past { cursor: not-allowed; opacity: 0.5; }
+.lesson.is-past:hover { border-color: var(--line-2); }
+.lesson .c { font-size: 13px; font-weight: 500; }
+.lesson .m { color: var(--muted); font-size: 12px; }
+.tag { background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); border-radius: 999px; color: var(--warn); display: inline-block; font-size: 11px; font-weight: 400; line-height: 16px; padding: 0 6px; }
+.mlist { display: flex; flex-direction: column; gap: 8px; }
+.mlist .lesson { min-height: 0; }
+.callout { background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warn) 38%, transparent); border-radius: var(--radius-sm); color: var(--warn); display: flex; flex-direction: column; font-size: 13px; gap: 8px; padding: 12px 14px; }
+.callout .cw { align-items: flex-start; display: flex; gap: 8px; }
+.callout .ic { align-items: center; background: var(--warn); border-radius: 50%; color: var(--on-brand); display: grid; flex: none; font-size: 12px; font-weight: 500; height: 18px; margin-top: 2px; place-items: center; width: 18px; }
+.callout .cap { color: var(--warn); font-size: 12px; opacity: 0.85; }
+.ghost { background: var(--brand); border-radius: 6px; color: var(--on-brand); font-size: 12px; padding: 4px 10px; pointer-events: none; position: fixed; transform: translate(-50%, -50%); z-index: 2000; }
+@media (max-width: 900px) { .phead { padding: 12px 16px; } .pbody { padding: 16px; } }
+@media (max-width: 520px) { .toolbar .field { flex: 1 1 100%; } .phead { padding: 12px 14px; } .pbody { padding: 14px; } }
 </style>
