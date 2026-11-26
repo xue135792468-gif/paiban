@@ -1,8 +1,11 @@
 <template>
   <div class="metric-grid">
-    <div class="metric-item">
+    <div class="metric-item" :class="{ 'has-conflicts': hardConflicts > 0 }">
       <span class="metric-label">当前求解得分</span>
       <span class="metric-value">{{ job.score || '暂无得分' }}</span>
+      <span v-if="hardConflicts > 0" class="metric-warning" data-testid="metrics-hard-conflicts">
+        {{ hardConflicts }} 处硬冲突，暂不可发布
+      </span>
     </div>
     <div class="metric-item">
       <span class="metric-label">已耗时</span>
@@ -26,9 +29,11 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { formatDateTime } from '@/utils/datetime'
+import { parseHardConflicts } from './jobStatus'
 
-defineProps<{
+const props = defineProps<{
   job: {
     status?: string
     score?: string | null
@@ -38,6 +43,8 @@ defineProps<{
     createdAt: string
   }
 }>()
+
+const hardConflicts = computed(() => parseHardConflicts(props.job.score))
 </script>
 
 <style scoped>
@@ -57,6 +64,10 @@ defineProps<{
   gap: 4px;
 }
 
+.metric-item.has-conflicts .metric-value {
+  color: #b45309;
+}
+
 .metric-label {
   font-size: 12px;
   color: var(--paiban-muted);
@@ -66,5 +77,11 @@ defineProps<{
   font-size: 14px;
   font-weight: 600;
   color: var(--paiban-ink);
+}
+
+.metric-warning {
+  font-size: 12px;
+  color: #b45309;
+  font-weight: 500;
 }
 </style>

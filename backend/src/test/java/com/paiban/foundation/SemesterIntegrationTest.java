@@ -71,6 +71,27 @@ class SemesterIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void firstCreatedSemesterBecomesCurrentWithoutStealingFromExistingCurrent() {
+        String token = adminToken();
+        Response first = as(token)
+                .body(Map.of("name", "首学期-" + suffix(), "startDate", "2025-09-01", "endDate", "2026-01-20"))
+                .when().post("/api/semesters");
+        first.then().statusCode(200)
+                .body("current", equalTo(true));
+        long firstId = first.jsonPath().getLong("id");
+
+        Response second = as(token)
+                .body(Map.of("name", "次学期-" + suffix(), "startDate", "2026-02-01", "endDate", "2026-06-30"))
+                .when().post("/api/semesters");
+        second.then().statusCode(200)
+                .body("current", equalTo(false));
+
+        as(token).when().get("/api/semesters/current")
+                .then().statusCode(200)
+                .body("id", equalTo((int) firstId));
+    }
+
+    @Test
     void customPeriodSlotsAreStoredPerDay() {
         String token = adminToken();
         long id = createSemester(token, "自定义作息-" + suffix());

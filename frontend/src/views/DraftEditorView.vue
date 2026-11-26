@@ -31,7 +31,10 @@
     <DraftPublishBlockers
       v-if="detail?.draft.status !== 'PUBLISHED'"
       :blockers="blockers"
+      :conflict-total="locatableConflictList.length"
+      :active-conflict-index="activeConflictIndex"
       @edit-lessons="drawerVisible = true"
+      @locate-conflict="locateNextConflict"
     />
 
     <DraftOptimizationSection
@@ -84,6 +87,7 @@
           :selected-lesson-ids="selectedIds"
           :targets="dragTargets"
           :swap-targets="teacherSwap.active.value ? teacherSwap.targets.value : null"
+          :highlight-lesson-ids="highlightedLessonIds"
           :show-class-name="viewMode === 'teacher'"
           :drag-class-view="dragClassView"
           :foreign-teacher-periods="foreignBusyPeriods"
@@ -99,48 +103,29 @@
         />
       </el-card>
 
-      <el-card v-if="drawerVisible" shadow="never" class="drawer-card">
-        <template #header>
-          <div class="drawer-header">
-            <span>未排课节</span>
-            <el-button link @click="drawerVisible = false">收起</el-button>
-          </div>
-        </template>
-        <div v-if="unassigned.length === 0" class="drawer-empty">没有未排课的授课任务</div>
-        <div
-          v-for="lesson in unassigned"
-          :key="lesson.id"
-          class="drawer-lesson"
-          :style="{ background: courseColor(courses, lesson.courseId) }"
-          :draggable="draftEditable"
-          @dragstart="onDragStart(lesson)"
-          @dragend="onDragEnd"
-        >
-          <div class="lesson-course">{{ lesson.courseName }}</div>
-          <div class="lesson-meta">{{ lesson.className }} · {{ lesson.teacherName }}</div>
-        </div>
-      </el-card>
+      <DraftUnassignedDrawer
+        v-if="drawerVisible"
+        :lessons="unassigned"
+        :courses="courses"
+        :draggable="draftEditable"
+        @close="drawerVisible = false"
+        @drag-start="onDragStart"
+        @drag-end="onDragEnd"
+      />
     </div>
 
-    <el-dialog v-model="conflictVisible" title="冲突原因" width="520px">
-      <el-alert
-        v-if="cellConflicts.length === 0"
-        title="该位置没有冲突"
-        type="success"
-        :closable="false"
-        show-icon
-      />
-      <ul v-else class="conflict-list">
-        <li v-for="(conflict, index) in cellConflicts" :key="index">{{ conflict.message }}</li>
-      </ul>
-    </el-dialog>
+    <DraftConflictDialog
+      v-model="conflictVisible"
+      :conflicts="cellConflicts"
+      :can-relocate="canRelocateConflictLesson"
+      @relocate="relocateConflictLesson"
+    />
 
     <DraftTargetDialog
       v-model="targetVisible"
       :periods="detail?.periods ?? []"
       :current-period-id="selectedLesson?.periodId ?? null"
-      :locked-period-ids="lockedPeriodIds"
-      :unavailable-period-ids="unavailablePeriodIds"
+      :period-states="targetPeriodStates"
       @select="onTargetPick"
     />
 
@@ -209,7 +194,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
@@ -223,9 +208,12 @@ import SwapPreviewDialog from '@/components/draft/SwapPreviewDialog.vue'
 import DraftEditorToolbar from '@/components/draft/DraftEditorToolbar.vue'
 import DraftEditorControls from '@/components/draft/DraftEditorControls.vue'
 import DraftTargetDialog from '@/components/draft/DraftTargetDialog.vue'
+import DraftConflictDialog from '@/components/draft/DraftConflictDialog.vue'
+import DraftUnassignedDrawer from '@/components/draft/DraftUnassignedDrawer.vue'
 import CyclePlanPanel from '@/components/draft/CyclePlanPanel.vue'
-import { courseColor } from '@/components/draft/colors'
 import { dragClassLessons, foreignTeacherPeriods } from '@/components/draft/dragClassView'
+import { computeTargetPeriodStates } from '@/components/draft/targetAvailability'
+import { locatableConflicts, nextConflictIndex, resolveConflictLesson } from '@/components/draft/conflictLocator'
 import { useDraftAdjust } from '@/composables/useDraftAdjust'
 import { useDraftEditor } from '@/composables/useDraftEditor'
 import { useDraftDrop } from '@/composables/useDraftDrop'
@@ -236,7 +224,7 @@ import { useDraftLocks } from '@/composables/useDraftLocks'
 import { useUndoShortcut } from '@/composables/useUndoShortcut'
 import { useDraftCompareQuery } from '@/composables/useDraftCompareQuery'
 import { useDraftActions } from '@/composables/useDraftActions'
-import type { CyclePlan, DraftConflict, DraftLesson } from '@/components/draft/types'
+import type { CyclePlan, DraftConflict, DraftLesson, MoveTargetState } from '@/components/draft/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -312,7 +300,7 @@ const {
 } = useDraftEditor({
   draftId,
   canEdit,
-  onLoaded: () => { clearSelection(); teacherSwap.exit() },
+  onLoaded: () => { clearSelection(); teacherSwap.exit(); highlightedConflictLessonId.value = null },
 })
 
 const locks = useDraftLocks({
@@ -342,7 +330,10 @@ const dragged = ref<DraftLesson | null>(null)
 const dragTargets = ref<Record<number, { available: boolean; conflicts: DraftConflict[] }> | null>(null)
 const conflictVisible = ref(false)
 const cellConflicts = ref<DraftConflict[]>([])
+const conflictDialogLessonId = ref<number | null>(null)
+const highlightedConflictLessonId = ref<number | null>(null)
 const targetVisible = ref(false)
+const targetMoveTargets = ref<Record<number, MoveTargetState> | null>(null)
 
 /** 票 17：教师视角拖起时，网格临时切成该课所属班的浅色课表；放下/取消自动还原。 */
 const dragClassView = computed(() => viewMode.value === 'teacher' && dragged.value != null)
@@ -352,28 +343,35 @@ const foreignBusyPeriods = computed(() =>
   Object.fromEntries(foreignTeacherPeriods(detail.value?.lessons ?? [], dragClassSource.value)),
 )
 
-const lockedPeriodIds = computed(() =>
-  (detail.value?.lessons ?? [])
-    .filter(
-      (lesson) =>
-        lesson.locked &&
-        lesson.periodId != null &&
-        lesson.classId === selectedLesson.value?.classId,
-    )
-    .map((lesson) => lesson.periodId!),
+const targetPeriodStates = computed(() =>
+  computeTargetPeriodStates({
+    periods: detail.value?.periods ?? [],
+    lessons: detail.value?.lessons ?? [],
+    selectedLesson: selectedLesson.value,
+    blockedSlots: detail.value?.blockedSlots ?? [],
+    moveTargets: targetMoveTargets.value,
+  }),
 )
 
-const unavailablePeriodIds = computed(() => {
-  const ids = new Set<number>()
-  const classId = selectedLesson.value?.classId
-  detail.value?.lessons.forEach((lesson) => {
-    if (lesson.periodId != null && classId != null && lesson.classId !== classId) {
-      ids.add(lesson.periodId)
-    }
-  })
-  Object.keys(blockedPeriods.value).forEach((periodId) => ids.add(Number(periodId)))
-  return [...ids]
-})
+const locatableConflictList = computed(() =>
+  locatableConflicts(validation.value?.conflicts ?? [], detail.value?.lessons ?? []),
+)
+const activeConflictIndex = computed(() =>
+  highlightedConflictLessonId.value == null
+    ? -1
+    : locatableConflictList.value.findIndex((item) => item.lesson.id === highlightedConflictLessonId.value),
+)
+const highlightedLessonIds = computed(() =>
+  highlightedConflictLessonId.value != null ? [highlightedConflictLessonId.value] : [],
+)
+const conflictDialogLesson = computed(() =>
+  conflictDialogLessonId.value == null
+    ? null
+    : (detail.value?.lessons ?? []).find((l) => l.id === conflictDialogLessonId.value) ?? null,
+)
+const canRelocateConflictLesson = computed(
+  () => draftEditable.value && conflictDialogLesson.value != null && conflictDialogLesson.value.periodId != null,
+)
 
 const { drop } = useDraftDrop({
   detail,
@@ -386,8 +384,35 @@ const { drop } = useDraftDrop({
 })
 
 function showConflicts(conflicts: DraftConflict[]) {
+  const lesson = resolveConflictLesson(conflicts, detail.value?.lessons ?? [], selectedLesson.value)
+  conflictDialogLessonId.value = lesson?.id ?? null
   cellConflicts.value = conflicts
   conflictVisible.value = true
+}
+
+async function locateNextConflict() {
+  const items = locatableConflictList.value
+  if (items.length === 0) return
+  const target = items[nextConflictIndex(activeConflictIndex.value, items.length)]?.lesson
+  if (!target) return
+  teacherSwap.exit()
+  viewMode.value = 'class'
+  targetId.value = target.classId
+  highlightedConflictLessonId.value = target.id
+  selectLesson(target)
+  if (target.periodId == null) drawerVisible.value = true
+  await nextTick()
+  const el = document.querySelector(`[data-lesson-id="${target.id}"]`)
+  if (el && typeof el.scrollIntoView === 'function') {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+  }
+}
+
+function relocateConflictLesson() {
+  const lesson = conflictDialogLesson.value
+  if (!lesson) return
+  selectLesson(lesson)
+  openTargetDialog()
 }
 
 async function onDragStart(lesson: DraftLesson) {
@@ -439,6 +464,7 @@ function onLessonActivate(lesson: DraftLesson) {
 
 function onViewChange() {
   teacherSwap.exit()
+  highlightedConflictLessonId.value = null
   resetTarget()
 }
 
@@ -452,18 +478,25 @@ function openSwapForSelected() {
 }
 
 function openTargetDialog() {
-  if (!selectedLesson.value || selectedLesson.value.periodId == null) return
-  if (selectedLesson.value.locked) return ElMessage.warning('该课节已锁定，先解锁后再选择位置')
+  const lesson = selectedLesson.value
+  if (!lesson || lesson.periodId == null) return
+  if (lesson.locked) return ElMessage.warning('该课节已锁定，先解锁后再选择位置')
+  targetMoveTargets.value = null
   targetVisible.value = true
+  void adjust.loadMoveTargets(lesson.id).then((targets) => {
+    if (selectedLesson.value?.id === lesson.id) {
+      targetMoveTargets.value = targets
+    }
+  })
 }
 
 async function onTargetPick(periodId: number) {
   const lesson = selectedLesson.value
   if (!lesson) return
-  const visibleIds = filteredLessons.value
-    .filter((item) => item.periodId === periodId)
+  const sameClassIds = (detail.value?.lessons ?? [])
+    .filter((item) => item.classId === lesson.classId && item.periodId === periodId)
     .map((item) => item.id)
-  await drop(lesson, periodId, visibleIds)
+  await drop(lesson, periodId, sameClassIds)
 }
 
 async function onApplyPlan(plan: CyclePlan) {
@@ -477,14 +510,10 @@ async function onApplyPlan(plan: CyclePlan) {
     return
   }
   const outcome = await cyclePlans.apply(plan, draftVersion.value, detail.value?.lessons ?? [])
-  if (outcome.saved) {
-    await load()
-  } else if ('conflicts' in outcome && outcome.conflicts.length > 0) {
+  if (!outcome.saved && 'conflicts' in outcome && outcome.conflicts.length > 0) {
     showConflicts(outcome.conflicts)
-    await load()
-  } else {
-    await load()
   }
+  await load()
 }
 
 async function onConfirmSwap() {
@@ -553,48 +582,5 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   flex: 1;
   border: none;
   overflow: auto;
-}
-.swap-mode-hint {
-  margin-bottom: 10px;
-}
-.drawer-card {
-  width: 240px;
-  border: none;
-}
-.drawer-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-weight: 600;
-}
-.drawer-empty {
-  color: var(--paiban-muted);
-  font-size: 13px;
-  text-align: center;
-  padding: 20px 0;
-}
-.drawer-lesson {
-  margin-bottom: 8px;
-  border-radius: 8px;
-  padding: 6px 8px;
-  cursor: grab;
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  color: #2b3245;
-  overflow: hidden;
-}
-.drawer-lesson .lesson-course {
-  font-weight: 600;
-  font-size: 13px;
-}
-.drawer-lesson .lesson-meta {
-  font-size: 11px;
-  margin-top: 3px;
-  color: #4b5563;
-}
-.conflict-list {
-  margin: 0;
-  padding-left: 20px;
-  line-height: 1.9;
-  color: #b43b3b;
 }
 </style>

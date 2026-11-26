@@ -64,10 +64,23 @@ public class SemesterService {
         if (semesters.existsByName(request.name())) {
             throw ApiException.conflict("学期名称已存在: " + request.name());
         }
+        boolean hasActiveCurrent = false;
+        for (Semester existing : semesters.findAll()) {
+            if (!existing.isCurrent()) {
+                continue;
+            }
+            if (existing.getDeletedAt() == null) {
+                hasActiveCurrent = true;
+            } else {
+                // 清理已软删学期残留的 current 标记，保持 findByCurrentTrue 唯一性。
+                existing.setCurrent(false);
+            }
+        }
         Semester semester = new Semester();
         semester.setName(request.name());
         semester.setStartDate(request.startDate());
         semester.setEndDate(request.endDate());
+        semester.setCurrent(!hasActiveCurrent);
         semester.setCreatedAt(Instant.now());
         Semester saved = semesters.save(semester);
         events.publishEvent(new SemesterCreatedEvent(saved.getId()));

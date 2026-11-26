@@ -28,32 +28,49 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { blockerTarget } from './publishBlockers'
+import { blockerActionFor, type BlockerAction } from './publishBlockers'
 import type { DraftPublishBlocker } from './types'
 
-const props = defineProps<{ blockers: DraftPublishBlocker[] }>()
-const emit = defineEmits<{ (e: 'edit-lessons'): void }>()
+const props = withDefaults(
+  defineProps<{
+    blockers: DraftPublishBlocker[]
+    conflictTotal?: number
+    activeConflictIndex?: number
+  }>(),
+  {
+    conflictTotal: 0,
+    activeConflictIndex: -1,
+  },
+)
+const emit = defineEmits<{
+  (e: 'edit-lessons'): void
+  (e: 'locate-conflict'): void
+}>()
 
 const router = useRouter()
 
 interface Row {
   blocker: DraftPublishBlocker
-  kind: 'link' | 'drawer' | 'dialog' | 'none'
+  kind: BlockerAction['kind']
   label: string
   to: string
 }
 
 /**
  * One row per blocker. The message already carries the affected count, so the row only
- * adds the way out — resolved here from the server's action identifier.
+ * adds the way out, resolved here from the server's action identifier or conflict locator.
  */
 const rows = computed<Row[]>(() =>
   props.blockers.map((blocker) => {
-    const target = blockerTarget(blocker.action)
+    const target = blockerActionFor(blocker)
+    let label = target.kind === 'none' ? '' : target.label
+    if (target.kind === 'locate-conflict' && props.activeConflictIndex >= 0 && props.conflictTotal > 0) {
+      label = `${target.label}（${props.activeConflictIndex + 1}/${props.conflictTotal}）`
+    }
     return {
       blocker,
       kind: target.kind,
-      label: target.kind === 'none' ? '' : target.label,
+      label,
       to: target.kind === 'link' ? target.to : '',
     }
   }),
@@ -62,6 +79,10 @@ const rows = computed<Row[]>(() =>
 function activate(row: Row) {
   if (row.kind === 'link') {
     void router.push(row.to)
+    return
+  }
+  if (row.kind === 'locate-conflict') {
+    emit('locate-conflict')
     return
   }
   emit('edit-lessons')

@@ -81,9 +81,11 @@ public final class ConstraintSettings {
     }
 
     private final Map<ConstraintType, Rule> rules;
+    private final boolean defaultSpread;
 
-    private ConstraintSettings(Map<ConstraintType, Rule> rules) {
+    private ConstraintSettings(Map<ConstraintType, Rule> rules, boolean defaultSpread) {
         this.rules = rules;
+        this.defaultSpread = defaultSpread;
     }
 
     public static ConstraintSettings defaults() {
@@ -93,7 +95,7 @@ public final class ConstraintSettings {
                 ConstraintType.CLASS_CONFLICT)) {
             rules.put(type, new Rule(true, 100, List.of()));
         }
-        return new ConstraintSettings(rules);
+        return new ConstraintSettings(rules, false);
     }
 
     /** Legacy shape: one parameter map per type, no entry rows. */
@@ -145,7 +147,17 @@ public final class ConstraintSettings {
                 ConstraintType.CLASS_CONFLICT)) {
             rules.put(type, new Rule(true, 100, List.of()));
         }
-        return new ConstraintSettings(rules);
+        return new ConstraintSettings(rules, false);
+    }
+
+    /** Whether solver-only baseline spread and daily load balance soft penalties are active. */
+    public boolean defaultSpread() {
+        return defaultSpread;
+    }
+
+    /** Returns a snapshot sharing these rules with {@code defaultSpread} toggled. */
+    public ConstraintSettings withDefaultSpread(boolean enabled) {
+        return this.defaultSpread == enabled ? this : new ConstraintSettings(rules, enabled);
     }
 
     /** Shared by scoring, draft edits, publication and dated substitutions. */

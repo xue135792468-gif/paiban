@@ -366,25 +366,49 @@ async function exportFile(format: string) {
   }
 }
 
+async function fetchCurrentSemester(): Promise<{ id: number } | null> {
+  try {
+    const res = await http.get('/semesters/current', {
+      validateStatus: (status) => status < 500,
+    })
+    if (res.status === 204 || !res.data?.id) {
+      return null
+    }
+    return res.data
+  } catch {
+    return null
+  }
+}
+
 onMounted(async () => {
-  const [classRes, teacherRes, courseRes, currentRes] = await Promise.all([
+  const currentSemester = await fetchCurrentSemester()
+  if (!currentSemester) {
+    classes.value = []
+    periods.value = []
+    published.value = null
+    entries.value = []
+    const [teacherRes, courseRes] = await Promise.all([
+      http.get('/teachers/options'),
+      http.get('/courses'),
+    ])
+    teachers.value = teacherRes.data ?? []
+    courses.value = courseRes.data ?? []
+    return
+  }
+
+  const semesterId = currentSemester.id
+  const [classRes, teacherRes, courseRes, periodRes, publishRes] = await Promise.all([
     http.get('/classes'),
     http.get('/teachers/options'),
     http.get('/courses'),
-    http.get('/semesters/current'),
+    http.get(`/semesters/${semesterId}/periods`),
+    http.get('/timetable/publish-info'),
   ])
   classes.value = classRes.data
   teachers.value = teacherRes.data
   courses.value = courseRes.data
-  if (currentRes.status !== 204 && currentRes.data) {
-    const semesterId = currentRes.data.id
-    const [periodRes, publishRes] = await Promise.all([
-      http.get(`/semesters/${semesterId}/periods`),
-      http.get('/timetable/publish-info'),
-    ])
-    periods.value = periodRes.data
-    published.value = publishRes.data?.published ? publishRes.data : null
-  }
+  periods.value = periodRes.data
+  published.value = publishRes.data?.published ? publishRes.data : null
   targetId.value = targets.value.length > 0 ? targets.value[0].id : null
   if (!canViewAll.value) {
     if (canViewClassScope.value && headClasses.value.length > 0) {

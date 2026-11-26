@@ -368,10 +368,74 @@ class AdminSubstitutionIntegrationTest extends ApiIntegrationTest {
                 "candidates.find { it.teacherId == " + fx.teacherDId() + " }.sameSubject")).isTrue();
         assertThat(response.jsonPath().getBoolean(
                 "candidates.find { it.teacherId == " + fx.teacherBId() + " }.crossSubject")).isTrue();
-        // 排序：同科在前。列表只含启用教师且排除当前教师。
+        // 排序：空闲同科 > 空闲跨科 > 忙碌跨科。列表只含启用教师且排除当前教师。
         List<Long> idList = idList(response);
         assertThat(idList.indexOf(fx.teacherDId()))
+                .isLessThan(idList.indexOf(fx.teacherCId()));
+        assertThat(idList.indexOf(fx.teacherCId()))
                 .isLessThan(idList.indexOf(fx.teacherBId()));
+    }
+
+    @Test
+    void candidatesSortFreeBeforeBusyAndSameSubjectWithinEachTier() {
+        String token = adminToken();
+        String suffix = TestData.suffix();
+        LocalDate monday = LocalDate.now().with(TemporalAdjusters.next(java.time.DayOfWeek.MONDAY));
+        LocalDate wednesday = monday.plusDays(2);
+        Response semester = auth(token).body(Map.of(
+                        "name", "排序学期-" + suffix,
+                        "startDate", monday.toString(),
+                        "endDate", monday.plusDays(100).toString()))
+                .when().post("/api/semesters");
+        semester.then().statusCode(200);
+        long semesterId = semester.jsonPath().getLong("id");
+        TestData.setCurrent(token, semesterId);
+        auth(token).body(Map.of("periodCount", 1, "days", List.of(1, 2, 3, 4, 5)))
+                .when().post("/api/semesters/" + semesterId + "/periods/default")
+                .then().statusCode(200);
+        long periodId = auth(token).when().get("/api/semesters/" + semesterId + "/periods")
+                .then().statusCode(200).extract().jsonPath().<Map<String, Object>>getList("$").stream()
+                .filter(row -> ((Number) row.get("dayOfWeek")).intValue() == 3)
+                .map(row -> ((Number) row.get("id")).longValue())
+                .findFirst().orElseThrow();
+
+        long gradeId = TestData.grade(token, semesterId, "高二" + suffix);
+        long classAId = TestData.adminClass(token, semesterId, gradeId, "高二1班" + suffix);
+        long classBId = TestData.adminClass(token, semesterId, gradeId, "高二2班" + suffix);
+        long classCId = TestData.adminClass(token, semesterId, gradeId, "高二3班" + suffix);
+
+        String chinese = "语文" + suffix;
+        long requesterId = teacher(token, "甲请求" + suffix, chinese);
+        long busySameId = teacher(token, "乙忙碌同科" + suffix, chinese);
+        long freeSameId = teacher(token, "丙空闲同科" + suffix, chinese);
+        long busyCrossId = teacher(token, "丁忙碌跨科" + suffix, "数学" + suffix);
+        long freeCrossId = teacher(token, "戊空闲跨科" + suffix, "物理" + suffix);
+
+        long chineseId = TestData.course(token, chinese);
+        long mathId = TestData.course(token, "数学" + suffix);
+        com.paiban.support.ScheduleFixture.assign(token, classAId, chineseId, requesterId, 1);
+        com.paiban.support.ScheduleFixture.assign(token, classBId, chineseId, busySameId, 1);
+        com.paiban.support.ScheduleFixture.assign(token, classCId, mathId, busyCrossId, 1);
+
+        long draftId = solve(token, semesterId);
+        List<Map<String, Object>> lessons = com.paiban.support.ScheduleFixture.lessons(token, draftId);
+        place(token, draftId, lessons, classAId, chineseId, periodId);
+        place(token, draftId, lessons, classBId, chineseId, periodId);
+        place(token, draftId, lessons, classCId, mathId, periodId);
+        auth(token).when().post("/api/timetable-drafts/" + draftId + "/publish")
+                .then().statusCode(200);
+
+        long entryAId = com.paiban.support.ScheduleFixture.publishedEntries(token, classAId).stream()
+                .map(row -> ((Number) row.get("id")).longValue())
+                .findFirst().orElseThrow();
+
+        Response response = as(token)
+                .queryParam("entryId", entryAId)
+                .queryParam("lessonDate", wednesday.toString())
+                .when().get("/api/substitution-workbench/candidates")
+                .then().statusCode(200).extract().response();
+
+        assertThat(idList(response)).containsExactly(freeSameId, freeCrossId, busySameId, busyCrossId);
     }
 
     @Test

@@ -172,10 +172,10 @@ public class AdminSubstitutionService {
                     teacher.id(), teacher.name(), teacher.subject(),
                     sameSubject, busy, busyReason, !sameSubject));
         }
-        // 同科优先、空闲优先；跨科不禁止，只是排后面并带提示。
+        // 空闲优先，同组内同科优先；跨科或忙碌均不禁止，排在后面并带提示。
         list.sort(Comparator
-                .comparing(CandidateDto::crossSubject)
-                .thenComparing(CandidateDto::busyAtPeriod)
+                .comparing(CandidateDto::busyAtPeriod)
+                .thenComparing(CandidateDto::crossSubject)
                 .thenComparing(CandidateDto::name, Comparator.nullsLast(String::compareTo)));
         return list;
     }

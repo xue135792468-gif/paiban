@@ -15,6 +15,13 @@ export function mondayOf(date: string): string {
   return `${value.getFullYear()}-${month}-${dayNo}`
 }
 
+/** 返回 date 所在周的下周一（ISO 字符串）；非法输入返回空串。 */
+export function nextMondayOf(date: string): string {
+  const mon = mondayOf(date)
+  if (!mon) return ''
+  return dateOfDay(mon, 8)
+}
+
 /** 周课表的五个列头日期（周一到周五）。 */
 export function weekDates(weekStart: string): string[] {
   const start = new Date(`${weekStart}T00:00:00`)

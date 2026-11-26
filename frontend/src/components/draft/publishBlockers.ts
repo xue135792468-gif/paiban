@@ -20,9 +20,19 @@ const TARGETS: Record<string, BlockerTarget> = {
   VIEW_TIMETABLE: { kind: 'link', label: '查看已发布课表', to: '/timetable' },
 }
 
+export type BlockerAction = BlockerTarget | { kind: 'locate-conflict'; label: string }
+
 /** Resolves the server's action identifier into the next step the page offers. */
 export function blockerTarget(action: string): BlockerTarget {
   return TARGETS[action] ?? NONE
+}
+
+/** Resolves one blocker into a UI action, including client-side conflict navigation. */
+export function blockerActionFor(blocker: DraftPublishBlocker): BlockerAction {
+  if (blocker.code === 'HARD_CONFLICTS') {
+    return { kind: 'locate-conflict', label: '逐条定位' }
+  }
+  return blockerTarget(blocker.action)
 }
 
 /** True when the whole-draft check says nothing stands between the draft and publishing. */

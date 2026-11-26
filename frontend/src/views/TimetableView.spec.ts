@@ -56,4 +56,20 @@ describe('TimetableView 无已发布基线', () => {
     expect(guide.text()).toContain('当前学期还没有发布课表，可在「课表工作台」发布后再查看')
     expect(guide.text()).toContain('去课表工作台')
   })
+
+  it('没有当前学期（204）时不请求 /classes，且不抛未捕获异常', async () => {
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/semesters/current') {
+        return Promise.resolve({ status: 204, data: '' })
+      }
+      return Promise.resolve({ status: 200, data: [] })
+    })
+
+    const wrapper = await mountView()
+
+    const urls = httpMock.get.mock.calls.map((call) => call[0])
+    expect(urls).toContain('/semesters/current')
+    expect(urls).not.toContain('/classes')
+    expect(wrapper.find('[data-testid="empty-state-guide"]').exists()).toBe(true)
+  })
 })

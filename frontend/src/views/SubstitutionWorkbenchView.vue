@@ -27,6 +27,7 @@
             :week-start="weekStart"
             :selected-entry-id="sourceEntry?.id ?? null"
             :drag-invalid-reason="dragInvalidReason"
+            :semester-lesson-count="semesterLessonCount"
             @update:teacher-id="onTeacherChange"
             @update:date="onDateChange"
             @pick="onPick"
@@ -167,6 +168,7 @@ const teachers = ref<Array<{ id: number; name: string }>>([])
 const teacherId = ref<number | null>(null)
 const date = ref(today())
 const entries = ref<Entry[]>([])
+const semesterLessonCount = ref<number | null>(null)
 const timetableLoading = ref(false)
 const timetableError = ref('')
 
@@ -261,6 +263,7 @@ async function loadTeachers() {
 async function loadTimetable() {
   const mine = ++timetableSeq
   entries.value = []
+  semesterLessonCount.value = null
   timetableError.value = ''
   if (!teacherId.value || !date.value) return
   timetableLoading.value = true
@@ -270,6 +273,16 @@ async function loadTimetable() {
     })
     if (mine !== timetableSeq) return
     entries.value = data
+    if (Array.isArray(data) && data.length > 0) {
+      semesterLessonCount.value = data.length
+    } else {
+      try {
+        const base = await http.get(`/timetable/teacher/${teacherId.value}`, { params: { view: 'baseline' } })
+        if (mine === timetableSeq) semesterLessonCount.value = Array.isArray(base.data) ? base.data.length : 0
+      } catch {
+        // Keep null if baseline check fails; LessonPicker shows fallback empty copy.
+      }
+    }
   } catch (error) {
     if (mine !== timetableSeq) return
     entries.value = []
@@ -494,48 +507,15 @@ onMounted(loadTeachers)
   overflow: hidden;
 }
 .wb-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px 4px; }
-.wb-canvas {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  margin: 0 auto;
-  max-width: 1080px;
-  min-height: 100%;
-}
+.wb-canvas { display: flex; flex-direction: column; gap: 24px; margin: 0 auto; max-width: 1080px; min-height: 100%; }
 .dock { background: var(--surface); border-top: 1px solid var(--line); flex: none; padding: 12px 24px; }
 .dock-in { margin: 0 auto; max-width: 1080px; }
 /* 与 ConfirmStep 同款面板卡：白底、1px 边、14px 圆角、轻阴影（原型 .panel）。 */
-.panel {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  box-shadow: var(--shadow);
-  min-width: 0;
-  overflow: hidden;
-}
-.foot {
-  align-items: center;
-  display: flex;
-  gap: 16px;
-  min-width: 0;
-  width: 100%;
-}
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); min-width: 0; overflow: hidden; }
+.foot { align-items: center; display: flex; gap: 16px; min-width: 0; width: 100%; }
 .need { color: var(--muted); font-size: 12px; }
-.fr {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18px;
-  justify-content: flex-end;
-  margin-left: auto;
-  min-width: 0;
-}
-.bc {
-  align-items: flex-end;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
+.fr { align-items: center; display: flex; flex-wrap: wrap; gap: 18px; justify-content: flex-end; margin-left: auto; min-width: 0; }
+.bc { align-items: flex-end; display: flex; flex-direction: column; gap: 2px; }
 .cap { color: var(--muted); font-size: 11px; line-height: 1.4; text-align: right; }
 .result {
   align-items: center;
