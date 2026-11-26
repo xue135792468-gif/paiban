@@ -41,11 +41,10 @@ export async function requestMatrixImport(
   const body = new FormData()
   body.set('file', file)
   body.set('options', new Blob([JSON.stringify(options)], { type: 'application/json' }))
-  const response = await http.post<MatrixReport>(`/assignments/matrix/import/${phase}`, body, {
+  return http.post<MatrixReport | { message?: string }>(`/assignments/matrix/import/${phase}`, body, {
     params: context,
     validateStatus: (status) => status === 200 || status === 400,
   })
-  return response
 }
 
 export async function downloadMatrix(mode: 'template' | 'export', context: MatrixContext) {

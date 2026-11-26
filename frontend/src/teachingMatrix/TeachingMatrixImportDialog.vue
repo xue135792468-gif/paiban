@@ -30,8 +30,7 @@
           新建 {{ report.summary[key].created }} · 更新 {{ report.summary[key].updated }} · 不变 {{ report.summary[key].unchanged }}
         </span>
       </div>
-      <p v-if="newTeachers.length">将新建教师：{{ newTeachers.join('、') }}</p>
-      <details v-if="report.teachers.length">
+      <details v-if="report.teachers.length" :open="report.summary.teachers.created > 0">
         <summary>教师明细</summary>
         <ul>
           <li v-for="teacher in report.teachers" :key="teacher.name">
@@ -128,7 +127,6 @@ const options = computed<MatrixOptions>(() => ({
 const dirty = computed(() => JSON.stringify(options.value) !== lastPreview.value)
 const canCommit = computed(() => report.value && !dirty.value && validHours.value && !busy.value
   && !report.value.errors.length && !report.value.courses.some((course) => course.missingHours))
-const newTeachers = computed(() => (report.value?.teachers ?? []).filter((teacher) => teacher.action === 'CREATE').map((teacher) => teacher.name))
 
 function selectFile(event: Event) {
   file.value = (event.target as HTMLInputElement).files?.[0]
@@ -146,8 +144,8 @@ async function run(phase: 'preview' | 'commit') {
   error.value = ''
   try {
     const { data, status } = await requestMatrixImport(phase, props.context, file.value, requested)
-    if (!data.summary) {
-      error.value = serverMessage({ response: { data } }, '处理任课表失败')
+    if (!('summary' in data)) {
+      error.value = data.message ?? '处理任课表失败'
       return
     }
     report.value = data

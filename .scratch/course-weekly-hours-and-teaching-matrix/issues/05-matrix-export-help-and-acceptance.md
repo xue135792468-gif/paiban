@@ -14,8 +14,7 @@
 
 ## 交付记录
 
-在隔离 PostgreSQL 16.16 实例上运行 `e2e/teaching-matrix.spec.ts`，通过浏览器完成上传、补课时、提交、删除、撤销、导出回读、保存班主任组规则和启动求解。通过公开 API 读取草稿与作息，确认两节课均已排入且避开周一第 1 节，浏览器无控制台错误。报告含五步截图、ARIA 树和独立 API 证据，位于本地工作区 `test-results/teaching-matrix-postgres-report/index.html`。
-
-同库用 Flyway 验证 V63 → V66 升级，旧课程被保留、周课时数为空，数据库直接拒绝了越界值。功能地图已补充 「任课表与班主任分组」，可通过 verify-paiban 的 `spec` 命令复验。
-
-`scripts/verify.sh --full` 退出码 0。前端 lint、构建、831 项单测、全部仓库级检查及 157 项 Chromium 端到端测试通过。后端共 1,276 项，1,269 项通过、7 项跳过、零失败。本机无 Docker，PostgresContainerIT 按全量脚本规则跳过，V63 → V66 迁移和任课表主流程在上述独立 PostgreSQL 实例上通过。全量日志位于本地工作区 `test-results/full-final/verify.log`。
+- 隔离 PostgreSQL 16.16 上的浏览器用例覆盖导入、撤销、导出回读和班主任组排课。导出文件回读显示「不变」。草稿接口确认两节课均已排入，且避开周一第 1 节。报告含五步截图、ARIA 树和 API 证据，见本地 `test-results/teaching-matrix-postgres-report/index.html`。
+- Flyway 从 V63 升级到 V66。存量课程保留，周课时数为空，数据库拒绝越界值。
+- `scripts/verify.sh --full` 退出码为 0。仓库检查、前端 lint 和构建通过。前端单测 831 项、Chromium 157 项全部通过。后端 1,269 项通过、7 项跳过。本机无 Docker，`PostgresContainerIT` 跳过。全量日志见本地 `test-results/full-final/verify.log`。
+- 本地验证地图新增「任课表与班主任分组」，可用 verify-paiban 的 `spec` 命令复验。

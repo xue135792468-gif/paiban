@@ -251,7 +251,6 @@ final class TeachingMatrixPlanner {
                 return parsed;
             }
         } catch (NumberFormatException ignored) {
-            // The row stays visible in the preview with the original value.
         }
         errors.add(new ImportError(line, STUDENTS, "人数必须为正整数"));
         return fallback;
