@@ -279,8 +279,8 @@ public class SchedulingService {
         long startedAt = System.currentTimeMillis();
         try {
             // Same snapshot builder as the draft check and the substitution verifier,
-            // so the solver cannot read a different rule set.
-            ConstraintSettings settings = constraints.settings(job.getSemesterId());
+            // with solver-only baseline spread enabled unless explicitly paused.
+            ConstraintSettings settings = constraints.solverSettings(job.getSemesterId());
             // The queued job used the settings at submission; rules may have changed
             // while it waited, so the real start re-checks against the current ones.
             String shortage = capacity.message(job.getSemesterId(), settings);

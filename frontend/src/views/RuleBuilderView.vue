@@ -122,17 +122,12 @@
         </template>
       </el-card>
 
-      <footer class="footer">
-        <el-button
-          type="primary"
-          :loading="saving"
-          :disabled="!dirty || saving || semesterId === null"
-          data-testid="rule-save"
-          @click="save"
-        >
-          保存规则
-        </el-button>
-      </footer>
+      <RuleSaveBar
+        :dirty="dirty"
+        :saving="saving"
+        :disabled="!dirty || saving || semesterId === null"
+        @save="save"
+      />
     </template>
   </div>
 </template>
@@ -151,8 +146,10 @@ import RuleGroupedList from '@/components/rules/RuleGroupedList.vue'
 import RuleGroupPanels from '@/components/rules/RuleGroupPanels.vue'
 import RuleImpactSummary from '@/components/rules/RuleImpactSummary.vue'
 import RulePageHeader from '@/components/rules/RulePageHeader.vue'
+import RuleSaveBar from '@/components/rules/RuleSaveBar.vue'
 import RuleToolbar from '@/components/rules/RuleToolbar.vue'
 import RuleUnusablePanel from '@/components/rules/RuleUnusablePanel.vue'
+import { useUnsavedGuard } from '@/components/rules/useUnsavedGuard'
 import type {
   ConstraintConfigDto,
   ConstraintTypeDef,
@@ -213,7 +210,7 @@ const catalogue = ref<ConstraintTypeDef[]>([])
 const baseVersion = ref(0)
 const cards = ref<RuleCard[]>([])
 const entryBackedTypes = ref<Set<string>>(new Set())
-const loadedSignature = ref('')
+const loadedSignature = ref(cardsSignature([]))
 /** Cards as they were saved, so a delete only refuses this card's own edits. */
 const loadedCards = ref<RuleCard[]>([])
 const loading = ref(false)
@@ -269,7 +266,10 @@ const ruleNames = computed<RuleNames>(() => {
     timeGroup: (id) => timeGroups.groupNames.value.get(id) ?? '时间组',
   }
 })
-const dirty = computed(() => cardsSignature(cards.value) !== loadedSignature.value)
+const dirty = computed(
+  () => semesterId.value !== null && cardsSignature(cards.value) !== loadedSignature.value,
+)
+useUnsavedGuard(dirty)
 /** Ticket 08: copied cards whose references are gone, kept out of the normal list. */
 const ruleBuckets = computed(() => splitUnusableRules(cards.value))
 /** Ticket 07: the groups expanded to concrete members/slots, read by the save check. */
@@ -345,7 +345,7 @@ async function loadState() {
     periods.value = []
     cards.value = []
     loadedCards.value = []
-    loadedSignature.value = ''
+    loadedSignature.value = cardsSignature([])
     return
   }
   loading.value = true
@@ -583,13 +583,5 @@ onMounted(async () => {
 .content-card {
   border-radius: var(--paiban-radius, 8px);
   margin-top: 12px;
-}
-
-.footer {
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  gap: 16px;
-  margin-top: 14px;
 }
 </style>

@@ -33,6 +33,7 @@
             :key="lesson.id"
             class="lesson"
             :data-lesson-id="lesson.id"
+            :data-highlighted="highlightedIds.has(lesson.id) ? 'true' : undefined"
             :data-locked="lockedIds.has(lesson.id) ? 'true' : undefined"
             :data-selected="selectionMode && selectedIds.has(lesson.id) ? 'true' : undefined"
             :class="{
@@ -330,7 +331,10 @@ function vacatedReason(day: number, periodNo: number): string {
 function cellClass(day: number, periodNo: number) {
   const base = targetClass(day, periodNo)
   const foreign = foreignReasonAt(day, periodNo) ? 'foreign-busy' : ''
-  return [base, foreign].filter(Boolean).join(' ')
+  const highlighted = lessonsAt(day, periodNo).some((lesson) => highlightedIds.value.has(lesson.id))
+    ? 'cell-highlight'
+    : ''
+  return [base, foreign, highlighted].filter(Boolean).join(' ')
 }
 
 function targetClass(day: number, periodNo: number) {
@@ -501,15 +505,23 @@ function onDrop(day: number, periodNo: number) {
 .lesson.dragging {
   opacity: 0.45;
 }
-.lesson.highlight {
-  outline: 2px solid #409eff;
-  outline-offset: -2px;
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.25);
-}
 .lesson.conflict {
   outline: 2px solid #eb5757;
   outline-offset: -2px;
   box-shadow: 0 0 0 2px rgba(235, 87, 87, 0.25);
+}
+.lesson.highlight {
+  outline: 3px solid #409eff;
+  outline-offset: -2px;
+  box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.35);
+}
+.lesson.conflict.highlight {
+  outline: 3px solid #409eff;
+  outline-offset: -2px;
+  box-shadow: 0 0 0 4px rgba(64, 158, 255, 0.35), inset 0 0 0 2px #eb5757;
+}
+.cell.cell-highlight {
+  background: #ecf5ff;
 }
 .lesson.warning {
   outline: 2px solid #e6a23c;

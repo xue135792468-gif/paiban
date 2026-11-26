@@ -105,6 +105,11 @@ public class ConstraintService {
         return configService.settings(semesterId);
     }
 
+    /** Solver snapshot: {@link #settings} plus default soft spread when not explicitly disabled. */
+    public ConstraintSettings solverSettings(Long semesterId) {
+        return configService.solverSettings(semesterId);
+    }
+
     private ParamDefDto toDto(Param param) {
         return new ParamDefDto(
                 param.name(),

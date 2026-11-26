@@ -6,6 +6,7 @@ import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 
+import com.paiban.scheduling.service.ConstraintService;
 import com.paiban.support.ApiIntegrationTest;
 import com.paiban.support.TestData;
 import io.restassured.response.Response;
@@ -19,6 +20,9 @@ import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 class SchedulingIntegrationTest extends ApiIntegrationTest {
+
+    @Autowired
+    private ConstraintService constraintService;
 
     private record Fixture(long semesterId, int lessonCount) {}
 
@@ -377,5 +381,89 @@ class SchedulingIntegrationTest extends ApiIntegrationTest {
                 .when().get("/api/timetable-drafts")
                 .then().statusCode(200)
                 .body("$", hasSize(0));
+    }
+
+    @Test
+    void newSemesterWithoutExtraRulesSpreadsLessonsAcrossAllFiveWeekdays() {
+        String token = adminToken();
+        String suffix = TestData.suffix();
+        long semesterId = TestData.semester(token);
+        as(token).body(Map.of("morningCount", 4, "afternoonCount", 4, "eveningCount", 0))
+                .when().post("/api/semesters/" + semesterId + "/periods/default")
+                .then().statusCode(200)
+                .body("$", hasSize(40));
+
+        assertThat(constraintService.solverSettings(semesterId).defaultSpread()).isTrue();
+        assertThat(constraintService.settings(semesterId).defaultSpread()).isFalse();
+
+        long gradeId = TestData.grade(token, semesterId, "高一" + suffix);
+        List<Long> classIds = new java.util.ArrayList<>();
+        for (int i = 1; i <= 3; i++) {
+            classIds.add(TestData.adminClass(token, semesterId, gradeId, "高一" + i + "班" + suffix));
+        }
+        String[] subjects = {"语文", "数学", "英语", "物理", "化学"};
+        List<Long> courseIds = new java.util.ArrayList<>();
+        List<Long> teacherIds = new java.util.ArrayList<>();
+        for (String subject : subjects) {
+            courseIds.add(TestData.course(token, subject + suffix));
+            teacherIds.add(TestData.teacher(token, subject + "老师" + suffix));
+        }
+        for (Long classId : classIds) {
+            for (int k = 0; k < courseIds.size(); k++) {
+                as(token).body(Map.of(
+                                "classId", classId,
+                                "courseId", courseIds.get(k),
+                                "teacherId", teacherIds.get(k),
+                                "weeklyLessons", 4))
+                        .when().post("/api/assignments")
+                        .then().statusCode(200);
+            }
+        }
+
+        long jobId = as(token).queryParam("semesterId", semesterId)
+                .body(Map.of("draftName", "默认分散测试", "maxSeconds", 5))
+                .when().post("/api/scheduling-jobs")
+                .then().statusCode(200)
+                .extract().jsonPath().getLong("id");
+
+        Map<String, Object> job = awaitJob(token, jobId, 60);
+        assertThat(job.get("status")).isEqualTo("COMPLETED");
+        long draftId = ((Number) job.get("draftId")).longValue();
+
+        Response draftResponse = as(token).when().get("/api/timetable-drafts/" + draftId)
+                .then().statusCode(200)
+                .body("lessons", hasSize(60))
+                .body("draft.scoreHard", equalTo(0))
+                .extract().response();
+
+        List<Map<String, Object>> periodRows = as(token)
+                .when().get("/api/semesters/" + semesterId + "/periods")
+                .then().statusCode(200).extract().jsonPath().getList("$");
+        Map<Long, Integer> dayByPeriodId = new java.util.HashMap<>();
+        for (Map<String, Object> period : periodRows) {
+            dayByPeriodId.put(
+                    ((Number) period.get("id")).longValue(),
+                    ((Number) period.get("dayOfWeek")).intValue());
+        }
+
+        List<Map<String, Object>> lessons = draftResponse.jsonPath().getList("lessons");
+        Map<Long, Map<Integer, Integer>> classDayCounts = new java.util.HashMap<>();
+        Map<String, Integer> classCourseDayCounts = new java.util.HashMap<>();
+        for (Map<String, Object> lesson : lessons) {
+            Long periodId = ((Number) lesson.get("periodId")).longValue();
+            int day = dayByPeriodId.get(periodId);
+            long classId = ((Number) lesson.get("classId")).longValue();
+            long courseId = ((Number) lesson.get("courseId")).longValue();
+            classDayCounts.computeIfAbsent(classId, ignored -> new java.util.HashMap<>())
+                    .merge(day, 1, Integer::sum);
+            classCourseDayCounts.merge(classId + "-" + courseId + "-" + day, 1, Integer::sum);
+        }
+
+        for (Long classId : classIds) {
+            Map<Integer, Integer> perDay = classDayCounts.get(classId);
+            assertThat(perDay).containsKeys(1, 2, 3, 4, 5);
+            assertThat(perDay.values()).allSatisfy(count -> assertThat(count).isGreaterThanOrEqualTo(2));
+        }
+        assertThat(classCourseDayCounts.values()).allSatisfy(count -> assertThat(count).isLessThanOrEqualTo(1));
     }
 }

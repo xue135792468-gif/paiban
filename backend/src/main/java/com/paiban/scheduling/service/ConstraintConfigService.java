@@ -456,18 +456,51 @@ public class ConstraintConfigService {
      */
     @Transactional(readOnly = true)
     public ConstraintSettings settings(Long semesterId) {
+        return buildSettings(semesterId, false);
+    }
+
+    /**
+     * Solver-facing snapshot: keeps the UI rule catalogue unchanged while enabling baseline
+     * soft course spread and daily class load balance unless the user explicitly paused
+     * {@link ConstraintType#COURSE_SPREAD}.
+     */
+    @Transactional(readOnly = true)
+    public ConstraintSettings solverSettings(Long semesterId) {
+        return buildSettings(semesterId, true);
+    }
+
+    private ConstraintSettings buildSettings(Long semesterId, boolean applyDefaultSpread) {
         List<ConstraintConfig> all = configs.findBySemesterId(semesterId).stream()
                 // A recycled type row is "not configured", exactly like a type the user
                 // never saved; otherwise deleting every rule would silently keep rules.
                 .filter(config -> config.getDeletedAt() == null)
                 .toList();
         if (all.isEmpty()) {
-            return ConstraintSettings.defaults();
+            ConstraintSettings defaults = ConstraintSettings.defaults();
+            return applyDefaultSpread ? defaults.withDefaultSpread(true) : defaults;
         }
+        List<ConstraintEntry> rawEntries = entries.findBySemesterId(semesterId);
         List<ConstraintConfig> enabled = all.stream().filter(ConstraintConfig::isEnabled).toList();
-        return ConstraintSettings.from(
-                enabled, expandEntries(semesterId, entries.findBySemesterId(semesterId)),
-                objectMapper);
+        ConstraintSettings built = ConstraintSettings.from(
+                enabled, expandEntries(semesterId, rawEntries), objectMapper);
+        if (!applyDefaultSpread) {
+            return built;
+        }
+        return built.withDefaultSpread(!isDefaultSpreadDisabled(all, rawEntries));
+    }
+
+    private boolean isDefaultSpreadDisabled(
+            List<ConstraintConfig> liveConfigs, List<ConstraintEntry> rawEntries) {
+        if (liveConfigs.stream().anyMatch(config ->
+                ConstraintType.COURSE_SPREAD.name().equals(config.getType()) && !config.isEnabled())) {
+            return true;
+        }
+        return rawEntries.stream()
+                .filter(entry -> entry.getDeletedAt() == null
+                        && ConstraintType.COURSE_SPREAD.name().equals(entry.getType())
+                        && !entry.isEnabled())
+                .anyMatch(entry -> ConstraintSettings.longValue(
+                        paramsFromJson(entry.getParamsJson()).get("courseId")) == null);
     }
 
     /**

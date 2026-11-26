@@ -1,6 +1,7 @@
 package com.paiban.scheduling.solver;
 
 import ai.timefold.solver.core.api.domain.entity.PlanningEntity;
+import ai.timefold.solver.core.api.domain.entity.PlanningPin;
 import ai.timefold.solver.core.api.domain.lookup.PlanningId;
 import ai.timefold.solver.core.api.domain.variable.PlanningVariable;
 import lombok.Getter;
@@ -42,6 +43,15 @@ public class Lesson {
 
     /** Whether the new draft must inherit the lock marker of this lesson. */
     private boolean locked;
+
+    /**
+     * Pins lessons whose period is fixed in place (source-draft locks or other grades in a
+     * scoped solve) so Timefold cannot trade a lock violation against a 1-hard conflict.
+     */
+    @PlanningPin
+    public boolean isPinned() {
+        return lockedPeriodId != null && period != null && lockedPeriodId.equals(period.getId());
+    }
 
     public Lesson(Long id, Long assignmentId, Long courseId, String courseName, Long teacherId,
                   Long adminClassId, Long headTeacherId, String teacherSubject,

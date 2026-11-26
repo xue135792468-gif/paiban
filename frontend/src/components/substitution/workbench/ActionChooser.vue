@@ -49,29 +49,71 @@
                 </button>
               </div>
               <div v-else-if="candidates.length === 0" class="loading">没有可用的代课老师。</div>
-              <div v-else class="opts">
-                <label
-                  v-for="item in candidates"
-                  :key="item.teacherId"
-                  class="opt"
-                  :class="{ dis: item.busyAtPeriod }"
-                  :data-testid="`substitute-option-${item.teacherId}`"
-                >
-                  <input
-                    type="radio"
-                    name="workbench-substitute"
-                    :value="item.teacherId"
-                    :checked="candidate?.teacherId === item.teacherId"
-                    :disabled="item.busyAtPeriod"
-                    @change="emit('chooseCandidate', item)"
+              <div v-else class="candidates-wrap">
+                <div v-if="availableCandidates.length === 0" class="loading" data-testid="no-available-candidates">
+                  当前时段暂无空闲的代课老师。
+                </div>
+                <div v-else class="opts" data-testid="available-candidates">
+                  <label
+                    v-for="item in availableCandidates"
+                    :key="item.teacherId"
+                    class="opt"
+                    :data-testid="`substitute-option-${item.teacherId}`"
                   >
-                  <span>
-                    <span class="nm">{{ item.name }}</span>
-                    <span class="bg" :class="badgeClass(item)">{{ badgeText(item) }}</span>
-                    <br>
-                    <span class="why">{{ explain(item) }}</span>
-                  </span>
-                </label>
+                    <input
+                      type="radio"
+                      name="workbench-substitute"
+                      :value="item.teacherId"
+                      :checked="candidate?.teacherId === item.teacherId"
+                      @change="emit('chooseCandidate', item)"
+                    >
+                    <span>
+                      <span class="nm">{{ item.name }}</span>
+                      <span class="bg" :class="badgeClass(item)">{{ badgeText(item) }}</span>
+                      <br>
+                      <span class="why">{{ explain(item) }}</span>
+                    </span>
+                  </label>
+                </div>
+
+                <div v-if="busyCandidates.length > 0" class="busy-section" data-testid="busy-candidates-section">
+                  <button
+                    type="button"
+                    class="busy-toggle"
+                    data-testid="toggle-busy-candidates"
+                    :aria-expanded="showBusyCandidates ? 'true' : 'false'"
+                    @click="showBusyCandidates = !showBusyCandidates"
+                  >
+                    {{
+                      showBusyCandidates
+                        ? `收起以下 ${busyCandidates.length} 位该时段有课`
+                        : `以下 ${busyCandidates.length} 位该时段有课（展开查看）`
+                    }}
+                  </button>
+                  <div v-if="showBusyCandidates" class="opts" data-testid="busy-candidates">
+                    <label
+                      v-for="item in busyCandidates"
+                      :key="item.teacherId"
+                      class="opt dis"
+                      :data-testid="`substitute-option-${item.teacherId}`"
+                    >
+                      <input
+                        type="radio"
+                        name="workbench-substitute"
+                        :value="item.teacherId"
+                        :checked="candidate?.teacherId === item.teacherId"
+                        disabled
+                        @change="emit('chooseCandidate', item)"
+                      >
+                      <span>
+                        <span class="nm">{{ item.name }}</span>
+                        <span class="bg" :class="badgeClass(item)">{{ badgeText(item) }}</span>
+                        <br>
+                        <span class="why">{{ explain(item) }}</span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
               </div>
 
               <button
@@ -165,7 +207,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import WindowDates from './WindowDates.vue'
 import { windowCaption, type WindowDateChip } from './windowDates'
 import type { WorkbenchCandidate, WorkbenchCandidateList, SwapTargetSlot } from './types'
@@ -201,6 +243,15 @@ const emit = defineEmits<{
 }>()
 
 const candidates = computed(() => props.candidateList?.candidates ?? [])
+const availableCandidates = computed(() => candidates.value.filter((item) => !item.busyAtPeriod))
+const busyCandidates = computed(() => candidates.value.filter((item) => item.busyAtPeriod))
+const showBusyCandidates = ref(false)
+watch(
+  () => props.candidateList,
+  () => {
+    showBusyCandidates.value = false
+  },
+)
 const baselineTeacherId = computed(() => props.candidateList?.baselineTeacherId ?? null)
 const caption = computed(() => windowCaption(props.lessonDate))
 
@@ -392,15 +443,22 @@ function onSwapReason(event: Event) {
   font-size: 12px;
   margin: 0;
 }
-.loading {
+.loading { color: var(--muted); font-size: 13px; }
+.candidates-wrap { display: flex; flex-direction: column; gap: 10px; }
+.busy-section { display: flex; flex-direction: column; gap: 8px; }
+.busy-toggle {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px dashed var(--line-2);
+  border-radius: 8px;
   color: var(--muted);
-  font-size: 13px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 12px;
 }
-.opts {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
+.busy-toggle:hover { border-color: var(--brand); color: var(--brand); }
+.opts { display: flex; flex-direction: column; gap: 8px; }
 .opt {
   align-items: flex-start;
   background: var(--surface);
@@ -518,26 +576,6 @@ function onSwapReason(event: Event) {
   border-color: var(--brand);
   color: var(--brand);
 }
-@media (max-width: 900px) {
-  .phead {
-    padding: 12px 16px;
-  }
-  .pbody {
-    padding: 16px;
-  }
-}
-@media (max-width: 520px) {
-  .acts {
-    grid-template-columns: 1fr;
-  }
-  .phead {
-    padding: 12px 14px;
-  }
-  .pbody {
-    padding: 14px;
-  }
-  .pane {
-    padding: 16px;
-  }
-}
+@media (max-width: 900px) { .phead { padding: 12px 16px; } .pbody { padding: 16px; } }
+@media (max-width: 520px) { .acts { grid-template-columns: 1fr; } .phead { padding: 12px 14px; } .pbody { padding: 14px; } .pane { padding: 16px; } }
 </style>

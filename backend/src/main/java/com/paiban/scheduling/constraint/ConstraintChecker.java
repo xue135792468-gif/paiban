@@ -615,6 +615,14 @@ public final class ConstraintChecker {
             }
             Integer min = settings.courseScalar(
                     ConstraintType.CONSECUTIVE_LESSONS, courseId, "minConsecutive");
+            if (settings.defaultSpread()
+                    && courseId != null
+                    && spread == null
+                    && once == null
+                    && min == null
+                    && rows.size() > 1) {
+                total += ConstraintType.COURSE_SPREAD.getDefaultWeight() * (rows.size() - 1);
+            }
             Control consecutive = courseStrictMatch(
                     settings, ConstraintType.CONSECUTIVE_LESSONS, courseId);
             if (min != null && consecutive != null && !consecutive.hard()) {
@@ -634,6 +642,14 @@ public final class ConstraintChecker {
         if (gap != null && !gap.hard()) {
             for (List<LessonView> rows : classDay.values()) {
                 total += gap.weight() * internalGapCount(ctx, rows);
+            }
+        }
+        if (settings.defaultSpread()) {
+            for (List<LessonView> rows : classDay.values()) {
+                int count = rows.size();
+                if (count > 1) {
+                    total += count * (count - 1) / 2;
+                }
             }
         }
 
