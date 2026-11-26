@@ -27,11 +27,13 @@ import java.util.stream.Collectors;
 
 final class TeachingMatrixPlanner {
 
+    private static final Pattern NUMERIC_CLASS = Pattern.compile("[0-9]+");
     private static final Pattern LAST_NUMBER = Pattern.compile("([0-9]+)(?!.*[0-9])");
     private static final Pattern IN_BRACKETS = Pattern.compile("\\(([0-9]+)\\)\\s*班?$");
 
     record Catalogue(Grade grade, List<AdminClass> classes, List<Teacher> teachers,
-                     List<Course> courses, List<Assignment> assignments, int availablePeriods) {}
+                     List<Course> courses, List<Assignment> assignments, Map<Long, Long> teachingClassIds,
+                     int availablePeriods) {}
 
     record TeacherPlan(String name, Teacher existing) {
         TeacherPreview preview() {
@@ -60,7 +62,7 @@ final class TeachingMatrixPlanner {
         }
     }
 
-    record RowPlan(int line, String name, AdminClass existing, int students, TeacherPlan headTeacher,
+    record RowPlan(int line, String name, AdminClass existing, Long teachingClassId, int students, TeacherPlan headTeacher,
                    Action action, List<CellPlan> cells) {
         RowPreview preview() {
             return new RowPreview(line, name, students, headTeacher == null ? null : headTeacher.name(),
@@ -186,13 +188,18 @@ final class TeachingMatrixPlanner {
                 cells.add(planned);
             }
         }
+        Long teachingClassId = adminClass == null ? null : catalogue.teachingClassIds().get(adminClass.getId());
+        if (adminClass != null && teachingClassId == null && cells.stream().anyMatch(cell -> cell.action() == CREATE)) {
+            errors.add(new ImportError(line, CLASS, "班级缺少对应的教学班"));
+        }
         capacity(line, name, previous, cells);
-        return new RowPlan(line, name, adminClass, count, head, action, cells);
+        return new RowPlan(line, name, adminClass, teachingClassId, count, head, action, cells);
     }
 
     private AdminClass matchClass(int line, String name) {
         AdminClass exact = classesByName.get(name);
-        if (exact != null) {
+        boolean numeric = NUMERIC_CLASS.matcher(Normalizer.normalize(name, Normalizer.Form.NFKC)).matches();
+        if (exact != null && !numeric) {
             if (!inTargetGrade(exact)) {
                 errors.add(new ImportError(line, CLASS, "该班级不属于目标年级：" + name));
             } else if (exact.getDeletedAt() != null) {

@@ -53,7 +53,7 @@ class TeachingMatrixIntegrationTest extends ApiIntegrationTest {
         assertEmptyBusinessTables();
         assertThat(count("audit_log")).isZero();
 
-        upload(token, "commit", semester, grade, original, HOURS).then().statusCode(200)
+        commitAfterPreview(token, semester, grade, original, HOURS).then().statusCode(200)
                 .body("summary.assignments.created", equalTo(3));
         as(token).queryParam("semesterId", semester).when().get("/api/classes")
                 .then().statusCode(200)
@@ -75,7 +75,7 @@ class TeachingMatrixIntegrationTest extends ApiIntegrationTest {
 
         byte[] partial = ExcelFixtures.workbook(List.of("班级", "人数", "班主任", "道德与法治"),
                 List.of(List.of("01", "46", "李老师", "李老师"), List.of("2", "", "", "")));
-        upload(token, "commit", semester, grade, partial,
+        commitAfterPreview(token, semester, grade, partial,
                 "{\"weeklyHours\":{\"道德与法治\":4}}").then().statusCode(200)
                 .body("rows[0].assignments[0].action", equalTo("UPDATE_TEACHER"))
                 .body("summary.assignments.updated", equalTo(1));
@@ -88,7 +88,7 @@ class TeachingMatrixIntegrationTest extends ApiIntegrationTest {
                 .body("errors", hasSize(0))
                 .body("rows.action", everyItem(equalTo("UNCHANGED")))
                 .body("summary.assignments.unchanged", equalTo(3));
-        upload(token, "commit", semester, grade, exported, null).then().statusCode(200)
+        commitAfterPreview(token, semester, grade, exported, null).then().statusCode(200)
                 .body("summary.assignments.updated", equalTo(0));
         as(token).queryParam("semesterId", semester).when().get("/api/assignments").then().statusCode(200)
                 .body("find { it.courseName == '道德与法治' }.weeklyLessons", equalTo(4));
@@ -144,7 +144,7 @@ class TeachingMatrixIntegrationTest extends ApiIntegrationTest {
                 .body("courses[0].missingHours", equalTo(true));
         assertEmptyBusinessTables();
 
-        upload(token, "commit", semester, grade, file, "{\"weeklyHours\":{\"体育\":2}}")
+        commitAfterPreview(token, semester, grade, file, "{\"weeklyHours\":{\"体育\":2}}")
                 .then().statusCode(200);
         int id = as(token).queryParam("semesterId", semester).when().get("/api/assignments")
                 .then().statusCode(200).extract().path("[0].id");
@@ -157,7 +157,7 @@ class TeachingMatrixIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void aWriteFailureRollsBackEarlierTeachersCoursesAndClasses() throws IOException {
+    void missingTeachingClassIsReportedBeforeWriting() throws IOException {
         String token = adminToken();
         long semester = TestData.semester(token);
         long grade = TestData.grade(token, semester, "八年级");
@@ -165,8 +165,13 @@ class TeachingMatrixIntegrationTest extends ApiIntegrationTest {
         jdbc.update("delete from teaching_class where admin_class_id = ?", broken);
         byte[] file = ExcelFixtures.workbook(List.of("班级", "班主任", "体育"),
                 List.of(List.of("1", "金老师", "金老师"), List.of("2", "高老师", "高老师")));
-        upload(token, "commit", semester, grade, file, "{\"weeklyHours\":{\"体育\":2}}")
-                .then().statusCode(400).body("errors[0].message", containsString("缺少对应的教学班"));
+        String options = "{\"weeklyHours\":{\"体育\":2}}";
+        upload(token, "preview", semester, grade, file, options).then().statusCode(200)
+                .body("errors[0].row", equalTo(3))
+                .body("errors[0].field", equalTo("班级"))
+                .body("errors[0].message", containsString("缺少对应的教学班"));
+        upload(token, "commit", semester, grade, file, options)
+                .then().statusCode(400).body("errors[0].row", equalTo(3));
         assertThat(count("teacher")).isZero();
         assertThat(count("course")).isZero();
         assertThat(count("admin_class")).isOne();
@@ -174,12 +179,129 @@ class TeachingMatrixIntegrationTest extends ApiIntegrationTest {
         assertThat(count("rule_group_member")).isZero();
     }
 
+    @Test
+    void newPlanRequiresConfirmationWhenTheHeadTeacherChangesAfterPreview() throws IOException {
+        String token = adminToken();
+        long semester = TestData.semester(token);
+        long grade = TestData.grade(token, semester, "八年级");
+        long teacher = TestData.teacher(token, "原姓名");
+        long classId = classWithHeadTeacher(token, semester, grade, teacher);
+        byte[] exported = download(token, semester, grade, "export");
+
+        String previewKey = upload(token, "preview", semester, grade, exported, null).then().statusCode(200)
+                .body("summary.teachers.created", equalTo(0))
+                .body("rows[0].action", equalTo("UNCHANGED"))
+                .extract().path("previewKey");
+        assertThat(previewKey).isNotBlank();
+        upload(token, "commit", semester, grade, exported, null).then().statusCode(409);
+        as(token).body(Map.of("name", "修改后的姓名"))
+                .when().put("/api/teachers/" + teacher).then().statusCode(200);
+
+        upload(token, "commit", semester, grade, exported, null, previewKey).then().statusCode(409)
+                .body("message", containsString("重新预演"));
+        assertThat(count("teacher")).isOne();
+        assertThat(jdbc.queryForObject("select head_teacher_id from admin_class where id = ?", Long.class, classId))
+                .isEqualTo(teacher);
+        commitAfterPreview(token, semester, grade, exported, null).then().statusCode(200)
+                .body("summary.teachers.created", equalTo(1));
+    }
+
+    @Test
+    void exportingAndReimportingDoesNotRecreateADeletedHeadTeacher() throws IOException {
+        String token = adminToken();
+        long semester = TestData.semester(token);
+        long grade = TestData.grade(token, semester, "八年级");
+        long teacher = TestData.teacher(token, "回收站班主任");
+        long classId = classWithHeadTeacher(token, semester, grade, teacher);
+        as(token).when().delete("/api/teachers/" + teacher).then().statusCode(200);
+
+        byte[] exported = download(token, semester, grade, "export");
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(exported))) {
+            assertThat(workbook.getSheetAt(0).getRow(1).getCell(2)).isNull();
+        }
+        commitAfterPreview(token, semester, grade, exported, null).then().statusCode(200)
+                .body("rows[0].action", equalTo("UNCHANGED"))
+                .body("summary.teachers.created", equalTo(0));
+        assertThat(count("teacher")).isOne();
+        assertThat(jdbc.queryForObject("select head_teacher_id from admin_class where id = ?", Long.class, classId))
+                .isEqualTo(teacher);
+    }
+
+    @Test
+    void numericClassIsMatchedInsideTheSelectedGrade() throws IOException {
+        String token = adminToken();
+        long semester = TestData.semester(token);
+        long other = TestData.grade(token, semester, "七年级");
+        long grade = TestData.grade(token, semester, "八年级");
+        TestData.adminClass(token, semester, other, "1");
+        TestData.adminClass(token, semester, grade, "八（1）");
+        byte[] file = ExcelFixtures.workbook(List.of("班级", "人数"), List.of(List.of("1", "39")));
+
+        commitAfterPreview(token, semester, grade, file, null).then().statusCode(200)
+                .body("rows[0].className", equalTo("八（1）"))
+                .body("summary.classes.updated", equalTo(1));
+    }
+
+    @Test
+    void numericClassWithMultipleMatchesRequiresFullName() throws IOException {
+        String token = adminToken();
+        long semester = TestData.semester(token);
+        long grade = TestData.grade(token, semester, "八年级");
+        TestData.adminClass(token, semester, grade, "1");
+        TestData.adminClass(token, semester, grade, "八（1）");
+        byte[] file = ExcelFixtures.workbook(List.of("班级", "人数"), List.of(List.of("1", "39")));
+
+        upload(token, "preview", semester, grade, file, null).then().statusCode(200)
+                .body("previewKey", equalTo(null))
+                .body("errors[0].row", equalTo(2))
+                .body("errors[0].message", containsString("匹配到多个班级"));
+    }
+
+    @Test
+    void unexpectedWriteFailureRollsBackAllImportedRecords() throws IOException {
+        String token = adminToken();
+        long semester = TestData.semester(token);
+        long grade = TestData.grade(token, semester, "八年级");
+        byte[] file = ExcelFixtures.workbook(List.of("班级", "人数", "班主任", "体育"),
+                List.of(List.of("1", "40", "金老师", "金老师"), List.of("2", "777", "高老师", "高老师")));
+        jdbc.execute("alter table admin_class add constraint ck_review_reject_count check (student_count <> 777)");
+        try {
+            commitAfterPreview(token, semester, grade, file, "{\"weeklyHours\":{\"体育\":2}}")
+                    .then().statusCode(400);
+        } finally {
+            jdbc.execute("alter table admin_class drop constraint ck_review_reject_count");
+        }
+        assertEmptyBusinessTables();
+        assertThat(count("rule_group_member")).isZero();
+    }
+
+    private long classWithHeadTeacher(String token, long semester, long grade, long teacher) {
+        return as(token).queryParam("semesterId", semester)
+                .body(Map.of("gradeId", grade, "name", "八（1）", "headTeacherId", teacher))
+                .when().post("/api/classes").then().statusCode(200).extract().jsonPath().getLong("id");
+    }
+
+    private Response commitAfterPreview(String token, long semester, long grade, byte[] workbook, String options) {
+        String previewKey = upload(token, "preview", semester, grade, workbook, options)
+                .then().statusCode(200).extract().path("previewKey");
+        assertThat(previewKey).isNotBlank();
+        return upload(token, "commit", semester, grade, workbook, options, previewKey);
+    }
+
     private Response upload(String token, String phase, long semester, long grade, byte[] workbook, String options) {
+        return upload(token, phase, semester, grade, workbook, options, null);
+    }
+
+    private Response upload(String token, String phase, long semester, long grade, byte[] workbook,
+            String options, String previewKey) {
         var request = (token == null ? io.restassured.RestAssured.given() : as(token))
                 .contentType("multipart/form-data").multiPart("file", "matrix.xlsx", workbook)
                 .queryParam("semesterId", semester).queryParam("gradeId", grade);
         if (options != null) {
             request.multiPart("options", "options.json", options.getBytes(StandardCharsets.UTF_8), "application/json");
+        }
+        if (previewKey != null) {
+            request.multiPart("previewKey", previewKey);
         }
         return request.when().post(ROOT + "/import/" + phase);
     }

@@ -15,9 +15,11 @@ it('requires a preview of the completed hours before permitting commit', async (
     teachers: [{ name: '张老师', action: 'CREATE' }],
     rows: [], errors: [], warnings: [],
   }
-  const updated = { ...initial, courses: [{ ...initial.courses[0], effectiveHours: 5, missingHours: false }] }
+  const updated = { ...initial, previewKey: 'verified-plan', courses: [{ ...initial.courses[0], effectiveHours: 5, missingHours: false }] }
   http.post.mockResolvedValueOnce({ status: 200, data: initial })
     .mockResolvedValueOnce({ status: 200, data: updated })
+    .mockResolvedValueOnce({ status: 409, data: { message: '请重新预演' } })
+    .mockResolvedValueOnce({ status: 200, data: { ...updated, previewKey: 'rechecked-plan' } })
     .mockResolvedValueOnce({ status: 200, data: updated })
   const dialog = mount(TeachingMatrixImportDialog, {
     global: { plugins: [ElementPlus] },
@@ -43,9 +45,17 @@ it('requires a preview of the completed hours before permitting commit', async (
   expect(button('确认导入').attributes('disabled')).toBeUndefined()
   await button('确认导入').trigger('click')
   await flushPromises()
-  expect(http.post.mock.calls.map(([url]) => url)).toEqual([
-    '/assignments/matrix/import/preview', '/assignments/matrix/import/preview', '/assignments/matrix/import/commit',
-  ])
+  expect(dialog.text()).toContain('请重新预演')
+  expect(dialog.emitted('imported')).toBeUndefined()
+  expect(button('确认导入').attributes('disabled')).toBeDefined()
+  await button('更新预演').trigger('click')
+  await flushPromises()
+  await button('确认导入').trigger('click')
+  await flushPromises()
+  expect(http.post.mock.calls
+    .filter(([url]) => url === '/assignments/matrix/import/commit')
+    .map(([, form]) => (form as FormData).get('previewKey')))
+    .toEqual(['verified-plan', 'rechecked-plan'])
   expect(dialog.emitted('imported')).toHaveLength(1)
   dialog.unmount()
 })

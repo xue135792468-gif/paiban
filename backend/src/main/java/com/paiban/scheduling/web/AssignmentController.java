@@ -158,8 +158,8 @@ public class AssignmentController {
     @PreAuthorize("hasAuthority('" + Permissions.ASSIGNMENT_MANAGE + "')")
     public ResponseEntity<Report> commitMatrix(@RequestParam Long semesterId, @RequestParam Long gradeId,
             @RequestParam("file") MultipartFile file, @RequestPart(required = false) Options options,
-            Principal principal) {
-        Report report = matrix.commit(semesterId, gradeId, file, options, principal.getName());
+            @RequestParam(required = false) String previewKey, Principal principal) {
+        Report report = matrix.commit(semesterId, gradeId, file, options, previewKey, principal.getName());
         return report.canCommit() ? ResponseEntity.ok(report) : ResponseEntity.badRequest().body(report);
     }
 

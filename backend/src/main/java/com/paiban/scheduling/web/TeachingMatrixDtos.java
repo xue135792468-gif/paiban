@@ -40,7 +40,17 @@ public final class TeachingMatrixDtos {
     public record CapacityWarning(int row, String className, int requested, int available) {}
 
     public record Report(Summary summary, List<TeacherPreview> teachers, List<CoursePreview> courses,
-                         List<RowPreview> rows, List<ImportError> errors, List<CapacityWarning> warnings) {
+                         List<RowPreview> rows, List<ImportError> errors, List<CapacityWarning> warnings,
+                         String previewKey) {
+
+        public Report(Summary summary, List<TeacherPreview> teachers, List<CoursePreview> courses,
+                List<RowPreview> rows, List<ImportError> errors, List<CapacityWarning> warnings) {
+            this(summary, teachers, courses, rows, errors, warnings, null);
+        }
+
+        public Report withPreviewKey(String key) {
+            return new Report(summary, teachers, courses, rows, errors, warnings, key);
+        }
 
         public boolean canCommit() {
             return errors.isEmpty() && courses.stream().noneMatch(CoursePreview::missingHours);

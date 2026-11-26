@@ -1,5 +1,6 @@
 package com.paiban.scheduling.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paiban.common.event.SchoolDataWriteLock;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.AdminClassRepository;
@@ -30,9 +31,11 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,12 +57,13 @@ public class TeachingMatrixService {
     private final AssignmentRepository assignments;
     private final SchoolDataWriteLock schoolDataLock;
     private final TransactionTemplate transaction;
+    private final ObjectMapper json;
 
     public TeachingMatrixService(FoundationService foundation, SemesterService semesters, GradeRepository grades,
             AdminClassRepository classes, TeacherRepository teachers, TeachingClassRepository teachingClasses,
             CourseRepository courses,
             AssignmentRepository assignments, SchoolDataWriteLock schoolDataLock,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager, ObjectMapper json) {
         this.foundation = foundation;
         this.semesters = semesters;
         this.grades = grades;
@@ -70,20 +74,30 @@ public class TeachingMatrixService {
         this.assignments = assignments;
         this.schoolDataLock = schoolDataLock;
         this.transaction = new TransactionTemplate(transactionManager);
+        this.json = json;
     }
 
     @Transactional(readOnly = true)
     public Report preview(Long semesterId, Long gradeId, MultipartFile file, Options options) {
-        return plan(semesterId, gradeId, read(file), options).report();
+        Plan plan = plan(semesterId, gradeId, read(file), options);
+        Report report = plan.report();
+        return report.canCommit()
+                ? report.withPreviewKey(TeachingMatrixPreviewKey.of(json, semesterId, gradeId, options, plan))
+                : report;
     }
 
-    public Report commit(Long semesterId, Long gradeId, MultipartFile file, Options options, String actor) {
+    public Report commit(Long semesterId, Long gradeId, MultipartFile file, Options options,
+            String previewKey, String actor) {
         var input = read(file);
         try {
             return transaction.execute(status -> {
                 schoolDataLock.acquire();
                 Plan plan = plan(semesterId, gradeId, input, options);
                 if (plan.report().canCommit()) {
+                    String currentKey = TeachingMatrixPreviewKey.of(json, semesterId, gradeId, options, plan);
+                    if (!Objects.equals(previewKey, currentKey)) {
+                        throw ApiException.conflict("导入内容或基础数据已变更，请重新预演后再确认");
+                    }
                     apply(semesterId, gradeId, plan);
                 }
                 audit(actor, semesterId, gradeId, plan.report());
@@ -93,6 +107,9 @@ public class TeachingMatrixService {
             String message = ex instanceof ApiException ? ex.getMessage() : "基础数据刚刚发生变更，请重新预演";
             Report rejected = TeachingMatrixPlanner.rejected(List.of(new ImportError(0, "提交", message))).report();
             transaction.executeWithoutResult(status -> audit(actor, semesterId, gradeId, rejected));
+            if (ex instanceof ApiException api && api.getStatus() == HttpStatus.CONFLICT) {
+                throw api;
+            }
             return rejected;
         }
     }
@@ -117,9 +134,12 @@ public class TeachingMatrixService {
                 || !grade.getSemesterId().equals(semesterId)) {
             return TeachingMatrixPlanner.rejected(List.of(new ImportError(0, "年级", "请选择目标学期内的有效年级")));
         }
+        Map<Long, Long> teachingClassIds = teachingClasses.findBySemesterId(semesterId).stream()
+                .collect(Collectors.toMap(TeachingClass::getAdminClassId, TeachingClass::getId));
         Catalogue catalogue = new Catalogue(grade, classes.findBySemesterIdOrderByGradeIdAscNameAsc(semesterId),
                 teachers.findAllByOrderByNameAsc(), courses.findAllByOrderByNameAsc(),
-                assignments.findBySemesterIdAndRecycleSlotIsNotNull(semesterId), semesters.listPeriods(semesterId).size());
+                assignments.findBySemesterIdAndRecycleSlotIsNotNull(semesterId), teachingClassIds,
+                semesters.listPeriods(semesterId).size());
         return new TeachingMatrixPlanner(catalogue, options).plan(input);
     }
 
@@ -148,11 +168,9 @@ public class TeachingMatrixService {
             courseIds.put(course.name(), id);
         }
 
-        Map<Long, Long> existingTeachingIds = teachingClasses.findBySemesterId(semesterId).stream()
-                .collect(Collectors.toMap(TeachingClass::getAdminClassId, TeachingClass::getId));
         Map<String, ClassIds> classIds = new HashMap<>();
         for (var row : plan.rows()) {
-            classIds.put(row.name(), applyClass(semesterId, gradeId, row, teacherIds, existingTeachingIds));
+            classIds.put(row.name(), applyClass(semesterId, gradeId, row, teacherIds));
         }
         for (var row : plan.rows()) {
             for (var cell : row.cells()) {
@@ -164,10 +182,10 @@ public class TeachingMatrixService {
     }
 
     private ClassIds applyClass(Long semesterId, Long gradeId, TeachingMatrixPlanner.RowPlan row,
-            Map<String, Long> teacherIds, Map<Long, Long> existingTeachingIds) {
+            Map<String, Long> teacherIds) {
         if (row.action() == Action.UNCHANGED) {
             Long classId = row.existing().getId();
-            return new ClassIds(classId, existingTeachingIds.get(classId));
+            return new ClassIds(classId, row.teachingClassId());
         }
         var teacher = row.headTeacher();
         Long headTeacherId = teacher == null ? null : (teacher.existing() != null
@@ -184,9 +202,6 @@ public class TeachingMatrixService {
             Map<String, Long> teacherIds, TeachingMatrixPlanner.CellPlan cell) {
         Assignment assignment = cell.existing();
         if (assignment == null) {
-            if (classIds.teachingClassId() == null) {
-                throw ApiException.badRequest("班级缺少对应的教学班");
-            }
             assignment = new Assignment();
             assignment.setSemesterId(semesterId);
             assignment.setAdminClassId(classIds.adminClassId());
@@ -247,7 +262,8 @@ public class TeachingMatrixService {
             List<String> row = new ArrayList<>();
             row.add(adminClass.name());
             row.add(String.valueOf(adminClass.studentCount()));
-            row.add(adminClass.headTeacherName());
+            var headTeacher = adminClass.headTeacherId() == null ? null : teachersById.get(adminClass.headTeacherId());
+            row.add(headTeacher == null ? null : headTeacher.name());
             Map<Long, String> byCourse = cells.getOrDefault(adminClass.id(), Map.of());
             for (var course : courseList) {
                 row.add(template ? null : byCourse.get(course.id()));

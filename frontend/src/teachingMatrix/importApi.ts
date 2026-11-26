@@ -6,6 +6,7 @@ type Action = 'CREATE' | 'UPDATE_TEACHER' | 'UPDATE_HOURS' | 'UPDATE' | 'UNCHANG
 interface Counts { created: number; updated: number; unchanged: number }
 
 export interface MatrixReport {
+  previewKey?: string | null
   summary: { classes: Counts; teachers: Counts; courses: Counts; assignments: Counts }
   teachers: { name: string; action: Action }[]
   courses: {
@@ -37,13 +38,15 @@ export const actionLabel: Record<Action, string> = {
 
 export async function requestMatrixImport(
   phase: 'preview' | 'commit', context: MatrixContext, file: File, options: MatrixOptions,
+  previewKey?: string,
 ) {
   const body = new FormData()
   body.set('file', file)
   body.set('options', new Blob([JSON.stringify(options)], { type: 'application/json' }))
+  if (previewKey) body.set('previewKey', previewKey)
   return http.post<MatrixReport | { message?: string }>(`/assignments/matrix/import/${phase}`, body, {
     params: context,
-    validateStatus: (status) => status === 200 || status === 400,
+    validateStatus: (status) => status === 200 || status === 400 || status === 409,
   })
 }
 

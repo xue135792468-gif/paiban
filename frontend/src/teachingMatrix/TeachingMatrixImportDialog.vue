@@ -125,8 +125,7 @@ const options = computed<MatrixOptions>(() => ({
   saveAsDefaults: saveAsDefaults.value,
 }))
 const dirty = computed(() => JSON.stringify(options.value) !== lastPreview.value)
-const canCommit = computed(() => report.value && !dirty.value && validHours.value && !busy.value
-  && !report.value.errors.length && !report.value.courses.some((course) => course.missingHours))
+const canCommit = computed(() => Boolean(report.value?.previewKey) && !dirty.value && validHours.value && !busy.value)
 
 function selectFile(event: Event) {
   file.value = (event.target as HTMLInputElement).files?.[0]
@@ -143,7 +142,9 @@ async function run(phase: 'preview' | 'commit') {
   busy.value = true
   error.value = ''
   try {
-    const { data, status } = await requestMatrixImport(phase, props.context, file.value, requested)
+    const previewKey = phase === 'commit' ? report.value?.previewKey ?? undefined : undefined
+    const { data, status } = await requestMatrixImport(phase, props.context, file.value, requested, previewKey)
+    if (phase === 'commit' && status !== 200) lastPreview.value = ''
     if (!('summary' in data)) {
       error.value = data.message ?? '处理任课表失败'
       return
