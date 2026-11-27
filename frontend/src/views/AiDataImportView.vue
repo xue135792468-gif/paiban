@@ -1,6 +1,6 @@
 <template>
   <div class="ai-import-page">
-    <div class="toolbar">
+    <div v-if="!embedded" class="toolbar">
       <div>
         <h2>AI 数据导入</h2>
         <p class="subtitle">
@@ -12,10 +12,10 @@
       <router-link to="/data/import/manual" data-testid="manual-import-link">手动选列导入</router-link>
     </div>
 
-    <ImportRouteHint />
+    <ImportRouteHint v-if="!embedded" />
 
     <el-alert
-      v-if="!configured"
+      v-if="!embedded && !configured"
       title="请先在「AI 助手」中配置供应商与模型，然后回到本页导入。"
       type="warning"
       show-icon
@@ -23,12 +23,28 @@
       class="notice"
     />
 
-    <LastImportCard
+    <el-alert
       v-if="!preview && lastSession && !isAbandoned(lastSession.status)"
-      :session="lastSession"
-      :loading="restoring"
-      @continue="continueLastSession"
-    />
+      type="info"
+      show-icon
+      :closable="false"
+      data-testid="last-session-card"
+      class="session-banner"
+    >
+      <template #title>
+        检测到上次未完成的 AI 导入会话：{{ lastSession.fileName }} （{{ statusLabelOf(lastSession.status) }} ·
+        {{ savedAtLabel }}）
+        <el-button
+          link
+          type="primary"
+          data-testid="continue-last-session"
+          :loading="restoring"
+          @click="continueLastSession"
+        >
+          继续导入
+        </el-button>
+      </template>
+    </el-alert>
 
     <ImportSourcePanel
       v-if="!preview"
@@ -40,7 +56,9 @@
       :can-parse="canParse"
       :parsing="parsing"
       :selected-file-name="selectedFile?.name ?? ''"
+      :file-error="fileError"
       :image-file-name="imageFile?.name ?? ''"
+      :image-error="imageError"
       @select-target="onSelectTarget"
       @excel-change="onExcelChange"
       @image-change="onImageChange"
@@ -57,7 +75,9 @@
         class="suggested-target"
       >
         <template #title>
-          <span>AI 认为这更像{{ targetTitle(suggestedTarget) }}，切换到{{ targetTitle(suggestedTarget) }}导入？</span>
+          <span>AI 认为这更像{{ targetTitle(suggestedTarget) }}，切换到{{
+            targetTitle(suggestedTarget)
+          }}导入？</span>
           <el-button link type="primary" @click="switchToSuggestedTarget">切换目标</el-button>
         </template>
       </el-alert>
@@ -212,29 +232,15 @@
 
       <div v-if="!isFailedPreview && !isParsing" class="footer-actions">
         <template v-if="isTimetable">
-          <el-button
-            type="primary"
-            :loading="committing"
-            :disabled="commitDisabled"
-            @click="commit"
-          >
+          <el-button type="primary" :loading="committing" :disabled="commitDisabled" @click="commit">
             {{ commitLabel }}
           </el-button>
-          <el-button
-            :loading="reparsing"
-            :disabled="isCommittedPreview || isPartial"
-            @click="reparse"
-          >
+          <el-button :loading="reparsing" :disabled="isCommittedPreview || isPartial" @click="reparse">
             {{ isWorkbook ? '重新规划' : '打回重析' }}
           </el-button>
         </template>
         <template v-else-if="!editing">
-          <el-button
-            type="primary"
-            :loading="committing"
-            :disabled="isCommittedPreview"
-            @click="commit"
-          >
+          <el-button type="primary" :loading="committing" :disabled="isCommittedPreview" @click="commit">
             全部接受并入库
           </el-button>
           <el-button :disabled="isCommittedPreview" @click="editing = true">手动微调</el-button>
@@ -262,7 +268,6 @@ import { aiParseErrorMessage } from '@/api/errors'
 import ImportRouteHint from '@/components/imports/ImportRouteHint.vue'
 import ImportSourcePanel from '@/components/aiImport/ImportSourcePanel.vue'
 import ImportProgressPanel from '@/components/aiImport/ImportProgressPanel.vue'
-import LastImportCard from '@/components/aiImport/LastImportCard.vue'
 import PartialResultPanel from '@/components/aiImport/PartialResultPanel.vue'
 import TimetableMappingStep from '@/components/aiImport/TimetableMappingStep.vue'
 import WorkbookSummaryPanel from '@/components/aiImport/WorkbookSummaryPanel.vue'
@@ -277,22 +282,19 @@ import { useImportSession } from '@/components/aiImport/useImportSession'
 import { useImportTarget } from '@/components/aiImport/useImportTarget'
 import { type ImportPreview, type PreviewRow } from '@/components/aiImport/timetablePreview'
 import { targetTitle } from '@/components/aiImport/importTargets'
-import { isAbandoned, isEditable } from '@/components/aiImport/importStatus'
+import { isAbandoned, isEditable, statusText } from '@/components/aiImport/importStatus'
 
 const router = useRouter()
 const route = useRoute()
+withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false })
 const configured = ref(false)
 const visionCapable = ref(false)
 const inputMode = ref<'excel' | 'text' | 'image'>('excel')
-const {
-  selectedTarget,
-  requestTarget,
-  selectTarget,
-  resetTarget,
-  applySuggestedTarget,
-  restoreTarget,
-} = useImportTarget(route.query.target, inputMode)
+const { selectedTarget, requestTarget, selectTarget, resetTarget, applySuggestedTarget, restoreTarget } =
+  useImportTarget(route.query.target, inputMode)
 const selectedFile = ref<File | null>(null)
+const fileError = ref('')
+const imageError = ref('')
 const imageFile = ref<File | null>(null)
 const text = ref('')
 const parsing = ref(false)
@@ -335,6 +337,15 @@ const {
   clear,
 } = useImportSession()
 const restoring = ref(false)
+const savedAtLabel = computed(() => {
+  const date = new Date(lastSession.value?.savedAt ?? '')
+  if (Number.isNaN(date.getTime())) return lastSession.value?.savedAt ?? ''
+  const pad = (number: number) => String(number).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+})
+function statusLabelOf(status: string) {
+  return statusText(status)
+}
 
 /** Row 0 issues are page-level blockers; everything else is a value to map. */
 const mappableIssues = computed(() => previewIssues.value.filter((issue) => issue.row > 0))
@@ -371,6 +382,7 @@ const showMappingStep = computed(
 )
 
 const canParse = computed(() => {
+  if (fileError.value || imageError.value) return false
   if (inputMode.value === 'excel') return selectedFile.value !== null
   if (inputMode.value === 'image') return imageFile.value !== null
   return text.value.trim().length > 0
@@ -419,13 +431,15 @@ function onSelectTarget(code: string) {
   commitErrors.value = []
 }
 
-function onExcelChange(file: UploadFile) {
-  selectedFile.value = file.raw ?? null
+function onExcelChange(file: UploadFile, error = '') {
+  selectedFile.value = error ? null : (file.raw ?? null)
+  fileError.value = error
   commitErrors.value = []
 }
 
-function onImageChange(file: UploadFile) {
-  imageFile.value = file.raw ?? null
+function onImageChange(file: UploadFile, error = '') {
+  imageFile.value = error ? null : (file.raw ?? null)
+  imageError.value = error
   commitErrors.value = []
 }
 

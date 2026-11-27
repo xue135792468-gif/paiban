@@ -1,11 +1,10 @@
 <template>
   <div class="manual-import" data-testid="manual-import">
-    <header class="head">
+    <header v-if="!embedded" class="head">
       <div>
         <h2>手动选列导入</h2>
         <p class="subtitle">
-          上传 Excel / CSV，自己指定班级、星期、节次、课程、教师对应的列，预览后生成草稿。
-          整个过程不调用 AI。
+          上传 Excel / CSV，自己指定班级、星期、节次、课程、教师对应的列，预览后生成草稿。 整个过程不调用 AI。
         </p>
       </div>
       <router-link to="/data/import" class="back">去 AI 导入</router-link>
@@ -13,25 +12,27 @@
 
     <el-card shadow="never" class="block">
       <template #header><span class="card-title">1. 选择文件</span></template>
-      <div class="upload">
-        <input
-          ref="fileInput"
-          type="file"
-          accept=".xlsx,.xls,.csv"
-          data-testid="manual-file"
-          @change="onFileChange"
-        >
-        <span v-if="file" class="file-name">{{ file.name }}</span>
-        <el-button v-if="inspecting" size="small" loading>正在识别工作表…</el-button>
-      </div>
-      <p class="hint">支持 Excel 与 CSV；复合键「班级|星期|节次」可以用任意分隔符。</p>
+      <ImportFileUpload
+        :file="file"
+        :file-error="fileError"
+        :validate="spreadsheetFileError"
+        hint="支持 .xlsx / .xls / .csv；自动识别工作表并匹配已有导入配方。"
+        @change="onFileChange"
+      />
+      <el-button v-if="inspecting" size="small" loading>正在识别工作表…</el-button>
+      <p class="hint">班级、星期、节次合并在一列时，可以用任意分隔符。</p>
     </el-card>
 
     <el-card v-if="inspect" shadow="never" class="block">
       <template #header>
         <div class="card-head">
           <span class="card-title">2. 选择工作表与列</span>
-          <el-button size="small" :loading="previewing" data-testid="manual-preview-button" @click="runPreview">
+          <el-button
+            size="small"
+            :loading="previewing"
+            data-testid="manual-preview-button"
+            @click="runPreview"
+          >
             预览
           </el-button>
         </div>
@@ -164,6 +165,10 @@ import ManualCommitPanel from '@/components/manualImport/ManualCommitPanel.vue'
 import RecipeSaveDialog from '@/components/manualImport/RecipeSaveDialog.vue'
 import { activeOnly } from '@/utils/activeOptions'
 import ManualAiSuggestion from '@/components/manualImport/ManualAiSuggestion.vue'
+import ImportFileUpload from '@/components/imports/ImportFileUpload.vue'
+import { spreadsheetFileError } from '@/components/imports/fileValidation'
+
+withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false })
 
 interface SemesterOption {
   id: number
@@ -177,8 +182,8 @@ interface TeacherOption {
   active?: boolean
 }
 
-const fileInput = ref<HTMLInputElement | null>(null)
 const file = ref<File | null>(null)
+const fileError = ref('')
 const inspect = ref<ManualInspect | null>(null)
 const mapping = ref<ManualMapping | null>(null)
 const preview = ref<ManualPreview | null>(null)
@@ -244,9 +249,7 @@ const currentHeaders = computed(
 )
 
 const noRecipe = computed(() => recipeMatch.value === null || recipeMatch.value.kind === 'NONE')
-const showAiSection = computed(
-  () => !!inspect.value && !!mapping.value && noRecipe.value,
-)
+const showAiSection = computed(() => !!inspect.value && !!mapping.value && noRecipe.value)
 
 /** Ticket 07 provenance, attached to the recipe snapshot only when AI was adopted. */
 const aiSource = computed(() => {
@@ -266,9 +269,7 @@ onMounted(async () => {
 /** AI is optional: an unconfigured provider only hides the suggestion entry. */
 async function loadAiStatus() {
   try {
-    const { data } = await http.get<{ tasks?: Record<string, { configured?: boolean }> }>(
-      '/ai/status',
-    )
+    const { data } = await http.get<{ tasks?: Record<string, { configured?: boolean }> }>('/ai/status')
     aiAvailable.value = Boolean(data?.tasks?.data_import?.configured)
   } catch {
     aiAvailable.value = false
@@ -295,12 +296,11 @@ async function loadTeachers() {
   }
 }
 
-async function onFileChange(event: Event) {
-  const target = event.target as HTMLInputElement
-  const selected = target.files?.[0] ?? null
+async function onFileChange(selected: File | null, error: string) {
   resetWorkflow()
   file.value = selected
-  if (!selected) return
+  fileError.value = error
+  if (!selected || error) return
   inspecting.value = true
   try {
     const result = await inspectManualImport(selected)
@@ -379,7 +379,8 @@ function adoptAiSuggestion() {
   ElMessage.success('已填入 AI 建议的列映射，可修改后预览')
 }
 
-async function runPreview() {  if (!file.value || !mapping.value) return
+async function runPreview() {
+  if (!file.value || !mapping.value) return
   previewing.value = true
   commitResult.value = null
   savedRecipe.value = null

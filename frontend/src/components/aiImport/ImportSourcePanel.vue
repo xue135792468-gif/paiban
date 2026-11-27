@@ -20,56 +20,36 @@
   <el-card shadow="never">
     <el-tabs v-model="inputMode">
       <el-tab-pane label="Excel / CSV" name="excel">
-        <el-upload
-          drag
-          :auto-upload="false"
-          :show-file-list="false"
-          accept=".xlsx,.xls,.csv"
-          :on-change="(file: UploadFile) => emit('excel-change', file)"
-        >
-          <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-          <div class="el-upload__text">把文件拖到这里，或<em>点击选择</em></div>
-          <template #tip>
-            <div class="el-upload__tip">
-              一个文件里有多少张表都可以：课表、班级课表、教师名单、使用说明会分别识别；重复课节自动合并。
-            </div>
-          </template>
-        </el-upload>
-        <div v-if="selectedFileName" class="file-hint">已选择：{{ selectedFileName }}</div>
+        <ImportFileUpload
+          :file-error="fileError"
+          :validate="spreadsheetFileError"
+          hint="一个文件里有多少张表都可以：课表、班级课表、教师名单、使用说明会分别识别。"
+          @change="
+            (file: File | null, error: string) =>
+              emit('excel-change', { raw: file ?? undefined, name: file?.name ?? '' } as UploadFile, error)
+          "
+        />
       </el-tab-pane>
 
       <el-tab-pane label="粘贴文本" name="text">
-        <el-input
-          v-model="text"
-          type="textarea"
-          :rows="9"
-          :placeholder="currentTarget.textPlaceholder"
-        />
+        <el-input v-model="text" type="textarea" :rows="9" :placeholder="currentTarget.textPlaceholder" />
         <div class="hint">可以直接从微信聊天记录、通知里复制粘贴。</div>
       </el-tab-pane>
 
-      <el-tab-pane
-        label="上传图片"
-        name="image"
-        :disabled="!visionCapable || selectedTarget !== 'teacher'"
-      >
+      <el-tab-pane label="上传图片" name="image" :disabled="!visionCapable || selectedTarget !== 'teacher'">
         <template #label>
           <span data-testid="image-tab">上传图片</span>
         </template>
-        <el-upload
-          drag
-          :auto-upload="false"
-          :show-file-list="false"
-          accept="image/png,image/jpeg,image/webp"
-          :on-change="(file: UploadFile) => emit('image-change', file)"
-        >
-          <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-          <div class="el-upload__text">上传课表或名单照片，或<em>点击选择</em></div>
-          <template #tip>
-            <div class="el-upload__tip">需要所选模型支持视觉（vision_capable）。</div>
-          </template>
-        </el-upload>
-        <div v-if="imageFileName" class="file-hint">已选择：{{ imageFileName }}</div>
+        <ImportFileUpload
+          accept=".png,.jpg,.jpeg,.webp"
+          :file-error="imageError"
+          hint="需要所选模型支持视觉（vision_capable）。"
+          dragging-text="把照片拖到这里"
+          @change="
+            (file: File | null, error: string) =>
+              emit('image-change', { raw: file ?? undefined, name: file?.name ?? '' } as UploadFile, error)
+          "
+        />
       </el-tab-pane>
     </el-tabs>
 
@@ -84,7 +64,12 @@
     />
 
     <div class="parse-actions">
-      <el-button type="primary" :loading="parsing" :disabled="!configured || !canParse" @click="emit('parse')">
+      <el-button
+        type="primary"
+        :loading="parsing"
+        :disabled="!configured || !canParse"
+        @click="emit('parse')"
+      >
         开始解析
       </el-button>
       <span class="hint">AI 只生成预览，点击「入库」才会写入数据。</span>
@@ -105,8 +90,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { UploadFile } from 'element-plus'
-import { UploadFilled } from '@element-plus/icons-vue'
 import ImportTargetPicker from './ImportTargetPicker.vue'
+import ImportFileUpload from '@/components/imports/ImportFileUpload.vue'
+import { spreadsheetFileError } from '@/components/imports/fileValidation'
 import { IMPORT_TARGETS, targetCard } from './importTargets'
 
 const props = defineProps<{
@@ -117,6 +103,8 @@ const props = defineProps<{
   parsing: boolean
   selectedFileName: string
   imageFileName: string
+  fileError?: string
+  imageError?: string
 }>()
 
 const inputMode = defineModel<'excel' | 'text' | 'image'>('inputMode', { required: true })
@@ -124,16 +112,16 @@ const text = defineModel<string>('text', { required: true })
 
 const emit = defineEmits<{
   (e: 'select-target', code: string): void
-  (e: 'excel-change', file: UploadFile): void
-  (e: 'image-change', file: UploadFile): void
+  (e: 'excel-change', file: UploadFile, error: string): void
+  (e: 'image-change', file: UploadFile, error: string): void
   (e: 'parse'): void
 }>()
 
 /** The workbook target only reads Excel/CSV; text and images keep a single target. */
 const visibleTargets = computed(() =>
-  inputMode.value === 'excel'
-    ? IMPORT_TARGETS
-    : IMPORT_TARGETS.filter((target) => target.code !== 'workbook'),
+  IMPORT_TARGETS.filter((target) => target.available).filter(
+    (target) => inputMode.value === 'excel' || target.code !== 'workbook',
+  ),
 )
 const currentTarget = computed(() => targetCard(props.selectedTarget) ?? targetCard('teacher')!)
 </script>

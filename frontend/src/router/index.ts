@@ -156,13 +156,13 @@ export const routes: RouteRecordRaw[] = [
           {
             path: 'import',
             name: 'ai-import',
-            component: () => import('@/views/AiDataImportView.vue'),
-            meta: { title: '导入', permission: 'foundation:manage' },
+            component: () => import('@/views/DataImportView.vue'),
+            meta: { title: '数据导入', permission: 'foundation:manage' },
           },
           {
             path: 'import/manual',
             name: 'manual-import',
-            component: () => import('@/views/ManualImportView.vue'),
+            component: () => import('@/views/DataImportView.vue'),
             meta: { title: '手动导入', permission: 'foundation:manage' },
           },
           {
