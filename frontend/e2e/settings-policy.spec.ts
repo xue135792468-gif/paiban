@@ -27,10 +27,9 @@ test('修改最多变动几节课后刷新仍保持，并通过 API 持久化', 
     await page.getByRole('option', { name: `${target} 节`, exact: true }).click()
 
     const saved = page.waitForResponse(
-      (response) =>
-        response.url().includes('/api/settings') && response.request().method() === 'PUT',
+      (response) => response.url().includes('/api/settings') && response.request().method() === 'PUT',
     )
-    await page.getByRole('button', { name: '保存设置' }).click()
+    await page.getByRole('button', { name: '保存调代与通知策略' }).click()
     expect((await saved).ok()).toBeTruthy()
 
     await page.reload()

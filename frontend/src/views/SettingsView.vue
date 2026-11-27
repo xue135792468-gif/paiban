@@ -3,30 +3,11 @@
     <div class="toolbar">
       <div>
         <h2>设置中心</h2>
-        <p class="subtitle">所有配置保存后立即生效，无需重启服务。</p>
+        <p class="subtitle">各模块独立保存，修改后立即生效。</p>
       </div>
-      <el-button type="primary" :loading="saving" @click="saveSettings">保存设置</el-button>
     </div>
 
-    <el-card shadow="never">
-      <template #header><span class="card-title">学校信息</span></template>
-      <el-form label-width="110px" class="form">
-        <el-form-item label="学校名称">
-          <el-input v-model="form['school.name']" placeholder="用于课表导出与 PDF 页眉" />
-        </el-form-item>
-        <el-form-item label="学校 Logo">
-          <div class="logo-row">
-            <el-upload :auto-upload="false" :show-file-list="false" accept="image/png,image/jpeg" :on-change="uploadLogo">
-              <el-button :loading="uploading">上传图片</el-button>
-            </el-upload>
-            <span class="logo-path">{{ logoName || '未上传' }}</span>
-          </div>
-        </el-form-item>
-        <el-form-item label="外部访问地址">
-          <el-input v-model="form['public.base-url']" placeholder="如 https://paiban.school.cn，用于通知里的跳转链接" />
-        </el-form-item>
-      </el-form>
-    </el-card>
+    <SchoolInfoCard v-model="form" />
     <SubstitutionPolicyCard v-model="form" />
     <SubstitutionRecipientsCard />
 
@@ -44,29 +25,31 @@
           <el-switch v-model="dingtalk.enabled" />
           <span class="hint inline">关闭后系统完整可用，仅使用本地账号与系统内通知。</span>
         </el-form-item>
-        <el-form-item label="AppKey">
-          <el-input v-model="dingtalk.appKey" placeholder="钉钉企业内部应用 AppKey" />
-        </el-form-item>
-        <el-form-item label="AppSecret">
-          <el-input
-            v-model="dingtalk.appSecret"
-            type="password"
-            show-password
-            :placeholder="dingtalk.hasSecret ? '已配置，不修改请留空' : '请输入 AppSecret'"
-          />
-        </el-form-item>
-        <el-form-item label="AgentId">
-          <el-input v-model="dingtalk.agentId" placeholder="微应用 AgentId" />
-        </el-form-item>
-        <el-form-item label="CorpId">
-          <el-input v-model="dingtalk.corpId" placeholder="企业 CorpId，H5 免登需要" />
-        </el-form-item>
-        <el-form-item label="事件令牌">
-          <el-input
-            v-model="form['integration.dingtalk.event-token']"
-            placeholder="用于校验 /integrations/dingtalk/event 回调（X-DingTalk-Token）"
-          />
-        </el-form-item>
+        <template v-if="dingtalk.enabled">
+          <el-form-item label="AppKey">
+            <el-input v-model="dingtalk.appKey" placeholder="钉钉企业内部应用 AppKey" />
+          </el-form-item>
+          <el-form-item label="AppSecret">
+            <el-input
+              v-model="dingtalk.appSecret"
+              type="password"
+              show-password
+              :placeholder="dingtalk.hasSecret ? '已配置，不修改请留空' : '请输入 AppSecret'"
+            />
+          </el-form-item>
+          <el-form-item label="AgentId">
+            <el-input v-model="dingtalk.agentId" placeholder="微应用 AgentId" />
+          </el-form-item>
+          <el-form-item label="CorpId">
+            <el-input v-model="dingtalk.corpId" placeholder="企业 CorpId，H5 免登需要" />
+          </el-form-item>
+          <el-form-item label="事件令牌">
+            <el-input
+              v-model="form['integration.dingtalk.event-token']"
+              placeholder="用于校验 /integrations/dingtalk/event 回调（X-DingTalk-Token）"
+            />
+          </el-form-item>
+        </template>
         <DingtalkIntegrationActions
           :saving="savingDingtalk"
           :previewing="previewing"
@@ -78,41 +61,23 @@
           @cleared="reloadDingtalk"
         />
       </el-form>
-      <el-alert v-if="syncResult" :title="syncResult.message" :type="syncResult.success ? 'success' : 'error'" :closable="false" show-icon class="sync-result" />
-      <DingTalkSyncPreview v-if="syncPreview" :preview="syncPreview" :confirming="confirming" @confirm="confirmSync" />
+      <el-alert
+        v-if="syncResult"
+        :title="syncResult.message"
+        :type="syncResult.success ? 'success' : 'error'"
+        :closable="false"
+        show-icon
+        class="sync-result"
+      />
+      <DingTalkSyncPreview
+        v-if="syncPreview"
+        :preview="syncPreview"
+        :confirming="confirming"
+        @confirm="confirmSync"
+      />
     </el-card>
 
-    <el-card shadow="never">
-      <template #header>
-        <span class="card-title">
-          AI 供应商
-          <InfoTooltip field="settings.aiProvider" />
-        </span>
-      </template>
-      <div class="ai-row">
-        <div>
-          <div class="ai-name">AI 供应商与模型管理</div>
-          <div class="hint">
-            配置 DeepSeek、Gemini、通义千问、智谱或自定义 OpenAI 兼容端点，并分配 AI 任务使用的模型。
-          </div>
-        </div>
-        <el-button type="primary" plain @click="router.push('/admin/ai-providers')">去配置</el-button>
-      </div>
-      <div class="ai-row">
-        <div>
-          <div class="ai-name">数据导入低置信度阈值</div>
-          <div class="hint">低于该值的单元格在预览中标黄，默认 0.8</div>
-        </div>
-        <el-input-number
-          :model-value="confidenceThreshold"
-          :min="0"
-          :max="1"
-          :step="0.05"
-          :precision="2"
-          @update:model-value="setConfidenceThreshold"
-        />
-      </div>
-    </el-card>
+    <AiSettingsCard v-model="form" />
 
     <el-card id="tour-reopen" shadow="never">
       <template #header><span class="card-title">新手教程</span></template>
@@ -122,33 +87,6 @@
           <div class="hint">重新播放首次登录时的界面引导，介绍基础数据、排课、调代与课表入口。</div>
         </div>
         <el-button plain @click="reopenTour">重新查看新手教程</el-button>
-      </div>
-    </el-card>
-
-    <!--
-      ADR-0003 的票 14 修订：自然语言生成约束的入口在关闭时也要保留，管理员必须先能
-      找到开关才能开启；代课推荐仍按原规则标注即将推出。
-    -->
-    <el-card shadow="never">
-      <template #header><span class="card-title">AI 特性</span></template>
-      <div class="ai-row">
-        <div>
-          <div class="ai-name">代课人选推荐</div>
-          <div class="hint">根据历史代课与空闲时段推荐代课教师</div>
-        </div>
-        <el-switch :model-value="form['ai.features.substitute-recommendation'] === 'true'" disabled />
-        <el-tag size="small" type="info">即将推出</el-tag>
-      </div>
-      <div class="ai-row">
-        <div>
-          <div class="ai-name">自然语言生成约束</div>
-          <div class="hint">用一句话描述排课规则，自动转换为约束配置</div>
-        </div>
-        <el-switch
-          :model-value="form['ai.features.natural-language-constraints'] === 'true'"
-          data-testid="settings-natural-language-switch"
-          @update:model-value="(value: string | number | boolean) => (form['ai.features.natural-language-constraints'] = value ? 'true' : 'false')"
-        />
       </div>
     </el-card>
 
@@ -166,23 +104,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, type UploadFile } from 'element-plus'
+import { onMounted, reactive, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { DINGTALK_SYNC_TIMEOUT_MS, http } from '@/api/http'
-import InfoTooltip from '@/components/InfoTooltip.vue'
+import SchoolInfoCard from '@/components/settings/SchoolInfoCard.vue'
+import AiSettingsCard from '@/components/settings/AiSettingsCard.vue'
 import SubstitutionPolicyCard from '@/components/settings/SubstitutionPolicyCard.vue'
 import SubstitutionRecipientsCard from '@/components/settings/SubstitutionRecipientsCard.vue'
 import DingTalkSyncPreview from '@/components/DingTalkSyncPreview.vue'
 import DingtalkIntegrationActions from '@/components/settings/DingtalkIntegrationActions.vue'
 import { resetTour, startTour } from '@/onboarding/tour'
 import { serverMessage } from '@/api/errors'
-import type {
-  DingTalkConfig,
-  SyncConfirmRequest,
-  SyncPreview,
-  SyncResult,
-} from '@/api/integration'
+import type { DingTalkConfig, SyncConfirmRequest, SyncPreview, SyncResult } from '@/api/integration'
 
 interface SyncLog {
   id: number
@@ -204,24 +138,11 @@ const dingtalk = reactive<DingTalkConfig>({
 const logs = ref<SyncLog[]>([])
 const syncResult = ref<SyncResult | null>(null)
 const syncPreview = ref<SyncPreview | null>(null)
-const saving = ref(false)
 const savingDingtalk = ref(false)
 const previewing = ref(false)
 const confirming = ref(false)
-const uploading = ref(false)
 const loadingLogs = ref(false)
 const router = useRouter()
-
-const logoName = computed(() => {
-  const path = form.value['school.logo-path']
-  return path ? path.split(/[\\/]/).pop() : ''
-})
-
-const confidenceThreshold = computed(() => Number(form.value['ai.import.confidence-threshold'] ?? 0.8))
-
-function setConfidenceThreshold(value: number | undefined) {
-  form.value['ai.import.confidence-threshold'] = String(value ?? 0.8)
-}
 
 function reopenTour() {
   resetTour()
@@ -256,24 +177,6 @@ async function reloadDingtalk() {
   await Promise.all([loadDingtalk(), loadLogs()])
 }
 
-async function saveSettings() {
-  saving.value = true
-  try {
-    // Read-only setting: the logo is written by the upload endpoint.
-    const payload = { ...form.value }
-    delete payload['school.logo-path']
-    const { data } = await http.put('/settings', payload)
-    Object.keys(data).forEach((key) => {
-      form.value[key] = data[key]
-    })
-    ElMessage.success('设置已保存并立即生效')
-  } catch (e: any) {
-    ElMessage.error(serverMessage(e, '保存失败'))
-  } finally {
-    saving.value = false
-  }
-}
-
 async function saveDingtalk() {
   savingDingtalk.value = true
   try {
@@ -286,7 +189,12 @@ async function saveDingtalk() {
     }
     if (dingtalk.appSecret) payload.appSecret = dingtalk.appSecret
     const { data } = await http.put('/integrations/dingtalk/config', payload)
+    // The token belongs to this same card, not to an unrelated page-level save.
+    const settings = await http.put<Record<string, string>>('/settings', {
+      'integration.dingtalk.event-token': form.value['integration.dingtalk.event-token'] ?? '',
+    })
     Object.assign(dingtalk, data)
+    Object.assign(form.value, settings.data)
     dingtalk.appSecret = ''
     ElMessage.success('钉钉配置已保存')
   } catch (e: any) {
@@ -300,11 +208,9 @@ async function previewSync() {
   previewing.value = true
   syncResult.value = null
   try {
-    const { data } = await http.post<SyncPreview>(
-      '/integrations/dingtalk/sync/preview',
-      undefined,
-      { timeout: DINGTALK_SYNC_TIMEOUT_MS },
-    )
+    const { data } = await http.post<SyncPreview>('/integrations/dingtalk/sync/preview', undefined, {
+      timeout: DINGTALK_SYNC_TIMEOUT_MS,
+    })
     syncPreview.value = data
     if (!data.success) {
       ElMessage.error(data.message)
@@ -319,11 +225,9 @@ async function previewSync() {
 async function confirmSync(request: SyncConfirmRequest) {
   confirming.value = true
   try {
-    const { data } = await http.post<SyncResult>(
-      '/integrations/dingtalk/sync/confirm',
-      request,
-      { timeout: DINGTALK_SYNC_TIMEOUT_MS },
-    )
+    const { data } = await http.post<SyncResult>('/integrations/dingtalk/sync/confirm', request, {
+      timeout: DINGTALK_SYNC_TIMEOUT_MS,
+    })
     syncResult.value = data
     if (data.success) {
       ElMessage.success(data.message)
@@ -336,24 +240,6 @@ async function confirmSync(request: SyncConfirmRequest) {
     ElMessage.error(serverMessage(e, '同步失败'))
   } finally {
     confirming.value = false
-  }
-}
-
-async function uploadLogo(upload: UploadFile) {
-  if (!upload.raw) return
-  uploading.value = true
-  try {
-    const body = new FormData()
-    body.append('file', upload.raw)
-    const { data } = await http.post('/settings/logo', body)
-    Object.keys(data).forEach((key) => {
-      form.value[key] = data[key]
-    })
-    ElMessage.success('Logo 已上传')
-  } catch (e: any) {
-    ElMessage.error(serverMessage(e, '上传失败'))
-  } finally {
-    uploading.value = false
   }
 }
 

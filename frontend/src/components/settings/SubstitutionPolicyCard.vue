@@ -10,9 +10,17 @@
       </el-form-item>
       <el-form-item label="最多变动几节课">
         <el-select v-model="form['substitution.max-plan-teachers']" style="width: 160px">
-          <el-option v-for="count in 9" :key="count + 1" :label="`${count + 1} 节`" :value="String(count + 1)" />
+          <el-option
+            v-for="count in 9"
+            :key="count + 1"
+            :label="`${count + 1} 节`"
+            :value="String(count + 1)"
+          />
         </el-select>
-        <div class="hint">默认 6 节。一次换位方案最多移动这么多节课；去重教师人数另计。草稿换位与发布后调课的新方案都按此上限。</div>
+        <div class="hint">
+          默认 6
+          节。一次换位方案最多移动这么多节课；去重教师人数另计。草稿换位与发布后调课的新方案都按此上限。
+        </div>
       </el-form-item>
       <el-form-item label="方案排序">
         <el-select v-model="form['substitution.ranking-preset']" style="width: 220px">
@@ -29,13 +37,28 @@
           <el-option label="含年级组长（兼容旧值，等同当事人 + 下方额外收件人）" value="with-grade-leader" />
         </el-select>
       </el-form-item>
+      <el-button
+        type="primary"
+        :loading="saving"
+        data-testid="policy-save"
+        @click="save('调代与通知策略已保存')"
+      >
+        保存调代与通知策略
+      </el-button>
     </el-form>
   </el-card>
 </template>
 
 <script setup lang="ts">
+import { useSettingsSection } from './useSettingsSection'
 
 const form = defineModel<Record<string, string>>({ required: true })
+const { saving, save } = useSettingsSection(form, [
+  'substitution.search-window-days',
+  'substitution.max-plan-teachers',
+  'substitution.ranking-preset',
+  'notification.scope',
+])
 </script>
 
 <style scoped>
