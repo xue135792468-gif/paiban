@@ -110,37 +110,12 @@ describe('AI 导入目标卡片', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
-  it('展示整本工作簿、教师、课表三个可用目标和三个即将支持的目标', async () => {
+  it('只展示三个已可用目标，不再渲染即将支持卡片', async () => {
     const { wrapper } = await mountImport()
 
     const cards = wrapper.findAll('[data-testid="target-card"]')
-    expect(cards.map((card) => card.attributes('data-target'))).toEqual([
-      'workbook',
-      'teacher',
-      'timetable',
-      'admin-class',
-      'course',
-      'assignment',
-    ])
-
-    const workbook = wrapper.get('[data-testid="target-card"][data-target="workbook"]')
-    const teacher = wrapper.get('[data-testid="target-card"][data-target="teacher"]')
-    const timetable = wrapper.get('[data-testid="target-card"][data-target="timetable"]')
-    expect(workbook.classes()).not.toContain('is-disabled')
-    expect(teacher.classes()).not.toContain('is-disabled')
-    expect(timetable.classes()).not.toContain('is-disabled')
-
-    for (const code of ['admin-class', 'course', 'assignment']) {
-      const card = wrapper.get(`[data-testid="target-card"][data-target="${code}"]`)
-      expect(card.classes()).toContain('is-disabled')
-      expect(card.attributes('aria-disabled')).toBe('true')
-      expect(card.text()).toContain('即将支持')
-    }
-
-    await wrapper.get('[data-testid="target-card"][data-target="course"]').trigger('click')
-    expect(wrapper.get('[data-testid="target-card"][data-target="workbook"]').text()).toContain(
-      '已选择',
-    )
+    expect(cards.map((card) => card.attributes('data-target'))).toEqual(['workbook', 'teacher', 'timetable'])
+    expect(wrapper.text()).not.toContain('即将支持')
   })
 
   it('每张卡片都写清能处理什么、输出什么和限制', async () => {
@@ -190,20 +165,14 @@ describe('入口预选目标', () => {
   it('没有指定目标时默认整本工作簿', async () => {
     const { wrapper } = await mountImport()
 
-    expect(wrapper.get('[data-testid="target-card"][data-target="workbook"]').text()).toContain(
-      '已选择',
-    )
-    expect(wrapper.get('[data-testid="target-card"][data-target="teacher"]').text()).not.toContain(
-      '已选择',
-    )
+    expect(wrapper.get('[data-testid="target-card"][data-target="workbook"]').text()).toContain('已选择')
+    expect(wrapper.get('[data-testid="target-card"][data-target="teacher"]').text()).not.toContain('已选择')
   })
 
   it('未知或尚未开放的目标回退到整本工作簿', async () => {
     const { wrapper } = await mountImport('/admin/ai-import?target=course')
 
-    expect(wrapper.get('[data-testid="target-card"][data-target="workbook"]').text()).toContain(
-      '已选择',
-    )
+    expect(wrapper.get('[data-testid="target-card"][data-target="workbook"]').text()).toContain('已选择')
   })
 })
 
@@ -304,9 +273,7 @@ describe('上传请求携带导入目标', () => {
     expect(wrapper.find('[data-testid="target-card"][data-target="workbook"]').exists()).toBe(false)
     await tab('Excel / CSV').trigger('click')
 
-    expect(wrapper.get('[data-testid="target-card"][data-target="workbook"]').text()).toContain(
-      '已选择',
-    )
+    expect(wrapper.get('[data-testid="target-card"][data-target="workbook"]').text()).toContain('已选择')
   })
 })
 
@@ -380,10 +347,7 @@ describe('AI 目标提议', () => {
 
   it('AI 提议与当前目标不同时显示可操作提示，但不自动切换', async () => {
     const { wrapper } = await mountImport()
-    await showTimetable(
-      wrapper,
-      timetablePreview({ targetType: 'teacher', suggestedTarget: 'timetable' }),
-    )
+    await showTimetable(wrapper, timetablePreview({ targetType: 'teacher', suggestedTarget: 'timetable' }))
 
     expect(wrapper.get('[data-testid="preview-target"]').text()).toContain('教师')
     const hint = wrapper.get('[data-testid="suggested-target-hint"]')
@@ -393,18 +357,13 @@ describe('AI 目标提议', () => {
 
   it('点击切换后回到目标选择并预选 AI 提议的目标', async () => {
     const { wrapper } = await mountImport()
-    await showTimetable(
-      wrapper,
-      timetablePreview({ targetType: 'teacher', suggestedTarget: 'timetable' }),
-    )
+    await showTimetable(wrapper, timetablePreview({ targetType: 'teacher', suggestedTarget: 'timetable' }))
 
     await button(wrapper, '切换目标').trigger('click')
     await flushPromises()
 
     expect(wrapper.find('[data-testid="suggested-target-hint"]').exists()).toBe(false)
-    expect(
-      wrapper.get('[data-testid="target-card"][data-target="timetable"]').text(),
-    ).toContain('已选择')
+    expect(wrapper.get('[data-testid="target-card"][data-target="timetable"]').text()).toContain('已选择')
   })
 
   it('AI 提议与当前目标一致时不显示提示', async () => {
@@ -415,13 +374,7 @@ describe('AI 目标提议', () => {
   })
 })
 
-function timetableRow(
-  className: string,
-  day: string,
-  period: string,
-  course: string,
-  teacher: string,
-) {
+function timetableRow(className: string, day: string, period: string, course: string, teacher: string) {
   return {
     values: {
       className,
@@ -692,9 +645,7 @@ describe('会话恢复', () => {
     const error = vi.spyOn(ElMessage, 'error')
     seedLastSession()
     const { wrapper, router } = await mountImport('/admin/ai-import?session=9', true, (url) =>
-      url === '/ai/import/sessions/9'
-        ? Promise.reject({ response: { status: 404 } })
-        : null,
+      url === '/ai/import/sessions/9' ? Promise.reject({ response: { status: 404 } }) : null,
     )
 
     expect(error).toHaveBeenCalledWith(expect.stringContaining('已不存在'))
@@ -786,9 +737,7 @@ describe('会话恢复', () => {
         : null,
     )
 
-    expect(wrapper.get('[data-testid="failed-reason"]').text()).toContain(
-      '模型返回的表格为空',
-    )
+    expect(wrapper.get('[data-testid="failed-reason"]').text()).toContain('模型返回的表格为空')
     expect(wrapper.get('.head-actions').text()).toContain('解析失败')
     expect(wrapper.find('.footer-actions').exists()).toBe(false)
     expect(wrapper.find('[data-testid="mapping-step"]').exists()).toBe(false)
@@ -913,9 +862,7 @@ describe('停止解析', () => {
 
     expect(warning).toHaveBeenCalledWith('已停止解析，没有任何已完成的批次')
     expect(success).not.toHaveBeenCalled()
-    expect(wrapper.get('[data-testid="failed-reason"]').text()).toContain(
-      '已停止解析，没有任何已完成的批次',
-    )
+    expect(wrapper.get('[data-testid="failed-reason"]').text()).toContain('已停止解析，没有任何已完成的批次')
     expect(wrapper.find('.footer-actions').exists()).toBe(false)
     warning.mockRestore()
     success.mockRestore()
@@ -979,7 +926,9 @@ describe('停止解析', () => {
     httpMock.post.mockImplementation((url: string) => {
       if (url === '/ai/import/excel') return Promise.resolve(parsingPreview())
       if (url === '/ai/import/sessions/9/stop') {
-        return Promise.reject({ response: { status: 409, data: { message: '当前导入不在解析中，无法停止' } } })
+        return Promise.reject({
+          response: { status: 409, data: { message: '当前导入不在解析中，无法停止' } },
+        })
       }
       return Promise.resolve({ data: {} })
     })
@@ -1039,10 +988,8 @@ describe('整本工作簿后台化', () => {
         issues: [],
       },
     }
-    const { wrapper } = await mountImport(
-      '/admin/ai-import?session=9',
-      true,
-      (url) => (url === '/ai/import/sessions/9' ? Promise.resolve(failed) : null),
+    const { wrapper } = await mountImport('/admin/ai-import?session=9', true, (url) =>
+      url === '/ai/import/sessions/9' ? Promise.resolve(failed) : null,
     )
 
     expect(wrapper.get('[data-testid="failed-reason"]').text()).toContain('AI 解析失败')
@@ -1062,9 +1009,7 @@ describe('整本工作簿后台化', () => {
     expect(httpMock.post).toHaveBeenCalledWith('/ai/import/sessions/9/reparse', undefined, {
       timeout: 300000,
     })
-    expect(wrapper.get('[data-testid="import-progress"]').text()).toContain(
-      '正在识别工作表结构',
-    )
+    expect(wrapper.get('[data-testid="import-progress"]').text()).toContain('正在识别工作表结构')
   })
 })
 
@@ -1100,9 +1045,7 @@ describe('部分结果（PARTIAL）', () => {
     expect(panel.text()).toContain('一年级2班')
     expect(panel.text()).toContain('一年级4班')
     expect(panel.text()).toContain('模型返回为空')
-    expect(wrapper.get('[data-testid="partial-hint"]').text()).toContain(
-      '请先重试失败批次或放弃导入',
-    )
+    expect(wrapper.get('[data-testid="partial-hint"]').text()).toContain('请先重试失败批次或放弃导入')
     expect(wrapper.get('.head-actions').text()).toContain('部分结果')
     expect(wrapper.find('[data-testid="timetable-summary"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="mapping-step"]').exists()).toBe(false)
@@ -1399,9 +1342,7 @@ describe('大表后台解析与进度', () => {
     expect(panel.text()).toContain('已完成 1/4 批')
     expect(panel.text()).toContain('一年级2班')
     expect(wrapper.find('[data-testid="timetable-summary"]').exists()).toBe(false)
-    expect(
-      wrapper.findAll('button').some((candidate) => candidate.text().includes('确认入库')),
-    ).toBe(false)
+    expect(wrapper.findAll('button').some((candidate) => candidate.text().includes('确认入库'))).toBe(false)
 
     httpMock.get.mockImplementation((url: string) => {
       if (url === '/ai/status') return Promise.resolve(aiStatus())

@@ -20,7 +20,6 @@
             :value="s.id"
           />
         </el-select>
-        <el-button v-if="canImport" @click="goImportTimetable">导入课表</el-button>
         <el-button :loading="refreshing" @click="handleManualRefresh">刷新</el-button>
       </div>
     </div>
@@ -52,23 +51,20 @@
             <span>发起排课任务</span>
           </div>
         </template>
-        <el-form :inline="true" :model="submitForm" class="submit-form">
-          <el-form-item label="排课年级">
-            <GradeScopePicker
-              v-model="selectedGradeIds"
-              :grades="grades"
-              :partial-allowed="hasPublishedBaseline"
-            />
-          </el-form-item>
-          <el-form-item label="草稿名称">
-            <el-input
-              v-model="submitForm.draftName"
-              placeholder="方案 A"
-              clearable
-              style="width: 240px"
-            />
-          </el-form-item>
-          <el-form-item label="最大求解时长(秒)">
+        <el-form :model="submitForm" class="submit-form" label-position="top">
+          <div class="submit-row">
+            <el-form-item label="排课年级" class="grade-field">
+              <GradeScopePicker
+                v-model="selectedGradeIds"
+                :grades="grades"
+                :partial-allowed="hasPublishedBaseline"
+              />
+            </el-form-item>
+            <el-form-item label="草稿名称">
+              <el-input v-model="submitForm.draftName" placeholder="方案 A" clearable style="width: 240px" />
+            </el-form-item>
+          </div>
+          <el-form-item label="最大求解时长（秒）" class="duration-field">
             <el-input-number
               v-model="submitForm.maxSeconds"
               :min="5"
@@ -77,7 +73,7 @@
               style="width: 160px"
             />
           </el-form-item>
-          <el-form-item>
+          <el-form-item class="run-action">
             <el-button
               v-if="canRunScheduling"
               type="primary"
@@ -141,9 +137,11 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="求解得分" min-width="180">
+          <el-table-column label="冲突情况" min-width="180">
             <template #default="{ row }">
-              <span>{{ row.scoreHard }} hard / {{ row.scoreSoft }} soft</span>
+              <span :title="`${row.scoreHard} hard / ${row.scoreSoft} soft`">
+                {{ row.scoreHard < 0 ? `${Math.abs(row.scoreHard)} 处冲突` : '无冲突' }}
+              </span>
             </template>
           </el-table-column>
           <el-table-column prop="lessonCount" label="课节数" width="110" />
@@ -154,15 +152,8 @@
           </el-table-column>
           <el-table-column label="操作" width="220" fixed="right">
             <template #default="{ row }">
-              <el-button link type="primary" @click="openDraftEditor(row.id)">
-                打开编辑器
-              </el-button>
-              <el-button
-                v-if="canEditDraft"
-                link
-                type="primary"
-                @click="handleRenameDraft(row)"
-              >
+              <el-button link type="primary" @click="openDraftEditor(row.id)"> 打开编辑器 </el-button>
+              <el-button v-if="canEditDraft" link type="primary" @click="handleRenameDraft(row)">
                 重命名
               </el-button>
               <el-button
@@ -171,7 +162,9 @@
                 type="danger"
                 data-testid="draft-delete"
                 :disabled="row.status !== 'DRAFT'"
-                :title="row.status === 'DRAFT' ? '删除后可在「最近删除」中恢复' : '已发布或已归档的课表不能直接删除'"
+                :title="
+                  row.status === 'DRAFT' ? '删除后可在「最近删除」中恢复' : '已发布或已归档的课表不能直接删除'
+                "
                 @click="handleDeleteDraft(row)"
               >
                 删除
@@ -181,73 +174,13 @@
         </el-table>
       </el-card>
 
-      <el-card shadow="never" class="section-card">
-        <template #header>
-          <div class="card-header">
-            <span>排课历史</span>
-          </div>
-        </template>
-
-        <EmptyStateGuide
-          v-if="!jobsLoading && jobs.length === 0"
-          title="还没有排课历史"
-          description="每次提交的排课任务都会记录在这里，包括状态、求解得分与耗时。"
-          help-slug="scheduling"
-          help-anchor="run"
-        />
-        <el-table v-else v-loading="jobsLoading" :data="jobs" style="width: 100%">
-          <el-table-column label="创建时间" min-width="170">
-            <template #default="{ row }">
-              {{ formatDateTime(row.createdAt) }}
-            </template>
-          </el-table-column>
-          <el-table-column label="草稿名称" min-width="160">
-            <template #default="{ row }">
-              {{ row.draftName || '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="状态" width="170">
-            <template #default="{ row }">
-              <el-tag
-                :type="getJobStatusTag(row.status, isJobConflicted(row)).type"
-                effect="light"
-              >
-                {{ getJobStatusTag(row.status, isJobConflicted(row)).label }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="求解得分" min-width="160">
-            <template #default="{ row }">
-              {{ row.score || '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="耗时(秒)" width="110">
-            <template #default="{ row }">
-              {{ row.elapsedMs != null ? Math.round(row.elapsedMs / 1000) : '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="150" fixed="right">
-            <template #default="{ row }">
-              <el-button
-                v-if="row.status === 'COMPLETED' && row.draftId"
-                link
-                type="primary"
-                @click="openDraftEditor(row.draftId)"
-              >
-                查看草稿
-              </el-button>
-              <el-button
-                v-if="isRunning(row.status)"
-                link
-                type="danger"
-                @click="handleCancelJob(row.id)"
-              >
-                取消
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-card>
+      <SchedulingHistory
+        :jobs="jobs"
+        :loading="jobsLoading"
+        :has-drafts="drafts.length > 0"
+        @open-draft="openDraftEditor"
+        @cancel="handleCancelJob"
+      />
     </div>
   </div>
 </template>
@@ -259,13 +192,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
 import ActiveJobCard from '@/components/scheduling/ActiveJobCard.vue'
+import SchedulingHistory from '@/components/scheduling/SchedulingHistory.vue'
 import GradeScopePicker from '@/components/scheduling/GradeScopePicker.vue'
-import {
-  getJobStatusTag,
-  isCompletedWithConflicts,
-  isRunning,
-  isTerminal,
-} from '@/components/scheduling/jobStatus'
+import { isCompletedWithConflicts, isRunning, isTerminal } from '@/components/scheduling/jobStatus'
 import type { DraftItem, GradeOption, JobItem, Semester } from '@/components/scheduling/types'
 import { useAuthStore } from '@/stores/auth'
 import { serverMessage } from '@/api/errors'
@@ -301,15 +230,12 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const canRunScheduling = computed(() => auth.hasPermission('scheduling:run'))
 const canEditDraft = computed(() => auth.hasPermission('timetable:edit'))
-const canImport = computed(() => auth.hasPermission('foundation:manage'))
 
 const isJobRunning = computed(() => {
   return isRunning(activeJob.value?.status)
 })
 
-const hasPublishedBaseline = computed(() =>
-  drafts.value.some((draft) => draft.status === 'PUBLISHED'),
-)
+const hasPublishedBaseline = computed(() => drafts.value.some((draft) => draft.status === 'PUBLISHED'))
 
 const partialScopeBlocked = computed(() => {
   const total = grades.value.length
@@ -340,10 +266,6 @@ const showPrerequisiteHint = computed(() => missingPrerequisiteMessage.value.len
 function draftForJob(draftId?: number | null): DraftItem | null {
   if (!draftId) return null
   return drafts.value.find((draft) => draft.id === draftId) ?? null
-}
-
-function isJobConflicted(job: JobItem): boolean {
-  return isCompletedWithConflicts(job, draftForJob(job.draftId))
 }
 
 function selectAllGrades() {
@@ -664,9 +586,7 @@ function draftStatusTag(status: string): 'success' | 'warning' | 'info' {
 
 async function handleDeleteDraft(row: DraftItem) {
   if (row.status !== 'DRAFT') {
-    ElMessage.warning(row.status === 'PUBLISHED'
-      ? '已发布的课表请先撤回再删除'
-      : '已归档的课表不能删除')
+    ElMessage.warning(row.status === 'PUBLISHED' ? '已发布的课表请先撤回再删除' : '已归档的课表不能删除')
     return
   }
   const outcome = await deleteDraftWithConfirmation({
@@ -682,10 +602,6 @@ async function handleDeleteDraft(row: DraftItem) {
 
 function openDraftEditor(draftId: number) {
   router.push(`/admin/drafts/${draftId}`)
-}
-
-function goImportTimetable() {
-  router.push('/admin/ai-import')
 }
 
 onMounted(async () => {
@@ -751,14 +667,51 @@ h2 {
 }
 
 .submit-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px 24px;
+}
+
+.submit-row {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  gap: 24px;
+  grid-column: 1 / -1;
 }
 
 .submit-form :deep(.el-form-item) {
-  margin-bottom: 0;
-  margin-right: 20px;
+  margin: 0;
+}
+
+.submit-form :deep(.el-form-item__label) {
+  padding-bottom: 4px;
+}
+
+.grade-field {
+  flex: 1;
+}
+
+.duration-field {
+  min-width: 240px;
+}
+
+.run-action {
+  align-self: end;
+}
+
+.run-action :deep(.el-form-item__content) {
+  justify-content: flex-end;
+}
+
+@media (max-width: 760px) {
+  .submit-form {
+    grid-template-columns: 1fr;
+  }
+  .submit-row {
+    flex-direction: column;
+  }
+  .run-action {
+    width: 100%;
+  }
 }
 
 .partial-scope-alert {

@@ -42,6 +42,14 @@ export function isCompletedWithConflicts(
   return job.resultPublishable === false
 }
 
+export function jobConflictLabel(job: Pick<JobItem, 'status' | 'score' | 'resultPublishable'>): string {
+  if (job.status === 'FAILED' || job.status === 'CANCELLED') return '未完成'
+  if (job.status !== 'COMPLETED') return '进行中'
+  const count = parseHardConflicts(job.score)
+  if (count > 0) return `${count} 处冲突`
+  return job.resultPublishable === false ? '有发布阻塞' : '无冲突'
+}
+
 export function getJobStatusTag(
   status?: string | null,
   hasConflicts = false,

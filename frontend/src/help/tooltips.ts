@@ -15,27 +15,22 @@ export const TOOLTIP_KEYS = [
   'timetable.view',
   'timetable.substitutionMark',
   'settings.aiProvider',
+  'draft.editing',
 ] as const
 
 export type TooltipKey = (typeof TOOLTIP_KEYS)[number]
 
 export const TOOLTIPS: Record<TooltipKey, string> = {
-  'constraint.weight':
-    '0-100 表示优先级，越高越优先满足；只有软约束可以调权重，硬约束始终优先。',
-  'constraint.hard':
-    '硬约束必须满足，排不出来会提示冲突；软约束尽量满足，冲突时按权重取舍。',
-  'constraint.param':
-    '该约束生效所需的参数，带 * 为必填；未填写的必填参数在保存时会提示。',
-  'course.consecutive':
-    '允许该课程连排两节及以上（如作文、实验）；关闭后每次只排单节。',
-  'assignment.weeklyLessons':
-    '该行政班这门课每周要排的课时数，班级全部课程合计不宜超过一周可排节次。',
-  'substitution.effectiveDate':
-    '调代实际生效的日期，课表「最新」视角会显示该日的调整。',
-  'timetable.view':
-    '最新：包含已生效调代与最近发布的结果；原始：学期初始发布的基线课表，不含调代。',
+  'constraint.weight': '0-100 表示优先级，越高越优先满足；只有软约束可以调权重，硬约束始终优先。',
+  'constraint.hard': '硬约束必须满足，排不出来会提示冲突；软约束尽量满足，冲突时按权重取舍。',
+  'constraint.param': '该约束生效所需的参数，带 * 为必填；未填写的必填参数在保存时会提示。',
+  'course.consecutive': '允许该课程连排两节及以上（如作文、实验）；关闭后每次只排单节。',
+  'assignment.weeklyLessons': '该行政班这门课每周要排的课时数，班级全部课程合计不宜超过一周可排节次。',
+  'substitution.effectiveDate': '调代实际生效的日期，课表「最新」视角会显示该日的调整。',
+  'timetable.view': '最新：包含已生效调代与最近发布的结果；原始：学期初始发布的基线课表，不含调代。',
   'timetable.substitutionMark':
     '「调」表示该课节被调课方案挪动，「代」表示由其他教师代课；悬停可查看原教师与原因。',
-  'settings.aiProvider':
-    '配置 AI 供应商、模型与任务分配；未配置时 AI 功能保持隐藏，不影响排课。',
+  'settings.aiProvider': '配置 AI 供应商、模型与任务分配；未配置时 AI 功能保持隐藏，不影响排课。',
+  'draft.editing':
+    '同班拖动可直接移动或换位；跨班换人只交换任课教师。交换失败时会提供联动方案，撤销记录仅保留到刷新前。',
 }

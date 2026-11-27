@@ -49,7 +49,7 @@ function button(wrapper: VueWrapper, label: string) {
   return found
 }
 
-describe('排课页的导入课表入口', () => {
+describe('排课页布局与冲突展示', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     httpMock.get.mockImplementation((url: string) => {
@@ -59,20 +59,71 @@ describe('排课页的导入课表入口', () => {
     })
   })
 
-  it('进入 AI 导入页并默认整本工作簿目标', async () => {
-    const { wrapper, router } = await mountScheduling()
+  it('不把跨模块导入入口混在排课操作中', async () => {
+    const { wrapper } = await mountScheduling()
+    expect(wrapper.text()).not.toContain('导入课表')
+    expect(wrapper.text()).toContain('开始排课')
+  })
+})
 
-    await button(wrapper, '导入课表').trigger('click')
-    await flushPromises()
+describe('排课历史与草稿冲突摘要', () => {
+  const draft = {
+    id: 20,
+    semesterId: 1,
+    name: '方案 A',
+    status: 'DRAFT',
+    scoreHard: -2,
+    scoreSoft: 0,
+    createdAt: '2026-01-01T00:00:00Z',
+    lessonCount: 10,
+  }
 
-    expect(router.currentRoute.value.path).toBe('/admin/ai-import')
-    expect(router.currentRoute.value.query.target).toBeUndefined()
+  beforeEach(() => {
+    vi.clearAllMocks()
   })
 
-  it('没有基础数据管理权限时不显示导入入口', async () => {
-    const { wrapper } = await mountScheduling(['scheduling:run'])
+  function stubData(drafts: unknown[], jobs: unknown[]) {
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/semesters') return Promise.resolve({ data: [SEMESTER] })
+      if (url === '/semesters/current') return Promise.resolve({ status: 200, data: SEMESTER })
+      if (url === '/timetable-drafts') return Promise.resolve({ data: drafts })
+      if (url === '/scheduling-jobs') return Promise.resolve({ data: jobs })
+      return Promise.resolve({ data: [] })
+    })
+  }
 
-    expect(wrapper.findAll('button').some((candidate) => candidate.text() === '导入课表')).toBe(false)
+  it('草稿表用白话显示冲突数，原得分保留在悬停说明', async () => {
+    stubData([draft, { ...draft, id: 21, scoreHard: 0 }], [])
+    const { wrapper } = await mountScheduling()
+    expect(wrapper.text()).toContain('冲突情况')
+    expect(wrapper.text()).toContain('2 处冲突')
+    expect(wrapper.text()).toContain('无冲突')
+    expect(wrapper.find('[title="-2 hard / 0 soft"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('没有草稿且最近一次失败时自动展开历史', async () => {
+    stubData([], [{ id: 1, status: 'FAILED', draftName: '失败方案', createdAt: '2026-01-01T00:00:00Z' }])
+    const { wrapper } = await mountScheduling()
+    expect(wrapper.get('[data-testid="scheduling-history"]').isVisible()).toBe(true)
+    expect(wrapper.text()).toContain('失败方案')
+    wrapper.unmount()
+  })
+
+  it('有草稿时历史默认折叠，用户可以展开', async () => {
+    stubData(
+      [{ ...draft, scoreHard: 0 }],
+      [{ id: 1, status: 'COMPLETED', draftName: '方案 A', createdAt: '2026-01-01T00:00:00Z' }],
+    )
+    const { wrapper } = await mountScheduling()
+    expect(wrapper.get('[data-testid="scheduling-history"]').isVisible()).toBe(false)
+    await wrapper.get('[data-testid="toggle-scheduling-history"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="toggle-scheduling-history"]').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.get('[data-testid="scheduling-history"]').attributes('style')).not.toContain(
+      'display: none',
+    )
+    wrapper.unmount()
   })
 })
 
@@ -324,9 +375,7 @@ describe('F-01 / F-02 / U-03：前置条件、局部重排拦截与提交失败�
     wrapper.findComponent(GradeScopePicker).vm.$emit('update:modelValue', [1])
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="partial-scope-warning"]').text()).toContain(
-      '其他年级尚未发布课表',
-    )
+    expect(wrapper.get('[data-testid="partial-scope-warning"]').text()).toContain('其他年级尚未发布课表')
     expect(button(wrapper, '开始排课').attributes('disabled')).toBeDefined()
 
     await button(wrapper, '全选全部年级').trigger('click')
@@ -374,9 +423,7 @@ describe('F-01 / F-02 / U-03：前置条件、局部重排拦截与提交失败�
     await flushPromises()
 
     // F-02: 有硬冲突时展示警告态
-    expect(wrapper.get('[data-testid="active-job-status"]').text()).toBe(
-      '已完成，但存在冲突暂不可发布',
-    )
+    expect(wrapper.get('[data-testid="active-job-status"]').text()).toBe('已完成，但存在冲突暂不可发布')
 
     // F-01: 下一次提交 409 失败时，不能继续显示旧的已完成卡片和打开草稿按钮
     httpMock.post.mockRejectedValueOnce({

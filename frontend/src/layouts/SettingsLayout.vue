@@ -1,11 +1,5 @@
 <template>
   <div class="page-shell">
-    <header class="page-head">
-      <div>
-        <h2>设置</h2>
-        <p class="page-subtitle">学校信息、集成配置与账号管理。</p>
-      </div>
-    </header>
     <PageTabs :items="tabs" />
     <router-view />
   </div>

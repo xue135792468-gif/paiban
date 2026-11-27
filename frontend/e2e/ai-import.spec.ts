@@ -102,11 +102,11 @@ test.afterAll(async () => {
   await api.dispose()
 })
 
-test('目标卡片写清能处理、输出与限制，未支持目标为禁用态', async ({ page }) => {
+test('AI 模式只显示三个可用目标，并写清能力边界', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/data/import')
+  await page.goto('/data/import?mode=ai')
 
-  await expect(page.getByTestId('target-card')).toHaveCount(6)
+  await expect(page.getByTestId('target-card')).toHaveCount(3)
 
   const workbook = page.locator('[data-testid=target-card][data-target=workbook]')
   await expect(workbook).toContainText('整本工作簿')
@@ -129,25 +129,21 @@ test('目标卡片写清能处理、输出与限制，未支持目标为禁用�
   await expect(timetable).toContainText('课表草稿')
   await expect(timetable).toContainText('只生成草稿')
 
-  for (const code of ['admin-class', 'course', 'assignment']) {
-    const card = page.locator(`[data-testid=target-card][data-target=${code}]`)
-    await expect(card).toHaveAttribute('aria-disabled', 'true')
-    await expect(card).toContainText('即将支持')
-  }
+  await expect(page.getByTestId('target-card')).toHaveCount(3)
+  await expect(page.getByText('即将支持')).toHaveCount(0)
 })
 
-test('排课页的「导入课表」入口默认整本工作簿目标', async ({ page }) => {
+test('旧 AI 导入深链直接进入 AI 模式并保留目标', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/workbench')
-  await page.getByRole('button', { name: '导入课表' }).click()
+  await page.goto('/data/import?mode=ai&target=workbook')
 
-  await expect(page).toHaveURL(/\/data\/import$/)
+  await expect(page).toHaveURL(/mode=ai/)
   await expect(page.locator('[data-target=workbook]')).toContainText('已选择')
 })
 
 test('课表导入：网格预览、班级切换、未匹配映射、生成草稿', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/data/import')
+  await page.goto('/data/import?mode=ai')
   await expect(page.getByText('AI 已就绪')).toBeVisible()
 
   await page.locator('[data-target=timetable]').click()
@@ -213,7 +209,7 @@ test('课表导入：网格预览、班级切换、未匹配映射、生成草�
 
 test('教师导入回归：上传、预览行、入库', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/data/import')
+  await page.goto('/data/import?mode=ai')
   await expect(page.getByText('AI 已就绪')).toBeVisible()
   // Picking a card opts back into the single-target parse this regression covers.
   await page.locator('[data-target=teacher]').click()
@@ -239,7 +235,7 @@ test('教师导入回归：上传、预览行、入库', async ({ page }) => {
 
 test('多工作表工作簿：一次识别四类数据、跳过说明表并生成草稿', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/data/import')
+  await page.goto('/data/import?mode=ai')
   const suffix = seedSuffix(seed)
   const workbook = buildWorkbookXlsx([
     {
@@ -290,7 +286,7 @@ test('多工作表工作簿：一次识别四类数据、跳过说明表并生�
 test('整本工作簿在后台分批解析，刷新后仍能看到进度并走到预览', async ({ page }) => {
   workbookControl = { latencyMs: 2500 }
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/data/import')
+  await page.goto('/data/import?mode=ai')
   await expect(page.getByText('AI 已就绪')).toBeVisible()
 
   const suffix = seedSuffix(seed)
@@ -330,7 +326,7 @@ test('整本工作簿在后台分批解析，刷新后仍能看到进度并走�
 
 test('解析失败给出可操作提示，而不是通用「操作失败」', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/data/import')
+  await page.goto('/data/import?mode=ai')
   await expect(page.getByText('AI 已就绪')).toBeVisible()
 
   await uploadExcel(page, 'broken.xlsx', Buffer.from('this is not a spreadsheet', 'utf8'))
@@ -378,7 +374,7 @@ test('空页面显示上次导入入口并可继续', async ({ page }) => {
   await startTimetableImport(page, timetableSheet(seed), { merges: ['A1:F1'] })
 
   // A full page load without the session query: only localStorage knows the session.
-  await page.goto('/data/import')
+  await page.goto('/data/import?mode=ai')
 
   const card = page.getByTestId('last-session-card')
   await expect(card).toBeVisible()
@@ -554,7 +550,7 @@ test('放弃导入：不生成草稿，?session= 恢复入口不再继续该会�
     await expect(page.locator('.el-message--info')).toContainText('已放弃本次导入，未写入任何数据')
 
     // Back to an empty import page: no preview, no session in the URL, nothing to continue.
-    await expect(page.getByTestId('target-card')).toHaveCount(6)
+    await expect(page.getByTestId('target-card')).toHaveCount(3)
     await expect(page.getByTestId('timetable-summary')).toHaveCount(0)
     await expect(page).not.toHaveURL(/session=/)
     await expect(page.getByTestId('last-session-card')).toHaveCount(0)
@@ -569,7 +565,7 @@ test('放弃导入：不生成草稿，?session= 恢复入口不再继续该会�
     // A bookmarked `?session=` must not resurrect it either.
     await page.goto(`/data/import?session=${sessionId}`)
     await expect(page.locator('.el-message--error')).toContainText('该导入会话已不可用')
-    await expect(page.getByTestId('target-card')).toHaveCount(6)
+    await expect(page.getByTestId('target-card')).toHaveCount(3)
     await expect(page).not.toHaveURL(/session=/)
   })
 })
@@ -744,7 +740,7 @@ test('作息缺节：不可推算的项标注需人工，不提供写入入口',
 /** Uploads a whole workbook, parses it and waits for the merged preview. */
 async function startWorkbookImport(page: Page, name: string, workbook: Buffer): Promise<void> {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/data/import')
+  await page.goto('/data/import?mode=ai')
   await expect(page.getByText('AI 已就绪')).toBeVisible()
   await uploadExcel(page, name, workbook)
   await page.getByRole('button', { name: '开始解析' }).click()
@@ -755,7 +751,7 @@ async function startWorkbookImport(page: Page, name: string, workbook: Buffer): 
 /** Logs in, opens the import page and selects the timetable target. */
 async function openTimetableImport(page: Page): Promise<void> {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/data/import')
+  await page.goto('/data/import?mode=ai')
   await expect(page.getByText('AI 已就绪')).toBeVisible()
   await page.locator('[data-target=timetable]').click()
   await expect(page.locator('[data-target=timetable]')).toContainText('已选择')
@@ -1201,7 +1197,7 @@ async function configureImportProvider(context: APIRequestContext, baseUrl: stri
  */
 test('入库中的会话恢复后显示禁用按钮，并自动刷新到已入库', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
-  await page.goto('/data/import')
+  await page.goto('/data/import?mode=ai')
   const suffix = seedSuffix(seed)
   const workbook = buildWorkbookXlsx([
     {

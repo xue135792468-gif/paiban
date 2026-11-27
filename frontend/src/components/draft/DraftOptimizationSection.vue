@@ -1,40 +1,8 @@
 <template>
   <div v-if="draft" class="optimization-section">
-    <el-card v-if="!job" shadow="never" class="optimization-card" data-testid="optimization-entry">
-      <div class="opt-head">
-        <div>
-          <strong>基于当前草稿继续优化</strong>
-          <el-tag size="small" type="info" effect="light">
-            继承锁定 {{ lockedCount }} 节
-          </el-tag>
-        </div>
-        <el-button
-          type="primary"
-          data-testid="optimization-continue"
-          :disabled="!canStart"
-          @click="dialogVisible = true"
-        >
-          继续优化
-        </el-button>
-      </div>
-      <p class="opt-desc">
-        以当前草稿及锁定为初始解，生成另一份草稿；原稿保留，锁定会继承。任务完成不等于可发布，
-        发布仍以新草稿的整稿校验为准。
-      </p>
-      <el-alert
-        v-if="allLocked"
-        data-testid="optimization-all-locked"
-        type="warning"
-        :closable="false"
-        show-icon
-        title="全部课节已锁定，没有可优化的课程"
-      />
-      <p v-else-if="lessonCount === 0" class="opt-desc">草稿还没有课节，无法继续优化。</p>
-      <p v-else-if="!canOptimize" class="opt-desc">需要排课执行权限才能发起优化。</p>
-    </el-card>
-
+    <div class="optimization-entry" data-testid="optimization-entry" />
     <OptimizationJobPanel
-      v-else
+      v-if="job"
       :job="job"
       :source-draft-id="sourceDraftId"
       :source-draft-name="draft.name"
@@ -90,9 +58,14 @@ const { job, starting, cancelling, error, start, resume, cancel } = useOptimizat
 
 const dialogVisible = ref(false)
 
-const allLocked = computed(() => props.lessonCount > 0 && props.lockedCount >= props.lessonCount)
+function openLaunch() {
+  if (canStart.value) dialogVisible.value = true
+}
+
+defineExpose({ openLaunch })
+
 const canStart = computed(
-  () => props.canOptimize && props.lessonCount > 0 && !allLocked.value,
+  () => props.canOptimize && props.lessonCount > 0 && props.lockedCount < props.lessonCount,
 )
 
 // `?job=` is the only way a reload restores the panel; it resumes polling and never
@@ -136,11 +109,11 @@ function openCompare(draftId: number) {
 async function confirmCancel() {
   if (!isOptimizationActive(job.value) || cancelling.value) return
   try {
-    await ElMessageBox.confirm(
-      '确定要取消这次继续优化吗？原草稿不会被修改。',
-      '取消优化任务',
-      { confirmButtonText: '确定取消', cancelButtonText: '再等等', type: 'warning' },
-    )
+    await ElMessageBox.confirm('确定要取消这次继续优化吗？原草稿不会被修改。', '取消优化任务', {
+      confirmButtonText: '确定取消',
+      cancelButtonText: '再等等',
+      type: 'warning',
+    })
   } catch {
     return
   }

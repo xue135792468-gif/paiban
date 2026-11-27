@@ -23,14 +23,22 @@ const impact: RuleImpact = {
 }
 
 const semesters = [{ id: 1, name: '2025 秋', current: true }]
-const teachers = [{ id: 7, name: '王老师' }, { id: 8, name: '李老师' }]
-const classes = [{ id: 1, name: '九（1）班' }, { id: 2, name: '九（2）班' }]
+const teachers = [
+  { id: 7, name: '王老师' },
+  { id: 8, name: '李老师' },
+]
+const classes = [
+  { id: 1, name: '九（1）班' },
+  { id: 2, name: '九（2）班' },
+]
 const courses = [{ id: 9, name: '数学', active: true }]
-const periodRows = [1, 2, 3].flatMap((day) => [1, 2, 3].map((periodNo) => ({
-  dayOfWeek: day,
-  periodNo,
-  section: periodNo <= 2 ? 'MORNING' : 'AFTERNOON',
-})))
+const periodRows = [1, 2, 3].flatMap((day) =>
+  [1, 2, 3].map((periodNo) => ({
+    dayOfWeek: day,
+    periodNo,
+    section: periodNo <= 2 ? 'MORNING' : 'AFTERNOON',
+  })),
+)
 
 const stateConfigs = [
   {
@@ -40,8 +48,22 @@ const stateConfigs = [
     hard: true,
     enabled: true,
     entries: [
-      { id: 1, params: { dayOfWeek: 2, periodNo: 2 }, enabled: true, hard: true, weight: null, groupKey: 'pt-school' },
-      { id: 2, params: { classId: 2, dayOfWeek: 3, periodNo: 1 }, enabled: true, hard: true, weight: null, groupKey: 'pt-class' },
+      {
+        id: 1,
+        params: { dayOfWeek: 2, periodNo: 2 },
+        enabled: true,
+        hard: true,
+        weight: null,
+        groupKey: 'pt-school',
+      },
+      {
+        id: 2,
+        params: { classId: 2, dayOfWeek: 3, periodNo: 1 },
+        enabled: true,
+        hard: true,
+        weight: null,
+        groupKey: 'pt-class',
+      },
     ],
   },
   {
@@ -51,7 +73,14 @@ const stateConfigs = [
     hard: true,
     enabled: true,
     entries: [
-      { id: 3, params: { teacherId: 7, dayOfWeek: 1, periodNo: 1 }, enabled: true, hard: true, weight: null, groupKey: 'pt-teacher' },
+      {
+        id: 3,
+        params: { teacherId: 7, dayOfWeek: 1, periodNo: 1 },
+        enabled: true,
+        hard: true,
+        weight: null,
+        groupKey: 'pt-teacher',
+      },
     ],
   },
   {
@@ -61,7 +90,14 @@ const stateConfigs = [
     hard: false,
     enabled: true,
     entries: [
-      { id: 4, params: { courseId: 9, maxPerDay: 1 }, enabled: true, hard: null, weight: null, groupKey: 'pt-course' },
+      {
+        id: 4,
+        params: { courseId: 9, maxPerDay: 1 },
+        enabled: true,
+        hard: null,
+        weight: null,
+        groupKey: 'pt-course',
+      },
     ],
   },
   { type: 'TEACHER_CONFLICT', params: {}, weight: 100, hard: true, enabled: true, entries: [] },
@@ -94,7 +130,10 @@ beforeEach(() => {
   })
 })
 
-async function mountViewWithRouter(): Promise<{ wrapper: VueWrapper; router: ReturnType<typeof createRouter> }> {
+async function mountViewWithRouter(): Promise<{
+  wrapper: VueWrapper
+  router: ReturnType<typeof createRouter>
+}> {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -105,10 +144,13 @@ async function mountViewWithRouter(): Promise<{ wrapper: VueWrapper; router: Ret
   })
   await router.push('/rules')
   await router.isReady()
-  const wrapper = mount({ template: '<router-view />' }, {
-    attachTo: document.body,
-    global: { plugins: [router, ElementPlus, createPinia()] },
-  })
+  const wrapper = mount(
+    { template: '<router-view />' },
+    {
+      attachTo: document.body,
+      global: { plugins: [router, ElementPlus, createPinia()] },
+    },
+  )
   await flushPromises()
   return { wrapper, router }
 }
@@ -118,6 +160,57 @@ async function mountView(): Promise<VueWrapper> {
   return wrapper
 }
 
+describe('RuleBuilderView: AI 入口按服务端可用状态显示', () => {
+  it('服务端不可用时隐藏 AI 帮填', async () => {
+    const wrapper = await mountView()
+    expect(wrapper.find('[data-testid="rule-ai-toggle"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="rule-ai-notice"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('服务端可用时显示 AI 帮填并保留原交互', async () => {
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/constraint-proposals/availability') {
+        return Promise.resolve({ data: { available: true } })
+      }
+      if (url === '/semesters') return Promise.resolve({ status: 200, data: semesters })
+      if (url === '/semesters/current') return Promise.resolve({ status: 200, data: semesters[0] })
+      if (url === '/teachers/options') return Promise.resolve({ data: teachers })
+      if (url === '/courses') return Promise.resolve({ data: courses })
+      if (url === '/constraint-types') return Promise.resolve({ data: [] })
+      if (url === '/classes') return Promise.resolve({ data: classes })
+      if (url === '/constraints/state')
+        return Promise.resolve({ data: { version: 3, configs: stateConfigs } })
+      if (url === '/semesters/1/periods') return Promise.resolve({ data: periodRows })
+      return Promise.resolve({ data: [] })
+    })
+    const wrapper = await mountView()
+    expect(wrapper.find('[data-testid="rule-ai-toggle"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="rule-ai-toggle"]').trigger('click')
+    expect(wrapper.findComponent({ name: 'ConstraintAiPanel' }).exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('可用性探测失败时安静隐藏入口，不影响规则列表', async () => {
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/constraint-proposals/availability') return Promise.reject(new Error('offline'))
+      if (url === '/semesters') return Promise.resolve({ status: 200, data: semesters })
+      if (url === '/semesters/current') return Promise.resolve({ status: 200, data: semesters[0] })
+      if (url === '/teachers/options') return Promise.resolve({ data: teachers })
+      if (url === '/courses') return Promise.resolve({ data: courses })
+      if (url === '/constraint-types') return Promise.resolve({ data: [] })
+      if (url === '/classes') return Promise.resolve({ data: classes })
+      if (url === '/constraints/state')
+        return Promise.resolve({ data: { version: 3, configs: stateConfigs } })
+      if (url === '/semesters/1/periods') return Promise.resolve({ data: periodRows })
+      return Promise.resolve({ data: [] })
+    })
+    const wrapper = await mountView()
+    expect(wrapper.find('[data-testid="rule-ai-toggle"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="rule-builder"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+})
 describe('RuleBuilderView: grouped list, search and impact', () => {
   it('groups cards by 对谁 and keeps the system bottom lines on top', async () => {
     const wrapper = await mountView()
@@ -190,7 +283,14 @@ describe('RuleBuilderView: grouped list, search and impact', () => {
         hard: true,
         enabled: true,
         entries: [
-          { id: 1, params: { dayOfWeek: 2, periodNo: 2 }, enabled: true, hard: true, weight: null, groupKey: 'pt-extra' },
+          {
+            id: 1,
+            params: { dayOfWeek: 2, periodNo: 2 },
+            enabled: true,
+            hard: true,
+            weight: null,
+            groupKey: 'pt-extra',
+          },
         ],
       },
       {
@@ -200,7 +300,14 @@ describe('RuleBuilderView: grouped list, search and impact', () => {
         hard: true,
         enabled: true,
         entries: [
-          { id: 2, params: { teacherId: 7, dayOfWeek: 1, periodNo: 1 }, enabled: true, hard: true, weight: null, groupKey: 'pt-block' },
+          {
+            id: 2,
+            params: { teacherId: 7, dayOfWeek: 1, periodNo: 1 },
+            enabled: true,
+            hard: true,
+            weight: null,
+            groupKey: 'pt-block',
+          },
         ],
       },
       {
@@ -210,7 +317,14 @@ describe('RuleBuilderView: grouped list, search and impact', () => {
         hard: true,
         enabled: true,
         entries: [
-          { id: 3, params: { teacherId: 7, dayOfWeek: 1, periodNo: 1 }, enabled: true, hard: true, weight: null, groupKey: 'pt-prefer' },
+          {
+            id: 3,
+            params: { teacherId: 7, dayOfWeek: 1, periodNo: 1 },
+            enabled: true,
+            hard: true,
+            weight: null,
+            groupKey: 'pt-prefer',
+          },
         ],
       },
     ]
@@ -227,9 +341,7 @@ describe('RuleBuilderView: grouped list, search and impact', () => {
       if (url === '/semesters/1/periods') return Promise.resolve({ data: periodRows })
       return Promise.resolve({ data: [] })
     })
-    const confirm = vi
-      .spyOn(ElMessageBox, 'confirm')
-      .mockRejectedValue(new Error('cancel') as never)
+    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue(new Error('cancel') as never)
     const wrapper = await mountView()
 
     // Pause an unrelated card so the page counts as edited.
@@ -354,14 +466,30 @@ describe('RuleBuilderView: grouped list, search and impact', () => {
     wrapper.unmount()
   })
 
-  it('shows and hides the AI panel from the toolbar', async () => {
+  it('可用时展示 AI 输入面板，可再次收起', async () => {
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/constraint-proposals/availability') {
+        return Promise.resolve({ data: { available: true, message: '测试关闭' } })
+      }
+      if (url === '/semesters') return Promise.resolve({ status: 200, data: semesters })
+      if (url === '/semesters/current') return Promise.resolve({ status: 200, data: semesters[0] })
+      if (url === '/teachers/options') return Promise.resolve({ data: teachers })
+      if (url === '/courses') return Promise.resolve({ data: courses })
+      if (url === '/constraint-types') return Promise.resolve({ data: [] })
+      if (url === '/classes') return Promise.resolve({ data: classes })
+      if (url === '/constraints/state')
+        return Promise.resolve({ data: { version: 3, configs: stateConfigs } })
+      if (url === '/semesters/1/periods') return Promise.resolve({ data: periodRows })
+      return Promise.resolve({ data: [] })
+    })
     const wrapper = await mountView()
     expect(wrapper.find('[data-testid="constraint-ai-panel"]').exists()).toBe(false)
 
     await wrapper.find('[data-testid="rule-ai-toggle"]').trigger('click')
     await flushPromises()
     expect(wrapper.find('[data-testid="constraint-ai-panel"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="constraint-ai-unavailable"]').text()).toContain('测试关闭')
+    expect(wrapper.find('[data-testid="constraint-ai-input"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="constraint-ai-unavailable"]').exists()).toBe(false)
 
     await wrapper.find('[data-testid="rule-ai-toggle"]').trigger('click')
     await flushPromises()
@@ -403,8 +531,7 @@ describe('RuleBuilderView: grouped list, search and impact', () => {
     })
     const wrapper = await mountView()
 
-    expect(wrapper.get('[data-testid="rule-unusable-panel"]').text())
-      .toContain('本学期用不上（1）')
+    expect(wrapper.get('[data-testid="rule-unusable-panel"]').text()).toContain('本学期用不上（1）')
     expect(wrapper.get('[data-testid="rule-unusable-panel"]').text()).toContain('教师已删除：#99')
     expect(wrapper.findAll('[data-testid="rule-card"]')).toHaveLength(4)
     expect(wrapper.get('[data-testid="rule-cards"]').text()).not.toContain('教师已删除')
@@ -416,8 +543,7 @@ describe('RuleBuilderView: grouped list, search and impact', () => {
     await wrapper.get('[data-testid="rule-copy-open"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="rule-copy-dialog"]').text())
-      .toContain('从以前的学期复制规则')
+    expect(wrapper.get('[data-testid="rule-copy-dialog"]').text()).toContain('从以前的学期复制规则')
     expect(wrapper.get('[data-testid="rule-copy-confirm"]').attributes('disabled')).toBeDefined()
     wrapper.unmount()
   })

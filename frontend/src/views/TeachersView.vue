@@ -23,18 +23,9 @@
 
     <el-card shadow="never">
       <div v-if="groups.length > 0" class="group-filter-row">
-        <el-select
-          v-model="filterGroupId"
-          class="group-filter"
-          data-testid="teacher-group-filter"
-        >
+        <el-select v-model="filterGroupId" class="group-filter" data-testid="teacher-group-filter">
           <el-option label="全部分组" value="all" />
-          <el-option
-            v-for="group in groups"
-            :key="group.id"
-            :label="group.name"
-            :value="group.id"
-          />
+          <el-option v-for="group in groups" :key="group.id" :label="group.name" :value="group.id" />
         </el-select>
       </div>
       <EmptyStateGuide
@@ -78,12 +69,8 @@
         <el-table-column label="平台绑定" min-width="150">
           <template #default="{ row }">
             <div class="binding-tags">
-              <el-tag v-if="row.bindingStatus === 'dingtalk'" size="small">
-                钉钉
-              </el-tag>
-              <el-tag v-else size="small" type="info">
-                未绑定
-              </el-tag>
+              <el-tag v-if="row.bindingStatus === 'dingtalk'" size="small"> 钉钉 </el-tag>
+              <el-tag v-else size="small" type="info"> 未绑定 </el-tag>
             </div>
           </template>
         </el-table-column>
@@ -127,25 +114,31 @@
         <el-form-item label="联系电话" prop="phone">
           <el-input v-model="form.phone" placeholder="请输入联系电话（选填）" />
         </el-form-item>
-        <el-form-item label="电子邮箱" prop="email">
-          <el-input v-model="form.email" placeholder="请输入电子邮箱（选填）" />
-        </el-form-item>
-        <el-divider content-position="left">平台绑定</el-divider>
-        <el-form-item label="钉钉 UserID">
-          <el-input
-            v-model="form.dingtalkUserId"
-            data-testid="teacher-dingtalk-userid"
-            :disabled="!canManageIntegration"
-            :placeholder="canManageIntegration ? '留空表示清除绑定' : '仅超级管理员可修改'"
-          />
-        </el-form-item>
         <el-form-item label="状态" prop="active">
-          <el-switch
-            v-model="form.active"
-            active-text="正常"
-            inactive-text="已停用"
-          />
+          <el-switch v-model="form.active" active-text="正常" inactive-text="已停用" />
         </el-form-item>
+        <button
+          type="button"
+          class="more-toggle"
+          data-testid="teacher-more-toggle"
+          :aria-expanded="moreVisible"
+          @click="moreVisible = !moreVisible"
+        >
+          {{ moreVisible ? '收起更多信息' : '更多信息（电子邮箱、钉钉绑定）' }}
+        </button>
+        <template v-if="moreVisible">
+          <el-form-item label="电子邮箱" prop="email">
+            <el-input v-model="form.email" placeholder="请输入电子邮箱（选填）" />
+          </el-form-item>
+          <el-form-item label="钉钉 UserID">
+            <el-input
+              v-model="form.dingtalkUserId"
+              data-testid="teacher-dingtalk-userid"
+              :disabled="!canManageIntegration"
+              :placeholder="canManageIntegration ? '留空表示清除绑定' : '仅超级管理员可修改'"
+            />
+          </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -153,12 +146,7 @@
       </template>
     </el-dialog>
 
-    <ImportDialog
-      v-model="importVisible"
-      entity="teachers"
-      entity-label="教师"
-      @imported="load"
-    />
+    <ImportDialog v-model="importVisible" entity="teachers" entity-label="教师" @imported="load" />
   </div>
 </template>
 
@@ -209,9 +197,7 @@ const filteredTeachers = computed(() => {
     return teachers.value
   }
   const memberIds = new Set(
-    group.members
-      .filter((member) => member.kind === 'TEACHER')
-      .map((member) => member.objectId),
+    group.members.filter((member) => member.kind === 'TEACHER').map((member) => member.objectId),
   )
   return teachers.value.filter((teacher) => memberIds.has(teacher.id))
 })
@@ -220,7 +206,8 @@ const filteredTeachers = computed(() => {
 function teacherGroupNames(teacherId: number): string[] {
   return groups.value
     .filter((group) =>
-      group.members.some((member) => member.kind === 'TEACHER' && member.objectId === teacherId))
+      group.members.some((member) => member.kind === 'TEACHER' && member.objectId === teacherId),
+    )
     .map((group) => group.name)
 }
 
@@ -239,6 +226,7 @@ const defaultForm = {
 }
 
 const form = reactive({ ...defaultForm })
+const moreVisible = ref(false)
 
 const rules: FormRules = {
   name: [{ required: true, message: '请输入教师姓名', trigger: 'blur' }],
@@ -259,6 +247,7 @@ async function load() {
 function openCreate() {
   editingId.value = null
   Object.assign(form, defaultForm)
+  moreVisible.value = false
   dialogVisible.value = true
   formRef.value?.clearValidate()
 }
@@ -274,6 +263,7 @@ function openEdit(row: Teacher) {
     active: row.active ?? true,
     dingtalkUserId: row.dingtalkUserId ?? '',
   })
+  moreVisible.value = Boolean(row.email?.trim() || row.dingtalkUserId?.trim())
   dialogVisible.value = true
   formRef.value?.clearValidate()
 }
@@ -310,7 +300,6 @@ async function submit() {
     saving.value = false
   }
 }
-
 
 async function handleExport() {
   exporting.value = true
@@ -364,6 +353,16 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.more-toggle {
+  width: 100%;
+  padding: 10px 0;
+  border: 0;
+  border-top: 1px dashed #dcdfe6;
+  background: transparent;
+  color: var(--paiban-primary);
+  text-align: left;
+  cursor: pointer;
+}
 .binding-tags {
   display: flex;
   flex-wrap: wrap;

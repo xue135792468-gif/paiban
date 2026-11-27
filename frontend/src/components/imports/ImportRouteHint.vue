@@ -1,11 +1,5 @@
 <template>
-  <el-alert
-    data-testid="import-recommended-paths"
-    type="info"
-    show-icon
-    :closable="false"
-    class="notice"
-  >
+  <el-alert data-testid="import-recommended-paths" type="info" show-icon :closable="false" class="notice">
     <template #title>
       <span class="recommended">
         常用路径：手动选列导入 / 配方导入（推荐）。本页的 AI 向导只用于遇到新格式时帮你写一份配方。

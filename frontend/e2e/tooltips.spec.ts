@@ -11,13 +11,13 @@ import { uiLogin } from './helpers'
  * 仍在的「AI 供应商」说明：同样是一个配置型复杂区块，悬停其问号应给出大白话解释。
  */
 
-test('悬停「AI 供应商」旁的问号显示字段说明', async ({ page }) => {
+test('悬停 AI 设置卡片的问号显示字段说明', async ({ page }) => {
   await uiLogin(page, 'admin', 'admin123')
   await page.goto('/settings/general')
 
   const icon = page
     .locator('.card-title')
-    .filter({ hasText: 'AI 供应商' })
+    .filter({ hasText: 'AI 设置' })
     .getByTestId('info-tooltip')
     .first()
 

@@ -48,6 +48,11 @@ async function startFromDialog(page: Page, maxSeconds: string): Promise<void> {
   await expect(page.getByTestId('optimization-job-panel')).toBeVisible()
 }
 
+async function openOptimizationDialog(page: Page): Promise<void> {
+  await page.getByTestId('draft-more-menu').click()
+  await page.getByTestId('optimization-entry').click()
+}
+
 test('从当前草稿继续优化：原稿保留、锁继承、比较自动配对', async ({ page }) => {
   const api = await newContext()
   const seed = await seedDraftLockScenario(api)
@@ -63,9 +68,10 @@ test('从当前草稿继续优化：原稿保留、锁继承、比较自动配�
 
   await openDraft(page, seed.draftId)
   await selectClass(page, seed.className)
+  await page.getByTestId('draft-more-menu').click()
   await expect(page.getByTestId('optimization-entry')).toContainText('继承锁定 1 节')
 
-  await page.getByTestId('optimization-continue').click()
+  await page.getByTestId('optimization-entry').click()
   const dialog = page.getByTestId('optimization-launch-dialog')
   const sourceDraftName = before.draft.name
   expect(sourceDraftName).toBeTruthy()
@@ -94,7 +100,9 @@ test('从当前草稿继续优化：原稿保留、锁继承、比较自动配�
   const afterNew = await draftDetail(api, newDraftId)
   const lockedNew = afterNew.lessons.filter((lesson) => lesson.locked)
   expect(lockedNew).toHaveLength(1)
-  expect(lockedNew[0].assignmentId).toBe(afterSource.lessons.find((lesson) => lesson.id === seed.mathLessonIds[0])?.assignmentId)
+  expect(lockedNew[0].assignmentId).toBe(
+    afterSource.lessons.find((lesson) => lesson.id === seed.mathLessonIds[0])?.assignmentId,
+  )
   expect(lockedNew[0].periodId).toBe(
     afterSource.lessons.find((lesson) => lesson.id === seed.mathLessonIds[0])?.periodId,
   )
@@ -125,10 +133,9 @@ test('全部课节锁定时入口禁用并说明原因，不产生任务', async
   const jobsBefore = await listJobs(api, seed.semesterId)
 
   await openDraft(page, seed.draftId)
-  await expect(page.getByTestId('optimization-all-locked')).toContainText(
-    '全部课节已锁定，没有可优化的课程',
-  )
-  await expect(page.getByTestId('optimization-continue')).toBeDisabled()
+  await page.getByTestId('draft-more-menu').click()
+  await expect(page.getByTestId('optimization-all-locked')).toContainText('全部课节已锁定')
+  await expect(page.getByTestId('optimization-entry')).toHaveClass(/is-disabled/)
 
   const jobsAfter = await listJobs(api, seed.semesterId)
   expect(jobsAfter).toHaveLength(jobsBefore.length)
@@ -178,8 +185,7 @@ test('入口可用键盘 Tab/Enter 打开对话框并发起', async ({ page }) =
   const seed = await seedDraftLockScenario(api)
 
   await openDraft(page, seed.draftId)
-  await page.getByTestId('optimization-continue').focus()
-  await page.keyboard.press('Enter')
+  await openOptimizationDialog(page)
   await expect(page.getByTestId('optimization-launch-dialog')).toBeVisible()
 
   await page.getByTestId('optimization-max-seconds').locator('input').fill('1')

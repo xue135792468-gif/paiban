@@ -33,6 +33,9 @@ beforeEach(() => {
   vi.clearAllMocks()
   httpMock.get.mockImplementation((url: string) => {
     if (url === '/integrations/dingtalk/config') return Promise.resolve({ data: dingtalkConfig })
+    if (url === '/integrations/dingtalk/logs') return Promise.resolve({ data: [] })
+    if (url === '/settings/substitution-recipients')
+      return Promise.resolve({ data: { userIds: [], options: [] } })
     if (url === '/integrations/feishu/config') {
       return Promise.resolve({ data: { enabled: false, syncStrategy: 'feishu' } })
     }
@@ -72,6 +75,90 @@ async function mountView(permissions: string[] = SUPER_ADMIN_PERMISSIONS) {
   await flushPromises()
   return wrapper
 }
+
+describe('SettingsView: 按卡独立保存', () => {
+  beforeEach(() => {
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/integrations/dingtalk/config') return Promise.resolve({ data: dingtalkConfig })
+      if (url === '/integrations/dingtalk/logs') return Promise.resolve({ data: [] })
+      if (url === '/settings/substitution-recipients')
+        return Promise.resolve({ data: { userIds: [], options: [] } })
+      if (url === '/settings') {
+        return Promise.resolve({
+          data: {
+            'school.name': '示例中学',
+            'public.base-url': 'https://school.example',
+            'substitution.search-window-days': '7',
+            'ai.import.confidence-threshold': '0.8',
+            'integration.dingtalk.event-token': 'old-token',
+          },
+        })
+      }
+      return Promise.resolve({ data: [] })
+    })
+    httpMock.put.mockImplementation((_url: string, payload: Record<string, string>) =>
+      Promise.resolve({ data: payload }),
+    )
+  })
+
+  it('学校信息只提交自己的配置，高级地址默认折叠', async () => {
+    const wrapper = await mountView()
+    expect(wrapper.find('[data-testid="school-save"]').exists()).toBe(true)
+    expect(wrapper.findAll('button').some((button) => button.text() === '保存设置')).toBe(false)
+    expect(wrapper.find('input[placeholder^="如 https://paiban"]').isVisible()).toBe(false)
+    expect(wrapper.text()).not.toContain('代课人选推荐')
+    await wrapper.find('[data-testid="school-save"]').trigger('click')
+    await flushPromises()
+    expect(httpMock.put).toHaveBeenCalledWith('/settings', {
+      'school.name': '示例中学',
+      'public.base-url': 'https://school.example',
+    })
+    expect(httpMock.put).not.toHaveBeenCalledWith(
+      '/settings',
+      expect.objectContaining({
+        'integration.dingtalk.event-token': expect.anything(),
+      }),
+    )
+    wrapper.unmount()
+  })
+
+  it('保存钉钉配置同时提交事件令牌', async () => {
+    const wrapper = await mountView()
+    await wrapper.find('[data-testid="dingtalk-save"]').trigger('click')
+    await flushPromises()
+    expect(httpMock.put).toHaveBeenCalledWith(
+      '/integrations/dingtalk/config',
+      expect.objectContaining({
+        enabled: true,
+        appKey: 'ding-key',
+      }),
+    )
+    expect(httpMock.put).toHaveBeenCalledWith('/settings', {
+      'integration.dingtalk.event-token': 'old-token',
+    })
+    wrapper.unmount()
+  })
+
+  it('钉钉关闭时保留连接探测，折叠 AgentId 与事件令牌', async () => {
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/integrations/dingtalk/config')
+        return Promise.resolve({ data: { ...dingtalkConfig, enabled: false } })
+      if (url === '/integrations/dingtalk/logs') return Promise.resolve({ data: [] })
+      if (url === '/settings/substitution-recipients')
+        return Promise.resolve({ data: { userIds: [], options: [] } })
+      return Promise.resolve({ data: {} })
+    })
+    const wrapper = await mountView()
+    expect(wrapper.find('[data-testid="dingtalk-probe-app-key"]').exists()).toBe(true)
+    expect(wrapper.find('input[placeholder="微应用 AgentId"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('事件令牌')
+    const toggle = wrapper.find('#dingtalk-integration .el-switch')
+    await toggle.trigger('click')
+    expect(wrapper.find('input[placeholder="微应用 AgentId"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('事件令牌')
+    wrapper.unmount()
+  })
+})
 
 describe('SettingsView: 清除钉钉配置', () => {
   it('确认后调用清除接口并说明可在最近删除恢复', async () => {
@@ -201,12 +288,13 @@ describe('SettingsView: 钉钉配置只对集成配置权限可见', () => {
     wrapper.unmount()
   })
 
-  it('教务保存设置时不回写钉钉字段，避免整单被拒', async () => {
+  it('教务保存学校卡片时不回写钉钉字段，避免整单被拒', async () => {
     httpMock.get.mockImplementation((url: string) => {
       if (url === '/settings') {
         return Promise.resolve({
           data: {
             'school.name': '本校',
+            'public.base-url': '',
             'substitution.max-plan-teachers': '5',
             'integration.dingtalk.event-token': '',
           },
@@ -216,13 +304,19 @@ describe('SettingsView: 钉钉配置只对集成配置权限可见', () => {
     })
     const wrapper = await mountView(['settings:manage', 'foundation:manage'])
 
-    await wrapper.get('.toolbar .el-button').trigger('click')
+    await wrapper.get('[data-testid="school-save"]').trigger('click')
     await flushPromises()
 
     expect(httpMock.put).toHaveBeenCalledWith('/settings', {
       'school.name': '本校',
-      'substitution.max-plan-teachers': '5',
+      'public.base-url': '',
     })
+    expect(httpMock.put).not.toHaveBeenCalledWith(
+      '/settings',
+      expect.objectContaining({
+        'integration.dingtalk.event-token': expect.anything(),
+      }),
+    )
     wrapper.unmount()
   })
 })

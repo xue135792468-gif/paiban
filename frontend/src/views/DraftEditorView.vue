@@ -9,6 +9,9 @@
       :busy="busy"
       :can-edit="canEdit"
       :can-publish="canPublish"
+      :can-optimize="canOptimize"
+      :locked-count="lockedCount"
+      :lesson-count="detail?.lessons.length ?? 0"
       :cancelled-substitutions="cancelledSubstitutions"
       :publishable="publishable"
       @back="router.push('/admin/scheduling')"
@@ -20,25 +23,24 @@
       @publish="publishDraft"
       @withdraw="withdrawDraft"
       @remove="removeDraft"
+      @optimize="openOptimization"
     />
     <DraftStats
       :hard-conflicts="hardConflicts"
       :score-label="scoreLabel"
       :lesson-count="detail?.lessons.length ?? 0"
       :unassigned-count="unassigned.length"
-    />
-
-    <DraftPublishBlockers
-      v-if="detail?.draft.status !== 'PUBLISHED'"
-      :blockers="blockers"
+      :locked-count="lockedCount"
       :conflict-total="locatableConflictList.length"
       :active-conflict-index="activeConflictIndex"
-      @edit-lessons="drawerVisible = true"
+      :blockers="detail?.draft.status === 'PUBLISHED' ? [] : blockers"
       @locate-conflict="locateNextConflict"
+      @edit-lessons="drawerVisible = true"
     />
 
     <DraftOptimizationSection
-      v-if="detail?.draft.status === 'DRAFT'"
+      v-if="detail?.draft.status === 'DRAFT' && optimizationVisible"
+      ref="optimizationSection"
       :draft="detail?.draft ?? null"
       :source-draft-id="draftId"
       :semester-id="detail?.draft.semesterId"
@@ -92,7 +94,9 @@
           :drag-class-view="dragClassView"
           :foreign-teacher-periods="foreignBusyPeriods"
           :blocked-periods="blockedPeriods"
-          :conflict-lesson-ids="validation?.conflicts.map((item) => item.lessonId).filter((id) => id != null) ?? []"
+          :conflict-lesson-ids="
+            validation?.conflicts.map((item) => item.lessonId).filter((id) => id != null) ?? []
+          "
           :locked-lesson-ids="lockedLessonIds"
           @drag-start="onDragStart"
           @drag-end="onDragEnd"
@@ -135,7 +139,7 @@
       :message="plansMessage"
       :plans="plans"
       :lessons="detail?.lessons ?? []"
-      :periods="detail?.periods ?? []" :courses="courses"
+      :periods="detail?.periods ?? []"
       :applying="planApplying"
       @apply="onApplyPlan"
       @cancel="closePlans"
@@ -149,13 +153,7 @@
       :compare-with-draft-id="draftId"
     />
 
-    <el-drawer
-      v-model="panelVisible"
-      title="跨班换人"
-      size="620px"
-      destroy-on-close
-      @closed="closePanel"
-    >
+    <el-drawer v-model="panelVisible" title="跨班换人" size="620px" destroy-on-close @closed="closePanel">
       <SwapCandidatePanel
         :lesson="panelLesson"
         :response="candidates"
@@ -194,14 +192,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import DraftGrid from '@/components/draft/DraftGrid.vue'
 import DraftCompareDialog from '@/components/draft/DraftCompareDialog.vue'
 import DraftStats from '@/components/draft/DraftStats.vue'
-import DraftPublishBlockers from '@/components/draft/DraftPublishBlockers.vue'
 import DraftOptimizationSection from '@/components/draft/DraftOptimizationSection.vue'
 import SwapCandidatePanel from '@/components/draft/SwapCandidatePanel.vue'
 import SwapPreviewDialog from '@/components/draft/SwapPreviewDialog.vue'
@@ -213,7 +210,11 @@ import DraftUnassignedDrawer from '@/components/draft/DraftUnassignedDrawer.vue'
 import CyclePlanPanel from '@/components/draft/CyclePlanPanel.vue'
 import { dragClassLessons, foreignTeacherPeriods } from '@/components/draft/dragClassView'
 import { computeTargetPeriodStates } from '@/components/draft/targetAvailability'
-import { locatableConflicts, nextConflictIndex, resolveConflictLesson } from '@/components/draft/conflictLocator'
+import {
+  locatableConflicts,
+  nextConflictIndex,
+  resolveConflictLesson,
+} from '@/components/draft/conflictLocator'
 import { useDraftAdjust } from '@/composables/useDraftAdjust'
 import { useDraftEditor } from '@/composables/useDraftEditor'
 import { useDraftDrop } from '@/composables/useDraftDrop'
@@ -224,6 +225,8 @@ import { useDraftLocks } from '@/composables/useDraftLocks'
 import { useUndoShortcut } from '@/composables/useUndoShortcut'
 import { useDraftCompareQuery } from '@/composables/useDraftCompareQuery'
 import { useDraftActions } from '@/composables/useDraftActions'
+import { useDraftLifecycle } from '@/composables/useDraftLifecycle'
+import { useOptimizationEntry } from '@/composables/useOptimizationEntry'
 import type { CyclePlan, DraftConflict, DraftLesson, MoveTargetState } from '@/components/draft/types'
 
 const route = useRoute()
@@ -233,9 +236,7 @@ const draftId = Number(route.params.id)
 const canEdit = computed(() => auth.hasPermission('timetable:edit'))
 const canPublish = computed(() => auth.hasPermission('timetable:publish'))
 const canOptimize = computed(() => auth.hasPermission('scheduling:run'))
-const lockedCount = computed(
-  () => (detail.value?.lessons ?? []).filter((lesson) => lesson.locked).length,
-)
+const lockedCount = computed(() => (detail.value?.lessons ?? []).filter((lesson) => lesson.locked).length)
 const { compareVisible, compareSourceId, openCompare } = useDraftCompareQuery()
 
 const adjust = useDraftAdjust(draftId)
@@ -300,15 +301,33 @@ const {
 } = useDraftEditor({
   draftId,
   canEdit,
-  onLoaded: () => { clearSelection(); teacherSwap.exit(); highlightedConflictLessonId.value = null },
+  onLoaded: () => {
+    clearSelection()
+    teacherSwap.exit()
+    highlightedConflictLessonId.value = null
+  },
 })
 
 const locks = useDraftLocks({
-  draftId, detail, draftEditable, viewMode, targetId, reload: load, notify: ElMessage,
+  draftId,
+  detail,
+  draftEditable,
+  viewMode,
+  targetId,
+  reload: load,
+  notify: ElMessage,
 })
 const {
-  selectionMode, selectedIds, selectedCount, dayOptions, classScopeCount, canUseClassScope,
-  lockedLessonIds, toggleSelectionMode, clearSelection: clearLockSelection, confirmBatch,
+  selectionMode,
+  selectedIds,
+  selectedCount,
+  dayOptions,
+  classScopeCount,
+  canUseClassScope,
+  lockedLessonIds,
+  toggleSelectionMode,
+  clearSelection: clearLockSelection,
+  confirmBatch,
 } = locks
 const { toggle: toggleLockSelection, lockSingle, unlockSingle } = locks
 
@@ -367,10 +386,11 @@ const highlightedLessonIds = computed(() =>
 const conflictDialogLesson = computed(() =>
   conflictDialogLessonId.value == null
     ? null
-    : (detail.value?.lessons ?? []).find((l) => l.id === conflictDialogLessonId.value) ?? null,
+    : ((detail.value?.lessons ?? []).find((l) => l.id === conflictDialogLessonId.value) ?? null),
 )
 const canRelocateConflictLesson = computed(
-  () => draftEditable.value && conflictDialogLesson.value != null && conflictDialogLesson.value.periodId != null,
+  () =>
+    draftEditable.value && conflictDialogLesson.value != null && conflictDialogLesson.value.periodId != null,
 )
 
 const { drop } = useDraftDrop({
@@ -429,12 +449,7 @@ function onDragEnd() {
   dragTargets.value = null
 }
 
-async function onDropCell(payload: {
-  day: number
-  periodNo: number
-  periodId: number
-  lessonIds: number[]
-}) {
+async function onDropCell(payload: { day: number; periodNo: number; periodId: number; lessonIds: number[] }) {
   const lesson = dragged.value
   if (!lesson) return
   await drop(lesson, payload.periodId, payload.lessonIds)
@@ -546,22 +561,21 @@ async function undoMove() {
     await load()
   }
 }
-
 useUndoShortcut({ canUndo, busy, undo: undoMove })
-
+const {
+  section: optimizationSection,
+  visible: optimizationVisible,
+  open: openOptimization,
+} = useOptimizationEntry(route)
 const draftActions = useDraftActions({ draftId, detail, reload: load })
 const { rename, publish: publishDraft, remove: removeDraft, withdraw: withdrawDraft } = draftActions
 const { cancelledSubstitutions, dismissCancelledSubstitutions } = draftActions
 
-function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && teacherSwap.active.value) teacherSwap.exit()
-}
-
-onMounted(() => {
-  window.addEventListener('keydown', onKeydown)
-  void load()
-})
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+useDraftLifecycle(
+  () => teacherSwap.active.value,
+  teacherSwap.exit,
+  load,
+)
 </script>
 
 <style scoped>

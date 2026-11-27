@@ -16,7 +16,9 @@
         <el-table-column prop="name" label="学期" min-width="180">
           <template #default="{ row }">
             <span class="semester-name">{{ row.name }}</span>
-            <el-tag v-if="row.current" size="small" type="success" effect="light" class="current-tag">当前</el-tag>
+            <el-tag v-if="row.current" size="small" type="success" effect="light" class="current-tag">
+              当前
+            </el-tag>
             <el-tag v-if="row.active === false" size="small" type="info" class="current-tag">已停用</el-tag>
           </template>
         </el-table-column>
@@ -32,17 +34,14 @@
             <el-button link type="primary" @click="router.push(`/admin/semesters/${row.id}/schedule`)">
               作息表
             </el-button>
-            <el-button link type="primary" :disabled="row.current" @click="setCurrent(row)">设为当前</el-button>
-            <el-button link type="primary" :disabled="semesters.length < 2" @click="openCopy(row)">
+            <el-button link type="primary" :disabled="row.current" @click="setCurrent(row)">
+              设为当前
+            </el-button>
+            <el-button v-if="semesters.length > 1" link type="primary" @click="openCopy(row)">
               复制结构
             </el-button>
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <LifecycleCell
-              entity-type="semester"
-              :row="row"
-              :disabled="row.current"
-              @updated="load"
-            />
+            <LifecycleCell entity-type="semester" :row="row" :disabled="row.current" @updated="load" />
           </template>
         </el-table-column>
       </el-table>
@@ -62,12 +61,7 @@
         </el-form-item>
         <el-form-item label="来源学期">
           <el-select v-model="copySourceId" placeholder="选择要复制的学期" style="width: 100%">
-            <el-option
-              v-for="item in copyCandidates"
-              :key="item.id"
-              :label="item.name"
-              :value="item.id"
-            />
+            <el-option v-for="item in copyCandidates" :key="item.id" :label="item.name" :value="item.id" />
           </el-select>
         </el-form-item>
       </el-form>
@@ -85,7 +79,12 @@
           <el-input v-model="form.name" placeholder="如：2025-2026 学年第一学期" />
         </el-form-item>
         <el-form-item label="开始日期" required>
-          <el-date-picker v-model="form.startDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+          <el-date-picker
+            v-model="form.startDate"
+            type="date"
+            value-format="YYYY-MM-DD"
+            style="width: 100%"
+          />
         </el-form-item>
         <el-form-item label="结束日期" required>
           <el-date-picker v-model="form.endDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
@@ -132,9 +131,7 @@ const copyTarget = ref<Semester | null>(null)
 const copySourceId = ref<number | null>(null)
 
 const copyCandidates = computed(() =>
-  semesters.value.filter(
-    (semester) => semester.id !== copyTarget.value?.id && semester.active !== false,
-  ),
+  semesters.value.filter((semester) => semester.id !== copyTarget.value?.id && semester.active !== false),
 )
 
 function openCopy(row: Semester) {
@@ -147,9 +144,7 @@ async function confirmCopy() {
   if (!copyTarget.value || !copySourceId.value) return
   copying.value = true
   try {
-    const { data } = await http.post(
-      `/semesters/${copyTarget.value.id}/copy-from/${copySourceId.value}`,
-    )
+    const { data } = await http.post(`/semesters/${copyTarget.value.id}/copy-from/${copySourceId.value}`)
     ElMessage.success(
       `复制完成：作息 ${data.periods} 节、年级 ${data.grades} 个、行政班 ${data.classes} 个、授课任务 ${data.assignments} 条`,
     )
@@ -226,7 +221,6 @@ async function setCurrent(row: Semester) {
     ElMessage.error(serverMessage(e, '操作失败'))
   }
 }
-
 
 onMounted(load)
 </script>

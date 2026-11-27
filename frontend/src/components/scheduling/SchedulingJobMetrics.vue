@@ -1,10 +1,10 @@
 <template>
   <div class="metric-grid">
     <div class="metric-item" :class="{ 'has-conflicts': hardConflicts > 0 }">
-      <span class="metric-label">当前求解得分</span>
-      <span class="metric-value">{{ job.score || '暂无得分' }}</span>
+      <span class="metric-label">排课详情</span>
+      <span class="metric-value">{{ job.score || '暂无参考得分' }}</span>
       <span v-if="hardConflicts > 0" class="metric-warning" data-testid="metrics-hard-conflicts">
-        {{ hardConflicts }} 处硬冲突，暂不可发布
+        {{ hardConflicts }} 处排课冲突，暂不可发布
       </span>
     </div>
     <div class="metric-item">
@@ -14,7 +14,11 @@
     <div class="metric-item">
       <span class="metric-label">预计剩余</span>
       <span class="metric-value">
-        {{ job.status === 'RUNNING' ? Math.max(0, Math.round((job.estimatedRemainingMs || 0) / 1000)) + ' 秒' : '—' }}
+        {{
+          job.status === 'RUNNING'
+            ? Math.max(0, Math.round((job.estimatedRemainingMs || 0) / 1000)) + ' 秒'
+            : '—'
+        }}
       </span>
     </div>
     <div class="metric-item">

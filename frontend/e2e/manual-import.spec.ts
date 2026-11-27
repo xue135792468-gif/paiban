@@ -73,7 +73,9 @@ async function seedManualImport(api: APIRequestContext): Promise<ManualImportSee
   const lines = [`班级|星期|节次,课程,教师,备注-${suffix}`]
   for (const className of [classA, classB]) {
     for (const [index, day] of days.entries()) {
-      lines.push(`${className}|${day}|${index + 1},${index % 2 ? courseB : courseA},${index % 2 ? teacherB : teacherA},`)
+      lines.push(
+        `${className}|${day}|${index + 1},${index % 2 ? courseB : courseA},${index % 2 ? teacherB : teacherA},`,
+      )
     }
   }
   return { suffix, semesterId: semester.id, csv: lines.join('\n') }
@@ -107,7 +109,7 @@ test.describe('手动选列导入', () => {
     await uiLogin(page, 'admin', 'admin123')
     await page.goto('/data/import/manual')
 
-    await page.getByTestId('manual-file').setInputFiles(CSV(seed))
+    await page.getByTestId('manual-file-upload').locator('input[type=file]').setInputFiles(CSV(seed))
     await expect(page.getByTestId('manual-mapper')).toBeVisible()
 
     await page.getByTestId('manual-preview-button').click()
@@ -134,7 +136,7 @@ test.describe('手动选列导入', () => {
 
     // 第二次上传同格式文件：识别后自动匹配配方并直接出预览，不用再点“预览”。
     await page.goto('/data/import/manual')
-    await page.getByTestId('manual-file').setInputFiles(CSV(seed))
+    await page.getByTestId('manual-file-upload').locator('input[type=file]').setInputFiles(CSV(seed))
     await expect(page.getByTestId('recipe-match')).toContainText('已套用配方')
     await expect(page.getByTestId('recipe-match')).toContainText(`手动导入配方-${seed.suffix}`)
     await expect(page.getByTestId('stat-lessons')).toContainText('10')

@@ -105,9 +105,7 @@ test.describe.serial('AI 生成导入配方', () => {
         response.writeHead(200, { 'Content-Type': 'application/json' })
         response.end(
           JSON.stringify({
-            choices: [
-              { message: { role: 'assistant', content: reply }, finish_reason: 'stop' },
-            ],
+            choices: [{ message: { role: 'assistant', content: reply }, finish_reason: 'stop' }],
             usage: { prompt_tokens: 12, completion_tokens: 34 },
           }),
         )
@@ -163,15 +161,16 @@ test.describe.serial('AI 生成导入配方', () => {
     await uiLogin(page, 'admin', 'admin123')
     await page.goto('/data/import/manual')
 
-    await page.getByTestId('manual-file').setInputFiles(
-      CSV('AI 配方.csv', seed.compositeCsv),
-    )
+    await page
+      .getByTestId('manual-file-upload')
+      .locator('input[type=file]')
+      .setInputFiles(CSV('AI 配方.csv', seed.compositeCsv))
     await expect(page.getByTestId('manual-mapper')).toBeVisible()
     await expect(page.getByTestId('ai-suggest-button')).toBeVisible()
 
     await page.getByTestId('ai-suggest-button').click()
     await expect(page.getByTestId('ai-suggestion')).toBeVisible()
-    await expect(page.getByTestId('ai-mapping-summary')).toContainText('复合键')
+    await expect(page.getByTestId('ai-mapping-summary')).toContainText('合并信息列')
     await expect(page.getByTestId('ai-reasoning')).toContainText('复合列')
     await expect(page.getByTestId('ai-preview-summary')).toContainText('10 槽')
 
@@ -197,9 +196,10 @@ test.describe.serial('AI 生成导入配方', () => {
 
     await uiLogin(page, 'admin', 'admin123')
     await page.goto('/data/import/manual')
-    await page.getByTestId('manual-file').setInputFiles(
-      CSV('分列课表.csv', seed.separateCsv),
-    )
+    await page
+      .getByTestId('manual-file-upload')
+      .locator('input[type=file]')
+      .setInputFiles(CSV('分列课表.csv', seed.separateCsv))
     await expect(page.getByTestId('manual-mapper')).toBeVisible()
 
     await expect(page.getByTestId('ai-unavailable-hint')).toContainText('AI 未配置，可手动选列')

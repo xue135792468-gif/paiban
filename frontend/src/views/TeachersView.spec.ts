@@ -34,21 +34,22 @@ const groups = [
     type: 'TEACHER',
     name: '教导主任',
     semesterId: null,
-    members: [
-      { id: 1, kind: 'TEACHER', objectId: 7, name: '王老师', dayOfWeek: null, periodNo: null },
-    ],
+    members: [{ id: 1, kind: 'TEACHER', objectId: 7, name: '王老师', dayOfWeek: null, periodNo: null }],
   },
 ]
 
 function installUser() {
-  localStorage.setItem('paiban_user', JSON.stringify({
-    id: 1,
-    username: 'admin',
-    displayName: '管理员',
-    enabled: true,
-    roles: ['admin'],
-    permissions: ['foundation:manage', 'constraint:manage'],
-  }))
+  localStorage.setItem(
+    'paiban_user',
+    JSON.stringify({
+      id: 1,
+      username: 'admin',
+      displayName: '管理员',
+      enabled: true,
+      roles: ['admin'],
+      permissions: ['foundation:manage', 'constraint:manage'],
+    }),
+  )
 }
 
 async function mountView(): Promise<VueWrapper> {
@@ -79,6 +80,63 @@ beforeEach(() => {
   })
 })
 
+function dialogField(wrapper: VueWrapper, label: string) {
+  return wrapper.findAll('.el-form-item').find((field) => field.text().includes(label))
+}
+
+describe('TeachersView: 教师弹窗的低频字段', () => {
+  it('新建教师默认折叠邮箱和钉钉绑定，可展开后保存', async () => {
+    const wrapper = await mountView()
+    const create = wrapper.findAll('button').find((button) => button.text() === '新建教师')!
+    await create.trigger('click')
+    expect(wrapper.get('[data-testid="teacher-more-toggle"]').attributes('aria-expanded')).toBe('false')
+    expect(dialogField(wrapper, '电子邮箱')).toBeUndefined()
+    expect(dialogField(wrapper, '钉钉 UserID')).toBeUndefined()
+    await wrapper.get('[data-testid="teacher-more-toggle"]').trigger('click')
+    expect(dialogField(wrapper, '电子邮箱')).toBeDefined()
+    expect(dialogField(wrapper, '钉钉 UserID')).toBeDefined()
+    wrapper.unmount()
+  })
+
+  it('编辑已有邮箱或钉钉绑定的教师时自动展开更多信息', async () => {
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/teachers') {
+        return Promise.resolve({
+          data: [
+            { ...teachers[0], email: 'wang@example.test' },
+            { ...teachers[1], dingtalkUserId: 'ding-8' },
+          ],
+        })
+      }
+      if (url === '/rule-groups') return Promise.resolve({ data: groups })
+      return Promise.resolve({ data: [] })
+    })
+    const wrapper = await mountView()
+    const edits = wrapper.findAll('button').filter((button) => button.text() === '编辑')
+    await edits[0].trigger('click')
+    expect(wrapper.get('[data-testid="teacher-more-toggle"]').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.find('input[placeholder="请输入电子邮箱（选填）"]').element).toHaveProperty(
+      'value',
+      'wang@example.test',
+    )
+    await wrapper.get('[data-testid="teacher-more-toggle"]').trigger('click')
+    await edits[1].trigger('click')
+    expect(wrapper.get('[data-testid="teacher-more-toggle"]').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.find('[data-testid="teacher-dingtalk-userid"]').element).toHaveProperty(
+      'value',
+      'ding-8',
+    )
+    wrapper.unmount()
+  })
+
+  it('编辑没有低频字段的教师时保持折叠', async () => {
+    const wrapper = await mountView()
+    const edits = wrapper.findAll('button').filter((button) => button.text() === '编辑')
+    await edits[1].trigger('click')
+    expect(wrapper.get('[data-testid="teacher-more-toggle"]').attributes('aria-expanded')).toBe('false')
+    wrapper.unmount()
+  })
+})
 describe('TeachersView: teacher group suffix and filter', () => {
   it('shows the group suffix after the teacher name', async () => {
     const wrapper = await mountView()

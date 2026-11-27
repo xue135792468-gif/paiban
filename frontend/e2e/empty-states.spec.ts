@@ -21,9 +21,7 @@ async function stubJson(page: Page, pattern: string, body: unknown) {
 }
 
 async function stubNoSemester(page: Page) {
-  await page.route('**/api/semesters/current', (route) =>
-    route.fulfill({ status: 204, body: '' }),
-  )
+  await page.route('**/api/semesters/current', (route) => route.fulfill({ status: 204, body: '' }))
   await stubJson(page, '**/api/semesters', [])
   await stubJson(page, '**/api/semesters/*/periods', [])
 }
@@ -39,25 +37,20 @@ async function stubEmptyFoundation(page: Page) {
   }
 }
 
-function guide(page: Page) {
+function guide(page: Page, title?: string) {
   // Tab panes keep inactive content mounted, so only the visible guide counts.
-  return page.locator('[data-testid="empty-state-guide"]:visible')
+  const roots = page.locator('[data-testid="empty-state-guide"]:visible')
+  return title ? roots.filter({ has: page.getByRole('heading', { name: title }) }) : roots
 }
 
-async function expectGuide(
-  page: Page,
-  options: { title: string; button?: string; href: string },
-) {
-  const root = guide(page)
+async function expectGuide(page: Page, options: { title: string; button?: string; href: string }) {
+  const root = guide(page, options.title)
   await expect(root).toBeVisible()
   await expect(root.getByRole('heading', { name: options.title })).toBeVisible()
   if (options.button) {
     await expect(root.getByRole('button', { name: options.button })).toBeVisible()
   }
-  await expect(root.getByRole('link', { name: '查看帮助文档' })).toHaveAttribute(
-    'href',
-    options.href,
-  )
+  await expect(root.getByRole('link', { name: '查看帮助文档' })).toHaveAttribute('href', options.href)
   return root
 }
 
@@ -152,19 +145,15 @@ test('排课草稿、排课历史与规则列表为空时显示引导', async ({
   await stubJson(page, '**/api/semesters/*/periods', [])
 
   await page.goto('/workbench')
-  for (const item of [
-    { title: '还没有课表草稿', href: '/help/scheduling#draft' },
-    { title: '还没有排课历史', href: '/help/scheduling#run' },
-  ]) {
-    const root = page
-      .locator('[data-testid="empty-state-guide"]:visible')
-      .filter({ has: page.getByRole('heading', { name: item.title }) })
-    await expect(root).toHaveCount(1)
-    await expect(root.getByRole('link', { name: '查看帮助文档' })).toHaveAttribute(
-      'href',
-      item.href,
-    )
-  }
+  await expectGuide(page, {
+    title: '还没有课表草稿',
+    href: '/help/scheduling#draft',
+  })
+  await page.getByTestId('toggle-scheduling-history').click()
+  await expectGuide(page, {
+    title: '还没有排课历史',
+    href: '/help/scheduling#run',
+  })
 
   await page.goto('/rules')
   const rulesGuide = page

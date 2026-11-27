@@ -5,7 +5,7 @@
         <h2>授课任务管理</h2>
         <p class="subtitle">配置行政班课程的每周课节与授课教师，作为智能排课的核心输入依据。</p>
       </div>
-      <div class="actions">
+      <div v-if="semesters.length > 0" class="actions">
         <el-select
           v-model="semesterId"
           placeholder="请选择学期"
@@ -20,29 +20,15 @@
             :value="s.id"
           />
         </el-select>
-        <el-button
-          v-if="canManage"
-          :disabled="!semesterId"
-          @click="importVisible = true"
-        >
+        <el-button v-if="canManage" :disabled="!semesterId" @click="importVisible = true">
           <el-icon><Upload /></el-icon>
           <span>导入</span>
         </el-button>
-        <el-button
-          v-if="canManage"
-          :disabled="!semesterId"
-          :loading="exporting"
-          @click="handleExport"
-        >
+        <el-button v-if="canManage" :disabled="!semesterId" :loading="exporting" @click="handleExport">
           <el-icon><Download /></el-icon>
           <span>导出</span>
         </el-button>
-        <el-button
-          v-if="canManage"
-          type="primary"
-          :disabled="!semesterId"
-          @click="openCreate"
-        >
+        <el-button v-if="canManage" type="primary" :disabled="!semesterId" @click="openCreate">
           <el-icon><Plus /></el-icon>
           <span>新建授课任务</span>
         </el-button>
@@ -50,6 +36,7 @@
     </div>
 
     <el-alert
+      v-if="semesters.length > 0 && !loading && assignments.length === 0"
       type="info"
       :closable="false"
       show-icon
@@ -84,12 +71,7 @@
             style="width: 180px"
             @change="loadAssignments"
           >
-            <el-option
-              v-for="course in courses"
-              :key="course.id"
-              :label="course.name"
-              :value="course.id"
-            />
+            <el-option v-for="course in courses" :key="course.id" :label="course.name" :value="course.id" />
           </el-select>
 
           <el-select
@@ -108,12 +90,7 @@
             />
           </el-select>
 
-          <el-checkbox
-            v-model="onlyMine"
-            @change="loadAssignments"
-          >
-            只看我的
-          </el-checkbox>
+          <el-checkbox v-model="onlyMine" @change="loadAssignments"> 只看我的 </el-checkbox>
         </template>
         <template v-else>
           <el-tag type="info">只看我的授课任务</el-tag>
@@ -138,12 +115,7 @@
         help-anchor="assignments"
         @action="openCreate"
       />
-      <el-table
-        v-else
-        v-loading="loading"
-        :data="assignments"
-        stripe
-      >
+      <el-table v-else v-loading="loading" :data="assignments" stripe>
         <el-table-column prop="className" label="行政班" min-width="140" />
         <el-table-column prop="gradeName" label="年级" min-width="120" />
         <el-table-column prop="courseName" label="课程" min-width="140" />
@@ -165,12 +137,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column
-          v-if="canManage"
-          label="操作"
-          width="220"
-          fixed="right"
-        >
+        <el-table-column v-if="canManage" label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
             <LifecycleCell
@@ -190,19 +157,9 @@
       width="480px"
       destroy-on-close
     >
-      <el-form
-        ref="formRef"
-        :model="form"
-        :rules="rules"
-        label-width="88px"
-      >
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="88px">
         <el-form-item label="行政班" prop="classId">
-          <el-select
-            v-model="form.classId"
-            placeholder="请选择行政班"
-            filterable
-            style="width: 100%"
-          >
+          <el-select v-model="form.classId" placeholder="请选择行政班" filterable style="width: 100%">
             <el-option
               v-for="c in classes"
               :key="c.id"
@@ -212,27 +169,12 @@
           </el-select>
         </el-form-item>
         <el-form-item label="课程" prop="courseId">
-          <el-select
-            v-model="form.courseId"
-            placeholder="请选择课程"
-            filterable
-            style="width: 100%"
-          >
-            <el-option
-              v-for="course in courses"
-              :key="course.id"
-              :label="course.name"
-              :value="course.id"
-            />
+          <el-select v-model="form.courseId" placeholder="请选择课程" filterable style="width: 100%">
+            <el-option v-for="course in courses" :key="course.id" :label="course.name" :value="course.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="教师" prop="teacherId">
-          <el-select
-            v-model="form.teacherId"
-            placeholder="请选择任课教师"
-            filterable
-            style="width: 100%"
-          >
+          <el-select v-model="form.teacherId" placeholder="请选择任课教师" filterable style="width: 100%">
             <el-option
               v-for="t in teachers"
               :key="t.id"
@@ -538,7 +480,6 @@ async function submitForm() {
     saving.value = false
   }
 }
-
 
 async function handleExport() {
   if (!semesterId.value) return

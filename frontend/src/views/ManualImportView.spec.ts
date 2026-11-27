@@ -5,12 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import ManualImportView from './ManualImportView.vue'
 import { useAuthStore } from '@/stores/auth'
-import type {
-  AiRecipeSuggestionResult,
-  ManualInspect,
-  ManualPreview,
-  RecipeMatch,
-} from '@/api/imports'
+import type { AiRecipeSuggestionResult, ManualInspect, ManualPreview, RecipeMatch } from '@/api/imports'
 
 const httpMock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() }))
 vi.mock('@/api/http', () => ({ http: httpMock }))
@@ -58,12 +53,25 @@ const PREVIEW: ManualPreview = {
   teacherCount: 48,
   courseCount: 16,
   rows: [
-    { row: 1, className: '八（1）', dayOfWeek: 1, periodNo: 1, courseName: '语文', teacherName: '张三', empty: false },
+    {
+      row: 1,
+      className: '八（1）',
+      dayOfWeek: 1,
+      periodNo: 1,
+      courseName: '语文',
+      teacherName: '张三',
+      empty: false,
+    },
     { row: 2, className: '八（1）', dayOfWeek: 5, periodNo: 7, courseName: '', teacherName: '', empty: true },
   ],
   truncated: false,
   teacherWarnings: [
-    { value: '信息技术', reasons: [{ code: 'placeholder', message: '命中占位词' }], lessonCount: 14, rowNumbers: [1] },
+    {
+      value: '信息技术',
+      reasons: [{ code: 'placeholder', message: '命中占位词' }],
+      lessonCount: 14,
+      rowNumbers: [1],
+    },
   ],
   pendingTeachers: ['信息技术'],
   suggestedRule: { type: 'CLASS_UNAVAILABLE', dayOfWeek: 5, periodNo: 7, text: '全校周五第 7 节不上课' },
@@ -130,7 +138,12 @@ function httpGet(aiConfigured: boolean) {
       return Promise.resolve({ data: [{ id: 7, name: '2025 秋季学期', current: true }] })
     }
     if (url === '/teachers') {
-      return Promise.resolve({ data: [{ id: 3, name: '张三' }, { id: 4, name: '李四' }] })
+      return Promise.resolve({
+        data: [
+          { id: 3, name: '张三' },
+          { id: 4, name: '李四' },
+        ],
+      })
     }
     return Promise.resolve({ data: [] })
   })
@@ -164,12 +177,11 @@ async function mountView(): Promise<{ wrapper: VueWrapper; router: Router }> {
 }
 
 async function chooseFile(wrapper: VueWrapper) {
-  const input = wrapper.get('[data-testid="manual-file"]')
+  const upload = wrapper.findComponent({ name: 'ImportFileUpload' })
   const file = new File(['班级|星期|节次,课程,教师\n八（1）|星期一|1,语文,张三'], '课表.csv', {
     type: 'text/csv',
   })
-  Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
-  await input.trigger('change')
+  upload.vm.$emit('change', file, '')
   await flushPromises()
 }
 
@@ -373,8 +385,7 @@ describe('手动导入页', () => {
     await wrapper.get('[data-testid="open-save-recipe"]').trigger('click')
     await flushPromises()
     // 名字默认填配方原名：直接保存就是“更新配方”。
-    expect((wrapper.get('[data-testid="recipe-name"]').element as HTMLInputElement).value)
-      .toBe('八年级长表')
+    expect((wrapper.get('[data-testid="recipe-name"]').element as HTMLInputElement).value).toBe('八年级长表')
 
     await wrapper.get('[data-testid="save-recipe-button"]').trigger('click')
     await flushPromises()
@@ -391,7 +402,7 @@ describe('手动导入页', () => {
     await flushPromises()
 
     expect(importsMock.suggestImportColumns).toHaveBeenCalledWith(expect.any(File), 'CSV', 0)
-    expect(wrapper.get('[data-testid="ai-mapping-summary"]').text()).toContain('复合键')
+    expect(wrapper.get('[data-testid="ai-mapping-summary"]').text()).toContain('合并信息列')
     expect(wrapper.get('[data-testid="ai-reasoning"]').text()).toContain('复合键映射')
     expect(wrapper.get('[data-testid="ai-preview-summary"]').text()).toContain('560')
 

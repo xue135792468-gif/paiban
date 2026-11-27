@@ -292,7 +292,8 @@ test('含锁定课节的草稿删除要求确认，确认后锁定随草稿一�
   await selectClass(page, seed.className)
   await expect(lessonCard(page, seed.mathLessonIds[0])).toHaveAttribute('data-locked', 'true')
 
-  await page.getByRole('button', { name: '删除', exact: true }).click()
+  await page.getByTestId('draft-more-menu').click()
+  await page.getByTestId('draft-more-remove').click()
   const box = page.locator('.el-message-box:visible')
   // 草稿是软删除，删除后可在「最近删除」恢复 7 天；锁随草稿一起移除，无需额外解锁。
   await expect(box).toContainText('确定删除草稿')
@@ -305,7 +306,8 @@ test('含锁定课节的草稿删除要求确认，确认后锁定随草稿一�
   expect(stillThere.draft.id).toBe(seed.draftId)
   expect(stillThere.lessons.find((lesson) => lesson.id === seed.mathLessonIds[0])?.locked).toBe(true)
 
-  await page.getByRole('button', { name: '删除', exact: true }).click()
+  await page.getByTestId('draft-more-menu').click()
+  await page.getByTestId('draft-more-remove').click()
   const confirmBox = page.locator('.el-message-box:visible')
   await confirmBox.getByRole('button', { name: '确定删除' }).click()
   await expect(page).toHaveURL(/\/workbench$/)

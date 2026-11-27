@@ -12,7 +12,7 @@
         </el-select>
       </label>
       <label class="field">
-        <span>表头行</span>
+        <span>标题所在行</span>
         <el-select
           :model-value="mapping.headerRow ?? -1"
           data-testid="manual-header-row"
@@ -35,7 +35,12 @@
           data-testid="manual-course-column"
           @update:model-value="(value: number | null) => update({ courseColumn: value })"
         >
-          <el-option v-for="column in columnOptions" :key="column.value" :label="column.label" :value="column.value" />
+          <el-option
+            v-for="column in columnOptions"
+            :key="column.value"
+            :label="column.label"
+            :value="column.value"
+          />
         </el-select>
       </label>
       <label class="field">
@@ -46,7 +51,12 @@
           data-testid="manual-teacher-column"
           @update:model-value="(value: number | null) => update({ teacherColumn: value })"
         >
-          <el-option v-for="column in columnOptions" :key="column.value" :label="column.label" :value="column.value" />
+          <el-option
+            v-for="column in columnOptions"
+            :key="column.value"
+            :label="column.label"
+            :value="column.value"
+          />
         </el-select>
       </label>
     </div>
@@ -57,19 +67,24 @@
       data-testid="manual-key-mode"
       @update:model-value="switchMode"
     >
-      <el-radio-button value="composite">复合键（班级|星期|节次）</el-radio-button>
-      <el-radio-button value="separate">班级/星期/节次分列</el-radio-button>
+      <el-radio-button value="composite">合并在一列（如 班级|星期|节次）</el-radio-button>
+      <el-radio-button value="separate">拆成三列（班级、星期、节次分开）</el-radio-button>
     </el-radio-group>
 
     <div v-if="mapping.keyColumn != null" class="row">
       <label class="field">
-        <span>复合键列</span>
+        <span>合并信息列</span>
         <el-select
           :model-value="mapping.keyColumn"
           data-testid="manual-key-column"
           @update:model-value="(value: number) => update({ keyColumn: value })"
         >
-          <el-option v-for="column in columnOptions" :key="column.value" :label="column.label" :value="column.value" />
+          <el-option
+            v-for="column in columnOptions"
+            :key="column.value"
+            :label="column.label"
+            :value="column.value"
+          />
         </el-select>
       </label>
       <label class="field">
@@ -93,7 +108,12 @@
           data-testid="manual-class-column"
           @update:model-value="(value: number | null) => update({ classNameColumn: value })"
         >
-          <el-option v-for="column in columnOptions" :key="column.value" :label="column.label" :value="column.value" />
+          <el-option
+            v-for="column in columnOptions"
+            :key="column.value"
+            :label="column.label"
+            :value="column.value"
+          />
         </el-select>
       </label>
       <label class="field">
@@ -104,7 +124,12 @@
           data-testid="manual-day-column"
           @update:model-value="(value: number | null) => update({ dayOfWeekColumn: value })"
         >
-          <el-option v-for="column in columnOptions" :key="column.value" :label="column.label" :value="column.value" />
+          <el-option
+            v-for="column in columnOptions"
+            :key="column.value"
+            :label="column.label"
+            :value="column.value"
+          />
         </el-select>
       </label>
       <label class="field">
@@ -115,7 +140,12 @@
           data-testid="manual-period-column"
           @update:model-value="(value: number | null) => update({ periodNoColumn: value })"
         >
-          <el-option v-for="column in columnOptions" :key="column.value" :label="column.label" :value="column.value" />
+          <el-option
+            v-for="column in columnOptions"
+            :key="column.value"
+            :label="column.label"
+            :value="column.value"
+          />
         </el-select>
       </label>
     </div>
@@ -129,12 +159,7 @@
     </el-checkbox>
 
     <el-table v-if="sheet" :data="tableRows" size="small" class="sample" max-height="240">
-      <el-table-column
-        v-for="(header, index) in displayHeaders"
-        :key="index"
-        :label="header"
-        :min-width="90"
-      >
+      <el-table-column v-for="(header, index) in displayHeaders" :key="index" :label="header" :min-width="90">
         <template #default="{ row }">{{ row.cells[index] ?? '' }}</template>
       </el-table-column>
     </el-table>
@@ -149,7 +174,9 @@ const props = defineProps<{ sheets: ManualSheet[]; modelValue: ManualMapping }>(
 const emit = defineEmits<{ 'update:modelValue': [value: ManualMapping] }>()
 
 const mapping = computed(() => props.modelValue)
-const sheet = computed(() => props.sheets.find((item) => item.name === mapping.value.sheetName) ?? props.sheets[0])
+const sheet = computed(
+  () => props.sheets.find((item) => item.name === mapping.value.sheetName) ?? props.sheets[0],
+)
 
 const columnOptions = computed(() => {
   const headers = sheet.value?.headers ?? []
