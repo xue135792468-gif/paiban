@@ -1,13 +1,26 @@
 <template>
   <div class="timetable-page">
-    <div class="toolbar">
+    <div class="page-heading" data-testid="timetable-title-actions">
       <div>
         <h2>课表</h2>
         <p class="subtitle">
-          按行政班、教师或全校查看课表。调代生效的课节会标注「调」或「代」。
+          按行政班、教师或全校查看已发布课表
           <InfoTooltip field="timetable.substitutionMark" />
         </p>
       </div>
+      <el-dropdown v-if="canExport" @command="exportFile">
+        <el-button type="primary" data-testid="timetable-export">
+          <el-icon><Download /></el-icon>
+          <span>导出</span>
+        </el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="pdf">导出 PDF</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+    </div>
+    <div class="toolbar" data-testid="timetable-filters">
       <div class="actions">
         <el-radio-group v-if="canViewAll || canViewClassScope" v-model="mode" @change="onModeChange">
           <el-radio-button v-if="canViewAll || headClasses.length > 0" value="class">行政班</el-radio-button>
@@ -37,17 +50,6 @@
           <el-radio-button value="baseline">原始</el-radio-button>
         </el-radio-group>
         <InfoTooltip field="timetable.view" />
-        <el-dropdown v-if="canExport" @command="exportFile">
-          <el-button>
-            <el-icon><Download /></el-icon>
-            <span>导出</span>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="pdf">导出 PDF</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
       </div>
     </div>
 
@@ -225,14 +227,14 @@ const targets = computed(() => {
   return teachers.value
 })
 
-const hasData = computed(() => (mode.value === 'school' ? schoolGroups.value.length > 0 : entries.value.length > 0))
+const hasData = computed(() =>
+  mode.value === 'school' ? schoolGroups.value.length > 0 : entries.value.length > 0,
+)
 
 // Without a published timetable the empty grid is a dead end, so point the
 // reader at the place that produces one (scheduling). Teachers cannot run
 // scheduling, hence the permission check rather than a bare route push.
-const showSchedulingGuide = computed(
-  () => !published.value && auth.hasPermission('scheduling:run'),
-)
+const showSchedulingGuide = computed(() => !published.value && auth.hasPermission('scheduling:run'))
 
 const emptyDescription = computed(() =>
   !published.value
@@ -387,10 +389,7 @@ onMounted(async () => {
     periods.value = []
     published.value = null
     entries.value = []
-    const [teacherRes, courseRes] = await Promise.all([
-      http.get('/teachers/options'),
-      http.get('/courses'),
-    ])
+    const [teacherRes, courseRes] = await Promise.all([http.get('/teachers/options'), http.get('/courses')])
     teachers.value = teacherRes.data ?? []
     courses.value = courseRes.data ?? []
     return
@@ -429,11 +428,15 @@ onMounted(async () => {
   flex-direction: column;
   gap: 14px;
 }
-.toolbar {
+.page-heading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+}
+.toolbar {
+  display: flex;
+  justify-content: flex-start;
 }
 h2 {
   margin: 0 0 4px;
@@ -447,8 +450,8 @@ h2 {
 .actions {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
   align-items: center;
 }
 .notice {

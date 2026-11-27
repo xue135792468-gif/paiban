@@ -27,10 +27,26 @@
     v-else-if="activeJob"
     shadow="never"
     class="section-card active-job-card"
-    :class="{ 'is-warning': hasConflicts }"
+    :class="{ 'is-warning': hasConflicts, 'is-complete': cleanCompleted }"
     data-testid="active-job-card"
   >
-    <template #header>
+    <template v-if="cleanCompleted && !detailsExpanded" #header>
+      <div class="completed-job-summary" data-testid="completed-job-summary">
+        <el-icon><CircleCheckFilled /></el-icon>
+        <strong>无冲突 · 可发布</strong>
+        <span v-if="activeJob?.draftName">{{ activeJob.draftName }}</span>
+        <el-tag type="success" effect="light" data-testid="active-job-status">已完成</el-tag>
+        <div class="job-header-actions">
+          <el-button link type="primary" data-testid="expand-job-details" @click="detailsExpanded = true">
+            展开详情
+          </el-button>
+          <el-button v-if="activeJob?.draftId" type="primary" @click="emit('openDraft', activeJob.draftId)">
+            打开草稿
+          </el-button>
+        </div>
+      </div>
+    </template>
+    <template v-else #header>
       <div class="active-job-header">
         <div class="job-header-left">
           <span class="card-title">当前排课任务</span>
@@ -62,7 +78,7 @@
       </div>
     </template>
 
-    <div class="active-job-body">
+    <div v-if="!cleanCompleted || detailsExpanded" class="active-job-body" data-testid="job-details">
       <div class="progress-wrapper">
         <el-progress
           :percentage="Math.min(100, Math.max(0, activeJob.progress))"
@@ -112,15 +128,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { CircleCheckFilled } from '@element-plus/icons-vue'
 import SchedulingJobMetrics from './SchedulingJobMetrics.vue'
 import JobDiagnostics from './JobDiagnostics.vue'
-import {
-  getJobHardConflictCount,
-  getJobStatusTag,
-  isCompletedWithConflicts,
-  isRunning,
-} from './jobStatus'
+import { getJobHardConflictCount, getJobStatusTag, isCompletedWithConflicts, isRunning } from './jobStatus'
 import type { DraftItem, JobItem } from './types'
 
 const props = defineProps<{
@@ -137,17 +149,20 @@ const emit = defineEmits<{
   clearSubmitError: []
 }>()
 
-const conflictCount = computed(() =>
-  getJobHardConflictCount(props.activeJob, props.associatedDraft),
+const conflictCount = computed(() => getJobHardConflictCount(props.activeJob, props.associatedDraft))
+
+const hasConflicts = computed(() => isCompletedWithConflicts(props.activeJob, props.associatedDraft))
+
+const cleanCompleted = computed(() => props.activeJob?.status === 'COMPLETED' && !hasConflicts.value)
+const detailsExpanded = ref(false)
+watch(
+  () => props.activeJob?.id,
+  () => {
+    detailsExpanded.value = false
+  },
 )
 
-const hasConflicts = computed(() =>
-  isCompletedWithConflicts(props.activeJob, props.associatedDraft),
-)
-
-const statusTag = computed(() =>
-  getJobStatusTag(props.activeJob?.status, hasConflicts.value),
-)
+const statusTag = computed(() => getJobStatusTag(props.activeJob?.status, hasConflicts.value))
 
 const progressStatus = computed(() => {
   if (!props.activeJob) return undefined
@@ -160,7 +175,7 @@ const progressStatus = computed(() => {
 
 const conflictTitle = computed(() =>
   conflictCount.value > 0
-    ? `本次排课仍有 ${conflictCount.value} 处硬冲突，暂不可发布`
+    ? `本次排课仍有 ${conflictCount.value} 处排课冲突，暂不可发布`
     : '本次排课存在阻塞项，暂不可发布',
 )
 
@@ -184,6 +199,26 @@ const conflictDescription = computed(() => {
 .active-job-card.is-warning {
   border-color: #fde68a;
   background: #fffbeb;
+}
+
+.active-job-card.is-complete {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.active-job-card.is-complete :deep(.el-card__header) {
+  padding: 10px 16px;
+}
+
+.completed-job-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #15803d;
+}
+
+.completed-job-summary .job-header-actions {
+  margin-left: auto;
 }
 
 .job-submit-error-card {

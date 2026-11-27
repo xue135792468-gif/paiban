@@ -36,19 +36,14 @@ describe('jobStatus helper', () => {
 
   it('从 score / draft / diagnostics 识别带冲突的 COMPLETED 任务', () => {
     expect(isCompletedWithConflicts(makeJob({ score: '-22hard/0soft' }))).toBe(true)
-    expect(
-      isCompletedWithConflicts(
-        makeJob({ score: '0hard/0soft' }),
-        { scoreHard: -4 } as DraftItem,
-      ),
-    ).toBe(true)
+    expect(isCompletedWithConflicts(makeJob({ score: '0hard/0soft' }), { scoreHard: -4 } as DraftItem)).toBe(
+      true,
+    )
     expect(
       isCompletedWithConflicts(
         makeJob({
           score: null,
-          diagnostics: [
-            { teacherId: 1, hardCount: 3, messages: ['x'], gradeIds: [1], classNames: ['1班'] },
-          ],
+          diagnostics: [{ teacherId: 1, hardCount: 3, messages: ['x'], gradeIds: [1], classNames: ['1班'] }],
         }),
       ),
     ).toBe(true)
@@ -92,17 +87,15 @@ describe('ActiveJobCard', () => {
       global: { plugins: [ElementPlus] },
     })
 
-    expect(wrapper.get('[data-testid="active-job-status"]').text()).toBe(
-      '已完成，但存在冲突暂不可发布',
-    )
+    expect(wrapper.get('[data-testid="active-job-status"]').text()).toBe('已完成，但存在冲突暂不可发布')
     expect(wrapper.get('.active-job-card').classes()).toContain('is-warning')
     expect(wrapper.findComponent({ name: 'ElProgress' }).props('status')).toBe('warning')
-    expect(wrapper.get('[data-testid="job-conflict-warning"]').text()).toContain('22 处硬冲突')
-    expect(wrapper.get('[data-testid="metrics-hard-conflicts"]').text()).toContain('22 处硬冲突')
+    expect(wrapper.get('[data-testid="job-conflict-warning"]').text()).toContain('22 处排课冲突')
+    expect(wrapper.get('[data-testid="metrics-hard-conflicts"]').text()).toContain('22 处排课冲突')
     wrapper.unmount()
   })
 
-  it('COMPLETED 且无冲突时展示绿色已完成态', () => {
+  it('COMPLETED 且无冲突时折叠为绿色摘要，可按需展开', async () => {
     const wrapper = mount(ActiveJobCard, {
       props: {
         activeJob: makeJob({ score: '0hard/0soft', resultPublishable: true }),
@@ -114,9 +107,42 @@ describe('ActiveJobCard', () => {
     })
 
     expect(wrapper.get('[data-testid="active-job-status"]').text()).toBe('已完成')
-    expect(wrapper.get('.active-job-card').classes()).not.toContain('is-warning')
+    expect(wrapper.get('[data-testid="completed-job-summary"]').text()).toContain('无冲突 · 可发布')
+    expect(wrapper.find('[data-testid="job-details"]').exists()).toBe(false)
+    expect(wrapper.findComponent({ name: 'ElProgress' }).exists()).toBe(false)
+    await wrapper.get('[data-testid="expand-job-details"]').trigger('click')
     expect(wrapper.findComponent({ name: 'ElProgress' }).props('status')).toBe('success')
     expect(wrapper.find('[data-testid="job-conflict-warning"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('运行中任务始终展开进度', () => {
+    const wrapper = mount(ActiveJobCard, {
+      props: {
+        activeJob: makeJob({ status: 'RUNNING', progress: 40, score: null, draftId: null }),
+        associatedDraft: null,
+        submitError: null,
+        cancelling: false,
+      },
+      global: { plugins: [ElementPlus] },
+    })
+    expect(wrapper.findComponent({ name: 'ElProgress' }).exists()).toBe(true)
+    expect(wrapper.find('[data-testid="expand-job-details"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('有冲突的任务始终展开排查信息', () => {
+    const wrapper = mount(ActiveJobCard, {
+      props: {
+        activeJob: makeJob({ score: '-2hard/0soft' }),
+        associatedDraft: null,
+        submitError: null,
+        cancelling: false,
+      },
+      global: { plugins: [ElementPlus] },
+    })
+    expect(wrapper.findComponent({ name: 'ElProgress' }).exists()).toBe(true)
+    expect(wrapper.find('[data-testid="expand-job-details"]').exists()).toBe(false)
     wrapper.unmount()
   })
 })

@@ -57,6 +57,14 @@ describe('TimetableView 无已发布基线', () => {
     expect(guide.text()).toContain('去课表工作台')
   })
 
+  it('导出属于课表标题行，副标题不重复调代说明', async () => {
+    const wrapper = await mountView()
+    expect(wrapper.get('[data-testid="timetable-title-actions"]').text()).toContain('导出')
+    expect(wrapper.get('[data-testid="timetable-filters"]').text()).not.toContain('导出')
+    expect(wrapper.get('.subtitle').text()).toContain('按行政班、教师或全校查看已发布课表')
+    expect(wrapper.find('.subtitle').text()).not.toContain('调代生效')
+  })
+
   it('没有当前学期（204）时不请求 /classes，且不抛未捕获异常', async () => {
     httpMock.get.mockImplementation((url: string) => {
       if (url === '/semesters/current') {
