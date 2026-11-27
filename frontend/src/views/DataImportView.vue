@@ -1,6 +1,7 @@
 <template>
   <div class="unified-import">
     <ImportModeHeader :mode="mode" @change="setMode" />
+    <el-tag v-if="mode === 'ai' && aiConfigured" type="success" effect="plain">AI 已就绪</el-tag>
     <ManualImportView v-if="mode === 'manual'" embedded />
     <AiDataImportView v-else-if="aiConfigured" embedded />
     <el-card v-else shadow="never" class="ai-guide" data-testid="ai-not-configured">

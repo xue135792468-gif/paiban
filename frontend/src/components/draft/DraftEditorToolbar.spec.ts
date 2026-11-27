@@ -68,15 +68,18 @@ describe('DraftEditorToolbar 溢出菜单', () => {
     expect(document.body.textContent).toContain('重命名')
     expect(document.body.textContent).toContain('刷新')
     expect(document.body.textContent).toContain('删除草稿')
+    wrapper.unmount()
   })
 
   it('全部锁定时禁用优化并写明原因', async () => {
     const wrapper = mountToolbar({ status: 'DRAFT', lockedCount: 4, lessonCount: 4 })
     await wrapper.get('[data-testid="draft-more-menu"]').trigger('click')
     await flushPromises()
-    const item = document.querySelector('[data-testid="optimization-entry"]')!
+    const items = document.querySelectorAll('[data-testid="optimization-entry"]')
+    const item = items[items.length - 1]
     expect(item.getAttribute('aria-disabled')).toBe('true')
     expect(item.textContent).toContain('全部课节已锁定')
+    wrapper.unmount()
   })
 })
 describe('DraftEditorToolbar 重新发布后的调代提示', () => {
