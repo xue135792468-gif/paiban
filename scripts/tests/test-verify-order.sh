@@ -121,6 +121,7 @@ REPO_CHECKS=(
   check-sfc-size
   check-local-dates
   check-e2e-helpers
+  check-e2e-testids
   check-blank-checks
   check-module-boundaries
   check-migrations

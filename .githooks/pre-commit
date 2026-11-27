@@ -9,7 +9,7 @@
 # and module boundaries. They are cheap, and skipping them for docs would let a
 # problem reach the full gate unnoticed.
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(git rev-parse --show-toplevel)"
 
 # Unconditional: these checks do not depend on which file types are staged.
 bash scripts/check-ticket-status.sh
@@ -25,6 +25,10 @@ fi
 
 if git diff --cached --name-only --diff-filter=ACMR | grep -qE '^backend/.*\.java$'; then
   bash scripts/check-blank-checks.sh
+fi
+
+if git diff --cached --name-only --diff-filter=ACMR | grep -qE '^frontend/src/.*\.vue$'; then
+  bash scripts/check-sfc-size.sh
 fi
 
 mapfile -t staged < <(git diff --cached --name-only --diff-filter=ACMR \

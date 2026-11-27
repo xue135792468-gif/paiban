@@ -3,7 +3,7 @@
 # Verifying or merging a stale base silently skips integration with main.
 # Bypass with `git push --no-verify` when the divergence is intentional.
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(git rev-parse --show-toplevel)"
 
 git fetch --quiet origin main || exit 0
 if ! git merge-base --is-ancestor origin/main HEAD; then

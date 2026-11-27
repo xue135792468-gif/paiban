@@ -47,6 +47,19 @@ bash scripts/check-local-dates.sh
 echo "==> e2e: helper duplicates"
 bash scripts/check-e2e-helpers.sh
 
+echo "==> e2e: testid references"
+bash scripts/check-e2e-testids.sh
+
+if [[ -e .git ]]; then
+  echo "==> e2e: untracked specs"
+  untracked_e2e=$(git ls-files --others --exclude-standard -- 'frontend/e2e/*.spec.ts' 'frontend/e2e/**/*.spec.ts')
+  if [[ -n "$untracked_e2e" ]]; then
+    echo "untracked e2e spec(s) would be executed by Playwright:" >&2
+    printf '%s\n' "$untracked_e2e" >&2
+    exit 1
+  fi
+fi
+
 echo "==> backend: isBlank ratchet"
 bash scripts/check-blank-checks.sh
 

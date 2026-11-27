@@ -1,16 +1,46 @@
 #!/usr/bin/env bash
 # Creates an isolated worktree for a ticket and links the shared node_modules.
-# Usage: scripts/worktree-add.sh <name> <branch> [base]
-#   name   directory under $PAIBAN_WT_ROOT (default: sibling paiban-wt/)
-#   branch new branch to create
-#   base   base revision (default: main)
+# Usage: scripts/worktree-add.sh [--allow-stale-base] <name> <branch> [base]
+#   --allow-stale-base  allow branching from a revision behind origin/main
+#   name                directory under $PAIBAN_WT_ROOT (default: sibling paiban-wt/)
+#   branch              new branch to create
+#   base                base revision (default: origin/main if present, else main)
 set -euo pipefail
 
-name=${1:?usage: worktree-add.sh <name> <branch> [base]}
-branch=${2:?usage: worktree-add.sh <name> <branch> [base]}
-base=${3:-main}
+allow_stale=0
+if [ "${1:-}" = "--allow-stale-base" ]; then
+  allow_stale=1
+  shift
+fi
+
+name=${1:?usage: worktree-add.sh [--allow-stale-base] <name> <branch> [base]}
+branch=${2:?usage: worktree-add.sh [--allow-stale-base] <name> <branch> [base]}
+base=${3:-}
 
 root=$(cd "$(dirname "$0")/.." && pwd)
+git -C "$root" fetch --quiet origin main || true
+
+has_origin_main=0
+if git -C "$root" rev-parse --verify --quiet origin/main >/dev/null; then
+  has_origin_main=1
+fi
+
+if [ -z "$base" ]; then
+  if [ "$has_origin_main" -eq 1 ]; then
+    base="origin/main"
+  else
+    base="main"
+  fi
+fi
+
+if [ "$allow_stale" -eq 0 ] && [ "$has_origin_main" -eq 1 ]; then
+  if ! git -C "$root" merge-base --is-ancestor origin/main "$base"; then
+    behind=$(git -C "$root" rev-list --count "$base..origin/main")
+    echo "worktree-add: base '$base' is $behind commit(s) behind origin/main. Use origin/main (default) or pass --allow-stale-base if intentional." >&2
+    exit 1
+  fi
+fi
+
 wt_root=${PAIBAN_WT_ROOT:-"$(dirname "$root")/paiban-wt"}
 wt="$wt_root/$name"
 

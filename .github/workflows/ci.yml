@@ -96,6 +96,8 @@ jobs:
         run: bash scripts/check-local-dates.sh
       - name: E2E helper duplicates
         run: bash scripts/check-e2e-helpers.sh
+      - name: E2E testid references
+        run: bash scripts/check-e2e-testids.sh
       - name: isBlank ratchet
         run: bash scripts/check-blank-checks.sh
 
