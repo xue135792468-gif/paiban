@@ -139,7 +139,7 @@ describe('SettingsView: 按卡独立保存', () => {
     wrapper.unmount()
   })
 
-  it('钉钉关闭时折叠凭据与事件令牌，开启后显示', async () => {
+  it('钉钉关闭时保留连接探测，折叠 AgentId 与事件令牌', async () => {
     httpMock.get.mockImplementation((url: string) => {
       if (url === '/integrations/dingtalk/config')
         return Promise.resolve({ data: { ...dingtalkConfig, enabled: false } })
@@ -149,11 +149,12 @@ describe('SettingsView: 按卡独立保存', () => {
       return Promise.resolve({ data: {} })
     })
     const wrapper = await mountView()
-    expect(wrapper.find('input[placeholder="钉钉企业内部应用 AppKey"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="dingtalk-probe-app-key"]').exists()).toBe(true)
+    expect(wrapper.find('input[placeholder="微应用 AgentId"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('事件令牌')
     const toggle = wrapper.find('#dingtalk-integration .el-switch')
     await toggle.trigger('click')
-    expect(wrapper.find('input[placeholder="钉钉企业内部应用 AppKey"]').exists()).toBe(true)
+    expect(wrapper.find('input[placeholder="微应用 AgentId"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('事件令牌')
     wrapper.unmount()
   })
