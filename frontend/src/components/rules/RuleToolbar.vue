@@ -32,7 +32,12 @@
     >
       分组
     </el-button>
-    <el-button :disabled="semesterId === null" data-testid="rule-ai-toggle" @click="emit('toggle-ai')">
+    <el-button
+      v-if="aiAvailable"
+      :disabled="semesterId === null"
+      data-testid="rule-ai-toggle"
+      @click="emit('toggle-ai')"
+    >
       AI 帮填
     </el-button>
     <slot name="actions-extra" />
@@ -53,6 +58,7 @@ const props = defineProps<{
   semesterId: number | null
   query: string
   groupsVisible: boolean
+  aiAvailable?: boolean
 }>()
 
 const emit = defineEmits<{

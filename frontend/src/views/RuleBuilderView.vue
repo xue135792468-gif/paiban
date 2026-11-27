@@ -18,18 +18,42 @@
         v-model:query="query"
         :semesters="semesters"
         :groups-visible="showGroups"
+        :ai-available="aiAvailable"
         @semester-change="onSemesterChange"
         @new="openNew"
         @toggle-groups="showGroups = !showGroups"
         @toggle-ai="toggleAi"
       >
         <template #actions-extra>
-          <RuleCopyButton :semesters="semesters" :target-semester-id="semesterId" :base-version="baseVersion" :copy="copyFromSemester" @done="onCopied" />
+          <RuleCopyButton
+            :semesters="semesters"
+            :target-semester-id="semesterId"
+            :base-version="baseVersion"
+            :copy="copyFromSemester"
+            @done="onCopied"
+          />
         </template>
       </RuleToolbar>
 
-      <ConstraintAiPanel v-if="showAi && semesterId !== null" :semester-id="semesterId" :types="aiTypes" :teachers="teachers" :courses="courses" :can-read-all="canReadAll" :can-manage="canManage" @add="onAiAdd" />
-      <el-alert v-if="aiNotice" type="info" :closable="false" show-icon class="alert" data-testid="rule-ai-notice" :title="aiNotice" />
+      <ConstraintAiPanel
+        v-if="aiAvailable && showAi && semesterId !== null"
+        :semester-id="semesterId"
+        :types="aiTypes"
+        :teachers="teachers"
+        :courses="courses"
+        :can-read-all="canReadAll"
+        :can-manage="canManage"
+        @add="onAiAdd"
+      />
+      <el-alert
+        v-if="aiNotice"
+        type="info"
+        :closable="false"
+        show-icon
+        class="alert"
+        data-testid="rule-ai-notice"
+        :title="aiNotice"
+      />
 
       <el-alert
         v-if="conflict"
@@ -41,7 +65,12 @@
       >
         <template #title>规则已被他人修改（当前版本 {{ conflict.version }}）</template>
         <p class="alert-copy">{{ conflict.message }}</p>
-        <el-button size="small" type="primary" data-testid="rule-conflict-reload" @click="reloadAfterConflict">
+        <el-button
+          size="small"
+          type="primary"
+          data-testid="rule-conflict-reload"
+          @click="reloadAfterConflict"
+        >
           加载最新配置（放弃我的修改）
         </el-button>
       </el-alert>
@@ -107,7 +136,14 @@
           help-anchor="constraints"
         />
         <template v-else>
-          <RuleUnusablePanel v-if="ruleBuckets.unusable.length > 0" :cards="ruleBuckets.unusable" :names="ruleNames" :periods="periods" @edit="openEdit" @remove="onRemove" />
+          <RuleUnusablePanel
+            v-if="ruleBuckets.unusable.length > 0"
+            :cards="ruleBuckets.unusable"
+            :names="ruleNames"
+            :periods="periods"
+            @edit="openEdit"
+            @remove="onRemove"
+          />
           <RuleGroupedList
             :cards="ruleBuckets.usable"
             :query="query"
@@ -150,11 +186,7 @@ import RuleSaveBar from '@/components/rules/RuleSaveBar.vue'
 import RuleToolbar from '@/components/rules/RuleToolbar.vue'
 import RuleUnusablePanel from '@/components/rules/RuleUnusablePanel.vue'
 import { useUnsavedGuard } from '@/components/rules/useUnsavedGuard'
-import type {
-  ConstraintConfigDto,
-  ConstraintTypeDef,
-  OptionItem,
-} from '@/components/constraints/types'
+import type { ConstraintConfigDto, ConstraintTypeDef, OptionItem } from '@/components/constraints/types'
 import {
   applyCardInputs,
   cardConfigs,
@@ -222,6 +254,7 @@ const formKey = ref(0)
 const editingKey = ref<string | null>(null)
 const query = ref('')
 const showGroups = ref(false)
+const aiAvailable = ref(false)
 const teacherGroups = useRuleGroups('TEACHER')
 const courseGroups = useRuleGroups('COURSE')
 const timeGroups = useTimeGroups(semesterId)
@@ -238,20 +271,29 @@ const {
   hide: hideImpact,
 } = useRuleImpact(semesterId)
 const { copyFromSemester, onCopied } = useRuleCopy({
-  semesterId, baseVersion, setConflict: (value) => { conflict.value = value }, reload: loadState,
+  semesterId,
+  baseVersion,
+  setConflict: (value) => {
+    conflict.value = value
+  },
+  reload: loadState,
 })
 
 const availableDays = computed(() =>
-  Array.from(new Set(periods.value.map((period) => period.dayOfWeek))).sort(
-    (left, right) => left - right,
-  ),
+  Array.from(new Set(periods.value.map((period) => period.dayOfWeek))).sort((left, right) => left - right),
 )
 const classIds = computed(() => classes.value.map((item) => item.id))
 const auth = useAuthStore()
 const canManage = computed(() => auth.hasPermission('constraint:manage'))
 const canReadAll = computed(() => auth.hasPermission('settings:manage'))
 const {
-  showAi, aiTypes, aiNotice, toggle: toggleAi, onAiAdd, aiFields, resetAi,
+  showAi,
+  aiTypes,
+  aiNotice,
+  toggle: toggleAi,
+  onAiAdd,
+  aiFields,
+  resetAi,
 } = useRuleAi({ catalogue, classIds, cards })
 const ruleNames = computed<RuleNames>(() => {
   const teacherNames = new Map(teachers.value.map((teacher) => [teacher.id, teacher.name]))
@@ -273,18 +315,18 @@ useUnsavedGuard(dirty)
 /** Ticket 08: copied cards whose references are gone, kept out of the normal list. */
 const ruleBuckets = computed(() => splitUnusableRules(cards.value))
 /** Ticket 07: the groups expanded to concrete members/slots, read by the save check. */
-const conflictContext = computed(() => buildConflictContext({
-  periods: periods.value,
-  names: ruleNames.value,
-  allClassIds: classIds.value,
-  allCourseIds: courses.value.map((course) => course.id),
-  teacherGroups: teacherGroups.groups.value,
-  courseGroups: courseGroups.groups.value,
-  timeGroups: timeGroups.groups.value,
-}))
-const editingCard = computed(
-  () => cards.value.find((card) => card.key === editingKey.value) ?? null,
+const conflictContext = computed(() =>
+  buildConflictContext({
+    periods: periods.value,
+    names: ruleNames.value,
+    allClassIds: classIds.value,
+    allCourseIds: courses.value.map((course) => course.id),
+    teacherGroups: teacherGroups.groups.value,
+    courseGroups: courseGroups.groups.value,
+    timeGroups: timeGroups.groups.value,
+  }),
 )
+const editingCard = computed(() => cards.value.find((card) => card.key === editingKey.value) ?? null)
 
 function configsOf(card: RuleCard) {
   return cardConfigs(card, {
@@ -322,10 +364,9 @@ async function loadClasses() {
     classes.value = []
     return
   }
-  const { data } = await http.get<Array<{ id: number; name: string; active?: boolean }>>(
-    '/classes',
-    { params: { semesterId: semesterId.value } },
-  )
+  const { data } = await http.get<Array<{ id: number; name: string; active?: boolean }>>('/classes', {
+    params: { semesterId: semesterId.value },
+  })
   classes.value = activeOnly(data ?? []).map((item) => ({ id: item.id, name: item.name }))
 }
 
@@ -431,8 +472,9 @@ function onFormSubmit(payload: CardSentenceInput[]) {
       next.sentences.map((sentence) => sentence.type).filter((type) => isSwitchRule(type)),
     )
     if (switchTypes.size > 0) {
-      cards.value = cards.value.filter((card) =>
-        !card.sentences.some((sentence) => switchTypes.has(sentence.type)))
+      cards.value = cards.value.filter(
+        (card) => !card.sentences.some((sentence) => switchTypes.has(sentence.type)),
+      )
     }
     cards.value.push(next)
   }
@@ -539,6 +581,16 @@ async function reloadAfterConflict() {
   await loadState()
 }
 
+async function loadAiAvailability() {
+  try {
+    const { data } = await http.get<{ available?: boolean }>('/constraint-proposals/availability')
+    aiAvailable.value = data?.available === true
+  } catch {
+    // Rules remain fully usable without the optional AI feature.
+    aiAvailable.value = false
+  }
+}
+
 onMounted(async () => {
   loading.value = true
   try {
@@ -549,6 +601,7 @@ onMounted(async () => {
       loadCourses(),
       teacherGroups.load(),
       courseGroups.load(),
+      loadAiAvailability(),
     ])
     await timeGroups.load()
     if (semesterId.value !== null) {
