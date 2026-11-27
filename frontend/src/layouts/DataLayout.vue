@@ -3,7 +3,7 @@
     <nav class="grouped-tabs" aria-label="数据管理子导航">
       <div v-for="group in groups" :key="group.label" class="tab-group" data-testid="page-tab-group">
         <span class="group-label">{{ group.label }}</span>
-        <PageTabs :items="group.items" />
+        <PageTabs :items="group.items" :aria-label="group.label" />
       </div>
     </nav>
     <router-view />

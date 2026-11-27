@@ -402,7 +402,7 @@ describe('手动导入页', () => {
     await flushPromises()
 
     expect(importsMock.suggestImportColumns).toHaveBeenCalledWith(expect.any(File), 'CSV', 0)
-    expect(wrapper.get('[data-testid="ai-mapping-summary"]').text()).toContain('复合键')
+    expect(wrapper.get('[data-testid="ai-mapping-summary"]').text()).toContain('合并信息列')
     expect(wrapper.get('[data-testid="ai-reasoning"]').text()).toContain('复合键映射')
     expect(wrapper.get('[data-testid="ai-preview-summary"]').text()).toContain('560')
 

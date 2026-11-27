@@ -1,5 +1,5 @@
 <template>
-  <nav class="page-tabs" aria-label="页面子导航">
+  <nav class="page-tabs" :aria-label="ariaLabel">
     <router-link
       v-for="item in items"
       :key="item.to"
@@ -25,7 +25,7 @@ export interface PageTabItem {
   activePrefix?: string
 }
 
-defineProps<{ items: PageTabItem[] }>()
+withDefaults(defineProps<{ items: PageTabItem[]; ariaLabel?: string }>(), { ariaLabel: '页面子导航' })
 
 const route = useRoute()
 

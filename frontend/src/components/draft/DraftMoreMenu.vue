@@ -25,10 +25,10 @@
             <small>继承锁定 {{ lockedCount }} 节<template v-if="allLocked"> · 全部课节已锁定</template></small>
           </span>
         </el-dropdown-item>
-        <el-dropdown-item command="compare">比较草稿</el-dropdown-item>
-        <el-dropdown-item v-if="canEdit" command="rename">重命名</el-dropdown-item>
-        <el-dropdown-item command="refresh">刷新</el-dropdown-item>
-        <el-dropdown-item v-if="canEdit && status === 'DRAFT'" command="remove" divided>
+        <el-dropdown-item command="compare" data-testid="draft-more-compare">比较草稿</el-dropdown-item>
+        <el-dropdown-item v-if="canEdit" command="rename" data-testid="draft-more-rename">重命名</el-dropdown-item>
+        <el-dropdown-item command="refresh" data-testid="draft-more-refresh">刷新</el-dropdown-item>
+        <el-dropdown-item v-if="canEdit && status === 'DRAFT'" command="remove" divided data-testid="draft-more-remove">
           <span class="danger">删除草稿</span>
         </el-dropdown-item>
       </el-dropdown-menu>

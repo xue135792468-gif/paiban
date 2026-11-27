@@ -35,7 +35,10 @@ async function mountImport(path = '/data/import', configured = false) {
 }
 
 describe('DataImportView', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+  })
 
   it('默认进入零 AI 依赖的手动选列', async () => {
     const { wrapper } = await mountImport()
@@ -58,5 +61,23 @@ describe('DataImportView', () => {
   it('旧手动入口直接进入手动模式', async () => {
     const { wrapper } = await mountImport('/data/import/manual', true)
     expect(wrapper.find('[data-testid="manual-pane"]').exists()).toBe(true)
+  })
+
+  it('显式 manual 优先于遗留会话参数，刷新后仍停在手动', async () => {
+    const { wrapper } = await mountImport('/data/import?mode=manual&session=9', true)
+    expect(wrapper.find('[data-testid="manual-pane"]').exists()).toBe(true)
+  })
+
+  it('手动模式顶部提示未完成的 AI 会话', async () => {
+    localStorage.setItem(
+      'paiban.aiImport.lastSession',
+      JSON.stringify({
+        id: 9,
+        fileName: '课表.xlsx',
+        status: 'PREVIEW',
+      }),
+    )
+    const { wrapper } = await mountImport('/data/import', true)
+    expect(wrapper.get('[data-testid="pending-ai-session"]').text()).toContain('课表.xlsx')
   })
 })

@@ -9,7 +9,8 @@
       @click="expanded = !expanded"
     >
       <el-icon><ArrowRight v-if="!expanded" /><ArrowDown v-else /></el-icon>
-      <span>排课历史（共 {{ jobs.length }} 次任务<template v-if="failureCount"> · 含 {{ failureCount }} 次失败或取消</template>）</span>
+      <span>排课历史（共 {{ jobs.length }} 次任务<template v-if="failureCount">
+        · 含 {{ failureCount }} 次失败或取消</template>）</span>
     </button>
     <div v-show="expanded" id="scheduling-history" data-testid="scheduling-history">
       <EmptyStateGuide
@@ -65,7 +66,7 @@
 import { computed, ref, watch } from 'vue'
 import { ArrowDown, ArrowRight } from '@element-plus/icons-vue'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
-import { getJobStatusTag, isRunning, parseHardConflicts } from './jobStatus'
+import { getJobStatusTag, isRunning, jobConflictLabel, parseHardConflicts } from './jobStatus'
 import type { JobItem } from './types'
 import { formatDateTime } from '@/utils/datetime'
 
@@ -94,8 +95,7 @@ function statusTag(job: JobItem) {
 }
 
 function conflictLabel(job: JobItem) {
-  const count = parseHardConflicts(job.score)
-  return count > 0 ? `${count} 处冲突` : '无冲突'
+  return jobConflictLabel(job)
 }
 </script>
 

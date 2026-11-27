@@ -35,57 +35,21 @@
         </template>
       </RuleToolbar>
 
-      <ConstraintAiPanel
-        v-if="aiAvailable && showAi && semesterId !== null"
+      <RuleFeedback
+        :ai-available="aiAvailable"
+        :show-ai="showAi"
         :semester-id="semesterId"
         :types="aiTypes"
         :teachers="teachers"
         :courses="courses"
         :can-read-all="canReadAll"
         :can-manage="canManage"
-        @add="onAiAdd"
+        :ai-notice="aiNotice"
+        :conflict="conflict"
+        :error-message="errorMessage"
+        @ai-add="onAiAdd"
+        @reload="reloadAfterConflict"
       />
-      <el-alert
-        v-if="aiNotice"
-        type="info"
-        :closable="false"
-        show-icon
-        class="alert"
-        data-testid="rule-ai-notice"
-        :title="aiNotice"
-      />
-
-      <el-alert
-        v-if="conflict"
-        type="warning"
-        :closable="false"
-        show-icon
-        class="alert"
-        data-testid="rule-conflict"
-      >
-        <template #title>规则已被他人修改（当前版本 {{ conflict.version }}）</template>
-        <p class="alert-copy">{{ conflict.message }}</p>
-        <el-button
-          size="small"
-          type="primary"
-          data-testid="rule-conflict-reload"
-          @click="reloadAfterConflict"
-        >
-          加载最新配置（放弃我的修改）
-        </el-button>
-      </el-alert>
-
-      <el-alert
-        v-if="errorMessage"
-        type="error"
-        :closable="false"
-        show-icon
-        class="alert"
-        data-testid="rule-save-error"
-      >
-        <template #title>保存失败，已保留当前输入</template>
-        <p class="alert-copy">{{ errorMessage }}</p>
-      </el-alert>
 
       <RuleGroupPanels
         v-if="showGroups"
@@ -175,7 +139,7 @@ import { http } from '@/api/http'
 import { serverMessage } from '@/api/errors'
 import { activeOnly } from '@/utils/activeOptions'
 import EmptyStateGuide from '@/components/EmptyStateGuide.vue'
-import ConstraintAiPanel from '@/components/constraints/ConstraintAiPanel.vue'
+import RuleFeedback from '@/components/rules/RuleFeedback.vue'
 import RuleForm from '@/components/rules/RuleForm.vue'
 import RuleCopyButton from '@/components/rules/RuleCopyButton.vue'
 import RuleGroupedList from '@/components/rules/RuleGroupedList.vue'
@@ -620,17 +584,6 @@ onMounted(async () => {
 <style scoped>
 .rule-builder {
   padding-bottom: 24px;
-}
-
-.alert {
-  margin-bottom: 14px;
-}
-
-.alert-copy {
-  margin: 4px 0 8px;
-  font-size: 12px;
-  line-height: 1.6;
-  word-break: break-word;
 }
 
 .content-card {

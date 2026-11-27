@@ -62,7 +62,7 @@ function openLaunch() {
   if (canStart.value) dialogVisible.value = true
 }
 
-defineExpose({ openLaunch, hasJob: () => job.value != null })
+defineExpose({ openLaunch })
 
 const canStart = computed(
   () => props.canOptimize && props.lessonCount > 0 && props.lockedCount < props.lessonCount,

@@ -2,6 +2,18 @@
   <div class="unified-import">
     <ImportModeHeader :mode="mode" @change="setMode" />
     <el-tag v-if="mode === 'ai' && aiConfigured" type="success" effect="plain">AI 已就绪</el-tag>
+    <el-alert
+      v-if="mode === 'manual' && pendingAiSession"
+      type="info"
+      show-icon
+      :closable="false"
+      data-testid="pending-ai-session"
+    >
+      <template #title>
+        检测到上次未完成的 AI 导入会话（{{ pendingAiSession }}）
+        <el-button link type="primary" @click="setMode('ai')">继续 AI 导入</el-button>
+      </template>
+    </el-alert>
     <ManualImportView v-if="mode === 'manual'" embedded />
     <AiDataImportView v-else-if="aiConfigured" embedded />
     <el-card v-else shadow="never" class="ai-guide" data-testid="ai-not-configured">
@@ -26,19 +38,23 @@ import AiDataImportView from './AiDataImportView.vue'
 const route = useRoute()
 const router = useRouter()
 const aiConfigured = ref(false)
+const pendingAiSession = ref('')
+try {
+  const stored = JSON.parse(localStorage.getItem('paiban.aiImport.lastSession') ?? '{}')
+  if (stored.fileName && stored.status !== 'ABANDONED') pendingAiSession.value = String(stored.fileName)
+} catch {
+  pendingAiSession.value = ''
+}
 const mode = ref<'manual' | 'ai'>(
   route.path === '/data/import' &&
+    route.query.mode !== 'manual' &&
     (route.query.mode === 'ai' || route.query.session != null || route.query.target != null)
     ? 'ai'
     : 'manual',
 )
-
 function setMode(next: 'manual' | 'ai') {
   mode.value = next
-  const query = { ...route.query }
-  if (next === 'ai') query.mode = 'ai'
-  else delete query.mode
-  void router.replace({ path: '/data/import', query })
+  void router.replace({ path: '/data/import', query: { ...route.query, mode: next } })
 }
 
 onMounted(async () => {

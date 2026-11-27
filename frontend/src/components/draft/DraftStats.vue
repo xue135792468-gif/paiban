@@ -1,8 +1,6 @@
 <template>
   <div class="summary" :class="{ 'has-conflicts': hardConflicts > 0 }" data-testid="draft-status-summary">
-    <el-tag :type="hardConflicts > 0 ? 'danger' : 'success'" effect="light">
-      {{ hardConflicts > 0 ? `${hardConflicts} 处排课冲突` : '无冲突 · 可发布' }}
-    </el-tag>
+    <el-tag :type="status.tone" effect="light">{{ status.label }}</el-tag>
     <span>已排 {{ lessonCount - unassignedCount }} / {{ lessonCount }} 节</span>
     <span>未排 {{ unassignedCount }} 节</span>
     <span>已锁定 {{ lockedCount }} 节</span>
@@ -13,15 +11,20 @@
       参考求解得分：<code>{{ scoreLabel }}</code>
       <p class="hint">手工微调后得分可能过期，发布以实时全校校验为准。</p>
     </el-popover>
-    <el-button
+    <span
       v-if="conflictTotal > 0"
-      link
-      type="primary"
-      data-testid="blocker-action-HARD_CONFLICTS"
-      @click="emit('locate-conflict')"
+      data-testid="publish-blocker"
+      data-code="HARD_CONFLICTS"
     >
-      逐条定位{{ activeConflictIndex >= 0 ? `（${activeConflictIndex + 1}/${conflictTotal}）` : ' →' }}
-    </el-button>
+      <el-button
+        link
+        type="primary"
+        data-testid="blocker-action-HARD_CONFLICTS"
+        @click="emit('locate-conflict')"
+      >
+        逐条定位{{ activeConflictIndex >= 0 ? `（${activeConflictIndex + 1}/${conflictTotal}）` : ' →' }}
+      </el-button>
+    </span>
     <DraftPublishBlockers :blockers="nonConflictBlockers" @edit-lessons="emit('edit-lessons')" />
   </div>
 </template>
@@ -49,6 +52,15 @@ const emit = defineEmits<{ 'locate-conflict': []; 'edit-lessons': [] }>()
 const nonConflictBlockers = computed(() =>
   props.blockers.filter((blocker) => blocker.code !== 'HARD_CONFLICTS'),
 )
+const status = computed(() => {
+  if (props.hardConflicts > 0) {
+    return { tone: 'danger' as const, label: `${props.hardConflicts} 处排课冲突` }
+  }
+  if (props.blockers.length > 0) {
+    return { tone: 'warning' as const, label: `无冲突 · 还需处理 ${props.blockers.length} 项` }
+  }
+  return { tone: 'success' as const, label: '无冲突 · 可发布' }
+})
 </script>
 
 <style scoped>

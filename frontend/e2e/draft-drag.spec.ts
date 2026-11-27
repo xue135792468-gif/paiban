@@ -390,7 +390,8 @@ test('应用方案后加锁再撤销，提示先解锁且不误报成功', async
   expect(lockResult.status()).toBe(200)
 
   const refresh = waitForDraftReload(page, seed.draftId)
-  await page.getByRole('button', { name: '刷新' }).click()
+  await page.getByTestId('draft-more-menu').click()
+  await page.getByTestId('draft-more-refresh').click()
   await refresh
 
   const undoResponse = waitForChanges(page, seed.draftId)

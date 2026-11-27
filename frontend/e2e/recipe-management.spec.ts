@@ -93,7 +93,7 @@ test.describe('导入配方管理', () => {
     await uiLogin(page, 'admin', 'admin123')
     await page.goto('/data/import/manual')
 
-    await page.getByTestId('manual-file').setInputFiles(recipeCsv(seed))
+    await page.getByTestId('manual-file-upload').locator('input[type=file]').setInputFiles(recipeCsv(seed))
     await expect(page.getByTestId('manual-mapper')).toBeVisible()
     await page.getByTestId('manual-preview-button').click()
     await expect(page.getByTestId('stat-slots')).toContainText('10')

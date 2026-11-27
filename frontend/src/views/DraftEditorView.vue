@@ -192,7 +192,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
@@ -225,6 +225,8 @@ import { useDraftLocks } from '@/composables/useDraftLocks'
 import { useUndoShortcut } from '@/composables/useUndoShortcut'
 import { useDraftCompareQuery } from '@/composables/useDraftCompareQuery'
 import { useDraftActions } from '@/composables/useDraftActions'
+import { useDraftLifecycle } from '@/composables/useDraftLifecycle'
+import { useOptimizationEntry } from '@/composables/useOptimizationEntry'
 import type { CyclePlan, DraftConflict, DraftLesson, MoveTargetState } from '@/components/draft/types'
 
 const route = useRoute()
@@ -559,34 +561,21 @@ async function undoMove() {
     await load()
   }
 }
-
 useUndoShortcut({ canUndo, busy, undo: undoMove })
-
-const optimizationSection = ref<{ openLaunch: () => void; hasJob: () => boolean } | null>(null)
-const optimizationRequested = ref(false)
-const optimizationVisible = computed(
-  () =>
-    optimizationRequested.value || route.query.job != null || optimizationSection.value?.hasJob() === true,
-)
-
-function openOptimization() {
-  optimizationRequested.value = true
-  void nextTick(() => optimizationSection.value?.openLaunch())
-}
-
+const {
+  section: optimizationSection,
+  visible: optimizationVisible,
+  open: openOptimization,
+} = useOptimizationEntry(route)
 const draftActions = useDraftActions({ draftId, detail, reload: load })
 const { rename, publish: publishDraft, remove: removeDraft, withdraw: withdrawDraft } = draftActions
 const { cancelledSubstitutions, dismissCancelledSubstitutions } = draftActions
 
-function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && teacherSwap.active.value) teacherSwap.exit()
-}
-
-onMounted(() => {
-  window.addEventListener('keydown', onKeydown)
-  void load()
-})
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+useDraftLifecycle(
+  () => teacherSwap.active.value,
+  teacherSwap.exit,
+  load,
+)
 </script>
 
 <style scoped>

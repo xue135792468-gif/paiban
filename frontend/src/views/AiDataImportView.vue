@@ -117,38 +117,13 @@
           @abandon="abandonImport"
         />
 
-        <el-table
+        <ImportRowsTable
           v-else-if="!isTimetable"
-          data-testid="preview-rows-table"
-          :data="preview.rows"
-          border
-          size="small"
-          max-height="520"
-        >
-          <el-table-column type="index" label="#" width="52" />
-          <el-table-column
-            v-for="column in preview.columns"
-            :key="column.field"
-            :label="column.label + (column.required ? ' *' : '')"
-            :min-width="column.field === 'name' ? 150 : 130"
-          >
-            <template #default="{ row }">
-              <el-input
-                v-if="editing && !isCommittedPreview"
-                v-model="row.values[column.field]"
-                size="small"
-              />
-              <span
-                v-else
-                class="cell"
-                :class="{ 'low-confidence': row.lowConfidence?.includes(column.field) }"
-                :title="confidenceTitle(row, column.field)"
-              >
-                {{ row.values[column.field] || '—' }}
-              </span>
-            </template>
-          </el-table-column>
-        </el-table>
+          :rows="preview.rows"
+          :columns="preview.columns"
+          :editing="editing"
+          :committed="isCommittedPreview"
+        />
 
         <TimetablePreviewGrid
           v-else
@@ -265,6 +240,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type UploadFile } from 'element-plus'
 import { AI_IMPORT_TIMEOUT_MS, http } from '@/api/http'
 import { aiParseErrorMessage } from '@/api/errors'
+import ImportRowsTable from '@/components/aiImport/ImportRowsTable.vue'
 import ImportRouteHint from '@/components/imports/ImportRouteHint.vue'
 import ImportSourcePanel from '@/components/aiImport/ImportSourcePanel.vue'
 import ImportProgressPanel from '@/components/aiImport/ImportProgressPanel.vue'
@@ -280,7 +256,7 @@ import ImportFailureNotice from '@/components/aiImport/ImportFailureNotice.vue'
 import TimetablePreviewGrid from '@/components/aiImport/TimetablePreviewGrid.vue'
 import { useImportSession } from '@/components/aiImport/useImportSession'
 import { useImportTarget } from '@/components/aiImport/useImportTarget'
-import { type ImportPreview, type PreviewRow } from '@/components/aiImport/timetablePreview'
+import { type ImportPreview } from '@/components/aiImport/timetablePreview'
 import { targetTitle } from '@/components/aiImport/importTargets'
 import { isAbandoned, isEditable, statusText } from '@/components/aiImport/importStatus'
 
@@ -513,11 +489,6 @@ async function abandonImport() {
   text.value = ''
 }
 
-function confidenceTitle(row: PreviewRow, field: string) {
-  const value = row.confidence?.[field]
-  return value === undefined ? undefined : `AI 置信度 ${Math.round(value * 100)}%`
-}
-
 function fieldLabel(field: string) {
   return preview.value?.columns.find((column) => column.field === field)?.label ?? field
 }
@@ -565,16 +536,6 @@ function fieldLabel(field: string) {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.cell {
-  display: inline-block;
-  padding: 2px 6px;
-  border-radius: 3px;
-}
-
-.low-confidence {
-  background: #fff7cc;
 }
 
 .legend {

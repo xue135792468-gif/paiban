@@ -5,22 +5,15 @@
   <div v-else class="ai-block" data-testid="manual-ai">
     <div class="ai-head">
       <span class="ai-title">没有匹配的配方？</span>
-      <el-button
-        size="small"
-        :loading="suggesting"
-        data-testid="ai-suggest-button"
-        @click="emit('suggest')"
-      >
+      <el-button size="small" :loading="suggesting" data-testid="ai-suggest-button" @click="emit('suggest')">
         让 AI 帮忙识别列
       </el-button>
     </div>
-    <p class="hint">
-      AI 只看表头和前 10 行，给出列映射建议；预览和入库仍由你确认，手动选列始终可用。
-    </p>
+    <p class="hint">AI 只看表头和前 10 行，给出列映射建议；预览和入库仍由你确认，手动选列始终可用。</p>
     <div v-if="result?.suggestion" class="ai-result" data-testid="ai-suggestion">
       <div class="lines">
         <p class="line">
-          <span class="label">表头行</span>
+          <span class="label">标题所在行</span>
           <span>{{ headerText }}</span>
         </p>
         <p class="line">
@@ -40,13 +33,7 @@
         {{ result.suggestion.reasoning }}
       </p>
       <div class="actions">
-        <el-button
-          type="primary"
-          plain
-          size="small"
-          data-testid="adopt-ai-suggestion"
-          @click="emit('adopt')"
-        >
+        <el-button type="primary" plain size="small" data-testid="adopt-ai-suggestion" @click="emit('adopt')">
           采用建议
         </el-button>
         <span class="hint">采用后仍可修改每一列，再点“预览”。</span>
@@ -86,7 +73,7 @@ const columnSummary = computed(() => {
   if (!current) return ''
   const parts: string[] = []
   if (current.compositeColumn !== null && current.compositeColumn !== undefined) {
-    parts.push(`复合键 ${label(current.compositeColumn)}，分隔符「${current.delimiter || '|'}」`)
+    parts.push(`合并信息列 ${label(current.compositeColumn)}，分隔符「${current.delimiter || '|'}」`)
   } else {
     parts.push(`班级 ${label(current.classColumn)}`)
     parts.push(`星期 ${label(current.dayColumn)}`)

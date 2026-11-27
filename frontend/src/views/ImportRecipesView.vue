@@ -50,15 +50,11 @@
             <el-button link type="primary" data-testid="recipe-test" @click="runRowTest(row)">
               测试
             </el-button>
-            <el-button link type="primary" data-testid="recipe-edit" @click="openEdit(row)">
-              编辑
-            </el-button>
+            <el-button link type="primary" data-testid="recipe-edit" @click="openEdit(row)"> 编辑 </el-button>
             <el-button link type="primary" data-testid="recipe-versions" @click="openVersions(row)">
               版本
             </el-button>
-            <el-button link type="danger" data-testid="recipe-delete" @click="remove(row)">
-              删除
-            </el-button>
+            <el-button link type="danger" data-testid="recipe-delete" @click="remove(row)"> 删除 </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -152,7 +148,7 @@
         <el-form-item label="启用">
           <el-switch v-model="editForm.enabled" data-testid="recipe-edit-enabled" />
         </el-form-item>
-        <el-form-item label="复合键列">
+        <el-form-item label="合并信息列">
           <el-input-number v-model="editForm.keyColumn" :min="0" data-testid="recipe-edit-key" />
           <span class="field-hint">0 表示第一列</span>
         </el-form-item>
@@ -176,12 +172,7 @@
           </el-form-item>
         </div>
         <el-form-item label="更换样例">
-          <input
-            type="file"
-            accept=".xlsx,.csv"
-            data-testid="recipe-edit-sample"
-            @change="onEditSample"
-          >
+          <input type="file" accept=".xlsx,.csv" data-testid="recipe-edit-sample" @change="onEditSample">
           <span class="field-hint">
             {{ editSample ? editSample.name : '不选则沿用已存样例' }}
           </span>
@@ -206,12 +197,7 @@
 
       <template #footer>
         <el-button @click="editVisible = false">取消</el-button>
-        <el-button
-          type="primary"
-          :loading="saving"
-          data-testid="recipe-edit-save"
-          @click="saveEdit"
-        >
+        <el-button type="primary" :loading="saving" data-testid="recipe-edit-save" @click="saveEdit">
           保存并测试
         </el-button>
       </template>
@@ -299,7 +285,7 @@ function formatDateTime(value: string): string {
 function mappingSummary(recipe: ImportRecipe): string {
   const columns = recipe.columns as ManualMapping
   const parts = [
-    `复合键列 ${columnText(columns.keyColumn)}`,
+    `合并信息列 ${columnText(columns.keyColumn)}`,
     `课程列 ${columnText(columns.courseColumn)}`,
     `教师列 ${columnText(columns.teacherColumn)}`,
     `分隔符「${columns.delimiter || '|'}」`,
@@ -320,9 +306,7 @@ function expectedItems(recipe: ImportRecipe) {
 
 function differencesOf(error: unknown): RecipeCountDifference[] {
   const details = serverDetails(error)
-  return Array.isArray(details.differences)
-    ? (details.differences as RecipeCountDifference[])
-    : []
+  return Array.isArray(details.differences) ? (details.differences as RecipeCountDifference[]) : []
 }
 
 async function openDetail(recipe: ImportRecipe) {
@@ -439,11 +423,9 @@ async function openVersions(recipe: ImportRecipe) {
 async function rollback(version: number) {
   if (!selected.value) return
   try {
-    await ElMessageBox.confirm(
-      `回退到 v${version}？会生成一个新版本，历史不会被删除。`,
-      '回退配方',
-      { type: 'warning' },
-    )
+    await ElMessageBox.confirm(`回退到 v${version}？会生成一个新版本，历史不会被删除。`, '回退配方', {
+      type: 'warning',
+    })
   } catch {
     return
   }
@@ -460,11 +442,10 @@ async function rollback(version: number) {
 
 async function remove(recipe: ImportRecipe) {
   try {
-    await ElMessageBox.confirm(
-      `删除配方「${recipe.name}」？删除后进入最近删除，7 天内可恢复。`,
-      '删除配方',
-      { type: 'warning', confirmButtonText: '删除' },
-    )
+    await ElMessageBox.confirm(`删除配方「${recipe.name}」？删除后进入最近删除，7 天内可恢复。`, '删除配方', {
+      type: 'warning',
+      confirmButtonText: '删除',
+    })
   } catch {
     return
   }

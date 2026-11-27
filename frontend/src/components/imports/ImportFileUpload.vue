@@ -14,7 +14,9 @@
         <div class="el-upload__tip">{{ hint }}</div>
       </template>
     </el-upload>
-    <p v-if="selected" class="selected-file" data-testid="selected-import-file">已选择：{{ selected.name }}</p>
+    <p v-if="selected" class="selected-file" data-testid="selected-import-file">
+      已选择：{{ selected.name }}
+    </p>
     <p v-if="error" class="file-error" role="alert" data-testid="import-file-error">{{ error }}</p>
   </div>
 </template>

@@ -32,7 +32,18 @@ describe('DraftStats 紧凑摘要', () => {
     expect(wrapper.emitted('locate-conflict')).toHaveLength(1)
   })
 
-  it('零冲突主显可发布', async () => {
+  it('零冲突但有其他发布阻塞时不谎称可发布', async () => {
+    const wrapper = await mountStats({
+      hardConflicts: 0,
+      conflictTotal: 0,
+      unassignedCount: 2,
+      blockers: [{ code: 'UNSCHEDULED_LESSONS', message: '还有 2 节课未排课', count: 2, action: 'NONE' }],
+    })
+    expect(wrapper.text()).toContain('无冲突 · 还需处理 1 项')
+    expect(wrapper.text()).not.toContain('可发布')
+  })
+
+  it('零冲突且无阻塞时主显可发布', async () => {
     const wrapper = await mountStats({ hardConflicts: 0, conflictTotal: 0, unassignedCount: 0 })
     expect(wrapper.text()).toContain('无冲突 · 可发布')
     expect(wrapper.find('[data-testid="blocker-action-HARD_CONFLICTS"]').exists()).toBe(false)
