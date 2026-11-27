@@ -16,7 +16,7 @@
 
 # 接手说明（2026-10-25 会话交接）
 
-> **2026-11-27 第二波 UX 改造已完成（分支 `feature/qa-ux-wave2`，未合并/未部署）**：规格 [qa-ux-wave2/spec.md](qa-ux-wave2/spec.md)、7 张票据与 [验收报告](qa-ux-wave2/acceptance-report.md)。交付草稿编辑器首屏减负与「更多」菜单、工作台/课表层级与白话冲突、统一数据导入（手动默认、AI 渐进增强）、四套壳层去重与空态、设置按卡保存含钉钉事件令牌、教师低频字段与规则 AI 按可用性显隐。**纯前端，未改后端求解器、数据库 Schema、迁移或 REST 契约**。最终 `bash scripts/verify.sh --full` 退出码 0：后端 1040（0 失败、7 跳过，本机无 Docker）、前端 760、Playwright 137、全部静态检查通过；1440×900 九张截图在 `qa-ux-wave2/acceptance/`。两轴独立评审发现的 P0/P1 问题已全部修复。**下一步：在主仓库按评审结论合并后，再按部署跑册发布；本分支未推送、未部署生产。**
+> **2026-11-27 第二波 UX 改造已整合 origin/main 并创建 [PR #36](https://github.com/xue135792468-gif/paiban/pull/36)（待审，未部署）**：规格 [qa-ux-wave2/spec.md](qa-ux-wave2/spec.md)、7 张票据与 [验收报告](qa-ux-wave2/acceptance-report.md)。交付草稿编辑器首屏减负与「更多」菜单、工作台/课表层级与白话冲突、统一数据导入（手动默认、AI 渐进增强）、四套壳层去重与空态、设置按卡保存含钉钉事件令牌、教师低频字段与规则 AI 按可用性显隐。**纯前端，PR 净改动 96 个文件，后端 0 改动**；整合 main 时保留任课表、钉钉连接测试与通知发送记录。整合后 `bash scripts/verify.sh --full` 退出码 0：后端 1286（0 失败、7 跳过，本机无 Docker）、前端 899（122 个文件）、Playwright 157、全部静态检查通过；1440×900 截图在 `qa-ux-wave2/acceptance/`（含 before/after 对照）。两轴独立评审发现的 P0/P1 已全部修复。**下一步：审阅合并 PR 后按部署跑册发布；尚未部署生产。**
 
 > **2026-11-13 钉钉07原双轴已完成、统一整改中**：固定审源64a8885；逐项判定与原始计数见[07复查](dingtalk-multiuser/t07-review.md)。单一fixer Planck在dingtalk-t07-review-fixes修公共helper、空白输入、测试凭据去重和探测请求预算，后端已验业务源保持。主控受影响浏览器与独立增量复核后才07放行，08仅准备；不能据原浏览器绿色跳过本轮helper改动的回归。最终全量未跑，未推送/部署。
 
