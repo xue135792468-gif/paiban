@@ -1,5 +1,9 @@
 package com.paiban.foundation.web;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.paiban.common.web.StrictIntegerDeserializer;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -25,12 +29,15 @@ public final class FoundationDtos {
                                      @Size(max = 100) String dingtalkUserId) {}
 
     public record CourseDto(Long id, String name, String subject, boolean allowConsecutive,
-                            String color, boolean active) {}
+                            String color, boolean active, Integer weeklyHours) {}
 
     public record SaveCourseRequest(@NotBlank(message = "课程名称不能为空") @Size(max = 100) String name,
                                     @Size(max = 100) String subject,
                                     Boolean allowConsecutive,
-                                    @Size(max = 20) String color) {}
+                                    @Size(max = 20) String color,
+                                    @Min(1) @Max(20)
+                                    @JsonDeserialize(using = StrictIntegerDeserializer.class)
+                                    Integer weeklyHours) {}
 
     public record GradeDto(Long id, String name, int sortOrder, boolean active) {}
 

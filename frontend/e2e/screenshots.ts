@@ -16,7 +16,13 @@ export async function capture(page: Page, name: string): Promise<void> {
   if (!DIRECTORY) return
   try {
     fs.mkdirSync(DIRECTORY, { recursive: true })
-    await page.screenshot({ path: path.join(DIRECTORY, `${name}.png`), fullPage: true })
+    // 过渡动画会让截图停在中途（例如 radio 的 checked 刚变、颜色还没到位），
+    // 存下来的图看起来像业务错误。等动画结束再截稳定状态。
+    await page.screenshot({
+      path: path.join(DIRECTORY, `${name}.png`),
+      fullPage: true,
+      animations: 'disabled',
+    })
   } catch {
     // Evidence is a courtesy: a locked or missing folder must not turn a green test red.
   }

@@ -26,7 +26,8 @@ class AuthRbacIntegrationTest extends ApiIntegrationTest {
         as(token).when().get("/api/auth/me")
                 .then().statusCode(200)
                 .body("username", equalTo("admin"))
-                .body("roles", hasItem("admin"))
+                // 票 01：预置的 admin 账号是超级管理员（旧 admin 角色编码改给教务管理员）。
+                .body("roles", hasItem("super_admin"))
                 .body("permissions", hasItem("user:manage"));
     }
 
@@ -71,20 +72,21 @@ class AuthRbacIntegrationTest extends ApiIntegrationTest {
         String username = "head_" + suffix;
         String adminToken = adminToken();
 
-        Long id = createUser(adminToken, username, "head12345", "head_teacher");
+        Long id = createUser(adminToken, username, "head12345", "teacher");
 
         as(adminToken).when().get("/api/users")
                 .then().statusCode(200)
                 .body("username", hasItem(username));
 
         as(adminToken).when().get("/api/users")
-                .then().body("find { it.username == '" + username + "' }.roles", contains("head_teacher"));
+                .then().body("find { it.username == '" + username + "' }.roles", contains("teacher"));
 
         String headToken = login(username, "head12345");
         as(headToken).when().get("/api/auth/me")
                 .then().statusCode(200)
                 .body("id", equalTo(id.intValue()))
-                .body("permissions", hasItem("timetable:view:class"));
+                // 票 01：老师拿到只读的「查看全部课表」。
+                .body("permissions", hasItem("timetable:view"));
     }
 
     @Test
@@ -108,7 +110,8 @@ class AuthRbacIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(200)
                 .body("code", hasItem("admin"))
                 .body("code", hasItem("teacher"))
-                .body("code", hasItem("head_teacher"));
+                .body("code", hasItem("super_admin"))
+                .body("code", org.hamcrest.Matchers.not(hasItem("head_teacher")));
     }
 
     @Test
@@ -126,5 +129,28 @@ class AuthRbacIntegrationTest extends ApiIntegrationTest {
                         "roleCodes", List.of("teacher")))
                 .when().post("/api/users")
                 .then().statusCode(409);
+    }
+
+    @Test
+    void compositeEditSavesNameRolesAndEnabledStateTogether() {
+        String adminToken = adminToken();
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        String username = "comp_" + suffix;
+        Long id = createUser(adminToken, username, "comp12345", "teacher");
+
+        // 票 01：姓名、身份、启用状态一次提交，三个字段都必须落库（停用不能吞掉改名/改身份）。
+        as(adminToken)
+                .body(Map.of(
+                        "displayName", "复合改名",
+                        "roleCodes", List.of("admin"),
+                        "enabled", false))
+                .when().put("/api/users/" + id)
+                .then().statusCode(200);
+
+        as(adminToken).when().get("/api/users")
+                .then().statusCode(200)
+                .body("find { it.username == '" + username + "' }.displayName", equalTo("复合改名"))
+                .body("find { it.username == '" + username + "' }.roles", contains("admin"))
+                .body("find { it.username == '" + username + "' }.enabled", equalTo(false));
     }
 }

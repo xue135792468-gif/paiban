@@ -1,5 +1,7 @@
 package com.paiban.foundation.service;
 
+import com.paiban.common.event.HomeroomChangedEvent;
+import com.paiban.common.event.SchoolDataWriteLock;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.AdminClass;
 import com.paiban.foundation.domain.AdminClassRepository;
@@ -22,11 +24,15 @@ import com.paiban.foundation.web.FoundationDtos.SaveCourseRequest;
 import com.paiban.foundation.web.FoundationDtos.SaveGradeRequest;
 import com.paiban.foundation.web.FoundationDtos.SaveTeacherRequest;
 import com.paiban.foundation.web.FoundationDtos.TeacherDto;
+import com.paiban.identity.service.AccountMutationGuard;
+import com.paiban.identity.service.DingTalkBindingPolicy;
+import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,6 +46,12 @@ public class FoundationService {
     private final TeachingClassRepository teachingClasses;
     private final AuditLogRepository auditLogs;
     private final SemesterService semesters;
+    private final AccountMutationGuard accountMutationGuard;
+    private final DingTalkBindingPolicy dingTalkBindingPolicy;
+    private final EntityManager entityManager;
+
+    private final SchoolDataWriteLock schoolDataLock;
+    private final ApplicationEventPublisher events;
 
     public FoundationService(
             TeacherRepository teachers,
@@ -48,7 +60,12 @@ public class FoundationService {
             AdminClassRepository classes,
             TeachingClassRepository teachingClasses,
             AuditLogRepository auditLogs,
-            SemesterService semesters) {
+            SemesterService semesters,
+            AccountMutationGuard accountMutationGuard,
+            DingTalkBindingPolicy dingTalkBindingPolicy,
+            EntityManager entityManager, ApplicationEventPublisher events, SchoolDataWriteLock schoolDataLock) {
+        this.schoolDataLock = schoolDataLock;
+        this.events = events;
         this.teachers = teachers;
         this.courses = courses;
         this.grades = grades;
@@ -56,6 +73,9 @@ public class FoundationService {
         this.teachingClasses = teachingClasses;
         this.auditLogs = auditLogs;
         this.semesters = semesters;
+        this.accountMutationGuard = accountMutationGuard;
+        this.dingTalkBindingPolicy = dingTalkBindingPolicy;
+        this.entityManager = entityManager;
     }
 
     // ---------- teachers ----------
@@ -75,6 +95,10 @@ public class FoundationService {
 
     @Transactional
     public TeacherDto createTeacher(SaveTeacherRequest request) {
+        schoolDataLock.acquire();
+        // 03-C：手工写钉钉 UID 与账号变更共用同一个锚点锁；校验必须在任何字段落笔之前。
+        accountMutationGuard.lock();
+        dingTalkBindingPolicy.validateManualBinding(null, request.dingtalkUserId());
         Teacher teacher = new Teacher();
         apply(teacher, request);
         teacher.setCreatedAt(Instant.now());
@@ -83,7 +107,13 @@ public class FoundationService {
 
     @Transactional
     public TeacherDto updateTeacher(Long id, SaveTeacherRequest request) {
+        schoolDataLock.acquire();
+        // 锁序：锚点 -> 锁后重读原档案 -> 校验 UID 变化 -> 再落字段。
+        // 先重读再改，避免 refresh 把本次刚写入的姓名 / 工号覆盖回数据库旧值。
+        accountMutationGuard.lock();
         Teacher teacher = teachers.findById(id).orElseThrow(() -> ApiException.notFound("教师不存在: " + id));
+        entityManager.refresh(teacher);
+        dingTalkBindingPolicy.validateManualBinding(teacher, request.dingtalkUserId());
         apply(teacher, request);
         return toDto(teacher);
     }
@@ -120,6 +150,7 @@ public class FoundationService {
 
     @Transactional
     public CourseDto createCourse(SaveCourseRequest request) {
+        schoolDataLock.acquire();
         if (courses.findByName(request.name()).isPresent()) {
             throw ApiException.conflict("课程名称已存在: " + request.name());
         }
@@ -131,6 +162,7 @@ public class FoundationService {
 
     @Transactional
     public CourseDto updateCourse(Long id, SaveCourseRequest request) {
+        schoolDataLock.acquire();
         Course course = courses.findById(id).orElseThrow(() -> ApiException.notFound("课程不存在: " + id));
         courses.findByName(request.name())
                 .filter(existing -> !existing.getId().equals(id))
@@ -148,6 +180,7 @@ public class FoundationService {
             course.setAllowConsecutive(request.allowConsecutive());
         }
         course.setColor(blankToNull(request.color()));
+        course.setWeeklyHours(request.weeklyHours());
     }
 
     // ---------- grades ----------
@@ -162,6 +195,7 @@ public class FoundationService {
 
     @Transactional
     public GradeDto createGrade(Long semesterId, SaveGradeRequest request) {
+        schoolDataLock.acquire();
         Long resolved = resolveSemester(semesterId);
         if (grades.existsBySemesterIdAndName(resolved, request.name())) {
             throw ApiException.conflict("年级已存在: " + request.name());
@@ -175,6 +209,7 @@ public class FoundationService {
 
     @Transactional
     public GradeDto updateGrade(Long id, SaveGradeRequest request) {
+        schoolDataLock.acquire();
         Grade grade = grades.findById(id).orElseThrow(() -> ApiException.notFound("年级不存在: " + id));
         grades.findBySemesterIdAndName(grade.getSemesterId(), request.name())
                 .filter(existing -> !existing.getId().equals(id))
@@ -185,6 +220,7 @@ public class FoundationService {
         if (request.sortOrder() != null) {
             grade.setSortOrder(request.sortOrder());
         }
+        events.publishEvent(new HomeroomChangedEvent());
         return toDto(grade);
     }
 
@@ -211,6 +247,7 @@ public class FoundationService {
 
     @Transactional
     public ClassDto createClass(Long semesterId, SaveClassRequest request) {
+        schoolDataLock.acquire();
         Long resolved = resolveSemester(semesterId);
         Grade grade = grades.findById(request.gradeId())
                 .orElseThrow(() -> ApiException.notFound("年级不存在: " + request.gradeId()));
@@ -235,11 +272,15 @@ public class FoundationService {
         teachingClass.setAdminClassId(saved.getId());
         teachingClass.setName(saved.getName());
         TeachingClass savedTeaching = teachingClasses.save(teachingClass);
+        if (saved.getHeadTeacherId() != null) {
+            events.publishEvent(new HomeroomChangedEvent());
+        }
         return toDto(saved, grade.getName(), headTeacherName(saved.getHeadTeacherId()), savedTeaching.getId());
     }
 
     @Transactional
     public ClassDto updateClass(Long id, SaveClassRequest request) {
+        schoolDataLock.acquire();
         AdminClass adminClass = classes.findById(id).orElseThrow(() -> ApiException.notFound("班级不存在: " + id));
         Grade grade = grades.findById(request.gradeId())
                 .orElseThrow(() -> ApiException.notFound("年级不存在: " + request.gradeId()));
@@ -252,6 +293,8 @@ public class FoundationService {
                     throw ApiException.conflict("班级已存在: " + request.name());
                 });
         validateHeadTeacher(request.headTeacherId());
+        boolean homeroomChanged = !java.util.Objects.equals(adminClass.getHeadTeacherId(), request.headTeacherId())
+                || !adminClass.getGradeId().equals(request.gradeId());
         adminClass.setGradeId(request.gradeId());
         adminClass.setName(request.name());
         adminClass.setHeadTeacherId(request.headTeacherId());
@@ -260,12 +303,20 @@ public class FoundationService {
         }
         teachingClasses.findByAdminClassId(id).ifPresent(teachingClass -> teachingClass.setName(request.name()));
         Long teachingId = teachingClasses.findByAdminClassId(id).map(TeachingClass::getId).orElse(null);
+        if (homeroomChanged) {
+            events.publishEvent(new HomeroomChangedEvent());
+        }
         return toDto(adminClass, grade.getName(), headTeacherName(adminClass.getHeadTeacherId()), teachingId);
     }
 
     @Transactional(readOnly = true)
     public List<AuditLogDto> auditLogs() {
-        return auditLogs.findTop100ByOrderByCreatedAtDesc().stream()
+        // 票 02：账号事件只在账号审计页（audit:view:account）出现。这个通用接口由
+        // foundation:manage 打开，教务管理员也持有，所以过滤放在数据库查询里，
+        // 而不是让有权限的人拿到账号操作再在前端隐藏。
+        return auditLogs.findRecentOutsideCategory(
+                        "ACCOUNT", org.springframework.data.domain.PageRequest.of(0, 100))
+                .stream()
                 .map(log -> new AuditLogDto(
                         log.getId(), log.getActor(), log.getAction(), log.getEntityType(),
                         log.getDetail(), log.getSuccessRows(), log.getFailedRows(), log.getCreatedAt()))
@@ -371,7 +422,7 @@ public class FoundationService {
     private CourseDto toDto(Course course) {
         return new CourseDto(
                 course.getId(), course.getName(), course.getSubject(), course.isAllowConsecutive(),
-                course.getColor(), course.isActive());
+                course.getColor(), course.isActive(), course.getWeeklyHours());
     }
 
     private GradeDto toDto(Grade grade) {

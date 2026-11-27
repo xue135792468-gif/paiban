@@ -2,6 +2,8 @@ package com.paiban.foundation.service;
 
 import com.paiban.common.event.PeriodsChangedEvent;
 import com.paiban.common.event.SemesterCreatedEvent;
+import com.paiban.common.event.HomeroomChangedEvent;
+import com.paiban.common.event.SchoolDataWriteLock;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.Period;
 import com.paiban.foundation.domain.PeriodRepository;
@@ -35,12 +37,15 @@ public class SemesterService {
     private final com.paiban.scheduling.domain.DraftLessonRepository draftLessons;
     private final ApplicationEventPublisher events;
 
+    private final SchoolDataWriteLock schoolDataLock;
+
     public SemesterService(
             SemesterRepository semesters,
             PeriodRepository periods,
             com.paiban.timetable.domain.TimetableEntryRepository timetableEntries,
             com.paiban.scheduling.domain.DraftLessonRepository draftLessons,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events, SchoolDataWriteLock schoolDataLock) {
+        this.schoolDataLock = schoolDataLock;
         this.semesters = semesters;
         this.periods = periods;
         this.timetableEntries = timetableEntries;
@@ -64,6 +69,7 @@ public class SemesterService {
         if (semesters.existsByName(request.name())) {
             throw ApiException.conflict("学期名称已存在: " + request.name());
         }
+        schoolDataLock.acquire();
         boolean hasActiveCurrent = false;
         for (Semester existing : semesters.findAll()) {
             if (!existing.isCurrent()) {
@@ -84,6 +90,9 @@ public class SemesterService {
         semester.setCreatedAt(Instant.now());
         Semester saved = semesters.save(semester);
         events.publishEvent(new SemesterCreatedEvent(saved.getId()));
+        if (!hasActiveCurrent) {
+            events.publishEvent(new HomeroomChangedEvent());
+        }
         return toDto(saved);
     }
 
@@ -102,8 +111,10 @@ public class SemesterService {
 
     @Transactional
     public SemesterDto setCurrent(Long id) {
+        schoolDataLock.acquire();
         Semester target = require(id);
         semesters.findAll().forEach(semester -> semester.setCurrent(semester.getId().equals(target.getId())));
+        events.publishEvent(new HomeroomChangedEvent());
         return toDto(target);
     }
 

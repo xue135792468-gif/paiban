@@ -1,0 +1,8 @@
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 3.854 s -- in com.paiban.acceptance.OldDatabaseUpgradeAcceptanceTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.699 s -- in com.paiban.identity.RoleReshapeIntegrationTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 16.50 s -- in com.paiban.integration.DingTalkAcceptanceChainIntegrationTest
+[WARNING] Tests run: 1265, Failures: 0, Errors: 0, Skipped: 7
+ Test Files  106 passed (106)
+      Tests  803 passed (803)
+  155 passed (21.2m)
+==> verify: ok

@@ -2,6 +2,8 @@ package com.paiban.identity.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -31,8 +33,14 @@ public class AppUser {
     @Column(nullable = false, unique = true, length = 64)
     private String username;
 
-    @Column(name = "password_hash", nullable = false, length = 100)
+    /** DINGTALK 账号没有密码，因此这里允许 null；组合由 V62 的 CHECK 与实体默认值共同保证。 */
+    @Column(name = "password_hash", length = 100)
     private String passwordHash;
+
+    /** 票 03：登录类型。新账号默认 PASSWORD；钉钉免登账号显式设为 DINGTALK 且哈希为 null。 */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "login_type", nullable = false, length = 16)
+    private LoginType loginType = LoginType.PASSWORD;
 
     @Column(name = "display_name", nullable = false, length = 100)
     private String displayName;

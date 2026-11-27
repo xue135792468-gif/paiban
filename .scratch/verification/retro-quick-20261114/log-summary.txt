@@ -1,0 +1,14 @@
+# metadata-only log digest; the raw log stays local and is never archived
+# no log text is stored here, only counts and hashes
+LOG_RAW=.runtime/verification/retro-quick-20261114/verify.log
+LOG_BYTES=12228
+LOG_SHA256=dd0ef335e315a5bfe87d5e2825064720190d4f9b3d9680ae724a6b3fd32fd727
+LOG_LINES_TOTAL=184
+LOG_EMPTY=0
+LOG_LINES_WITH_BUILD_FAILURE=0
+LOG_LINES_WITH_TESTS_RUN=0
+LOG_LINES_WITH_ERROR=0
+LOG_LINES_WITH_VERIFY_OK=1
+LOG_LINES_WITH_SKIPPED=0
+POSTGRES_CONTAINER_SIGNAL=not-observed
+LOG_EXCERPT=redacted-by-design

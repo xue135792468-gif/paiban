@@ -40,7 +40,7 @@ public class RuleGroup {
     @Column(name = "group_type", nullable = false, length = 16)
     private RuleGroupType groupType;
 
-    @Column(nullable = false, length = 64)
+    @Column(nullable = false, length = 103)
     private String name;
 
     /** Only a {@code TIME} group belongs to a semester; teacher/course groups are global. */

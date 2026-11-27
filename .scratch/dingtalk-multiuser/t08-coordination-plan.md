@@ -1,0 +1,21 @@
+> 2026-11-13 最新：原八票源码均已整合，含08的固定审源be48fc0、接收单2c09fdb；主控验收见t08-main-acceptance.md（HANDOFF中链接为dingtalk-multiuser/t08-main-acceptance.md）。01–07为implemented，08三项专项验收已具备，仍待整特性两轴终审、统一fixer整改与最终一次full verify，不能标done。Standards预审H1交Turing；Spec预审四项观察已由原轴自行核对撤回，原稿/更正均保留。未push/部署，真实PG/租户/手机未验，09删除拒绝继续保留。
+
+> 2026-11-13 08已施工：07最终双轴放行文档b7cac2e。主控负责dingtalk-t08-chain后端整链；Galileo负责dingtalk-t08-upgrade存量迁移；Dalton负责dingtalk-t08-browser手机/电脑真实UI整链。基于同源016859b，结束合最新集成。原八票最终全量仍未跑，未push/部署。
+
+# 08 分工与启动门槛（准备，未施工）
+
+07双轴与主控放行前，不认领08、不创建施工候选；当前只把可独立任务边界写清。基础规格、旧列投影例外与Fake身份格式见t08-acceptance-plan.md，审批/通知契约沿用t05/t06最终记录。
+
+|切片|独立写集|验收输出|
+|---|---|---|
+|后端整链|FakeDingTalkClient的纯合成身份解析；新Fake身份回归与新公开HTTP整链测试；本切片delivery|唯一同名未绑定教师首次免登自动开号，角色Teacher；真实JWT提交待批，独立教务改为第三位老师批准；状态/历史/课表实效、账号审计、申请人及最终老师精确通知与无多余对象；默认目录两人/未知员工拒绝保持。不得把整个DingTalkClient mock掉来替代实际认证；可用spy观察外部通知边界并以现有executor屏障收尾。|
+|存量迁移|独立旧库升级测试及必要专属测试fixture；本切片delivery|V59有数据旧库→classpath全部当前迁移；旧列名投影逐值比较，授权表有意变更分开断言，新列默认/约束/索引单独检查。业务表、凭据/绑定/启停、旧审计/历史主体必须有带数据的对照，不能只比行数。只跑H2时明确不证明真实PG。|
+|浏览器整链|新手机→电脑→手机E2E；按需将公共Fake SDK/错误收集抽入helpers.ts并更新直接受影响03/07spec；本切片delivery|手机DingTalk UA+假SDK调用真实认证POST，独立教师/教务账号真实UI提交改人批准，老师看已生效和最终人；console/pageerror与关键页面截图。不得route造JWT/成功响应；不碰共享默认EMP001/002身份，不降级/改绑他人fixture。|
+
+后端与前端共同使用已固定fake:acceptance:caseId规则，唯后端切片可改FakeDingTalkClient；新FakeDingTalkProbeClient不受影响。三个教师至少区分原任课/申请人与期望人、最终人，独立教务不是申请人；只处理本例自己创建的记录。老师姓名、日期/课节/班课程等重复文本须按本例行/容器限定。
+
+公共交互按CODING_STANDARDS放helpers.ts；新增导出名先查是否存在，避免触发其他spec的同名重复，抽取时更新直接调用者，不扫描重构全项目。改共享helper后主控定向跑受影响组；UI切片仅写测试/最小必要浏览器接缝，不因验收增造产品控制端点或新功能。手机布局如有实际失败，先保留失败/截图报主控，再定修复边界。
+
+各切片先查资源并读tdd，独立worktree基于07放行源，交付前合入集成最新；单票定向，不full verify。Vitest不与E2E并发，最多两路Maven。真实浏览器由主控整合后串行跑，源冻结；所有失败原始日志与host退出码保留，不冒充行为红测。
+
+原8票均施工后，对起点2e5e585f6ed80d5024af6b734162a70829b067cf做全规格双轴review，确认问题交单一fixer，收口证据与文档后冻结源，最后一次full verify。通过后只做文档类done收口；不push、不部署。保留09已拒绝的清理，不执行任何删除/cleanup（含空目录、自动finally）；只关停自己启动的临时进程。

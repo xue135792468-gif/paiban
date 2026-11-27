@@ -1,0 +1,37 @@
+[
+  {
+    "Class": "com.paiban.ai.DeepSeekManualIT",
+    "Case": "realDeepSeekChatReturnsContent",
+    "Reason": "Environment variable [DEEPSEEK_API_KEY] does not exist"
+  },
+  {
+    "Class": "com.paiban.ai.DeepSeekManualIT",
+    "Case": "realDeepSeekVisionCallWhenAVisionModelIsConfigured",
+    "Reason": "Environment variable [DEEPSEEK_API_KEY] does not exist"
+  },
+  {
+    "Class": "com.paiban.imports.ManualImportIntegrationTest",
+    "Case": "realWorkbookMatchesTheSpecNumbers",
+    "Reason": "System property [paiban.realWorkbook] does not exist"
+  },
+  {
+    "Class": "com.paiban.imports.ManualImportIntegrationTest",
+    "Case": "realWorkbookPlaceholderAlreadyInTeacherTableIsOnlyAWarning",
+    "Reason": "System property [paiban.realWorkbook] does not exist"
+  },
+  {
+    "Class": "com.paiban.perf.PerformanceBenchmarkIT",
+    "Case": "swapPlannerStaysWithinItsBudget",
+    "Reason": "System property [perf] does not exist"
+  },
+  {
+    "Class": "com.paiban.perf.PerformanceBenchmarkIT",
+    "Case": "adr0017Targets",
+    "Reason": "System property [perf] does not exist"
+  },
+  {
+    "Class": "com.paiban.support.PostgresContainerIT",
+    "Case": "flywayMigrationsApplyOnPostgres",
+    "Reason": "System property [testcontainers] does not exist"
+  }
+]

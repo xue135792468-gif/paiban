@@ -1,11 +1,13 @@
-import { expect, test, type Locator } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import {
   apiCall,
   apiLogin,
   classEntries,
   dateFor,
+  fillDateInput,
   isoDate,
   newContext,
+  pickFirstVisibleOption,
   seedSchool,
   shiftDate,
   solveAndPublish,
@@ -17,7 +19,7 @@ function dateForWeekday(dayOfWeek: number) {
   return dateFor(dayOfWeek)
 }
 
-test('场景 2：教师提交代课直接生效 → 统计与课表叠加', async ({ page }) => {
+test('场景 2：教师提交代课 → 教务审批生效 → 统计与课表叠加', async ({ page }) => {
   const api = await newContext()
   const seed = await seedSchool(api)
   await solveAndPublish(api, seed)
@@ -51,43 +53,49 @@ test('场景 2：教师提交代课直接生效 → 统计与课表叠加', asyn
   await page.keyboard.press('Escape')
   await expect(datePanel).toBeHidden()
 
-  await dateInput.fill(effectiveDate)
-  await dateInput.press('Tab')
+  await fillDateInput(dateInput, effectiveDate)
 
-  /**
-   * Element Plus 的 popper 是 teleport 到 body 的：选完一个下拉后它还要播收起的
-   * 过渡动画，此时 `.el-select-dropdown:visible` 仍会先匹配到那张正在消失的旧面板
-   * （里面的首项是 is-selected），点它会一直重试到超时。所以每次都等旧面板真正
-   * 隐藏，再取 `.last()`（刚打开的那张），并用元素自身 click 绕过稳定性检查。
-   */
-  async function pickFirstOption(select: Locator) {
-    await select.click()
-    const dropdown = page.locator('.el-select-dropdown:visible').last()
-    const option = dropdown.locator('.el-select-dropdown__item').first()
-    await expect(option).toBeVisible()
-    await option.evaluate((element) => (element as HTMLElement).click())
-    await expect(dropdown).toBeHidden()
-  }
+  await pickFirstVisibleOption(
+    page.locator('.el-form-item', { hasText: '我的课节' }).locator('.el-select'),
+  )
 
-  await pickFirstOption(page.locator('.el-form-item', { hasText: '我的课节' }).locator('.el-select'))
-
-  // 代课现在直接生效：提交时必须指定代课教师（后端要求），选中另一位教师。
-  await pickFirstOption(
+  // 提交时必须指定代课教师（后端要求），选中另一位教师；提交后停在待审批。
+  await pickFirstVisibleOption(
     page.locator('.el-form-item', { hasText: '期望代课' }).locator('.el-select'),
   )
 
   await page.getByPlaceholder('如：家中有事，需要请假半天').fill('家中有事，需要请假')
   await page.getByRole('button', { name: '提交申请' }).click()
-  await expect(page.getByText('调代已直接生效')).toBeVisible()
+  await expect(page.getByText('申请已提交，等待教务审批')).toBeVisible()
+  await expect(page.locator('.el-table').getByText('待审批').first()).toBeVisible()
+
+  // 票 05：自助提交不即时生效；走真实审批接口后再断言原有业务结果。
+  const teacherToken = await apiLogin(api, seed.username, seed.password)
+  const mine = await apiCall(api, teacherToken, 'get', '/substitution-requests?mine=true')
+  const request = mine.find(
+    (item: { entryId: number; effectiveDate: string; status: string }) =>
+      item.entryId === entry!.id
+      && item.effectiveDate === effectiveDate
+      && item.status === 'SUBMITTED',
+  )
+  expect(request).toBeTruthy()
+  const token = await apiLogin(api)
+  const approved = await apiCall(
+    api,
+    token,
+    'post',
+    `/substitution-requests/${request.id}/approve`,
+    {},
+  )
+  expect(approved.status).toBe('EFFECTIVE')
 
   // A cover is counted separately from a swap: the original teacher was covered
   // once, and is not credited with any swap participation.
-  const token = await apiLogin(api)
   const stats = await apiCall(api, token, 'get', `/substitutions/stats?teacherId=${seed.teacherId}`)
   expect(stats.substitutedOut).toBe(1)
   expect(stats.swapParticipation).toBe(0)
 
-  // 管理员视角的调代记录里这一单直接标「已生效」。
+  // 管理员视角的调代记录里这一单在审批后标「已生效」。
   await page.evaluate(() => localStorage.clear())
   await uiLogin(page, 'admin', 'admin123')
   await page.goto('/substitution/requests')

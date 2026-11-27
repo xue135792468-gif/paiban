@@ -70,7 +70,7 @@ public class FoundationExcelService {
     private List<String> exportHeaders(String entity) {
         return switch (entity) {
             case "teachers" -> List.of("姓名", "工号", "手机号", "邮箱", "学科", "状态");
-            case "courses" -> List.of("课程名称", "学科", "是否允许连堂", "颜色");
+            case "courses" -> List.of("课程名称", "学科", "是否允许连堂", "颜色", "周课时数");
             case "grades" -> List.of("年级名称", "排序");
             case "classes" -> List.of("年级名称", "班级名称", "班主任姓名", "学生人数");
             default -> throw new IllegalArgumentException("不支持导出的实体: " + entity);
@@ -110,7 +110,8 @@ public class FoundationExcelService {
                 course.name(),
                 course.subject(),
                 course.allowConsecutive() ? "是" : "否",
-                course.color());
+                course.color(),
+                java.util.Objects.toString(course.weeklyHours(), ""));
     }
 
     private List<String> gradeRow(GradeDto grade) {
@@ -150,6 +151,7 @@ public class FoundationExcelService {
             case "courses:课程名称" -> "数学";
             case "courses:学科" -> "数学";
             case "courses:是否允许连堂" -> "是";
+            case "courses:周课时数" -> "5";
             case "courses:颜色" -> "#AEC6CF";
             case "grades:年级名称" -> "高一";
             case "grades:排序" -> "1";

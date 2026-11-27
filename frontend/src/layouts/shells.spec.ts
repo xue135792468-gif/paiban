@@ -1,11 +1,15 @@
 import { mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import DataLayout from './DataLayout.vue'
 import SettingsLayout from './SettingsLayout.vue'
 import SubstitutionLayout from './SubstitutionLayout.vue'
 import WorkbenchLayout from './WorkbenchLayout.vue'
+
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => ({ hasPermission: () => true }),
+}))
 
 async function mountLayout(component: object, path: string) {
   const router = createRouter({
@@ -34,7 +38,7 @@ describe('域级壳层只保留局部导航', () => {
     wrapper.unmount()
   })
 
-  it('数据管理按建校顺序分为三组共八项', async () => {
+  it('数据管理按建校顺序分为三组共九项', async () => {
     const wrapper = await mountLayout(DataLayout, '/data/grades')
     expect(wrapper.findAll('.group-label').map((group) => group.text())).toEqual([
       '基础档案',
@@ -48,6 +52,7 @@ describe('域级壳层只保留局部导航', () => {
       '课程',
       '教师',
       '授课任务',
+      '任课表',
       '数据导入',
       '导入配方',
     ])

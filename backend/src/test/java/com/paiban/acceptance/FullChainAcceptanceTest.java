@@ -158,7 +158,7 @@ class FullChainAcceptanceTest extends ApiIntegrationTest {
                 .body("entryCount", org.hamcrest.Matchers.equalTo(LESSON_COUNT));
         assertThat(entries.countBySemesterId(semesterId)).isEqualTo(LESSON_COUNT);
 
-        // (f) 调代直接生效（票 15 保留的自助路径）：提交后叠加到已发布课表上。
+        // (f) 调代审批链（票 05）：提交停待审批，批准后才叠加到已发布课表上。
         long classId = classIdByName(admin, semesterId, "八（1）");
         Map<String, Object> slot = entryAt(admin, classId, 1, 1);
         long entryId = number(slot, "id");
@@ -172,6 +172,11 @@ class FullChainAcceptanceTest extends ApiIntegrationTest {
         submitted.then().statusCode(200)
                 .body("entryId", org.hamcrest.Matchers.equalTo((int) entryId))
                 .body("substituteTeacherId", org.hamcrest.Matchers.equalTo((int) substituteTeacherId))
+                .body("status", org.hamcrest.Matchers.equalTo("SUBMITTED"));
+        long submittedRequestId = submitted.jsonPath().getLong("id");
+        as(admin).body(Map.of()).when()
+                .post("/api/substitution-requests/" + submittedRequestId + "/approve")
+                .then().statusCode(200)
                 .body("status", org.hamcrest.Matchers.equalTo("EFFECTIVE"));
 
         List<Map<String, Object>> dated = as(admin).queryParam("date", monday.toString())

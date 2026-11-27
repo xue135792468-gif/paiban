@@ -22,7 +22,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 
 /**
@@ -171,6 +170,14 @@ public class SubstitutionEffects {
         notifications.substitutionEffective(request, substitution, variables(request));
     }
 
+    public void notifyApprovalApproved(SubstitutionRequest request) {
+        notifications.approvalApproved(request, request.getApprovalComment());
+    }
+
+    public void notifyApprovalRejected(SubstitutionRequest request) {
+        notifications.approvalRejected(request, request.getApprovalComment());
+    }
+
     public void notifySwap(SubstitutionRequest request, List<PlanMove> moves) {
         Map<Long, String> details = new LinkedHashMap<>();
         for (PlanMove move : moves) {
@@ -180,8 +187,7 @@ public class SubstitutionEffects {
                     + "（" + move.toDate() + "）";
             details.merge(move.teacherId(), text, (left, right) -> left + "；" + right);
         }
-        String summary = details.values().stream().collect(Collectors.joining("；"));
-        notifications.swapEffective(request, details, summary);
+        notifications.swapEffective(request, details);
     }
 
     public Map<String, Object> variables(SubstitutionRequest request) {

@@ -10,6 +10,9 @@ import com.paiban.identity.domain.Permissions;
 import com.paiban.scheduling.service.AssignmentExcelService;
 import com.paiban.scheduling.service.AssignmentImportService;
 import com.paiban.scheduling.service.AssignmentService;
+import com.paiban.scheduling.service.TeachingMatrixService;
+import com.paiban.scheduling.web.TeachingMatrixDtos.Options;
+import com.paiban.scheduling.web.TeachingMatrixDtos.Report;
 import com.paiban.scheduling.web.AssignmentDtos.AssignmentDto;
 import com.paiban.scheduling.web.AssignmentDtos.SaveAssignmentRequest;
 import jakarta.validation.Valid;
@@ -30,6 +33,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -44,12 +48,14 @@ public class AssignmentController {
     private final AssignmentImportService importService;
     private final AssignmentExcelService excelService;
     private final LifecycleService lifecycle;
+    private final TeachingMatrixService matrix;
 
     public AssignmentController(
             AssignmentService service,
             AssignmentImportService importService,
             AssignmentExcelService excelService,
-            LifecycleService lifecycle) {
+            LifecycleService lifecycle, TeachingMatrixService matrix) {
+        this.matrix = matrix;
         this.service = service;
         this.importService = importService;
         this.excelService = excelService;
@@ -77,8 +83,9 @@ public class AssignmentController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('" + Permissions.ASSIGNMENT_MANAGE + "')")
-    public AssignmentDto create(@Valid @RequestBody SaveAssignmentRequest request) {
-        return service.create(request);
+    public AssignmentDto create(@RequestParam(required = false) Long semesterId,
+                                @Valid @RequestBody SaveAssignmentRequest request) {
+        return semesterId == null ? service.create(request) : service.create(semesterId, request);
     }
 
     @PutMapping("/{id}")
@@ -138,6 +145,34 @@ public class AssignmentController {
     @PreAuthorize("hasAuthority('" + Permissions.ASSIGNMENT_MANAGE + "')")
     public ResponseEntity<byte[]> export(@RequestParam(required = false) Long semesterId) {
         return download(excelService.export(semesterId), "授课任务.xlsx");
+    }
+
+    @PostMapping(value = "/matrix/import/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAuthority('" + Permissions.ASSIGNMENT_MANAGE + "')")
+    public Report previewMatrix(@RequestParam Long semesterId, @RequestParam Long gradeId,
+            @RequestParam("file") MultipartFile file, @RequestPart(required = false) Options options) {
+        return matrix.preview(semesterId, gradeId, file, options);
+    }
+
+    @PostMapping(value = "/matrix/import/commit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAuthority('" + Permissions.ASSIGNMENT_MANAGE + "')")
+    public ResponseEntity<Report> commitMatrix(@RequestParam Long semesterId, @RequestParam Long gradeId,
+            @RequestParam("file") MultipartFile file, @RequestPart(required = false) Options options,
+            @RequestParam(required = false) String previewKey, Principal principal) {
+        Report report = matrix.commit(semesterId, gradeId, file, options, previewKey, principal.getName());
+        return report.canCommit() ? ResponseEntity.ok(report) : ResponseEntity.badRequest().body(report);
+    }
+
+    @GetMapping("/matrix/template")
+    @PreAuthorize("hasAuthority('" + Permissions.ASSIGNMENT_MANAGE + "')")
+    public ResponseEntity<byte[]> matrixTemplate(@RequestParam Long semesterId, @RequestParam Long gradeId) {
+        return download(matrix.export(semesterId, gradeId, true), "任课表导入模板.xlsx");
+    }
+
+    @GetMapping("/matrix/export")
+    @PreAuthorize("hasAuthority('" + Permissions.ASSIGNMENT_MANAGE + "')")
+    public ResponseEntity<byte[]> matrixExport(@RequestParam Long semesterId, @RequestParam Long gradeId) {
+        return download(matrix.export(semesterId, gradeId, false), "任课表.xlsx");
     }
 
     private ResponseEntity<byte[]> download(byte[] content, String filename) {

@@ -9,6 +9,9 @@ import static org.mockito.Mockito.when;
 import com.paiban.common.web.ApiException;
 import com.paiban.foundation.domain.Teacher;
 import com.paiban.foundation.domain.TeacherRepository;
+import com.paiban.identity.domain.AppUserRepository;
+import com.paiban.identity.service.DingTalkBindingPolicy;
+import com.paiban.identity.service.UserService;
 import com.paiban.integration.domain.DingDepartment;
 import com.paiban.integration.domain.DingUser;
 import com.paiban.integration.org.DingTalkSyncDecisions.Action;
@@ -25,12 +28,24 @@ import org.junit.jupiter.api.Test;
 class DingTalkSyncPlannerTest {
 
     private final TeacherRepository teachers = mock(TeacherRepository.class);
+    private final AppUserRepository accounts = mock(AppUserRepository.class);
     private final DingTalkSyncPlanner planner =
-            new DingTalkSyncPlanner(new DingTalkTeacherMatcher(teachers), teachers, new DingTalkMergeRules());
+            new DingTalkSyncPlanner(
+                    new DingTalkTeacherMatcher(teachers),
+                    teachers,
+                    new DingTalkMergeRules(),
+                    new DingTalkBindingPolicy(accounts, mock(UserService.class)));
 
     @BeforeEach
     void noNameMatchesByDefault() {
         when(teachers.findByName(anyString())).thenReturn(List.of());
+    }
+
+    /** 03-C：这张档案关联管理员账号且还没绑定钉钉。 */
+    private void protect(Teacher teacher) {
+        when(accounts.existsByTeacherIdAndRolesPermissionsCodeIn(
+                        teacher.getId(), DingTalkBindingPolicy.MANAGEMENT_PERMISSIONS))
+                .thenReturn(true);
     }
 
     @Test
@@ -225,6 +240,71 @@ class DingTalkSyncPlannerTest {
 
         assertThat(item.category()).isEqualTo(Category.SKIP);
         assertThat(item.reason()).isEqualTo("无有效字段");
+    }
+
+    // ---------- 03-C：管理员档案不得被同步首次绑定 ----------
+
+    @Test
+    void aKeyMatchedProtectedProfileIsSkippedInsteadOfBindingTheUid() {
+        Teacher admin = teacher(9, "王校长");
+        admin.setEmployeeNo("EMP1");
+        protect(admin);
+        when(teachers.findByEmployeeNo("EMP1")).thenReturn(Optional.of(admin));
+
+        Item item = planner.plan(directory(user("dd-1", "王校长", "13800000001", "EMP1")), none())
+                .items().get(0);
+
+        assertThat(item.category()).isEqualTo(Category.SKIP);
+        assertThat(item.reason()).isEqualTo(DingTalkSyncPlanner.PROTECTED_BINDING_REASON);
+        assertThat(item.fills()).as("整行跳过，不许顺手补 UID / 手机号").isEmpty();
+        assertThat(item.matchedTeacherId()).isNull();
+    }
+
+    @Test
+    void anExplicitSameNameMergeOntoAProtectedProfileIsSkippedWithTheSameReason() {
+        Teacher admin = teacher(9, "王校长");
+        protect(admin);
+        when(teachers.findByName("王校长")).thenReturn(List.of(admin));
+        DingTalkSyncDecisions decisions = new DingTalkSyncDecisions(
+                Set.of(), Set.of(),
+                Map.of("dd-1", new DingTalkSyncDecisions.SuspectedDecision(Action.MERGE, 9L)));
+
+        Item item = planner.plan(directory(user("dd-1", "王校长", "13800000001", "EMP1")), decisions)
+                .items().get(0);
+
+        assertThat(item.category()).isEqualTo(Category.SKIP);
+        assertThat(item.reason()).isEqualTo(DingTalkSyncPlanner.PROTECTED_BINDING_REASON);
+        assertThat(item.fills()).isEmpty();
+    }
+
+    @Test
+    void anAlreadyBoundProtectedProfileStillFillsOtherEmptyFields() {
+        Teacher admin = teacher(9, "王校长");
+        admin.setDingtalkUserId("dd-1");
+        protect(admin);
+        when(teachers.findByDingtalkUserId("dd-1")).thenReturn(Optional.of(admin));
+
+        Item item = planner.plan(directory(user("dd-1", "王校长", "13800000001", null)), none())
+                .items().get(0);
+
+        assertThat(item.category()).isEqualTo(Category.MERGE);
+        assertThat(item.matchedTeacherId()).isEqualTo(9L);
+        assertThat(item.fills()).extracting(DingTalkSyncPlan.FieldChange::field)
+                .containsExactly(DingTalkMergeRules.PHONE);
+    }
+
+    @Test
+    void anOrdinaryTeacherStillGetsTheUidFromAKeyMatch() {
+        Teacher ordinary = teacher(9, "王老师");
+        ordinary.setEmployeeNo("EMP1");
+        when(teachers.findByEmployeeNo("EMP1")).thenReturn(Optional.of(ordinary));
+
+        Item item = planner.plan(directory(user("dd-1", "王老师", "13800000001", "EMP1")), none())
+                .items().get(0);
+
+        assertThat(item.category()).isEqualTo(Category.MERGE);
+        assertThat(item.fills()).anySatisfy(change -> assertThat(change.field())
+                .isEqualTo(DingTalkMergeRules.DINGTALK_USER_ID));
     }
 
     private DingTalkDirectory directory(DingUser... users) {

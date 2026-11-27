@@ -1,6 +1,8 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { DRAFT_MANAGER_PERMISSIONS } from '@/constants/permissions'
 import { dataLandingPath } from '@/layouts/navigation'
 import { useAuthStore } from '@/stores/auth'
+import { authGuard } from './guard'
 
 /**
  * Single route table for the app. Exported so route-level specs can build a
@@ -56,7 +58,7 @@ export const routes: RouteRecordRaw[] = [
             component: () => import('@/views/SchedulingView.vue'),
             meta: {
               title: '课表工作台',
-              permissionAny: ['scheduling:run', 'timetable:edit'],
+              permissionAny: [...DRAFT_MANAGER_PERMISSIONS],
             },
           },
           {
@@ -154,6 +156,12 @@ export const routes: RouteRecordRaw[] = [
             meta: { title: '授课任务', permissionAny: ['assignment:manage', 'assignment:view:own'] },
           },
           {
+            path: 'teaching-matrix',
+            name: 'teaching-matrix',
+            component: () => import('@/views/TeachingMatrixView.vue'),
+            meta: { title: '任课表', permission: 'assignment:manage' },
+          },
+          {
             path: 'import',
             name: 'ai-import',
             component: () => import('@/views/DataImportView.vue'),
@@ -199,6 +207,13 @@ export const routes: RouteRecordRaw[] = [
             name: 'users',
             component: () => import('@/views/UserAdminView.vue'),
             meta: { title: '账号', permission: 'user:manage' },
+          },
+          {
+            // 票 02：账号审计只给持有「账号审计查看」的超级管理员。
+            path: 'account-audit',
+            name: 'account-audit',
+            component: () => import('@/views/AccountAuditView.vue'),
+            meta: { title: '账号审计', permission: 'audit:view:account' },
           },
           {
             path: 'recycle-bin',
@@ -269,23 +284,6 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach((to) => {
-  const auth = useAuthStore()
-  if (to.meta.public) {
-    return true
-  }
-  if (!auth.isLoggedIn) {
-    return { name: 'login', query: { redirect: to.fullPath } }
-  }
-  const required = to.meta.permission as string | undefined
-  if (required && !auth.hasPermission(required)) {
-    return { name: 'forbidden' }
-  }
-  const any = to.meta.permissionAny as string[] | undefined
-  if (any && !auth.hasAnyPermission(any)) {
-    return { name: 'forbidden' }
-  }
-  return true
-})
+router.beforeEach(authGuard)
 
 export default router

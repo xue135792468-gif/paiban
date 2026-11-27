@@ -66,10 +66,17 @@
               <span v-if="lockedIds.has(lesson.id)" class="lock-mark">锁</span>
             </div>
             <div class="lesson-meta">{{ lessonMeta(lesson) }}</div>
+            <div v-if="lessonNotes[lesson.id]" class="lesson-note">{{ lessonNotes[lesson.id] }}</div>
           </div>
         </template>
         <div v-else-if="blockedReason(day, row.periodNo)" class="no-class">不上课</div>
         <div v-else class="empty-cell">—</div>
+        <div
+          v-if="vacatedReason(day, row.periodNo) && lessonsAt(day, row.periodNo).length === 0"
+          class="vacated-note"
+        >
+          {{ vacatedReason(day, row.periodNo) }}
+        </div>
         <div v-if="foreignReasonAt(day, row.periodNo)" class="foreign-busy-reason">
           {{ foreignReasonAt(day, row.periodNo) }}
         </div>
@@ -131,6 +138,16 @@ const props = withDefaults(
     dragClassView?: boolean
     /** 票 17：该教师在其他班有课的节次（periodId → 原因），拖动时标灰显示。 */
     foreignTeacherPeriods?: Record<number, string>
+    /**
+     * 联动方案预览：课节 id → 附加说明（例如「原周一第3节 → 现周一第4节」），
+     * 只影响卡片文字，不参与任何写操作。
+     */
+    lessonNotes?: Record<number, string>
+    /**
+     * 联动方案预览：课节移走后留下的空格说明（periodId → 文案），
+     * 用来回答「这节课原本在这里，现在去了哪里」。
+     */
+    vacatedPeriods?: Record<number, string>
   }>(),
   {
     draggedLessonId: null,
@@ -146,6 +163,8 @@ const props = withDefaults(
     showClassName: false,
     dragClassView: false,
     foreignTeacherPeriods: () => ({}),
+    lessonNotes: () => ({}),
+    vacatedPeriods: () => ({}),
   },
 )
 
@@ -293,6 +312,20 @@ const foreignReasonByCell = computed(() => {
 
 function foreignReasonAt(day: number, periodNo: number): string {
   return foreignReasonByCell.value[`${day}-${periodNo}`] ?? ''
+}
+
+/** 联动方案预览：该格是否有课节被方案移走，用于留空说明。 */
+const vacatedByCell = computed(() => {
+  const map: Record<string, string> = {}
+  props.periods.forEach((period) => {
+    const reason = props.vacatedPeriods[period.id]
+    if (reason) map[`${period.dayOfWeek}-${period.periodNo}`] = reason
+  })
+  return map
+})
+
+function vacatedReason(day: number, periodNo: number): string {
+  return vacatedByCell.value[`${day}-${periodNo}`] ?? ''
 }
 
 function cellClass(day: number, periodNo: number) {
@@ -550,5 +583,17 @@ function onDrop(day: number, periodNo: number) {
   font-size: 11px;
   line-height: 1.3;
   color: #6b7280;
+}
+/* 联动方案预览：卡片上的「原位置 → 新位置」与空格上的移走说明，均为只读提示。 */
+.lesson-note {
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 3px;
+  color: #337ecc;
+}
+.vacated-note {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #909399;
 }
 </style>

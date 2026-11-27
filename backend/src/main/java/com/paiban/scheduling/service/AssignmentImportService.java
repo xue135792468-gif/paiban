@@ -119,7 +119,11 @@ public class AssignmentImportService {
 
             int weeklyLessons = 0;
             if (weekly.isEmpty()) {
-                rowErrors.add(new ImportError(row.rowNumber(), "每周节数", "不能为空"));
+                if (course != null && course.weeklyHours() != null) {
+                    weeklyLessons = course.weeklyHours();
+                } else {
+                    rowErrors.add(new ImportError(row.rowNumber(), "每周节数", "请填写节数或设置课程默认周课时数"));
+                }
             } else {
                 try {
                     weeklyLessons = Integer.parseInt(weekly);
@@ -161,7 +165,7 @@ public class AssignmentImportService {
         int imported = 0;
         if (commit) {
             for (Map<String, String> row : validRows) {
-                assignments.create(new SaveAssignmentRequest(
+                assignments.create(resolved, new SaveAssignmentRequest(
                         Long.parseLong(row.get("classId")),
                         Long.parseLong(row.get("courseId")),
                         Long.parseLong(row.get("teacherId")),

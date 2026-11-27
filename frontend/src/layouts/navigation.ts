@@ -7,6 +7,7 @@ import {
   MagicStick,
   Setting,
 } from '@element-plus/icons-vue'
+import { WORKBENCH_MANAGER_PERMISSIONS, canManageDrafts } from '@/constants/permissions'
 
 /**
  * 侧边导航的唯一一份定义。
@@ -100,13 +101,22 @@ export function dataLandingPath(can: (permission: string) => boolean): string {
  * workbench itself, read-only timetable viewers get the timetable page.
  */
 export function workbenchLandingPath(can: (permission: string) => boolean): string {
-  return can('scheduling:run') || can('timetable:edit') ? '/workbench' : '/workbench/timetable'
+  return canManageDrafts(can) ? '/workbench' : '/workbench/timetable'
 }
 
 /** Where a menu entry actually navigates to for this caller. */
 export function resolveMenuPath(path: string, can: (permission: string) => boolean): string {
   if (path === '/workbench') return workbenchLandingPath(can)
   if (path === '/data') return dataLandingPath(can)
+  // 老师（可提交、但不是完整调代管理者）点「调代课」直接进自己的「我的申请」，
+  // 不要先落到管理端工作台再看到权限提示；完整管理组合与遗漏权限的老入口保持原样。
+  if (
+    path === '/substitution' &&
+    can('substitution:submit') &&
+    !WORKBENCH_MANAGER_PERMISSIONS.every((permission) => can(permission))
+  ) {
+    return '/substitution/requests'
+  }
   return path
 }
 

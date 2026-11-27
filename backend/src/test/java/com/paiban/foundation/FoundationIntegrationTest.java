@@ -8,6 +8,10 @@ import static org.hamcrest.Matchers.notNullValue;
 
 import com.paiban.support.ApiIntegrationTest;
 import com.paiban.support.TestData;
+import com.paiban.support.ExcelFixtures;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -43,6 +47,66 @@ class FoundationIntegrationTest extends ApiIntegrationTest {
         as(token).when().get("/api/teachers")
                 .then().statusCode(200)
                 .body("name", hasItem("张老师改" + suffix));
+    }
+
+    @Test
+    void courseWeeklyHoursCanBeSetAndClearedAndRejectInvalidValues() {
+        String token = adminToken();
+        String name = "数学" + TestData.suffix();
+        String endpoint = "/api/courses/" + TestData.course(token, name);
+
+        for (int valid : new int[] {1, 20}) {
+            as(token).body(Map.of("name", name, "weeklyHours", valid))
+                    .when().put(endpoint).then().statusCode(200)
+                    .body("weeklyHours", equalTo(valid));
+        }
+        for (Number invalid : List.of(0, 21, 2.5)) {
+            as(token).body(Map.of("name", name, "weeklyHours", invalid))
+                    .when().put(endpoint).then().statusCode(400);
+        }
+        as(token).body("{\"name\":\"" + name + "\",\"weeklyHours\":null}")
+                .when().put(endpoint).then().statusCode(200)
+                .body("weeklyHours", equalTo(null));
+    }
+
+    @Test
+    void courseExcelRoundTripsHoursAndAcceptsOldTemplates() throws IOException {
+        String token = adminToken();
+        byte[] template = as(token).when().get("/api/import/courses/template").then().statusCode(200)
+                .extract().asByteArray();
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(template))) {
+            org.assertj.core.api.Assertions.assertThat(workbook.getSheetAt(0).getRow(0).getCell(4).getStringCellValue())
+                    .isEqualTo("周课时数");
+        }
+        courseUpload(token, ExcelFixtures.workbook(List.of("课程名称"), List.of(List.of("旧模板"))), "commit")
+                .then().statusCode(200).body("importedRows", equalTo(1));
+        courseUpload(token, ExcelFixtures.workbook(List.of("课程名称", "周课时数"),
+                List.of(List.of("数学", "5"), List.of("选修", ""))), "commit")
+                .then().statusCode(200).body("importedRows", equalTo(2));
+
+        byte[] exported = as(token).when().get("/api/export/courses").then().statusCode(200)
+                .extract().asByteArray();
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(exported))) {
+            var sheet = workbook.getSheetAt(0);
+            Map<String, String> exportedHours = new java.util.HashMap<>();
+            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+                var row = sheet.getRow(i);
+                exportedHours.put(row.getCell(0).getStringCellValue(), row.getCell(4).getStringCellValue());
+            }
+            org.assertj.core.api.Assertions.assertThat(exportedHours)
+                    .containsEntry("数学", "5").containsEntry("旧模板", "").containsEntry("选修", "");
+        }
+        courseUpload(token, ExcelFixtures.workbook(List.of("课程名称", "周课时数"),
+                List.of(List.of("课一", "2.5"), List.of("课二", "21"))), "preview")
+                .then().statusCode(200)
+                .body("errors.row", equalTo(List.of(2, 3)))
+                .body("errors.field", equalTo(List.of("周课时数", "周课时数")));
+    }
+
+    private io.restassured.response.Response courseUpload(String token, byte[] workbook, String phase) {
+        return as(token).contentType("multipart/form-data")
+                .multiPart("file", "courses.xlsx", workbook)
+                .when().post("/api/import/courses/" + phase);
     }
 
     @Test

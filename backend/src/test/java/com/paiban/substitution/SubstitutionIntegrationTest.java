@@ -30,7 +30,7 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
     private SubstitutionRepository substitutions;
 
     private record Context(ScheduleFixture.Result fixture, String teacherToken, String substituteToken,
-                           String headTeacherToken, long teacherA, long teacherB, long classId,
+                           String classHeadToken, long teacherA, long teacherB, long classId,
                            long entryId, LocalDate date, String username) {}
 
     private Context prepare(String token, String suffix) {
@@ -75,12 +75,13 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
                 .map(item -> ((Number) item.get("headTeacherId")).longValue())
                 .findFirst()
                 .orElseThrow();
+        // 班主任角色已下线（票 01）：这位班主任现在是普通老师账号，只用于对照「按本班」不再扩权。
         String headUsername = "head_" + suffix;
         as(token).body(Map.of(
                         "username", headUsername,
                         "password", "teacher123",
                         "displayName", "班主任",
-                        "roleCodes", List.of("head_teacher"),
+                        "roleCodes", List.of("teacher"),
                         "teacherId", headTeacherId))
                 .when().post("/api/users").then().statusCode(200);
 
@@ -111,12 +112,36 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
         return response.jsonPath().getLong("id");
     }
 
+    /** 票 05：自助提交只到待审批；需要生效的旧用例统一经真实批准接口继续原断言。 */
+    private void approve(long requestId) {
+        as(adminToken()).body(Map.of()).when()
+                .post("/api/substitution-requests/" + requestId + "/approve")
+                .then().statusCode(200)
+                .body("status", equalTo("EFFECTIVE"));
+    }
+
+    private long submitAndApprove(Context context, String token, Long expectedSubstitute) {
+        long requestId = submit(context, token, expectedSubstitute);
+        approve(requestId);
+        return requestId;
+    }
+
     @Test
-    void directModeTakesEffectImmediately() {
+    void selfServiceCoverTakesEffectOnlyAfterApproval() {
         String token = adminToken();
         Context context = prepare(token, TestData.suffix());
         long requestId = submit(context, context.teacherToken(), context.teacherB());
 
+        // 提交后停在待审批，课表不动。
+        as(context.teacherToken()).when().get("/api/substitution-requests/" + requestId)
+                .then().statusCode(200)
+                .body("status", equalTo("SUBMITTED"));
+        as(token).queryParam("date", context.date().toString())
+                .when().get("/api/timetable/class/" + context.classId())
+                .then().statusCode(200)
+                .body("find { it.id == " + context.entryId() + " }.substituted", equalTo(false));
+
+        approve(requestId);
         as(context.teacherToken()).when().get("/api/substitution-requests/" + requestId)
                 .then().statusCode(200)
                 .body("status", equalTo("EFFECTIVE"));
@@ -169,7 +194,7 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
     void oneTimeCoverChangesOnlyTheSpecifiedDate() {
         String token = adminToken();
         Context context = prepare(token, TestData.suffix());
-        long requestId = submit(context, context.teacherToken(), context.teacherB());
+        long requestId = submitAndApprove(context, context.teacherToken(), context.teacherB());
 
         // 指定日期：代课生效，教师换成代课人。
         as(token).queryParam("date", context.date().toString())
@@ -193,7 +218,7 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
     void substituteTeacherSeesTheLessonInTheirTimetable() {
         String token = adminToken();
         Context context = prepare(token, TestData.suffix());
-        long requestId = submit(context, context.teacherToken(), context.teacherB());
+        long requestId = submitAndApprove(context, context.teacherToken(), context.teacherB());
 
         // 接替者在该日期恰好看到这节课一次。
         as(token).queryParam("date", context.date().toString())
@@ -213,9 +238,9 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
     void repeatedCoverRetiresPreviousEffectiveRow() {
         String token = adminToken();
         Context context = prepare(token, TestData.suffix());
-        long firstRequest = submit(context, context.teacherToken(), context.teacherB());
+        long firstRequest = submitAndApprove(context, context.teacherToken(), context.teacherB());
 
-        // 再次调整（乙 → 另一位无课教师）：允许提交并直接生效，旧行退出、新行接管。
+        // 再次调整（乙 → 另一位无课教师）：提交后经批准生效，旧行退出、新行接管。
         long secondSubstituteId = TestData.teacher(token, "第二任代课" + TestData.suffix());
         long secondRequest = as(context.teacherToken()).body(Map.of(
                         "entryId", context.entryId(),
@@ -224,8 +249,9 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
                         "expectedSubstituteTeacherId", secondSubstituteId))
                 .when().post("/api/substitution-requests")
                 .then().statusCode(200)
-                .body("status", equalTo("EFFECTIVE"))
+                .body("status", equalTo("SUBMITTED"))
                 .extract().jsonPath().getLong("id");
+        approve(secondRequest);
 
         assertThat(substitutions.findByRequestId(secondRequest)).singleElement().satisfies(row -> {
             assertThat(row.getStatus()).isEqualTo(Substitution.EFFECTIVE);
@@ -256,7 +282,7 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
         long secondSubstituteId = TestData.teacher(token, "第二周代课" + TestData.suffix());
 
         // 同一基线条目、两个不同周的日期各生效一笔一次性代课。
-        long firstRequest = submit(context, context.teacherToken(), context.teacherB());
+        long firstRequest = submitAndApprove(context, context.teacherToken(), context.teacherB());
 
         LocalDate secondWeekDate = context.date().plusDays(7);
         long secondRequest = as(context.teacherToken()).body(Map.of(
@@ -266,8 +292,9 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
                         "expectedSubstituteTeacherId", secondSubstituteId))
                 .when().post("/api/substitution-requests")
                 .then().statusCode(200)
-                .body("status", equalTo("EFFECTIVE"))
+                .body("status", equalTo("SUBMITTED"))
                 .extract().jsonPath().getLong("id");
+        approve(secondRequest);
 
         // 同周期槽不同周分别显示各自的实例，互不覆盖。
         as(token).queryParam("date", context.date().toString())
@@ -295,7 +322,7 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
     void allViewsAgreeOnTheDatedInstance() {
         String token = adminToken();
         Context context = prepare(token, TestData.suffix());
-        long requestId = submit(context, context.teacherToken(), context.teacherB());
+        long requestId = submitAndApprove(context, context.teacherToken(), context.teacherB());
 
         // 班级、教师、全校三个视角对同一实例给出一致结果，行上带实例日期。
         as(token).queryParam("date", context.date().toString())
@@ -333,7 +360,7 @@ class SubstitutionIntegrationTest extends ApiIntegrationTest {
     void legacySubstitutionRowKeepsOverridingFollowingWeeks() {
         String token = adminToken();
         Context context = prepare(token, TestData.suffix());
-        long requestId = submit(context, context.teacherToken(), context.teacherB());
+        long requestId = submitAndApprove(context, context.teacherToken(), context.teacherB());
 
         // 把生效行改回旧格式（lesson_date 置空），模拟迁移前的历史数据：不转换、不解释。
         Substitution row = substitutions.findByRequestId(requestId).get(0);

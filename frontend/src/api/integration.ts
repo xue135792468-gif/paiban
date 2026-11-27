@@ -4,6 +4,7 @@ export interface SyncResult {
   created: number
   updated: number
   deactivated: number
+  accountDisabled?: number
   skipped: number
   suspected: number
   departmentsScanned: number
@@ -66,6 +67,21 @@ export interface SyncSummary {
   skip: number
 }
 
+export interface DeactivationCandidate {
+  accountId: number
+  accountName: string
+  displayName: string
+  teacherId: number
+  teacherName: string
+  dingtalkUserId: string
+}
+
+export interface DeactivationSelection {
+  accountId: number
+  teacherId: number
+  dingtalkUserId: string
+}
+
 export interface SyncPreview {
   success: boolean
   message: string
@@ -77,6 +93,9 @@ export interface SyncPreview {
   skippedDepartmentNames: string[]
   summary: SyncSummary
   departments: SyncDepartmentGroup[]
+  scanComplete: boolean
+  deactivationWarning: string | null
+  deactivations: DeactivationCandidate[]
 }
 
 export type SuspectedAction = 'MERGE' | 'CREATE' | 'SKIP'
@@ -91,6 +110,7 @@ export interface SyncConfirmRequest {
   excludedDepartments: string[]
   excludedUserIds: string[]
   suspectedDecisions: SuspectedDecision[]
+  deactivationSelections?: DeactivationSelection[]
 }
 
 /**

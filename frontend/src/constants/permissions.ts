@@ -8,3 +8,20 @@ export const WORKBENCH_MANAGER_PERMISSIONS = [
   'substitution:submit',
   'substitution:approve',
 ]
+
+/**
+ * 「草稿与排课」这类管理入口的唯一判据：能跑排课或能编辑课表。
+ * 老师新增的 `timetable:view` 只是只读扩权，两项都不含它。
+ * 路由 `permissionAny`、工作台页签、导航落地页与课表页的排课入口共用这一份，
+ * 免得几处各写一遍 `scheduling:run || timetable:edit` 后悄悄漂移。
+ */
+export const DRAFT_MANAGER_PERMISSIONS = ['scheduling:run', 'timetable:edit'] as const
+
+/**
+ * 票 01/03：钉钉集成配置与教师钉钉 UserID 人工变更只归超级管理员。
+ */
+export const INTEGRATION_MANAGE_PERMISSION = 'integration:manage'
+
+export function canManageDrafts(has: (permission: string) => boolean): boolean {
+  return DRAFT_MANAGER_PERMISSIONS.some((permission) => has(permission))
+}

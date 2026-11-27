@@ -4,7 +4,7 @@ import { HELP_SLUGS } from './links'
 
 /** Anchors promised to other tickets by design-contract.md §1 (教室相关功能已在产品裁剪中下线). */
 const REQUIRED_ANCHORS: Record<string, string[]> = {
-  foundation: ['grades', 'classes', 'teachers', 'courses', 'import'],
+  foundation: ['grades', 'classes', 'teachers', 'courses', 'teaching-matrix', 'import'],
   scheduling: ['constraints', 'assignments', 'run', 'draft', 'publish'],
   substitution: ['apply', 'notify'],
   timetable: ['views', 'export', 'substitution-mark'],
@@ -65,6 +65,7 @@ describe('HELP_DOCS', () => {
       '/data/teachers',
       '/data/courses',
       '/data/assignments',
+      '/data/teaching-matrix',
       '/data/import',
       '/data/import/manual',
       '/data/recipes',

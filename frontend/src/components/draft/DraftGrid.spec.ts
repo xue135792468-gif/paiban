@@ -56,6 +56,36 @@ function mountGrid(props: Record<string, unknown>) {
 }
 
 describe('DraftGrid', () => {
+  it('预览说明只改文字：卡片带原位置，空格带移走提示', async () => {
+    const wrapper = mountGrid({
+      periods: [period(1, 1), period(1, 2)],
+      lessons: [lesson(11, 1, 2)],
+      highlightLessonIds: [11],
+      lessonNotes: { 11: '原周一第1节 → 现周一第2节' },
+      vacatedPeriods: { 101: '这节课已移至 周一第2节' },
+    })
+
+    const card = wrapper.get('[data-lesson-id="11"]')
+    expect(card.text()).toContain('原周一第1节 → 现周一第2节')
+    expect(card.classes()).toContain('highlight')
+    // The vacated cell is still empty; it only carries the explanation.
+    const vacated = wrapper.get('[data-period-id="101"]')
+    expect(vacated.text()).toContain('这节课已移至 周一第2节')
+    expect(vacated.find('.lesson').exists()).toBe(false)
+    expect(wrapper.emitted('drop-cell')).toBeUndefined()
+  })
+
+  it('移走的格子里已有别的课时不写移走说明，避免两句话打架', async () => {
+    const wrapper = mountGrid({
+      periods: [period(1, 1)],
+      lessons: [lesson(12, 1, 1)],
+      vacatedPeriods: { 101: '这节课已移至 周一第2节' },
+    })
+
+    expect(wrapper.get('[data-period-id="101"]').text()).not.toContain('已移至')
+    expect(wrapper.get('[data-lesson-id="12"]').text()).toContain('课程12')
+  })
+
   it('主动留空有文字原因，不能作为拖入目标', async () => {
     const wrapper = mountGrid({
       draggable: true,

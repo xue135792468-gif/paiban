@@ -66,4 +66,14 @@ describe('共用调课策略设置卡', () => {
 
     expect(item.text()).toContain('草稿换位与发布后调课的新方案都按此排序')
   })
+
+  it('隐藏已退役的通知范围，只保留三项调代策略', () => {
+    const wrapper = mountCard()
+    const labels = wrapper
+      .findAllComponents(ElFormItem)
+      .map((item) => item.props('label'))
+
+    expect(labels).toEqual(['调课搜索窗口', '最多变动几节课', '方案排序'])
+    expect(wrapper.text()).not.toContain('通知范围')
+  })
 })

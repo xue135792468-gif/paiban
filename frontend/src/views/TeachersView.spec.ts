@@ -15,7 +15,8 @@ const teachers = [
     employeeNo: 'T1',
     active: true,
     subject: '数学',
-    bindingStatus: 'none',
+    dingtalkUserId: 'dd-wang-7',
+    bindingStatus: 'dingtalk',
   },
   {
     id: 8,
@@ -121,14 +122,17 @@ describe('TeachersView: 教师弹窗的低频字段', () => {
     await wrapper.get('[data-testid="teacher-more-toggle"]').trigger('click')
     await edits[1].trigger('click')
     expect(wrapper.get('[data-testid="teacher-more-toggle"]').attributes('aria-expanded')).toBe('true')
-    expect(wrapper.find('input[placeholder="留空表示清除绑定"]').element).toHaveProperty('value', 'ding-8')
+    expect(wrapper.find('[data-testid="teacher-dingtalk-userid"]').element).toHaveProperty(
+      'value',
+      'ding-8',
+    )
     wrapper.unmount()
   })
 
   it('编辑没有低频字段的教师时保持折叠', async () => {
     const wrapper = await mountView()
-    const edit = wrapper.findAll('button').find((button) => button.text() === '编辑')!
-    await edit.trigger('click')
+    const edits = wrapper.findAll('button').filter((button) => button.text() === '编辑')
+    await edits[1].trigger('click')
     expect(wrapper.get('[data-testid="teacher-more-toggle"]').attributes('aria-expanded')).toBe('false')
     wrapper.unmount()
   })
@@ -148,6 +152,71 @@ describe('TeachersView: teacher group suffix and filter', () => {
 
     expect(wrapper.text()).toContain('王老师')
     expect(wrapper.text()).not.toContain('李老师')
+    wrapper.unmount()
+  })
+})
+
+describe('TeachersView: 钉钉 UserID 仅超级管理员可改（integration:manage）', () => {
+  it('教务管理员（无 integration:manage）编辑教师时钉钉 UserID 只读可见，修改姓名提交时省略 dingtalkUserId', async () => {
+    let capturedPutPayload: Record<string, unknown> | undefined
+    httpMock.put.mockImplementation((_url: string, payload: Record<string, unknown>) => {
+      capturedPutPayload = payload
+      return Promise.resolve({ data: {} })
+    })
+
+    const wrapper = await mountView()
+    await wrapper.findAll('button').find((btn) => btn.text() === '编辑')!.trigger('click')
+    await flushPromises()
+
+    const uidInput = wrapper.find('[data-testid="teacher-dingtalk-userid"]')
+    expect(uidInput.exists()).toBe(true)
+    expect((uidInput.element as HTMLInputElement).value).toBe('dd-wang-7')
+    expect((uidInput.element as HTMLInputElement).disabled).toBe(true)
+
+    const nameInput = wrapper.find('input[placeholder="请输入教师姓名"]')
+    await nameInput.setValue('王老师（教务改名）')
+    await flushPromises()
+
+    await wrapper.findAll('button').find((btn) => btn.text() === '保存')!.trigger('click')
+    await flushPromises()
+
+    expect(capturedPutPayload).toBeDefined()
+    expect(capturedPutPayload?.name).toBe('王老师（教务改名）')
+    expect(capturedPutPayload).not.toHaveProperty('dingtalkUserId')
+    wrapper.unmount()
+  })
+
+  it('超级管理员（有 integration:manage）可编辑并提交钉钉 UserID', async () => {
+    localStorage.setItem(
+      'paiban_user',
+      JSON.stringify({
+        id: 1,
+        username: 'admin',
+        displayName: '超管',
+        enabled: true,
+        roles: ['super_admin'],
+        permissions: ['foundation:manage', 'constraint:manage', 'integration:manage'],
+      }),
+    )
+    let capturedPutPayload: Record<string, unknown> | undefined
+    httpMock.put.mockImplementation((_url: string, payload: Record<string, unknown>) => {
+      capturedPutPayload = payload
+      return Promise.resolve({ data: {} })
+    })
+
+    const wrapper = await mountView()
+    await wrapper.findAll('button').find((btn) => btn.text() === '编辑')!.trigger('click')
+    await flushPromises()
+
+    const uidInput = wrapper.find('[data-testid="teacher-dingtalk-userid"]')
+    expect((uidInput.element as HTMLInputElement).disabled).toBe(false)
+    await uidInput.setValue('dd-super-updated')
+    await flushPromises()
+
+    await wrapper.findAll('button').find((btn) => btn.text() === '保存')!.trigger('click')
+    await flushPromises()
+
+    expect(capturedPutPayload?.dingtalkUserId).toBe('dd-super-updated')
     wrapper.unmount()
   })
 })

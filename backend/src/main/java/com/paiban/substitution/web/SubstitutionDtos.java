@@ -16,6 +16,17 @@ public final class SubstitutionDtos {
                                             String type,
                                             Long targetPeriodId) {}
 
+    /** 批准：可选换一位代课人（同样当场校验），可选审批意见。 */
+    public record ApproveSubstitutionRequest(Long substituteTeacherId, String comment) {}
+
+    /** 驳回：理由必填，老师会在「我的调代」里看到这句话。 */
+    public record RejectSubstitutionRequest(
+            @jakarta.validation.constraints.NotBlank(message = "请填写驳回理由") String reason) {}
+
+    /**
+     * 一张调代申请。{@code substituteTeacherId/Name} 在待审批时是期望代课人、
+     * 已生效时是实际代课人；{@code expectedSubstituteTeacherId/Name} 永远保留提交时的期望人。
+     */
     public record SubstitutionRequestDto(Long id,
                                          Long entryId,
                                          Long classId,
@@ -37,7 +48,28 @@ public final class SubstitutionDtos {
                                          String type,
                                          String reason,
                                          String status,
-                                         Instant createdAt) {}
+                                         Instant createdAt,
+                                         Long expectedSubstituteTeacherId,
+                                         String expectedSubstituteTeacherName,
+                                         Long approverUserId,
+                                         Instant approvedAt,
+                                         String approvalComment,
+                                         Long operatorUserId) {
+
+        /** 票 05 之前的构造形状，保留给既有调用方与测试。 */
+        public SubstitutionRequestDto(Long id, Long entryId, Long classId, String className,
+                                      Long courseId, String courseName, Long originalTeacherId,
+                                      String originalTeacherName, Long substituteTeacherId,
+                                      String substituteTeacherName, LocalDate effectiveDate,
+                                      Long periodId, int dayOfWeek, int periodNo, String periodLabel,
+                                      Long targetPeriodId, String targetPeriodLabel, LocalDate targetDate,
+                                      String type, String reason, String status, Instant createdAt) {
+            this(id, entryId, classId, className, courseId, courseName, originalTeacherId,
+                    originalTeacherName, substituteTeacherId, substituteTeacherName, effectiveDate,
+                    periodId, dayOfWeek, periodNo, periodLabel, targetPeriodId, targetPeriodLabel,
+                    targetDate, type, reason, status, createdAt, null, null, null, null, null, null);
+        }
+    }
 
     public record HistoryDto(Long id, String fromStatus, String toStatus, String actor,
                              String comment, Instant createdAt) {}

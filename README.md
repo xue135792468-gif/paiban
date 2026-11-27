@@ -236,10 +236,13 @@ backend / frontend，再执行 `pg_restore --clean --if-exists`，并在存在
 ## 测试
 
 ```bash
-scripts/verify.sh          # 后端 verify + 前端 lint/build
+scripts/verify.sh          # 仓库/前端快检查，再后端 verify
 scripts/verify.sh --full   # 追加 Playwright 验收场景
+bash scripts/verify-run.sh <run-id> --full # 冻结验证，自动生成运行收据
 scripts/verify-deploy.sh   # 部署脚本测试（无需 Docker；CI 的 deploy-scripts job）
 ```
+
+冻结验证需要 Bash 4.4+ 和 Python 3.9+（本机 Git Bash 与 CI 满足）；收据目录、退出码及 Git 字节校验见 [验证与运行收据](docs/agents/verification.md)。
 
 `scripts/verify-deploy.sh` 依次运行 `scripts/tests/test-*.sh`（compose 拓扑、doctor 退出码、
 密钥自愈、一键启动、生产配置与备份脚本），打印每个套件名并在第一个失败处停止；
@@ -295,6 +298,7 @@ cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test
 - **钉钉集成**：`AuthProvider` / `OrgDataProvider` / `NotificationChannel` 三组接口均有本地与钉钉实现；
   钉钉 Stream 增量事件通过 `POST /api/integrations/dingtalk/event` 接收（生产可接官方 Stream SDK 转发）。
   关闭集成后系统完整可用，通知仍走本地记录（`notification` / `notification_log`）。
+  学校首次接入的应用创建、参数、权限、同步与实机验收见[钉钉接入手册](docs/runbooks/dingtalk-school-setup.md)。
 - **钉钉通讯录递归同步**：从根部门开始递归遍历部门树（`department/listsub`），逐部门分页拉取
   （`user/list`，`cursor` 翻到底），跨部门按 `userid` 去重。负 id 部门（含 `-7` 家校通讯录）直接跳过。
   导入范围完全由钉钉侧的通讯录权限与应用可见范围决定，程序没有部门白名单或 `sync-dept-id` 配置。
@@ -318,8 +322,7 @@ cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test
   `POST /api/integrations/dingtalk/event`（需 `X-DingTalk-Token`，值为设置中心的“事件令牌”）接收，
   生产环境可用官方 SDK 将事件转发到该端点；全量同步走 `POST /api/integrations/dingtalk/sync`
   （设置页走「预演 → 确认」两步，见上文）。
-- **前端测试**：仓库没有前端单元测试 runner；钉钉相关与环境检测流程由 Playwright 验收场景覆盖
-  （`frontend/e2e/dingtalk-sync.spec.ts`）。
+- **前端测试边界**：组件与交互使用 Vitest，浏览器整合使用 Playwright；它们不证明真实学校钉钉租户、手机通知已验收，实机步骤见钉钉接入手册。
 - **PDF 导出**：用 OpenPDF `PdfPTable` 直接绘制，而不是 HTMLWorker；CJK 字体从系统字体或
   `paiban.export.pdf-font-path` 加载，Docker 镜像已内置 `fonts-noto-cjk`。
 - **约束设置快照**：`ConstraintSettingsHolder` 为进程级静态变量，因此一期固定为单任务串行求解

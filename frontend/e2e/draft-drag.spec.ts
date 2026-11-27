@@ -338,7 +338,7 @@ test('直接交换失败自动列方案；取消不改课；应用整环后一�
       response.url().endsWith(`/api/timetable-drafts/${seed.draftId}/cycle-plans/apply`),
   )
   const reload = waitForDraftReload(page, seed.draftId)
-  await page.locator('[data-testid="cycle-plan-0"] button').click()
+  await page.locator('[data-testid="cycle-plan-0"] [data-testid="cycle-plan-apply"]').click()
   await page.getByRole('button', { name: '确定' }).click()
   expect((await apply).status()).toBe(200)
   await reload
@@ -373,7 +373,7 @@ test('应用方案后加锁再撤销，提示先解锁且不误报成功', async
     response.url().endsWith(`/api/timetable-drafts/${seed.draftId}/cycle-plans/apply`),
   )
   const appliedReload = waitForDraftReload(page, seed.draftId)
-  await page.locator('[data-testid="cycle-plan-0"] button').click()
+  await page.locator('[data-testid="cycle-plan-0"] [data-testid="cycle-plan-apply"]').click()
   await page.getByRole('button', { name: '确定' }).click()
   await apply
   await appliedReload
@@ -403,6 +403,76 @@ test('应用方案后加锁再撤销，提示先解锁且不误报成功', async
 
   const stillApplied = await draftDetail(api, seed.draftId)
   expect(positionOf(stillApplied, seed.lessonAId)).toBe(seed.periodB)
+})
+
+/**
+ * 联动方案卡上的教师姓名 → 教师完整周课表预览：真实点击路径，覆盖默认「应用后」、
+ * 切「当前安排」、方案内教师切换、桌面关闭与手机全屏返回。预览是只读投影，注册监听后
+ * 全程不得发出任何写请求；手机滚动位置的观感由用户验收，这里只断言可见状态。
+ */
+test('联动方案点教师姓名看课表：默认应用后、可切当前、可换教师、手机全屏返回且零写入', async ({
+  page,
+}) => {
+  const api = await newContext()
+  const seed = await seedDraftDragScenario(api, { blockedOverlapTarget: true })
+  await openDraft(page, seed.draftId)
+  await selectClass(page, seed.className)
+
+  await openPlanPanel(page, seed)
+  const writes: string[] = []
+  page.on('request', (request) => {
+    if (request.method() !== 'GET') writes.push(`${request.method()} ${request.url()}`)
+  })
+
+  const dialog = page.locator('.el-dialog:visible')
+  await dialog.locator('[data-testid^="cycle-plan-teacher-0-"]').first().click()
+
+  const preview = page.getByTestId('cycle-plan-teacher-preview')
+  await expect(preview).toBeVisible()
+  const title = preview.getByTestId('cycle-plan-preview-title')
+  await expect(title).toContainText('完整周课表')
+  const notice = page.getByTestId('cycle-plan-preview-notice')
+  await expect(notice).toContainText('应用后预览')
+  await expect(notice).toContainText('尚未生效')
+
+  // 切到当前安排：说明改口，投影回到草稿里的实际安排。
+  await preview
+    .getByTestId('cycle-plan-preview-mode')
+    .locator('label', { hasText: '当前安排' })
+    .click()
+  await expect(notice).toContainText('草稿里的实际安排')
+
+  // 本方案涉及多位教师时才给 chips；点另一位教师就换人，标题随之变化。
+  const chips = preview.getByTestId('cycle-plan-preview-teachers')
+  await expect(chips).toBeVisible()
+  const beforeName = (await title.innerText()).trim()
+  expect(await chips.locator('.pv-chip').count()).toBeGreaterThanOrEqual(2)
+  await chips
+    .locator('.pv-chip')
+    .filter({ hasNotText: beforeName.split(' ·')[0] })
+    .first()
+    .click()
+  await expect(title).not.toHaveText(beforeName)
+
+  // 桌面：关闭预览回到方案列表，方案卡仍在原位。
+  await page.getByRole('button', { name: '关闭预览' }).click()
+  await expect(page.getByTestId('cycle-plan-teacher-preview')).toHaveCount(0)
+  await expect(page.getByTestId('cycle-plan-0')).toBeVisible()
+
+  // 手机：预览占满一屏并给出返回，返回后回到方案列表。
+  await page.setViewportSize({ width: 390, height: 844 })
+  await dialog.locator('[data-testid^="cycle-plan-teacher-0-"]').first().click()
+  await expect(page.getByTestId('cycle-plan-preview-back')).toBeVisible()
+  await expect(page.getByTestId('cycle-plan-0')).toBeHidden()
+  await page.getByTestId('cycle-plan-preview-back').click()
+  await expect(page.getByTestId('cycle-plan-teacher-preview')).toHaveCount(0)
+  await expect(page.getByTestId('cycle-plan-0')).toBeVisible()
+
+  expect(writes).toEqual([])
+
+  const unchanged = await draftDetail(api, seed.draftId)
+  expect(positionOf(unchanged, seed.lessonAId)).toBe(seed.periodA)
+  expect(positionOf(unchanged, seed.lessonBId)).toBe(seed.periodB)
 })
 
 test('拖拽、点击与键盘三种入口都能完成同一次移动', async ({ page }) => {

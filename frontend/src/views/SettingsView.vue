@@ -9,9 +9,13 @@
 
     <SchoolInfoCard v-model="form" />
     <SubstitutionPolicyCard v-model="form" />
-    <SubstitutionRecipientsCard />
+    <NotificationDeliveryLogsCard v-if="canViewDeliveryLogs" />
 
-    <el-card id="dingtalk-integration" shadow="never">
+    <!--
+      票 01：钉钉参数与通讯录同步只归超级管理员（integration:manage）。教务管理员
+      连区块都看不到，读取接口也不必打——后端同样会对它返回 403。
+    -->
+    <el-card v-if="canManageIntegration" id="dingtalk-integration" shadow="never">
       <template #header>
         <div class="card-head">
           <span class="card-title">钉钉集成</span>
@@ -26,17 +30,12 @@
           <span class="hint inline">关闭后系统完整可用，仅使用本地账号与系统内通知。</span>
         </el-form-item>
         <template v-if="dingtalk.enabled">
-          <el-form-item label="AppKey">
-            <el-input v-model="dingtalk.appKey" placeholder="钉钉企业内部应用 AppKey" />
-          </el-form-item>
-          <el-form-item label="AppSecret">
-            <el-input
-              v-model="dingtalk.appSecret"
-              type="password"
-              show-password
-              :placeholder="dingtalk.hasSecret ? '已配置，不修改请留空' : '请输入 AppSecret'"
-            />
-          </el-form-item>
+          <DingtalkConnectionProbe
+            v-model:app-key="dingtalk.appKey"
+            v-model:app-secret="dingtalk.appSecret"
+            :has-secret="dingtalk.hasSecret"
+            :saved-app-key="savedDingtalkAppKey"
+          />
           <el-form-item label="AgentId">
             <el-input v-model="dingtalk.agentId" placeholder="微应用 AgentId" />
           </el-form-item>
@@ -104,18 +103,21 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { DINGTALK_SYNC_TIMEOUT_MS, http } from '@/api/http'
 import SchoolInfoCard from '@/components/settings/SchoolInfoCard.vue'
 import AiSettingsCard from '@/components/settings/AiSettingsCard.vue'
+import NotificationDeliveryLogsCard from '@/components/settings/NotificationDeliveryLogsCard.vue'
 import SubstitutionPolicyCard from '@/components/settings/SubstitutionPolicyCard.vue'
-import SubstitutionRecipientsCard from '@/components/settings/SubstitutionRecipientsCard.vue'
 import DingTalkSyncPreview from '@/components/DingTalkSyncPreview.vue'
+import DingtalkConnectionProbe from '@/components/settings/DingtalkConnectionProbe.vue'
 import DingtalkIntegrationActions from '@/components/settings/DingtalkIntegrationActions.vue'
 import { resetTour, startTour } from '@/onboarding/tour'
 import { serverMessage } from '@/api/errors'
+import { useAuthStore } from '@/stores/auth'
+import { INTEGRATION_MANAGE_PERMISSION } from '@/constants/permissions'
 import type { DingTalkConfig, SyncConfirmRequest, SyncPreview, SyncResult } from '@/api/integration'
 
 interface SyncLog {
@@ -126,7 +128,7 @@ interface SyncLog {
 }
 
 const form = ref<Record<string, string>>({})
-const dingtalk = reactive<DingTalkConfig>({
+const dingtalk = reactive<DingTalkConfig & { appSecret: string }>({
   enabled: false,
   appKey: '',
   appSecret: '',
@@ -135,6 +137,7 @@ const dingtalk = reactive<DingTalkConfig>({
   corpId: '',
   syncStrategy: 'dingtalk',
 })
+const savedDingtalkAppKey = ref('')
 const logs = ref<SyncLog[]>([])
 const syncResult = ref<SyncResult | null>(null)
 const syncPreview = ref<SyncPreview | null>(null)
@@ -143,6 +146,10 @@ const previewing = ref(false)
 const confirming = ref(false)
 const loadingLogs = ref(false)
 const router = useRouter()
+const auth = useAuthStore()
+
+const canManageIntegration = computed(() => auth.hasPermission(INTEGRATION_MANAGE_PERMISSION))
+const canViewDeliveryLogs = computed(() => auth.hasPermission('substitution:view'))
 
 function reopenTour() {
   resetTour()
@@ -159,6 +166,7 @@ async function loadSettings() {
 async function loadDingtalk() {
   const { data } = await http.get('/integrations/dingtalk/config')
   Object.assign(dingtalk, data)
+  savedDingtalkAppKey.value = data.appKey ?? ''
   dingtalk.appSecret = ''
 }
 
@@ -195,6 +203,7 @@ async function saveDingtalk() {
     })
     Object.assign(dingtalk, data)
     Object.assign(form.value, settings.data)
+    savedDingtalkAppKey.value = data.appKey ?? ''
     dingtalk.appSecret = ''
     ElMessage.success('钉钉配置已保存')
   } catch (e: any) {
@@ -244,7 +253,11 @@ async function confirmSync(request: SyncConfirmRequest) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadSettings(), loadDingtalk(), loadLogs()])
+  const jobs = [loadSettings()]
+  if (canManageIntegration.value) {
+    jobs.push(loadDingtalk(), loadLogs())
+  }
+  await Promise.all(jobs)
 })
 </script>
 

@@ -241,8 +241,7 @@ public class SubstitutionPlanService {
                 periodId -> SubstitutionLookups.periodStart(periods, periodId), clock.instant())
                 .ifPresent(reason -> {
                     audits.planFailure(planId, SubstitutionPlan.REJECTED, username,
-                            "SUBSTITUTION_PLAN_FROZEN", reason, true,
-                            request.getRequesterTeacherId());
+                            "SUBSTITUTION_PLAN_FROZEN", reason);
                     throw ApiException.conflict(reason);
                 });
         PlanVerifier.Result verification = PlanVerifier.verify(
@@ -253,8 +252,7 @@ public class SubstitutionPlanService {
                     .map(issue -> issue.code() + ": " + issue.message())
                     .collect(Collectors.joining("；"));
             audits.planFailure(planId, SubstitutionPlan.REJECTED, username,
-                    "SUBSTITUTION_PLAN_VERIFY_FAILED", detail, true,
-                    request.getRequesterTeacherId());
+                    "SUBSTITUTION_PLAN_VERIFY_FAILED", detail);
             throw ApiException.conflict("方案未通过校验，整单不生效：" + detail);
         }
 

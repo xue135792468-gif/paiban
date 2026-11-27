@@ -11,28 +11,38 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 import PageTabs, { type PageTabItem } from '@/components/layout/PageTabs.vue'
 
-const groups: Array<{ label: string; items: PageTabItem[] }> = [
-  {
-    label: '基础档案',
-    items: [
-      { label: '学期与作息', to: '/data/semesters', activePrefix: '/data/semesters' },
-      { label: '年级', to: '/data/grades' },
-      { label: '行政班', to: '/data/classes', tour: '/data/classes' },
-      { label: '课程', to: '/data/courses' },
-      { label: '教师', to: '/data/teachers' },
-    ],
-  },
-  { label: '排课输入', items: [{ label: '授课任务', to: '/data/assignments' }] },
-  {
-    label: '批量导入',
-    items: [
-      { label: '数据导入', to: '/data/import', activePrefix: '/data/import' },
-      { label: '导入配方', to: '/data/recipes' },
-    ],
-  },
-]
+const auth = useAuthStore()
+
+const groups = computed<Array<{ label: string; items: PageTabItem[] }>>(() => {
+  const inputItems: PageTabItem[] = [{ label: '授课任务', to: '/data/assignments' }]
+  if (auth.hasPermission('assignment:manage')) {
+    inputItems.push({ label: '任课表', to: '/data/teaching-matrix' })
+  }
+  return [
+    {
+      label: '基础档案',
+      items: [
+        { label: '学期与作息', to: '/data/semesters', activePrefix: '/data/semesters' },
+        { label: '年级', to: '/data/grades' },
+        { label: '行政班', to: '/data/classes', tour: '/data/classes' },
+        { label: '课程', to: '/data/courses' },
+        { label: '教师', to: '/data/teachers' },
+      ],
+    },
+    { label: '排课输入', items: inputItems },
+    {
+      label: '批量导入',
+      items: [
+        { label: '数据导入', to: '/data/import', activePrefix: '/data/import' },
+        { label: '导入配方', to: '/data/recipes' },
+      ],
+    },
+  ]
+})
 </script>
 
 <style scoped>

@@ -1,14 +1,12 @@
 package com.paiban.integration.notification;
 
 import com.paiban.common.settings.SettingsService;
-import com.paiban.foundation.domain.Teacher;
-import com.paiban.foundation.domain.TeacherRepository;
-import com.paiban.identity.domain.AppUser;
-import com.paiban.identity.service.UserService;
 import com.paiban.integration.dingtalk.DingTalkClient;
 import com.paiban.notification.channel.NotificationChannel;
 import com.paiban.notification.domain.NotificationLog;
 import com.paiban.notification.domain.NotificationLogRepository;
+import com.paiban.notification.service.NotificationRecipientResolver;
+import com.paiban.notification.service.NotificationRecipientResolver.DingTalkRecipient;
 import java.time.Instant;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -23,20 +21,17 @@ public class DingTalkNotificationChannel implements NotificationChannel {
 
     private final SettingsService settings;
     private final DingTalkClient client;
-    private final UserService users;
-    private final TeacherRepository teachers;
+    private final NotificationRecipientResolver recipients;
     private final NotificationLogRepository logs;
 
     public DingTalkNotificationChannel(
             SettingsService settings,
             DingTalkClient client,
-            UserService users,
-            TeacherRepository teachers,
+            NotificationRecipientResolver recipients,
             NotificationLogRepository logs) {
         this.settings = settings;
         this.client = client;
-        this.users = users;
-        this.teachers = teachers;
+        this.recipients = recipients;
         this.logs = logs;
     }
 
@@ -50,22 +45,15 @@ public class DingTalkNotificationChannel implements NotificationChannel {
         if (!settings.dingtalkEnabled() || !settings.isActivePlatform(SettingsService.PLATFORM_DINGTALK)) {
             return false;
         }
+        NotificationRecipientResolver.ResolvedTargets resolved = recipients.resolve(message.targets());
         int attempted = 0;
         int sent = 0;
-        for (Long userId : message.recipientUserIds()) {
-            AppUser user = users.get(userId);
-            if (user.getTeacherId() == null) {
-                continue;
-            }
-            Teacher teacher = teachers.findById(user.getTeacherId()).orElse(null);
-            if (teacher == null || teacher.getDingtalkUserId() == null) {
-                continue;
-            }
+        for (DingTalkRecipient recipient : resolved.dingtalkRecipients()) {
             attempted++;
             boolean success = false;
             for (int attempt = 1; attempt <= 3 && !success; attempt++) {
                 success = client.sendWorkNotification(
-                        teacher.getDingtalkUserId(), message.title(), message.content(), message.link());
+                        recipient.userId(), message.title(), message.content(), message.link());
                 if (!success && attempt < 3) {
                     try {
                         Thread.sleep(100L * attempt);
@@ -75,9 +63,14 @@ public class DingTalkNotificationChannel implements NotificationChannel {
                     }
                 }
             }
-            log(teacher.getDingtalkUserId(), message, success);
+            log(recipient.userId(), message, success);
             if (success) {
                 sent++;
+            }
+        }
+        if (attempted == 0) {
+            for (com.paiban.notification.service.NotificationDelivery.Target target : message.targets()) {
+                log(NotificationRecipientResolver.failureRecipient(target), message, false);
             }
         }
         return attempted > 0 && sent == attempted;

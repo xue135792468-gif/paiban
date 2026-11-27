@@ -255,9 +255,14 @@ class ExtendedLifecycleIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(200)
                 .body("find { it.id == " + userId + " }.enabled", equalTo(true));
 
-        List<String> actions = as(token).when().get("/api/foundation/audit-logs")
-                .then().statusCode(200).extract().jsonPath().getList("action");
-        assertThat(actions).contains("DISABLE_USER", "ENABLE_USER");
+        // 票 02 起账号事件只出现在账号审计页；通用基础日志不再返回它们。
+        as(token).queryParam("action", "ACCOUNT_DISABLE").when().get("/api/account-audits")
+                .then().statusCode(200)
+                .body("total", equalTo(1))
+                .body("items[0].targetUserId", equalTo((int) userId));
+        as(token).queryParam("action", "ACCOUNT_ENABLE").when().get("/api/account-audits")
+                .then().statusCode(200)
+                .body("total", equalTo(1));
 
         long selfId = as(token).when().get("/api/users")
                 .then().statusCode(200)
@@ -457,9 +462,14 @@ class ExtendedLifecycleIntegrationTest extends ApiIntegrationTest {
                 .then().statusCode(200)
                 .body("find { it.id == " + userId + " }.enabled", equalTo(true));
 
-        List<String> actions = as(token).when().get("/api/foundation/audit-logs")
-                .then().statusCode(200).extract().jsonPath().getList("action");
-        assertThat(actions).contains("DISABLE_USER", "ENABLE_USER");
+        // 复合编辑走同一条启停守卫与审计：账号审计页各有一条停用 / 启用事件。
+        as(token).queryParam("action", "ACCOUNT_DISABLE").when().get("/api/account-audits")
+                .then().statusCode(200)
+                .body("total", equalTo(1))
+                .body("items[0].targetUserId", equalTo((int) userId));
+        as(token).queryParam("action", "ACCOUNT_ENABLE").when().get("/api/account-audits")
+                .then().statusCode(200)
+                .body("total", equalTo(1));
 
         long selfId = as(token).when().get("/api/users")
                 .then().statusCode(200)
