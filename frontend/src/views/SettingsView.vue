@@ -29,13 +29,13 @@
           <el-switch v-model="dingtalk.enabled" />
           <span class="hint inline">关闭后系统完整可用，仅使用本地账号与系统内通知。</span>
         </el-form-item>
+        <DingtalkConnectionProbe
+          v-model:app-key="dingtalk.appKey"
+          v-model:app-secret="dingtalk.appSecret"
+          :has-secret="dingtalk.hasSecret"
+          :saved-app-key="savedDingtalkAppKey"
+        />
         <template v-if="dingtalk.enabled">
-          <DingtalkConnectionProbe
-            v-model:app-key="dingtalk.appKey"
-            v-model:app-secret="dingtalk.appSecret"
-            :has-secret="dingtalk.hasSecret"
-            :saved-app-key="savedDingtalkAppKey"
-          />
           <el-form-item label="AgentId">
             <el-input v-model="dingtalk.agentId" placeholder="微应用 AgentId" />
           </el-form-item>

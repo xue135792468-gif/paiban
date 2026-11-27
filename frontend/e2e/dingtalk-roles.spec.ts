@@ -74,7 +74,7 @@ test('教务管理员：看不到钉钉配置与账号页，业务设置照常�
   const saved = page.waitForResponse(
     (response) => response.url().includes('/api/settings') && response.request().method() === 'PUT',
   )
-  await page.getByRole('button', { name: '保存设置' }).click()
+  await page.getByTestId('school-save').click()
   expect((await saved).status()).toBe(200)
   await capture(page, 'dingtalk-t01-academic-settings')
 

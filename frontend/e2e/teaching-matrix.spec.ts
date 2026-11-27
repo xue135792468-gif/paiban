@@ -29,7 +29,7 @@ test('教务管理员从任课方阵导入空学期、撤销删除、使用班�
 
     await uiLogin(page, SUPER_ADMIN.username, SUPER_ADMIN.password)
     await page.getByRole('menuitem', { name: '数据管理', exact: true }).click()
-    await page.getByRole('navigation', { name: '页面子导航' }).getByRole('link', { name: '任课表' }).click()
+    await page.getByRole('navigation', { name: '排课输入' }).getByRole('link', { name: '任课表' }).click()
     await expect(page.getByText('这个年级还没有行政班')).toBeVisible()
     await page.getByRole('button', { name: '导入', exact: true }).click()
     const upload = page.getByRole('dialog', { name: '导入任课表 Excel' })
