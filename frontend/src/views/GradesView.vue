@@ -3,9 +3,11 @@
     <div class="toolbar">
       <div>
         <h2>年级设置</h2>
-        <p class="subtitle">维护学期年级划分与排序。删除年级会一起删除其行政班与授课任务，可在 7 天内恢复。</p>
+        <p class="subtitle">
+          维护学期年级划分与排序。删除年级会一起删除其行政班与授课任务，可在 7 天内恢复。
+        </p>
       </div>
-      <div class="actions">
+      <div v-if="semesters.length > 0" class="actions">
         <el-select
           v-model="semesterId"
           placeholder="请选择学期"
@@ -68,12 +70,7 @@
         help-anchor="grades"
         @action="openCreate"
       />
-      <el-table
-        v-else
-        v-loading="loading"
-        :data="grades"
-        stripe
-      >
+      <el-table v-else v-loading="loading" :data="grades" stripe>
         <el-table-column prop="name" label="年级名称" min-width="180" />
         <el-table-column prop="sortOrder" label="排序" min-width="120" />
         <el-table-column label="状态" width="100">
@@ -103,12 +100,7 @@
       width="460px"
       destroy-on-close
     >
-      <el-form
-        ref="formRef"
-        :model="form"
-        :rules="rules"
-        label-width="88px"
-      >
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="88px">
         <el-form-item label="年级名称" prop="name">
           <el-input v-model="form.name" placeholder="例如：高一、初一" maxlength="100" />
         </el-form-item>
@@ -292,7 +284,6 @@ async function submitForm() {
     saving.value = false
   }
 }
-
 
 async function handleExport() {
   if (!semesterId.value) return

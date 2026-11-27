@@ -5,7 +5,7 @@
         <h2>行政班管理</h2>
         <p class="subtitle">维护学期行政行政班及班主任配置（一期行政班与教学班一对一自动创建）。</p>
       </div>
-      <div class="actions">
+      <div v-if="semesters.length > 0" class="actions">
         <el-select
           v-model="semesterId"
           placeholder="请选择学期"
@@ -68,12 +68,7 @@
         help-anchor="classes"
         @action="openCreate"
       />
-      <el-table
-        v-else
-        v-loading="loading"
-        :data="classes"
-        stripe
-      >
+      <el-table v-else v-loading="loading" :data="classes" stripe>
         <el-table-column prop="gradeName" label="年级" min-width="120" />
         <el-table-column prop="name" label="行政班名称" min-width="140" />
         <el-table-column label="班主任" min-width="140">
@@ -110,24 +105,14 @@
       width="480px"
       destroy-on-close
     >
-      <el-form
-        ref="formRef"
-        :model="form"
-        :rules="rules"
-        label-width="88px"
-      >
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="88px">
         <el-form-item label="所属年级" prop="gradeId">
           <el-select
             v-model="form.gradeId"
             :placeholder="grades.length === 0 ? '暂无年级，请先创建' : '请选择年级'"
             style="width: 100%"
           >
-            <el-option
-              v-for="g in grades"
-              :key="g.id"
-              :label="g.name"
-              :value="g.id"
-            />
+            <el-option v-for="g in grades" :key="g.id" :label="g.name" :value="g.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="行政班名称" prop="name">
@@ -383,7 +368,6 @@ async function submitForm() {
     saving.value = false
   }
 }
-
 
 async function handleExport() {
   if (!semesterId.value) return

@@ -1,11 +1,5 @@
 <template>
   <div class="page-shell">
-    <header class="page-head">
-      <div>
-        <h2>调代课</h2>
-        <p class="page-subtitle">按日期安排代课与调课，直接生效并保留记录。</p>
-      </div>
-    </header>
     <PageTabs :items="tabs" />
     <router-view />
   </div>
