@@ -1,6 +1,6 @@
 # 第二波 UX 改造：界面层级治理、首屏视口预算与导入主次反转
 
-Status: ready-for-agent
+Status: done
 Feature: qa-ux-wave2
 Date: 2026-11-26
 来源：基于 `.scratch/qa-ux-audit/triage-and-wave-plan.md`、`.scratch/qa-ux-audit/qa-ux-report.md`、两轮 Grill（Q1–Q14 全部采纳推荐方案）及已确认的低保真交互原型（`.scratch/qa-ux-audit/wave2-prototype.html`）。

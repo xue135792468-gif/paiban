@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第二波低保真交互原型</title>
+  <style>
+    :root {
+      --bg: #f4f6fa;
+      --surface: #ffffff;
+      --border: #e2e8f0;
+      --ink: #1e293b;
+      --muted: #64748b;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --primary-soft: #eff6ff;
+      --success: #16a34a;
+      --success-soft: #f0fdf4;
+      --warn: #d97706;
+      --warn-soft: #fffbeb;
+      --danger: #dc2626;
+      --danger-soft: #fef2f2;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #e9eef6;
+      color: var(--ink);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .gate-banner {
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .gate-banner strong { font-size: 14px; }
+    .gate-banner .sub { font-size: 12px; color: #94a3b8; }
+    .screen-switcher { display: flex; gap: 6px; flex-wrap: wrap; }
+    .screen-tab {
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #cbd5e1;
+      padding: 5px 11px;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .screen-tab.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+
+    /* 1440x900 desktop viewport frame */
+    .viewport-wrap {
+      max-width: 1440px;
+      margin: 16px auto 40px;
+      padding: 0 12px;
+    }
+    .app-shell {
+      background: var(--bg);
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(15,23,42,0.08);
+      display: flex;
+      min-height: 760px;
+      position: relative;
+    }
+    .sidebar {
+      width: 196px;
+      background: #fff;
+      border-right: 1px solid var(--border);
+      padding: 14px 10px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .brand {
+      display: flex; align-items: center; gap: 8px;
+      padding: 4px 8px 14px; font-weight: 700; font-size: 15px;
+      border-bottom: 1px solid #f1f5f9; margin-bottom: 6px;
+    }
+    .brand-logo {
+      width: 26px; height: 26px; border-radius: 7px;
+      background: var(--primary); color: #fff;
+      display: grid; place-items: center; font-size: 13px;
+    }
+    .nav-item {
+      padding: 8px 10px; border-radius: 8px; color: #475569;
+      cursor: pointer; font-weight: 500; display: flex; align-items: center; gap: 8px;
+    }
+    .nav-item:hover { background: #f8fafc; }
+    .nav-item.active { background: var(--primary-soft); color: var(--primary); font-weight: 700; }
+
+    .main-col { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
+    .topbar {
+      height: 48px; background: #fff; border-bottom: 1px solid var(--border);
+      padding: 0 20px; display: flex; align-items: center; justify-content: space-between;
+    }
+    .breadcrumb { font-weight: 600; color: var(--ink); }
+    .user-chip { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+    .page-area { padding: 16px 22px 28px; display: flex; flex-direction: column; gap: 12px; position: relative; }
+
+    /* Prototype control strip */
+    .proto-controls {
+      background: #fff;
+      border: 1px dashed #93c5fd;
+      border-radius: 9px;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 12px;
+    }
+    .proto-controls .label { font-weight: 700; color: var(--primary); }
+    .chip-btn {
+      border: 1px solid #cbd5e1; background: #f8fafc; color: #334155;
+      padding: 3px 9px; border-radius: 6px; font-size: 12px; cursor: pointer;
+    }
+    .chip-btn.on { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
+
+    /* UI primitives */
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+    .flex { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    h2 { margin: 0; font-size: 19px; font-weight: 700; }
+    .sub { margin: 2px 0 0; color: var(--muted); font-size: 12.5px; }
+    .card { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 6px 12px; border-radius: 7px; font-size: 12.5px; font-weight: 600;
+      border: 1px solid #cbd5e1; background: #fff; color: #334155; cursor: pointer;
+    }
+    .btn:hover:not(:disabled) { border-color: #94a3b8; background: #f8fafc; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .btn.primary:hover:not(:disabled) { background: var(--primary-hover); }
+    .btn.success { background: var(--success); border-color: var(--success); color: #fff; }
+    .btn.danger { color: var(--danger); border-color: #fca5a5; background: #fff; }
+    .btn.sm { padding: 4px 9px; font-size: 12px; }
+    .tag { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; }
+    .tag.gray { background: #f1f5f9; color: #475569; }
+    .tag.ok { background: var(--success-soft); color: var(--success); }
+    .tag.warn { background: var(--warn-soft); color: var(--warn); }
+    .tag.err { background: var(--danger-soft); color: var(--danger); }
+    .info-dot {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 18px; height: 18px; border-radius: 50%;
+      background: #eff6ff; color: var(--primary); font-size: 11px; font-weight: 700;
+      cursor: pointer; border: 1px solid #bfdbfe; position: relative;
+    }
+    .popover {
+      background: #0f172a; color: #f8fafc; padding: 9px 12px; border-radius: 8px;
+      font-size: 12px; max-width: 340px; box-shadow: 0 8px 20px rgba(15,23,42,0.2);
+      margin-top: 6px;
+    }
+    .alert { border-radius: 8px; padding: 9px 12px; font-size: 12.5px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .alert.info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+    .alert.warn { background: var(--warn-soft); border: 1px solid #fde68a; color: #92400e; }
+    .alert.err { background: var(--danger-soft); border: 1px solid #fecaca; color: #991b1b; }
+    .alert.ok { background: var(--success-soft); border: 1px solid #bbf7d0; color: #166534; }
+
+    /* Tabs */
+    .tabs-bar { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 8px; flex-wrap: wrap; }
+    .tab-group-label { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-left: 4px; }
+    .tab-item { padding: 4px 8px; border-radius: 6px; font-size: 12.5px; color: #475569; cursor: pointer; }
+    .tab-item.active { color: var(--primary); font-weight: 700; background: var(--primary-soft); }
+    .tab-sep { color: #cbd5e1; }
+
+    /* Summary strip & dropdown */
+    .summary-strip {
+      background: #fff; border: 1px solid var(--border); border-radius: 9px;
+      padding: 8px 14px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    }
+    .dropdown-wrap { position: relative; display: inline-block; }
+    .dropdown-menu {
+      position: absolute; right: 0; top: 36px; z-index: 30;
+      width: 210px; background: #fff; border: 1px solid #cbd5e1; border-radius: 9px;
+      box-shadow: 0 10px 24px rgba(15,23,42,0.12); padding: 5px 0;
+    }
+    .dd-item {
+      padding: 7px 13px; font-size: 12.5px; display: flex; justify-content: space-between; align-items: center;
+      cursor: pointer;
+    }
+    .dd-item:hover:not(.disabled) { background: #f8fafc; }
+    .dd-item.disabled { color: #94a3b8; cursor: not-allowed; }
+    .dd-item.danger { color: var(--danger); border-top: 1px solid #e2e8f0; margin-top: 4px; padding-top: 8px; }
+
+    /* Timetable grid */
+    .grid-tbl { width: 100%; border-collapse: collapse; background: #fff; }
+    .grid-tbl th, .grid-tbl td { border: 1px solid #e2e8f0; padding: 6px 8px; text-align: center; }
+    .grid-tbl th { background: #f8fafc; font-weight: 700; font-size: 12px; color: #475569; }
+    .lesson-box {
+      border-radius: 6px; padding: 5px 7px; text-align: left; font-size: 12px;
+      display: flex; flex-direction: column; gap: 1px;
+    }
+    .lesson-box.c1 { background: #ffedd5; }
+    .lesson-box.c2 { background: #dcfce7; }
+    .lesson-box.c3 { background: #dbeafe; }
+    .lesson-box.c4 { background: #f3e8ff; }
+    .lesson-box.conflict { outline: 2px solid var(--danger); }
+    .fold-marker {
+      border-top: 2px dashed #ef4444;
+      margin-top: 4px;
+      position: relative;
+      height: 12px;
+    }
+    .fold-marker span {
+      position: absolute; right: 8px; top: -10px;
+      background: #ef4444; color: #fff; font-size: 10.5px; font-weight: 700;
+      padding: 1px 7px; border-radius: 4px;
+    }
+
+    /* Form & tables */
+    .form-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; }
+    .field { display: flex; align-items: center; gap: 8px; }
+    .field label { width: 105px; text-align: right; color: #475569; font-weight: 500; flex-shrink: 0; }
+    .ctrl {
+      flex: 1; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 9px;
+      background: #fff; font-size: 12.5px; color: var(--ink);
+    }
+    .data-tbl { width: 100%; border-collapse: collapse; }
+    .data-tbl th, .data-tbl td { border-bottom: 1px solid #e2e8f0; padding: 8px 10px; text-align: left; font-size: 12.5px; }
+    .data-tbl th { color: #64748b; font-weight: 600; background: #f8fafc; }
+    .collapse-head {
+      background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px;
+      padding: 9px 13px; display: flex; justify-content: space-between; align-items: center;
+      cursor: pointer; font-weight: 600; color: #334155;
+    }
+    .dropzone {
+      border: 2px dashed #93c5fd; background: #eff6ff; border-radius: 10px;
+      padding: 24px 16px; text-align: center; color: #1e40af;
+    }
+    .target-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .target-card {
+      border: 1.5px solid var(--border); border-radius: 9px; padding: 12px;
+      background: #fff; cursor: pointer;
+    }
+    .target-card.selected { border-color: var(--primary); background: var(--primary-soft); }
+    .toast {
+      position: fixed; top: 62px; right: 26px; z-index: 60;
+      background: #0f172a; color: #fff; padding: 9px 14px; border-radius: 8px;
+      font-size: 12.5px; box-shadow: 0 8px 24px rgba(15,23,42,0.22);
+      display: none;
+    }
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(15,23,42,0.45);
+      display: none; align-items: center; justify-content: center; z-index: 55;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      width: 480px; max-width: 92vw; background: #fff; border-radius: 12px;
+      padding: 16px 18px; box-shadow: 0 20px 45px rgba(15,23,42,0.22);
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="gate-banner">
+    <div>
+      <strong>第二波低保真交互原型（Prototype Gate）</strong>
+      <div class="sub">覆盖 O1–O4 全部定稿界面；可点击切换视角、触发状态开关、展开折叠区与弹窗确认效果。</div>
+    </div>
+    <div class="screen-switcher" id="screenSwitcher">
+      <button class="screen-tab active" data-screen="draft">1. 草稿编辑器 (O2)</button>
+      <button class="screen-tab" data-screen="workbench">2. 课表工作台 (O2)</button>
+      <button class="screen-tab" data-screen="timetable">3. 已发布课表 (O2)</button>
+      <button class="screen-tab" data-screen="import">4. 统一数据导入 (O3)</button>
+      <button class="screen-tab" data-screen="data">5. 数据管理壳层与空态 (O1)</button>
+      <button class="screen-tab" data-screen="settings">6. 设置/教师/规则分层 (O4)</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <div class="viewport-wrap">
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand"><div class="brand-logo">排</div><span>排课系统</span></div>
+        <div class="nav-item" onclick="switchScreen('workbench')">总览</div>
+        <div class="nav-item" id="nav-workbench" onclick="switchScreen('workbench')">课表工作台</div>
+        <div class="nav-item">调代课</div>
+        <div class="nav-item" id="nav-rules" onclick="switchScreen('settings')">排课规则</div>
+        <div class="nav-item" id="nav-data" onclick="switchScreen('data')">数据管理</div>
+        <div class="nav-item">AI 助手</div>
+        <div class="nav-item" id="nav-settings" onclick="switchScreen('settings')">设置</div>
+      </aside>
+
+      <div class="main-col">
+        <div class="topbar">
+          <div class="breadcrumb" id="topbarTitle">草稿编辑器</div>
+          <div class="user-chip"><span>? 帮助</span><span>教务管理员</span></div>
+        </div>
+
+        <div class="page-area">
+          <!-- SCREEN 1: DRAFT EDITOR -->
+          <section id="scr-draft" class="screen-pane">
+            <div class="proto-controls">
+              <span class="label">状态模拟：</span>
+              <button class="chip-btn on" id="btnDraftConflict" onclick="setDraftState('conflict')">22 处冲突</button>
+              <button class="chip-btn" id="btnDraftClean" onclick="setDraftState('clean')">0 冲突 · 可发布</button>
+              <button class="chip-btn" id="btnDraftLocked" onclick="toggleDraftAllLocked()">切换全部锁定</button>
+              <button class="chip-btn" id="btnDraftJob" onclick="toggleDraftRunningJob()">模拟 ?job= 运行中恢复</button>
+            </div>
+
+            <!-- No WorkbenchLayout Tab here! -->
+            <div class="row">
+              <div class="flex">
+                <button class="btn sm" onclick="switchScreen('workbench')">← 返回排课</button>
+                <h2>方案 11-26 12:33</h2>
+                <span class="tag gray">草稿</span>
+                <span class="info-dot" onclick="toggleInfo('draftHelp')" title="查看操作说明">ⓘ</span>
+              </div>
+              <div class="flex">
+                <button class="btn sm" onclick="showToast('已撤销上一步操作')">↺ 撤销（2）</button>
+                <div class="dropdown-wrap">
+                  <button class="btn sm" onclick="toggleMenu('draftMoreMenu')">更多 ▾</button>
+                  <div class="dropdown-menu hidden" id="draftMoreMenu">
+                    <div class="dd-item" id="ddOptimize" onclick="triggerOptimize()">
+                      <span>继续优化</span>
+                      <span class="sub" id="ddOptimizeHint">继承锁定 0 节</span>
+                    </div>
+                    <div class="dd-item" onclick="closeMenus(); showToast('打开草稿对比弹窗')">比较草稿</div>
+                    <div class="dd-item" onclick="closeMenus(); showToast('重命名草稿')">重命名</div>
+                    <div class="dd-item" onclick="closeMenus(); showToast('已刷新草稿数据')">刷新</div>
+                    <div class="dd-item danger" onclick="closeMenus(); showToast('弹出含锁二次确认删除框')">删除草稿</div>
+                  </div>
+                </div>
+                <button class="btn success sm" id="btnPublishDraft" disabled onclick="showToast('已发布为正式课表基线')">发布课表</button>
+              </div>
+            </div>
+
+            <div class="popover hidden" id="draftHelp">
+              同班拖动=直接移动或换位；跨班换人点上方“跨班换人”。同班交换失败会自动列出联动方案。刷新页面会清空本次会话的撤销记录。
+            </div>
+
+            <div class="summary-strip">
+              <span id="draftConflictBadge" class="tag err">● 22 处排课冲突</span>
+              <span>已排 <strong>241</strong> / 未排 <strong>0</strong></span>
+              <span>已锁定 <strong id="draftLockedCount">0</strong> 节</span>
+              <span class="flex" style="gap:4px; color:#475569; cursor:pointer" onclick="toggleInfo('draftScoreInfo')">
+                排课详情 <span class="info-dot">ⓘ</span>
+              </span>
+              <button class="btn sm" id="btnLocateConflict" style="margin-left:auto" onclick="showToast('已定位到第 1/22 处冲突：高二(1)班 周一第1节')">逐条定位 →</button>
+            </div>
+
+            <div class="popover hidden" id="draftScoreInfo">
+              参考求解得分：<code id="draftScoreText">-22 hard / 0 soft</code>（手工微调后得分可能过期，发布以实时全校校验为准）。
+            </div>
+
+            <!-- Auto-revealed running optimization panel -->
+            <div class="alert info hidden" id="draftRunningJob">
+              <div>
+                <strong>正在基于当前草稿继续优化（继承锁定 <span id="jobLockedNum">0</span> 节）… 48%</strong>
+                <div class="sub" style="color:#1e40af">即使关闭页面后从 ?job= 回来，也会自动在此浮出，不会藏进「更多」。</div>
+              </div>
+              <button class="btn danger sm" onclick="toggleDraftRunningJob()">取消优化</button>
+            </div>
+
+            <div class="card" style="padding:8px 12px">
+              <div class="row">
+                <div class="flex">
+                  <button class="btn primary sm">按行政班</button>
+                  <button class="btn sm">按教师</button>
+                  <select class="ctrl" style="width:150px"><option>高二(1)班</option><option>高二(2)班</option></select>
+                </div>
+                <div class="flex">
+                  <button class="btn sm">多选</button>
+                  <span class="info-dot" onclick="toggleInfo('lockHelp')" title="锁定保护说明">ⓘ</span>
+                  <button class="btn sm">未排课节（0）</button>
+                </div>
+              </div>
+              <div class="popover hidden" id="lockHelp">
+                锁定保护课节的时间与任课教师；可单节锁定，也可多选按天或全班批量锁定。锁定不改变冲突判断，违规课节仍会显示冲突。
+              </div>
+            </div>
+
+            <table class="grid-tbl">
+              <thead>
+                <tr><th style="width:86px">节次</th><th>周一</th><th>周二</th><th>周三</th><th>周四</th><th>周五</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>第1节<br><span class="sub">08:00</span></td><td><div class="lesson-box c1 conflict" id="cellConflict1"><b>英语</b><span>张伟</span></div></td><td><div class="lesson-box c2"><b>化学</b><span>胡军</span></div></td><td><div class="lesson-box c3"><b>数学</b><span>王建国</span></div></td><td><div class="lesson-box c4"><b>语文</b><span>李敏</span></div></td><td><div class="lesson-box c2"><b>物理</b><span>陈强</span></div></td></tr>
+                <tr><td>第2节<br><span class="sub">08:55</span></td><td><div class="lesson-box c1"><b>英语</b><span>张伟</span></div></td><td><div class="lesson-box c2"><b>化学</b><span>胡军</span></div></td><td><div class="lesson-box c3"><b>数学</b><span>王建国</span></div></td><td><div class="lesson-box c4"><b>语文</b><span>李敏</span></div></td><td><div class="lesson-box c1"><b>英语</b><span>张伟</span></div></td></tr>
+                <tr><td>第3节<br><span class="sub">10:00</span></td><td><div class="lesson-box c3"><b>数学</b><span>王建国</span></div></td><td><div class="lesson-box c4"><b>历史</b><span>周涛</span></div></td><td><div class="lesson-box c2"><b>生物</b><span>赵雪</span></div></td><td><div class="lesson-box c3"><b>数学</b><span>王建国</span></div></td><td><div class="lesson-box c4"><b>语文</b><span>李敏</span></div></td></tr>
+                <tr><td>第4节<br><span class="sub">10:55</span></td><td><div class="lesson-box c2"><b>物理</b><span>陈强</span></div></td><td><div class="lesson-box c3"><b>数学</b><span>王建国</span></div></td><td><div class="lesson-box c4"><b>语文</b><span>李敏</span></div></td><td><div class="lesson-box c1"><b>英语</b><span>张伟</span></div></td><td><div class="lesson-box c2"><b>化学</b><span>胡军</span></div></td></tr>
+                <tr><td>第5节<br><span class="sub">14:00</span></td><td><div class="lesson-box c4"><b>体育</b><span>刘阳</span></div></td><td><div class="lesson-box c1"><b>地理</b><span>孙芳</span></div></td><td><div class="lesson-box c3"><b>数学</b><span>王建国</span></div></td><td><div class="lesson-box c2"><b>物理</b><span>陈强</span></div></td><td><div class="lesson-box c1"><b>政治</b><span>吴磊</span></div></td></tr>
+                <tr><td>第6节<br><span class="sub">14:55</span></td><td><div class="lesson-box c3"><b>音乐</b><span>何静</span></div></td><td><div class="lesson-box c4"><b>语文</b><span>李敏</span></div></td><td><div class="lesson-box c2"><b>化学</b><span>胡军</span></div></td><td><div class="lesson-box c3"><b>数学</b><span>王建国</span></div></td><td><div class="lesson-box c4"><b>班会</b><span>李敏</span></div></td></tr>
+              </tbody>
+            </table>
+            <div class="fold-marker"><span>1440×900 首屏底线（改造后首屏可见 6 行课表）</span></div>
+          </section>
+
+          <!-- SCREEN 2: WORKBENCH -->
+          <section id="scr-workbench" class="screen-pane hidden">
+            <div class="tabs-bar">
+              <div class="tab-item active">草稿与排课</div>
+              <div class="tab-item" onclick="switchScreen('timetable')">课表</div>
+            </div>
+            <div class="proto-controls">
+              <span class="label">任务状态模拟：</span>
+              <button class="chip-btn on" id="btnWbClean" onclick="setWbState('clean')">无冲突完成（单行收起）</button>
+              <button class="chip-btn" id="btnWbConflict" onclick="setWbState('conflict')">有冲突完成（自动展开）</button>
+              <button class="chip-btn" id="btnWbEmptyFail" onclick="setWbState('emptyFail')">无草稿且最近失败（历史自动展开）</button>
+            </div>
+
+            <div class="row">
+              <div>
+                <h2>自动排课</h2>
+                <p class="sub">提交排课任务后可在草稿上手工微调，满意后发布为正式课表。</p>
+              </div>
+              <div class="flex">
+                <select class="ctrl" style="width:190px"><option>2026秋季学期 (当前)</option></select>
+                <button class="btn" onclick="showToast('已刷新')">刷新</button>
+              </div>
+            </div>
+
+            <div class="card">
+              <div style="font-weight:700;margin-bottom:10px">发起排课任务</div>
+              <div class="form-grid-2">
+                <div class="field"><label>排课年级</label><input class="ctrl" readonly value="全部 3 个年级（高一、高二、高三）" /></div>
+                <div class="field"><label>草稿名称</label><input class="ctrl" value="方案 A" /></div>
+                <div class="field"><label>最大求解时长</label><input class="ctrl" value="60 秒" /></div>
+                <div class="field" style="justify-content:flex-end">
+                  <button class="btn primary" onclick="showToast('已提交排课任务')">开始排课</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- ActiveJobCard -->
+            <div class="alert ok" id="wbJobClean">
+              <div class="flex">
+                <span class="tag ok">已完成 · 可发布</span>
+                <strong>方案 11-26 12:33</strong>
+                <span class="sub">无冲突 · 耗时 18 秒</span>
+              </div>
+              <div class="flex">
+                <button class="btn sm" onclick="showToast('展开得分与耗时详情')">展开详情</button>
+                <button class="btn primary sm" onclick="switchScreen('draft')">打开草稿</button>
+              </div>
+            </div>
+
+            <div class="card hidden" id="wbJobConflict" style="background:#fffbeb;border-color:#fde68a">
+              <div class="row">
+                <div class="flex"><span class="tag warn">已完成（有冲突）</span><strong>方案 11-26 12:33</strong></div>
+                <button class="btn primary sm" onclick="switchScreen('draft')">打开草稿去排查</button>
+              </div>
+              <div class="sub" style="margin-top:6px;color:#92400e">检测到 22 处排课冲突，暂不可发布；点击「打开草稿」可逐条定位。</div>
+            </div>
+
+            <div class="card" id="wbDraftsCard">
+              <div style="font-weight:700;margin-bottom:8px">课表草稿</div>
+              <table class="data-tbl" id="wbDraftsTable">
+                <thead>
+                  <tr><th>名称</th><th>状态</th><th>冲突情况 <span class="info-dot" title="悬停每行可看原始 hard/soft 得分">ⓘ</span></th><th>课节数</th><th>操作</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>方案 11-26 12:33</td>
+                    <td><span class="tag gray">草稿</span></td>
+                    <td title="求解得分：0 hard / 0 soft"><span class="tag ok">无冲突</span></td>
+                    <td>241</td>
+                    <td><button class="btn sm primary" onclick="switchScreen('draft')">打开编辑器</button></td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="sub hidden" id="wbNoDrafts">还没有课表草稿（因上次任务失败，下方已自动展开排课历史）。</div>
+            </div>
+
+            <div class="collapse-head" onclick="toggleHistory()">
+              <span id="wbHistoryTitle">▸ 排课历史（共 4 次任务 · 含 1 次失败）</span>
+              <span class="sub">点击展开 / 收起</span>
+            </div>
+            <div class="card hidden" id="wbHistoryBody">
+              <table class="data-tbl">
+                <thead><tr><th>时间</th><th>草稿名称</th><th>状态</th><th>冲突详情</th><th>耗时</th></tr></thead>
+                <tbody>
+                  <tr><td>12:33</td><td>方案 11-26</td><td><span class="tag ok">已完成</span></td><td>无冲突 (0hard/0soft)</td><td>18 秒</td></tr>
+                  <tr><td>12:10</td><td>测试失败</td><td><span class="tag err">失败</span></td><td>求解约束不可满足</td><td>5 秒</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- SCREEN 3: TIMETABLE -->
+          <section id="scr-timetable" class="screen-pane hidden">
+            <div class="tabs-bar">
+              <div class="tab-item" onclick="switchScreen('workbench')">草稿与排课</div>
+              <div class="tab-item active">课表</div>
+            </div>
+            <div class="row">
+              <div>
+                <h2>课表</h2>
+                <p class="sub">按行政班、教师或全校查看已发布课表 <span class="info-dot" onclick="toggleInfo('ttMarkInfo')">ⓘ</span></p>
+              </div>
+              <button class="btn" onclick="showToast('正在导出课表 PDF')">⬇ 导出 PDF ▾</button>
+            </div>
+            <div class="popover hidden" id="ttMarkInfo">调代生效的课节会标注「调」或「代」（已从副标题收进此说明，节省一行高度）。</div>
+            <div class="card" style="padding:8px 12px">
+              <div class="row">
+                <div class="flex">
+                  <button class="btn primary sm">行政班</button>
+                  <button class="btn sm">教师</button>
+                  <button class="btn sm">全校</button>
+                  <select class="ctrl" style="width:150px"><option>高一(1)班</option></select>
+                </div>
+                <div class="flex">
+                  <input class="ctrl" style="width:130px" value="2026-11-26" />
+                  <button class="btn primary sm">最新</button>
+                  <button class="btn sm">原始</button>
+                  <span class="info-dot" title="最新=含调代变更；原始=学期基线">ⓘ</span>
+                </div>
+              </div>
+            </div>
+            <table class="grid-tbl">
+              <thead><tr><th>节次</th><th>周一</th><th>周二</th><th>周三</th><th>周四</th><th>周五</th></tr></thead>
+              <tbody>
+                <tr><td>第1节</td><td><div class="lesson-box c4"><b>语文</b><span>李敏</span></div></td><td><div class="lesson-box c3"><b>数学</b><span>王建国</span></div></td><td><div class="lesson-box c1"><b>英语</b><span>张伟</span></div></td><td><div class="lesson-box c2"><b>物理</b><span>陈强</span></div></td><td><div class="lesson-box c3"><b>数学</b><span>王建国</span></div></td></tr>
+                <tr><td>第2节</td><td><div class="lesson-box c3"><b>数学</b><span>王建国</span></div></td><td><div class="lesson-box c1"><b>英语</b><span>张伟</span></div></td><td><div class="lesson-box c4"><b>语文</b><span>李敏</span></div></td><td><div class="lesson-box c2"><b>化学</b><span>胡军</span></div></td><td><div class="lesson-box c1"><b>英语</b><span>张伟</span></div></td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <!-- SCREEN 4: UNIFIED IMPORT -->
+          <section id="scr-import" class="screen-pane hidden">
+            <div class="tabs-bar">
+              <span class="tab-group-label">基础档案</span>
+              <span class="tab-item" onclick="switchScreen('data')">学期与作息</span>
+              <span class="tab-item">年级</span>
+              <span class="tab-item">行政班</span>
+              <span class="tab-item">课程</span>
+              <span class="tab-item">教师</span>
+              <span class="tab-sep">|</span>
+              <span class="tab-group-label">排课输入</span>
+              <span class="tab-item">授课任务</span>
+              <span class="tab-sep">|</span>
+              <span class="tab-group-label">批量导入</span>
+              <span class="tab-item active">数据导入</span>
+              <span class="tab-item">导入配方</span>
+            </div>
+
+            <div class="proto-controls">
+              <span class="label">环境状态模拟：</span>
+              <button class="chip-btn" id="btnAiToggle" onclick="toggleAiConfigured()">AI 配置：未配置（点击切换）</button>
+              <button class="chip-btn" onclick="simulateFileUpload('ok')">模拟上传 课表.xlsx</button>
+              <button class="chip-btn" onclick="simulateFileUpload('bad')">模拟上传 notes.txt（格式校验）</button>
+            </div>
+
+            <div class="row">
+              <div>
+                <h2>数据导入</h2>
+                <p class="sub">上传 Excel / CSV 选列映射并自动套用配方，无需配置 AI 即可使用；已配置 AI 时可切换智能解析。</p>
+              </div>
+              <div class="flex">
+                <button class="btn primary sm" id="btnModeManual" onclick="setImportMode('manual')">手动选列 / 配方</button>
+                <button class="btn sm" id="btnModeAi" onclick="setImportMode('ai')">AI 智能解析 <span class="tag warn" id="aiModeBadge" style="margin-left:4px">未配置</span></button>
+              </div>
+            </div>
+
+            <!-- Unfinished AI session lightweight banner -->
+            <div class="alert info hidden" id="importSessionBanner">
+              <span>检测到上次未完成的 AI 导入会话（整本工作簿 · 解析中/预览）。</span>
+              <button class="btn sm primary" onclick="setImportMode('ai')">继续处理</button>
+            </div>
+
+            <!-- Manual pane -->
+            <div id="importManualPane">
+              <div class="card">
+                <div class="dropzone">
+                  <div style="font-size:15px;font-weight:700">把 Excel / CSV 文件拖到这里，或点击选择</div>
+                  <div class="sub" style="color:#1e40af;margin-top:4px">支持 .xlsx / .xls / .csv；自动识别工作表并匹配已有导入配方。</div>
+                </div>
+                <div class="alert ok hidden" id="uploadOkMsg" style="margin-top:10px">已加载文件：<strong>高二秋季总课表.xlsx</strong>（识别到 3 张工作表）</div>
+                <div class="alert err hidden" id="uploadErrMsg" style="margin-top:10px">只支持 .xlsx / .xls / .csv 格式的文件，当前选择的是 <strong>notes.txt</strong>。</div>
+              </div>
+
+              <div class="card" style="margin-top:10px">
+                <div style="font-weight:700;margin-bottom:8px">列映射（已翻译工程术语）</div>
+                <div class="form-grid-2">
+                  <div class="field"><label>工作表</label><select class="ctrl"><option>高二总课表</option></select></div>
+                  <div class="field"><label>标题所在行</label><select class="ctrl"><option>第 1 行</option><option>无标题行（第1行即数据）</option></select></div>
+                </div>
+                <div class="flex" style="margin-top:10px">
+                  <button class="btn primary sm" id="btnColSplit" onclick="setKeyMode('split')">拆成三列（班级、星期、节次分开）</button>
+                  <button class="btn sm" id="btnColMerged" onclick="setKeyMode('merged')">合并在一列（如 班级|星期|节次）</button>
+                </div>
+                <div class="form-grid-2 hidden" id="mergedKeyFields" style="margin-top:10px">
+                  <div class="field"><label>合并信息列</label><select class="ctrl"><option>第 1 列（班级|星期|节次）</option></select></div>
+                  <div class="field"><label>分隔符</label><input class="ctrl" value="|" /></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- AI pane -->
+            <div id="importAiPane" class="hidden">
+              <div class="card" id="aiNotReadyCard" style="text-align:center;padding:28px 20px">
+                <h3 style="margin:0 0 6px">尚未配置 AI 供应商</h3>
+                <p class="sub" style="margin-bottom:14px">配置大模型后可自动识别多工作表工作簿、乱序名单或拍照图片；当前可直接使用「手动选列 / 配方」导入。</p>
+                <div class="flex" style="justify-content:center">
+                  <button class="btn primary" onclick="showToast('跳转到 /ai 配置供应商')">去 AI 助手配置</button>
+                  <button class="btn" onclick="setImportMode('manual')">返回手动导入</button>
+                </div>
+              </div>
+
+              <div id="aiReadyBox" class="hidden">
+                <div class="card">
+                  <div style="font-weight:700;margin-bottom:8px">选择导入目标（已隐藏 3 张「即将支持」卡片）</div>
+                  <div class="target-cards">
+                    <div class="target-card selected"><strong>整本工作簿（推荐）</strong><div class="sub">一次识别课表、教师、课程与班级</div></div>
+                    <div class="target-card"><strong>教师</strong><div class="sub">名单表格 / 文本 / 拍照图片</div></div>
+                    <div class="target-card"><strong>课表</strong><div class="sub">班级课表 / 年级总表</div></div>
+                  </div>
+                </div>
+                <div class="card" style="margin-top:10px">
+                  <div class="dropzone"><strong>拖入文件，AI 自动识别工作表结构并生成预览</strong></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- SCREEN 5: DATA LAYOUT & EMPTY STATES -->
+          <section id="scr-data" class="screen-pane hidden">
+            <div class="tabs-bar">
+              <span class="tab-group-label">基础档案</span>
+              <span class="tab-item active" id="dataTabSem" onclick="setDataView('semesters')">学期与作息</span>
+              <span class="tab-item" id="dataTabAssign" onclick="setDataView('assignments')">授课任务</span>
+              <span class="tab-sep">|</span>
+              <span class="tab-group-label">批量导入</span>
+              <span class="tab-item" onclick="switchScreen('import')">数据导入</span>
+              <span class="tab-item">导入配方</span>
+            </div>
+
+            <div class="proto-controls">
+              <span class="label">空态与数量模拟：</span>
+              <button class="chip-btn on" id="btnDataNoSem" onclick="setDataScenario('noSem')">无当前学期</button>
+              <button class="chip-btn" id="btnDataOneSem" onclick="setDataScenario('oneSem')">单学期（有数据）</button>
+              <button class="chip-btn" id="btnDataMultiSem" onclick="setDataScenario('multiSem')">多学期（>=2）</button>
+            </div>
+
+            <!-- Assignments subview -->
+            <div id="dataAssignmentsView" class="hidden">
+              <div class="row">
+                <div>
+                  <h2>授课任务管理</h2>
+                  <p class="sub">配置行政班课程的每周课节与授课教师。</p>
+                </div>
+                <!-- Hidden when no semester -->
+                <div class="flex" id="assignToolbarActions">
+                  <select class="ctrl" style="width:160px"><option>2026秋季 (当前)</option></select>
+                  <button class="btn">导入</button>
+                  <button class="btn">导出</button>
+                  <button class="btn primary">+ 新建授课任务</button>
+                </div>
+              </div>
+              <div class="card" id="assignEmptyGuide" style="text-align:center;padding:30px 20px;margin-top:10px">
+                <h3 style="margin:0 0 6px">还没有学期</h3>
+                <p class="sub" style="margin-bottom:14px">授课任务按学期维护（行政班 + 课程 + 每周节数 + 任课教师）。请先创建学期。</p>
+                <button class="btn primary" onclick="setDataView('semesters')">去创建学期</button>
+              </div>
+              <div class="card hidden" id="assignTableCard" style="margin-top:10px">
+                <div class="sub" style="margin-bottom:8px">（有数据时已撤除常驻「授课任务 = …」提示横条，表格首屏空间更大）</div>
+                <table class="data-tbl">
+                  <thead><tr><th>行政班</th><th>课程</th><th>任课教师</th><th>周节数</th></tr></thead>
+                  <tbody><tr><td>高一(1)班</td><td>数学</td><td>王建国（数学）</td><td>5</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Semesters subview -->
+            <div id="dataSemestersView">
+              <div class="row">
+                <div>
+                  <h2>学期与作息</h2>
+                  <p class="sub">学期之间数据严格隔离。作息表决定排课可用的课节。</p>
+                </div>
+                <button class="btn primary">+ 新建学期</button>
+              </div>
+              <div class="card" style="margin-top:10px">
+                <table class="data-tbl">
+                  <thead><tr><th>学期</th><th>起止日期</th><th>操作</th></tr></thead>
+                  <tbody id="semTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <!-- SCREEN 6: SETTINGS + TEACHER MODAL + RULE AI -->
+          <section id="scr-settings" class="screen-pane hidden">
+            <div class="tabs-bar">
+              <span class="tab-item active">通用设置</span>
+              <span class="tab-item">账号</span>
+              <span class="tab-item">最近删除</span>
+            </div>
+
+            <div class="row">
+              <div>
+                <h2>设置中心</h2>
+                <p class="sub">各模块独立保存，修改后立即生效（页头已去掉歧义的全局「保存设置」按钮）。</p>
+              </div>
+              <div class="flex">
+                <button class="btn sm" onclick="openTeacherModal(false)">预览：新建教师弹窗</button>
+                <button class="btn sm" onclick="openTeacherModal(true)">预览：编辑已有邮箱教师</button>
+              </div>
+            </div>
+
+            <!-- Card 1: School info -->
+            <div class="card">
+              <div class="row" style="margin-bottom:10px">
+                <strong>学校信息</strong>
+                <button class="btn primary sm" onclick="showToast('已保存学校信息（PUT /settings）')">保存学校信息</button>
+              </div>
+              <div class="form-grid-2">
+                <div class="field"><label>学校名称</label><input class="ctrl" value="示例中学" /></div>
+                <div class="field"><label>学校 Logo</label><button class="btn sm">上传图片</button></div>
+              </div>
+              <div class="collapse-head" style="margin-top:10px" onclick="toggleBox('schoolAdv')">
+                <span>▸ 高级设置（外部访问地址）</span>
+                <span class="sub">部署时配置</span>
+              </div>
+              <div class="hidden" id="schoolAdv" style="margin-top:8px">
+                <div class="field"><label>外部访问地址</label><input class="ctrl" value="https://paiban.school.cn" /></div>
+              </div>
+            </div>
+
+            <!-- Card 2: DingTalk -->
+            <div class="card">
+              <div class="row" style="margin-bottom:8px">
+                <div class="flex">
+                  <strong>钉钉集成</strong>
+                  <label class="flex" style="cursor:pointer">
+                    <input type="checkbox" id="dingEnabled" onchange="toggleDingtalk()" />
+                    <span>启用钉钉集成</span>
+                  </label>
+                </div>
+                <button class="btn primary sm" onclick="showToast('已保存钉钉配置并同步保存事件令牌')">保存钉钉配置</button>
+              </div>
+              <div class="sub" id="dingOffHint">关闭时折叠凭据字段；开启后展开 AppKey、Secret 及「事件令牌」（与本卡一起保存，不再漏存）。</div>
+              <div class="form-grid-2 hidden" id="dingFields" style="margin-top:8px">
+                <div class="field"><label>AppKey</label><input class="ctrl" placeholder="钉钉 AppKey" /></div>
+                <div class="field"><label>事件令牌</label><input class="ctrl" placeholder="X-DingTalk-Token（随本卡提交）" /></div>
+              </div>
+            </div>
+
+            <!-- Card 3: AI Features + RuleBuilder AI button preview -->
+            <div class="card">
+              <div class="row" style="margin-bottom:8px">
+                <strong>AI 特性（已隐藏「代课人选推荐 · 即将推出」）</strong>
+                <button class="btn primary sm" onclick="showToast('已保存 AI 特性设置')">保存 AI 设置</button>
+              </div>
+              <div class="row">
+                <label class="flex" style="cursor:pointer">
+                  <input type="checkbox" id="ruleAiAvailable" onchange="toggleRuleAiBtn()" />
+                  <span>模拟规则页已可用自然语言约束（available = true）</span>
+                </label>
+                <div class="flex" style="background:#f8fafc;padding:6px 10px;border-radius:7px;border:1px solid #e2e8f0">
+                  <span class="sub">排课规则工具栏预览：</span>
+                  <button class="btn primary sm">新建规则</button>
+                  <button class="btn sm">分组</button>
+                  <button class="btn sm hidden" id="previewRuleAiBtn">AI 帮填</button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Teacher Dialog -->
+  <div class="modal-backdrop" id="teacherModal">
+    <div class="modal">
+      <div class="row">
+        <strong id="teacherModalTitle">新建教师</strong>
+        <button class="btn sm" onclick="closeTeacherModal()">✕</button>
+      </div>
+      <div class="field"><label>姓名 *</label><input class="ctrl" id="tName" value="" /></div>
+      <div class="field"><label>工号</label><input class="ctrl" id="tNo" value="" /></div>
+      <div class="field"><label>任教学科</label><input class="ctrl" id="tSub" value="" /></div>
+      <div class="field"><label>联系电话</label><input class="ctrl" id="tPhone" value="" /></div>
+      <div class="collapse-head" onclick="toggleBox('teacherMore')">
+        <span>▸ 更多信息（电子邮箱、钉钉 UserID）</span>
+        <span class="sub" id="teacherMoreNote">默认折叠</span>
+      </div>
+      <div class="hidden" id="teacherMore" style="display:flex;flex-direction:column;gap:8px">
+        <div class="field"><label>电子邮箱</label><input class="ctrl" id="tEmail" value="" /></div>
+        <div class="field"><label>钉钉 UserID</label><input class="ctrl" id="tDing" value="" /></div>
+      </div>
+      <div class="row" style="justify-content:flex-end">
+        <button class="btn" onclick="closeTeacherModal()">取消</button>
+        <button class="btn primary" onclick="closeTeacherModal(); showToast('已保存教师档案')">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const TITLES = {
+      draft: '草稿编辑器',
+      workbench: '课表工作台',
+      timetable: '课表',
+      import: '数据导入',
+      data: '数据管理',
+      settings: '设置',
+    };
+    let draftAllLocked = false;
+    let draftJobActive = false;
+    let aiConfigured = false;
+
+    function switchScreen(name) {
+      document.querySelectorAll('.screen-pane').forEach((el) => el.classList.add('hidden'));
+      document.getElementById('scr-' + name).classList.remove('hidden');
+      document.querySelectorAll('.screen-tab').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.screen === name);
+      });
+      document.getElementById('topbarTitle').textContent = TITLES[name] || '';
+      document.querySelectorAll('.nav-item').forEach((el) => el.classList.remove('active'));
+      if (name === 'draft' || name === 'workbench' || name === 'timetable') {
+        document.getElementById('nav-workbench').classList.add('active');
+      } else if (name === 'import' || name === 'data') {
+        document.getElementById('nav-data').classList.add('active');
+      } else if (name === 'settings') {
+        document.getElementById('nav-settings').classList.add('active');
+      }
+      closeMenus();
+    }
+
+    document.querySelectorAll('.screen-tab').forEach((btn) => {
+      btn.addEventListener('click', () => switchScreen(btn.dataset.screen));
+    });
+
+    function showToast(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.style.display = 'block';
+      clearTimeout(window.__t);
+      window.__t = setTimeout(() => { el.style.display = 'none'; }, 2400);
+    }
+
+    function toggleInfo(id) {
+      document.getElementById(id).classList.toggle('hidden');
+    }
+
+    function toggleMenu(id) {
+      document.getElementById(id).classList.toggle('hidden');
+    }
+
+    function closeMenus() {
+      document.querySelectorAll('.dropdown-menu').forEach((m) => m.classList.add('hidden'));
+    }
+
+    function toggleBox(id) {
+      document.getElementById(id).classList.toggle('hidden');
+    }
+
+    // Screen 1: Draft
+    function setDraftState(mode) {
+      const clean = mode === 'clean';
+      document.getElementById('btnDraftConflict').classList.toggle('on', !clean);
+      document.getElementById('btnDraftClean').classList.toggle('on', clean);
+      const badge = document.getElementById('draftConflictBadge');
+      badge.className = clean ? 'tag ok' : 'tag err';
+      badge.textContent = clean ? '无冲突 · 可发布' : '● 22 处排课冲突';
+      document.getElementById('draftScoreText').textContent = clean ? '0 hard / 0 soft' : '-22 hard / 0 soft';
+      document.getElementById('btnPublishDraft').disabled = !clean;
+      document.getElementById('btnLocateConflict').classList.toggle('hidden', clean);
+      document.getElementById('cellConflict1').classList.toggle('conflict', !clean);
+    }
+
+    function toggleDraftAllLocked() {
+      draftAllLocked = !draftAllLocked;
+      document.getElementById('btnDraftLocked').classList.toggle('on', draftAllLocked);
+      const count = draftAllLocked ? 241 : 0;
+      document.getElementById('draftLockedCount').textContent = count;
+      document.getElementById('jobLockedNum').textContent = count;
+      document.getElementById('ddOptimize').classList.toggle('disabled', draftAllLocked);
+      document.getElementById('ddOptimizeHint').textContent = draftAllLocked ? '全部课节已锁定' : '继承锁定 0 节';
+    }
+
+    function triggerOptimize() {
+      if (draftAllLocked) {
+        showToast('全部课节已锁定，没有可优化的课程');
+        return;
+      }
+      closeMenus();
+      if (!draftJobActive) toggleDraftRunningJob();
+    }
+
+    function toggleDraftRunningJob() {
+      draftJobActive = !draftJobActive;
+      document.getElementById('btnDraftJob').classList.toggle('on', draftJobActive);
+      document.getElementById('draftRunningJob').classList.toggle('hidden', !draftJobActive);
+    }
+
+    // Screen 2: Workbench
+    function setWbState(mode) {
+      document.getElementById('btnWbClean').classList.toggle('on', mode === 'clean');
+      document.getElementById('btnWbConflict').classList.toggle('on', mode === 'conflict');
+      document.getElementById('btnWbEmptyFail').classList.toggle('on', mode === 'emptyFail');
+      document.getElementById('wbJobClean').classList.toggle('hidden', mode !== 'clean');
+      document.getElementById('wbJobConflict').classList.toggle('hidden', mode !== 'conflict');
+      document.getElementById('wbDraftsTable').classList.toggle('hidden', mode === 'emptyFail');
+      document.getElementById('wbNoDrafts').classList.toggle('hidden', mode !== 'emptyFail');
+      const histBody = document.getElementById('wbHistoryBody');
+      if (mode === 'emptyFail') {
+        histBody.classList.remove('hidden');
+        document.getElementById('wbHistoryTitle').textContent = '▾ 排课历史（共 4 次任务 · 最近一次失败，已自动展开）';
+      } else {
+        histBody.classList.add('hidden');
+        document.getElementById('wbHistoryTitle').textContent = '▸ 排课历史（共 4 次任务 · 含 1 次失败）';
+      }
+    }
+
+    function toggleHistory() {
+      const body = document.getElementById('wbHistoryBody');
+      const hidden = body.classList.toggle('hidden');
+      document.getElementById('wbHistoryTitle').textContent =
+        (hidden ? '▸ ' : '▾ ') + '排课历史（共 4 次任务 · 含 1 次失败）';
+    }
+
+    // Screen 4: Import
+    function setImportMode(mode) {
+      const isAi = mode === 'ai';
+      document.getElementById('btnModeManual').classList.toggle('primary', !isAi);
+      document.getElementById('btnModeAi').classList.toggle('primary', isAi);
+      document.getElementById('importManualPane').classList.toggle('hidden', isAi);
+      document.getElementById('importAiPane').classList.toggle('hidden', !isAi);
+      document.getElementById('aiNotReadyCard').classList.toggle('hidden', aiConfigured);
+      document.getElementById('aiReadyBox').classList.toggle('hidden', !aiConfigured);
+    }
+
+    function toggleAiConfigured() {
+      aiConfigured = !aiConfigured;
+      const btn = document.getElementById('btnAiToggle');
+      btn.textContent = aiConfigured ? 'AI 配置：已配置就绪（点击切换）' : 'AI 配置：未配置（点击切换）';
+      btn.classList.toggle('on', aiConfigured);
+      const badge = document.getElementById('aiModeBadge');
+      badge.className = aiConfigured ? 'tag ok' : 'tag warn';
+      badge.textContent = aiConfigured ? '已就绪' : '未配置';
+      document.getElementById('importSessionBanner').classList.toggle('hidden', !aiConfigured);
+      if (!document.getElementById('importAiPane').classList.contains('hidden')) {
+        setImportMode('ai');
+      }
+    }
+
+    function simulateFileUpload(type) {
+      setImportMode('manual');
+      document.getElementById('uploadOkMsg').classList.toggle('hidden', type !== 'ok');
+      document.getElementById('uploadErrMsg').classList.toggle('hidden', type !== 'bad');
+    }
+
+    function setKeyMode(mode) {
+      document.getElementById('btnColSplit').classList.toggle('primary', mode === 'split');
+      document.getElementById('btnColMerged').classList.toggle('primary', mode === 'merged');
+      document.getElementById('mergedKeyFields').classList.toggle('hidden', mode === 'split');
+    }
+
+    // Screen 5: Data layout & empty states
+    function setDataView(view) {
+      const isSem = view === 'semesters';
+      document.getElementById('dataTabSem').classList.toggle('active', isSem);
+      document.getElementById('dataTabAssign').classList.toggle('active', !isSem);
+      document.getElementById('dataSemestersView').classList.toggle('hidden', !isSem);
+      document.getElementById('dataAssignmentsView').classList.toggle('hidden', isSem);
+    }
+
+    function setDataScenario(mode) {
+      document.getElementById('btnDataNoSem').classList.toggle('on', mode === 'noSem');
+      document.getElementById('btnDataOneSem').classList.toggle('on', mode === 'oneSem');
+      document.getElementById('btnDataMultiSem').classList.toggle('on', mode === 'multiSem');
+      const noSem = mode === 'noSem';
+      document.getElementById('assignToolbarActions').classList.toggle('hidden', noSem);
+      document.getElementById('assignEmptyGuide').classList.toggle('hidden', !noSem);
+      document.getElementById('assignTableCard').classList.toggle('hidden', noSem);
+
+      const tbody = document.getElementById('semTableBody');
+      if (noSem) {
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#64748b;padding:24px">还没有学期，点击右上角「新建学期」开始。</td></tr>';
+      } else if (mode === 'oneSem') {
+        tbody.innerHTML = '<tr><td>2026秋季 <span class="tag ok">当前</span></td><td>2026-09-01 ~ 2027-01-20</td><td>作息表 · 编辑 <span class="sub">（单学期已隐藏「复制结构」）</span></td></tr>';
+      } else {
+        tbody.innerHTML =
+          '<tr><td>2026秋季 <span class="tag ok">当前</span></td><td>2026-09-01 ~ 2027-01-20</td><td>作息表 · 复制结构 · 编辑</td></tr>' +
+          '<tr><td>2027春季</td><td>2027-02-20 ~ 2027-07-05</td><td>作息表 · 设为当前 · 复制结构 · 编辑</td></tr>';
+      }
+    }
+    setDataScenario('noSem');
+
+    // Screen 6: Settings & Teacher Modal
+    function toggleDingtalk() {
+      const on = document.getElementById('dingEnabled').checked;
+      document.getElementById('dingOffHint').classList.toggle('hidden', on);
+      document.getElementById('dingFields').classList.toggle('hidden', !on);
+    }
+
+    function toggleRuleAiBtn() {
+      const on = document.getElementById('ruleAiAvailable').checked;
+      document.getElementById('previewRuleAiBtn').classList.toggle('hidden', !on);
+    }
+
+    function openTeacherModal(withEmail) {
+      document.getElementById('teacherModal').classList.add('open');
+      document.getElementById('teacherModalTitle').textContent = withEmail ? '编辑教师' : '新建教师';
+      document.getElementById('tName').value = withEmail ? '王建国' : '';
+      document.getElementById('tNo').value = withEmail ? 'T001' : '';
+      document.getElementById('tSub').value = withEmail ? '数学' : '';
+      document.getElementById('tPhone').value = withEmail ? '13800000001' : '';
+      document.getElementById('tEmail').value = withEmail ? 'wang@school.cn' : '';
+      document.getElementById('tDing').value = '';
+      const more = document.getElementById('teacherMore');
+      more.classList.toggle('hidden', !withEmail);
+      document.getElementById('teacherMoreNote').textContent = withEmail ? '检测到已有值，自动展开' : '默认折叠';
+    }
+
+    function closeTeacherModal() {
+      document.getElementById('teacherModal').classList.remove('open');
+    }
+  </script>
+</body>
+</html>
