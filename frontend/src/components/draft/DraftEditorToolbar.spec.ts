@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import DraftEditorToolbar from './DraftEditorToolbar.vue'
 
@@ -16,10 +16,14 @@ function mountToolbar(overrides: Record<string, unknown> = {}) {
       undoing: false,
       canEdit: true,
       canPublish: true,
+      canOptimize: true,
+      lockedCount: 0,
+      lessonCount: 4,
       publishable: true,
       ...overrides,
     },
     global: { plugins: [ElementPlus] },
+    attachTo: document.body,
   })
 }
 
@@ -52,6 +56,29 @@ describe('DraftEditorToolbar 撤回入口', () => {
   })
 })
 
+describe('DraftEditorToolbar 溢出菜单', () => {
+  it('低频操作收进更多，保留继续优化和含锁提示', async () => {
+    const wrapper = mountToolbar({ status: 'DRAFT', lockedCount: 2 })
+    expect(wrapper.text()).not.toContain('比较草稿')
+    await wrapper.get('[data-testid="draft-more-menu"]').trigger('click')
+    await flushPromises()
+    expect(document.body.textContent).toContain('继续优化')
+    expect(document.body.textContent).toContain('继承锁定 2 节')
+    expect(document.body.textContent).toContain('比较草稿')
+    expect(document.body.textContent).toContain('重命名')
+    expect(document.body.textContent).toContain('刷新')
+    expect(document.body.textContent).toContain('删除草稿')
+  })
+
+  it('全部锁定时禁用优化并写明原因', async () => {
+    const wrapper = mountToolbar({ status: 'DRAFT', lockedCount: 4, lessonCount: 4 })
+    await wrapper.get('[data-testid="draft-more-menu"]').trigger('click')
+    await flushPromises()
+    const item = document.querySelector('[data-testid="optimization-entry"]')!
+    expect(item.getAttribute('aria-disabled')).toBe('true')
+    expect(item.textContent).toContain('全部课节已锁定')
+  })
+})
 describe('DraftEditorToolbar 重新发布后的调代提示', () => {
   it('发布后仍有撤回遗留的调代时显示提示并可跳转记录页', async () => {
     const wrapper = mountToolbar({ cancelledSubstitutions: 2 })

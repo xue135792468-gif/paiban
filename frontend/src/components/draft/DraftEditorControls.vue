@@ -1,9 +1,6 @@
 <template>
   <div class="controls">
-    <el-radio-group
-      :model-value="viewMode"
-      @update:model-value="onViewChange"
-    >
+    <el-radio-group :model-value="viewMode" @update:model-value="onViewChange">
       <el-radio-button value="class">按行政班</el-radio-button>
       <el-radio-button value="teacher">按教师</el-radio-button>
     </el-radio-group>
@@ -14,12 +11,7 @@
       placeholder="选择对象"
       @update:model-value="emit('update:targetId', $event)"
     >
-      <el-option
-        v-for="option in targetOptions"
-        :key="option.id"
-        :label="option.name"
-        :value="option.id"
-      />
+      <el-option v-for="option in targetOptions" :key="option.id" :label="option.name" :value="option.id" />
     </el-select>
     <div class="spacer" />
     <template v-if="selectedLesson && !selectionMode">
@@ -46,9 +38,7 @@
         :data-testid="selectedLessonLocked ? 'unlock-single' : 'lock-single'"
         :disabled="!draftEditable || selectedLesson.periodId == null"
         @click="
-          selectedLessonLocked
-            ? emit('unlock-single', selectedLesson)
-            : emit('lock-single', selectedLesson)
+          selectedLessonLocked ? emit('unlock-single', selectedLesson) : emit('lock-single', selectedLesson)
         "
       >
         {{ selectedLessonLocked ? '解锁' : '锁定' }}
@@ -62,9 +52,7 @@
       多选
     </el-button>
     <template v-if="selectionMode">
-      <el-tag type="info" effect="plain" data-testid="selected-count">
-        已选 {{ selectedCount }} 节
-      </el-tag>
+      <el-tag type="info" effect="plain" data-testid="selected-count"> 已选 {{ selectedCount }} 节 </el-tag>
       <el-button
         type="primary"
         :disabled="!draftEditable || selectedCount === 0"
@@ -112,15 +100,18 @@
       </el-button>
       <span v-if="!canUseClassScope" class="scope-hint">按天/全班需切到「按行政班」</span>
     </template>
+    <el-popover placement="bottom-start" :width="400" trigger="click">
+      <template #reference>
+        <el-button link type="primary" data-testid="lock-help">课节锁定 ⓘ</el-button>
+      </template>
+      锁定保护课节的时间与任课教师；可单节锁定，也可多选后按所选、当前行政班的某天或全班批量锁定。
+      批量范围只含已排课节；多选模式下不会触发拖拽。锁定不改变冲突判断，违规课节仍显示冲突，锁定不等于合规。
+    </el-popover>
     <el-button @click="emit('toggle-drawer')">
       <el-icon><Tickets /></el-icon>
       <span>未排课节（{{ unassignedCount }}）</span>
     </el-button>
   </div>
-  <p class="lock-hint">
-    锁定保护课节的时间与任课教师；可单节锁定，也可多选后按所选、当前行政班的某天或全班批量锁定。
-    批量范围只含已排课节；多选模式下不会触发拖拽。锁定不改变冲突判断，违规课节仍显示冲突，锁定不等于合规。
-  </p>
   <el-alert
     v-if="swapMode"
     class="swap-hint"
