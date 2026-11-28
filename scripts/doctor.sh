@@ -2,10 +2,11 @@
 # 排课系统自检（doctor）：Docker、端口、内存、数据库、磁盘。
 #
 # 用法：
-#   ./doctor.sh            人类可读的中文报告
-#   ./doctor.sh --json     机器可读的 JSON（stdout 只有 JSON）
-#   ./doctor.sh --quiet    同 --json（本工具无进度输出）
-#   ./doctor.sh --help     显示帮助
+#   ./doctor.sh              人类可读的中文报告
+#   ./doctor.sh --json       机器可读的 JSON（stdout 只有 JSON）
+#   ./doctor.sh --quiet      同 --json（本工具无进度输出）
+#   ./doctor.sh --no-docker  跳过 Docker 与数据库检查（本机无 Docker 迭代时用）
+#   ./doctor.sh --help       显示帮助
 #
 # 退出码：0=健康，1=警告（内存/迁移），2=严重（Docker/数据库/磁盘）。
 # 端口占用只作为信息输出，不影响退出码：本系统正常运行时它们本来就被自己占用。
@@ -19,11 +20,12 @@ usage() {
   cat <<'EOF'
 排课系统自检（doctor）
 
-用法：doctor.sh [--json|--quiet] [--help]
+用法：doctor.sh [--json|--quiet] [--no-docker] [--help]
 
-  --json    输出 JSON 诊断报告，stdout 只有 JSON
-  --quiet   同 --json（本工具不打印进度信息）
-  --help    显示本帮助
+  --json       输出 JSON 诊断报告，stdout 只有 JSON
+  --quiet      同 --json（本工具不打印进度信息）
+  --no-docker  跳过 Docker 与数据库检查（无 Docker 迭代环境用）
+  --help       显示本帮助
 
 退出码：0=健康，1=有警告（内存/迁移），2=存在严重问题
 端口占用仅为信息项，不影响退出码。
@@ -31,9 +33,11 @@ EOF
 }
 
 MODE="human"
+NO_DOCKER=0
 for arg in "$@"; do
   case "$arg" in
     --json | --quiet) MODE="json" ;;
+    --no-docker) NO_DOCKER=1 ;;
     --help | -h)
       usage
       exit 0
@@ -107,7 +111,7 @@ docker_installed=0
 docker_running=0
 docker_version=""
 
-if command -v docker >/dev/null 2>&1; then
+if [[ $NO_DOCKER -eq 0 ]] && command -v docker >/dev/null 2>&1; then
   docker_installed=1
   raw_version="$(run_timeout 10 docker --version 2>/dev/null | head -1 | tr -d '\r')"
   docker_version="$(printf '%s' "$raw_version" | sed -n 's/.*[Vv]ersion[[:space:]]\+\([^,]*\).*/\1/p')"
@@ -171,7 +175,7 @@ db_reachable=0
 db_migrated=0
 db_version=""
 
-if [[ $docker_running -eq 1 && -f "$ROOT/docker-compose.yml" ]]; then
+if [[ $NO_DOCKER -eq 0 && $docker_running -eq 1 && -f "$ROOT/docker-compose.yml" ]]; then
   db_user="$(env_value POSTGRES_USER)"
   db_name="$(env_value POSTGRES_DB)"
   [[ -n "$db_user" ]] || db_user="paiban"
@@ -218,7 +222,13 @@ esac
 # 2 = 严重（Docker/数据库/磁盘）；1 = 警告（内存/迁移）；0 = 健康。
 
 exit_code=0
-if [[ $docker_installed -eq 0 || $docker_running -eq 0 || $db_reachable -eq 0 || $disk_sufficient -eq 0 ]]; then
+if [[ $NO_DOCKER -eq 1 ]]; then
+  if [[ $disk_sufficient -eq 0 ]]; then
+    exit_code=2
+  elif [[ $mem_sufficient -eq 0 ]]; then
+    exit_code=1
+  fi
+elif [[ $docker_installed -eq 0 || $docker_running -eq 0 || $db_reachable -eq 0 || $disk_sufficient -eq 0 ]]; then
   exit_code=2
 elif [[ $mem_sufficient -eq 0 || $db_migrated -eq 0 ]]; then
   exit_code=1
@@ -263,7 +273,9 @@ info() { printf 'ℹ️ %s\n' "$1"; }
 
 echo "=== 排课系统自检 (doctor) ==="
 
-if [[ $docker_installed -eq 0 ]]; then
+if [[ $NO_DOCKER -eq 1 ]]; then
+  info "Docker：已跳过检查（--no-docker）"
+elif [[ $docker_installed -eq 0 ]]; then
   bad "Docker：未安装。请安装 Docker Desktop：https://www.docker.com/products/docker-desktop"
 elif [[ $docker_running -eq 0 ]]; then
   warn "Docker：已安装 ${docker_version}，但守护进程未运行（请启动 Docker Desktop）"
@@ -287,7 +299,9 @@ else
   warn "内存：总计 ${total_gb} GB，可用 ${avail_gb} GB，低于 2 GB，求解可能失败"
 fi
 
-if [[ $docker_running -eq 0 ]]; then
+if [[ $NO_DOCKER -eq 1 ]]; then
+  info "数据库：已跳过检查（--no-docker）"
+elif [[ $docker_running -eq 0 ]]; then
   bad "数据库：不可连接（Docker 未运行；启动后执行 docker compose up -d）"
 elif [[ $db_reachable -eq 0 ]]; then
   bad "数据库：不可连接（请执行 docker compose up -d 并等待就绪）"

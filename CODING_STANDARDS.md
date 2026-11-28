@@ -60,6 +60,8 @@
 - 汇总态与可发布态必须以完整判定结果（如 `publishable`、任务终态）为唯一来源，不得用单一子指标（如 `hardConflicts === 0` 或 `scoreHard === 0`）反推。
 - 调代凭证展示：「这个方案保留到」必须使用凭证过期时间 `expiresAt`（缺失时回退 `deadlineAt`）；`deadlineAt` 只用于开课截止提示，不用于常规有效期展示。
 - 修订横幅必须展示修订类型（更换代课人 / 恢复基线 / 再次调整已调课），不得只写「再次调整」。「恢复基线」是产品里撤销调代、恢复原任课教师的入口（`CandidateListDto.baselineTeacherId` → 同一 `previews` + `confirm`），不是删除调代记录。
+- 相邻条件分支（`v-if` / `v-else-if` / `v-else`）切换 `<el-tag>` 时加 `disable-transitions` 与显式 `:key`，避免 Element Plus 默认 300ms 缩放过渡产生双标签叠影。
+- 表格含 `fixed="right"` 操作列时，在 `1440×900` 视口下确保无横向溢出且操作列左侧不遮挡相邻列内容（Playwright 用 `frontend/e2e/helpers.ts` 的 `expectNoFixedColumnOverlap` 校验）。
 
 ## Java 代码风格
 
