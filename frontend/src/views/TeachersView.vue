@@ -38,12 +38,12 @@
         @action="openCreate"
       />
       <el-table v-else v-loading="loading" :data="filteredTeachers" stripe>
-        <el-table-column prop="employeeNo" label="工号" min-width="120">
+        <el-table-column prop="employeeNo" label="工号" min-width="96">
           <template #default="{ row }">
             <span>{{ row.employeeNo || '—' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="name" label="姓名" min-width="160">
+        <el-table-column prop="name" label="姓名" min-width="130">
           <template #default="{ row }">
             <span>{{ row.name }}</span>
             <span v-if="suffixOf(row)" class="group-suffix" :data-testid="`teacher-group-suffix-${row.id}`">
@@ -51,22 +51,22 @@
             </span>
           </template>
         </el-table-column>
-        <el-table-column prop="subject" label="任教学科" min-width="120">
+        <el-table-column prop="subject" label="任教学科" min-width="92">
           <template #default="{ row }">
             <span>{{ row.subject || '—' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="phone" label="联系电话" min-width="140">
+        <el-table-column prop="phone" label="联系电话" min-width="120">
           <template #default="{ row }">
             <span>{{ row.phone || '—' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="email" label="电子邮箱" min-width="180">
+        <el-table-column prop="email" label="电子邮箱" min-width="150" show-overflow-tooltip>
           <template #default="{ row }">
             <span>{{ row.email || '—' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="平台绑定" min-width="150">
+        <el-table-column label="平台绑定" width="92">
           <template #default="{ row }">
             <div class="binding-tags">
               <el-tag v-if="row.bindingStatus === 'dingtalk'" size="small"> 钉钉 </el-tag>
@@ -74,9 +74,9 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="active" label="状态" width="100">
+        <el-table-column prop="active" label="状态" width="92" min-width="92">
           <template #default="{ row }">
-            <el-tag :type="row.active ? 'success' : 'info'">
+            <el-tag class="status-tag" :type="row.active ? 'success' : 'info'">
               {{ row.active ? '正常' : '已停用' }}
             </el-tag>
           </template>
@@ -84,7 +84,7 @@
         <el-table-column
           v-if="auth.hasPermission('foundation:manage')"
           label="操作"
-          width="220"
+          width="180"
           fixed="right"
         >
           <template #default="{ row }">
@@ -367,6 +367,10 @@ onMounted(async () => {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+}
+.status-tag {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .group-suffix {
   color: var(--paiban-muted, #6b7280);

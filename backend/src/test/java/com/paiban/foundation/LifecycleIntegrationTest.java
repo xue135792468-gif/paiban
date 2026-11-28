@@ -3,6 +3,7 @@ package com.paiban.foundation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.nullValue;
 
 import com.paiban.foundation.service.LifecycleService;
 import com.paiban.scheduling.domain.Assignment;
@@ -409,5 +410,27 @@ class LifecycleIntegrationTest extends ApiIntegrationTest {
         Integer rows = jdbc.queryForObject(
                 "select count(*) from teacher where id = ?", Integer.class, teacherId);
         assertThat(rows).isEqualTo(1);
+    }
+
+    @Test
+    void teacherOptionsIncludeSubjectWithoutContactFields() {
+        String token = adminToken();
+        String name = "学科老师" + TestData.suffix();
+        long teacherId = as(token)
+                .body(Map.of(
+                        "name", name,
+                        "subject", "数学",
+                        "phone", "13800138000",
+                        "email", "math@example.com"))
+                .when().post("/api/teachers")
+                .then().statusCode(200)
+                .extract().jsonPath().getLong("id");
+
+        as(token).when().get("/api/teachers/options")
+                .then().statusCode(200)
+                .body("find { it.id == " + teacherId + " }.name", equalTo(name))
+                .body("find { it.id == " + teacherId + " }.subject", equalTo("数学"))
+                .body("find { it.id == " + teacherId + " }.phone", nullValue())
+                .body("find { it.id == " + teacherId + " }.email", nullValue());
     }
 }

@@ -47,11 +47,11 @@ public class FoundationController {
         return service.listTeachers();
     }
 
-    /** Id + name only, so teachers can pick substitutes without seeing phone/email. */
+    /** Id + name + subject only, so users can disambiguate teachers without seeing phone/email. */
     @GetMapping("/teachers/options")
     public List<FoundationDtos.TeacherOptionDto> teacherOptions() {
         return service.listTeacherOptions().stream()
-                .map(teacher -> new FoundationDtos.TeacherOptionDto(teacher.id(), teacher.name()))
+                .map(teacher -> new FoundationDtos.TeacherOptionDto(teacher.id(), teacher.name(), teacher.subject()))
                 .toList();
     }
 

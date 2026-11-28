@@ -18,7 +18,7 @@ public final class FoundationDtos {
                              String subject, boolean active, String dingtalkUserId,
                              String bindingStatus) {}
 
-    public record TeacherOptionDto(Long id, String name) {}
+    public record TeacherOptionDto(Long id, String name, String subject) {}
 
     public record SaveTeacherRequest(@NotBlank(message = "姓名不能为空") @Size(max = 100) String name,
                                      @Size(max = 50) String employeeNo,

@@ -276,7 +276,12 @@ export const routes: RouteRecordRaw[] = [
       { path: 'admin/users', redirect: '/settings/users' },
     ],
   },
-  { path: '/:pathMatch(.*)*', redirect: '/' },
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'not-found',
+    component: () => import('@/views/NotFoundView.vue'),
+    meta: { title: '页面不存在' },
+  },
 ]
 
 const router = createRouter({

@@ -60,6 +60,26 @@ describe('OnboardingView progress and help', () => {
     expect(wrapper.get('[data-testid="wizard-progress"]').text()).toBe('第 1/7 步：学校信息')
   })
 
+  it('marks step 7 built-in rules as 已内置 instead of done before completion', async () => {
+    const { wrapper } = await mountWizard()
+
+    const items = wrapper.findAll('.progress-item')
+    const step7 = items[6]
+    expect(step7.text()).toContain('7. 排课规则')
+    expect(step7.text()).toContain('已内置')
+    expect(step7.find('.done').exists()).toBe(false)
+
+    await step7.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('.step-side').text()).toContain('已内置')
+    expect(wrapper.get('.step-side').text()).not.toContain('待完成')
+    expect(wrapper.get('.step-side').text()).not.toContain('已完成')
+    const updatedItems = wrapper.findAll('.progress-item')
+    expect(updatedItems[0].text()).not.toContain('进行中')
+    expect(updatedItems[6].text()).toContain('进行中')
+  })
+
   it('links the current step to its help section', async () => {
     const { wrapper } = await mountWizard()
 

@@ -12,6 +12,7 @@ vi.mock('@/api/http', () => ({ http: httpMock }))
 async function mountView(
   permissions: string[] = ['timetable:view', 'timetable:view:class', 'scheduling:run', 'export:timetable'],
   user: { teacherId?: number | null; roles?: string[] } = {},
+  initialPath = '/workbench/timetable',
 ) {
   const pinia = createPinia()
   setActivePinia(pinia)
@@ -28,11 +29,11 @@ async function mountView(
     history: createMemoryHistory(),
     routes: [{ path: '/:pathMatch(.*)*', component: { template: '<div />' } }],
   })
-  await router.push('/workbench/timetable')
+  await router.push(initialPath)
   await router.isReady()
   const wrapper = mount(TimetableView, { global: { plugins: [pinia, router, ElementPlus] } })
   await flushPromises()
-  return wrapper
+  return Object.assign(wrapper, { router })
 }
 
 describe('TimetableView 无已发布基线', () => {
@@ -107,6 +108,9 @@ describe('TimetableView 老师默认看自己的课表', () => {
       }
       if (url === '/timetable/publish-info') {
         return Promise.resolve({ status: 200, data: { published: true, publishedAt: '2026-01-01' } })
+      }
+      if (url === '/timetable/school') {
+        return Promise.resolve({ status: 200, data: { entries: [] } })
       }
       return Promise.resolve({ status: 200, data: [] })
     })
@@ -191,6 +195,99 @@ describe('TimetableView 学校还没有当前学期', () => {
     expect(urlsAfterSchool).not.toContain('/classes')
     expect(wrapper.text()).toContain('学校尚未设置当前学期，请联系教务处')
 
+    wrapper.unmount()
+  })
+})
+
+describe('TimetableView URL query 同步', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    httpMock.get.mockImplementation((url: string) => {
+      if (url === '/classes') {
+        return Promise.resolve({
+          status: 200,
+          data: [
+            { id: 3, name: '高一(1)班' },
+            { id: 5, name: '高一(3)班' },
+          ],
+        })
+      }
+      if (url === '/teachers/options') {
+        return Promise.resolve({
+          status: 200,
+          data: [
+            { id: 7, name: '张老师' },
+            { id: 9, name: '李老师' },
+          ],
+        })
+      }
+      if (url === '/semesters/current') {
+        return Promise.resolve({ status: 200, data: { id: 1, name: '测试学期' } })
+      }
+      if (url === '/timetable/publish-info') {
+        return Promise.resolve({ status: 200, data: { published: true, publishedAt: '2026-01-01' } })
+      }
+      if (url === '/timetable/school') {
+        return Promise.resolve({ status: 200, data: { entries: [] } })
+      }
+      return Promise.resolve({ status: 200, data: [] })
+    })
+  })
+
+  it('从 URL query 恢复视角、对象、日期与最新/原始筛选', async () => {
+    const wrapper = await mountView(
+      ['timetable:view', 'timetable:view:class', 'scheduling:run', 'timetable:edit'],
+      { teacherId: null, roles: ['admin'] },
+      '/workbench/timetable?mode=class&id=5&date=2026-12-01&view=baseline',
+    )
+
+    expect(httpMock.get).toHaveBeenCalledWith('/timetable/class/5', {
+      params: { view: 'baseline', date: '2026-12-01' },
+    })
+    wrapper.unmount()
+  })
+
+  it('切换视角与版本时同步更新 URL query，全校模式不保留 id', async () => {
+    const wrapper = await mountView(
+      ['timetable:view', 'timetable:view:class', 'scheduling:run', 'timetable:edit'],
+      { teacherId: null, roles: ['admin'] },
+    )
+
+    const baselineRadio = wrapper
+      .findAll('input[type="radio"]')
+      .find((input) => (input.element as HTMLInputElement).value === 'baseline')
+    expect(baselineRadio).toBeTruthy()
+    await baselineRadio!.setValue(true)
+    await flushPromises()
+
+    expect(wrapper.router.currentRoute.value.query).toMatchObject({
+      mode: 'class',
+      id: '3',
+      view: 'baseline',
+    })
+
+    const schoolRadio = wrapper
+      .findAll('input[type="radio"]')
+      .find((input) => (input.element as HTMLInputElement).value === 'school')
+    expect(schoolRadio).toBeTruthy()
+    await schoolRadio!.setValue(true)
+    await flushPromises()
+
+    expect(wrapper.router.currentRoute.value.query.mode).toBe('school')
+    expect(wrapper.router.currentRoute.value.query.id).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('非法 id 与无权视角 query 安全回退到有权限的默认对象', async () => {
+    const wrapper = await mountView(
+      ['timetable:view:own', 'substitution:submit'],
+      { teacherId: 7, roles: ['teacher'] },
+      '/workbench/timetable?mode=school&id=999',
+    )
+
+    const urls = httpMock.get.mock.calls.map((call) => String(call[0]))
+    expect(urls).toContain('/timetable/teacher/7')
+    expect(urls).not.toContain('/timetable/school')
     wrapper.unmount()
   })
 })
