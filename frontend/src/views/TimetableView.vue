@@ -33,7 +33,7 @@
           v-model="targetId"
           filterable
           style="width: 200px"
-          @change="load"
+          @change="onFilterChange"
         >
           <el-option v-for="option in targets" :key="option.id" :label="option.name" :value="option.id" />
         </el-select>
@@ -43,9 +43,9 @@
           value-format="YYYY-MM-DD"
           placeholder="选择日期"
           style="width: 160px"
-          @change="load"
+          @change="onFilterChange"
         />
-        <el-radio-group v-model="view" @change="load">
+        <el-radio-group v-model="view" @change="onFilterChange">
           <el-radio-button value="latest">最新</el-radio-button>
           <el-radio-button value="baseline">原始</el-radio-button>
         </el-radio-group>
@@ -124,6 +124,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
@@ -133,6 +134,7 @@ import { useAuthStore } from '@/stores/auth'
 import InfoTooltip from '@/components/InfoTooltip.vue'
 import { serverMessage } from '@/api/errors'
 import { today } from '@/components/substitution/types'
+import { buildTimetableQuery, resolveTimetableFilters } from '@/components/timetable/timetableQuery'
 
 interface Entry {
   id: number
@@ -182,6 +184,8 @@ interface PublishInfo {
   status?: string | null
 }
 
+const route = useRoute()
+const router = useRouter()
 const auth = useAuthStore()
 const canExport = computed(() => auth.hasPermission('export:timetable'))
 const canViewAll = computed(() => auth.hasPermission('timetable:view'))
@@ -321,13 +325,36 @@ function tooltip(entry: Entry) {
   return `${base}（${kind}）；原教师：${entry.originalTeacherName ?? '—'}${reason}；${entry.note ?? ''}`
 }
 
+function syncQuery() {
+  const next = buildTimetableQuery({
+    mode: mode.value,
+    targetId: targetId.value,
+    date: date.value,
+    view: view.value,
+  })
+  const current = route.query
+  const same =
+    current.mode === next.mode &&
+    (current.id ?? undefined) === next.id &&
+    (current.date ?? undefined) === next.date &&
+    current.view === next.view
+  if (!same) {
+    void router.replace({ query: next })
+  }
+}
+
+function onFilterChange() {
+  syncQuery()
+  load()
+}
+
 function onModeChange() {
   if (mode.value === 'school') {
     targetId.value = null
   } else {
     targetId.value = targets.value.length > 0 ? targets.value[0].id : null
   }
-  load()
+  onFilterChange()
 }
 
 async function load() {
@@ -402,20 +429,20 @@ onMounted(async () => {
     periods.value = periodRes.data
     published.value = publishRes.data?.published ? publishRes.data : null
   }
-  targetId.value = targets.value.length > 0 ? targets.value[0].id : null
-  if (!canManageSchedule.value && auth.user?.teacherId != null) {
-    // 老师默认先看到自己的课表；行政班 / 全校是额外的只读入口，不是落地页。
-    mode.value = 'teacher'
-    targetId.value = auth.user.teacherId
-  } else if (!canViewAll.value) {
-    if (canViewClassScope.value && headClasses.value.length > 0) {
-      mode.value = 'class'
-      targetId.value = headClasses.value[0].id
-    } else {
-      mode.value = 'teacher'
-      targetId.value = auth.user?.teacherId ?? null
-    }
-  }
+  const resolved = resolveTimetableFilters(route.query, {
+    canViewAll: canViewAll.value,
+    canViewClassScope: canViewClassScope.value,
+    canManageSchedule: canManageSchedule.value,
+    ownTeacherId: auth.user?.teacherId ?? null,
+    classes: classes.value,
+    headClasses: headClasses.value,
+    teachers: teachers.value,
+    defaultDate: today(),
+  })
+  mode.value = resolved.mode
+  targetId.value = resolved.targetId
+  date.value = resolved.date
+  view.value = resolved.view
   await load()
 })
 </script>

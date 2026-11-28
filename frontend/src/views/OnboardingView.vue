@@ -30,8 +30,9 @@
             <p class="desc">{{ current.description }}</p>
           </div>
           <div class="step-side">
-            <el-tag v-if="isDone(current.key)" type="success" effect="light">已完成</el-tag>
-            <el-tag v-else type="info" effect="light">待完成</el-tag>
+            <el-tag v-if="isDone(current.key)" key="done" disable-transitions type="success" effect="light">已完成</el-tag>
+            <el-tag v-else-if="isBuiltin(current.key)" key="builtin" disable-transitions type="info" effect="plain">已内置</el-tag>
+            <el-tag v-else key="pending" disable-transitions type="info" effect="light">待完成</el-tag>
             <router-link class="help-link" :to="helpLink(WIZARD_HELP_SLUG, current.helpAnchor)">
               查看帮助
             </router-link>
@@ -61,9 +62,13 @@
         <div class="progress-list">
           <div v-for="(step, index) in steps" :key="step.key" class="progress-item" @click="goTo(index)">
             <el-icon v-if="isDone(step.key)" class="done"><CircleCheck /></el-icon>
+            <el-icon v-else-if="isBuiltin(step.key)" class="builtin"><InfoFilled /></el-icon>
             <el-icon v-else class="pending"><Clock /></el-icon>
             <span :class="{ done: isDone(step.key) }">{{ index + 1 }}. {{ step.title }}</span>
-            <el-tag v-if="index === currentStep" size="small" type="primary" effect="plain">进行中</el-tag>
+            <el-tag v-if="!isDone(step.key) && isBuiltin(step.key)" disable-transitions size="small" type="info" effect="plain">
+              已内置
+            </el-tag>
+            <el-tag v-if="index === currentStep" disable-transitions size="small" type="primary" effect="plain">进行中</el-tag>
           </div>
         </div>
       </el-card>
@@ -75,7 +80,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { CircleCheck, CircleCheckFilled, Clock } from '@element-plus/icons-vue'
+import { CircleCheck, CircleCheckFilled, Clock, InfoFilled } from '@element-plus/icons-vue'
 import { http } from '@/api/http'
 import { helpLink } from '@/help/links'
 import { WIZARD_HELP_SLUG, WIZARD_STEPS, wizardProgressLabel } from '@/onboarding/wizardSteps'
@@ -124,9 +129,12 @@ function hintFor(key: string) {
   return hints.value.find((hint) => hint.key === key)
 }
 
+function isBuiltin(key: string) {
+  return key === 'constraints'
+}
+
 function isDone(key: string) {
   if (key === 'school') return Boolean(data.value.schoolName) || completedSteps.value.includes(0)
-  if (key === 'constraints') return true
   const hint = hintFor(key)
   return hint ? hint.done : completedSteps.value.includes(steps.findIndex((step) => step.key === key))
 }
@@ -286,6 +294,9 @@ h3 {
 }
 .done {
   color: #52c41a;
+}
+.builtin {
+  color: #64748b;
 }
 .pending {
   color: #b0b7c3;

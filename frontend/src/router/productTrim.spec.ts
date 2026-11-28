@@ -133,7 +133,7 @@ describe('product trim routing', () => {
     }
   }, 60_000)
 
-  it('keeps system pages reachable and sends unknown paths home', async () => {
+  it('keeps system pages reachable and routes unknown paths to 404', async () => {
     const router = makeRouter()
 
     for (const path of [
@@ -148,7 +148,8 @@ describe('product trim routing', () => {
     }
 
     await router.push('/no/such/page')
-    expect(router.currentRoute.value.path).toBe('/')
+    expect(router.currentRoute.value.name).toBe('not-found')
+    expect(router.currentRoute.value.path).toBe('/no/such/page')
   }, 30_000)
 
   it('redirects the bare layout paths to their first section', async () => {

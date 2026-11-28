@@ -7,9 +7,9 @@ export interface UndoShortcutOptions {
 }
 
 /**
- * `Ctrl/Cmd+Z` for the draft editor. Kept out of the view so the SFC stays under
- * the 600-line limit; the guardrails (no undo inside inputs, never while busy)
- * are the same as before.
+ * `Ctrl/Cmd+Z` and `beforeunload` warning for the draft editor. Kept out of the
+ * view so the SFC stays under the 600-line limit; the guardrails (no undo inside
+ * inputs, never while busy, warn on unload only when undo history exists) stay here.
  */
 export function useUndoShortcut(options: UndoShortcutOptions) {
   function onKeydown(event: KeyboardEvent) {
@@ -22,6 +22,18 @@ export function useUndoShortcut(options: UndoShortcutOptions) {
     options.undo()
   }
 
-  onMounted(() => window.addEventListener('keydown', onKeydown))
-  onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+  function onBeforeUnload(event: BeforeUnloadEvent) {
+    if (!options.canUndo.value) return
+    event.preventDefault()
+    event.returnValue = ''
+  }
+
+  onMounted(() => {
+    window.addEventListener('keydown', onKeydown)
+    window.addEventListener('beforeunload', onBeforeUnload)
+  })
+  onBeforeUnmount(() => {
+    window.removeEventListener('keydown', onKeydown)
+    window.removeEventListener('beforeunload', onBeforeUnload)
+  })
 }
