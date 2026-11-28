@@ -7,15 +7,10 @@
 - `.scratch/HANDOFF.md` — **接手进度先读这份**：线上状态、红线、待办票与推进路线
 - `README.md` — 启动、测试、部署与实现说明
 - `CODING_STANDARDS.md` — 评审时的判断标准（审计、事务、权限、测试、前端拆分）
-- `docs/adr/` — 31 份决策记录（历史记录，一律保留不改写）；改行为前先找对应 ADR
 - `GLOSSARY.md` — 领域术语：行政班、授课任务、基线、调代
-- `.scratch/phase1-mvp/` — 一期规格、15 张票据与 PR 记录
-- `.scratch/phase2-ai/` — 二期规格、6 张票据、跨票据接口契约
-- `.scratch/phase3-feishu/` — 三期飞书集成规格与票据（历史归档，功能已在票 15 删除）
-- `.scratch/phase4-onboarding/` — 四期规格、5 张票据、引导与帮助中心契约（`frontend/src/onboarding`、`frontend/src/help`）
-- `.scratch/workbook-background/` — 整本工作簿后台解析规格与 3 张已实现票据（票 02 遗留）
-- `.scratch/auto-schedule-publishable/` — 自动排课达到发布标准的规格、票据与复审遗留（历史归档；其中的固定教室方案已在票 15 删除）
+- `docs/adr/` — 架构决策记录（历史记录只读保留，改行为前先查对应 ADR）
 - `docs/runbooks/deploy.md` — 部署跑册：备份、后台构建（该机 sshd 会掐掉前台长命令）、`up -d` 与验收判定
+- `.scratch/` 历史归档（仅在追溯旧阶段背景时按需查看）：`phase1-mvp/`、`phase2-ai/`、`phase3-feishu/`、`phase4-onboarding/`、`workbook-background/`、`auto-schedule-publishable/`
 
 ## 后端模块（backend/src/main/java/com/paiban）
 
@@ -29,46 +24,20 @@
 | `notification/` | 外发通知模板与钉钉通道（站内通知页已下线，表保留） |
 | `integration/` | 钉钉（可选，关闭后系统完整可用） |
 | `onboarding/` | 初始化向导 |
+| `imports/` | 手动选列导入、导入配方 `ImportRecipeService` 与指纹匹配 |
 | `ai/` | 供应商/模型/任务分配、统一网关与策略、`ai_call_log`；`ai/imports/` 是三通道导入管道，`ai_import_log.batches_json` 存批次数据 |
 
-求解器只有一条线程（`common/config/AsyncConfig.java`），同一时刻只跑一个任务；取消与排队逻辑都绑在这个约束上。
-
-课表导入的分批解析另有一条线程（`importExecutor`），与求解器互不影响；会话状态机在 `ai/imports/AiImportService.java`，批次数据在 `ai_import_log.batches_json`（迁移 V20、V21）。
+求解器只有一条线程（`common/config/AsyncConfig.java`），同一时刻只跑一个任务；课表 AI 分批解析另有独立线程 `importExecutor`（`ai/imports/AiImportService.java`、`ai_import_log.batches_json`）。
 
 ## 本地开发
 
-- 开工、规划或建 worktree 前先 `git fetch origin main` 并确认基线已包含 `origin/main`（`scripts/worktree-add.sh` 默认基于 `origin/main` 且拒绝落后基线）。
-- Windows 下若 `bash` 落到未安装的 WSL，运行仓库脚本请用 `C:\Users\liu\AppData\Local\Programs\GitPortable\bin\bash.exe`。
-- 构建前 `source .tools/env.sh`：JDK 21、Maven、E 盘仓库；`scripts/verify.sh` 会在 `.tools/env.sh` 存在时自动 source
-- 首次检出后执行 `git config core.hooksPath .githooks`：pre-commit 通过 `git rev-parse --show-toplevel` 兼容 worktree，对 staged 的 `frontend/**` 跑 eslint、对 staged `.vue` 跑 `check-sfc-size.sh`，并无条件跑四项仓库级检查；pre-push 在分支未包含 `origin/main` 时阻止推送。
-- `scripts/verify.sh` — 本地闸门，固定「快检查 → 前端 → 后端 → E2E」顺序（前端 lint/build/unit 与含 `check-e2e-testids.sh`、未跟踪 e2e spec 检查的仓库检查先于后端执行）；`--full` 用隔离端口 28080/25173 跑 Playwright（可用 `PAIBAN_E2E_BACKEND_PORT` / `PAIBAN_E2E_FRONTEND_PORT` 覆盖），`--quick` 只把后端换成编译、不跑 Playwright，迭代期用；`--deploy` 在 `--full` 基础上要求 Docker 真跑 `PostgresContainerIT`，没有 Docker 直接失败
-- `scripts/verify-run.sh <run-id> [--full|--deploy|--quick]` — 最终冻结验证与收据入口；源码快照、退出码和归档校验见 `docs/agents/verification.md`。评审期间冻结审源不改分支，临时采集脚本不留在 `frontend/e2e/`。
-- 全量门禁优先通过 `verify-run.sh` 保存退出码与隔离日志；直接调用 `verify.sh` 时将日志写入工作树 `.runtime/` 并立即保存退出码，不要接 `| tee`/`| tail`，管道会把失败退出码换成 0
-- 本机若 surefire 分叉被杀或 Mockito 报「could not self-attach / inline mock maker」，定向测试加 `-DforkCount=0` 跑（全量仍以 CI 为准）；全量门禁同样的抖动用 `PAIBAN_MVN_EXTRA_ARGS=-DforkCount=0 bash scripts/verify.sh --full`；不要再手工拼 `JAVA_TOOL_OPTIONS`
-- 全量测试运行期间不要改源码/测试文件；若出现 `NoClassDefFoundError: com/paiban/support/ScheduleFixture`，先 `cd backend && ./mvnw -B -DskipTests compile` 再重跑，不要判为代码回归。
-- 并行分支新增 Flyway 迁移前，先查所有 worktree/分支已占用的最高版本，按合并顺序续号（允许跳号）；`scripts/check-migrations.sh` 在本地闸门与 CI 拦重复版本
-- 单条 E2E 用 `scripts/e2e.sh <spec>`：自动 source `.tools/env.sh`、隔离端口，并把 Git Bash 下的 Maven 路径转成 Windows 绝对路径
-- 多票据 worktree：用 `scripts/worktree-add.sh <name> <branch> [base]` 创建、`scripts/worktree-remove.sh <name>` 清理；脚本会联接 `frontend/node_modules` 和 `.tools`（`--full` 需要），不要直接 `rm -rf`（会顺着 junction 删主仓库依赖）
-- 多票并行时每票只跑定向测试；全量 `verify.sh` 在评审修复与票面状态/实现说明落盘之后、发布前跑一次；之后只允许文档类提交。
-- 本机内存常低于 2GB：定向单测用 `npx vitest run --no-file-parallelism <路径>`，全量门禁用 `VITEST_MAX_WORKERS=4 bash scripts/verify.sh --full`；vitest 与 e2e 不并发。
-- 重活（全量门禁、批量 e2e、重建）前先 `bash scripts/doctor.sh` 看内存/端口/磁盘。
-- 串行依赖的票据链在集成分支上顺序实现；只有真正可并行 frontier 才开 worktree
-- 多个会话并行时各自开 worktree，主仓库只用于合并；提交只 stage 本任务路径（用 `git add <path>`，不要 `git add -A`），别把另一个会话的未提交改动带进自己的提交
-- 性能基准（ADR-0017，约 3 分钟）：`cd backend && ./mvnw -Dperf=true -Dtest=PerformanceBenchmarkIT test`
-- 提交后跑 `git status --short`：非空先确认是否漏 stage；按目录 stage 容易漏掉同任务里散落在其他目录的单文件
-- 发布课表会重建 `timetable_entry` 的 id；测试里按槽位/课程回查（`ScheduleFixture.publishedEntries`），不要复用 `DraftLesson` id
-- Git Bash 下 `git show branch:path` 会被路径转换改写，前面加 `MSYS_NO_PATHCONV=1`
+- 开工、规划或建 worktree 前先 `git fetch origin main` 并确认基线包含 `origin/main`；首次检出执行 `git config core.hooksPath .githooks`（pre-commit 兼容 worktree，跑 ESLint、SFC 大小、ticket 状态、本地日期、e2e helper 与模块边界检查；pre-push 拦截落后于 `origin/main` 的推送）。
+- 构建与验证默认先 `source .tools/env.sh`（JDK 21 / Maven / E 盘仓库），迭代期跑 `scripts/verify.sh --quick`，提交/发布前跑 `scripts/verify.sh --full`（或 `scripts/verify-run.sh <run-id> --full`，规范见 `docs/agents/verification.md`）。
+- 提交时只 `git add <path>`（不用 `git add -A`），提交后立即跑 `git status --short` 检查是否漏文件或误带未跟踪改动。
+- 遇到 Windows PowerShell / GitPortable Bash 传参、`doctor.sh --no-docker`、Surefire `-DforkCount=0`、低内存 Vitest 并发、Flyway 跳号、单条 E2E、性能基准或创建/删除 worktree（含 junction 安全移除）时，先读 [`docs/agents/local-dev.md`](docs/agents/local-dev.md)。
 
 ## Agent skills
 
-### Issue tracker
-
-票据与规格以本地 markdown 记录在 `.scratch/<feature>/`，每张票据一个文件。**`Status:` 与复选框可能是历史快照；开工前以 `HANDOFF.md`、`git log` 和线上事实为准**（`scripts/check-ticket-status.sh` 会拦「全勾选却 ready-for-agent」）。See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-沿用五个默认 triage 角色（`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`）。See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-单上下文：根 `GLOSSARY.md` + `docs/adr/`。See `docs/agents/domain.md`.
+- **Issue tracker**: `.scratch/<feature>/` 记录票据与规格；**`Status:` 与复选框可能是历史快照，开工前以 `HANDOFF.md`、`git log` 和线上事实为准**。详见 [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md)。
+- **Triage labels**: `needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`。详见 [`docs/agents/triage-labels.md`](docs/agents/triage-labels.md)。
+- **Domain docs**: 根 `GLOSSARY.md` + `docs/adr/`。详见 [`docs/agents/domain.md`](docs/agents/domain.md)。

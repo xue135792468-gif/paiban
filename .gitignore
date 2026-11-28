@@ -53,3 +53,7 @@ Thumbs.db
 
 # local Maven overrides (E: drive repo + Aliyun mirror); never commit
 backend/.mvn/maven.config
+
+# local agent scratch & audit logs
+.tmp-codex-web/
+.audit/

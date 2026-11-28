@@ -1374,3 +1374,34 @@ export async function seedDraftLockScenario(context: APIRequestContext): Promise
     emptyPeriod: periodIds['2-6'],
   }
 }
+
+/**
+ * 校验含 `fixed="right"` 操作列的 Element Plus 表格在当前视口下无横向溢出，
+ * 且目标内容元素右侧不被固定操作列遮挡（如教师列表状态标签）。
+ */
+export async function expectNoFixedColumnOverlap(
+  table: Locator,
+  target: Locator,
+  actionCell?: Locator,
+): Promise<void> {
+  await expect(target).toBeVisible()
+  const overflow = await table.evaluate((el) => {
+    const wrap =
+      el.querySelector<HTMLElement>('.el-table__body-wrapper .el-scrollbar__wrap') ??
+      el.querySelector<HTMLElement>('.el-table__body-wrapper')
+    if (!wrap) return null
+    return { scrollWidth: wrap.scrollWidth, clientWidth: wrap.clientWidth }
+  })
+  expect(overflow, 'expected Element Plus table body wrapper').not.toBeNull()
+  if (!overflow) return
+  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1)
+
+  const fixedCell =
+    actionCell ?? target.locator('xpath=ancestor::tr[1]').locator('.el-table-fixed-column--right').first()
+  await expect(fixedCell).toBeVisible()
+  const [targetBox, actionBox] = await Promise.all([target.boundingBox(), fixedCell.boundingBox()])
+  expect(targetBox, 'expected target bounding box').not.toBeNull()
+  expect(actionBox, 'expected fixed-right action cell bounding box').not.toBeNull()
+  if (!targetBox || !actionBox) return
+  expect(targetBox.x + targetBox.width).toBeLessThanOrEqual(actionBox.x + 1)
+}

@@ -149,10 +149,19 @@ check_json "./doctor.sh --quiet" ./doctor.sh --quiet
 echo "== bash doctor --help =="
 help_out="$(./doctor.sh --help 2>&1)"
 help_code=$?
-if [[ $help_code -eq 0 && "$help_out" == *"--json"* ]]; then
-  pass "./doctor.sh --help exits 0 and documents --json"
+if [[ $help_code -eq 0 && "$help_out" == *"--json"* && "$help_out" == *"--no-docker"* ]]; then
+  pass "./doctor.sh --help exits 0 and documents --json and --no-docker"
 else
   fail "./doctor.sh --help (exit=$help_code)"
+fi
+
+echo "== bash doctor --no-docker --json =="
+check_json "./doctor.sh --no-docker --json" ./doctor.sh --no-docker --json
+NODOCKER_CODE="$LAST_CODE"
+if [[ "$NODOCKER_CODE" -eq 0 || "$NODOCKER_CODE" -eq 1 ]]; then
+  pass "./doctor.sh --no-docker --json exits $NODOCKER_CODE (not blocked by missing Docker)"
+else
+  fail "./doctor.sh --no-docker --json exited $NODOCKER_CODE (expected 0 or 1)"
 fi
 
 echo "== bash doctor human mode =="
@@ -269,6 +278,14 @@ if command -v powershell >/dev/null 2>&1; then
     pass "powershell human mode exits $ps_human_code with summary"
   else
     fail "powershell human mode (exit=$ps_human_code, expected $PS_CODE with summary)"
+  fi
+
+  check_json "scripts/doctor.ps1 --no-docker --json" powershell -NoProfile -ExecutionPolicy Bypass -File scripts/doctor.ps1 --no-docker --json
+  PS_NODOCKER_CODE="$LAST_CODE"
+  if [[ "$PS_NODOCKER_CODE" -eq 0 || "$PS_NODOCKER_CODE" -eq 1 ]]; then
+    pass "powershell --no-docker --json exits $PS_NODOCKER_CODE (not blocked by missing Docker)"
+  else
+    fail "powershell --no-docker --json exited $PS_NODOCKER_CODE (expected 0 or 1)"
   fi
 else
   echo "skip - powershell not available on this host"

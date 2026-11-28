@@ -1,7 +1,7 @@
 ﻿# 排课系统自检（doctor，PowerShell 版）：与 scripts/doctor.sh 输出完全相同的 JSON 结构。
 #
 # 用法：
-#   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/doctor.ps1 [--json|--quiet] [--help]
+#   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/doctor.ps1 [--json|--quiet] [--no-docker] [--help]
 #   或直接运行仓库根目录的 doctor.bat
 #
 # 退出码：0=健康，1=警告（内存/迁移），2=严重（Docker/数据库/磁盘）。
@@ -19,11 +19,12 @@ function Show-Usage {
     @'
 排课系统自检（doctor）
 
-用法：doctor.bat [--json|--quiet] [--help]
+用法：doctor.bat [--json|--quiet] [--no-docker] [--help]
 
-  --json    输出 JSON 诊断报告，stdout 只有 JSON
-  --quiet   同 --json（本工具不打印进度信息）
-  --help    显示本帮助
+  --json       输出 JSON 诊断报告，stdout 只有 JSON
+  --quiet      同 --json（本工具不打印进度信息）
+  --no-docker  跳过 Docker 与数据库检查（无 Docker 迭代环境用）
+  --help       显示本帮助
 
 退出码：0=健康，1=有警告（内存/迁移），2=存在严重问题
 端口占用仅为信息项，不影响退出码。
@@ -128,10 +129,13 @@ function Format-PortState {
 # --- 参数 -----------------------------------------------------------------
 
 $Mode = 'human'
+$NoDocker = $false
 foreach ($argument in $args) {
     $token = [string]$argument
     if ($token -eq '--json' -or $token -eq '--quiet') {
         $Mode = 'json'
+    } elseif ($token -eq '--no-docker') {
+        $NoDocker = $true
     } elseif ($token -eq '--help' -or $token -eq '-h' -or $token -eq '/?') {
         Show-Usage
         exit 0
@@ -149,7 +153,7 @@ $dockerRunning = $false
 $dockerVersion = $null
 $dockerExe = $null
 
-$dockerCommand = Get-Command docker -ErrorAction SilentlyContinue
+$dockerCommand = if ($NoDocker) { $null } else { Get-Command docker -ErrorAction SilentlyContinue }
 if ($dockerCommand) {
     $dockerInstalled = $true
     $dockerExe = $dockerCommand.Source
@@ -214,7 +218,7 @@ $dbMigrated = $false
 $dbVersion = $null
 
 $composePath = Join-Path $Root 'docker-compose.yml'
-if ($dockerRunning -and $dockerExe -and (Test-Path -LiteralPath $composePath)) {
+if (-not $NoDocker -and $dockerRunning -and $dockerExe -and (Test-Path -LiteralPath $composePath)) {
     $dbUser = Get-EnvValue -Key 'POSTGRES_USER'
     if (-not $dbUser) { $dbUser = 'paiban' }
     $dbName = Get-EnvValue -Key 'POSTGRES_DB'
@@ -263,7 +267,13 @@ $diskSufficient = ($null -ne $freeGb -and $freeGb -ge 1)
 # 2 = 严重（Docker/数据库/磁盘）；1 = 警告（内存/迁移）；0 = 健康。
 
 $exitCode = 0
-if (-not $dockerInstalled -or -not $dockerRunning -or -not $dbReachable -or -not $diskSufficient) {
+if ($NoDocker) {
+    if (-not $diskSufficient) {
+        $exitCode = 2
+    } elseif (-not $memSufficient) {
+        $exitCode = 1
+    }
+} elseif (-not $dockerInstalled -or -not $dockerRunning -or -not $dbReachable -or -not $diskSufficient) {
     $exitCode = 2
 } elseif (-not $memSufficient -or -not $dbMigrated) {
     $exitCode = 1
@@ -324,7 +334,9 @@ function Write-Info([string]$Message) {
 
 Write-Host "=== 排课系统自检 (doctor) ==="
 
-if (-not $dockerInstalled) {
+if ($NoDocker) {
+    Write-Info "Docker：已跳过检查（--no-docker）"
+} elseif (-not $dockerInstalled) {
     Write-Bad "Docker：未安装。请安装 Docker Desktop：https://www.docker.com/products/docker-desktop"
 } elseif (-not $dockerRunning) {
     Write-Warn "Docker：已安装 $dockerVersion，但守护进程未运行（请启动 Docker Desktop）"
@@ -348,7 +360,9 @@ if ($memSufficient) {
     Write-Warn "内存：总计 $totalGb GB，可用 $availGb GB，低于 2 GB，求解可能失败"
 }
 
-if (-not $dockerRunning) {
+if ($NoDocker) {
+    Write-Info "数据库：已跳过检查（--no-docker）"
+} elseif (-not $dockerRunning) {
     Write-Bad "数据库：不可连接（Docker 未运行；启动后执行 docker compose up -d）"
 } elseif (-not $dbReachable) {
     Write-Bad "数据库：不可连接（请执行 docker compose up -d 并等待就绪）"
